@@ -27,13 +27,7 @@ export const proposeSkillTool: ConversationTool = {
     "Use this when you identify operational rules, best practices, or conventions.",
   inputSchema,
   category: "draft_write" as const,
-  // Provider-native strict mode (issue #165). All fields are concrete
-  // typed strings/enums/arrays — no `z.record(z.unknown())` — so
-  // Anthropic JSON-mode and OpenAI structured outputs can enforce the
-  // schema server-side. The two sibling authoring tools
-  // (build_workflow, propose_step) keep strict off because their
-  // inputs include `z.record(z.unknown())` schemas (the workflow
-  // body / step config) that strict mode does not accept.
+  // Strict mode safe here: schema is all concrete types (issue #165).
   strict: true,
   example_input: {
     scope: "global",

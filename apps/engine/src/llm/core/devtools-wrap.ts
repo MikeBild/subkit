@@ -8,8 +8,9 @@
 //
 // We compose two middlewares: a small header scrubber (outermost) so
 // devtools never sees `Authorization` / `x-api-key` / `api-key` /
-// `x-auth-token` values, and the devtools middleware (innermost) which
-// then writes the scrubbed call to `.devtools/generations.json`.
+// `x-auth-token` / `x-amz-security-token` values, and the devtools
+// middleware (innermost) which then writes the scrubbed call to
+// `.devtools/generations.json`.
 //
 // `wrapLanguageModel` reverses the middleware array before composing, so
 // the array [outer, inner] makes `outer` the user-facing wrapper —
@@ -18,6 +19,7 @@
 import type { LanguageModelV3, LanguageModelV3Middleware } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
 import { wrapLanguageModel } from "ai";
+import { logger } from "../../logging/logger.ts";
 
 const REDACTED = "[REDACTED]";
 const AUTH_HEADER_PATTERN =
@@ -41,21 +43,25 @@ const isDevEnv = (): boolean => process.env.NODE_ENV !== "production";
 
 let cachedDevtoolsMiddleware: LanguageModelV3Middleware | null | undefined;
 
-// Lazy-load the devtools middleware so production bundles never resolve
-// the `@ai-sdk/devtools` package even if it stays in `devDependencies`
-// after a fat install.
-function loadDevtoolsMiddleware(): LanguageModelV3Middleware | null {
+// Dev-only optional dynamic import — `@ai-sdk/devtools` is a
+// devDependency; in a production-pruned `node_modules` this resolves to
+// `null` and we fall back to the unwrapped model. Matches the
+// `await import(...)` convention used everywhere else in apps/engine/src/.
+async function loadDevtoolsMiddleware(): Promise<LanguageModelV3Middleware | null> {
   if (cachedDevtoolsMiddleware !== undefined) return cachedDevtoolsMiddleware;
   try {
-    // Dev-only optional load — `@ai-sdk/devtools` is a devDependency; in
-    // a production-pruned `node_modules` this require throws and we fall
-    // back to the unwrapped model.
-    const mod = require("@ai-sdk/devtools") as {
+    const mod = (await import("@ai-sdk/devtools")) as {
       devToolsMiddleware: () => LanguageModelV3Middleware;
     };
     cachedDevtoolsMiddleware = mod.devToolsMiddleware();
-  } catch {
+  } catch (err) {
     cachedDevtoolsMiddleware = null;
+    logger.debug({
+      module: "llm.devtools",
+      action: "load_failed",
+      msg: "@ai-sdk/devtools not loadable; continuing unwrapped",
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
   return cachedDevtoolsMiddleware;
 }
@@ -63,13 +69,13 @@ function loadDevtoolsMiddleware(): LanguageModelV3Middleware | null {
 /**
  * Wrap a resolved language model with the DevTools middleware in
  * non-production environments. Returns the model unchanged in production
- * or when the model is the mock sentinel string.
- *
- * Composition: [scrubAuthHeaders, devtools] — scrub is outermost, so
- * devtools captures call params with Authorization-style headers
- * redacted.
+ * or when the model is the mock sentinel string. Composition:
+ * [scrubAuthHeaders, devtools] — scrub is outermost so devtools captures
+ * call params with Authorization-style headers redacted.
  */
-export function maybeWrapForDevtools(model: LanguageModel | string): LanguageModel | string {
+export async function maybeWrapForDevtools(
+  model: LanguageModel | string,
+): Promise<LanguageModel | string> {
   if (typeof model === "string") return model;
   if (!isDevEnv()) return model;
   // wrapLanguageModel + the v3 middleware spec only accept LanguageModelV3.
@@ -77,7 +83,7 @@ export function maybeWrapForDevtools(model: LanguageModel | string): LanguageMod
   // bedrock/vertex/gateway) ships v3 models; the union with V2 in `ai`'s
   // public type is for backwards compatibility, not active use.
   if (model.specificationVersion !== "v3") return model;
-  const devtools = loadDevtoolsMiddleware();
+  const devtools = await loadDevtoolsMiddleware();
   if (!devtools) return model;
   return wrapLanguageModel({
     model: model as LanguageModelV3,

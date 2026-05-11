@@ -16,8 +16,34 @@
 // it as opaque jsonb rather than pointing at the credentials table
 // because MCP auth_provider shapes (PKCE flows, dynamic client
 // registration) do not match the static credential rows.
+//
+// Audit-action vocabulary (issue #171 will land the writers). The
+// configuration table is tenant-mutable state, so every write MUST
+// emit an `audit_log` row via the standard audit recorder. The
+// committed action vocabulary is:
+//
+//     mcp_server.registered    — INSERT into mcp_servers
+//     mcp_server.config_updated — UPDATE of url / auth_config / namespace
+//     mcp_server.disabled      — status flipped 'active' → 'disabled'
+//     mcp_server.re_enabled    — status flipped 'disabled' → 'active'
+//     mcp_server.errored       — status flipped to 'error' (last_error set)
+//     mcp_server.deleted       — DELETE (or soft-delete equivalent)
+//     mcp_server.handshake_ok  — successful handshake; last_handshake_at set
+//
+// Each audit row must include `request_source` (CLI vs API vs MCP) plus
+// the tenant_id and the resource_id of the affected mcp_servers row.
 
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
@@ -52,5 +78,7 @@ export const mcpServers = pgTable(
   (t) => [
     uniqueIndex("mcp_servers_tenant_namespace_uq").on(t.tenant_id, t.namespace),
     index("mcp_servers_tenant_status_idx").on(t.tenant_id, t.status),
+    check("mcp_servers_transport_check", sql`${t.transport} IN ('http','sse','stdio')`),
+    check("mcp_servers_status_check", sql`${t.status} IN ('active','disabled','error')`),
   ],
 );

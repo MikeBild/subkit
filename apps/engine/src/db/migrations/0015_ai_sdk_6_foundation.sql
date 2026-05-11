@@ -4,9 +4,11 @@
 --
 -- 1. external_call_metering — append-only ledger for non-LLM provider
 --    costs (Cohere rerank, Firecrawl, Exa, Browserbase, ...). Mirrors
---    `llm_usage` shape with provider-specific `units` instead of weighted
---    tokens. Drives cost rollups for the new authoring tools added in
---    issues #167–#174.
+--    `llm_usage` shape with provider-specific `units` instead of
+--    weighted tokens. Audit correlation goes through
+--    `(tenant_id, created_at)`, identical to llm_usage — no separate
+--    audit_id pointer. If a future change adds audit pointers it MUST
+--    update both ledgers in the same migration.
 --
 -- 2. mcp_servers — per-tenant configuration for external MCP servers
 --    consumed by subkit's MCP client (issue #171). `namespace` is a
@@ -14,6 +16,10 @@
 --    palette: `mcp_<namespace>__<remote_tool_name>`. `auth_config` is
 --    opaque jsonb because MCP auth_provider shapes (PKCE flows, dynamic
 --    client registration) do not match the static credential rows.
+--    Audit-action vocabulary documented in the schema header.
+--
+-- CHECK constraints fence stringly-typed columns server-side
+-- (matches the audit_log.actor_type / .result pattern).
 
 CREATE TABLE IF NOT EXISTS "external_call_metering" (
   "id" bigserial PRIMARY KEY,
@@ -25,9 +31,10 @@ CREATE TABLE IF NOT EXISTS "external_call_metering" (
   "latency_ms" integer NOT NULL DEFAULT 0,
   "result" text NOT NULL,
   "error" text,
-  "audit_id" uuid,
   "created_at" timestamptz NOT NULL DEFAULT now(),
-  "month_bucket" bigint NOT NULL
+  "month_bucket" bigint NOT NULL,
+  CONSTRAINT "external_call_metering_result_check"
+    CHECK ("result" IN ('ok', 'error'))
 );
 
 CREATE INDEX IF NOT EXISTS "external_call_metering_tenant_created_idx"
@@ -49,7 +56,11 @@ CREATE TABLE IF NOT EXISTS "mcp_servers" (
   "last_error" text,
   "tools_manifest_hash" text,
   "created_at" timestamptz NOT NULL DEFAULT now(),
-  "updated_at" timestamptz NOT NULL DEFAULT now()
+  "updated_at" timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT "mcp_servers_transport_check"
+    CHECK ("transport" IN ('http', 'sse', 'stdio')),
+  CONSTRAINT "mcp_servers_status_check"
+    CHECK ("status" IN ('active', 'disabled', 'error'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "mcp_servers_tenant_namespace_uq"

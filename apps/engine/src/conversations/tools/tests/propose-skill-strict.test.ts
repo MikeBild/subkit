@@ -8,9 +8,44 @@
 // without also tightening the schema fails fast.
 
 import { describe, expect, it } from "bun:test";
+import { z } from "@hono/zod-openapi";
 import { buildWorkflowTool } from "../build-workflow.ts";
 import { proposeSkillTool } from "../propose-skill.ts";
 import { proposeStepTool } from "../propose-step.ts";
+
+// Walk a JSON-Schema-7 object tree and return true iff any subschema is
+// an `object` whose `additionalProperties` admits anything — i.e. `true`,
+// absent, or an empty-object schema `{}` (the shape Zod v4 produces for
+// `z.record(z.unknown())`). Provider strict mode (Anthropic JSON-mode,
+// OpenAI structured outputs) requires every object to forbid additional
+// properties; a single permissive node anywhere makes the tool strict-
+// incompatible.
+function isUnrestrictedAdditional(v: unknown): boolean {
+  if (v === undefined || v === true) return true;
+  if (v !== null && typeof v === "object") {
+    // An empty object schema `{}` matches anything, same as `true`.
+    return Object.keys(v as Record<string, unknown>).length === 0;
+  }
+  return false;
+}
+
+function hasUnrestrictedObject(node: unknown): boolean {
+  if (!node || typeof node !== "object") return false;
+  const obj = node as Record<string, unknown>;
+  if (obj.type === "object" && isUnrestrictedAdditional(obj.additionalProperties)) return true;
+  for (const v of Object.values(obj)) {
+    if (Array.isArray(v)) {
+      for (const item of v) if (hasUnrestrictedObject(item)) return true;
+    } else if (hasUnrestrictedObject(v)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: zod v4 toJSONSchema surface
+const toJsonSchema = (schema: unknown) =>
+  (z as any).toJSONSchema(schema, { target: "jsonSchema7" }) as unknown;
 
 describe("issue #165 — strict + inputExamples opt-in", () => {
   it("propose_skill opts into strict mode", () => {
@@ -34,5 +69,22 @@ describe("issue #165 — strict + inputExamples opt-in", () => {
 
   it("propose_step keeps strict off (uses z.record(z.unknown()))", () => {
     expect(proposeStepTool.strict).toBeUndefined();
+  });
+
+  // Structural invariant: prove the contrapositive of the strict-off
+  // decision (issue #165, review W5). If a future refactor tightens
+  // build_workflow / propose_step to drop `z.record(z.unknown())`,
+  // these tests fail and remind the next agent that strict mode is
+  // now an option.
+  it("build_workflow inputSchema contains an unrestricted object (strict-incompat)", () => {
+    expect(hasUnrestrictedObject(toJsonSchema(buildWorkflowTool.inputSchema))).toBe(true);
+  });
+
+  it("propose_step inputSchema contains an unrestricted object (strict-incompat)", () => {
+    expect(hasUnrestrictedObject(toJsonSchema(proposeStepTool.inputSchema))).toBe(true);
+  });
+
+  it("propose_skill inputSchema is fully restricted (strict-compatible)", () => {
+    expect(hasUnrestrictedObject(toJsonSchema(proposeSkillTool.inputSchema))).toBe(false);
   });
 });

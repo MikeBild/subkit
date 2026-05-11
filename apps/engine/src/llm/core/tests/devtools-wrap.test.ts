@@ -38,36 +38,36 @@ describe("maybeWrapForDevtools", () => {
     else process.env.NODE_ENV = originalNodeEnv;
   });
 
-  it("passes through the mock sentinel string unchanged", () => {
+  it("passes through the mock sentinel string unchanged", async () => {
     process.env.NODE_ENV = "development";
-    const out = maybeWrapForDevtools("mock:never-dispatched");
+    const out = await maybeWrapForDevtools("mock:never-dispatched");
     expect(out).toBe("mock:never-dispatched");
   });
 
-  it("does not wrap when NODE_ENV is production", () => {
+  it("does not wrap when NODE_ENV is production", async () => {
     process.env.NODE_ENV = "production";
     const model = stubV3Model();
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
-    const out = maybeWrapForDevtools(model as any);
+    const out = await maybeWrapForDevtools(model as any);
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
     expect(out).toBe(model as any);
   });
 
-  it("wraps in DEV and returns a different instance", () => {
+  it("wraps in DEV and returns a different instance", async () => {
     process.env.NODE_ENV = "development";
     const model = stubV3Model();
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
-    const out = maybeWrapForDevtools(model as any);
+    const out = await maybeWrapForDevtools(model as any);
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
     expect(out).not.toBe(model as any);
     expect(typeof out === "object" && out !== null && "specificationVersion" in out).toBe(true);
   });
 
-  it("passes through models with unsupported specificationVersion", () => {
+  it("passes through models with unsupported specificationVersion", async () => {
     process.env.NODE_ENV = "development";
     const legacyModel = { ...stubV3Model(), specificationVersion: "v2" };
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
-    const out = maybeWrapForDevtools(legacyModel as any);
+    const out = await maybeWrapForDevtools(legacyModel as any);
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
     expect(out).toBe(legacyModel as any);
   });

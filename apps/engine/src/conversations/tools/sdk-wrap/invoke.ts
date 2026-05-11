@@ -69,6 +69,19 @@ import {
   type WrappedToolOutput,
 } from "./state.ts";
 
+// issue #165: surface a tool's `example_input` (single object) as the
+// SDK's `inputExamples` array, in one place so the `as` cast doesn't
+// proliferate. Currently no provider Anthropic / OpenAI / Gemini reads
+// this field server-side; it stays as forward-compatible metadata
+// alongside the `<example>` block compileDescription appends to the
+// tool description (the channel models actually see today).
+function toInputExamples(
+  example: Readonly<Record<string, unknown>> | undefined,
+): { inputExamples: Array<{ input: Record<string, unknown> }> } | Record<string, never> {
+  if (!example) return {};
+  return { inputExamples: [{ input: example as Record<string, unknown> }] };
+}
+
 export function wrapOne(
   inner: ConversationTool,
   ctx: ToolContext,
@@ -93,18 +106,9 @@ export function wrapOne(
   return tool<Record<string, unknown>, WrappedToolOutput>({
     description: compileDescription(inner),
     inputSchema,
-    // Opt-in provider-native strict mode (issue #165). The provider
-    // (Anthropic JSON-mode, OpenAI structured outputs) enforces the
-    // input schema server-side so the model cannot emit a malformed
-    // call; cuts `repairToolCall` roundtrips on the targeted tools.
+    // issue #165: opt-in provider-native strict mode + inputExamples.
     ...(inner.strict ? { strict: true as const } : {}),
-    // Surface `example_input` as the SDK's `inputExamples` array so
-    // providers that support input examples (Anthropic, OpenAI) anchor
-    // the model on a known-good shape — complementary to the
-    // <example>…</example> block already rendered into the description.
-    ...(inner.example_input
-      ? { inputExamples: [{ input: inner.example_input as Record<string, unknown> }] }
-      : {}),
+    ...toInputExamples(inner.example_input),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
       // Serialize against other tool executions in this turn — see
       // TurnSignals.toolChain for rationale.

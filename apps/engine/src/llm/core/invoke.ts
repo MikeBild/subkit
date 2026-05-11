@@ -71,7 +71,7 @@ export async function resolveLanguageModel(
     defaultModel: bare,
     modelOverride: bare,
   });
-  return maybeWrapForDevtools(resolved.model);
+  return await maybeWrapForDevtools(resolved.model);
 }
 
 function zodToJson(schema: ZodType): Record<string, unknown> {

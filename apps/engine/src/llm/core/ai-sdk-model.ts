@@ -111,13 +111,13 @@ export class AiSdkModel implements SubkitLlm {
         // Apply the DevTools wrap once at init time so the cached
         // resolution carries the middleware for every subsequent call.
         // No-op in production (see devtools-wrap.ts).
-        this.resolved = { ...initial, model: maybeWrapForDevtools(initial.model) };
+        this.resolved = { ...initial, model: await maybeWrapForDevtools(initial.model) };
         this.modelId = this.resolved.modelId;
         this.contextLength = contextLengthFor(this.modelId);
         if (this.opts.fallback) {
           try {
             const fb = await initializeModel(this.opts.fallback);
-            this.fallbackResolved = { ...fb, model: maybeWrapForDevtools(fb.model) };
+            this.fallbackResolved = { ...fb, model: await maybeWrapForDevtools(fb.model) };
           } catch (err) {
             logger.warn({
               module: "llm",
