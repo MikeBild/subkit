@@ -5,21 +5,29 @@
 // wrapped, (4) the scrub middleware redacts Authorization headers.
 
 import { afterEach, describe, expect, it } from "bun:test";
-import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { maybeWrapForDevtools } from "../devtools-wrap.ts";
 
-// Minimal v3 model stub. The wrap composes around .doStream + .doGenerate;
-// we don't exercise those here — we only care that the returned object is
-// (or is not) a different instance from the input.
-const stubV3Model = (): LanguageModelV3 => ({
+// Minimal v3-shaped model stub. We do not import `@ai-sdk/provider` here
+// because the `no_live_llm` audit invariant forbids real-LLM SDK imports
+// in any *.test.ts file. The wrap composes around .doStream + .doGenerate;
+// we don't exercise those — only that the returned reference is (or is
+// not) the same instance.
+type StubModel = {
+  specificationVersion: string;
+  provider: string;
+  modelId: string;
+  supportedUrls: Record<string, RegExp[]>;
+  doGenerate: () => Promise<unknown>;
+  doStream: () => Promise<unknown>;
+};
+
+const stubV3Model = (): StubModel => ({
   specificationVersion: "v3",
   provider: "stub",
   modelId: "stub-model",
   supportedUrls: {},
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub for type satisfaction
-  doGenerate: (async () => ({}) as any) as any,
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub for type satisfaction
-  doStream: (async () => ({}) as any) as any,
+  doGenerate: async () => ({}),
+  doStream: async () => ({}),
 });
 
 describe("maybeWrapForDevtools", () => {
@@ -39,25 +47,28 @@ describe("maybeWrapForDevtools", () => {
   it("does not wrap when NODE_ENV is production", () => {
     process.env.NODE_ENV = "production";
     const model = stubV3Model();
-    const out = maybeWrapForDevtools(model);
-    expect(out).toBe(model);
+    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    const out = maybeWrapForDevtools(model as any);
+    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    expect(out).toBe(model as any);
   });
 
   it("wraps in DEV and returns a different instance", () => {
     process.env.NODE_ENV = "development";
     const model = stubV3Model();
-    const out = maybeWrapForDevtools(model);
-    expect(out).not.toBe(model);
-    // The wrapped model is still a v3 language model (same surface).
+    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    const out = maybeWrapForDevtools(model as any);
+    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    expect(out).not.toBe(model as any);
     expect(typeof out === "object" && out !== null && "specificationVersion" in out).toBe(true);
   });
 
   it("passes through models with unsupported specificationVersion", () => {
     process.env.NODE_ENV = "development";
-    // Force a non-v3 specificationVersion to simulate a legacy v2 model.
-    // biome-ignore lint/suspicious/noExplicitAny: test stub
-    const legacyModel = { ...stubV3Model(), specificationVersion: "v2" as any };
-    const out = maybeWrapForDevtools(legacyModel);
-    expect(out).toBe(legacyModel);
+    const legacyModel = { ...stubV3Model(), specificationVersion: "v2" };
+    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    const out = maybeWrapForDevtools(legacyModel as any);
+    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    expect(out).toBe(legacyModel as any);
   });
 });
