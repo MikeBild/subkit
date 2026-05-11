@@ -204,6 +204,12 @@ class MockProvider {
         const text = summary.length > 0 ? `Summary: ${summary}` : "Summary: (empty)";
         return { text, object: { summary: text } };
       }
+      case "critic_authoring": {
+        // Default: pass with no repairs. Tests that exercise the failure
+        // path install an override via `generateOverrides.critic_authoring`.
+        const obj = { passed: true, repairs: [], rationale: "mock: no semantic drift" };
+        return { text: JSON.stringify(obj), object: obj };
+      }
       default:
         return { text: "(mock)", object: null };
     }

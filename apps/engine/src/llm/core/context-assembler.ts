@@ -151,6 +151,18 @@ const BASE_SYSTEM_PROMPTS: Record<Exclude<LlmFlow, "converse" | "suggest_next">,
     "Keep the result factual, compact, and plain text.",
     "Do not add markdown headings, bullet lists, or JSON unless the user explicitly asks for them.",
   ].join(" "),
+  critic_authoring: [
+    "You are the subkit workflow engine's authoring critic.",
+    "A draft has already passed static checks (JSONata syntax, scope references, JSON-schema validity).",
+    "Your only job is to flag SEMANTIC drift that static checks cannot catch:",
+    "steps in an order that produces nonsense (e.g. transform before the request it reads);",
+    "`output_transform` that names fields the upstream step does not produce;",
+    "idempotency assumptions that won't hold (retrying a POST without an idempotency key, etc.).",
+    "Report problems. Do NOT propose code or patches.",
+    "If everything looks reasonable, return passed:true with an empty repairs array.",
+    "Cap repairs at 5 short, imperative sentences. Each item must be actionable in a single edit.",
+    "rationale is a one-paragraph explanation of the call; keep it under 800 characters.",
+  ].join(" "),
 };
 
 /**

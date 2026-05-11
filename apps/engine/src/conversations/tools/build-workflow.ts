@@ -32,6 +32,9 @@ import {
 import { sampleToSchema } from "../../workflows/sample-to-schema.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
+import { runCriticAgent } from "../critic/critic-agent.ts";
+import { shouldRunCritic } from "../critic/gating.ts";
+import type { AuthoringCriticVerdict } from "../critic/types.ts";
 import { canonicalJson } from "../text-line-diff.ts";
 import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { verifyWorkflow } from "../verifier.ts";
@@ -599,6 +602,41 @@ export const buildWorkflowTool: ConversationTool = {
       }
     }
 
+    // Second-stage LLM critic. Gated — runs only when (a) the draft has
+    // at least N steps or (b) the most recent dry-run preview surfaced
+    // drift warnings. Critic NEVER mutates the draft; a failed verdict
+    // becomes `ok:false {error_code:"critic_rejected", repairs}` so the
+    // next conversation turn picks the hints up via prior_failures.
+    // Fail-open by design: provider errors / parse failures yield a
+    // pass with an explanatory rationale rather than blocking the build.
+    const recentDriftCount = currentDraft.latest_preview?.warnings?.length ?? 0;
+    const gating = shouldRunCritic({
+      stepCount: workflowDraft.steps.length,
+      recentDriftCount,
+    });
+    let criticVerdict: AuthoringCriticVerdict | undefined;
+    if (gating.run) {
+      criticVerdict = await runCriticAgent({
+        draft: workflowDraft,
+        tenant_id: ctx.tenant_id,
+        db: ctx.db,
+      });
+      if (!criticVerdict.passed) {
+        recordAuthoringGateBlock({ code: "critic_rejected", tool: "build_workflow" });
+        return {
+          ok: false,
+          error_code: "critic_rejected",
+          message: `LLM critic found ${criticVerdict.repairs.length} issue(s): ${criticVerdict.rationale}`,
+          details: {
+            repairs: criticVerdict.repairs,
+            rationale: criticVerdict.rationale,
+            gating_reason: gating.reason,
+          },
+          next_best_actions: ["inspect_workflow_draft", "update_param", "edit_workflow_patch"],
+        };
+      }
+    }
+
     // Pre-mutation snapshot for the inline diff cell (codex pattern):
     // emit a unified diff of the workflow DAG so the operator sees
     // exactly what changed structurally vs. the previous draft state.
@@ -633,6 +671,9 @@ export const buildWorkflowTool: ConversationTool = {
     }
 
     const infos = verdict.infos.map((info) => `${info.code}:${info.path}`);
+    if (criticVerdict) {
+      infos.push(`critic_passed:${gating.reason}`);
+    }
     const warningCodes = [
       ...warnings,
       ...verdict.warnings.map((warning) => `${warning.code}:${warning.path}`),

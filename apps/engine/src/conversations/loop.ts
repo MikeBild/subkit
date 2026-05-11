@@ -451,11 +451,31 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     const output = row.output as Record<string, unknown> | null;
     if (!output || typeof output !== "object") continue;
     if (output.ok === false || typeof output.error_code === "string") {
+      const code = typeof output.error_code === "string" ? output.error_code : "tool_failed";
+      // Authoring-critic rejections carry a `repairs[]` list under
+      // `details`. Expand each repair into its own prior_failures row
+      // tagged `step_id:"critic"` so the next turn sees actionable,
+      // self-contained hints instead of a single bundled message. The
+      // signal `priorCriticFail` is also flipped so step-router
+      // escalates the next turn to the top tier.
+      if (code === "critic_rejected") {
+        stepRouterSignals.priorCriticFail = true;
+        const details = (output.details ?? {}) as Record<string, unknown>;
+        const repairsRaw = details.repairs;
+        const repairs = Array.isArray(repairsRaw)
+          ? repairsRaw.filter((r): r is string => typeof r === "string")
+          : [];
+        for (const repair of repairs) {
+          priorFailuresFromTools.push({ step_id: "critic", error: repair });
+          if (priorFailuresFromTools.length >= 5) break;
+        }
+        if (priorFailuresFromTools.length >= 5) break;
+        continue;
+      }
       const nbaRaw = output.next_best_actions;
       const nba = Array.isArray(nbaRaw)
         ? nbaRaw.filter((x): x is string => typeof x === "string")
         : [];
-      const code = typeof output.error_code === "string" ? output.error_code : "tool_failed";
       const message =
         typeof output.message === "string"
           ? output.message

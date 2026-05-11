@@ -19,7 +19,8 @@ export type LlmFlow =
   | "converse"
   | "discover"
   | "summarize"
-  | "suggest_next";
+  | "suggest_next"
+  | "critic_authoring";
 
 export type LlmProviderKind = ProviderKind;
 
