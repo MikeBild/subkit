@@ -38,7 +38,7 @@ export interface ListenerOptions {
   /** Drizzle handle used to read events + upsert cursors. */
   db: Db;
   /** Optional channel subset, primarily for tests. */
-  channels?: OutboxChannel[];
+  channels?: readonly OutboxChannel[];
   /** Max rows to drain per catch-up pass. */
   catchUpBatchSize?: number;
 }
@@ -56,7 +56,7 @@ export class PubSubListener {
   /** Events that arrived via NOTIFY during catch-up. Flushed after. */
   private pendingDuringCatchup: Map<OutboxChannel, number[]> = new Map();
   private catchingUp = false;
-  private readonly channels: OutboxChannel[];
+  private readonly channels: readonly OutboxChannel[];
   private readonly emitter: PubSubEmitter;
   private readonly listenerId: string;
 

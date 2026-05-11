@@ -89,27 +89,22 @@ describe("issue #165 — strict + inputExamples opt-in", () => {
     expect(hasUnrestrictedObject(toJsonSchema(proposeSkillTool.inputSchema))).toBe(false);
   });
 
-  // W6: prove the inputExamples passthrough preserves the example shape
-  // verbatim, so the helper that lives one line away from the wrap
-  // boundary doesn't silently drop or rewrite it on a future refactor.
-  it("toInputExamples wraps example_input in the SDK-expected shape", () => {
-    const out = toInputExamples({ scope: "global", title: "x" });
-    expect(out).toEqual({
-      inputExamples: [{ input: { scope: "global", title: "x" } }],
-    });
-  });
-
-  it("toInputExamples returns an empty spread for undefined", () => {
+  // Regression in v4.6.0: AI SDK 6 strict-validates `inputExamples`
+  // against the JSON-Schema projection of `inputSchema`. The projection
+  // unconditionally seals every object with `additionalProperties:
+  // false` — including `z.record(...)` values, which legitimately
+  // accept any string key. The mismatch made Anthropic reject every
+  // conversation turn with `tools.N.custom: Example at index 0 is
+  // invalid: False schema does not allow <value>`. The fix is to stop
+  // emitting the `inputExamples` channel; the model still sees the
+  // example via the `<example>` block compileDescription appends to
+  // the tool description. The four tests below pin the current
+  // contract: `toInputExamples` is a no-op until upstream record
+  // projection is fixed AND every tool's example survives the strict
+  // JSON-Schema validation.
+  it("toInputExamples is a no-op for any input (regression suppressor)", () => {
+    expect(toInputExamples({ scope: "global", title: "x" })).toEqual({});
     expect(toInputExamples(undefined)).toEqual({});
-  });
-
-  it("propose_skill example_input round-trips through toInputExamples", () => {
-    const out = toInputExamples(proposeSkillTool.example_input);
-    expect("inputExamples" in out).toBe(true);
-    if ("inputExamples" in out) {
-      expect(out.inputExamples[0]?.input).toEqual(
-        proposeSkillTool.example_input as Record<string, unknown>,
-      );
-    }
+    expect(toInputExamples(proposeSkillTool.example_input)).toEqual({});
   });
 });

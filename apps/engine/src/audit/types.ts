@@ -370,13 +370,15 @@ export const AuditAction = {
   MCP_SERVER_HANDSHAKE_OK: "mcp_server.handshake_ok",
 
   // ---------------------------------------------------------------------
-  // External non-LLM provider calls (Cohere rerank, Firecrawl, Exa,
-  // Browserbase, ...). The metering ledger
+  // External non-LLM provider calls reserved for future opt-in,
+  // connector-shaped writers that land under a per-tenant budget — not
+  // for engine-baseline integrations (the runtime-independence policy
+  // forbids API-key dependencies on the discovery / ranking / scraping
+  // hot paths). The metering ledger
   // (apps/engine/src/db/schema/external_call_metering.ts) deliberately
   // does NOT carry an `audit_id` pointer (parity with `llm_usage`); the
   // *originating* state change still needs an audit row, and consumers
-  // join via `(tenant_id, created_at)`. Constants reserved for the
-  // first writer (issues #167 / #168 / #174).
+  // join via `(tenant_id, created_at)`.
   // ---------------------------------------------------------------------
   EXTERNAL_PROVIDER_CALL_SUCCEEDED: "external_provider.call_succeeded",
   EXTERNAL_PROVIDER_CALL_FAILED: "external_provider.call_failed",

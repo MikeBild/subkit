@@ -69,18 +69,27 @@ import {
   type WrappedToolOutput,
 } from "./state.ts";
 
-// issue #165: surface a tool's `example_input` (single object) as the
-// SDK's `inputExamples` array, in one place so the `as` cast doesn't
-// proliferate. Currently no provider Anthropic / OpenAI / Gemini reads
-// this field server-side; it stays as forward-compatible metadata
-// alongside the `<example>` block compileDescription appends to the
-// tool description (the channel models actually see today). Exported
-// for the test suite (propose-skill-strict.test.ts).
+// issue #165 / regression in v4.6.0: the `inputExamples` SDK channel
+// was emitted from this helper alongside the tool's `<example>`
+// description block. AI SDK 6 / Anthropic now strict-validates each
+// example against the projected JSON Schema, and the projection
+// reflexively seals every object with `additionalProperties: false`
+// (including `z.record(...)` values, which legitimately accept any
+// string key). That mismatch breaks every conversation turn with
+// `tools.N.custom: Example at index 0 is invalid: False schema does
+// not allow <value>`. The model already reads the same example from
+// the `<example>` block compileDescription appends to the description,
+// so the `inputExamples` channel is redundant for us today and the
+// safe move is to stop emitting it. We keep the helper (returning an
+// empty object) so the call-site stays one statement; a future fix in
+// either zod-to-json-schema's record handling or the SDK's projection
+// pass can flip this back on after the regression test below proves
+// every tool's example_input survives the strict JSON-Schema
+// validation. Exported for the test suite (propose-skill-strict.test.ts).
 export function toInputExamples(
-  example: Readonly<Record<string, unknown>> | undefined,
+  _example: Readonly<Record<string, unknown>> | undefined,
 ): { inputExamples: Array<{ input: Record<string, unknown> }> } | Record<string, never> {
-  if (!example) return {};
-  return { inputExamples: [{ input: example as Record<string, unknown> }] };
+  return {};
 }
 
 export function wrapOne(
@@ -109,6 +118,11 @@ export function wrapOne(
     inputSchema,
     // issue #165: opt-in provider-native strict mode + inputExamples.
     ...(inner.strict ? { strict: true as const } : {}),
+    // toInputExamples is intentionally a no-op since v4.6.0 — see the
+    // helper's header for the AI SDK 6 / Anthropic strict-validation
+    // regression that motivated suppressing this channel. The model
+    // still receives the example via the `<example>` block
+    // compileDescription appends to the description above.
     ...toInputExamples(inner.example_input),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
       // Serialize against other tool executions in this turn — see

@@ -1,12 +1,50 @@
-// Connectors, Knowledge Sources, and Skill Candidates → MCP resources.
+// Connectors, Knowledge Sources, Skill Candidates, and Workflows → MCP
+// resources.
 //
 // Each domain object becomes a resource at its respective URI:
-//   - `connector://<id>` — connector metadata (no credentials)
-//   - `knowledge://<id>` — knowledge source metadata + chunk count
+//   - `connector://<id>`       — connector metadata (no credentials)
+//   - `knowledge://<id>`       — knowledge source metadata + chunk count
 //   - `skill-candidate://<id>` — proposed skill improvement
+//   - `workflow://<id>`        — committed workflow definition (issue #169)
 //
 // `resources/subscribe` is wired to outbox pub/sub: events for
 // subscribed resources push `notifications/resources/updated`.
+//
+// Delivery semantics. `resources/listChanged` is registered as `false`
+// and the per-channel forwarders are best-effort: a logger.warn on a
+// failed `sendResourceUpdated` is the only retry. Clients that need
+// strict consistency on a `workflow://<id>` / `connector://<id>` /
+// `knowledge://<id>` resource should poll `readResource` on critical
+// paths.
+//
+// Notification payload is empty by MCP spec. `sendResourceUpdated`
+// carries only the URI; the lifecycle event's `type` discriminator
+// (`workflow.deleted` vs `workflow.updated` vs `workflow.metadata_updated`
+// vs `workflow.version_restored`) is dropped on the floor. Clients that
+// need to distinguish delete from rename must re-fetch via `readResource`
+// — or, for workflows specifically, observe the lifecycle audit row
+// directly through the `/v1/audit-log` HTTP surface.
+//
+// Two defenses keep cross-tenant / cross-scope notifications from
+// leaking via this channel:
+//   1. Every forwarder enters through `forwardIfSubscribed`, which
+//      checks `event.tenant_id === principal.tenant_id` before doing
+//      anything else.
+//   2. Forwarders that carry RBAC-sensitive payloads (today: the
+//      workflow lifecycle channel, which can push lifecycle pings for
+//      workflows a principal cannot `readResource`) pass an
+//      `rbacCheck` callback to `forwardIfSubscribed`. The callback
+//      runs the same `can()` decision the read handler uses, so
+//      neither a portal token narrowed to one workflow nor a
+//      custom-role principal lacking `workflow:read` can piggy-back
+//      on a subscription URI it learned out-of-band. Always-on by
+//      design — the prior portal-only short-circuit was a latent
+//      timing-leak surface for custom roles (#178 round-3 W1).
+//
+// Subscribe DoS defenses (#178 W-1): the subscribe handler rejects URIs
+// outside the four known prefixes (so a client can't trick the
+// lifecycle forwarder into a `can()` lookup for nonsense) and caps the
+// per-session subscribed-Set at `SUBSCRIBE_CAP`.
 
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
@@ -25,6 +63,7 @@ import { globalEmitter, type PubSubEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { can } from "../../rbac/evaluator.ts";
 import * as skillCandidateSvc from "../../skill-candidates/service.ts";
+import * as workflowSvc from "../../workflows/service.ts";
 
 export interface RegisterResourcesParams {
   server: Server;
@@ -43,75 +82,150 @@ function knowledgeUri(id: string): string {
 function skillCandidateUri(id: string): string {
   return `skill-candidate://${id}`;
 }
+function workflowUri(id: string): string {
+  return `workflow://${id}`;
+}
+
+/** Prefix set the subscribe handler accepts. Anything else is dropped at
+ *  subscribe time so a misbehaving client can't grow `subscribed` with
+ *  garbage (#178 review W-1). Keep this in sync with the URI helpers
+ *  above. */
+const SUBSCRIBE_URI_PREFIXES: readonly string[] = [
+  "connector://",
+  "knowledge://",
+  "skill-candidate://",
+  "workflow://",
+];
+
+/** Cap per-session subscribed-URI tracking so a malicious or buggy
+ *  client cannot grow the in-process Set unboundedly via a subscribe
+ *  loop. 256 is well above any realistic legitimate client subscribing
+ *  to every workflow and connector in a large tenant. Excess
+ *  subscriptions are rejected with a logged warn — the legitimate
+ *  client sees no behavioural change. */
+const SUBSCRIBE_CAP = 256;
 
 export function registerResourcesCapability(p: RegisterResourcesParams): void {
   const { server, db, principal } = p;
   const emitter = p.emitter ?? globalEmitter;
   const subscribed = new Set<string>();
 
-  // Subscribe to the outbox channel for connector OAuth events. We only
-  // forward updates whose event payload references a connector that this
-  // session has explicitly subscribed to.
-  const offConnectorOauth = emitter.on("connector.oauth", async (event: EventEnvelope<unknown>) => {
-    if (event.tenant_id !== principal.tenant_id) return;
-    const payload = (event.payload ?? {}) as { connector_id?: string };
-    const connectorId = payload.connector_id;
-    if (!connectorId) return;
-    const uri = connectorUri(connectorId);
-    if (!subscribed.has(uri)) return;
+  /**
+   * Single forwarder for every emitter → MCP notification path.
+   *
+   * Guarantees, in order:
+   *   1. Cross-tenant events drop silently.
+   *   2. Notifications for URIs this session never subscribed to drop
+   *      silently — no information leaks via timing or log volume.
+   *   3. RBAC re-check (when supplied) runs before `sendResourceUpdated`
+   *      so a session that subscribed to a URI it learned out-of-band
+   *      (e.g. a portal-scoped principal with a narrow `allowed_*`
+   *      list) cannot piggy-back on a notification it could not read.
+   *   4. Send failures are logged once at `warn` and swallowed —
+   *      at-most-once delivery; clients poll on critical paths (see
+   *      file header).
+   */
+  async function forwardIfSubscribed(args: {
+    event: EventEnvelope<unknown>;
+    uri: string;
+    rbacCheck?: () => Promise<boolean>;
+  }): Promise<void> {
+    if (args.event.tenant_id !== principal.tenant_id) return;
+    if (!subscribed.has(args.uri)) return;
+    // Always run the rbacCheck when wired. The earlier optimisation
+    // (skip for principals without a portal-scope narrowing) was a
+    // latent leak vector: a tenant can mint a custom role that omits
+    // `workflow:read` and that principal would still observe the
+    // existence + timing of lifecycle events for any guessed
+    // `workflow://<id>`. The MCP notification carries no payload —
+    // only the URI — but timing alone is signal. The conservative
+    // choice is to run `can()` every time and let the permissions
+    // cache absorb the cost (#178 round-3 W1).
+    if (args.rbacCheck) {
+      const allow = await args.rbacCheck();
+      if (!allow) {
+        logger.info({
+          module: "mcp",
+          action: "mcp.resource.updated.rbac_denied",
+          msg: "lifecycle forward suppressed by rbac re-check",
+          uri: args.uri,
+          event_type: args.event.type,
+          principal_id: principal.id,
+          principal_provider: principal.provider,
+        });
+        return;
+      }
+    }
     try {
-      await server.sendResourceUpdated({ uri });
+      await server.sendResourceUpdated({ uri: args.uri });
       logger.debug({
         module: "mcp",
         action: "mcp.resource.updated",
         msg: "mcp resource update notification sent",
-        uri,
-        event_type: event.type,
+        uri: args.uri,
+        event_type: args.event.type,
       });
     } catch (err) {
       logger.warn({
         module: "mcp",
         action: "mcp.resource.updated.failed",
         msg: "failed to send mcp resource update",
-        uri,
+        uri: args.uri,
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  // Subscribe to the outbox channel for connector OAuth events. We only
+  // forward updates whose event payload references a connector that this
+  // session has explicitly subscribed to.
+  const offConnectorOauth = emitter.on("connector.oauth", async (event: EventEnvelope<unknown>) => {
+    const payload = (event.payload ?? {}) as { connector_id?: string };
+    const connectorId = payload.connector_id;
+    if (!connectorId) return;
+    await forwardIfSubscribed({ event, uri: connectorUri(connectorId) });
   });
+
+  // Issue #169 — workflow.lifecycle channel. Every committed
+  // create/update/delete/restore/metadata-patch in workflows/service.ts
+  // emits here. An `rbacCheck` is wired so that even a portal-scoped
+  // principal that learned a workflow id out-of-band cannot subscribe
+  // and receive lifecycle pings for workflows it cannot `readResource`
+  // (W2 in PR #178 review).
+  const offWorkflowLifecycle = emitter.on(
+    "workflow.lifecycle",
+    async (event: EventEnvelope<unknown>) => {
+      const payload = (event.payload ?? {}) as { workflow_id?: string };
+      const workflowId = payload.workflow_id;
+      if (!workflowId) return;
+      await forwardIfSubscribed({
+        event,
+        uri: workflowUri(workflowId),
+        rbacCheck: async () => {
+          const decision = await can(db, {
+            tenant_id: principal.tenant_id,
+            principal,
+            permission: "workflow:read",
+            resource: { type: "workflow", id: workflowId },
+          });
+          return decision.allow;
+        },
+      });
+    },
+  );
 
   // Subscribe to notification.emitted for knowledge + skill-candidate events.
   // Both event types flow through the generic notification channel.
   const offNotification = emitter.on(
     "notification.emitted",
     async (event: EventEnvelope<unknown>) => {
-      if (event.tenant_id !== principal.tenant_id) return;
       const payload = (event.payload ?? {}) as Record<string, unknown>;
 
-      // Knowledge source updates
       const ksId = payload.knowledge_source_id as string | undefined;
-      if (ksId) {
-        const uri = knowledgeUri(ksId);
-        if (subscribed.has(uri)) {
-          try {
-            await server.sendResourceUpdated({ uri });
-          } catch {
-            /* best-effort */
-          }
-        }
-      }
+      if (ksId) await forwardIfSubscribed({ event, uri: knowledgeUri(ksId) });
 
-      // Skill candidate updates
       const scId = payload.skill_candidate_id as string | undefined;
-      if (scId) {
-        const uri = skillCandidateUri(scId);
-        if (subscribed.has(uri)) {
-          try {
-            await server.sendResourceUpdated({ uri });
-          } catch {
-            /* best-effort */
-          }
-        }
-      }
+      if (scId) await forwardIfSubscribed({ event, uri: skillCandidateUri(scId) });
     },
   );
 
@@ -121,6 +235,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
   server.onclose = (): void => {
     offConnectorOauth();
     offNotification();
+    offWorkflowLifecycle();
     subscribed.clear();
     if (typeof priorOnClose === "function") {
       try {
@@ -174,6 +289,36 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         uri: skillCandidateUri(sc.id),
         name: `Suggestion: ${sc.title}`,
         description: `${sc.pattern_kind} (${sc.confidence}) — ${sc.body.slice(0, 120)}`,
+        mimeType: "application/json",
+      });
+    }
+
+    // Workflows (active only, tenant-scoped). Issue #169.
+    //
+    // Portal-scoped principals carry `allowed_workflows`; we mirror the
+    // connector-block filter above so a portal token narrowed to one
+    // workflow cannot enumerate slugs / names of unrelated workflows in
+    // the same tenant via `listResources()`. `readResource` is already
+    // gated by `workflow:read` RBAC; this is the matching list-side
+    // narrowing.
+    //
+    // Uses `listWorkflowSummaries` (not `listWorkflows`) so each row is
+    // a single Postgres-side projection — no `dag` parse per workflow
+    // (#178 W-2). The MCP list view only needs name / slug / version /
+    // step_count anyway.
+    const workflowList = await workflowSvc.listWorkflowSummaries(
+      principal.tenant_id,
+      { status: "active" },
+      db,
+    );
+    for (const wf of workflowList) {
+      if (principal.allowed_workflows && principal.allowed_workflows !== "all") {
+        if (!principal.allowed_workflows.includes(wf.id)) continue;
+      }
+      resources.push({
+        uri: workflowUri(wf.id),
+        name: wf.name,
+        description: `Workflow (${wf.slug}) — v${wf.current_version ?? 0}, ${wf.step_count} steps`,
         mimeType: "application/json",
       });
     }
@@ -263,6 +408,46 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       };
     }
 
+    // Workflows (issue #169)
+    if (uri.startsWith("workflow://")) {
+      const id = uri.slice("workflow://".length);
+      const wf = await workflowSvc.getWorkflow(principal.tenant_id, id, db);
+      if (!wf) throw new Error(`workflow not found: ${id}`);
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "workflow:read",
+        resource: { type: "workflow", id: wf.id },
+      });
+      if (!decision.allow) {
+        const err = new Error(decision.reason ?? "permission_denied") as Error & {
+          code?: number;
+        };
+        err.code = -32001;
+        throw err;
+      }
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(
+              {
+                id: wf.id,
+                slug: wf.slug,
+                name: wf.name,
+                lifecycle: wf.lifecycle,
+                current_version: wf.current_version,
+                definition: wf.definition,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    }
+
     if (!uri.startsWith("connector://")) {
       throw new Error(`unsupported uri: ${uri}`);
     }
@@ -313,7 +498,37 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
   });
 
   server.setRequestHandler(SubscribeRequestSchema, async (req) => {
-    subscribed.add(req.params.uri);
+    const uri = req.params.uri;
+    // W-1: only accept URIs we actually forward. An unrecognised
+    // prefix would burn a `can()` call on every lifecycle event for
+    // nothing — silent free-DoS surface across sibling sessions of
+    // the same tenant.
+    if (!SUBSCRIBE_URI_PREFIXES.some((p) => uri.startsWith(p))) {
+      logger.debug({
+        module: "mcp",
+        action: "mcp.resource.subscribe.rejected",
+        msg: "subscribe rejected — unsupported uri prefix",
+        uri,
+        principal_id: principal.id,
+      });
+      return {};
+    }
+    // W-1: cap the per-session subscribed-URI Set. Beyond the cap we
+    // refuse silently so a legitimate client at the boundary still
+    // works for the URIs it added first; a misbehaving client just
+    // stops growing memory.
+    if (!subscribed.has(uri) && subscribed.size >= SUBSCRIBE_CAP) {
+      logger.warn({
+        module: "mcp",
+        action: "mcp.resource.subscribe.capped",
+        msg: "subscribe rejected — per-session cap reached",
+        uri,
+        cap: SUBSCRIBE_CAP,
+        principal_id: principal.id,
+      });
+      return {};
+    }
+    subscribed.add(uri);
     return {};
   });
   server.setRequestHandler(UnsubscribeRequestSchema, async (req) => {
