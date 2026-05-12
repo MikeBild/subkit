@@ -8,6 +8,7 @@
 // → probe — these tests pin that ordering.
 
 import { describe, expect, it } from "bun:test";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import type { AuthoringSummary, ConnectorDraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { createEmptyState } from "./normalize.ts";
 import { computeBlockedBy } from "./summary.ts";
@@ -47,7 +48,7 @@ function freshen<
     state.checkpoints[key] = {
       key,
       mutation_seq: state.connector_mutation_seq,
-      verified_at: new Date().toISOString(),
+      verified_at: new Date(FROZEN_NOW).toISOString(),
       verified_by_tool: "test",
       ok: true,
       summary: null,
