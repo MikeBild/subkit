@@ -85,4 +85,36 @@ describe("save_connector_draft — credential discriminated-union", () => {
     const parsed = schema.safeParse({});
     expect(parsed.success).toBe(true);
   });
+
+  it("accepts a JSON-stringified credential payload (AI SDK 6 strict-mode quirk)", () => {
+    // Reproduces the Gmail-OAuth2 dead-end from session 37a6d350
+    // (2026-05-12, trace cli-eff8d7d79d724c56): under Anthropic SDK 6
+    // strict structured output the model sometimes emits a nested
+    // object as a JSON string. The preprocessor must parse it before
+    // the discriminated union runs.
+    const stringified = JSON.stringify({
+      mode: "oauth2",
+      client_id: "86471638913-xxx.apps.googleusercontent.com",
+      client_secret: "GOCSPX-yyy",
+    });
+    const parsed = schema.safeParse({ credential: stringified });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      const data = parsed.data as { credential?: Record<string, unknown> };
+      expect(data.credential).toEqual({
+        mode: "oauth2",
+        client_id: "86471638913-xxx.apps.googleusercontent.com",
+        client_secret: "GOCSPX-yyy",
+      });
+    }
+  });
+
+  it("falls through to the union error when a non-JSON string is supplied", () => {
+    // A real misuse — the operator typed a bare secret. The schema
+    // should still fail (the union's typed error is more useful than
+    // silently coercing). The preprocessor only handles strings that
+    // look like JSON objects.
+    const parsed = schema.safeParse({ credential: "not-json" });
+    expect(parsed.success).toBe(false);
+  });
 });

@@ -267,16 +267,26 @@ export function computeBlockedBy(
     // authenticate_oauth (post-save), other auth_types must collect a
     // credential via ask_user_form. Surface the right next step in the
     // blocking list before the operator can run the probe.
-    if (
-      connector &&
+    const authPending =
+      connector !== null &&
       connector.auth_type !== "none" &&
-      checkpointStatus(state, "connector_authenticated") !== "fresh"
-    ) {
+      checkpointStatus(state, "connector_authenticated") !== "fresh";
+    if (authPending && connector) {
       blocked.push(connector.auth_type === "oauth2" ? "authenticate_oauth" : "ask_user_form");
     }
+    // Probe gate fires AFTER authentication for OAuth2 connectors —
+    // the documented lifecycle is save → authenticate_oauth → probe
+    // (docs/05-connectors.md). Until the OAuth dance completes there
+    // are no tokens to probe with, so suggesting `probe_connector_draft`
+    // in parallel with `authenticate_oauth` trapped the model in a
+    // loop (Gmail-OAuth2 session 37a6d350, 2026-05-12).
+    const oauth2AwaitingAuth =
+      connector?.auth_type === "oauth2" &&
+      checkpointStatus(state, "connector_authenticated") !== "fresh";
     if (
-      checkpointStatus(state, "connector_probed") !== "fresh" ||
-      connector?.latest_probe?.ok !== true
+      !oauth2AwaitingAuth &&
+      (checkpointStatus(state, "connector_probed") !== "fresh" ||
+        connector?.latest_probe?.ok !== true)
     ) {
       blocked.push("probe_connector_draft");
     }

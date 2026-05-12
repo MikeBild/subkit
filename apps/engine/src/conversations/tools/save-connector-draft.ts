@@ -27,6 +27,7 @@ import { getConnector } from "../../connectors/service.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
+import { safeParseJson } from "../../llm/core/safe-json.ts";
 import { logger } from "../../logging/logger.ts";
 import { translateAutoPersistError } from "../persistence/auto-persist.ts";
 import { type AtomicCredentialInput, saveConnectorAtomic } from "../persistence/save-connector.ts";
@@ -91,16 +92,31 @@ const oauth2CredentialInput = z.object({
   scopes: z.string().optional(),
 });
 
+const credentialUnion = z.discriminatedUnion("mode", [
+  bearerCredentialInput,
+  basicCredentialInput,
+  headerCredentialInput,
+  queryCredentialInput,
+  cognitoCredentialInput,
+  awsSigV4CredentialInput,
+  oauth2CredentialInput,
+]);
+
+// Under AI SDK 6 strict structured output, the provider sometimes
+// emits a nested object argument as a JSON-encoded string instead of
+// a real object — observed against `save_connector_draft` on the
+// 2026-05-12 Gmail-OAuth2 session (trace cli-eff8d7d79d724c56). Accept
+// either shape at the tool boundary; if the string isn't valid JSON or
+// the parsed payload isn't an object, fall through and let the
+// discriminated union surface its normal "expected object" error.
 const credentialInput = z
-  .discriminatedUnion("mode", [
-    bearerCredentialInput,
-    basicCredentialInput,
-    headerCredentialInput,
-    queryCredentialInput,
-    cognitoCredentialInput,
-    awsSigV4CredentialInput,
-    oauth2CredentialInput,
-  ])
+  .preprocess((raw) => {
+    if (typeof raw !== "string") return raw;
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith("{")) return raw;
+    const parsed = safeParseJson(trimmed);
+    return parsed && typeof parsed === "object" ? parsed : raw;
+  }, credentialUnion)
   .describe(
     "Optional credential to (re-)attach. Sourced verbatim from a masked `ask_user_form(type: password, sensitive: true)` submission — never typed in chat. `cognito_user_password` triggers an InitiateAuth exchange before persisting; the row ends up as a regular oauth2 credential with refresh_token + expires_at. `oauth2` carries the operator's client_id (+ optional client_secret + endpoints) into `config.oauth` so the subsequent `authenticate_oauth` call can run the dance — no credential row is written until the OAuth callback completes.",
   );
@@ -258,12 +274,16 @@ export const saveConnectorDraftTool: ConversationTool = {
     // First-save path on this draft. The atomic helper enforces the
     // probe gate (and surfaces a `probe_failed` envelope when force_save
     // is false). We track `probeFailed` here so we can attach the
-    // `manual_re_issue` audit row + warning on the way out.
+    // `manual_re_issue` audit row + warning on the way out. Mirrors the
+    // `requiresProbe` predicate in `save-connector.ts` — OAuth2 drafts
+    // are exempt because the documented lifecycle is save → authenticate
+    // → probe, and there are no tokens to probe with at save time.
     const requiresProbe =
-      connector?.driver === "http" ||
-      connector?.driver === "graphql" ||
-      connector?.driver === "postgres" ||
-      connector?.driver === "s3";
+      connector?.auth_type !== "oauth2" &&
+      (connector?.driver === "http" ||
+        connector?.driver === "graphql" ||
+        connector?.driver === "postgres" ||
+        connector?.driver === "s3");
     const probeFailed = Boolean(connector) && requiresProbe && connector?.latest_probe?.ok !== true;
 
     let atomicResult: ToolResult;

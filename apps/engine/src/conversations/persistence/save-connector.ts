@@ -254,11 +254,19 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     "connector_inspected",
     "connector_validated",
   ]);
+  // OAuth2 drafts cannot probe before `authenticate_oauth` completes —
+  // there is no access token yet, every probe will 401. The documented
+  // lifecycle is save → authenticate_oauth → probe (docs/05-connectors.md),
+  // so the first save MUST not gate on probe; subsequent saves take the
+  // idempotent short-circuit above. Before this carve-out OAuth2 drafts
+  // tripped the probe gate, then the 60s `force_save` cooldown — the
+  // Gmail-OAuth2 catch-22 from session 37a6d350 (2026-05-12).
   const requiresProbe =
-    connector.driver === "http" ||
-    connector.driver === "graphql" ||
-    connector.driver === "postgres" ||
-    connector.driver === "s3";
+    connector.auth_type !== "oauth2" &&
+    (connector.driver === "http" ||
+      connector.driver === "graphql" ||
+      connector.driver === "postgres" ||
+      connector.driver === "s3");
   const requiresCredential =
     connector.auth_type !== undefined &&
     connector.auth_type !== null &&

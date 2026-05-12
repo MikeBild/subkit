@@ -21,7 +21,9 @@ import type {
   ToolSet,
 } from "ai";
 import { generateObject, jsonSchema } from "ai";
+import { z } from "zod";
 import { logger } from "../../logging/logger.ts";
+import { normalizeSchema } from "./schema-normalizer.ts";
 
 export interface RepairToolCallParams<TOOLS extends ToolSet> {
   toolCall: LanguageModelV3ToolCall;
@@ -59,9 +61,9 @@ export async function repairToolCall<TOOLS extends ToolSet>(
     });
     return null;
   }
-  // biome-ignore lint/suspicious/noExplicitAny: AI SDK Tool inputSchema is JSONSchema-shaped at runtime.
-  const inputSchema = (tool as any).inputSchema as Record<string, unknown> | undefined;
-  if (!inputSchema) {
+  // biome-ignore lint/suspicious/noExplicitAny: Tool.inputSchema may be a Zod schema, a Valibot schema, or a plain JSON-Schema object.
+  const rawInputSchema = (tool as any).inputSchema as unknown;
+  if (!rawInputSchema) {
     logger.warn({
       module: "llm",
       action: "repair_tool_call.no_input_schema",
@@ -70,11 +72,30 @@ export async function repairToolCall<TOOLS extends ToolSet>(
     });
     return null;
   }
+  // Convert to JSON Schema if the tool was registered with a Zod
+  // schema (the in-repo `ConversationTool` path), then push through
+  // `normalizeSchema` so the structured-output call matches the
+  // healthy `generateObject` path in `ai-sdk-model.ts` — which seals
+  // every object with `additionalProperties: false`. Skipping that
+  // normalization is the original bug: Anthropic SDK 6 strict-mode
+  // rejects unsealed objects with `output_config.format.schema: For
+  // 'object' type, 'additionalProperties' must be explicitly set to
+  // false` (trace cli-eff8d7d79d724c56, 2026-05-12).
+  const jsonSchemaShape = toJsonSchemaShape(rawInputSchema);
+  if (!jsonSchemaShape) {
+    logger.warn({
+      module: "llm",
+      action: "repair_tool_call.no_input_schema",
+      msg: "tool input schema could not be converted to JSON Schema — cannot repair",
+      tool: toolCall.toolName,
+    });
+    return null;
+  }
+  const { schema: normalizedSchema } = normalizeSchema(jsonSchemaShape);
   try {
     const repaired = await generateObject({
       model,
-      // biome-ignore lint/suspicious/noExplicitAny: inputSchema may be JSON Schema object or zod Schema; jsonSchema accepts both.
-      schema: jsonSchema(inputSchema as any),
+      schema: jsonSchema(normalizedSchema as Parameters<typeof jsonSchema>[0]),
       messages: [
         {
           role: "system",
@@ -121,4 +142,23 @@ export async function repairToolCall<TOOLS extends ToolSet>(
     });
     return null;
   }
+}
+
+/**
+ * Coerce a `Tool.inputSchema` to a plain JSON Schema object. Accepts
+ * a Zod schema (converted via the v4 native exporter) or a value that
+ * already looks like JSON Schema. Returns null when neither shape is
+ * detected, so the caller can skip repair instead of feeding garbage
+ * through the structured-output path.
+ */
+function toJsonSchemaShape(raw: unknown): Record<string, unknown> | null {
+  if (raw && typeof raw === "object" && "_def" in (raw as Record<string, unknown>)) {
+    // biome-ignore lint/suspicious/noExplicitAny: zod v4 type surface — toJSONSchema lives on the runtime module, not the typed export.
+    const out = (z as any).toJSONSchema(raw, { target: "jsonSchema7" });
+    return out as Record<string, unknown>;
+  }
+  if (raw && typeof raw === "object") {
+    return raw as Record<string, unknown>;
+  }
+  return null;
 }
