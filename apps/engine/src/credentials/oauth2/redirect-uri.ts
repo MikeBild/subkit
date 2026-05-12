@@ -10,15 +10,16 @@
 // Resolution precedence (mirrors apps/engine/src/http/routes/install.ts):
 //   1) `server.public_base_url` from the runtime config — the
 //      operator-canonical answer when the engine sits behind a proxy
-//      that doesn't reliably forward Host/X-Forwarded-Host.
-//   2) `SUBKIT_PUBLIC_BASE_URL` env override.
-//   3) `x-forwarded-proto` + `x-forwarded-host` headers — populated
+//      that doesn't reliably forward Host/X-Forwarded-Host. v3.5+ this
+//      is the ONLY persistent source; the legacy env override moved to
+//      the retired list (env.ts:RETIRED_ENV_KEYS).
+//   2) `x-forwarded-proto` + `x-forwarded-host` headers — populated
 //      by Caddy/Traefik/nginx when configured to do so. Important
 //      because `new URL(req.url).origin` on the bun runtime gives
 //      `http://localhost:3000` even on a TLS-terminating proxy host.
-//   4) `host` header + `req.url`'s protocol — for direct-hit deploys.
-//   5) `new URL(req.url).origin` — last resort.
-//   6) `null` — caller must surface a typed `engine_public_url_missing`.
+//   3) `host` header + `req.url`'s protocol — for direct-hit deploys.
+//   4) `new URL(req.url).origin` — last resort.
+//   5) `null` — caller must surface a typed `engine_public_url_missing`.
 //
 // Pre-fix the engine had a per-connector callback path
 // (`/v1/connectors/{id}/oauth/callback`) and the LLM was expected to
@@ -59,12 +60,9 @@ function resolveOrigin(req?: { url: string; headers?: Headers } | Request): stri
     const cfg = getConfig().server.public_base_url;
     if (cfg && cfg.length > 0) return trimTrailingSlash(cfg);
   } catch {
-    /* loader not initialised */
+    /* loader not initialised — fall through to request-derived inference */
   }
-  // 2) Env override (test / boot before config load).
-  const envFallback = process.env.SUBKIT_PUBLIC_BASE_URL;
-  if (envFallback && envFallback.length > 0) return trimTrailingSlash(envFallback);
-  // 3-5) Live request inference.
+  // 2-4) Live request inference.
   if (req) {
     const headers = (req as Request).headers;
     const fwdProto = headers?.get?.("x-forwarded-proto");
