@@ -281,6 +281,7 @@ const AUTHORING_GATE_CODES = new Set<string>([
   "workflow_cycle_detected",
   "workflow_unresolved_step_reference",
   "loop_authoring_requires_inspect",
+  "transform_authoring_requires_inspect",
   "repair_loop_detected",
   "critic_rejected",
 ]);

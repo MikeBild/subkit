@@ -15,6 +15,7 @@ import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
+import { evaluateTransformAuthoringGate } from "./transform-authoring-gate.ts";
 
 const inputSchema = z
   .object({
@@ -228,6 +229,52 @@ export const proposeStepTool: ConversationTool = {
           data: buildGateError(currentDraft, {
             error_code: "loop_authoring_requires_inspect",
             message: `before authoring this loop, dry-run the workflow once so the upstream step's actual output shape is recorded. ${summary}.`,
+            recommended_mode: "workflow",
+            next_best_actions: [
+              "dry_run_workflow",
+              "inspect_workflow_draft",
+              "suggest_jsonata_paths",
+            ],
+            extra: {
+              gate_blocks: gate.blocks,
+            },
+          }),
+        };
+      }
+    }
+
+    // Transform-authoring inspection gate. When the proposed step is a
+    // `transform` whose `expression` reads `$scope.<X>...` for a
+    // sibling step X, the LLM must have actually seen X's output
+    // shape (latest_preview.step_traces[X].output_preview). Otherwise
+    // the model fabricates field paths and the run "succeeds" with
+    // garbage output (transcript `get-last-3-gmail-messages with human
+    // output` — 3 retries to converge on the right fields).
+    if (typeof args.step.kind === "string" && args.step.kind === "transform") {
+      const gate = evaluateTransformAuthoringGate(
+        workflowDraft,
+        currentDraft.latest_preview ?? null,
+      );
+      if (!gate.ok) {
+        const summary = gate.blocks
+          .map(
+            (b) =>
+              `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
+                b.reason === "no_dry_run_yet"
+                  ? "no dry-run has been recorded yet"
+                  : `\`${b.referenced_step_id}\` has no recent preview`
+              }`,
+          )
+          .join("; ");
+        recordAuthoringGateBlock({
+          code: "transform_authoring_requires_inspect",
+          tool: "propose_step",
+        });
+        return {
+          ok: false,
+          data: buildGateError(currentDraft, {
+            error_code: "transform_authoring_requires_inspect",
+            message: `before authoring this transform, dry-run the workflow once so the referenced step's actual output shape is recorded. ${summary}. Without a recorded shape the JSONata expression is a guess — likely to silently drop fields or return literal placeholders.`,
             recommended_mode: "workflow",
             next_best_actions: [
               "dry_run_workflow",

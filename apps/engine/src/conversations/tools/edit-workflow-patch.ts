@@ -23,6 +23,7 @@ import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
+import { evaluateTransformAuthoringGate } from "./transform-authoring-gate.ts";
 
 const PatchOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("add"), path: z.string(), value: z.unknown() }),
@@ -175,6 +176,48 @@ export const editWorkflowPatchTool: ConversationTool = {
             next_best_actions: ["inspect_workflow_draft", "update_param"],
             extra: {
               unresolved_references: refErrors,
+              patch_count: args.patches.length,
+            },
+          }),
+        };
+      }
+    }
+
+    // Transform-authoring inspection gate on the patched draft. Refuse
+    // a patch that introduces (or now contains) a transform whose
+    // expression reads `$scope.<X>` without a recorded preview for X.
+    // Catches the case where a patch modifies a transform's expression
+    // to reference fields the upstream step never exposed.
+    {
+      const gate = evaluateTransformAuthoringGate(patched, currentDraft.latest_preview ?? null);
+      if (!gate.ok) {
+        const summary = gate.blocks
+          .map(
+            (b) =>
+              `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
+                b.reason === "no_dry_run_yet"
+                  ? "no dry-run has been recorded yet"
+                  : `\`${b.referenced_step_id}\` has no recent preview`
+              }`,
+          )
+          .join("; ");
+        recordAuthoringGateBlock({
+          code: "transform_authoring_requires_inspect",
+          tool: "edit_workflow_patch",
+        });
+        return {
+          ok: false,
+          data: buildGateError(currentDraft, {
+            error_code: "transform_authoring_requires_inspect",
+            message: `patch would leave a transform step depending on data the upstream preview never recorded. ${summary}. Dry-run once so the scope is published, then re-apply the patch.`,
+            recommended_mode: "workflow",
+            next_best_actions: [
+              "dry_run_workflow",
+              "inspect_workflow_draft",
+              "suggest_jsonata_paths",
+            ],
+            extra: {
+              gate_blocks: gate.blocks,
               patch_count: args.patches.length,
             },
           }),
