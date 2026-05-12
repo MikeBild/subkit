@@ -135,10 +135,23 @@ fi
 # 4.2.0 systemd: read journald instead of `docker compose logs`. Same
 # error/fatal grep below; the engine emits NDJSON to stdout/stderr,
 # systemd captures it with the unit name as journal field. Convert
-# the human "2m" / "5m" / "1h" form into journalctl's relative
-# `--since "N seconds ago"` accepted format on the host via GNU
-# date -d (no portable journalctl shorthand for "2m").
-log_cmd="journalctl -u subkit-engine.service --since=\"\$(date -u -d '${LOG_SINCE} ago' '+%Y-%m-%d %H:%M:%S')\" --no-pager -o cat 2>&1"
+# the human "2m" / "5m" / "1h" form to GNU-date-parseable "2 minutes
+# ago" — the bare "2m ago" form was accepted by older coreutils but
+# rejected by current GNU date (`invalid date '2m ago'`), which
+# silently broke the log-tail step on every deploy after the host's
+# coreutils upgrade. Map the unit suffix to a full word so both old
+# and new GNU date parse correctly.
+log_since_value="${LOG_SINCE%[smhd]}"
+log_since_unit="${LOG_SINCE: -1}"
+case "$log_since_unit" in
+  s) log_since_word="seconds" ;;
+  m) log_since_word="minutes" ;;
+  h) log_since_word="hours" ;;
+  d) log_since_word="days" ;;
+  *) log_since_value="$LOG_SINCE"; log_since_word="" ;;
+esac
+log_since_expanded="${log_since_value}${log_since_word:+ $log_since_word}"
+log_cmd="journalctl -u subkit-engine.service --since=\"\$(date -u -d '${log_since_expanded} ago' '+%Y-%m-%d %H:%M:%S')\" --no-pager -o cat 2>&1"
 msg "scanning engine logs for errors in the last ${LOG_SINCE}"
 if [ "$SKIP_REMOTE_LOGS" = "1" ]; then
   msg "SKIP_REMOTE_LOGS=1 — skipping ssh/doctl log verification"
