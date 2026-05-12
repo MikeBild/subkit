@@ -19,18 +19,10 @@
 import { createHash } from "node:crypto";
 import sql0000V3Baseline from "./0000_v3_baseline.sql" with { type: "text" };
 import sql0001Settings from "./0001_settings.sql" with { type: "text" };
-import sql0002ConnectorsPartialUniqueSlug from "./0002_connectors_partial_unique_slug.sql" with {
-  type: "text",
-};
-import sql0003WorkflowVersionsScopeIndex from "./0003_workflow_versions_scope_index.sql" with {
-  type: "text",
-};
-import sql0004CredentialModeAwsSigv4 from "./0004_credential_mode_aws_sigv4.sql" with {
-  type: "text",
-};
-import sql0005EnablePromptCacheDefaultTrue from "./0005_enable_prompt_cache_default_true.sql" with {
-  type: "text",
-};
+import sql0002ConnectorsPartialUniqueSlug from "./0002_connectors_partial_unique_slug.sql" with { type: "text" };
+import sql0003WorkflowVersionsScopeIndex from "./0003_workflow_versions_scope_index.sql" with { type: "text" };
+import sql0004CredentialModeAwsSigv4 from "./0004_credential_mode_aws_sigv4.sql" with { type: "text" };
+import sql0005EnablePromptCacheDefaultTrue from "./0005_enable_prompt_cache_default_true.sql" with { type: "text" };
 import sql0006SkillMetadataOverhaul from "./0006_skill_metadata_overhaul.sql" with { type: "text" };
 import sql0007WebhooksInboundOrigin from "./0007_webhooks_inbound_origin.sql" with { type: "text" };
 import sql0008DropChatLinkTokens from "./0008_drop_chat_link_tokens.sql" with { type: "text" };
@@ -38,17 +30,11 @@ import sql0009DropTenantSettings from "./0009_drop_tenant_settings.sql" with { t
 import sql0010WorkflowRunState from "./0010_workflow_run_state.sql" with { type: "text" };
 import sql0011WorkflowWaits from "./0011_workflow_waits.sql" with { type: "text" };
 import sql0012WorkflowSignals from "./0012_workflow_signals.sql" with { type: "text" };
-import sql0013CredentialModeTokenMint from "./0013_credential_mode_token_mint.sql" with {
-  type: "text",
-};
+import sql0013CredentialModeTokenMint from "./0013_credential_mode_token_mint.sql" with { type: "text" };
 import sql0014DropTunnels from "./0014_drop_tunnels.sql" with { type: "text" };
 import sql0015AiSdk6Foundation from "./0015_ai_sdk_6_foundation.sql" with { type: "text" };
-import sql0016ExternalCallMeteringProviderSlug from "./0016_external_call_metering_provider_slug.sql" with {
-  type: "text",
-};
-import sql0017DropConnectorOauthRedirectUri from "./0017_drop_connector_oauth_redirect_uri.sql" with {
-  type: "text",
-};
+import sql0016ExternalCallMeteringProviderSlug from "./0016_external_call_metering_provider_slug.sql" with { type: "text" };
+import sql0017DropConnectorOauthRedirectUri from "./0017_drop_connector_oauth_redirect_uri.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {

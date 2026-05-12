@@ -18,6 +18,7 @@
       "!**/bun.lockb",
       "!packages/cli-core/src/engine-api/openapi.d.ts",
       "!packages/cli-core/src/engine-api/openapi.json",
+      "!apps/engine/src/db/migrations/embedded.ts",
       "!apps/engine/eval/out"
     ]
   },
