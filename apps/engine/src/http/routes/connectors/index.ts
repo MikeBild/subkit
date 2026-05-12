@@ -14,7 +14,8 @@
 //   POST   /v1/connectors/:id/test                 — driver health probe
 //   POST   /v1/connectors/:id/call                 — ad-hoc HTTP/GraphQL call
 //   POST   /v1/connectors/:id/oauth/start          — returns authorization_url + state
-//   GET    /v1/connectors/:id/oauth/callback       — completes code exchange
+//   GET    /v1/oauth/callback                      — completes code exchange (single
+//                                                    global endpoint; routes by state)
 //   POST   /v1/connectors/:id/credentials          — attach non-oauth credential
 //   POST   /v1/connectors/:id/end-user-credentials — end-user-scoped credential
 
@@ -64,10 +65,11 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
     const id = c.req.param("id");
     return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
   });
-  app.use("/v1/connectors/:id/oauth/callback", async (c, next) => {
-    const id = c.req.param("id");
-    return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
-  });
+  // GET /v1/oauth/callback is deliberately NOT gated by requirePermission:
+  // the OAuth provider redirects the user's browser here with no API
+  // key. Authentication is by way of the single-use `state` query
+  // parameter, which the engine generated and persisted with the
+  // (tenant_id, connector_id) pair in connector_oauth_states.
   app.use("/v1/connectors/:id/credentials", async (c, next) => {
     const id = c.req.param("id");
     return requirePermission("credential:write", () => ({ type: "connector", id }))(c, next);

@@ -17,9 +17,11 @@ version: 2
 OAuth2 connectors authenticate in two phases:
 
 1. **Save the connector** with `save_connector_draft`. The template's OAuth metadata (auth_url, token_url, scopes) is bound automatically.
-2. **Run the dance** with `authenticate_oauth`. The agent receives an `authorization_url`, the user opens it in a browser, and the engine persists the access + refresh tokens via the existing `/v1/connectors/:id/oauth/callback` route.
+2. **Run the dance** with `authenticate_oauth`. The agent receives an `authorization_url` AND a `redirect_uri`. Surface BOTH to the user — they must add the `redirect_uri` to their OAuth provider's allowed-redirects allowlist (Google Cloud Console, GitHub OAuth app settings, Slack app config, etc.) BEFORE opening the authorization URL. After authorization the engine persists the access + refresh tokens via the global `/v1/oauth/callback` route.
 
 The agent **never** sees raw access or refresh tokens. They are encrypted with AAD `credential:{tenant}:{credential_id}` server-side.
+
+The `redirect_uri` is synthesized server-side from the engine's `server.public_base_url` plus the fixed path `/v1/oauth/callback`. There is one redirect URI per engine instance, NOT per connector — the same URL is reused for every OAuth2 connector. **Never author a `redirect_uri` yourself**: omit it from `save_connector_draft` payloads and from `update_connector_draft` config patches. The engine ignores connector-config `redirect_uri` values and only uses its own synthesized one.
 
 ## Template-provided OAuth (e.g. Slack, Google, GitHub)
 
@@ -66,17 +68,20 @@ When the template does not pre-fill `client_id` / `client_secret`:
 
 ## Example: authenticate_oauth response
 
-The tool returns the authorization URL plus an opaque `state` token the
-engine uses to correlate the callback. The user opens the URL in their
-browser; the engine handles the rest.
+The tool returns the authorization URL, the canonical `redirect_uri` to
+add to the OAuth provider's allowlist, and an opaque `state` token the
+engine uses to correlate the callback.
 
 ```json
 {
-  "authorization_url": "https://slack.com/oauth/v2/authorize?client_id=4815162342&redirect_uri=https%3A%2F%2Fengine.example%2Fv1%2Fconnectors%2Fa%2Foauth%2Fcallback&scope=chat%3Awrite&state=opaque-state-token",
+  "authorization_url": "https://slack.com/oauth/v2/authorize?client_id=4815162342&redirect_uri=https%3A%2F%2Fengine.example%2Fv1%2Foauth%2Fcallback&scope=chat%3Awrite&state=opaque-state-token",
+  "redirect_uri": "https://engine.example/v1/oauth/callback",
   "state": "opaque-state-token",
   "expires_at": "2026-04-29T12:34:56Z"
 }
 ```
+
+Tell the user: "Add `<redirect_uri>` to your OAuth app's Allowed Redirect URIs, then open `<authorization_url>` to grant access." Do not paraphrase the URLs — copy them verbatim.
 
 After the user completes the browser flow, a probe should succeed. Use the
 step shape below to reference the credential the engine just stored — the

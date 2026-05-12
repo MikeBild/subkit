@@ -12,13 +12,14 @@
 //                    that the caller must supply connector_id)
 //
 // The call writes the OAuth PKCE state to `connector_oauth_states` so the
-// subsequent `/v1/connectors/:id/oauth/callback` roundtrip can complete.
+// subsequent `/v1/oauth/callback` roundtrip can complete.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as connectorSvc from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";
+import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts";
 import type { Db } from "../../db/client.ts";
 import { connectorOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -61,6 +62,10 @@ export interface AuthenticateResult {
   portal_url: string;
   expires_at: string;
   state: string;
+  /** Canonical OAuth callback URL the operator must add to their OAuth
+   *  provider's allowlist. Same value for every OAuth2 connector on
+   *  this engine — `${public_base_url}/v1/oauth/callback`. */
+  redirect_uri: string;
 }
 
 export interface AuthenticateContext {
@@ -106,25 +111,27 @@ export async function handleAuthenticate(
     };
   }
 
-  if (!oauthCfg.redirect_uri) {
+  const redirect_uri = buildOAuthRedirectUri();
+  if (!redirect_uri) {
     return {
       ok: false,
       data: {
-        error: "connector is missing redirect_uri in its OAuth2 config",
-        reason: "redirect_uri_missing",
+        error:
+          "engine has no resolvable public origin — set server.public_base_url or SUBKIT_PUBLIC_BASE_URL before running an OAuth2 flow",
+        reason: "engine_public_url_missing",
       },
     };
   }
 
   try {
-    const started = await startAuthorizationCode(oauthCfg);
+    const started = await startAuthorizationCode({ ...oauthCfg, redirect_uri });
     const expires = new Date(Date.now() + 10 * 60_000);
     await db.insert(connectorOauthStates).values({
       tenant_id: principal.tenant_id,
       connector_id: args.connector_id,
       state: started.state,
       code_verifier: started.code_verifier,
-      redirect_uri: oauthCfg.redirect_uri,
+      redirect_uri,
       expires_at: expires,
     });
     logger.info({
@@ -141,6 +148,7 @@ export async function handleAuthenticate(
         portal_url: started.authorization_url,
         expires_at: expires.toISOString(),
         state: started.state,
+        redirect_uri,
       },
     };
   } catch (err) {

@@ -9,9 +9,10 @@
 //      explicit credential.mode="oauth2" carrying client_id/secret)
 //   2. authenticate_oauth({ connector_id, scopes? })
 //   3. The CLI / portal opens `authorization_url` in the user's
-//      browser. Callback hits /v1/connectors/:id/oauth/callback which
-//      exchanges the code for tokens and persists them via
-//      upsertCredential. The agent never sees raw tokens.
+//      browser. Callback hits /v1/oauth/callback (single global URL
+//      per engine, routed by opaque state) which exchanges the code
+//      for tokens and persists them via upsertCredential. The agent
+//      never sees raw tokens.
 //
 // The credential row is keyed on (tenant_id, connector_id, environment),
 // so there is no user-supplied "credential name" — same auto-naming
@@ -21,6 +22,7 @@ import { z } from "@hono/zod-openapi";
 import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";
+import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts";
 import { connectorOauthStates } from "../../db/schema/index.ts";
 import { withConnectorAuthenticated } from "../authoring-state.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -57,7 +59,7 @@ export const authenticateOAuthTool: ConversationTool = {
   important_notes: [
     "Requires the connector to be saved (has an id in the connectors table). Use `save_connector_draft` first.",
     "The agent NEVER sees access tokens or refresh tokens — they are persisted server-side via the OAuth callback route.",
-    "Reuses the existing /v1/connectors/:id/oauth/callback handler which calls `upsertCredential` on the way out.",
+    "Returns `redirect_uri` alongside `authorization_url` — surface both to the operator. The redirect_uri must be added to the OAuth provider's allowlist BEFORE opening the authorization URL.",
   ],
   inputSchema,
   category: "tenant_write",
@@ -96,17 +98,25 @@ export const authenticateOAuthTool: ConversationTool = {
         },
       };
     }
-    if (!cfg.redirect_uri) {
+    // Canonical, engine-synthesized redirect_uri. Operators add THIS one
+    // URL to their OAuth provider's allowlist; the engine routes the
+    // callback to the right connector via the opaque `state` token.
+    const redirect_uri = buildOAuthRedirectUri();
+    if (!redirect_uri) {
       return {
         ok: false,
         data: {
-          error: "redirect_uri_missing",
-          message: "the connector's OAuth2 config is missing redirect_uri.",
+          error: "engine_public_url_missing",
+          message:
+            "engine has no resolvable public origin — set server.public_base_url or SUBKIT_PUBLIC_BASE_URL before running an OAuth2 flow.",
         },
       };
     }
+    const cfgWithRedirect = { ...cfg, redirect_uri };
     const cfgWithScope =
-      args.scopes && args.scopes.length > 0 ? { ...cfg, scope: args.scopes.join(" ") } : cfg;
+      args.scopes && args.scopes.length > 0
+        ? { ...cfgWithRedirect, scope: args.scopes.join(" ") }
+        : cfgWithRedirect;
     const started = await startAuthorizationCode(cfgWithScope);
     const expires = new Date(Date.now() + 10 * 60_000);
     await ctx.db.insert(connectorOauthStates).values({
@@ -114,7 +124,7 @@ export const authenticateOAuthTool: ConversationTool = {
       connector_id: connectorId,
       state: started.state,
       code_verifier: started.code_verifier,
-      redirect_uri: cfgWithScope.redirect_uri ?? cfg.redirect_uri,
+      redirect_uri,
       expires_at: expires,
     });
     // Mark the connector_authenticated checkpoint fresh — the operator
@@ -143,6 +153,12 @@ export const authenticateOAuthTool: ConversationTool = {
         state: started.state,
         expires_at: expires.toISOString(),
         connector_id: connectorId,
+        // Surface the canonical redirect_uri so the CLI / agent can
+        // tell the operator the EXACT URL to add to their OAuth
+        // provider's allowlist (Google Cloud Console, GitHub OAuth
+        // app, Slack app config, …). Without this, the operator had
+        // to guess and Google/GitHub returned `redirect_uri_mismatch`.
+        redirect_uri,
         ...(args.return_url ? { return_url: args.return_url } : {}),
       },
     };

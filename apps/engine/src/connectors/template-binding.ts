@@ -78,8 +78,12 @@ export async function resolveConnectorOAuthConfig(
   if (token_endpoint) out.token_endpoint = token_endpoint;
   const scope = nonEmptyString(o.scope) ?? nonEmptyString(templateOauth?.scopes);
   if (scope) out.scope = scope;
-  const redirect_uri = nonEmptyString(o.redirect_uri);
-  if (redirect_uri) out.redirect_uri = redirect_uri;
+  // `redirect_uri` is deliberately NOT read from the connector's config:
+  // it is synthesized server-side at oauth/start time from the engine's
+  // canonical public origin + `/v1/oauth/callback`. Before this rule the
+  // LLM authored a redirect URI into config.oauth and almost always got
+  // it wrong (http://, wrong path), triggering `redirect_uri_mismatch`
+  // at the provider. See `apps/engine/src/credentials/oauth2/redirect-uri.ts`.
   const audience = nonEmptyString(o.audience);
   if (audience) out.audience = audience;
   if (o.use_pkce !== undefined) out.use_pkce = o.use_pkce !== false;
