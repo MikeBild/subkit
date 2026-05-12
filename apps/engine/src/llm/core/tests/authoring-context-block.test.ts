@@ -147,4 +147,144 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
     });
     expect(out ?? "").not.toContain("### Scope manifest");
   });
+
+  it("surfaces $item.<field> keys from latest_preview.step_traces", () => {
+    const out = renderAuthoringContextBlock({
+      draft: {
+        mode: "workflow_authoring",
+        workflow: {
+          name: "list-projects-resources",
+          slug: "list-projects-resources",
+          steps: [
+            {
+              id: "list_projects",
+              kind: "request",
+              method: "GET",
+              url: "/v2/projects",
+            },
+            {
+              id: "fetch_resources",
+              kind: "loop",
+              over: "$scope.list_projects.data.projects",
+              item_var: "project",
+              body: ["get_project_resources"],
+            },
+            {
+              id: "get_project_resources",
+              kind: "request",
+              method: "GET",
+              url: "/v2/projects/{project_id}/resources",
+            },
+          ],
+        },
+        latest_preview: {
+          ok: true,
+          summary: "ok",
+          step_traces: [
+            {
+              step_id: "list_projects",
+              kind: "request",
+              status: "succeeded",
+              output_preview: {
+                projects: [
+                  {
+                    id: "d6742174",
+                    name: "CodeCommission",
+                    owner_uuid: "0e489f44",
+                    purpose: "Service or API",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      } as unknown as Parameters<typeof renderAuthoringContextBlock>[0]["draft"],
+      user_message: "hi",
+    });
+    expect(out).not.toBeNull();
+    expect(out!).toContain("$project.{ id, name, owner_uuid, purpose }");
+    expect(out!).toContain("sampled from preview of `list_projects`");
+  });
+
+  it("hints to run dry_run_workflow when the loop source has no recorded preview", () => {
+    const out = renderAuthoringContextBlock({
+      draft: {
+        mode: "workflow_authoring",
+        workflow: {
+          name: "list-projects-resources",
+          slug: "list-projects-resources",
+          steps: [
+            { id: "list_projects", kind: "request", method: "GET", url: "/v2/projects" },
+            {
+              id: "fetch_resources",
+              kind: "loop",
+              over: "$scope.list_projects.data.projects",
+              item_var: "project",
+              body: ["get_project_resources"],
+            },
+            {
+              id: "get_project_resources",
+              kind: "request",
+              method: "GET",
+              url: "/v2/projects/{project_id}/resources",
+            },
+          ],
+        },
+        // no latest_preview at all
+      } as unknown as Parameters<typeof renderAuthoringContextBlock>[0]["draft"],
+      user_message: "hi",
+    });
+    expect(out).not.toBeNull();
+    expect(out!).toContain("$project shape unknown");
+    expect(out!).toContain("run `dry_run_workflow`");
+  });
+
+  it("handles data_selector form (sourceData.<step>.…)", () => {
+    const out = renderAuthoringContextBlock({
+      draft: {
+        mode: "workflow_authoring",
+        workflow: {
+          name: "list-msgs",
+          slug: "list-msgs",
+          steps: [
+            { id: "list_messages", kind: "request", method: "GET", url: "/messages" },
+            {
+              id: "fetch_each",
+              kind: "loop",
+              data_selector: "(sourceData) => sourceData.list_messages.data.messages",
+              item_var: "msg",
+              body: ["get_message"],
+            },
+            {
+              id: "get_message",
+              kind: "request",
+              method: "GET",
+              url: "/messages/{id}",
+            },
+          ],
+        },
+        latest_preview: {
+          ok: true,
+          summary: "ok",
+          step_traces: [
+            {
+              step_id: "list_messages",
+              kind: "request",
+              status: "succeeded",
+              output_preview: {
+                messages: [
+                  { id: "19e1b6", threadId: "19e1b6" },
+                  { id: "19e1ae", threadId: "19e1ae" },
+                ],
+              },
+            },
+          ],
+        },
+      } as unknown as Parameters<typeof renderAuthoringContextBlock>[0]["draft"],
+      user_message: "hi",
+    });
+    expect(out).not.toBeNull();
+    expect(out!).toContain("$msg.{ id, threadId }");
+    expect(out!).toContain("sampled from preview of `list_messages`");
+  });
 });

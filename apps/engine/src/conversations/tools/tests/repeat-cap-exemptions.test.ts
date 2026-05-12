@@ -25,7 +25,6 @@ describe("sdk-wrap · per-tool repeat-cap exemptions", () => {
     "dry_run_workflow",
     "dry_run_step",
     "dry_run_transform",
-    "validate_draft",
     "validate_connector_draft",
     "inspect_workflow_draft",
     "inspect_workflow",
@@ -37,6 +36,21 @@ describe("sdk-wrap · per-tool repeat-cap exemptions", () => {
       expect(body).toContain(`"${toolName}"`);
     });
   }
+
+  // validate_draft is intentionally NOT exempt anymore. The authoring
+  // context block inlines the current validation state on every turn
+  // via `renderValidationStateLines`, so repeated identical
+  // `validate_draft({})` calls are the loop-spiral signal the repeat
+  // cap exists to catch.
+  test("validate_draft is NOT exempt from the repeat cap", () => {
+    // Look for the string inside the REPEAT_EXEMPT_TOOLS set body only —
+    // not anywhere in the file (the rationale comment legitimately
+    // mentions the name).
+    const setMatch = body.match(/REPEAT_EXEMPT_TOOLS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
+    expect(setMatch).not.toBeNull();
+    const setBody = setMatch?.[1] ?? "";
+    expect(setBody).not.toContain('"validate_draft"');
+  });
 
   test("isReadOnly accepts BOTH tenant_read AND exempt-by-name tools", () => {
     expect(body).toMatch(

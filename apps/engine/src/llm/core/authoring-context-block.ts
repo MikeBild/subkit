@@ -17,7 +17,10 @@ import type {
   AuthoringSummary,
   ConversationResumeSummary,
   DraftDocument,
+  WorkflowDraftStepPreview,
 } from "../../conversations/types.ts";
+import { extractStepIdReferences } from "../../workflows/levenshtein.ts";
+import { validateWorkflowDef } from "../../workflows/validator.ts";
 
 export interface AuthoringContextInput {
   draft: DraftDocument | null | undefined;
@@ -361,13 +364,23 @@ function renderWorkflowLines(draft: DraftDocument): string[] {
       `- Latest preview: ${preview.ok ? "ok" : "failed"}${preview.step_id ? ` (step=${preview.step_id})` : ""} — ${preview.summary}`,
     );
   }
+  // Inline validation state: re-run the in-memory validator on every
+  // authoring turn so the LLM never has to call `validate_draft` to see
+  // current errors. The validator is pure-CPU (Zod parse + ref checks);
+  // running it per turn beats the round-trip cost of a dedicated
+  // tool call.
+  const validationLines = renderValidationStateLines(workflow);
+  if (validationLines.length > 0) {
+    lines.push(...validationLines);
+  }
   lines.push(...REQUEST_STEP_URL_HINT_LINES);
   // P4: append a typed scope manifest so the LLM can cite real JSONata
   // paths instead of guessing them. Without this the assistant cycles
   // through `.data.resources`-style invented paths until the dry-run
   // surfaces unresolved_identifier warnings — the session-79bf2cca
   // failure mode.
-  const manifest = renderScopeManifestLines(workflow.steps);
+  const stepTraces = draft.latest_preview?.step_traces ?? [];
+  const manifest = renderScopeManifestLines(workflow.steps, stepTraces);
   if (manifest.length > 0) {
     lines.push("");
     lines.push("### Scope manifest (paths the LLM may cite in JSONata)");
@@ -382,10 +395,16 @@ function renderWorkflowLines(draft: DraftDocument): string[] {
  *    - `<step_id>` and `<step_id>.data` for plain steps
  *    - `<loop_id>.data` (array of iterations) plus the per-iteration
  *      body shape and the post-loop flat access form.
- *  Skips steps with no `id` or unknown kinds. Truncates to a small
- *  number of steps to keep the prompt-token cost bounded; the active
- *  authoring focus is on the few most recent steps. */
-function renderScopeManifestLines(rawSteps: unknown[]): string[] {
+ *  When a `latest_preview.step_traces` entry exists for the loop's
+ *  source step, the per-iteration item shape (top-level keys) is
+ *  surfaced too — so `$item.<field>` is grounded in real data, not
+ *  guessed. Skips steps with no `id` or unknown kinds. Truncates to a
+ *  small number of steps to keep the prompt-token cost bounded; the
+ *  active authoring focus is on the few most recent steps. */
+function renderScopeManifestLines(
+  rawSteps: unknown[],
+  stepTraces: WorkflowDraftStepPreview[],
+): string[] {
   const lines: string[] = [];
   const stepsById = new Map<string, Record<string, unknown>>();
   for (const raw of rawSteps) {
@@ -393,6 +412,10 @@ function renderScopeManifestLines(rawSteps: unknown[]): string[] {
     const step = raw as Record<string, unknown>;
     const id = typeof step.id === "string" ? step.id : null;
     if (id) stepsById.set(id, step);
+  }
+  const tracesById = new Map<string, WorkflowDraftStepPreview>();
+  for (const t of stepTraces) {
+    if (t && typeof t.step_id === "string") tracesById.set(t.step_id, t);
   }
   for (const raw of rawSteps.slice(0, 12)) {
     if (!raw || typeof raw !== "object") continue;
@@ -409,6 +432,22 @@ function renderScopeManifestLines(rawSteps: unknown[]): string[] {
         `  - $scope.${id}.data: array — one entry per iteration; each entry is { ${bodyIds.join(", ") || "<no body steps>"} } where each body key is a ScopeEnvelope { data, error, duration_ms }`,
       );
       lines.push(`    - inside the loop body, $${itemVar} is the current item (no envelope)`);
+      const itemShape = describeLoopItemShape(step, tracesById);
+      if (itemShape.keys.length > 0) {
+        const shown = itemShape.keys.slice(0, 12);
+        const more = itemShape.keys.length > 12 ? `, … +${itemShape.keys.length - 12} more` : "";
+        lines.push(
+          `    - $${itemVar}.{ ${shown.join(", ")}${more} } (sampled from preview of \`${itemShape.source}\`)`,
+        );
+      } else if (itemShape.primitive) {
+        lines.push(
+          `    - $${itemVar} is ${itemShape.primitive} (sampled from preview of \`${itemShape.source}\`)`,
+        );
+      } else if (itemShape.source && !itemShape.previewed) {
+        lines.push(
+          `    - $${itemVar} shape unknown — run \`dry_run_workflow\` to record a sample of \`${itemShape.source}\``,
+        );
+      }
       if (firstBodyId) {
         // The "flat access" form: jsonata implicitly maps over arrays,
         // so $scope.<loop>.data.<body>.data flattens iterations into a
@@ -424,6 +463,135 @@ function renderScopeManifestLines(rawSteps: unknown[]): string[] {
         `  - $scope.${id}.data: ${describeStepDataType(kind, step)} (envelope at $scope.${id})`,
       );
     }
+  }
+  return lines;
+}
+
+interface LoopItemShape {
+  /** The source step id the loop iterates over, if extractable. */
+  source: string | null;
+  /** Top-level keys of the first iteration item (truncated). */
+  keys: string[];
+  /** Non-null when the item is a primitive (e.g. "string", "number"). */
+  primitive: string | null;
+  /** True when a step_traces entry exists for the source step. */
+  previewed: boolean;
+}
+
+/** Find the source step's recorded `output_preview`, navigate into the
+ *  array the loop iterates, and return the top-level keys of element 0.
+ *  Returns empty `keys` and `primitive: null` when the source can't be
+ *  identified or no preview is recorded yet. */
+function describeLoopItemShape(
+  loop: Record<string, unknown>,
+  tracesById: Map<string, WorkflowDraftStepPreview>,
+): LoopItemShape {
+  const over = typeof loop.over === "string" ? loop.over : null;
+  const dataSelector = typeof loop.data_selector === "string" ? loop.data_selector : null;
+  const sourceExpr = over ?? dataSelector ?? "";
+  const refs = extractStepIdReferences(sourceExpr);
+  let sourceStep = refs[0] ?? null;
+  if (!sourceStep && dataSelector) {
+    // data_selector uses bare `sourceData.<step>.…` form rather than
+    // $scope-prefixed paths, so the regex above won't catch it. Pull
+    // the first identifier after `sourceData.` instead.
+    const m = /sourceData\.([a-zA-Z_][\w-]*)/.exec(dataSelector);
+    sourceStep = m?.[1] ?? null;
+  }
+  if (!sourceStep) {
+    return { source: null, keys: [], primitive: null, previewed: false };
+  }
+  const trace = tracesById.get(sourceStep);
+  if (!trace || trace.output_preview === undefined || trace.output_preview === null) {
+    return { source: sourceStep, keys: [], primitive: null, previewed: false };
+  }
+  const sample = resolveLoopItemSample(trace.output_preview, sourceExpr, sourceStep);
+  if (sample === undefined) {
+    return { source: sourceStep, keys: [], primitive: null, previewed: true };
+  }
+  if (sample === null) {
+    return { source: sourceStep, keys: [], primitive: "null", previewed: true };
+  }
+  if (Array.isArray(sample)) {
+    const first = sample[0];
+    return shapeOfItem(first, sourceStep, true);
+  }
+  if (typeof sample === "object") {
+    return shapeOfItem(sample, sourceStep, true);
+  }
+  return { source: sourceStep, keys: [], primitive: typeof sample, previewed: true };
+}
+
+function shapeOfItem(item: unknown, source: string, previewed: boolean): LoopItemShape {
+  if (item === null) return { source, keys: [], primitive: "null", previewed };
+  if (Array.isArray(item)) return { source, keys: [], primitive: "array", previewed };
+  if (typeof item !== "object") {
+    return { source, keys: [], primitive: typeof item, previewed };
+  }
+  return {
+    source,
+    keys: Object.keys(item as Record<string, unknown>),
+    primitive: null,
+    previewed,
+  };
+}
+
+/** Best-effort walk into an `output_preview` to find the array (or
+ *  array-ish object) the loop iterates over. Honors path segments after
+ *  the source step id in either `$scope.<step>.data.x.y` or
+ *  `sourceData.<step>.x.y` form. Returns the located value, or the
+ *  whole output_preview when no further path is given. */
+function resolveLoopItemSample(output: unknown, sourceExpr: string, sourceStep: string): unknown {
+  // Strip the $scope.<step> / sourceData.<step> prefix and walk the
+  // remaining dot-path. JSONata `data` segments fold into the preview's
+  // root (the preview IS the step's `data`), so a path of
+  // `$scope.list_projects.data.projects` becomes `.projects` against
+  // the preview body.
+  const escaped = sourceStep.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const stripRe = new RegExp(
+    `(?:\\$scope|\\$steps|sourceData|\\$\\{\\s*scope)\\.${escaped}(?:\\.data)?`,
+  );
+  const m = stripRe.exec(sourceExpr);
+  if (!m) return output;
+  const rest = sourceExpr.slice(m.index + m[0].length);
+  // Take only the dotted-identifier suffix; stop at the first non-path
+  // char (operator, paren, bracket) so JSONata expressions like
+  // `$scope.list.data.items[*]` collapse to `.items`.
+  const pathMatch = /^((?:\.[a-zA-Z_][\w-]*)+)/.exec(rest);
+  const captured = pathMatch?.[1];
+  if (!captured) return output;
+  const segments = captured.slice(1).split(".");
+  let cur: unknown = output;
+  for (const seg of segments) {
+    if (cur === null || cur === undefined) return undefined;
+    if (Array.isArray(cur)) return undefined; // ambiguous mid-path
+    if (typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[seg];
+  }
+  return cur;
+}
+
+/** Re-run the workflow validator in-process and emit a compact
+ *  "Current validation state" section. Eliminates the per-turn round
+ *  trip the LLM used to spend on `validate_draft`. Errors are capped
+ *  at 8 entries to bound the prompt budget — the validator returns the
+ *  full list to the LLM via `validate_draft` if it ever needs it. */
+function renderValidationStateLines(workflow: unknown): string[] {
+  const result = validateWorkflowDef(workflow, { allowForwardRefs: true });
+  if (result.ok && result.errors.length === 0) {
+    return ["- Validation: ok (0 errors)"];
+  }
+  const errors = result.errors.slice(0, 8);
+  const remaining = result.errors.length - errors.length;
+  const lines: string[] = [
+    `- Validation: ${result.errors.length} error${result.errors.length === 1 ? "" : "s"}`,
+  ];
+  for (const e of errors) {
+    const path = e.path && e.path.length > 0 ? e.path : "(root)";
+    lines.push(`  - ${path}: ${e.message}`);
+  }
+  if (remaining > 0) {
+    lines.push(`  - …and ${remaining} more — call \`validate_draft\` once for the full list`);
   }
   return lines;
 }

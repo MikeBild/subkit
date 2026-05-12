@@ -247,11 +247,17 @@ export function wrapOne(
         // Pre-fix (session 8d152b9f 16:00:59): dry_run_workflow
         // capped after 3 previews of the SAME draft args even
         // though each preview ran against a DIFFERENT draft state.
+        // `validate_draft` used to live here too. It was removed once
+        // the authoring-context-block started inlining the current
+        // validation state on every turn (apps/engine/src/llm/core/
+        // authoring-context-block.ts#renderValidationStateLines): the
+        // LLM now sees errors continuously and never needs to repeat
+        // the same `validate_draft({})` call to re-check. If it does,
+        // that's the loop spiral the repeat cap is meant to catch.
         const REPEAT_EXEMPT_TOOLS = new Set<string>([
           "dry_run_workflow",
           "dry_run_step",
           "dry_run_transform",
-          "validate_draft",
           "validate_connector_draft",
           "inspect_workflow_draft",
           "inspect_workflow",
