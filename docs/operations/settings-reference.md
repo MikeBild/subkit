@@ -24,7 +24,7 @@ HTTP server
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `server.port` | number | `3000` | global | no | yes | HTTP port to bind (1..65535) |
-| `server.public_base_url` | string | `""` | global | no | no | External-facing URL the engine resolves at (used by /install + chat link replies) |
+| `server.public_base_url` | string | `""` | global | no | no | External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector — without it `oauth/start` and the `authenticate` MCP tool return `engine_public_url_missing`. |
 
 ## database
 Database connection

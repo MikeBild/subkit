@@ -45,6 +45,14 @@ export const AuthUrlSchema = z
 
 export interface OAuthWaitViewProps {
   authUrl: string;
+  /** Canonical redirect URI the operator must add to their OAuth
+   *  provider's allowlist before opening `authUrl`. Synthesized by the
+   *  engine from `server.public_base_url + /v1/oauth/callback`. When
+   *  set, the view surfaces it above the authorize URL so the
+   *  operator has a chance to configure the provider before the
+   *  browser opens. Without this, providers return
+   *  `redirect_uri_mismatch` on first authorize. */
+  redirectUri?: string;
   /** Function the view calls to poll the engine. Tests inject a mock
    *  here. The returned value is parsed through `OAuthPollResponseSchema`
    *  before reaching `onConnected`. */
@@ -93,6 +101,7 @@ function defaultOpenBrowser(url: string): Promise<void> {
 
 export function OAuthWaitView({
   authUrl,
+  redirectUri,
   poll,
   onConnected,
   onCancel,
@@ -192,6 +201,18 @@ export function OAuthWaitView({
           ▸ authorize the connection
         </Text>
       </Box>
+      {redirectUri ? (
+        <>
+          <Box paddingLeft={2}>
+            <Text color={tokens.severity.dim}>
+              add this redirect URI to your OAuth app's allowlist:
+            </Text>
+          </Box>
+          <Box paddingLeft={2}>
+            <Text color={tokens.accent.link}>{redirectUri}</Text>
+          </Box>
+        </>
+      ) : null}
       <Box paddingLeft={2}>
         <Text color={tokens.severity.dim}>open in browser:</Text>
       </Box>

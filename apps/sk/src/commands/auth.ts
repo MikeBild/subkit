@@ -47,6 +47,7 @@ export const authCommand = defineCommand({
       const res = await client.request<{
         authorization_url?: string;
         state?: string;
+        redirect_uri?: string;
       }>("POST", `/v1/connectors/${encodeURIComponent(connectorId)}/oauth/start`);
 
       if (args.json) {
@@ -59,7 +60,19 @@ export const authCommand = defineCommand({
         process.stderr.write("no authorization_url in response\n");
         process.exit(1);
       }
-      process.stdout.write(`${url}\n`);
+      // Two-line affordance: the redirect_uri the operator must add to
+      // their OAuth provider's allowlist (Google Cloud Console, GitHub
+      // OAuth app, …) goes FIRST so they configure it before they
+      // open the authorize URL. Without it the provider returns
+      // `redirect_uri_mismatch`. The engine synthesizes this URL from
+      // server.public_base_url + /v1/oauth/callback and reuses it for
+      // every OAuth2 connector on this engine.
+      if (res.redirect_uri) {
+        process.stdout.write(
+          `add this redirect URI to your OAuth app's allowlist:\n  ${res.redirect_uri}\n\n`,
+        );
+      }
+      process.stdout.write(`then open this URL to authorize:\n  ${url}\n`);
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));

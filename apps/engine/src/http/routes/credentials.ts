@@ -23,7 +23,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as connectorSvc from "../../connectors/index.ts";
-import type { OAuth2ClientConfig } from "../../credentials/index.ts";
+import { resolveConnectorOAuthConfig } from "../../connectors/index.ts";
 import {
   getCredentialForConnector,
   rotateOAuth2Tokens,
@@ -64,27 +64,6 @@ const rotateRouteSpec = createRoute({
   },
 });
 
-function connectorOauthCfg(cfg: Record<string, unknown>): OAuth2ClientConfig {
-  const oauth =
-    cfg.oauth && typeof cfg.oauth === "object" && !Array.isArray(cfg.oauth)
-      ? (cfg.oauth as Record<string, unknown>)
-      : {};
-  if (!oauth.issuer_url || !oauth.client_id) {
-    throw new BadRequestError(
-      "connector is missing oauth2 config (config.oauth.issuer_url + config.oauth.client_id)",
-    );
-  }
-  const out: OAuth2ClientConfig = {
-    issuer_url: String(oauth.issuer_url),
-    client_id: String(oauth.client_id),
-  };
-  if (oauth.client_secret) out.client_secret = String(oauth.client_secret);
-  if (oauth.scope) out.scope = String(oauth.scope);
-  if (oauth.redirect_uri) out.redirect_uri = String(oauth.redirect_uri);
-  if (oauth.audience) out.audience = String(oauth.audience);
-  return out;
-}
-
 export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/credentials/:id/rotate", async (c, next) => {
     const id = c.req.param("id");
@@ -116,7 +95,10 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
     const connector = await connectorSvc.getConnector(principal.tenant_id, row.connector_id, db);
     if (!connector) throw new NotFoundError("connector");
 
-    const cfg = connectorOauthCfg((connector.config ?? {}) as Record<string, unknown>);
+    const cfg = await resolveConnectorOAuthConfig(db, principal.tenant_id, connector);
+    if (!cfg) {
+      throw new BadRequestError("connector is missing oauth2 config (issuer_url + client_id)");
+    }
 
     // Decrypt the current refresh token via the service so AAD logic
     // lives in one place. `getCredentialForConnector` handles the

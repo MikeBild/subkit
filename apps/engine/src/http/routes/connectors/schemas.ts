@@ -92,8 +92,13 @@ export const OAuthStartResponse = z
 
 export const OAuthCallbackQuery = z
   .object({
-    code: z.string(),
     state: z.string(),
+    // `code` is present on success, absent when the provider redirects
+    // back with `?error=...`. The route renders a user-friendly HTML
+    // page in either case — never a 400 JSON to a browser tab.
+    code: z.string().optional(),
+    error: z.string().optional(),
+    error_description: z.string().optional(),
   })
   .openapi("OAuthCallbackQuery");
 

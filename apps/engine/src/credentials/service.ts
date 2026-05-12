@@ -197,7 +197,22 @@ export interface UpsertCredentialInput {
   oauth2_refresh_token?: string | null;
   oauth2_expires_at?: Date | null;
   actor_id: string | null;
+  /** Provenance tag stamped into the audit metadata so operators can
+   *  distinguish callback-triggered writes (`oauth_callback`) from
+   *  conversation-tool writes (`conversation_tool`), refresh-worker
+   *  rotations (`refresh_worker`), HTTP route writes (`http_route`),
+   *  and CLI-driven setup. Optional for backwards-compat with internal
+   *  callers; missing is recorded as `unspecified`. */
+  source?: CredentialWriteSource;
 }
+
+export type CredentialWriteSource =
+  | "oauth_callback"
+  | "conversation_tool"
+  | "refresh_worker"
+  | "http_route"
+  | "cli_bootstrap"
+  | "unspecified";
 
 function toBuf(u: Uint8Array): Buffer {
   return Buffer.from(u);
@@ -290,6 +305,7 @@ export async function upsertCredential(
           connector_id: input.connector_id,
           environment: input.environment,
           mode: input.mode,
+          source: input.source ?? "unspecified",
         },
       },
       tx,

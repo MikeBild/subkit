@@ -127,7 +127,8 @@ export const OAuth2AuthConfigSchema = z
     use_pkce: z.boolean().default(true),
     extra_token_headers: z.record(z.string(), z.string()).default({}),
     scope: z.string().optional(),
-    redirect_uri: z.string().optional(),
+    // redirect_uri removed: engine-synthesized from server.public_base_url +
+    // /v1/oauth/callback. See apps/engine/src/credentials/oauth2/redirect-uri.ts.
     audience: z.string().optional(),
     /** AWS Cognito-specific config (only meaningful when
      *  `grant_type === "cognito_user_password"`). */
@@ -186,7 +187,7 @@ const OAuthEnrichmentSchema = z
     client_id: z.string().nullable().optional(),
     client_secret: z.string().optional(),
     audience: z.string().optional(),
-    redirect_uri: z.string().optional(),
+    // redirect_uri removed: engine-synthesized — see OAuth2AuthConfigSchema above.
   })
   .strict();
 
