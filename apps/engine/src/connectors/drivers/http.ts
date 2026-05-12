@@ -177,11 +177,26 @@ export function applyAuthMaterial(
       //   auth and Lambda authorizer flows that expect the raw JWT
       //   (`Authorization: eyJ…`), and tolerant of IdPs that return
       //   `token_type: ""`.
+      //
+      // Case normalization: Google's OAuth2 token endpoint returns
+      // `token_type: "bearer"` (lowercase), Microsoft Graph returns
+      // "Bearer", Slack returns "Bearer", Atlassian returns "bearer".
+      // RFC 6749 §5.1 says the comparison is case-insensitive, but
+      // Google's resource APIs (Gmail, Drive, …) reject the lowercase
+      // form with 401. Canonicalise "bearer"/"BEARER"/etc. to the
+      // titlecased "Bearer" so the header is interoperable across
+      // every provider we connect to.
       const scheme = (credential.token_type ?? "").trim();
-      const rawScheme = scheme === "" || /^(none|no_prefix)$/i.test(scheme);
-      headers.Authorization = rawScheme
-        ? credential.access_token
-        : `${scheme} ${credential.access_token}`;
+      if (scheme === "" || /^(none|no_prefix)$/i.test(scheme)) {
+        headers.Authorization = credential.access_token;
+      } else if (scheme.toLowerCase() === "bearer") {
+        headers.Authorization = `Bearer ${credential.access_token}`;
+      } else {
+        // Non-bearer scheme (rare: "MAC", "DPoP", custom). Preserve the
+        // case the IdP returned — the consumer chose this scheme on
+        // purpose.
+        headers.Authorization = `${scheme} ${credential.access_token}`;
+      }
       return;
     }
     case "token_mint": {

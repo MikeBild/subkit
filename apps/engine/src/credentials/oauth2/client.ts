@@ -115,6 +115,26 @@ export interface StartAuthCodeResult {
  * Build a hosted auth-code URL with PKCE. The caller is responsible for
  * persisting `code_verifier` + `state` until the callback arrives.
  */
+/** Detect Google's OAuth issuer family. Matches `accounts.google.com`
+ *  + every Google Workspace-suffixed variant used by their consumer
+ *  + enterprise SSO endpoints. Used to add `access_type=offline` +
+ *  `prompt=consent` so the authorize-code grant returns a
+ *  refresh_token (without these two params Google issues a 1-hour
+ *  access_token and nothing more). */
+function isGoogleIssuer(issuer: string | undefined): boolean {
+  if (!issuer) return false;
+  try {
+    const host = new URL(issuer).host.toLowerCase();
+    return (
+      host === "accounts.google.com" ||
+      host === "oauth2.googleapis.com" ||
+      host.endsWith(".accounts.google.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function startAuthorizationCode(
   cfg: OAuth2ClientConfig,
 ): Promise<StartAuthCodeResult> {
@@ -136,6 +156,17 @@ export async function startAuthorizationCode(
     params.code_challenge_method = "S256";
   }
   if (cfg.audience) params.audience = cfg.audience;
+  // Google-specific: without `access_type=offline` + `prompt=consent`,
+  // Google's authorization endpoint issues an access_token but NO
+  // refresh_token. The token expires in 1 hour and the engine can no
+  // longer call the API — operator has to re-authenticate from
+  // scratch. Both params are documented at
+  // https://developers.google.com/identity/protocols/oauth2/web-server#offline
+  // and are no-ops on other providers.
+  if (isGoogleIssuer(cfg.issuer_url)) {
+    params.access_type = "offline";
+    params.prompt = "consent";
+  }
   const url = oauth.buildAuthorizationUrl(configuration, params);
   return {
     authorization_url: url.toString(),

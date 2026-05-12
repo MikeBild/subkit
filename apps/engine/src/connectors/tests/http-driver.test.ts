@@ -439,6 +439,48 @@ describe("applyAuthMaterial — oauth2 token_type handling", () => {
     );
     expect(headers.Authorization).toBe("Token glpat-xyz");
   });
+
+  test("token_type='bearer' (lowercase from Google) canonicalises to 'Bearer'", () => {
+    // Google's OAuth2 token endpoint returns `token_type: "bearer"`
+    // (lowercase) — and Google's resource APIs (Gmail, Drive, …)
+    // reject the lowercase form with 401 even though RFC 6749 §5.1
+    // says the comparison is case-insensitive. Canonicalise so the
+    // header is interoperable across every provider we connect to.
+    // Regression caught in Gmail-OAuth2 session 1f96ccf7 (2026-05-12).
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "ya29.a0AQv",
+        token_type: "bearer",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("Bearer ya29.a0AQv");
+  });
+
+  test("token_type='BEARER' (uppercase) also canonicalises to 'Bearer'", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "abc",
+        token_type: "BEARER",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("Bearer abc");
+  });
 });
 
 // Regression: conversation 730c568a. The LLM authored a workflow step
