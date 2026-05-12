@@ -3088,8 +3088,10 @@ export interface paths {
         get: {
             parameters: {
                 query: {
-                    code: string;
                     state: string;
+                    code?: string;
+                    error?: string;
+                    error_description?: string;
                 };
                 header?: never;
                 path?: never;
@@ -3097,33 +3099,22 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
+                /** @description OK (HTML) */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            ok: boolean;
-                        };
+                        "text/html": string;
                     };
                 };
-                /** @description Bad request */
+                /** @description Bad request (HTML) */
                 400: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
+                        "text/html": string;
                     };
                 };
             };
