@@ -12808,27 +12808,13 @@
         }
       }
     },
-    "/v1/connectors/{id}/oauth/callback": {
+    "/v1/oauth/callback": {
       "get": {
         "tags": [
           "connectors"
         ],
         "summary": "Complete an OAuth2 authorization-code flow",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          },
           {
             "schema": {
               "type": "string"

@@ -3077,7 +3077,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/connectors/{id}/oauth/callback": {
+    "/v1/oauth/callback": {
         parameters: {
             query?: never;
             header?: never;
@@ -3092,9 +3092,7 @@ export interface paths {
                     state: string;
                 };
                 header?: never;
-                path: {
-                    id: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;

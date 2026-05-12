@@ -29,8 +29,11 @@ import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
-import { completeAuthorizationCode, startAuthorizationCode } from "../../../credentials/index.ts";
-import { buildOAuthRedirectUri } from "../../../credentials/oauth2/redirect-uri.ts";
+import {
+  buildOAuthRedirectUri,
+  completeAuthorizationCode,
+  startAuthorizationCode,
+} from "../../../credentials/index.ts";
 import { connectorOauthStates } from "../../../db/schema/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
@@ -102,6 +105,12 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(oauthCallbackRoute, async (c) => {
     const db = c.get("db");
     const q = c.req.valid("query");
+    // tenant-filter:exempt — this route is unauthenticated (OAuth
+    // provider redirects the user's browser back with no API key).
+    // Authentication is by way of the opaque single-use `state` token,
+    // which has a unique index on connectorOauthStates.state. The
+    // resolved tenant_id comes from the matched row and is used for
+    // every subsequent write.
     const stateRows = await db
       .select()
       .from(connectorOauthStates)
