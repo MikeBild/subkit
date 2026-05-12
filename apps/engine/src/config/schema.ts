@@ -138,7 +138,7 @@ const ServerSection = z
     public_base_url: optionalUrl
       .default("")
       .describe(
-        "External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector — without it `oauth/start` and the `authenticate` MCP tool return `engine_public_url_missing`.",
+        "External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector.",
       )
       .meta(global()),
   })
