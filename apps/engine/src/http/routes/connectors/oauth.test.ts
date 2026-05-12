@@ -4,9 +4,8 @@
 // `GET /v1/oauth/callback` looks up the connector by opaque `state`
 // (atomically claimed via DELETE … RETURNING), exchanges the code at
 // the OAuth provider, and persists the credential under the state
-// row's tenant_id / connector_id. The reference impl pattern at
-// /Users/mikebild/Projects/AI/superglue/packages/web/src/app/api/auth/callback/route.ts
-// uses the same shape (state encodes everything, callback is global).
+// row's tenant_id / connector_id. State encodes everything the
+// callback needs; the callback URL is connector-agnostic.
 //
 // What the tests pin:
 //   1. happy path — valid state + code → credential row written,
