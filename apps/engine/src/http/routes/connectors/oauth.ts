@@ -35,8 +35,10 @@ import {
   completeAuthorizationCode,
   startAuthorizationCode,
 } from "../../../credentials/index.ts";
+import { writeEvent } from "../../../db/events.ts";
 import { connectorOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
+import { ConnectorOauthCallbackPayloadSchema } from "../../../pubsub/types.ts";
 import { now } from "../../../utils/clock.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -242,6 +244,37 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         state_prefix: stateRow.state.slice(0, 8),
         has_refresh_token: bundle.refresh_token != null,
       });
+      // Publish a `connector.oauth.callback_succeeded` event so any
+      // active sk-cli conversation tailing `/v1/events/stream?channel=
+      // connector.oauth&type=connector.oauth.callback_succeeded` can
+      // auto-resume without the operator typing "done". Tenant-scoped
+      // by writeEvent's `tenant_id` parameter, which the events stream
+      // filters on at read time — no cross-tenant leak. Best-effort:
+      // the credential is already persisted; a publish failure must
+      // not derail the operator's success path.
+      try {
+        const payload = ConnectorOauthCallbackPayloadSchema.parse({
+          connector_id: stateRow.connector_id,
+          connector_slug: connector.slug,
+          has_refresh_token: bundle.refresh_token != null,
+          source: "oauth_callback",
+        });
+        await writeEvent(db, {
+          tenant_id: stateRow.tenant_id,
+          channel: "connector.oauth",
+          type: "connector.oauth.callback_succeeded",
+          payload,
+        });
+      } catch (publishErr) {
+        logger.warn({
+          module: "oauth",
+          action: "oauth.callback.event_publish_failed",
+          msg: "credential persisted but pubsub event could not be written; conversation will not auto-resume via SSE this round",
+          tenant_id: stateRow.tenant_id,
+          connector_id: stateRow.connector_id,
+          error: publishErr instanceof Error ? publishErr.message : String(publishErr),
+        });
+      }
       return renderCallbackPage(c, {
         kind: "success",
         title: "Authentication complete",

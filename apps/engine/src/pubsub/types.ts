@@ -44,6 +44,38 @@ export const WorkflowLifecyclePayloadSchema = z.object({
 export type WorkflowLifecyclePayload = z.infer<typeof WorkflowLifecyclePayloadSchema>;
 
 /**
+ * Payload contract for `connector.oauth.callback_succeeded` events on
+ * the `connector.oauth` channel. Emitted exactly once per successful
+ * OAuth authorization-code dance from the callback route
+ * (`apps/engine/src/http/routes/connectors/oauth.ts`).
+ *
+ * Subscribers:
+ *   - sk-cli listens via `/v1/events/stream?channel=connector.oauth&type=connector.oauth.callback_succeeded`
+ *     so the in-progress conversation can auto-resume once the user
+ *     completes the OAuth flow in their browser — no manual "done"
+ *     type-back required (Fix #1, plan/read-sk-synthetic-wirth.md).
+ *
+ * Field semantics:
+ *   - `connector_id`      — the connector whose credential was just written.
+ *   - `connector_slug`    — operator-friendly slug; mirrors the connectors
+ *                           row so log readers don't have to resolve UUIDs.
+ *   - `has_refresh_token` — true when the provider returned a refresh
+ *                           token, which gates whether the background
+ *                           refresh worker will run.
+ *   - `source`            — provenance tag mirroring the credentials row
+ *                           (`"oauth_callback"` from this path; future
+ *                           sources may include `"refresh_worker"`).
+ */
+export const ConnectorOauthCallbackPayloadSchema = z.object({
+  connector_id: z.string().uuid(),
+  connector_slug: z.string().min(1),
+  has_refresh_token: z.boolean(),
+  source: z.literal("oauth_callback"),
+});
+
+export type ConnectorOauthCallbackPayload = z.infer<typeof ConnectorOauthCallbackPayloadSchema>;
+
+/**
  * Channels the listener fans out to in-process subscribers. The literal
  * list is `satisfies`-typed against `readonly OutboxChannel[]` so the
  * compiler rejects any drift from the union in `db/events.ts` — a

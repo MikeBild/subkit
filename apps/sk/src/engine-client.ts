@@ -673,6 +673,123 @@ export class EngineClient {
     return `${this.base}${DIAGNOSTICS_LOG_STREAM_PATH}${qs ? `?${qs}` : ""}`;
   }
 
+  /**
+   * Subscribe to the tenant-scoped event stream filtered to
+   * `connector.oauth.callback_succeeded` events. When the user
+   * completes an OAuth authorization in their browser, the engine
+   * persists the credential and emits an event on the `connector.oauth`
+   * channel; this helper consumes that stream and invokes
+   * `onSucceeded` the first time a payload matching `connectorId`
+   * arrives.
+   *
+   * Used by the REPL to auto-resume the conversation after
+   * `authenticate_oauth` instead of waiting for the operator to type
+   * "done" — plan/read-sk-synthetic-wirth.md Fix #1.
+   *
+   * Auto-closes the SSE connection after one match. The caller can
+   * also abort via the returned `cancel()` or by aborting the supplied
+   * `signal`. Filters are applied server-side via query params, so
+   * cross-tenant events never reach the client.
+   */
+  async subscribeConnectorOAuthCallback(opts: {
+    connectorId: string;
+    signal?: AbortSignal;
+    onSucceeded: (payload: {
+      connector_id: string;
+      connector_slug: string;
+      has_refresh_token: boolean;
+    }) => void;
+  }): Promise<{ cancel: () => void }> {
+    const url = `${this.base}/v1/events/stream?channel=connector.oauth&type=connector.oauth.callback_succeeded`;
+    const ac = new AbortController();
+    // Compose with the caller-supplied signal so either side can abort.
+    if (opts.signal) {
+      if (opts.signal.aborted) ac.abort();
+      else opts.signal.addEventListener("abort", () => ac.abort(), { once: true });
+    }
+    const cancel = (): void => {
+      if (!ac.signal.aborted) ac.abort();
+    };
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method: "GET",
+        headers: this.headers({ accept: "text/event-stream" }),
+        signal: ac.signal,
+      });
+    } catch (err) {
+      throw new SkTransportError(err);
+    }
+    if (!res.ok || !res.body) {
+      cancel();
+      throw new SkTransportError(new Error(`oauth events stream returned HTTP ${res.status}`));
+    }
+    // Consume in background — caller awaits `cancel()` indirectly via
+    // `onSucceeded` or signal. The reader loop self-terminates on
+    // first match or on abort.
+    void (async () => {
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      try {
+        while (!ac.signal.aborted) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          if (chunk.value) buffer += decoder.decode(chunk.value, { stream: true });
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop() ?? "";
+          for (const block of frames) {
+            if (!block.trim()) continue;
+            if (block.startsWith(":")) continue; // heartbeat
+            const lines = block.split("\n");
+            const eventLine = lines.find((l) => l.startsWith("event: "));
+            const dataLine = lines.find((l) => l.startsWith("data: "));
+            if (!dataLine) continue;
+            // The `hello` frame at stream open carries a cursor, not a
+            // callback payload — skip it.
+            if (eventLine && eventLine.slice("event: ".length).trim() === "hello") continue;
+            try {
+              const payload = JSON.parse(dataLine.slice("data: ".length)) as {
+                connector_id?: unknown;
+                connector_slug?: unknown;
+                has_refresh_token?: unknown;
+              };
+              if (
+                typeof payload.connector_id === "string" &&
+                payload.connector_id === opts.connectorId &&
+                typeof payload.connector_slug === "string" &&
+                typeof payload.has_refresh_token === "boolean"
+              ) {
+                opts.onSucceeded({
+                  connector_id: payload.connector_id,
+                  connector_slug: payload.connector_slug,
+                  has_refresh_token: payload.has_refresh_token,
+                });
+                cancel();
+                return;
+              }
+            } catch {
+              // Malformed frame — skip rather than abort. The next
+              // valid frame may still match.
+            }
+          }
+        }
+      } catch {
+        // Reader threw mid-stream (network drop, server restart, abort).
+        // Caller's `signal` or independent timeout decides whether to
+        // retry; we never retry transparently because that would mask
+        // the failure from the operator.
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          // Reader was already released by the consumer loop; safe to swallow.
+        }
+      }
+    })();
+    return { cancel };
+  }
+
   // --------------------------- Status snapshot ---------------------------
   /**
    * Composite status snapshot used by the Ink status-line ticker and the
