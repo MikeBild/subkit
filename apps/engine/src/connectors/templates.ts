@@ -434,6 +434,17 @@ export const ConnectorTemplateSchema = z
      * `docs/05-connectors.md` → "Vendor-drift sweep" for the lifecycle.
      */
     verified_at: z.string().datetime().nullable().default(null),
+    /**
+     * Web-scraper #144 — opts the template into robots.txt enforcement
+     * inside `drivers/http.ts buildRequestPlan`. This field GATES the
+     * cascade; once gated, the tenant-overlay
+     * `connectors.web_scraper.runtime.respect_robots` toggle (and the
+     * per-connector `config.respect_robots` override) decide whether
+     * the check actually fires. Default `false` keeps the 101 existing
+     * private-API templates exempt; future RSS / sitemap / crawler
+     * templates opt in by setting `true` without a driver code change.
+     */
+    respects_robots: z.boolean().default(false),
   })
   .superRefine((t, ctx) => {
     // Consistency gate: a template that offers BOTH a primary non-oauth auth

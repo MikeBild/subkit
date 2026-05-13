@@ -601,6 +601,165 @@ const UiSection = z
   .prefault({})
   .describe("REPL chrome preferences");
 
+// Web-scraper #144 — every tunable the connector introduces lives here
+// with a useful default, so `sk connectors create web-scraper --slug=<x>`
+// is a zero-arg command. Operators tune via `sk settings set
+// connectors.web_scraper.<leaf> <value>` or the /settings → Config tab;
+// the /v1/settings routes and CLI auto-discover by walking the schema.
+const WebScraperRuntime = z
+  .object({
+    respect_robots: z
+      .boolean()
+      .default(true)
+      .describe("Skip URLs that robots.txt disallows for the configured User-Agent.")
+      .meta(tenant()),
+    user_agent: z
+      .string()
+      .min(1)
+      .default("sk-web-scraper/1.0 (+https://subkit.io/bot)")
+      .describe("User-Agent header on every fetch; passed to robots-parser matching.")
+      .meta(tenant()),
+    max_pages: z
+      .number()
+      .int()
+      .min(1)
+      .max(10_000)
+      .default(1000)
+      .describe("Per-run crawl cap. Hard ceiling 10 000 (crawl_max_pages_exceeded).")
+      .meta(tenant()),
+    max_chars_readability: z
+      .number()
+      .int()
+      .min(1_000)
+      .max(2_000_000)
+      .default(100_000)
+      .describe("Per-page input cap into Readability (extract_too_large).")
+      .meta(tenant()),
+    max_chars_markdown: z
+      .number()
+      .int()
+      .min(1_000)
+      .max(2_000_000)
+      .default(100_000)
+      .describe("Per-page markdown output cap (extract_too_large).")
+      .meta(tenant()),
+    default_wait_ms: z
+      .number()
+      .int()
+      .min(0)
+      .max(60_000)
+      .default(0)
+      .describe(
+        "Floor for between-page wait inside the crawl loop. Raised if robots.txt declares a higher Crawl-delay.",
+      )
+      .meta(tenant()),
+  })
+  .prefault({});
+
+const WebScraperRobotsCache = z
+  .object({
+    ttl_ms: z
+      .number()
+      .int()
+      .min(60_000)
+      .max(86_400_000)
+      .default(3_600_000)
+      .describe("TTL for the per-tenant robots.txt LRU.")
+      .meta(global()),
+    max_entries: z
+      .number()
+      .int()
+      .min(100)
+      .max(50_000)
+      .default(2_000)
+      .describe("LRU ceiling shared across tenants (keyed by tenant_id + origin).")
+      .meta(global()),
+  })
+  .prefault({});
+
+const WebScraperAuthoring = z
+  .object({
+    yellow_sitemap_threshold: z
+      .number()
+      .int()
+      .min(100)
+      .max(1_000_000)
+      .default(10_000)
+      .describe("Sitemap entry count above which analyze_scrape_target returns Yellow.")
+      .meta(tenant()),
+    red_sitemap_threshold: z
+      .number()
+      .int()
+      .min(1_000)
+      .max(10_000_000)
+      .default(100_000)
+      .describe("Sitemap entry count above which analyze_scrape_target refuses (Red).")
+      .meta(tenant()),
+    extract_too_large_yellow_pct: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(30)
+      .describe(
+        "Past-run extract_too_large ratio (over last 20 runs) above which the gate Yellows.",
+      )
+      .meta(tenant()),
+  })
+  .prefault({});
+
+const WebScraperOptimization = z
+  .object({
+    scan_cron: z
+      .string()
+      .min(1)
+      .default("0 3 * * *")
+      .describe("Crontab for the per-tenant optimization scan (default daily 03:00).")
+      .meta(global()),
+    sample_size: z
+      .number()
+      .int()
+      .min(3)
+      .max(200)
+      .default(10)
+      .describe("Number of recent runs the analyzer reads per recipe.")
+      .meta(tenant()),
+    trivial_markdown_bytes: z
+      .number()
+      .int()
+      .min(64)
+      .max(16_384)
+      .default(512)
+      .describe("Pages whose MarkdownOutput.bytes is below this count as trivial.")
+      .meta(tenant()),
+    min_runs_before_proposing: z
+      .number()
+      .int()
+      .min(1)
+      .max(50)
+      .default(3)
+      .describe("Minimum recent runs before any candidate is emitted.")
+      .meta(tenant()),
+  })
+  .prefault({});
+
+const WebScraperSection = z
+  .object({
+    runtime: WebScraperRuntime,
+    robots_cache: WebScraperRobotsCache,
+    authoring: WebScraperAuthoring,
+    optimization: WebScraperOptimization,
+  })
+  .prefault({})
+  .describe("Web-scraper connector tunables (#144). Every leaf has a useful default.");
+
+const ConnectorsSection = z
+  .object({
+    web_scraper: WebScraperSection,
+  })
+  .prefault({})
+  .describe("Per-connector tunables. Each sub-section is owned by one connector template.");
+
 const TenantOverlaySchema = z
   .object({
     llm: z
@@ -687,6 +846,40 @@ const TenantOverlaySchema = z
           .optional(),
       })
       .optional(),
+    // Web-scraper #144 — only the tenant-scoped leaves; the robots_cache.*
+    // and optimization.scan_cron are global and may not appear here.
+    connectors: z
+      .object({
+        web_scraper: z
+          .object({
+            runtime: z
+              .object({
+                respect_robots: z.boolean().optional(),
+                user_agent: z.string().min(1).optional(),
+                max_pages: z.number().int().min(1).max(10_000).optional(),
+                max_chars_readability: z.number().int().min(1_000).max(2_000_000).optional(),
+                max_chars_markdown: z.number().int().min(1_000).max(2_000_000).optional(),
+                default_wait_ms: z.number().int().min(0).max(60_000).optional(),
+              })
+              .optional(),
+            authoring: z
+              .object({
+                yellow_sitemap_threshold: z.number().int().min(100).max(1_000_000).optional(),
+                red_sitemap_threshold: z.number().int().min(1_000).max(10_000_000).optional(),
+                extract_too_large_yellow_pct: z.number().int().min(1).max(100).optional(),
+              })
+              .optional(),
+            optimization: z
+              .object({
+                sample_size: z.number().int().min(3).max(200).optional(),
+                trivial_markdown_bytes: z.number().int().min(64).max(16_384).optional(),
+                min_runs_before_proposing: z.number().int().min(1).max(50).optional(),
+              })
+              .optional(),
+          })
+          .optional(),
+      })
+      .optional(),
   })
   .describe("Per-tenant overrides — only scope:tenant leaves may appear");
 
@@ -709,6 +902,7 @@ export const ConfigSchema = z
     repl: ReplSection,
     ui: UiSection,
     notifications: NotificationsSection,
+    connectors: ConnectorsSection,
     tenants: z
       .record(z.string(), TenantOverlaySchema)
       .prefault({})
@@ -719,7 +913,15 @@ export const ConfigSchema = z
 export type Config = z.infer<typeof ConfigSchema>;
 export type TenantOverlay = z.infer<typeof TenantOverlaySchema>;
 
-const TENANT_OVERLAY_KEYS = ["llm", "queue", "tokens", "repl", "ui", "notifications"] as const;
+const TENANT_OVERLAY_KEYS = [
+  "llm",
+  "queue",
+  "tokens",
+  "repl",
+  "ui",
+  "notifications",
+  "connectors",
+] as const;
 export type TenantOverlayKey = (typeof TENANT_OVERLAY_KEYS)[number];
 export const TENANT_OVERLAY_SECTION_KEYS: ReadonlyArray<TenantOverlayKey> = TENANT_OVERLAY_KEYS;
 
@@ -742,5 +944,6 @@ export const SECTION_ORDER = [
   "repl",
   "ui",
   "notifications",
+  "connectors",
 ] as const;
 export type SectionKey = (typeof SECTION_ORDER)[number];

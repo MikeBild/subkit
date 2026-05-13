@@ -1441,5 +1441,32 @@
       "Plain FTP transmits passwords and files in cleartext — never use it over untrusted networks"
     ],
     "doc_refs": ["https://www.rfc-editor.org/rfc/rfc959"]
+  },
+  "web-scraper-basics": {
+    "title": "Web scraper basics",
+    "body": "The web-scraper connector fetches public web pages over plain HTTP and converts them via three transform languages: `readability` (Mozilla Readability article extraction), `html-to-markdown` (Turndown), and `structured-data` (JSON-LD / OpenGraph / microdata). No JavaScript rendering, no CSS-selector engineering. Defaults are zero-config: robots.txt respected, 1000-page crawl cap, 100K-char extract cap, friendly User-Agent. All tunables live under `connectors.web_scraper.*` and can be overridden per tenant via `sk settings set`.",
+    "examples": [
+      "GET https://example.com → transform.html-to-markdown → { markdown, bytes, url, truncated, stripped_elements }",
+      "GET https://blog.example.com/post → transform.readability → { title, byline, content_html, lang, length, url }",
+      "GET https://example.com/sitemap.xml → loop urlset.url.loc → fetch each → readability → markdown — output is { pages: [{ title, url, markdown }, …] }",
+      "GET https://example.com → transform.structured-data → { json_ld, opengraph, microdata, found_any, url }"
+    ],
+    "best_practices": [
+      "Leave respect_robots = true (the default). It costs one extra HTTP per origin (cached 1h per tenant) and keeps you on the right side of operator ToS.",
+      "Cap your crawl with `connectors.web_scraper.runtime.max_pages` — the default 1000 prevents a runaway sitemap from starving other tenants.",
+      "Prefer `crawl-sitemap-to-markdown` over hand-rolling a loop — it composes the four transform languages with the right defaults.",
+      "Always set `expected_statuses: [200]` on the request step so the transform never sees an error page's HTML."
+    ],
+    "pitfalls": [
+      "No JavaScript is executed — pages that render content client-side (React SPAs without SSR, infinite-scroll feeds) return empty markdown. Prefer `llms.txt` or the site's REST/GraphQL API for those.",
+      "The `crawl-sitemap-to-markdown` recipe does NOT post into Knowledge Sources directly — it emits an array. To ingest, the calling chat agent (or a follow-up workflow step) POSTs each element to `POST /v1/knowledge-sources/inline` (JSON body: `{ name, slug?, content, mime_type, source_uri? }`). The legacy `/v1/knowledge-sources` route stays multipart/form-data for file uploads.",
+      "Sitemap > 10 000 entries triggers a Yellow verdict from `analyze_scrape_target`; > 100 000 triggers Red. Tune `connectors.web_scraper.authoring.*_threshold` if you operate at higher scale.",
+      "Operators are responsible for the target site's ToS. The connector enforces robots.txt by default but takes no position on commercial scraping rights."
+    ],
+    "doc_refs": [
+      "https://datatracker.ietf.org/doc/html/rfc9309",
+      "https://github.com/mozilla/readability",
+      "https://github.com/mixmark-io/turndown"
+    ]
   }
 }

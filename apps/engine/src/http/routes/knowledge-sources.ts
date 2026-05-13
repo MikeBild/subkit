@@ -7,6 +7,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../knowledge/index.ts";
 import {
+  CreateKnowledgeSourceInlineSchema,
   CreateKnowledgeSourceSchema,
   KNOWLEDGE_SOURCE_MAX_BYTES,
   KnowledgeSourceSchema,
@@ -113,6 +114,36 @@ const deleteRoute = createRoute({
   },
 });
 
+// Web-scraper #144 — JSON inline ingestion. The legacy
+// POST /v1/knowledge-sources stays on multipart/form-data (file
+// uploads); recipes that produce extracted markdown POST to this
+// route instead so the OpenAPI surface advertises the JSON contract
+// and Zod validates the body before the handler runs.
+const createInlineRoute = createRoute({
+  method: "post",
+  path: "/v1/knowledge-sources/inline",
+  tags: ["knowledge"],
+  summary: "Create a knowledge source from inline JSON content",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: { content: { "application/json": { schema: CreateKnowledgeSourceInlineSchema } } },
+  },
+  responses: {
+    201: {
+      description: "Created",
+      content: { "application/json": { schema: KnowledgeSourceSchema } },
+    },
+    413: {
+      description: "Content exceeds maximum size",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    422: {
+      description: "Validation error",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
 const searchRoute = createRoute({
   method: "get",
   path: "/v1/knowledge-sources/search",
@@ -140,6 +171,11 @@ const searchRoute = createRoute({
 export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/knowledge-sources", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("knowledge:read")(c, next);
+    if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
+    return next();
+  });
+
+  app.use("/v1/knowledge-sources/inline", async (c, next) => {
     if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
     return next();
   });
@@ -220,11 +256,70 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ deleted: true }, 200);
   });
 
-  // Upload route (non-OpenAPI, multipart/form-data)
+  // JSON inline path (#144) — separate OpenAPI route so Zod validates
+  // the body up-front and the spec advertises the JSON contract.
+  // 422 is the documented validation-failure status on `createInlineRoute`.
+  // Without this `defaultHook`, Hono's zod-openapi returns 400 on Zod
+  // failure, drifting from the OpenAPI spec and forcing clients to
+  // branch on both codes. The hook normalises to 422 + a typed error
+  // envelope that matches `ErrorSchema`.
+  app.openapi(
+    createInlineRoute,
+    async (c) => {
+      const principal = requireAuth(c);
+      const db = c.get("db");
+      const body = c.req.valid("json");
+      const byteSize = Buffer.byteLength(body.content, "utf8");
+      if (byteSize > KNOWLEDGE_SOURCE_MAX_BYTES) {
+        return c.json(
+          {
+            code: "content_too_large",
+            message: `Content exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes`,
+          },
+          413,
+        );
+      }
+      const { content, mime_type, source_uri, ...inputFields } = body;
+      const filename = source_uri ?? `${inputFields.slug ?? inputFields.name}.md`;
+      const source = await svc.createKnowledgeSource(
+        {
+          tenant_id: principal.tenant_id,
+          input: inputFields,
+          upload: {
+            buffer: Buffer.from(content, "utf8"),
+            filename,
+            mime: mime_type,
+          },
+          actor_id: principal.id,
+          source_type_override: "inline",
+          source_uri_override: source_uri ?? filename,
+        },
+        db,
+      );
+      return c.json(source, 201);
+    },
+    (result, c) => {
+      if (result.success) return undefined;
+      return c.json(
+        {
+          code: "validation_failed",
+          message: "request body did not satisfy CreateKnowledgeSourceInlineBody",
+          details: {
+            issues: result.error.issues.map((i) => ({
+              path: i.path.join("."),
+              message: i.message,
+            })),
+          },
+        },
+        422,
+      );
+    },
+  );
+
+  // Legacy multipart upload route (non-OpenAPI). File uploads only.
   app.post("/v1/knowledge-sources", async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
-
     const formData = await c.req.formData();
     const file = formData.get("file");
     const metadataRaw = formData.get("metadata");

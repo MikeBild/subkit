@@ -108,10 +108,17 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
   switch (leaf.kind) {
     case "string":
       return pickStringCandidate(leaf, tag);
-    case "number":
+    case "number": {
       // Avoid 100 (matches the default for errors.ring_size). Pick
-      // (salt mod 60) + 5 → 5..64.
-      return ((salt + 5) % 60) + 5;
+      // (salt mod 45) + 5 → 5..49, in-range for both high-min leaves
+      // (via the ladder below) and tight-max leaves like
+      // min_runs_before_proposing (max 50).
+      const candidates = [((salt + 5) % 45) + 5, 200, 1_000, 60_000, 100_000, 3_600_000];
+      for (const c of candidates) {
+        if (leaf.schema.safeParse(c).success) return c;
+      }
+      return candidates[0]!;
+    }
     case "boolean":
       // Always flip from the schema default. All boolean leaves in
       // the schema default to `false`, so write `true` here.

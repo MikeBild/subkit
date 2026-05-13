@@ -109,7 +109,17 @@ export async function createHttpTestServer(label: string): Promise<HttpTestServe
   // Build the Hono app bound to this db. We construct the registry
   // explicitly so the api_key provider also points at the test db.
   const registry = buildDefaultRegistry(testDb.db);
-  const app = createApp({ db: testDb.db, registry });
+  // Bump the in-memory rate-limit ceiling for tests. The sweep suites
+  // PUT every ConfigSchema leaf (~110 leaves and growing); the prod
+  // default of 100 req/60s would 429 the trailing leaves and
+  // pollute the assertions that drive `every leaf round-trips`. The
+  // override is plain middleware parameterisation — no env flag, no
+  // production code path branched.
+  const app = createApp({
+    db: testDb.db,
+    registry,
+    rateLimit: { max: 10_000, windowMs: 60_000 },
+  });
 
   // Bind a free port. Passing port=0 asks the kernel to pick.
   const server: ServerType = serve({ fetch: app.fetch, port: 0 });

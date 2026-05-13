@@ -12,13 +12,14 @@
 // sending an unauthenticated request. Callers must persist a credential
 // via save_connector_draft({credential}) before probing.
 
+import { getConfig } from "../../config/loader.ts";
 import { refreshIfStale } from "../../credentials/oauth2/refresh-worker.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
-import { assertEgressAllowed } from "../egress-guard.ts";
+import { assertEgressAllowed, assertRobotsAllowed } from "../egress-guard.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import type { ConnectorView } from "../types.ts";
 import { signSigV4Request } from "./aws-sigv4.ts";
@@ -409,6 +410,31 @@ export async function buildRequestPlan(
   };
   // SSRF guard: block private/loopback/link-local targets.
   assertEgressAllowed(url, { tenant_id: p.tenant_id });
+  // Web-scraper #144 — robots.txt gate. The template opts in via the
+  // `respects_robots` field on its JSON entry, mirrored into
+  // `template_snapshot` at draft mint time. Other templates (Stripe,
+  // GitHub, etc.) leave it false (the schema default) and are exempt
+  // from the extra robots.txt round-trip; their endpoints are private
+  // APIs, not crawlable origins.
+  const snapshot = (p.connector.template_snapshot as { respects_robots?: unknown } | null) ?? null;
+  if (snapshot?.respects_robots === true) {
+    const cfg = getConfig(p.tenant_id).connectors.web_scraper.runtime;
+    const respectRobots =
+      typeof p.connector.config.respect_robots === "boolean"
+        ? p.connector.config.respect_robots
+        : cfg.respect_robots;
+    if (respectRobots) {
+      const userAgent =
+        typeof p.connector.config.user_agent === "string" &&
+        p.connector.config.user_agent.length > 0
+          ? p.connector.config.user_agent
+          : cfg.user_agent;
+      // The user agent on the actual fetch is also overridden so the
+      // robots-parser verdict matches the wire UA.
+      headers["User-Agent"] = userAgent;
+      await assertRobotsAllowed(url, { tenant_id: p.tenant_id, userAgent });
+    }
+  }
   log.connector.request.planned({
     connector_id: p.connector.id,
     auth_type: p.connector.auth_type,

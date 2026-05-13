@@ -62,6 +62,28 @@ export const CreateKnowledgeSourceSchema = z
 
 export type CreateKnowledgeSourceInput = z.infer<typeof CreateKnowledgeSourceSchema>;
 
+/**
+ * Web-scraper #144 — inline JSON body for POST /v1/knowledge-sources.
+ *
+ * Recipes (most notably `crawl-sitemap-to-knowledge`) post a single
+ * page's extracted markdown directly, without a multipart upload. The
+ * route detects `Content-Type: application/json` and parses against
+ * this schema; the service routes the content through the existing
+ * chunker so dedup, budget enforcement, and fingerprinting are
+ * inherited verbatim.
+ */
+export const CreateKnowledgeSourceInlineSchema = CreateKnowledgeSourceSchema.extend({
+  content: z.string().min(1),
+  mime_type: z.string().default("text/markdown"),
+  /** When set, must be a fully-qualified URL — `https://example.com/page`.
+   *  Rejects path-shaped values like `../etc/passwd` so the audit-log
+   *  `source_uri` is trustworthy provenance. Optional; defaults to a
+   *  derived filename when absent. */
+  source_uri: z.string().url().optional(),
+}).openapi("CreateKnowledgeSourceInlineBody");
+
+export type CreateKnowledgeSourceInlineInput = z.infer<typeof CreateKnowledgeSourceInlineSchema>;
+
 export const UpdateKnowledgeSourceSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
@@ -110,6 +132,12 @@ export interface CreateKnowledgeSourceParams {
     mime?: string;
   };
   actor_id: string | null;
+  /** Web-scraper #144 — when the source comes from an inline JSON body
+   *  rather than a file upload, the route stamps these on the row so
+   *  later refreshes know where the content originated. Defaults to
+   *  `"file_upload"` + `upload.filename` for back-compat. */
+  source_type_override?: "file_upload" | "inline" | "url";
+  source_uri_override?: string;
 }
 
 export interface ListKnowledgeSourcesParams {

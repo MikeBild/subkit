@@ -5,36 +5,33 @@
 
 import { z } from "@hono/zod-openapi";
 
-/** Parses a multi-line "Name: Value\nOther: Other" header string into a
- *  record, trimming whitespace on both sides. Returns `null` when no
- *  valid header line was found (so validation can fail with a useful
- *  message instead of silently coercing garbage). Empty lines are
- *  tolerated; lines without a `:` are rejected.
- *
- *  Header names are validated as RFC 7230 tokens — without this, a
- *  JSON-encoded string like `'{"Accept": "..."}'` would parse as a
- *  single header named `'{"Accept"'`, slip through validation, and
- *  blow up inside `new Headers()` at fetch time with the obtuse
- *  "Invalid header name" error (conversation 730c568a). */
-const HTTP_TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+import { looksLikeJsonObjectOrArray, parseHeaderLines } from "./types-helpers.ts";
+import {
+  MarkdownConfigSchema,
+  ReadabilityConfigSchema,
+  StructuredDataConfigSchema,
+  TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION,
+  TRANSFORM_LANGUAGES_NEEDING_EXPRESSION,
+} from "./types-web-scraper.ts";
 
-function parseHeaderLines(raw: string): Record<string, string> | null {
-  const out: Record<string, string> = {};
-  let saw = 0;
-  for (const lineRaw of raw.split(/\r?\n/)) {
-    const line = lineRaw.trim();
-    if (!line) continue;
-    const idx = line.indexOf(":");
-    if (idx <= 0) return null;
-    const name = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1).trim();
-    if (!name) return null;
-    if (!HTTP_TOKEN_RE.test(name)) return null;
-    out[name] = value;
-    saw += 1;
-  }
-  return saw > 0 ? out : null;
-}
+export type {
+  MarkdownOutput,
+  ReadabilityOutput,
+  StructuredDataOutput,
+} from "./types-web-scraper.ts";
+// Re-export the three web-scraper envelope schemas (#144) so existing
+// `import … from "./workflows/types.ts"` call sites keep working. The
+// definitions live in `./types-web-scraper.ts` to keep this file under
+// the 1000-LOC audit ceiling.
+export {
+  MarkdownOutputSchema,
+  ReadabilityOutputSchema,
+  StructuredDataOutputSchema,
+} from "./types-web-scraper.ts";
+
+// Helpers `parseHeaderLines`, `HTTP_TOKEN_RE`, and
+// `looksLikeJsonObjectOrArray` live in `./types-helpers.ts` so this
+// file stays under the 1000-LOC audit ceiling.
 
 // JSON value
 const JsonLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -130,19 +127,7 @@ const GraphQLConfigSchema: z.ZodType<GraphQLConfig> = z
       }),
   );
 
-function looksLikeJsonObjectOrArray(s: string): boolean {
-  const trimmed = s.trim();
-  if (trimmed.length === 0) return false;
-  const first = trimmed[0];
-  const last = trimmed[trimmed.length - 1];
-  if (!(first === "{" && last === "}") && !(first === "[" && last === "]")) return false;
-  try {
-    const parsed = JSON.parse(trimmed);
-    return parsed !== null && (typeof parsed === "object" || Array.isArray(parsed));
-  } catch {
-    return false;
-  }
-}
+// `looksLikeJsonObjectOrArray` moved to `./types-helpers.ts`.
 
 const baseStep = {
   id: z.string().min(1),
@@ -553,12 +538,30 @@ export const RequestStepSchema = z
   })
   .openapi("RequestStep");
 
+// Web-scraper #144 — the three config + three output Zod schemas live
+// in `./types-web-scraper.ts` (imported above). The TransformStep
+// schema below references them inline; the language enum keeps the new
+// values in this file so the discriminated-union shape is visible at a
+// glance.
+
 export const TransformStepSchema = z
   .object({
     kind: z.literal("transform"),
     ...baseStep,
-    expression: z.string(),
-    language: z.enum(["jsonata", "javascript"]).optional(),
+    /** Projection source for `jsonata` / `javascript`. Forbidden for the
+     *  three web-scraper languages (`readability`, `html-to-markdown`,
+     *  `structured-data`), which read the upstream body via `input`. The
+     *  `superRefine` below enforces the language ↔ expression contract. */
+    expression: z.string().optional(),
+    language: z
+      .enum(["jsonata", "javascript", "readability", "html-to-markdown", "structured-data"])
+      .optional(),
+    /** Web-scraper #144 — Readability extraction config. */
+    readability: ReadabilityConfigSchema.optional(),
+    /** Web-scraper #144 — html→markdown serialisation config. */
+    markdown: MarkdownConfigSchema.optional(),
+    /** Web-scraper #144 — JSON-LD / OpenGraph / microdata extraction config. */
+    structured_data: StructuredDataConfigSchema.optional(),
     input_schema: z.record(z.string(), z.unknown()).optional(),
     output_schema: z.record(z.string(), z.unknown()).optional(),
     /**
@@ -572,6 +575,49 @@ export const TransformStepSchema = z
       .array(z.enum(["dropped_fields"]))
       .optional()
       .openapi({ description: "Suppress specific non-fatal warnings on this step." }),
+  })
+  .superRefine((s, ctx) => {
+    const language = s.language ?? "jsonata";
+    if (TRANSFORM_LANGUAGES_NEEDING_EXPRESSION.has(language)) {
+      if (s.expression === undefined || s.expression.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["expression"],
+          message: `transform.language=${language} requires a non-empty expression`,
+        });
+      }
+    }
+    if (TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION.has(language)) {
+      if (s.expression !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["expression"],
+          message: `transform.language=${language} does not accept an expression; configure via the \`${language === "html-to-markdown" ? "markdown" : language === "structured-data" ? "structured_data" : "readability"}\` block`,
+        });
+      }
+    }
+    // Per-language config is only meaningful when the matching language is selected.
+    if (s.readability !== undefined && language !== "readability") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["readability"],
+        message: 'readability config is only valid when language="readability"',
+      });
+    }
+    if (s.markdown !== undefined && language !== "html-to-markdown") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["markdown"],
+        message: 'markdown config is only valid when language="html-to-markdown"',
+      });
+    }
+    if (s.structured_data !== undefined && language !== "structured-data") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["structured_data"],
+        message: 'structured_data config is only valid when language="structured-data"',
+      });
+    }
   })
   .openapi("TransformStep");
 

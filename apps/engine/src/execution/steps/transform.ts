@@ -24,6 +24,7 @@ import { compile as compileJsonata, extractAst } from "../jsonata-engine.ts";
 import { TRANSFORM_TIMEOUT_DEFAULT_MS } from "../timeouts.ts";
 import type { StepResult, StepRunContext, StepWarning } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
+import { runHtmlToMarkdown, runReadability, runStructuredData } from "./transform-web-scraper.ts";
 
 export interface RunTransformParams {
   ctx: StepRunContext;
@@ -339,13 +340,44 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
   const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
   const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
   const language = p.step.language ?? "jsonata";
+  // Web-scraper #144 — three of the supported languages are dispatched
+  // elsewhere; only `jsonata` / `javascript` need `expression` here. The
+  // schema superRefine enforces this contract at authoring time; the
+  // guard below is defence-in-depth for callers that bypass the parser.
+  if ((language === "jsonata" || language === "javascript") && !p.step.expression) {
+    return {
+      status: "failed",
+      error: {
+        code: "transform_error",
+        message: `transform.language=${language} requires a non-empty expression`,
+      },
+      retry_count: 0,
+      duration_ms: Date.now() - start,
+    };
+  }
+  // Web-scraper #144 — three static-import branches that operate on the
+  // upstream HTML body and emit a typed JSON envelope. These do not race
+  // against the abort signal because each is synchronous and bounded by
+  // its own max_chars cap.
+  if (language === "readability") {
+    clearTimeout(timer);
+    return runReadability({ ctx: p.ctx, step: p.step, input: p.input });
+  }
+  if (language === "html-to-markdown") {
+    clearTimeout(timer);
+    return runHtmlToMarkdown({ ctx: p.ctx, step: p.step, input: p.input });
+  }
+  if (language === "structured-data") {
+    clearTimeout(timer);
+    return runStructuredData({ ctx: p.ctx, step: p.step, input: p.input });
+  }
   try {
     if (language === "javascript") {
       // QuickJS already enforces its own wall-clock safety net — we
       // pass the step timeout as `wall_ms` and race against the same
       // abort signal so external cancels still land.
       const jsPromise = runJs({
-        code: p.step.expression,
+        code: p.step.expression as string,
         input: { scope: p.scope, input: p.input },
         limits: { wall_ms: timeoutMs },
       });
@@ -366,7 +398,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
         duration_ms: Date.now() - start,
       };
     }
-    const expr = compileJsonata(p.step.expression);
+    const expr = compileJsonata(p.step.expression as string);
     // Bindings available inside the expression:
     //   $input     — the execution input (same object the workflow was
     //                invoked with).
@@ -383,7 +415,11 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
     //                addressable as bare path expressions against the
     //                root context object.
     const bindings = buildJsonataBindings(p.scope, p.input);
-    const parseTimeWarnings = detectUnresolvedIdentifiers(p.step.expression, p.scope, bindings);
+    const parseTimeWarnings = detectUnresolvedIdentifiers(
+      p.step.expression as string,
+      p.scope,
+      bindings,
+    );
     // race jsonata.evaluate against the abort signal
     const evalPromise = expr.evaluate(p.scope, bindings);
     const result = await Promise.race([

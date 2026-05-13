@@ -161,3 +161,11 @@ export const patchCandidates = pgTable(
     index("patch_candidates_tenant_workflow_status_idx").on(t.tenant_id, t.workflow_id, t.status),
   ],
 );
+
+// Note: the `optimization_candidates` persistence table is intentionally
+// not landed in this slice. The pure analyzer in
+// `self-healing/optimization-analyzer.ts` is invocable today (returns
+// proposal objects); the matching pg-boss handler + DB schema land
+// together in the follow-up PR that also wires the cron scheduler. We
+// keep this comment so the next change-set has a deliberate landing
+// spot rather than re-discovering the placement.

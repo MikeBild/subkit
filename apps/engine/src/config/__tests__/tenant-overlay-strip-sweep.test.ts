@@ -103,9 +103,28 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
         case "boolean":
           value = true;
           break;
-        case "number":
-          value = Math.max(1, Math.min(64, salt++ + 1));
+        case "number": {
+          // Walk a candidate ladder for leaves with higher min() bounds
+          // (web-scraper #144 max_chars_*, robots_cache.ttl_ms) or
+          // tight max() bounds (min_runs_before_proposing max 50).
+          const tagN = salt++;
+          const candidatesN = [
+            Math.max(1, Math.min(50, tagN + 1)),
+            200,
+            1_000,
+            60_000,
+            100_000,
+            3_600_000,
+          ];
+          value = candidatesN[0];
+          for (const c of candidatesN) {
+            if (leaf.schema.safeParse(c).success) {
+              value = c;
+              break;
+            }
+          }
           break;
+        }
         case "string": {
           // W2 of PR #161 review (round 4): walk a candidate list so
           // regex-restricted leaves (e.g. notifications.push.quietHours*)
