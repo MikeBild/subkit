@@ -9010,6 +9010,7 @@
               "execution.failed",
               "workflow.updated",
               "connector.oauth.refreshed",
+              "connector.oauth.callback_succeeded",
               "patch.proposed",
               "apikey.rotated",
               "conversation.committed"
