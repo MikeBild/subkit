@@ -1,5 +1,133 @@
 # Changelog
 
+## [4.8.1] (2026-05-13)
+
+### Added
+
+- **`transform_authoring_requires_inspect` gate is now wired everywhere
+  a transform expression can be authored** — `build_workflow` (full
+  one-shot) and `update_param` (single-field `expression`/`body`/
+  `language` edit) join the existing `propose_step` /
+  `edit_workflow_patch` enforcement from v4.8.0. Closes the bypass that
+  let a one-shot `build_workflow` author a `$scope.<X>`-citing transform
+  without an upstream preview.
+- **`connector.oauth.callback_succeeded` registered in
+  `EVENT_CATALOG`** — external webhook subscribers can now match the
+  event the OAuth callback already publishes. Uses the existing
+  `ConnectorOauthCallbackPayloadSchema` so internal + external consumers
+  share one Zod validation.
+- **Skill content updated for v4.8.0 contracts** —
+  `workflow-authoring.md` documents the symmetric transform gate and
+  the auto-surfaced validation pattern; `conversational-authoring.md`
+  and `chat-first-contract.md` soften their `validate_draft`
+  prescriptions; `validate-draft.ts` description explains it is now
+  repeat-capped and reserved for external-change re-checks. Pinned by
+  two new assertions in `skill-content-coverage.test.ts`.
+
+### Fixed
+
+- **SSE replay race in `subscribeConnectorOAuthCallback`** —
+  `/v1/events/stream` replays the last 50 outbox rows on open before
+  the `hello` frame. A prior `connector.oauth.callback_succeeded` for
+  the same connector_id would auto-confirm the current in-flight
+  elicitation BEFORE the user finished the browser dance. Two-phase
+  reader now ignores frames until `hello` arrives.
+- **Prometheus `subkit_authoring_gate_blocks_total` help text** —
+  appended `transform_authoring_requires_inspect` and `critic_rejected`
+  so the help string matches the `AUTHORING_GATE_CODES` allow-list.
+- **`POST /v1/events` (admin emit) channel enum** — accept
+  `workflow.lifecycle` now that `OutboxChannel` + `LISTENER_CHANNELS`
+  both declare it.
+
+### Tests
+
+- `oauth.test.ts` happy path asserts the
+  `connector.oauth.callback_succeeded` event row is written with the
+  documented payload shape (tenant-scoped query implicitly exercises
+  tenant isolation).
+- `engine-client-oauth-callback.test.ts` pins the replay-discard
+  contract.
+- `webhooks/events/tests/catalog.test.ts` covers the new event type.
+
+## [4.8.0] (2026-05-12)
+
+### Added
+
+- **OAuth callback auto-resume via pubsub + SSE.** The OAuth callback
+  route now publishes `connector.oauth.callback_succeeded` on the
+  `connector.oauth` channel after persisting the credential, and sk-cli
+  subscribes via `/v1/events/stream`. The in-flight conversation
+  auto-resolves its `review_after_execution` elicitation when the event
+  arrives — no manual "done" type-back from the operator.
+- **`transform_authoring_requires_inspect` gate** — symmetric to the
+  existing `loop_authoring_requires_inspect` gate. Refuses a transform
+  step whose JSONata `expression` cites `$scope.<X>` for an
+  un-previewed sibling X. Wired into `propose_step` and
+  `edit_workflow_patch`.
+- **`$item.<field>` keys inlined into the authoring context block.**
+  When rendering a loop step's manifest the engine resolves the loop's
+  source step, reads its recorded `output_preview` from
+  `latest_preview.step_traces`, and enumerates the top-level keys (cap
+  12) so the LLM can author `$item.id`, `$item.name`, … against real
+  data instead of guessing.
+- **Inline validation state in the authoring context.** Every authoring
+  turn re-runs `validateWorkflowDef` in-process and inlines the error
+  list at the top of the block. `validate_draft` is no longer exempt
+  from the per-tool repeat cap.
+
+### Fixed
+
+- `apps/engine/src/http/routes/connectors/oauth.ts` imports the OAuth
+  callback payload schema via `pubsub/index.ts` so the route-layering
+  invariant (`audit:invariants/route_layering`) stays green.
+- Three `setTimeout` wall-clock waits in the new OAuth-callback unit
+  tests switched to `waitFor`/`flush` from
+  `apps/engine/src/test-helpers/determinism/wait.ts` so the determinism
+  gate stays green.
+
+## [4.7.8] (2026-05-12)
+
+### Fixed
+
+- OAuth2 token_type canonicalised to `Bearer`; Google `access_type`
+  applied so refresh tokens are issued on first consent.
+
+## [4.7.7] (2026-05-12)
+
+### Fixed
+
+- Dropped retired `SUBKIT_PUBLIC_BASE_URL` env fallback in OAuth2
+  redirect URI synthesis; rely on `server.public_base_url` setting.
+
+## [4.7.6] (2026-05-12)
+
+### Fixed
+
+- CI: stop biome reformatting auto-generated `embedded.ts`.
+- Config: trim `server.public_base_url` description to ≤200 chars.
+
+## [4.7.5] (2026-05-12)
+
+### Fixed
+
+- `verify.sh` date flag for macOS compatibility.
+
+## [4.7.4] (2026-05-12)
+
+### Fixed
+
+- OAuth2: register migration `0017_drop_connector_oauth_redirect_uri` +
+  scrub banned-term ref.
+
+## [4.7.3] (2026-05-12)
+
+### Fixed
+
+- OAuth2 v4.7.3 deep review: close all gaps (migration order, state
+  lookup, credentials index, redirect_uri synthesis).
+- OAuth2: route through credentials index + annotate state lookup.
+- OAuth2: synthesize canonical `redirect_uri` server-side.
+
 ## [4.6.0] (2026-05-11)
 
 ### Added
