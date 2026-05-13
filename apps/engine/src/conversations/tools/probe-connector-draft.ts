@@ -5,6 +5,7 @@ import { probeGraphQLConnector } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
+import { logger } from "../../logging/logger.ts";
 import { withConnectorProbe, withConnectorValidation } from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
 import {
@@ -12,6 +13,7 @@ import {
   toDecryptedCredential,
   toDecryptedCredentialAsync,
 } from "../persistence/draft-credential-cache.ts";
+import { saveConnectorAtomic } from "../persistence/save-connector.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { pickProbeRecoveryActions as pickFromShared } from "./probe-recovery.ts";
@@ -476,18 +478,72 @@ export const probeConnectorDraftTool: ConversationTool = {
         }),
       };
     }
+    // Probe-success envelope. A green probe is consent to persist —
+    // the credentials work, the draft is validated, there is no
+    // ambiguity left for the operator to resolve. saveConnectorAtomic
+    // is called inline so the same tool call returns the saved-
+    // connector shape directly. Pre-fix the LLM ended the turn after
+    // probe and the user typed "what's now? nothing happens!" (session
+    // 0ac7593c). The audit row is tagged `auto_persist_on_green_probe`
+    // so operators can distinguish this from the harness auto-persist
+    // path and the manual re-issue path.
+    //
+    // If the atomic save fails (e.g. slug collision detected only at
+    // DB level), the error envelope from saveConnectorAtomic is
+    // returned verbatim so the LLM picks the typed recovery move
+    // (`slug_already_in_use` → list_connectors → update_connector).
+    // If it throws (constraint violation outside the typed surface),
+    // we re-throw — the conversation loop's sdk-wrap translates the
+    // exception consistently.
+    const connectorLabel = connector.name ?? connector.slug ?? "this connector";
+    const saveResult = await saveConnectorAtomic({
+      ctx,
+      environment: draftView.environment,
+      reason: "auto_persist_on_green_probe",
+      emitAutoPersistAudit: true,
+      commitIntentKind: "save_connector",
+    });
+    if (!saveResult.ok) {
+      logger.warn({
+        module: "conversation_tool",
+        action: "probe_connector_draft.auto_save_failed",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        error_code: (saveResult.data as { error_code?: unknown } | undefined)?.error_code ?? null,
+      });
+      return saveResult;
+    }
+    const saved =
+      typeof saveResult.data === "object" && saveResult.data !== null
+        ? (saveResult.data as Record<string, unknown>)
+        : {};
+    const savedConnector =
+      saved.connector && typeof saved.connector === "object"
+        ? (saved.connector as Record<string, unknown>)
+        : null;
+    logger.info({
+      module: "conversation_tool",
+      action: "probe_connector_draft.auto_saved",
+      msg: "green probe auto-persisted connector inline",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      connector_id: typeof savedConnector?.id === "string" ? savedConnector.id : null,
+      connector_slug: typeof savedConnector?.slug === "string" ? savedConnector.slug : null,
+      driver: effectiveDriver,
+      environment: draftView.environment,
+      probe_duration_ms: duration_ms,
+      probe_status_code: status,
+    });
     return {
-      ok: latest_probe.ok,
-      data: buildLifecyclePayload(nextDraft, {
-        connector: {
-          ...toCreateConnectorInput(connector),
-          environment: draftView.environment,
-        },
+      ok: true,
+      data: {
+        ...saved,
+        auto_saved: true,
+        auto_save_reason: "auto_persist_on_green_probe",
         latest_probe,
-        response_preview: truncated.data,
-        truncated: truncated.truncated,
-        raw_ref: truncated.raw_ref,
-      }),
+        next_best_actions: ["start_workflow_from_goal", "list_workflows"],
+        next_prompt: `${connectorLabel} saved. What workflow should it power?`,
+      },
     };
   },
 };

@@ -27,7 +27,7 @@ describe("truncateForLlm", () => {
     const dataItems = (r.data as { items: unknown[] }).items;
     // 20 retained + one marker sentinel.
     expect(dataItems.length).toBe(21);
-    expect(dataItems[20]).toMatchObject({ __truncated: expect.stringContaining("more items") });
+    expect(dataItems[20]).toMatchObject({ _truncated: expect.stringContaining("more items") });
     expect(r.raw_ref).toMatch(/^raw_/);
     // Raw store contains the untruncated payload.
     const raw = getRawResult(r.raw_ref!);
@@ -66,6 +66,36 @@ describe("truncateForLlm", () => {
     // Raw payload still retrievable for follow-up.
     const raw = getRawResult(r.raw_ref!);
     expect((raw as { workflow: { steps: unknown[] } }).workflow.steps.length).toBe(25);
+  });
+
+  it("never emits __omitted_chars / __raw_ref marker keys (regression: session 0ac7593c)", () => {
+    // Pre-fix the heaviest-branch shrink loop replaced over-cap branches
+    // with `{__omitted_chars, __raw_ref}` marker objects. Those keys
+    // leaked through synthesizeFallbackMessage and the chat renderer,
+    // so end users saw `__omitted_chars: 234` in their workflow output.
+    // Post-fix the heavy branches collapse to `null` and the omission
+    // is rolled up into a single top-level `_truncation_note`.
+    clearRawStore();
+    const fixture = {
+      workflow: {
+        id: "wf-1",
+        steps: Array.from({ length: 25 }, (_, i) => ({
+          id: `step-${i}`,
+          attrs: Object.fromEntries(
+            Array.from({ length: 30 }, (_, j) => [`attr-${j}`, "y".repeat(4000)]),
+          ),
+        })),
+      },
+    };
+    const r = truncateForLlm(fixture);
+    expect(r.truncated).toBe(true);
+    const serialised = JSON.stringify(r.data);
+    expect(serialised).not.toContain("__omitted_chars");
+    expect(serialised).not.toContain("__raw_ref");
+    // The rolled-up note is a single underscore-prefixed top-level key.
+    expect((r.data as { _truncation_note?: string })._truncation_note).toMatch(
+      /chars in \d+ branch\(es\) omitted/,
+    );
   });
 
   it("nested arrays are clipped tighter than top-level", () => {

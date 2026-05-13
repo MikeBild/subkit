@@ -4,6 +4,7 @@ import type { PgBoss } from "pg-boss";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { registerOAuth2RefreshHandler } from "../../credentials/oauth2/refresh-worker.ts";
 import type { Db } from "../../db/client.ts";
+import { logger } from "../../logging/logger.ts";
 import { registerEventFanoutHandler } from "./event-fanout.ts";
 import { registerExecutionRunHandler } from "./execution-run.ts";
 import { registerIngestDocsHandler } from "./ingest-docs.ts";
@@ -66,6 +67,23 @@ export async function registerAllHandlers(
     boss: opts.boss,
     db: opts.db,
     ...(opts.chatRegistry ? { chatRegistry: opts.chatRegistry } : {}),
+  });
+  // Boot summary — single line operators can grep for to confirm the
+  // queue layer is fully up. Each handler also emits its own
+  // `<queue>.registered` line above; this is the aggregate signal.
+  logger.info({
+    module: "queue",
+    action: "handlers.registered",
+    msg: "all queue handlers registered",
+    execution_run_worker_id: executionRunWorkerId,
+    oauth2_refresh_worker_id: oauth2RefreshWorkerId,
+    ingest_docs_worker_id: ingestDocsWorkerId,
+    ingest_knowledge_worker_id: ingestKnowledgeWorkerId,
+    skill_candidate_analyze_worker_id: skillCandidateAnalyzeWorkerId,
+    workflow_repair_worker_id: workflowRepairWorkerId,
+    webhook_deliver_worker_id: webhookDeliverWorkerId,
+    event_fanout_worker_id: eventFanoutWorkerId,
+    chat_registry: opts.chatRegistry ? "present" : "absent",
   });
   return {
     executionRunWorkerId,

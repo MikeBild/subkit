@@ -547,6 +547,31 @@ export const runWorkflowTool: ConversationTool = {
             diagnosis_available: diagnosisAvailable,
             requires_repair: requiresRepair,
             recommended_next_tool: diagnosisAvailable ? "diagnose_latest_execution" : null,
+            // Plain-language summary + structured next-action hint.
+            // The transcript captured the symptom: "Execution needs
+            // diagnosis · 1 warning" with no inline explanation, so
+            // the user had to drop out of chat to dig in. Surface a
+            // single sentence the chat renderer (and the never-silent
+            // guard) can read directly.
+            ...(diagnosisAvailable && result.warnings && result.warnings.length > 0
+              ? {
+                  warning_summary: `${result.warnings.length} warning(s): ${Array.from(
+                    new Set(result.warnings.map((w) => w.code)),
+                  )
+                    .sort()
+                    .join(", ")}. Run \`diagnose_latest_execution\` for details.`,
+                }
+              : {}),
+            next_best_actions: diagnosisAvailable
+              ? ["diagnose_latest_execution"]
+              : result.status === "succeeded"
+                ? ["inspect_execution_step", "run_workflow"]
+                : ["diagnose_latest_execution", "inspect_workflow"],
+            next_prompt: diagnosisAvailable
+              ? "Open diagnosis to see what happened"
+              : result.status === "succeeded"
+                ? "Inspect step output or run again"
+                : "Diagnose the failure",
             // Banner-style warnings summary so the LLM can't miss
             // signals on first read of the result envelope. Mirrors
             // the dry_run_workflow surface.

@@ -24,6 +24,7 @@ import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
+import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import { buildDryRunCacheKey, readDryRunCache, writeDryRunCache } from "./dry-run-cache.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -254,8 +255,18 @@ export const dryRunWorkflowTool: ConversationTool = {
           }),
         };
       }
-    } catch {
-      // DB blip: don't trip the breaker on a query failure.
+    } catch (err) {
+      // DB blip: don't trip the breaker on a query failure, but log
+      // it so a recurring outage shows up in operator triage rather
+      // than silently disabling the repair-loop guard.
+      logger.warn({
+        module: "conversation_tool",
+        action: "dry_run_workflow.repair_loop_query_failed",
+        msg: "repair-loop history query failed; circuit-breaker check skipped this turn",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     const definition = { name: draft.name ?? "draft", steps };
@@ -570,6 +581,102 @@ export const dryRunWorkflowTool: ConversationTool = {
           }
         : null;
 
+    // Next-action hint on the dry-run envelope. Green preview that
+    // doesn't need a repair pass → commit; otherwise → fix-it loop.
+    // Pre-fix the success path was silent and the user had to type
+    // "yes" twice before the LLM proposed save_workflow_draft (session
+    // 0ac7593c). Even with task #4's auto-commit behaviour live, the
+    // hint stays on the envelope so the chat renderer's lifecycle line
+    // and the never-silent guard in loop.ts both have something to
+    // anchor on.
+    const cleanPreview = run.status === "succeeded" && !dryRunRequiresRepair;
+    const previewNextActions = cleanPreview
+      ? ["save_workflow_draft"]
+      : dryRunRequiresRepair
+        ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
+        : ["inspect_workflow_draft", "edit_workflow_patch"];
+    const previewNextPrompt = cleanPreview
+      ? "Committing the workflow"
+      : dryRunRequiresRepair
+        ? "Open diagnosis to see why the preview needs repair"
+        : `Re-run preview after fixing step \`${stoppedForDraft}\``;
+    const warningSummary = runWarnings.length > 0 ? (warningsBanner?.summary ?? null) : null;
+
+    // Auto-commit on green dry-run. A clean preview means the draft
+    // is validated end-to-end against real data; persisting
+    // immediately removes the redundant approval step that produced
+    // the "yes" → "yes" → "commit this" loop in session 0ac7593c.
+    // `skipPriorApprovalCheck: true` bypasses the ask_user_confirm
+    // gate the explicit save tool requires; the audit row is tagged
+    // `auto_persist_on_green_dry_run` so the history is unambiguous.
+    // If the commit refuses (e.g. workflow_not_ready, slug clash) the
+    // typed envelope is returned verbatim so the LLM picks the right
+    // recovery move.
+    if (cleanPreview) {
+      const commitResult = await commitWorkflowAtomic({
+        ctx,
+        skipPriorApprovalCheck: true,
+        reason: "auto_persist_on_green_dry_run",
+        emitAutoPersistAudit: true,
+        commitIntentKind: "save_workflow_draft",
+      });
+      if (!commitResult.ok) {
+        logger.warn({
+          module: "conversation_tool",
+          action: "dry_run_workflow.auto_commit_failed",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          error_code:
+            (commitResult.data as { error_code?: unknown } | undefined)?.error_code ?? null,
+        });
+        return commitResult;
+      }
+      const committed =
+        typeof commitResult.data === "object" && commitResult.data !== null
+          ? (commitResult.data as Record<string, unknown>)
+          : {};
+      const totalDryRunMs = run.steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0);
+      logger.info({
+        module: "conversation_tool",
+        action: "dry_run_workflow.auto_committed",
+        msg: "green dry-run auto-persisted workflow inline",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        workflow_id:
+          typeof committed.workflow_id === "string"
+            ? committed.workflow_id
+            : (commitResult.committed_workflow_id ?? null),
+        workflow_version: typeof committed.version === "number" ? committed.version : null,
+        steps_ran: run.steps.length,
+        dry_run_duration_ms: totalDryRunMs,
+        execution_id: run.execution_id,
+        warnings_count: runWarnings.length,
+      });
+      return {
+        ok: true,
+        data: {
+          ...committed,
+          auto_committed: true,
+          auto_commit_reason: "auto_persist_on_green_dry_run",
+          dry_run_summary: {
+            steps_ran: run.steps.length,
+            duration_ms: totalDryRunMs,
+            execution_id: run.execution_id,
+          },
+          // Preserve the per-step trace from the dry-run on the
+          // auto-committed envelope. The LLM still needs to see
+          // step-by-step shape + status to author downstream
+          // transforms or to debug a follow-up run.
+          step_trace: stepTrace,
+          next_best_actions: ["run_workflow", "inspect_workflow"],
+          next_prompt: "Run the saved workflow to verify",
+        },
+        ...(typeof commitResult.committed_workflow_id === "string"
+          ? { committed_workflow_id: commitResult.committed_workflow_id }
+          : {}),
+      };
+    }
+
     return {
       ok: run.status === "succeeded",
       data: buildLifecyclePayload(nextDraft, {
@@ -583,6 +690,9 @@ export const dryRunWorkflowTool: ConversationTool = {
             ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} with no errors.`
             : `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`,
         execution_id: run.execution_id,
+        next_best_actions: previewNextActions,
+        next_prompt: previewNextPrompt,
+        ...(warningSummary ? { warning_summary: warningSummary } : {}),
         // Top-level banner so the LLM can't miss warnings on first
         // read. `warnings` (legacy field) stays for back-compat
         // consumers but the banner is the canonical surface.

@@ -2,13 +2,13 @@
 slug: connector-creation-guidance
 scope: global
 title: Connector Creation Guidance
-description: Authoring contract for creating a NEW connector in a conversation. Covers the discover-before-probe loop, the masked-form credential path, the harness's auto-persist on confirmation, and the structured `next_best_actions` error envelope. Loaded on creation-intent keywords only — not on every mention of `api` or `http`. Driver-level detail still lives in the per-protocol skills (`http-connectors`, `graphql-connectors`, `postgres-connectors`, `s3-connectors`).
+description: Authoring contract for creating a NEW connector in a conversation. Covers the discover-before-probe loop, the masked-form credential path, the inline auto-save on a green `probe_connector_draft`, the OAuth2 form-submit auto-persist, and the structured `next_best_actions` error envelope. Loaded on creation-intent keywords only — not on every mention of `api` or `http`. Driver-level detail still lives in the per-protocol skills (`http-connectors`, `graphql-connectors`, `postgres-connectors`, `s3-connectors`).
 activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"create connector"},{"kind":"intent_keyword","word":"new connector"},{"kind":"intent_keyword","word":"add connector"},{"kind":"intent_keyword","word":"add integration"},{"kind":"intent_keyword","word":"new integration"},{"kind":"intent_keyword","word":"set up integration"},{"kind":"intent_keyword","word":"configure connector"},{"kind":"intent_keyword","word":"start connector"},{"kind":"intent_keyword","word":"start_connector_from_description"},{"kind":"intent_keyword","word":"start_connector_from_template"},{"kind":"intent_keyword","word":"wire up"},{"kind":"intent_keyword","word":"hook up"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, connector, onboarding]
-version: 5
+version: 6
 ---
 
 # Connector Creation Guidance
@@ -34,10 +34,10 @@ save_workflow  ◄──  build_workflow  ◄──  test_connector  ◄──�
 |---|---|---|
 | 1. find_connector | `find_connector` (also implicit in `start_connector_from_description` when `base_url` is given) | none — short-circuits with `reused_existing` when a saved connector matches |
 | 2. create_connector_draft | `start_connector_from_description` / `start_connector_from_template` / `import_connector_from_spec` | `connector_inspected`, then `connector_validated` |
-| 3. authenticate_connector | • `auth_type=oauth2`: `save_connector_draft` first, then `authenticate_oauth`<br>• `auth_type=bearer/header/query/basic/aws_sigv4`: `ask_user_form(type=password,sensitive=true)` followed by harness auto-persist | `connector_authenticated` |
-| 4. test_connector | `probe_connector_draft` | `connector_probed` |
+| 3. authenticate_connector | • `auth_type=bearer/header/query/basic/aws_sigv4`: `ask_user_form(type=password,sensitive=true)` — credential lands on the draft only, persistence happens at probe time<br>• `auth_type=oauth2`: `ask_user_form` carries `commit_intent: save_connector` so the harness saves the draft on submit, then `authenticate_oauth` runs against the persisted row | `connector_authenticated` |
+| 4. test_connector | `probe_connector_draft` | `connector_probed` AND (on green probe) `connector_persisted` — the probe tool calls `saveConnectorAtomic` inline; no separate save call |
 | 5. build_workflow | `build_workflow` / `propose_step` / `update_param` / `edit_workflow_patch` | `workflow_inspected` → `workflow_validated` → `workflow_previewed` |
-| 6. save_workflow | `save_workflow_draft` | `workflow_persisted` |
+| 6. save_workflow | `dry_run_workflow` (auto-commits on a clean preview) | `workflow_previewed` AND (on green preview) `workflow_persisted` |
 
 `config.oauth` is **never** written by hand on the draft — it is owned by the
 template snapshot and the OAuth2 client at mint time. `update_connector_draft`
@@ -64,20 +64,37 @@ the top match as an accelerator. Templates are an offer, never a requirement.
 
 ## Happy path
 
+For bearer / header / query / basic / aws_sigv4 (the common case):
+
 ```
 1. discover_connector_endpoints({ template_id })       # curated index from the spec
 2. start_connector_from_template({ slug })             # opens a draft
 3. ask_user_form({ fields:[{ type:"password", sensitive:true }] })
-                                                       # collects the credential
-                                                       # harness auto-persists draft + credential atomically
-4. probe_connector_draft                               # confirms connectivity
-5. (operator already sees a saved connector — no extra commit call needed)
-6. call_connector({ connector_id, method, path })      # iterate / paginate / sample
+                                                       # operator types the secret
+                                                       # value lands on the DRAFT only
+4. probe_connector_draft                               # green probe → inline auto-save
+                                                       # envelope returns auto_saved: true
+5. call_connector({ connector_id, method, path })      # iterate / paginate / sample
 ```
 
-The harness applies the connector + credential write the moment the operator
-submits the form. Do not call `save_connector_draft` on the happy path; it is
-now a diagnostic re-issue tool (see below).
+For OAuth2 (one extra phase before the probe):
+
+```
+3. ask_user_form({ commit_intent: "save_connector",
+                   fields:[{ name: "client_id" }, { name: "client_secret", type: "password" }] })
+                                                       # harness auto-persists draft on submit
+                                                       # — required because authenticate_oauth needs
+                                                       # a persisted connector_id
+4. authenticate_oauth({ connector_id })                # opens authorization URL → tokens land
+5. probe_connector_draft                               # confirms the access_token works
+6. call_connector(…)
+```
+
+**There is no separate `save_connector_draft` call on either happy path.** A
+green probe completes the persistence transaction inline (audit reason
+`auto_persist_on_green_probe`); for OAuth2 the form-submit completes it
+(audit reason `auto_persist_on_confirmation`). `save_connector_draft` is
+diagnostic re-issue only — covered in its own section below.
 
 ## discover_connector_endpoints — read this before probing
 
@@ -149,11 +166,18 @@ came back 401/403):
 1. Run **exactly one** `ask_user_form` with one entry of
    `type: "password", sensitive: true`. Do NOT prose-ask "What's your token?"
    in chat — the masked form IS the prompt.
-2. The harness pipes the form value straight into the persistence layer as
-   `credential: { mode: "<bearer|basic|header|query|oauth2>", … }`. The connector
-   draft and its credential land together in one transactional write. Your
-   next `inspect_connector_draft` already shows the persisted state.
-3. **Never** ask the operator to name the credential. The credential is keyed
+2. **Bearer / header / query / basic / aws_sigv4:** the form value lands on
+   the connector draft via the credential cache. No `commit_intent` — the
+   subsequent `probe_connector_draft` will read the cached credential, run
+   the probe, and on success persist the connector + credential together
+   under audit reason `auto_persist_on_green_probe`. Your next
+   `inspect_connector_draft` already shows the saved state.
+3. **OAuth2:** the form must carry `commit_intent: "save_connector"` so the
+   harness saves the draft + `client_id` / `client_secret` immediately on
+   submit (audit reason `auto_persist_on_confirmation`).
+   `authenticate_oauth` then opens the authorization URL against the
+   persisted row and lands access + refresh tokens via the OAuth callback.
+4. **Never** ask the operator to name the credential. The credential is keyed
    on `(tenant_id, connector_id, environment)`; it has no user-supplied name.
 
 After the connector is saved, the right tool to verify it from the loop is
@@ -182,8 +206,14 @@ call it as the normal commit step. Behaviour notes:
   operator explicitly confirms in chat — the audit row is tagged
   `kind: probe_override` and the response includes a `warnings[]` line.
 - **Audit signal**: every write through this tool emits a
-  `reason: "manual_re_issue"` audit row, distinct from the harness
-  auto-persist's `reason: "auto_persist_on_confirmation"`.
+  `reason: "manual_re_issue"` audit row. The two automatic paths are
+  distinguished by their own reasons so operators can triage exactly which
+  surface persisted a given connector:
+  - `auto_persist_on_green_probe` — the inline save fired by
+    `probe_connector_draft` after a successful probe.
+  - `auto_persist_on_confirmation` — the harness auto-persist fired when an
+    `ask_user_form` (typically OAuth2's client_id/client_secret form) was
+    submitted with `commit_intent: "save_connector"`.
 
 ## Authentication quick guide
 

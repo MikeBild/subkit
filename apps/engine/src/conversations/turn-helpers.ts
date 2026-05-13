@@ -31,6 +31,48 @@ export const turnLoopBudgetStopCondition = ({
   });
 };
 
+/** Tag for WHY `synthesizeFallbackMessage` produced output, so the
+ *  conversation loop can log it accurately and operators can
+ *  distinguish a benign next-prompt synthesis from an emergency
+ *  loop-budget short-circuit.
+ */
+export type FallbackSynthesisReason =
+  | "next_prompt_from_tool"
+  | "loop_warnings_no_signal"
+  | "tool_results_summary";
+
+function pickFreshestNextPrompt(events: ReadonlyArray<TurnEvent>): string | null {
+  const latestEvent = [...events].reverse().find((ev) => ev.type === "tool_result");
+  if (!latestEvent || latestEvent.type !== "tool_result") return null;
+  const out = latestEvent.output;
+  if (!out || typeof out !== "object") return null;
+  const o = out as Record<string, unknown>;
+  const looksOk = o.ok !== false && o.error === undefined && o.error_code === undefined;
+  if (!looksOk) return null;
+  return typeof o.next_prompt === "string" && o.next_prompt.length > 0 ? o.next_prompt : null;
+}
+
+/** Companion to `synthesizeFallbackMessage` — returns the same text
+ *  the message would have, paired with the reason tag, so the
+ *  conversation loop can emit a structured log distinguishing a
+ *  benign next-prompt synthesis from an emergency loop-budget
+ *  short-circuit. Returns null when the message would also be null.
+ */
+export function classifyFallbackSynthesis(params: {
+  events: ReadonlyArray<TurnEvent>;
+  loopWarnings: number;
+}): { text: string; reason: FallbackSynthesisReason } | null {
+  const nextPrompt = pickFreshestNextPrompt(params.events);
+  if (nextPrompt) return { text: nextPrompt, reason: "next_prompt_from_tool" };
+  const text = synthesizeFallbackMessage(params);
+  if (text === null) return null;
+  const hasToolResult = params.events.some((ev) => ev.type === "tool_result");
+  return {
+    text,
+    reason: hasToolResult ? "tool_results_summary" : "loop_warnings_no_signal",
+  };
+}
+
 /**
  * Build a short fallback message from collected `tool_result` events
  * when the turn finished without the model producing any text. Walks
@@ -76,6 +118,17 @@ export function synthesizeFallbackMessage(params: {
       (out as { ok?: unknown }).ok === false;
     if (!looksError) successCalls += 1;
   }
+  // Never-silent guard. If we have any tool result with a `next_prompt`
+  // and the model emitted no text, synthesise a one-liner so the user
+  // is never staring at a blank turn after a successful tool fired.
+  // Pre-fix the probe-success path produced no model text and no
+  // fallback (the lifecycle envelope didn't match any of the recognised
+  // shapes), so the user saw silence and asked "what's now?" (session
+  // 0ac7593c). Even when the regular fallback would produce something,
+  // a `next_prompt` from the freshest tool gives the most actionable
+  // line — preferred.
+  const nextPrompt = pickFreshestNextPrompt(params.events);
+  if (nextPrompt) return nextPrompt;
   if (latestPerTool.size === 0) {
     return params.loopWarnings > 0
       ? "I kept hitting the same call and stopped the turn before burning more tokens. Try rephrasing or tell me what to do next."
@@ -116,7 +169,56 @@ export function synthesizeFallbackMessage(params: {
   return `${header}\n${lines.join("\n")}`;
 }
 
+// Translate a `lifecycle_state` enum value to a user-facing verb. Pre-fix
+// the fallback rendered the raw token (`workflow_validated`,
+// `connector_probed`) which read as internal jargon. The mapping covers
+// the known authoring transitions; unknown values fall through to a
+// trimmed, humanised version of the token itself.
+function humaniseLifecycleState(state: string): string {
+  const map: Record<string, string> = {
+    none: "drafting",
+    connector_targeted: "drafting",
+    connector_inspected: "inspected",
+    connector_validated: "ready",
+    connector_authenticated: "authenticated",
+    connector_probed: "probe ok",
+    connector_probe_failed: "probe failed",
+    connector_probe_blocked: "needs more info",
+    connector_persisted: "saved",
+    workflow_targeted: "drafting",
+    workflow_inspected: "inspected",
+    workflow_validated: "ready",
+    workflow_previewed: "previewed",
+    workflow_persisted: "committed",
+    workflow_executed: "ran",
+    workflow_diagnosed: "diagnosed",
+  };
+  return map[state] ?? state.replace(/_/g, " ");
+}
+
+function looksLikeLifecyclePayload(output: Record<string, unknown>): boolean {
+  return (
+    typeof output.lifecycle_state === "string" &&
+    typeof output.mode === "string" &&
+    typeof output.stage === "string" &&
+    "resource_kind" in output
+  );
+}
+
 function describeToolOutput(output: Record<string, unknown>): string {
+  // Auto-act envelopes carry an explicit `auto_saved` / `auto_committed`
+  // flag. Surface that as the headline so the user sees "saved" / "committed"
+  // before any list / lifecycle / fields fallback — task #4 result.
+  if (output.auto_saved === true) {
+    const next =
+      typeof output.next_prompt === "string" ? output.next_prompt : "ready for the next step";
+    return `saved · ${next}`;
+  }
+  if (output.auto_committed === true) {
+    const next =
+      typeof output.next_prompt === "string" ? output.next_prompt : "ready for the next step";
+    return `committed · ${next}`;
+  }
   const candidateKeys = [
     "workflows",
     "connectors",
@@ -145,18 +247,50 @@ function describeToolOutput(output: Record<string, unknown>): string {
     const parts: string[] = [`status=${status}`];
     if (requiresRepair) parts.push("requires_repair");
     if (warningsCount > 0) parts.push(`${warningsCount} warning${warningsCount === 1 ? "" : "s"}`);
+    if (typeof output.warning_summary === "string") {
+      parts.push(String(output.warning_summary).slice(0, 200));
+    }
     if (Array.isArray(wfOutput)) parts.push(`output: ${wfOutput.length} rows`);
     else if (wfOutput && typeof wfOutput === "object") {
-      const keys = Object.keys(wfOutput as Record<string, unknown>);
-      parts.push(`output keys: ${keys.slice(0, 5).join(", ")}`);
+      const keys = Object.keys(wfOutput as Record<string, unknown>).filter(
+        (k) => !k.startsWith("_"),
+      );
+      parts.push(keys.length > 0 ? `output: ${keys.slice(0, 5).join(", ")}` : "output: structured");
     } else if (wfOutput === null || wfOutput === undefined) parts.push("no output");
     return parts.join(" · ");
   }
+  // Lifecycle envelope (build*Payload from authoring-contract.ts) —
+  // covers connector + workflow draft tools. Pre-fix this fell through
+  // to the generic key-enumeration line and surfaced as
+  // "fields: mode, stage, lifecycle_state, resource_kind, resource_id"
+  // (session 0ac7593c). Translate to a humane one-liner anchored on
+  // the lifecycle_state and the next recommended action.
+  if (looksLikeLifecyclePayload(output)) {
+    const kind = (output.resource_kind as string | null) ?? "draft";
+    const id = (output.resource_id as string | null) ?? "draft";
+    const state = humaniseLifecycleState(output.lifecycle_state as string);
+    const nextActions = Array.isArray(output.next_best_actions)
+      ? (output.next_best_actions as unknown[]).filter((v): v is string => typeof v === "string")
+      : [];
+    const nextPrompt =
+      typeof output.next_prompt === "string" && output.next_prompt.length > 0
+        ? output.next_prompt
+        : null;
+    const nextHint = nextPrompt ?? nextActions[0] ?? null;
+    return nextHint ? `${kind} ${id}: ${state} · next: ${nextHint}` : `${kind} ${id}: ${state}`;
+  }
   if (output._truncated && typeof output._note === "string") return String(output._note);
+  if (typeof output._truncation_note === "string") return String(output._truncation_note);
   if (typeof output.error === "string") return `error: ${output.error.slice(0, 160)}`;
   if (typeof output.error_code === "string") return `error_code: ${String(output.error_code)}`;
   if (typeof output.reason === "string") return `note: ${String(output.reason)}`;
   if (typeof output.message === "string") return String(output.message).slice(0, 160);
+  // Last resort — enumerate domain keys but defensively strip any
+  // underscore-prefixed envelope keys so internal markers
+  // (`_truncated`, `_truncation_note`, future additions) never reach
+  // the user. Lifecycle envelopes are handled above; this fallback is
+  // only hit for tools whose output is neither a list, a status payload,
+  // nor a lifecycle envelope (e.g. `whoami`, ad-hoc admin tools).
   const keys = Object.keys(output).filter((k) => !k.startsWith("_"));
   return keys.length > 0 ? `fields: ${keys.slice(0, 5).join(", ")}` : "no structured output";
 }

@@ -85,7 +85,15 @@ export async function loadInteractionLog(
         decided_at: r.decided_at,
       };
     });
-  } catch {
+  } catch (err) {
+    logger.warn({
+      module: "llm",
+      action: "llm.context.interaction_log_skipped",
+      msg: "interaction log query failed; prompt assembled without it",
+      tenant_id,
+      conversation_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return [];
   }
 }
@@ -150,7 +158,15 @@ export async function loadLatestPreview(
       });
     }
     return out;
-  } catch {
+  } catch (err) {
+    logger.warn({
+      module: "llm",
+      action: "llm.context.latest_preview_skipped",
+      msg: "latest-preview query failed; prompt assembled without it",
+      tenant_id,
+      conversation_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return [];
   }
 }

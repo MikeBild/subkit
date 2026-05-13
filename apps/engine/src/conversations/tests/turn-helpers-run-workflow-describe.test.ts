@@ -8,7 +8,7 @@
 // + output shape.
 
 import { describe, expect, test } from "bun:test";
-import { synthesizeFallbackMessage } from "../turn-helpers.ts";
+import { classifyFallbackSynthesis, synthesizeFallbackMessage } from "../turn-helpers.ts";
 import type { TurnEvent } from "../types.ts";
 
 function toolResultEvent(tool: string, output: Record<string, unknown>): TurnEvent {
@@ -77,6 +77,83 @@ describe("synthesizeFallbackMessage · run_workflow describe (bug E / 86de186b)"
     ];
     const msg = synthesizeFallbackMessage({ events, loopWarnings: 1 });
     expect(msg).toMatch(/fields: foo, bar/);
+  });
+
+  test("lifecycle envelope (probe success) renders humanised line, not envelope keys (session 0ac7593c)", () => {
+    // Reproduces the "what's now? nothing happens!" symptom: the
+    // probe_connector_draft success envelope used to fall through to
+    // `fields: mode, stage, lifecycle_state, resource_kind, resource_id`,
+    // leaving the user with no idea what to do next. Post-fix the
+    // lifecycle payload renders as a humane summary anchored on the
+    // resource and the recommended next action.
+    const events: TurnEvent[] = [
+      toolResultEvent("probe_connector_draft", {
+        mode: "connector",
+        stage: "probed",
+        lifecycle_state: "connector_probed",
+        resource_kind: "connector",
+        resource_id: null,
+        latest_probe: { ok: true, status_code: 200 },
+        next_best_actions: ["save_connector_draft"],
+        next_prompt: "Saving si-emobility-jira connector",
+      }),
+    ];
+    const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
+    expect(msg).toBeTruthy();
+    expect(msg).not.toMatch(/fields: mode, stage/);
+    // Never-silent guard surfaces `next_prompt` directly as the
+    // assistant text when the model emits nothing — that's the
+    // actionable one-liner the user actually needs.
+    expect(msg).toBe("Saving si-emobility-jira connector");
+  });
+
+  test("lifecycle envelope (workflow committed) renders verb + next action", () => {
+    const events: TurnEvent[] = [
+      toolResultEvent("save_workflow_draft", {
+        mode: "workflow",
+        stage: "persisted",
+        lifecycle_state: "workflow_persisted",
+        resource_kind: "workflow",
+        resource_id: "wf-jira-tickets",
+        next_best_actions: ["run_workflow"],
+      }),
+    ];
+    const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
+    expect(msg).toContain("workflow wf-jira-tickets: committed");
+    expect(msg).toContain("next: run_workflow");
+  });
+
+  test("classifyFallbackSynthesis tags the synthesis source for ops triage", () => {
+    // next_prompt_from_tool — benign, expected continuity hint.
+    const withNextPrompt: TurnEvent[] = [
+      toolResultEvent("any_tool", {
+        ok: true,
+        next_prompt: "Run the workflow",
+      }),
+    ];
+    expect(classifyFallbackSynthesis({ events: withNextPrompt, loopWarnings: 0 })).toEqual({
+      text: "Run the workflow",
+      reason: "next_prompt_from_tool",
+    });
+    // tool_results_summary — model went silent after a tool fired but
+    // the tool had no next_prompt; worth growing a hint.
+    const summaryShape: TurnEvent[] = [
+      toolResultEvent("any_tool", {
+        ok: true,
+        status: "succeeded",
+        output: [{ id: 1 }, { id: 2 }],
+      }),
+    ];
+    expect(classifyFallbackSynthesis({ events: summaryShape, loopWarnings: 0 })?.reason).toBe(
+      "tool_results_summary",
+    );
+    // loop_warnings_no_signal — emergency apology line, no tool ran
+    // but the loop guard still tripped.
+    expect(classifyFallbackSynthesis({ events: [], loopWarnings: 2 })?.reason).toBe(
+      "loop_warnings_no_signal",
+    );
+    // No signal at all → null (caller should leave the turn silent).
+    expect(classifyFallbackSynthesis({ events: [], loopWarnings: 0 })).toBeNull();
   });
 
   test("succeeded run_workflow renders 'output: N rows' when output is an array", () => {

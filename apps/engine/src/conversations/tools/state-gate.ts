@@ -13,6 +13,24 @@
 // All helpers return `null` when the precondition is met (caller
 // proceeds normally) or a `ToolResult` with `ok: false` and a
 // `tool_unavailable_in_state` error code otherwise.
+//
+// Auto-persist contract (session 0ac7593c follow-up):
+//   - A green `probe_connector_draft` is consent to persist. The probe
+//     tool calls `saveConnectorAtomic` inline with
+//     `reason: "auto_persist_on_green_probe"`; the probe envelope
+//     returns the saved-connector shape directly. There is no
+//     intermediate `connector_probed` lifecycle visible to the user.
+//   - A clean `dry_run_workflow` (status=succeeded, no requires_repair)
+//     is consent to commit. The dry-run tool calls
+//     `commitWorkflowAtomic({ skipPriorApprovalCheck: true })` inline
+//     with `reason: "auto_persist_on_green_dry_run"`; the envelope
+//     returns the committed-workflow shape directly. There is no
+//     intermediate `workflow_previewed` lifecycle visible to the user.
+//   - Anything that is not a green path still surfaces a structured
+//     error envelope with `next_best_actions` so the LLM picks the
+//     typed recovery move.
+//   - This is the only flow; there is no opt-out and no env-var
+//     escape hatch. Tests assert against this contract directly.
 
 import type { AuthoringStage, AuthoringSummary, DraftDocument } from "../types.ts";
 import type { ToolResult } from "./index.ts";

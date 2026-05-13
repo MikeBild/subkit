@@ -7,19 +7,30 @@
 // under an in-memory ref so a follow-up `get_raw_result` tool call can
 // retrieve it on demand.
 //
+// Each truncation event emits a structured `truncate.applied` log line
+// (level: debug) so operators can see when the budget bites and tune
+// MAX_JSON_CHARS / MAX_STEP_PREVIEW_CHARS without instrumenting every
+// callsite manually.
+//
 // Two-pass shrink:
 //   1. `truncateNode` clips top-level arrays to `MAX_ARRAY_LEN` and
 //      nested arrays (depth ≥ 2) to `MAX_NESTED_ARRAY_LEN`.
 //   2. If the result is still over `MAX_JSON_CHARS`, the heaviest
-//      string/object branches are replaced with
-//      `{ __omitted_chars: <n>, __raw_ref: <ref> }` markers in
-//      descending-size order until the total fits.
+//      string/object branches are replaced with `null` and a
+//      sibling-tracked omission count is rolled up into a single
+//      top-level `_truncation_note` string — never `__omitted_chars`
+//      or `__raw_ref` keys, which previously leaked all the way to the
+//      end-user output. The full payload is still recoverable via the
+//      `raw_ref` returned alongside the truncated data and the
+//      `get_raw_result` tool.
 //
 // The previous implementation only used pass 1; deeply nested payloads
 // (workflow steps carrying snapshots) blew past the cap by 50–100×
 // because the per-element budget was unbounded. The bug surfaced as
 // "tool output truncated from 1225917 → 482877 chars" — successful
 // reduction, still way too large for the prompt budget.
+
+import { logger } from "../../logging/logger.ts";
 
 const MAX_JSON_CHARS = 8000;
 const MAX_ARRAY_LEN = 20;
@@ -66,7 +77,14 @@ function truncateNode(value: unknown, arrayDepth = 0): unknown {
     const cap = arrayDepth === 0 ? MAX_ARRAY_LEN : MAX_NESTED_ARRAY_LEN;
     const { arr, dropped } = truncateArray(value, cap);
     const mapped = arr.map((v) => truncateNode(v, arrayDepth + 1));
-    if (dropped > 0) mapped.push({ __truncated: `+${dropped} more items` });
+    // Use a single-leading-underscore key so the renderer's `_`/`__`
+    // filter strips it before it reaches the user. Pre-fix this was
+    // `__truncated` (double underscore, same prefix as the omitted-
+    // chars marker) and surfaced as a literal `__truncated: "+5 more
+    // items"` in fallback turns. Single-`_` keeps the marker
+    // identifiable for tools that re-walk the structure but ensures it
+    // never reaches the end-user view.
+    if (dropped > 0) mapped.push({ _truncated: `+${dropped} more items` });
     return mapped;
   }
   const out: Record<string, unknown> = {};
@@ -121,17 +139,34 @@ function collectHeaviestBranches(root: unknown): BranchHandle[] {
   return handles;
 }
 
-function shrinkToCap(data: unknown, refId: string, cap: number): unknown {
+interface ShrinkResult {
+  data: unknown;
+  branchesOmitted: number;
+  charsOmitted: number;
+}
+
+function shrinkToCap(data: unknown, cap: number): ShrinkResult {
   let current = approxJsonLength(data);
-  if (current <= cap) return data;
+  if (current <= cap) return { data, branchesOmitted: 0, charsOmitted: 0 };
   const handles = collectHeaviestBranches(data);
+  let branchesOmitted = 0;
+  let charsOmitted = 0;
   for (const handle of handles) {
     if (current <= cap) break;
     if (handle.size < 64) continue; // skip tiny branches; not worth it
-    handle.replace({ __omitted_chars: handle.size, __raw_ref: refId });
+    // Replace the heavy branch with `null` rather than an inline marker
+    // object. Pre-fix the marker shape `{__omitted_chars, __raw_ref}`
+    // leaked into the LLM context and the fallback renderer alike, so
+    // the user saw raw envelope keys in their workflow output (session
+    // 0ac7593c). Branch-level provenance is rolled up into a single
+    // top-level `_truncation_note` and the full payload remains
+    // recoverable via the outer `raw_ref` returned by truncateForLlm.
+    handle.replace(null);
+    branchesOmitted += 1;
+    charsOmitted += handle.size;
     current = approxJsonLength(data);
   }
-  return data;
+  return { data, branchesOmitted, charsOmitted };
 }
 
 /**
@@ -157,8 +192,35 @@ export function truncateForLlm(output: unknown, cap: number = MAX_JSON_CHARS): T
     if (firstKey !== undefined) rawStore.delete(firstKey);
   }
   const pass1 = truncateNode(output);
-  const shortened = shrinkToCap(pass1, refId, cap);
+  const { data: shortened, branchesOmitted, charsOmitted } = shrinkToCap(pass1, cap);
   const shortenedLen = approxJsonLength(shortened);
+  // Roll the per-branch omission accounting into a single top-level
+  // `_truncation_note` on the visible payload when the result is an
+  // object. The LLM (and the fallback renderer) sees one underscore-
+  // prefixed string instead of N inline `{__omitted_chars, __raw_ref}`
+  // marker objects. The `_` prefix is filtered by describeToolOutput
+  // so it never reaches the end user, and the full payload remains
+  // available via `raw_ref`.
+  if (
+    branchesOmitted > 0 &&
+    shortened !== null &&
+    typeof shortened === "object" &&
+    !Array.isArray(shortened)
+  ) {
+    (shortened as Record<string, unknown>)._truncation_note =
+      `${charsOmitted} chars in ${branchesOmitted} branch(es) omitted; full payload available via get_raw_result(ref="${refId}")`;
+  }
+  logger.debug({
+    module: "conversation_tool",
+    action: "truncate.applied",
+    msg: "tool output truncated for LLM context",
+    cap,
+    original_chars: originalLen,
+    shortened_chars: shortenedLen,
+    branches_omitted: branchesOmitted,
+    chars_omitted_in_branches: charsOmitted,
+    raw_ref: refId,
+  });
   return {
     truncated: true,
     data: shortened,

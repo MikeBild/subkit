@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 3
+version: 4
 ---
 
 # Authoring Workflows In A Conversation
@@ -33,17 +33,22 @@ produces drafts that fail at runtime or in review.
 5. **`propose_step`** (incremental) or **`build_workflow`** (one-shot) — emit step
    drafts. Each `propose_step` returns a dry-run result you can inspect; if a
    step's envelope doesn't match what downstream expects, edit before moving on.
-6. **`ask_user_confirm` with `commit_intent`** — once all steps run green and
-   the outputTransform shape matches the intent, surface a single
-   `ask_user_confirm` carrying
-   `commit_intent: { kind: "save_workflow_draft", payload: { … }, description: "Save this workflow." }`.
-   The harness atomically persists on confirm and injects a synthetic
-   `save_workflow_draft` tool-result tagged `source: "harness_auto_persist"`. **Do
-   NOT call `save_workflow_draft` yourself afterward** — the underlying write has
-   already happened, and a second call only earns an `already_persisted: true`
-   round-trip. Reserve direct `save_workflow_draft` invocations for the documented
-   recovery paths (revert + re-apply, slug-conflict adoption, force-commit
-   after a failed dry-run).
+6. **`dry_run_workflow` (auto-commits on green)** — once all steps run green and
+   the outputTransform shape matches the intent, call `dry_run_workflow`. A
+   clean preview (status `succeeded`, no `requires_repair` warnings) is the
+   workflow's persistence trigger: `commitWorkflowAtomic` runs inline with
+   `reason: "auto_persist_on_green_dry_run"` and the same envelope returns the
+   committed shape (`auto_committed: true`, `workflow_id`, `version`,
+   `step_trace`). **Do NOT call `save_workflow_draft` yourself afterward** —
+   the underlying write has already happened, and a second call only earns an
+   `already_persisted: true` round-trip. Reserve direct `save_workflow_draft`
+   invocations for the documented recovery paths (revert + re-apply,
+   slug-conflict adoption, force-commit after a failed dry-run).
+
+   The legacy `ask_user_confirm` + `commit_intent: save_workflow_draft` carrier
+   is no longer needed for the happy path. Use it only when the operator
+   explicitly opts to commit despite a failed dry-run (force-commit) — see
+   "Force-commit override" below.
 
 For request steps, use the current flattened shape: `connector_id`, `method`,
 `path`, `query`, `headers`, `body`, and `graphql` live directly on the step.
@@ -60,8 +65,7 @@ chat; the same six tools repair in place:
 2. **`diagnose_latest_execution`** — pulls causal trace; do not guess from the bare error.
 3. **Edit the offending step** — `update_param` for a single field, `propose_step` to replace a step body, `connect_steps` to retarget. For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform.
 4. **`validate_draft`** — re-runs structural checks.
-5. **`dry_run_workflow`** when the change is non-trivial; otherwise the auto-persist path accepts the update directly.
-6. **`ask_user_confirm` with `commit_intent: { kind: "save_workflow_draft", payload: { target_workflow_id?: <id> } }`** — harness persists on confirm. Do NOT chain a separate `save_workflow_draft` after.
+5. **`dry_run_workflow`** — green dry-run auto-commits the patched workflow inline (`auto_committed: true`, audit reason `auto_persist_on_green_dry_run`). No separate confirmation step. Skip dry-run only for trivial parameter tweaks where the auto-persist on update suffices; any structural change must run dry-run first.
 
 Do not instruct the user to run `sk workflow commit` (no CLI fallback exists). Do not re-run the failed workflow before re-validating (overwrites the diagnosis). Do not skip failing steps with `if: false` unless the user asks for that behaviour. After three failed repair iterations on the same error, stop and ask the user.
 
@@ -574,24 +578,22 @@ Prefer the stdlib over raw comparisons so hook + transform code stays uniform.
 
 - **Skipping `probe_connector`.** You'll spend five turns debugging a credential
   that never existed. Probe first, every time.
-- **Committing before every step has a green dry-run.** The
-  `commit_intent` auto-persist path doesn't run the steps. Bad drafts commit
-  cleanly and then fail at first invocation.
-- **Calling `save_workflow_draft` directly instead of via `ask_user_confirm` +
-  `commit_intent`.** Direct `save_workflow_draft` calls are policy-gated and the
-  inner prior-approval check rejects with `no_prior_approval` until a
-  resolved `ask_user_confirm{kind:"save_workflow_draft", confirmed:true}` exists.
-  Always go through `ask_user_confirm` with a `commit_intent` carrier;
-  reserve direct `save_workflow_draft` for the recovery cases (revert + re-apply,
-  slug-conflict adoption, force-commit after a failed dry-run).
+- **Skipping `dry_run_workflow` and reaching for `save_workflow_draft`
+  directly.** Direct `save_workflow_draft` calls are policy-gated and the inner
+  prior-approval check rejects with `no_prior_approval`. The persistence
+  contract is: green dry-run = inline auto-commit. If the dry-run is failing,
+  the workflow needs a fix, not a force-commit.
+- **Calling `save_workflow_draft` after a green `dry_run_workflow`.** The
+  green-dry-run envelope already returns `auto_committed: true`; a subsequent
+  `save_workflow_draft` only earns an `already_persisted: true` round-trip.
+  Read `auto_committed` and report the saved outcome to the user.
 - **Force-committing without surfacing the override to the operator.** If the
   operator explicitly chooses to commit despite a failed `dry_run_workflow`,
-  emit `ask_user_confirm` with
-  `commit_intent.payload.force_commit: true`. The harness prepends an
-  override warning to the summary and a single confirmation suffices — do
-  NOT retry through a second `ask_user_confirm` after a "preview_failed"
-  result. The same pattern applies to `save_connector_draft` with
-  `force_save: true` after a failed probe.
+  emit `ask_user_confirm` with `commit_intent.payload.force_commit: true`. The
+  harness prepends an override warning to the summary and a single
+  confirmation suffices — do NOT retry through a second `ask_user_confirm`
+  after a "preview_failed" result. The same pattern applies to
+  `save_connector_draft` with `force_save: true` after a failed probe.
 - **Confusing `output_transform` with `data_selector`.** `output_transform` runs
   once, at the end. `data_selector` runs per step. Using `output_transform` to
   trim an early step wastes scope space for the whole run.

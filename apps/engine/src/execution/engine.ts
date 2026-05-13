@@ -193,12 +193,24 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   let executionOrder: ReadonlyArray<string>;
   try {
     executionOrder = topoSort(dag);
-  } catch {
+  } catch (err) {
     // Should not be reachable — pre-flight cycle checks gate every
     // tool that produces a WorkflowDef. If a cycle slipped through,
     // fall back to declaration order so the run can still emit step
     // summaries (and the existing unresolved-identifier warnings will
-    // surface the bug downstream).
+    // surface the bug downstream). Log loudly so the contract violation
+    // is visible in operator triage instead of disguising itself as a
+    // generic step-resolution warning further down the run.
+    logger.error({
+      module: "execution",
+      action: "engine.topo_sort_fallback",
+      msg: "topoSort failed at run time despite pre-flight cycle gate — falling back to declaration order",
+      tenant_id,
+      execution_id,
+      workflow_name: def.name,
+      step_count: def.steps.length,
+      error: err instanceof Error ? err.message : String(err),
+    });
     executionOrder = def.steps.map((s) => s.id);
   }
 

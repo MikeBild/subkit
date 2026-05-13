@@ -241,8 +241,16 @@ function startProgressBridge(
         }
         seen = rows.length;
       }
-    } catch {
-      // swallow — the bridge is best-effort.
+    } catch (err) {
+      // Bridge is best-effort, but log so a recurring failure is
+      // visible. A bursty progress-notifier outage looks otherwise
+      // identical to "no work to report" from the operator's view.
+      logger.debug({
+        module: "mcp",
+        action: "tool_progress.poll_failed",
+        msg: "MCP tool progress poll failed; bridge will retry on next tick",
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
     if (!stopped) {
       setTimeout(() => {

@@ -1,4 +1,6 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { connectors, credentials } from "../../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import { createConversation } from "../../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
@@ -37,6 +39,19 @@ beforeAll(async () => {
 afterAll(async () => {
   server.stop(true);
   await ctx.cleanup();
+});
+
+// Clean up auto-saved connectors between tests. With the
+// auto-persist-on-green-probe contract, every successful probe writes
+// a connector row to the DB. Two tests using the same local base_url
+// otherwise trip `findReusableConnectorByUrl` in
+// `start_connector_from_description`, which short-circuits with the
+// prior test's saved row and never updates the draft. Cleaning the
+// connectors + credentials tables between tests keeps each test
+// independent.
+afterEach(async () => {
+  await ctx.testDb.db.delete(credentials).where(eq(credentials.tenant_id, ctx.tenant_id));
+  await ctx.testDb.db.delete(connectors).where(eq(connectors.tenant_id, ctx.tenant_id));
 });
 
 async function createToolCtx() {
@@ -325,6 +340,11 @@ describe("connector draft tools", () => {
       base_url: baseUrl,
       auth_type: "none",
     });
+    // Inspect + validate first — the auto-persist contract requires
+    // a fresh `connector_inspected` checkpoint before the probe's
+    // inline save can run.
+    await inspectConnectorDraftTool.execute(toolCtx.base, {});
+    await validateConnectorDraftTool.execute(toolCtx.base, {});
     const probe = await probeConnectorDraftTool.execute(toolCtx.base, {
       method: "GET",
       path: "/health",
@@ -357,10 +377,16 @@ describe("connector draft tools", () => {
     expect(latestProbe.summary).toContain("timed out");
   });
 
-  test("save_connector_draft blocks without a successful probe, then persists after probe", async () => {
+  test("green probe auto-saves the connector (session 0ac7593c regression — 'what's now? nothing happens')", async () => {
+    // After a green probe, the user should never have to type "save"
+    // explicitly. The probe tool fires saveConnectorAtomic inline with
+    // `reason: "auto_persist_on_green_probe"` and returns the saved-
+    // connector envelope directly. Pre-fix the probe ended the turn
+    // with a `connector_probed` lifecycle and the user typed "what's
+    // now? nothing happens!" before manually approving save.
     const toolCtx = await createToolCtx();
     await startConnectorFromDescriptionTool.execute(toolCtx.base, {
-      name: "Force Save API",
+      name: "Auto-save API",
       driver: "http",
       environment: "dev",
       base_url: baseUrl,
@@ -368,16 +394,54 @@ describe("connector draft tools", () => {
     });
     await inspectConnectorDraftTool.execute(toolCtx.base, {});
     await validateConnectorDraftTool.execute(toolCtx.base, {});
-    const blocked = await saveConnectorDraftTool.execute(toolCtx.base, {});
-    expect(blocked.ok).toBe(false);
-    expect((blocked.data as { error_code: string }).error_code).toBe("connector_not_ready");
+    const probe = await probeConnectorDraftTool.execute(toolCtx.base, {
+      method: "GET",
+      path: "/health",
+    });
+    expect(probe.ok).toBe(true);
+    const data = probe.data as Record<string, unknown>;
+    expect(data.auto_saved).toBe(true);
+    expect(data.auto_save_reason).toBe("auto_persist_on_green_probe");
+    expect(typeof data.next_prompt).toBe("string");
+    // No leaked envelope markers in the visible payload.
+    const serialised = JSON.stringify(data);
+    expect(serialised).not.toContain("__omitted_chars");
+    expect(serialised).not.toContain("__raw_ref");
+  });
 
-    await probeConnectorDraftTool.execute(toolCtx.base, { method: "GET", path: "/health" });
-    const saved = await saveConnectorDraftTool.execute(toolCtx.base, {});
-    expect(saved.ok).toBe(true);
-    const connector = (saved.data as { connector: { id: string; display_name: string } }).connector;
-    expect(connector.display_name).toBe("Force Save API");
-    expect(connector.id).toBeTruthy();
+  test("save_connector_draft is idempotent after probe auto-saved (re-issue path)", async () => {
+    // Post auto-persist contract: a green probe persists the
+    // connector immediately. Calling save_connector_draft afterwards
+    // hits the idempotent short-circuit and returns the existing
+    // connector without writing again. The diagnostic re-issue tool
+    // is still exposed for credential rotation + force-save scenarios
+    // (covered by save-connector-draft-reissue.test.ts).
+    const toolCtx = await createToolCtx();
+    await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "Re-issue API",
+      driver: "http",
+      environment: "dev",
+      base_url: baseUrl,
+      auth_type: "none",
+    });
+    await inspectConnectorDraftTool.execute(toolCtx.base, {});
+    await validateConnectorDraftTool.execute(toolCtx.base, {});
+    const probe = await probeConnectorDraftTool.execute(toolCtx.base, {
+      method: "GET",
+      path: "/health",
+    });
+    expect(probe.ok).toBe(true);
+    expect((probe.data as { auto_saved?: boolean }).auto_saved).toBe(true);
+
+    const reissued = await saveConnectorDraftTool.execute(toolCtx.base, {});
+    expect(reissued.ok).toBe(true);
+    const data = reissued.data as {
+      already_persisted?: boolean;
+      connector?: { id: string; display_name: string };
+    };
+    expect(data.already_persisted).toBe(true);
+    expect(data.connector?.display_name).toBe("Re-issue API");
+    expect(data.connector?.id).toBeTruthy();
   });
 
   test("update_connector_draft rejects config.oauth mutation with auth_mutation_not_allowed", async () => {

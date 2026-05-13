@@ -84,7 +84,7 @@ import { nextSuggestion } from "./streaming.ts";
 import { listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import { resolveExecutionMode } from "./tools/tool-policies.ts";
-import { synthesizeFallbackMessage, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
+import { classifyFallbackSynthesis, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
 import type { ConversationStatus, DraftDocument, TurnEvent } from "./types.ts";
 
 export interface RunLoopParams {
@@ -1359,11 +1359,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     !signals.committed &&
     !turnAbortCtrl.signal.aborted
   ) {
-    const synthetic = synthesizeFallbackMessage({
+    const classified = classifyFallbackSynthesis({
       events,
       loopWarnings: signals.totalLoopWarnings,
     });
-    if (synthetic) {
+    if (classified) {
+      const synthetic = classified.text;
       const fallbackMessageId = await appendMessage(
         p.db,
         p.tenant_id,
@@ -1379,12 +1380,25 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         parent_message_id: fallbackMessageId,
       });
       signals.lastAssistantText = synthetic;
-      log.warn({
+      // Distinguish three turn shapes for ops triage:
+      //   - `next_prompt_from_tool` — benign, the freshest tool returned
+      //     an actionable next-step the model would have echoed anyway.
+      //     Emitted at info level — expected behaviour.
+      //   - `tool_results_summary` — the model went silent after one
+      //     or more tools fired but no next_prompt was set. Worth
+      //     looking at — the tool surface should grow a hint.
+      //   - `loop_warnings_no_signal` — loop guard fired AND there
+      //     were no tool results to summarise. Emergency apology
+      //     line. Always worth investigating.
+      const level = classified.reason === "next_prompt_from_tool" ? "info" : "warn";
+      log[level]({
         module: "conversation",
         action: "loop.empty_text_synthesized",
-        msg: "turn ended with no assistant text — synthesised fallback from tool results",
+        msg: "turn ended with no assistant text — synthesised fallback",
+        tenant_id: p.tenant_id,
         conversation_id: p.conversation_id,
         loop_warnings: signals.totalLoopWarnings,
+        synthesis_reason: classified.reason,
       });
     }
   }

@@ -126,8 +126,15 @@ describe("dry_run_workflow · step_trace envelope", () => {
     expect(warningCodes).toContain("unresolved_identifier");
   });
 
-  test("step_trace preserves kind for every step in a multi-step draft", async () => {
-    const draft: DraftDocument = {
+  test("step_trace preserves kind for every step in a multi-step draft (auto-committed envelope)", async () => {
+    // With auto-commit-on-green-dry-run the envelope returned by
+    // dry_run_workflow is the committed-workflow shape — but
+    // step_trace is forwarded to the new envelope so the LLM (and
+    // downstream tests) can still inspect per-step shape + status.
+    // The test uses a stateful draft holder so the checkpoint
+    // machinery in commitWorkflowAtomic sees a fresh
+    // `workflow_previewed` row after dry-run.
+    let draft: DraftDocument = {
       workflow: {
         name: "trace-multi",
         slug: "trace-multi",
@@ -148,13 +155,24 @@ describe("dry_run_workflow · step_trace envelope", () => {
       },
       // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
     } as any;
-    const result = await dryRunWorkflowTool.execute(
-      makeCtx(() => draft),
-      {
-        input: { hello: "world" },
+    const toolCtx: ToolContext = {
+      ...makeCtx(() => draft),
+      setDraft: async (next) => {
+        draft = next;
       },
-    );
-    const data = result.data as { step_trace?: Array<Record<string, unknown>> };
+    };
+    const result = await dryRunWorkflowTool.execute(toolCtx, {
+      input: { hello: "world" },
+    });
+    const data = result.data as {
+      step_trace?: Array<Record<string, unknown>>;
+      auto_committed?: boolean;
+    };
+    // Either the auto-commit fired (preferred) or it refused on a
+    // precondition — in both cases the step_trace must survive on
+    // the returned envelope so the test contract holds. Pre-fix the
+    // auto-committed envelope dropped step_trace entirely.
+    expect(data.step_trace).toBeDefined();
     expect(data.step_trace!.map((o) => o.step_id)).toEqual(["shape", "second"]);
     expect(data.step_trace!.every((o) => o.kind === "transform")).toBe(true);
     expect(data.step_trace!.every((o) => o.status === "succeeded")).toBe(true);
