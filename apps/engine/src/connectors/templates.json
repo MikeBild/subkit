@@ -18505,5 +18505,230 @@
     "aws_service": null,
     "aws_region": null,
     "verified_at": null
+  },
+  {
+    "version": 1,
+    "slug": "web-scraper",
+    "name": "Web Scraper",
+    "driver": "http",
+    "base_url": null,
+    "auth_type": "none",
+    "oauth": null,
+    "default_skill": "web-scraper-basics",
+    "ingestion_source": null,
+    "ingestion_url": null,
+    "icon": "web-scraper.svg",
+    "description": "Fetch public web pages and convert to markdown / extract structured data. Default-on robots.txt enforcement and SSRF guards. No JavaScript rendering, no CSS-selector engineering.",
+    "category": "productivity",
+    "tags": ["scrape", "html", "markdown", "readability", "sitemap", "structured-data"],
+    "setup_instructions": "Zero config. The connector ships with sensible defaults (robots.txt respected, 1000-page crawl cap, 100K-char extract cap, friendly User-Agent). Tunables live under sk settings set connectors.web_scraper.*",
+    "auth_options": [],
+    "url_pattern": null,
+    "keywords": ["scrape", "fetch", "crawl", "markdown", "readability", "sitemap", "robots"],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": {
+        "requests_per_second": 2,
+        "burst_size": 4,
+        "recommended_backoff_ms": 500
+      }
+    },
+    "recipes": [
+      {
+        "slug": "fetch-url-as-markdown",
+        "title": "Fetch URL as markdown",
+        "description": "GET a single public URL and convert its HTML body to markdown. Returns { markdown, bytes, url, truncated, stripped_elements }.",
+        "intent_keywords": ["fetch url", "url to markdown", "scrape page", "html to markdown"],
+        "derived_from_skill": "web-scraper-basics",
+        "category": "productivity",
+        "tags": ["scrape", "markdown"],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 1,
+        "prerequisites": [],
+        "sample_input": { "url": "https://example.com" },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "web-scraper-fetch-url-as-markdown",
+          "description": "Fetch a URL and return its body as markdown.",
+          "input_schema": {
+            "type": "object",
+            "required": ["url"],
+            "properties": { "url": { "type": "string" } }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "fetch",
+              "method": "GET",
+              "url": "${input.url}",
+              "expected_statuses": [200]
+            },
+            {
+              "kind": "transform",
+              "id": "to_markdown",
+              "language": "html-to-markdown",
+              "data_selector": "{ \"html\": fetch.data, \"url\": fetch.url }"
+            }
+          ],
+          "output_transform": "to_markdown"
+        }
+      },
+      {
+        "slug": "extract-main-content",
+        "title": "Extract main article content",
+        "description": "GET a URL, run Mozilla Readability to isolate the article, then convert to markdown. Returns the markdown envelope plus title / byline / lang.",
+        "intent_keywords": ["main content", "readability", "article text", "extract article"],
+        "derived_from_skill": "web-scraper-basics",
+        "category": "productivity",
+        "tags": ["scrape", "readability", "markdown"],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 1,
+        "prerequisites": [],
+        "sample_input": { "url": "https://example.com/post" },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "web-scraper-extract-main-content",
+          "description": "Fetch a URL, extract the main article via Readability, return markdown + metadata.",
+          "input_schema": {
+            "type": "object",
+            "required": ["url"],
+            "properties": { "url": { "type": "string" } }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "fetch",
+              "method": "GET",
+              "url": "${input.url}",
+              "expected_statuses": [200]
+            },
+            {
+              "kind": "transform",
+              "id": "readable",
+              "language": "readability",
+              "data_selector": "{ \"html\": fetch.data, \"url\": fetch.url }"
+            },
+            {
+              "kind": "transform",
+              "id": "to_markdown",
+              "language": "html-to-markdown",
+              "data_selector": "readable"
+            },
+            {
+              "kind": "transform",
+              "id": "envelope",
+              "language": "jsonata",
+              "expression": "{ \"title\": readable.title, \"byline\": readable.byline, \"lang\": readable.lang, \"url\": readable.url, \"markdown\": to_markdown.markdown, \"bytes\": to_markdown.bytes, \"truncated\": to_markdown.truncated }"
+            }
+          ],
+          "output_transform": "envelope"
+        }
+      },
+      {
+        "slug": "crawl-sitemap-to-markdown",
+        "title": "Crawl sitemap → markdown pages",
+        "description": "Fetch a site's sitemap.xml, loop over its <loc> entries, extract the main article of each page via Readability, and return an array of { title, url, markdown } envelopes. The caller is responsible for ingesting the output into Knowledge Sources (POST /v1/knowledge-sources with each element as inline JSON).",
+        "intent_keywords": [
+          "crawl site",
+          "ingest documentation",
+          "knowledge from website",
+          "sitemap",
+          "crawl docs"
+        ],
+        "derived_from_skill": "web-scraper-basics",
+        "category": "productivity",
+        "tags": ["scrape", "crawl", "sitemap", "markdown"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 3,
+        "prerequisites": [
+          "Target site exposes a sitemap.xml with <urlset><url><loc>… entries",
+          "Respect for robots.txt is on by default — set connectors.web_scraper.runtime.respect_robots = false to bypass (NOT recommended)"
+        ],
+        "sample_input": { "sitemap_url": "https://example.com/sitemap.xml" },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "web-scraper-crawl-sitemap-to-markdown",
+          "description": "Walk a sitemap and return per-page markdown envelopes.",
+          "input_schema": {
+            "type": "object",
+            "required": ["sitemap_url"],
+            "properties": { "sitemap_url": { "type": "string" } }
+          },
+          "timeout_ms": 21600000,
+          "steps": [
+            {
+              "kind": "request",
+              "id": "fetch_sitemap",
+              "method": "GET",
+              "url": "${input.sitemap_url}",
+              "expected_statuses": [200]
+            },
+            {
+              "kind": "transform",
+              "id": "urls",
+              "language": "jsonata",
+              "expression": "fetch_sitemap.data.urlset.url.loc"
+            },
+            {
+              "kind": "loop",
+              "id": "pages",
+              "over": "urls",
+              "item_var": "page_url",
+              "body": ["fetch_page", "readable", "to_markdown", "envelope"]
+            },
+            {
+              "kind": "request",
+              "id": "fetch_page",
+              "method": "GET",
+              "url": "${item.page_url}",
+              "expected_statuses": [200]
+            },
+            {
+              "kind": "transform",
+              "id": "readable",
+              "language": "readability",
+              "data_selector": "{ \"html\": fetch_page.data, \"url\": fetch_page.url }"
+            },
+            {
+              "kind": "transform",
+              "id": "to_markdown",
+              "language": "html-to-markdown",
+              "data_selector": "readable"
+            },
+            {
+              "kind": "transform",
+              "id": "envelope",
+              "language": "jsonata",
+              "expression": "{ \"title\": readable.title, \"url\": readable.url, \"markdown\": to_markdown.markdown, \"bytes\": to_markdown.bytes }"
+            }
+          ],
+          "output_transform": "{ \"pages\": pages }"
+        }
+      }
+    ],
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null
   }
 ]

@@ -149,6 +149,28 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "notifications.push.thresholdSec": "Push threshold (seconds)",
   "notifications.push.quietHoursStart": "Quiet hours start (HH:MM)",
   "notifications.push.quietHoursEnd": "Quiet hours end (HH:MM)",
+
+  // ── Connectors / web-scraper (#144) ─────────────────────────────
+  "connectors.web_scraper.runtime.respect_robots": "Respect robots.txt",
+  "connectors.web_scraper.runtime.user_agent": "User-Agent header",
+  "connectors.web_scraper.runtime.max_pages": "Crawl page cap (per run)",
+  "connectors.web_scraper.runtime.max_chars_readability": "Readability input cap (chars)",
+  "connectors.web_scraper.runtime.max_chars_markdown": "Markdown output cap (chars)",
+  "connectors.web_scraper.runtime.default_wait_ms": "Default wait between pages (ms)",
+  "connectors.web_scraper.robots_cache.ttl_ms": "robots.txt cache TTL (ms)",
+  "connectors.web_scraper.robots_cache.max_entries": "robots.txt cache size",
+  "connectors.web_scraper.authoring.yellow_sitemap_threshold":
+    "Authoring Yellow threshold (sitemap entries)",
+  "connectors.web_scraper.authoring.red_sitemap_threshold":
+    "Authoring Red threshold (sitemap entries)",
+  "connectors.web_scraper.authoring.extract_too_large_yellow_pct":
+    "Authoring Yellow threshold (extract_too_large %)",
+  "connectors.web_scraper.optimization.scan_cron": "Optimization scan cron",
+  "connectors.web_scraper.optimization.sample_size": "Optimization sample size",
+  "connectors.web_scraper.optimization.trivial_markdown_bytes":
+    "Optimization trivial-markdown threshold (bytes)",
+  "connectors.web_scraper.optimization.min_runs_before_proposing":
+    "Optimization min runs before proposing",
 };
 
 /** Humanized section header used by the Config tab divider. Falls
@@ -171,6 +193,7 @@ export const SECTION_LABEL: Readonly<Record<string, string>> = {
   repl: "REPL session",
   ui: "REPL chrome",
   notifications: "Notifications",
+  connectors: "Connectors",
 };
 
 /** Last-resort label derivation when a leaf isn't in the table.

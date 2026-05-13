@@ -67,15 +67,30 @@ function pickStringCandidate(leaf: ConfigLeaf, tag: string): string {
   return tag;
 }
 
+function pickNumberCandidate(leaf: ConfigLeaf, salt: number): number {
+  // Walk a candidate ladder so leaves with high min() bounds (e.g.
+  // connectors.web_scraper.runtime.max_chars_*, robots_cache.ttl_ms)
+  // OR tight max() bounds (min_runs_before_proposing max 50) still
+  // resolve to a parsable value without baking path-name knowledge
+  // into the test. The first candidate is bounded to 1..50 so leaves
+  // with a low ceiling have at least one in-range entry.
+  const candidates = [Math.max(1, Math.min(50, salt + 1)), 100, 1_000, 60_000, 100_000, 3_600_000];
+  for (const c of candidates) {
+    if (leaf.schema.safeParse(c).success) return c;
+  }
+  return candidates[0]!;
+}
+
 function valueFor(leaf: ConfigLeaf, salt: number): unknown {
   const tag = `rt-${dottedPath(leaf).replaceAll(".", "_")}-${salt}`;
   switch (leaf.kind) {
     case "string":
       return pickStringCandidate(leaf, tag);
     case "number":
-      // Most number leaves are positive ints with sane caps. Use a
-      // small deterministic positive int.
-      return Math.max(1, Math.min(64, salt + 1));
+      // Most number leaves are positive ints with sane caps; some have
+      // higher min() bounds. The candidate walker picks the smallest
+      // value the leaf accepts.
+      return pickNumberCandidate(leaf, salt);
     case "boolean":
       return salt % 2 === 0;
     case "enum": {

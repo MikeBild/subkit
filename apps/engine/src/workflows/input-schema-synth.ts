@@ -98,6 +98,7 @@ function collectFromStep(step: StepDef, into: Set<string>): void {
   if (step.kind === "transform") {
     const language = step.language ?? "jsonata";
     if (language !== "jsonata") return;
+    if (!step.expression) return;
     const ast = extractAst(step.expression) as AstNode | null;
     if (ast) collectFromJsonataAst(ast, into);
     return;

@@ -1060,11 +1060,22 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     }
   } catch (err) {
     clearTimeout(timer);
+    // Web-scraper #144 — preserve the typed code for robots / egress
+    // failures emitted by buildRequestPlan. Otherwise these surface as
+    // a generic `request_setup_error` and the operator can't
+    // distinguish "robots.txt blocked you" from "the URL is malformed".
+    const typedCode =
+      err && typeof err === "object" && typeof (err as { code?: unknown }).code === "string"
+        ? (err as { code: string }).code === "robots_disallowed" ||
+          (err as { code: string }).code === "egress_blocked"
+          ? (err as { code: string }).code
+          : null
+        : null;
     return {
       status: "failed",
       retry_count: 0,
       duration_ms: Date.now() - start,
-      error: buildStepErrorDetail({ code: "request_setup_error", err }),
+      error: buildStepErrorDetail({ code: typedCode ?? "request_setup_error", err }),
     };
   }
 

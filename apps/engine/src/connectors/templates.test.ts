@@ -17,7 +17,7 @@ describe("connector-template catalog — structural", () => {
     expect(templates.length).toBeGreaterThanOrEqual(10);
   });
 
-  test("ships 101 templates", () => {
+  test("ships 102 templates", () => {
     // Bump this counter when adding/removing built-in templates. Pre-fix
     // we shipped four AppSync/AWS/GCP entries that the runtime
     // ConnectorTemplateSchema rejected at first-tool-invocation
@@ -27,8 +27,8 @@ describe("connector-template catalog — structural", () => {
     //
     // F6 (recipe sweep) added six net-new templates: aws-cloudwatch-logs,
     // aws-cloudwatch-metrics, aws-cloudwatch-alarms, aws-sts,
-    // aws-eventbridge, oauth2-generic. 95 → 101.
-    expect(templates.length).toBe(101);
+    // aws-eventbridge, oauth2-generic. 95 → 101. #144 adds web-scraper → 102.
+    expect(templates.length).toBe(102);
   });
 
   test("every slug matches the lowercase-kebab regex", () => {

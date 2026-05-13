@@ -24,6 +24,18 @@ export const patchStatusEnum = pgEnum("patch_status", [
   "superseded",
 ]);
 
+// Web-scraper #144 — performance optimisation candidates. Parallel to
+// patch_candidates (drift repair) but emitted by the post-execution
+// optimisation analyzer rather than the drift detector. Same status
+// lifecycle so operators can review / apply / reject through the same
+// chat surface. NOT auto-applied.
+export const optimizationCandidateKindEnum = pgEnum("optimization_candidate_kind", [
+  "narrow_path_prefix",
+  "raise_max_chars",
+  "increase_wait_ms",
+  "prefer_llms_txt",
+]);
+
 // ----- executions -----------------------------------------------------------
 //
 // definition-driven: an execution can originate from
@@ -159,5 +171,38 @@ export const patchCandidates = pgTable(
   },
   (t) => [
     index("patch_candidates_tenant_workflow_status_idx").on(t.tenant_id, t.workflow_id, t.status),
+  ],
+);
+
+// ----- optimization_candidates ---------------------------------------------
+// Web-scraper #144 performance lane. The diff column holds a structured
+// proposal the operator reviews + applies (or rejects) through the same
+// patch_candidates flow.
+
+export const optimizationCandidates = pgTable(
+  "optimization_candidates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    workflow_id: uuid("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    kind: optimizationCandidateKindEnum("kind").notNull(),
+    diff: jsonb("diff").notNull(),
+    classification: patchClassificationEnum("classification").notNull(),
+    status: patchStatusEnum("status").notNull(),
+    rationale: text("rationale").notNull(),
+    estimated_savings_pct: integer("estimated_savings_pct"),
+    outcome_window_ended_at: timestamp("outcome_window_ended_at", { withTimezone: true }),
+    outcome_successes_after: integer("outcome_successes_after").default(0).notNull(),
+    outcome_failures_after: integer("outcome_failures_after").default(0).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index("optimization_candidates_tenant_workflow_status_idx").on(
+      t.tenant_id,
+      t.workflow_id,
+      t.status,
+    ),
   ],
 );

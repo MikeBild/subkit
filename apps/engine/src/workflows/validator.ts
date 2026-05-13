@@ -192,7 +192,11 @@ export function validateWorkflowDef(
         });
       }
     }
-    if (step.kind === "transform" && (step.language ?? "jsonata") === "jsonata") {
+    if (
+      step.kind === "transform" &&
+      (step.language ?? "jsonata") === "jsonata" &&
+      step.expression !== undefined
+    ) {
       try {
         compileJsonata(step.expression);
       } catch (e) {

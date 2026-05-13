@@ -7,6 +7,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../knowledge/index.ts";
 import {
+  CreateKnowledgeSourceInlineSchema,
   CreateKnowledgeSourceSchema,
   KNOWLEDGE_SOURCE_MAX_BYTES,
   KnowledgeSourceSchema,
@@ -220,11 +221,64 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ deleted: true }, 200);
   });
 
-  // Upload route (non-OpenAPI, multipart/form-data)
+  // Upload route — accepts either multipart/form-data (legacy file
+  // upload UX) OR application/json (#144 web-scraper recipes: inline
+  // content body). The branch is `Content-Type`-driven so existing
+  // callers see no behaviour change.
   app.post("/v1/knowledge-sources", async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
+    const contentType = (c.req.header("content-type") ?? "").toLowerCase();
 
+    if (contentType.includes("application/json")) {
+      // JSON inline path — used by `crawl-sitemap-to-knowledge`.
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "request body must be valid JSON" }, 400);
+      }
+      const parsed = CreateKnowledgeSourceInlineSchema.safeParse(body);
+      if (!parsed.success) {
+        return c.json(
+          {
+            error: "invalid request body",
+            issues: parsed.error.issues.map((i) => ({
+              path: i.path.join("."),
+              message: i.message,
+            })),
+          },
+          422,
+        );
+      }
+      const { content, mime_type, source_uri, ...inputFields } = parsed.data;
+      const byteSize = Buffer.byteLength(content, "utf8");
+      if (byteSize > KNOWLEDGE_SOURCE_MAX_BYTES) {
+        return c.json(
+          { error: `Content exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes` },
+          413,
+        );
+      }
+      const filename = source_uri ?? `${inputFields.slug ?? inputFields.name}.md`;
+      const source = await svc.createKnowledgeSource(
+        {
+          tenant_id: principal.tenant_id,
+          input: inputFields,
+          upload: {
+            buffer: Buffer.from(content, "utf8"),
+            filename,
+            mime: mime_type,
+          },
+          actor_id: principal.id,
+          source_type_override: "inline",
+          source_uri_override: source_uri ?? filename,
+        },
+        db,
+      );
+      return c.json(source, 201);
+    }
+
+    // Multipart path — original behaviour preserved.
     const formData = await c.req.formData();
     const file = formData.get("file");
     const metadataRaw = formData.get("metadata");

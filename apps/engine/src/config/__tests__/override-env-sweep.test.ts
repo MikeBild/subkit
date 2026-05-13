@@ -90,8 +90,23 @@ function pickOverrideValue(leaf: ConfigLeaf, salt: number): string {
       }
       return tag;
     }
-    case "number":
-      return String(Math.max(1, Math.min(64, salt + 1)));
+    case "number": {
+      // Candidate ladder for leaves with higher min() bounds
+      // (web-scraper #144 max_chars_*, robots_cache.ttl_ms) or tight
+      // max() bounds (min_runs_before_proposing max 50).
+      const numCandidates = [
+        Math.max(1, Math.min(50, salt + 1)),
+        200,
+        1_000,
+        60_000,
+        100_000,
+        3_600_000,
+      ];
+      for (const c of numCandidates) {
+        if (leaf.schema.safeParse(c).success) return String(c);
+      }
+      return String(numCandidates[0]);
+    }
     case "boolean":
       return "true";
     case "enum": {

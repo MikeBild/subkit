@@ -9,6 +9,7 @@ import type { z } from "@hono/zod-openapi";
 import type { Db } from "../../db/client.ts";
 import type { EngineClient } from "../../engine-client/index.ts";
 import type { DraftDocument } from "../types.ts";
+import { analyzeScrapeTargetTool } from "./analyze-scrape-target.ts";
 import {
   askUserChoiceTool,
   askUserConfirmTool,
@@ -269,6 +270,7 @@ register(inspectWorkflowDraftTool);
 register(inspectWorkflowTool);
 register(searchKnowledgeTool);
 register(searchDocsTool);
+register(analyzeScrapeTargetTool);
 register(listSkillSuggestionsTool);
 register(listAttachmentsTool);
 register(previewAttachmentTool);

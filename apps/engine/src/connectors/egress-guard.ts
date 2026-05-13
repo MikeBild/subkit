@@ -16,6 +16,7 @@
 
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
+import { getRobots } from "./robots-cache.ts";
 
 export type EgressGuardMode = "strict" | "permissive";
 
@@ -34,6 +35,20 @@ export class EgressBlockedError extends Error {
   ) {
     super(`${reason}: ${host}`);
     this.name = "EgressBlockedError";
+  }
+}
+
+/** Thrown by `assertRobotsAllowed` when robots.txt disallows the path
+ *  for the configured User-Agent. Caught by the HTTP driver and mapped
+ *  to step error `code: "robots_disallowed"`. */
+export class RobotsDisallowedError extends Error {
+  readonly code = "robots_disallowed";
+  constructor(
+    public readonly url: string,
+    public readonly userAgent: string,
+  ) {
+    super(`robots.txt disallows ${url} for user-agent ${userAgent}`);
+    this.name = "RobotsDisallowedError";
   }
 }
 
@@ -163,5 +178,52 @@ export function assertEgressAllowed(url: URL | string, ctx: EgressGuardContext):
       tenant_id: ctx.tenant_id ?? null,
     });
     throw new EgressBlockedError("private_ip_blocked", host);
+  }
+}
+
+/**
+ * Web-scraper #144 — robots.txt enforcement. Throws
+ * `RobotsDisallowedError` when robots.txt disallows the given URL for
+ * the configured User-Agent. Per-tenant + TTL-cached via
+ * `robots-cache.ts`. Pass `fetchImpl` to inject a stub from tests.
+ *
+ * Call sites:
+ *   - `drivers/http.ts buildRequestPlan` invokes this when the
+ *     connector template config has `respect_robots: true` OR the
+ *     tenant overlay enables it. The default for the `web-scraper`
+ *     template is true.
+ *   - The `analyze_scrape_target` chat tool consults this during the
+ *     authoring probe.
+ */
+export async function assertRobotsAllowed(
+  url: URL | string,
+  ctx: {
+    tenant_id: string;
+    userAgent: string;
+    fetchImpl?: typeof fetch;
+  },
+): Promise<void> {
+  const parsed = typeof url === "string" ? new URL(url) : url;
+  const origin = parsed.origin;
+  const robots = await getRobots({
+    tenantId: ctx.tenant_id,
+    origin,
+    userAgent: ctx.userAgent,
+    ...(ctx.fetchImpl ? { fetchImpl: ctx.fetchImpl } : {}),
+  });
+  if (robots === null) return; // no robots.txt → allow
+  const allowed = robots.isAllowed(parsed.toString(), ctx.userAgent);
+  // robots-parser returns `undefined` when the file is malformed or the
+  // path has no matching rule; per RFC 9309 §2.2.2 we treat that as
+  // allow.
+  if (allowed === false) {
+    logger.warn({
+      module: "egress_guard",
+      action: "robots_disallowed",
+      tenant_id: ctx.tenant_id,
+      url: parsed.toString(),
+      user_agent: ctx.userAgent,
+    });
+    throw new RobotsDisallowedError(parsed.toString(), ctx.userAgent);
   }
 }

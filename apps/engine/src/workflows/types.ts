@@ -553,12 +553,96 @@ export const RequestStepSchema = z
   })
   .openapi("RequestStep");
 
+// Web-scraper transform languages (#144). Each operates on the upstream
+// step's HTML body (passed through `input`) and returns a typed JSON
+// envelope. No `expression` is consumed; per-language config arrives via
+// the matching nested block below.
+const ReadabilityConfigSchema = z
+  .object({
+    max_chars: z.number().int().positive().max(2_000_000).optional(),
+    length_guard: z.number().int().positive().max(2_000_000).optional(),
+  })
+  .openapi("ReadabilityConfig");
+const MarkdownConfigSchema = z
+  .object({
+    max_chars: z.number().int().positive().max(2_000_000).optional(),
+    preserve_links: z.boolean().optional(),
+    strip_tags: z.array(z.string().min(1)).optional(),
+    truncate: z.boolean().optional(),
+  })
+  .openapi("MarkdownConfig");
+const StructuredDataConfigSchema = z
+  .object({
+    types: z
+      .array(z.enum(["json-ld", "opengraph", "microdata"]))
+      .min(1)
+      .optional(),
+  })
+  .openapi("StructuredDataConfig");
+
+// Typed JSON envelopes returned by the three new transform languages.
+// Exposed in OpenAPI so downstream tooling (chat, dashboards, the
+// authoring gate) can address fields by name with confidence.
+export const ReadabilityOutputSchema = z
+  .object({
+    title: z.string().nullable(),
+    byline: z.string().nullable(),
+    excerpt: z.string().nullable(),
+    lang: z.string().nullable(),
+    site_name: z.string().nullable(),
+    published_at: z.string().nullable(),
+    content_html: z.string(),
+    length: z.number().int().nonnegative(),
+    url: z.string(),
+  })
+  .openapi("ReadabilityOutput");
+export const MarkdownOutputSchema = z
+  .object({
+    markdown: z.string(),
+    bytes: z.number().int().nonnegative(),
+    url: z.string(),
+    truncated: z.boolean(),
+    stripped_elements: z.array(z.string()),
+  })
+  .openapi("MarkdownOutput");
+export const StructuredDataOutputSchema = z
+  .object({
+    json_ld: z.array(z.record(z.string(), z.unknown())),
+    opengraph: z.record(z.string(), z.string()),
+    microdata: z.array(z.record(z.string(), z.unknown())),
+    url: z.string(),
+    found_any: z.boolean(),
+  })
+  .openapi("StructuredDataOutput");
+export type ReadabilityOutput = z.infer<typeof ReadabilityOutputSchema>;
+export type MarkdownOutput = z.infer<typeof MarkdownOutputSchema>;
+export type StructuredDataOutput = z.infer<typeof StructuredDataOutputSchema>;
+
+const TRANSFORM_LANGUAGES_NEEDING_EXPRESSION = new Set(["jsonata", "javascript"]);
+const TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION = new Set([
+  "readability",
+  "html-to-markdown",
+  "structured-data",
+]);
+
 export const TransformStepSchema = z
   .object({
     kind: z.literal("transform"),
     ...baseStep,
-    expression: z.string(),
-    language: z.enum(["jsonata", "javascript"]).optional(),
+    /** Projection source for `jsonata` / `javascript`. Forbidden for the
+     *  three web-scraper languages (`readability`, `html-to-markdown`,
+     *  `structured-data`), which read the upstream body via `input`. The
+     *  `superRefine` below enforces the language ↔ expression contract. */
+    expression: z.string().optional(),
+    language: z
+      .enum(["jsonata", "javascript", "readability", "html-to-markdown", "structured-data"])
+      .optional(),
+    /** Web-scraper #144 — Readability extraction config. */
+    readability: ReadabilityConfigSchema.optional(),
+    /** Web-scraper #144 — html→markdown serialisation config. */
+    markdown: MarkdownConfigSchema.optional(),
+    /** Web-scraper #144 — JSON-LD / OpenGraph / microdata extraction config. */
+    structured_data: StructuredDataConfigSchema.optional(),
     input_schema: z.record(z.string(), z.unknown()).optional(),
     output_schema: z.record(z.string(), z.unknown()).optional(),
     /**
@@ -572,6 +656,49 @@ export const TransformStepSchema = z
       .array(z.enum(["dropped_fields"]))
       .optional()
       .openapi({ description: "Suppress specific non-fatal warnings on this step." }),
+  })
+  .superRefine((s, ctx) => {
+    const language = s.language ?? "jsonata";
+    if (TRANSFORM_LANGUAGES_NEEDING_EXPRESSION.has(language)) {
+      if (s.expression === undefined || s.expression.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["expression"],
+          message: `transform.language=${language} requires a non-empty expression`,
+        });
+      }
+    }
+    if (TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION.has(language)) {
+      if (s.expression !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["expression"],
+          message: `transform.language=${language} does not accept an expression; configure via the \`${language === "html-to-markdown" ? "markdown" : language === "structured-data" ? "structured_data" : "readability"}\` block`,
+        });
+      }
+    }
+    // Per-language config is only meaningful when the matching language is selected.
+    if (s.readability !== undefined && language !== "readability") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["readability"],
+        message: 'readability config is only valid when language="readability"',
+      });
+    }
+    if (s.markdown !== undefined && language !== "html-to-markdown") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["markdown"],
+        message: 'markdown config is only valid when language="html-to-markdown"',
+      });
+    }
+    if (s.structured_data !== undefined && language !== "structured-data") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["structured_data"],
+        message: 'structured_data config is only valid when language="structured-data"',
+      });
+    }
   })
   .openapi("TransformStep");
 
