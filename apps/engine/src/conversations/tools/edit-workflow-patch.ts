@@ -183,15 +183,73 @@ export const editWorkflowPatchTool: ConversationTool = {
       }
     }
 
-    // Transform-authoring inspection gate on the patched draft. Refuse
-    // a patch that introduces (or now contains) a transform whose
-    // expression reads `$scope.<X>` without a recorded preview for X.
-    // Catches the case where a patch modifies a transform's expression
-    // to reference fields the upstream step never exposed.
+    // Transform- and loop-authoring inspection gates on the patched
+    // draft, evaluated under delta semantics: a patch only fails when
+    // it INTRODUCES new gate blocks that weren't already present
+    // pre-patch. Pre-existing unsafe state is the operator's problem,
+    // not the patch's — gating on it would refuse legitimate refactors
+    // (rename `fetch` → `load` + retarget) just because the original
+    // workflow happened to be in an un-previewed state.
+    //
+    // The post-patch preview is synthesized from the pre-patch preview
+    // by following any `replace /steps/N/id` rename in the patch: the
+    // underlying recorded shape is the same step, only its address
+    // changed. Without this remap, an atomic rename + retarget would
+    // be incorrectly flagged as introducing a new un-previewed scope
+    // reference.
+    //
+    // Pre-fix v4.8.1 the gate ran unconditionally on the post-patch
+    // state, which broke `edit-workflow-patch.test.ts` and
+    // `cycle-rejected-at-build.test.ts` fixtures and would have broken
+    // every real-world coordinated rename. The fix is principled —
+    // gates enforce "did THIS change make things worse?", not "is the
+    // workflow currently unsafe?".
+    const renamedStepIds = new Map<string, string>();
+    for (let i = 0; i < args.patches.length; i++) {
+      const op = args.patches[i]!;
+      if (op.op !== "replace") continue;
+      const match = /^\/steps\/(\d+)\/id$/.exec(op.path);
+      if (!match) continue;
+      const idx = Number(match[1]);
+      const preStep = workflowDraft.steps[idx];
+      const preId = typeof preStep?.id === "string" ? preStep.id : null;
+      const nextId = typeof op.value === "string" ? op.value : null;
+      if (preId && nextId && preId !== nextId) {
+        renamedStepIds.set(preId, nextId);
+      }
+    }
+    const postPreview: typeof currentDraft.latest_preview =
+      currentDraft.latest_preview && renamedStepIds.size > 0
+        ? {
+            ...currentDraft.latest_preview,
+            step_traces: (currentDraft.latest_preview.step_traces ?? []).map((t) => ({
+              ...t,
+              step_id: renamedStepIds.get(t.step_id) ?? t.step_id,
+            })),
+          }
+        : (currentDraft.latest_preview ?? null);
+
+    const preTransformGate = evaluateTransformAuthoringGate(
+      workflowDraft,
+      currentDraft.latest_preview ?? null,
+    );
+    const preTransformBlockedIds = new Set(preTransformGate.blocks.map((b) => b.transform_step_id));
+    const probedConnectorSlugs = await collectProbedConnectorSlugs(
+      ctx,
+      patched.steps as ReadonlyArray<Record<string, unknown>>,
+    );
+    const preLoopGate = evaluateLoopAuthoringGate(
+      workflowDraft,
+      currentDraft.latest_preview ?? null,
+      { probedConnectorSlugs },
+    );
+    const preLoopBlockedIds = new Set(preLoopGate.blocks.map((b) => b.loop_step_id));
+
     {
-      const gate = evaluateTransformAuthoringGate(patched, currentDraft.latest_preview ?? null);
-      if (!gate.ok) {
-        const summary = gate.blocks
+      const post = evaluateTransformAuthoringGate(patched, postPreview);
+      const newBlocks = post.blocks.filter((b) => !preTransformBlockedIds.has(b.transform_step_id));
+      if (newBlocks.length > 0) {
+        const summary = newBlocks
           .map(
             (b) =>
               `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
@@ -209,7 +267,7 @@ export const editWorkflowPatchTool: ConversationTool = {
           ok: false,
           data: buildGateError(currentDraft, {
             error_code: "transform_authoring_requires_inspect",
-            message: `patch would leave a transform step depending on data the upstream preview never recorded. ${summary}. Dry-run once so the scope is published, then re-apply the patch.`,
+            message: `patch would introduce a transform step depending on data the upstream preview never recorded. ${summary}. Dry-run once so the scope is published, then re-apply the patch.`,
             recommended_mode: "workflow",
             next_best_actions: [
               "dry_run_workflow",
@@ -217,7 +275,7 @@ export const editWorkflowPatchTool: ConversationTool = {
               "suggest_jsonata_paths",
             ],
             extra: {
-              gate_blocks: gate.blocks,
+              gate_blocks: newBlocks,
               patch_count: args.patches.length,
             },
           }),
@@ -225,19 +283,13 @@ export const editWorkflowPatchTool: ConversationTool = {
       }
     }
 
-    // Loop-authoring inspection gate on the patched draft. Refuse a
-    // patch that introduces (or now contains) a loop reading
-    // `$scope.<X>` without a recorded preview for X.
     {
-      const probedConnectorSlugs = await collectProbedConnectorSlugs(
-        ctx,
-        patched.steps as ReadonlyArray<Record<string, unknown>>,
-      );
-      const gate = evaluateLoopAuthoringGate(patched, currentDraft.latest_preview ?? null, {
+      const post = evaluateLoopAuthoringGate(patched, postPreview, {
         probedConnectorSlugs,
       });
-      if (!gate.ok) {
-        const summary = gate.blocks
+      const newBlocks = post.blocks.filter((b) => !preLoopBlockedIds.has(b.loop_step_id));
+      if (newBlocks.length > 0) {
+        const summary = newBlocks
           .map(
             (b) =>
               `loop \`${b.loop_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
@@ -257,7 +309,7 @@ export const editWorkflowPatchTool: ConversationTool = {
           ok: false,
           data: buildGateError(currentDraft, {
             error_code: "loop_authoring_requires_inspect",
-            message: `patch would leave a loop step depending on data the upstream preview never recorded. ${summary}. Dry-run once so the scope is published, then re-apply the patch.`,
+            message: `patch would introduce a loop step depending on data the upstream preview never recorded. ${summary}. Dry-run once so the scope is published, then re-apply the patch.`,
             recommended_mode: "workflow",
             next_best_actions: [
               "dry_run_workflow",
@@ -265,7 +317,7 @@ export const editWorkflowPatchTool: ConversationTool = {
               "suggest_jsonata_paths",
             ],
             extra: {
-              gate_blocks: gate.blocks,
+              gate_blocks: newBlocks,
               patch_count: args.patches.length,
             },
           }),

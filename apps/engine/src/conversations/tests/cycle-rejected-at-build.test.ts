@@ -36,6 +36,17 @@ function makeAcyclicDraft(): DraftDocument {
         { id: "b", kind: "transform", language: "jsonata", expression: "$scope.a.data" },
       ],
     },
+    // Minimal latest_preview so the transform-authoring gate (v4.8.0)
+    // doesn't fire on the fixture's pre-existing `$scope.a.data` ref.
+    // The test is exercising cycle detection, not the inspect gate.
+    latest_preview: {
+      ok: true,
+      summary: "preview seeded for test fixture",
+      step_traces: [
+        { step_id: "a", kind: "transform", status: "succeeded", output_preview: 1 },
+        { step_id: "b", kind: "transform", status: "succeeded", output_preview: 2 },
+      ],
+    },
     // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
   } as any;
 }

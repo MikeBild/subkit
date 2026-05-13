@@ -43,6 +43,31 @@ function makeDraft(): DraftDocument {
         },
       ],
     },
+    // Minimal latest_preview so the transform-authoring gate is
+    // satisfied for the fixture's pre-existing `$scope.fetch.data`
+    // ref (v4.8.1). Without this, post-patch states that introduce
+    // new transforms would correctly be blocked — but the test
+    // intent is to exercise patch mechanics, not the gate. Pinning a
+    // preview here mirrors what every realistic production draft has
+    // by the time it reaches `edit_workflow_patch`.
+    latest_preview: {
+      ok: true,
+      summary: "preview seeded for test fixture",
+      step_traces: [
+        {
+          step_id: "fetch",
+          kind: "transform",
+          status: "succeeded",
+          output_preview: { value: 1 },
+        },
+        {
+          step_id: "shape",
+          kind: "transform",
+          status: "succeeded",
+          output_preview: { shaped: 1 },
+        },
+      ],
+    },
     // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
   } as any;
 }
