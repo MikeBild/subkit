@@ -133,6 +133,27 @@ loop's `over` against the LLM's mental model of the API instead of
 the recorded preview is how 4–9× retry spirals start; the gate
 exists to break that loop deterministically.
 
+**Same rule for `transform` steps.** A transform whose `expression`
+cites `$scope.<X>` for an un-previewed sibling X is rejected with
+error code `transform_authoring_requires_inspect`. Same four tools
+enforce it (`propose_step`, `build_workflow`, `edit_workflow_patch`,
+`update_param`). Same fix: `dry_run_workflow` once, then author the
+transform against the recorded `output_preview` (visible via
+`inspect_workflow_draft` or surfaced inline in the authoring context
+as `$item.{ id, name, ... } (sampled from preview)` when the
+transform's source is the body of a loop). Hard-coding placeholder
+strings (`"item 1"`, `"unknown"`) as JSONata defaults to dodge the
+gate is forbidden — that's how the "succeeded with garbage output"
+transcript happened (`get-last-3-gmail-messages with human output`).
+
+**Validation is auto-surfaced; you rarely need `validate_draft`.**
+Every authoring turn's context block already includes a
+`- Validation: N errors` section with the field paths. Calling
+`validate_draft({})` to re-check what you just read is loop-detected
+(the tool is no longer exempt from the per-tool repeat cap). Reserve
+it for forcing a re-check after a change applied OUTSIDE the
+conversation (operator hand-edit, external import).
+
 **Bare-path step refs are validated.** Forms like `fetch_users.data`
 (no `$scope.` prefix) are equivalent to `$scope.fetch_users.data`
 and are validated identically. A typo in the leading identifier is

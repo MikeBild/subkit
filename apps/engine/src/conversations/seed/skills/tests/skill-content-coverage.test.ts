@@ -69,6 +69,12 @@ describe("workflow-authoring.md · field coverage", () => {
   test("documents the inspect-before-loop authoring gate", () => {
     expect(body).toContain("loop_authoring_requires_inspect");
   });
+  test("documents the inspect-before-transform authoring gate", () => {
+    expect(body).toContain("transform_authoring_requires_inspect");
+  });
+  test("documents that validation is auto-surfaced (validate_draft is rarely needed)", () => {
+    expect(body).toMatch(/Validation\s+is\s+auto-surfaced|validate_draft.*rarely/i);
+  });
   test("documents suggest_jsonata_paths as the path discovery tool", () => {
     expect(body).toContain("suggest_jsonata_paths");
   });

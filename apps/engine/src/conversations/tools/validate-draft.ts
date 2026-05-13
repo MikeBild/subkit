@@ -13,7 +13,8 @@ const inputSchema = z.object({}).openapi("ValidateDraftToolInput");
 
 export const validateDraftTool: ConversationTool = {
   name: "validate_draft",
-  description: "Validate the current draft and return the list of errors.",
+  description:
+    "Re-run the workflow validator on the current draft. Validation state is already inlined into every authoring turn's context (the `- Validation: N errors` section), so this tool is rarely needed — calling it repeatedly with identical args trips the per-tool loop cap. Reserve it for forcing a re-check after a change applied OUTSIDE the conversation.",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, _args): Promise<ToolResult> {
