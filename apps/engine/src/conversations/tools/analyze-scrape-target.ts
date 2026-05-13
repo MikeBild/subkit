@@ -13,9 +13,19 @@
 import { z } from "@hono/zod-openapi";
 
 import { getConfig } from "../../config/loader.ts";
-import { assertRobotsAllowed, RobotsDisallowedError } from "../../connectors/egress-guard.ts";
+import {
+  assertEgressAllowed,
+  assertRobotsAllowed,
+  EgressBlockedError,
+  RobotsDisallowedError,
+} from "../../connectors/egress-guard.ts";
 import { logger } from "../../logging/logger.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+
+/** Hard cap on the sitemap probe so a slow-loris origin can't stall
+ *  the chat tool. A timeout falls through to `count = 0`, which the
+ *  caller treats as "sitemap empty" → Green verdict path. */
+const SITEMAP_FETCH_TIMEOUT_MS = 5_000;
 
 const inputSchema = z
   .object({
@@ -44,6 +54,7 @@ async function countSitemapEntries(
     const res = await fetchImpl(sitemapUrl, {
       method: "GET",
       headers: { "User-Agent": userAgent, Accept: "application/xml, text/xml, */*" },
+      signal: AbortSignal.timeout(SITEMAP_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return 0;
     const text = await res.text();
@@ -93,6 +104,32 @@ export const analyzeScrapeTargetTool: ConversationTool = {
       robots_disallowed: false,
       details: { target_url: args.target_url, sitemap_url: sitemapUrl },
     };
+
+    // SSRF guard runs FIRST — before robots.txt, before sitemap. A
+    // tenant-supplied URL pointing at 169.254.169.254 / localhost /
+    // RFC 1918 is rejected at the gate and the tool returns a Red
+    // verdict with the same shape as a robots-disallowed refusal. The
+    // existing `assertEgressAllowed` is the only SSRF policy in the
+    // codebase; this surface MUST go through it just like every other
+    // outbound site (drivers/http.ts, webhooks/outbound, etc.).
+    for (const probe of [target, new URL(sitemapUrl)]) {
+      try {
+        assertEgressAllowed(probe, { tenant_id: ctx.tenant_id });
+      } catch (e) {
+        if (e instanceof EgressBlockedError) {
+          return {
+            ok: true,
+            data: {
+              ...result,
+              verdict: "red",
+              message: `Refusing to probe ${probe.toString()} — egress guard blocked the host (${e.reason}). Configure a public origin or contact the operator about the egress policy.`,
+              details: { ...result.details, egress_blocked_host: e.host },
+            },
+          };
+        }
+        throw e;
+      }
+    }
 
     // robots.txt — Red if disallow on the path. Honours tenant
     // respect_robots; when respect_robots=false we skip and Green-light.

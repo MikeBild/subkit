@@ -18513,6 +18513,7 @@
     "driver": "http",
     "base_url": null,
     "auth_type": "none",
+    "respects_robots": true,
     "oauth": null,
     "default_skill": "web-scraper-basics",
     "ingestion_source": null,
@@ -18648,7 +18649,7 @@
           "crawl site",
           "ingest documentation",
           "knowledge from website",
-          "sitemap",
+          "walk sitemap",
           "crawl docs"
         ],
         "derived_from_skill": "web-scraper-basics",

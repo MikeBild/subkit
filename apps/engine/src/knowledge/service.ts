@@ -179,7 +179,7 @@ export async function createKnowledgeSource(
           chunk_count: accepted.length,
           skipped_count: skipped,
           bytes_total: totalBytes,
-          source_uri: p.upload.filename,
+          source_uri: p.source_uri_override ?? p.upload.filename,
         },
       },
       tx,

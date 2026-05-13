@@ -75,7 +75,11 @@ export type CreateKnowledgeSourceInput = z.infer<typeof CreateKnowledgeSourceSch
 export const CreateKnowledgeSourceInlineSchema = CreateKnowledgeSourceSchema.extend({
   content: z.string().min(1),
   mime_type: z.string().default("text/markdown"),
-  source_uri: z.string().min(1).optional(),
+  /** When set, must be a fully-qualified URL — `https://example.com/page`.
+   *  Rejects path-shaped values like `../etc/passwd` so the audit-log
+   *  `source_uri` is trustworthy provenance. Optional; defaults to a
+   *  derived filename when absent. */
+  source_uri: z.string().url().optional(),
 }).openapi("CreateKnowledgeSourceInlineBody");
 
 export type CreateKnowledgeSourceInlineInput = z.infer<typeof CreateKnowledgeSourceInlineSchema>;

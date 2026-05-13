@@ -410,10 +410,14 @@ export async function buildRequestPlan(
   };
   // SSRF guard: block private/loopback/link-local targets.
   assertEgressAllowed(url, { tenant_id: p.tenant_id });
-  // Web-scraper #144 — robots.txt gate. Only the `web-scraper` template
-  // opts in; every other template (Stripe, GitHub, etc.) is exempt
-  // because their endpoints are private APIs, not crawlable origins.
-  if (p.connector.template_slug === "web-scraper") {
+  // Web-scraper #144 — robots.txt gate. The template opts in via the
+  // `respects_robots` field on its JSON entry, mirrored into
+  // `template_snapshot` at draft mint time. Other templates (Stripe,
+  // GitHub, etc.) leave it false (the schema default) and are exempt
+  // from the extra robots.txt round-trip; their endpoints are private
+  // APIs, not crawlable origins.
+  const snapshot = (p.connector.template_snapshot as { respects_robots?: unknown } | null) ?? null;
+  if (snapshot?.respects_robots === true) {
     const cfg = getConfig(p.tenant_id).connectors.web_scraper.runtime;
     const respectRobots =
       typeof p.connector.config.respect_robots === "boolean"

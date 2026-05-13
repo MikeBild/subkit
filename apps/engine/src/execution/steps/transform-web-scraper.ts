@@ -15,6 +15,7 @@ import { JSDOM } from "jsdom";
 import TurndownService from "turndown";
 
 import { getConfig } from "../../config/loader.ts";
+import { redact } from "../../logging/redact.ts";
 import type {
   MarkdownOutput,
   ReadabilityOutput,
@@ -23,6 +24,18 @@ import type {
 } from "../../workflows/types.ts";
 import { validateAgainstJsonSchema } from "../engine/envelope.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
+
+/** jsdom / Turndown / Readability occasionally echo page content into
+ *  their error messages — pages with embedded query-string credentials
+ *  (`?token=…`) could surface in audit/run records via
+ *  `StepResult.error.message`. The logging redactor scrubs Bearer
+ *  tokens, JWTs, AWS keys, etc. before the message lands on the
+ *  envelope. */
+function safeErrorMessage(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  const scrubbed = redact(raw);
+  return typeof scrubbed === "string" ? scrubbed : raw;
+}
 
 export interface RunWebScraperParams {
   ctx: StepRunContext;
@@ -116,11 +129,7 @@ export function runReadability(p: RunWebScraperParams): StepResult {
     const reader = new Readability(dom.window.document);
     parsed = reader.parse();
   } catch (e) {
-    return fail(
-      start,
-      "transform_error",
-      `readability: failed to parse — ${e instanceof Error ? e.message : String(e)}`,
-    );
+    return fail(start, "transform_error", `readability: failed to parse — ${safeErrorMessage(e)}`);
   }
   if (!parsed?.content) {
     return fail(start, "readability_no_article", "readability: no article content detected");
@@ -178,7 +187,7 @@ export function runHtmlToMarkdown(p: RunWebScraperParams): StepResult {
     return fail(
       start,
       "transform_error",
-      `html-to-markdown: jsdom parse failed — ${e instanceof Error ? e.message : String(e)}`,
+      `html-to-markdown: jsdom parse failed — ${safeErrorMessage(e)}`,
     );
   }
 
@@ -215,7 +224,7 @@ export function runHtmlToMarkdown(p: RunWebScraperParams): StepResult {
     return fail(
       start,
       "transform_error",
-      `html-to-markdown: turndown failed — ${e instanceof Error ? e.message : String(e)}`,
+      `html-to-markdown: turndown failed — ${safeErrorMessage(e)}`,
     );
   }
 
@@ -267,7 +276,7 @@ export function runStructuredData(p: RunWebScraperParams): StepResult {
     return fail(
       start,
       "transform_error",
-      `structured-data: jsdom parse failed — ${e instanceof Error ? e.message : String(e)}`,
+      `structured-data: jsdom parse failed — ${safeErrorMessage(e)}`,
     );
   }
   const doc = dom.window.document;

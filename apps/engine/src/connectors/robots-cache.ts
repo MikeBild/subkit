@@ -23,6 +23,13 @@ import robotsParser, { type Robot } from "robots-parser";
 
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
+import { assertEgressAllowed, EgressBlockedError } from "./egress-guard.ts";
+
+/** Hard cap on `robots.txt` fetches so a slow-loris origin can't stall
+ *  the calling chat tool / workflow indefinitely. The cache stores the
+ *  resulting `null` (treated as "allow everything") so subsequent calls
+ *  for the same origin return immediately. */
+const ROBOTS_FETCH_TIMEOUT_MS = 5_000;
 
 interface Entry {
   parsed: Robot | null;
@@ -36,14 +43,14 @@ function key(tenantId: string, origin: string): string {
   return `${tenantId}::${origin}`;
 }
 
-/** Expose internal state for test-only resets. Not part of the public
- *  API — call sites outside test code MUST NOT use this. */
-export function __resetRobotsCacheForTests(): void {
-  cache.clear();
-}
-
-export function __getRobotsCacheStatsForTests(): { size: number } {
-  return { size: cache.size };
+/** Single internal accessor for the LRU. Consumed ONLY by the sibling
+ *  `robots-cache.test-helpers.ts`; production code MUST go through the
+ *  public `getRobots` API. The underscore prefix + the dedicated
+ *  sibling module make the test-only surface tree-shakable from the
+ *  production bundle (bundlerVisitor drops modules whose only
+ *  importers live under `*.test.ts` / `*.test-helpers.ts`). */
+export function _internalRobotsCacheRef(): Map<string, Entry> {
+  return cache;
 }
 
 function evictExpired(now: number, ttlMs: number): void {
@@ -96,12 +103,35 @@ export async function getRobots(params: {
   evictLruIfFull(cfg.max_entries);
 
   const robotsUrl = `${origin}/robots.txt`;
+  // SSRF guard — runs BEFORE the fetch so a tenant-supplied origin
+  // can't probe internal services (AWS metadata, localhost, RFC 1918)
+  // via the robots-cache pathway. The guard throws synchronously; we
+  // surface it as a cache miss + null verdict (allow-all) so the
+  // caller's overall behaviour is the same as "origin served no
+  // robots.txt".
+  try {
+    assertEgressAllowed(new URL(robotsUrl), { tenant_id: tenantId });
+  } catch (e) {
+    if (e instanceof EgressBlockedError) {
+      logger.warn({
+        module: "robots_cache",
+        action: "egress_blocked",
+        tenant_id: tenantId,
+        origin,
+        reason: e.reason,
+      });
+      cache.set(cacheKey, { parsed: null, fetchedAt: now, lastUsedAt: now });
+      return null;
+    }
+    throw e;
+  }
   const doFetch = params.fetchImpl ?? globalThis.fetch;
   let parsed: Robot | null = null;
   try {
     const res = await doFetch(robotsUrl, {
       method: "GET",
       headers: { "User-Agent": userAgent, Accept: "text/plain" },
+      signal: AbortSignal.timeout(ROBOTS_FETCH_TIMEOUT_MS),
     });
     if (res.ok) {
       const body = await res.text();

@@ -1459,7 +1459,7 @@
     ],
     "pitfalls": [
       "No JavaScript is executed — pages that render content client-side (React SPAs without SSR, infinite-scroll feeds) return empty markdown. Prefer `llms.txt` or the site's REST/GraphQL API for those.",
-      "The `crawl-sitemap-to-markdown` recipe does NOT post into Knowledge Sources directly — it emits an array. To ingest, the calling chat agent (or a follow-up workflow step) POSTs each element to `/v1/knowledge-sources` with `Content-Type: application/json` and `source_type: \"inline\"`.",
+      "The `crawl-sitemap-to-markdown` recipe does NOT post into Knowledge Sources directly — it emits an array. To ingest, the calling chat agent (or a follow-up workflow step) POSTs each element to `POST /v1/knowledge-sources/inline` (JSON body: `{ name, slug?, content, mime_type, source_uri? }`). The legacy `/v1/knowledge-sources` route stays multipart/form-data for file uploads.",
       "Sitemap > 10 000 entries triggers a Yellow verdict from `analyze_scrape_target`; > 100 000 triggers Red. Tune `connectors.web_scraper.authoring.*_threshold` if you operate at higher scale.",
       "Operators are responsible for the target site's ToS. The connector enforces robots.txt by default but takes no position on commercial scraping rights."
     ],

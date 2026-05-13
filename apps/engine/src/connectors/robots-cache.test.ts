@@ -13,8 +13,8 @@ import { type Config, ConfigSchema } from "../config/schema.ts";
 import {
   __getRobotsCacheStatsForTests,
   __resetRobotsCacheForTests,
-  getRobots,
-} from "./robots-cache.ts";
+} from "./robots-cache.test-helpers.ts";
+import { getRobots } from "./robots-cache.ts";
 
 const baseConfig: Config = ConfigSchema.parse({
   database: { url: "postgres://test" },
