@@ -3099,6 +3099,10 @@
                   "format": "date-time",
                   "default": null
                 },
+                "respects_robots": {
+                  "type": "boolean",
+                  "default": false
+                },
                 "source": {
                   "type": "string",
                   "enum": [
@@ -3817,6 +3821,10 @@
             "format": "date-time",
             "default": null
           },
+          "respects_robots": {
+            "type": "boolean",
+            "default": false
+          },
           "id": {
             "type": "string"
           },
@@ -4042,6 +4050,10 @@
             "nullable": true,
             "format": "date-time",
             "default": null
+          },
+          "respects_robots": {
+            "type": "boolean",
+            "default": false
           }
         },
         "required": [
@@ -6180,6 +6192,77 @@
             "nullable": true
           }
         }
+      },
+      "CreateKnowledgeSourceInlineBody": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateKnowledgeSourceBody"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mime_type": {
+                "type": "string",
+                "default": "text/markdown"
+              },
+              "source_uri": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "content"
+            ]
+          }
+        ]
+      },
+      "CreateKnowledgeSourceBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "workflow"
+            ]
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "refresh_strategy": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "scheduled"
+            ]
+          },
+          "refresh_cron": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
       },
       "SkillCandidateListResponse": {
         "type": "object",
@@ -14017,6 +14100,60 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/inline": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Create a knowledge source from inline JSON content",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKnowledgeSourceInlineBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSource"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content exceeds maximum size",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {

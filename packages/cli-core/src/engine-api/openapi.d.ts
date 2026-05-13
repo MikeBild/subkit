@@ -4054,6 +4054,64 @@ export interface paths {
         };
         trace?: never;
     };
+    "/v1/knowledge-sources/inline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a knowledge source from inline JSON content */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateKnowledgeSourceInlineBody"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeSource"];
+                    };
+                };
+                /** @description Content exceeds maximum size */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/skill-candidates": {
         parameters: {
             query?: never;
@@ -8199,6 +8257,8 @@ export interface components {
                  * @default null
                  */
                 verified_at: string | null;
+                /** @default false */
+                respects_robots: boolean;
                 /** @enum {string} */
                 source: "builtin" | "tenant";
                 id: string | null;
@@ -8388,6 +8448,8 @@ export interface components {
              * @default null
              */
             verified_at: string | null;
+            /** @default false */
+            respects_robots: boolean;
             id: string;
             /** @enum {string} */
             source: "tenant";
@@ -8442,6 +8504,8 @@ export interface components {
              * @default null
              */
             verified_at: string | null;
+            /** @default false */
+            respects_robots: boolean;
         };
         ConnectorTemplateRecipeListResponse: {
             template_slug: string;
@@ -9006,6 +9070,25 @@ export interface components {
             /** @enum {string} */
             refresh_strategy?: "manual" | "scheduled";
             refresh_cron?: string | null;
+        };
+        CreateKnowledgeSourceInlineBody: components["schemas"]["CreateKnowledgeSourceBody"] & {
+            content: string;
+            /** @default text/markdown */
+            mime_type: string;
+            /** Format: uri */
+            source_uri?: string;
+        };
+        CreateKnowledgeSourceBody: {
+            name: string;
+            slug?: string;
+            description?: string;
+            /** @enum {string} */
+            scope?: "global" | "workflow";
+            /** Format: uuid */
+            workflow_id?: string;
+            /** @enum {string} */
+            refresh_strategy?: "manual" | "scheduled";
+            refresh_cron?: string;
         };
         SkillCandidateListResponse: {
             items: components["schemas"]["SkillCandidate"][];
