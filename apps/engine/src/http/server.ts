@@ -75,6 +75,10 @@ export interface CreateAppOptions {
   db?: Db;
   registry?: AuthProviderRegistry;
   chatRegistry?: ChatAdapterRegistry;
+  /** Override the in-memory rate limiter (default 100 req / 60s). Used
+   *  by the http test scaffold to bump the ceiling so per-leaf sweep
+   *  tests fit under the budget even as the schema grows. */
+  rateLimit?: { max?: number; windowMs?: number };
 }
 
 export function buildDefaultRegistry(db?: Db): AuthProviderRegistry {
@@ -110,7 +114,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   // Order matters: trace -> logging -> rate-limit -> metrics -> error wrap -> db -> auth -> routes.
   app.use("*", traceMiddleware());
   app.use("*", loggingMiddleware());
-  app.use("*", rateLimitMiddleware());
+  app.use("*", rateLimitMiddleware(opts.rateLimit ?? {}));
   app.use("*", metricsMiddleware());
   app.use("*", errorMiddleware());
 
