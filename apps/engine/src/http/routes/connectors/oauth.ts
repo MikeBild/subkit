@@ -38,7 +38,7 @@ import {
 import { writeEvent } from "../../../db/events.ts";
 import { connectorOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
-import { ConnectorOauthCallbackPayloadSchema } from "../../../pubsub/types.ts";
+import { ConnectorOauthCallbackPayloadSchema } from "../../../pubsub/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
