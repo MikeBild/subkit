@@ -127,13 +127,6 @@
       "when": 1778900000000,
       "tag": "0017_drop_connector_oauth_redirect_uri",
       "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "7",
-      "when": 1779000000000,
-      "tag": "0018_optimization_candidates",
-      "breakpoints": true
     }
   ]
 }

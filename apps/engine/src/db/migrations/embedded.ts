@@ -35,7 +35,6 @@ import sql0014DropTunnels from "./0014_drop_tunnels.sql" with { type: "text" };
 import sql0015AiSdk6Foundation from "./0015_ai_sdk_6_foundation.sql" with { type: "text" };
 import sql0016ExternalCallMeteringProviderSlug from "./0016_external_call_metering_provider_slug.sql" with { type: "text" };
 import sql0017DropConnectorOauthRedirectUri from "./0017_drop_connector_oauth_redirect_uri.sql" with { type: "text" };
-import sql0018OptimizationCandidates from "./0018_optimization_candidates.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -78,7 +77,6 @@ const SQL_BY_TAG: Record<string, string> = {
   "0015_ai_sdk_6_foundation": sql0015AiSdk6Foundation,
   "0016_external_call_metering_provider_slug": sql0016ExternalCallMeteringProviderSlug,
   "0017_drop_connector_oauth_redirect_uri": sql0017DropConnectorOauthRedirectUri,
-  "0018_optimization_candidates": sql0018OptimizationCandidates,
 };
 
 const journal = journalMeta as unknown as Journal;

@@ -18578,7 +18578,7 @@
               "kind": "transform",
               "id": "to_markdown",
               "language": "html-to-markdown",
-              "data_selector": "{ \"html\": fetch.data, \"url\": fetch.url }"
+              "data_selector": "{ \"html\": fetch.data, \"url\": $step_meta.fetch.url }"
             }
           ],
           "output_transform": "to_markdown"
@@ -18622,7 +18622,7 @@
               "kind": "transform",
               "id": "readable",
               "language": "readability",
-              "data_selector": "{ \"html\": fetch.data, \"url\": fetch.url }"
+              "data_selector": "{ \"html\": fetch.data, \"url\": $step_meta.fetch.url }"
             },
             {
               "kind": "transform",
@@ -18708,7 +18708,7 @@
               "kind": "transform",
               "id": "readable",
               "language": "readability",
-              "data_selector": "{ \"html\": fetch_page.data, \"url\": fetch_page.url }"
+              "data_selector": "{ \"html\": fetch_page.data, \"url\": $step_meta.fetch_page.url }"
             },
             {
               "kind": "transform",

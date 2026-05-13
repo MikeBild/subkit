@@ -7,6 +7,13 @@ export { classifyPatch, classifyRateLimitFromTemplate } from "./classifier.ts";
 export type { FailingStepSnapshot } from "./drift-detector.ts";
 export { analyzeStepFailure, renderDriftDiff } from "./drift-detector.ts";
 export { applyPatchToStep, runFixtureDryRun } from "./fixture-runner.ts";
+export type {
+  AnalyzerConfig,
+  AnalyzerRunSample,
+  OptimizationCandidate,
+  OptimizationKind,
+} from "./optimization-analyzer.ts";
+export { analyzeRuns } from "./optimization-analyzer.ts";
 export type { AutohealPolicy } from "./policy.ts";
 export {
   DEFAULT_AUTOHEAL_POLICY,

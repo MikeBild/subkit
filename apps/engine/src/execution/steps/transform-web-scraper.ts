@@ -122,7 +122,7 @@ export function runReadability(p: RunWebScraperParams): StepResult {
       `readability: failed to parse — ${e instanceof Error ? e.message : String(e)}`,
     );
   }
-  if (!parsed || !parsed.content) {
+  if (!parsed?.content) {
     return fail(start, "readability_no_article", "readability: no article content detected");
   }
 
