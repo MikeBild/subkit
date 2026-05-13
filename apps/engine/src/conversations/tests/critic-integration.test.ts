@@ -114,6 +114,45 @@ async function seedConversation(conversation_id: string): Promise<void> {
     .onConflictDoNothing();
 }
 
+/**
+ * Synthesize an empty draft whose `latest_preview` is pre-seeded with
+ * step_traces for the three IDs the test fixtures
+ * (`threeStepDraftArgs`, the 2-step variants below) use.
+ *
+ * The critic-integration tests are exercising critic verdict handling,
+ * not the v4.8.0 transform-authoring gate. In production a build_workflow
+ * call that introduces transforms reading from `$scope.<X>` would not
+ * have reached the critic without a prior `dry_run_workflow` recording
+ * X's preview — the gate enforces exactly that. We replicate the
+ * realistic state here so the critic layer is what's under test, not
+ * the gate above it.
+ */
+function makeDraftWithPreviewSeed(): DraftDocument {
+  const empty = createEmptyDraftDocument();
+  return {
+    ...empty,
+    latest_preview: {
+      ok: true,
+      summary: "critic-integration test fixture (seeded preview for fetch/shape/tag)",
+      step_traces: [
+        { step_id: "fetch", kind: "request", status: "succeeded", output_preview: { items: [] } },
+        {
+          step_id: "shape",
+          kind: "transform",
+          status: "succeeded",
+          output_preview: [{ id: "x" }],
+        },
+        {
+          step_id: "tag",
+          kind: "transform",
+          status: "succeeded",
+          output_preview: [{ id: "x", tag: "ok" }],
+        },
+      ],
+    },
+  };
+}
+
 function makeCtx(conversation_id?: string): TestCtxWithDraft {
   const state: { draft: DraftDocument | null } = { draft: null };
   const base: ToolContext = {
@@ -124,7 +163,7 @@ function makeCtx(conversation_id?: string): TestCtxWithDraft {
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({ tenant_id, actor_id: null, db: testDb.db }),
-    getDraft: () => state.draft ?? createEmptyDraftDocument(),
+    getDraft: () => state.draft ?? makeDraftWithPreviewSeed(),
     setDraft: async (next) => {
       state.draft = next;
     },
