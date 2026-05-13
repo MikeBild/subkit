@@ -24,7 +24,7 @@ import {
   type MockOAuthServer,
   startMockOAuthServer,
 } from "../../../credentials/oauth2/tests/mock-server.ts";
-import { connectorOauthStates, connectors, credentials } from "../../../db/schema/index.ts";
+import { connectorOauthStates, connectors, credentials, events } from "../../../db/schema/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
@@ -122,6 +122,27 @@ describe("GET /v1/oauth/callback", () => {
     expect(cred!.mode).toBe("oauth2");
 
     expect(await getStateRow(state)).toBeNull();
+
+    // v4.8.0 Fix #1: callback must also publish
+    // `connector.oauth.callback_succeeded` on the `connector.oauth`
+    // channel so sk-cli can auto-resume the in-flight conversation.
+    // Assert the events row exists with the documented payload shape.
+    const eventRows = await server.db
+      .select()
+      .from(events)
+      .where(
+        and(
+          eq(events.tenant_id, server.tenantId),
+          eq(events.channel, "connector.oauth"),
+          eq(events.type, "connector.oauth.callback_succeeded"),
+        ),
+      );
+    expect(eventRows.length).toBe(1);
+    const payload = eventRows[0]!.payload as Record<string, unknown>;
+    expect(payload.connector_id).toBe(connectorId);
+    expect(payload.source).toBe("oauth_callback");
+    expect(typeof payload.connector_slug).toBe("string");
+    expect(typeof payload.has_refresh_token).toBe("boolean");
   });
 
   test("provider error returns an HTML error page and deletes the state row", async () => {
