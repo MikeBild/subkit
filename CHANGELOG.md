@@ -1,5 +1,71 @@
 # Changelog
 
+## [4.9.0] (2026-05-13)
+
+### Changed
+
+- **`sk settings` reshaped to a 5-tab palette matching claude-code's
+  Status/Config/Usage shape**, plus subkit's two AI-pipeline surfaces
+  (`Skills`, `Knowledge`) at the same depth — down from 10 outer tabs
+  + 17 engine-section sub-tabs. The activity heatmap merges into
+  Status; the operator surfaces (`Permissions`, `Profile`, `Admin`)
+  move out of `/settings` into their own SinglePane slash commands
+  (`/permissions`, `/profile`, `/admin`). Config is now a flat
+  searchable list across every engine setting with curated
+  human-readable row labels.
+- **Slash deep-links** (`/config`, `/usage`, `/skills`, `/knowledge`)
+  open the matching tab inside `sk settings`. The legacy 4-field
+  user-settings prompt moved from `/config` to `/config-form`. New
+  registrations: `/usage`, `/admin`, `/config-form`. `/permissions`
+  and `/admin` are mounted via SinglePane, with `AdminCommand`
+  probing `skBootstrap` for an in-pane "no admin permissions"
+  message for non-admins (server RBAC still enforces every mutation
+  independently).
+- **Two-step Esc adopts claude-code's `ownsEsc` pattern**
+  (generalised as `onInnerEscape`): every Esc-consuming tab + sub-tab
+  + form (`ConfigTab`, `KnowledgeTab`, `SkillsTab`, `ProfileTab`,
+  `AdminTab` → `GenericListSubTab` / `ApiKeysSubTab` /
+  `PortalTokensSubTab`) propagates its inner-state flag so first Esc
+  clears the inner state and second Esc dismisses the outer shell.
+- **Config row bodies render curated human labels for all 94 engine
+  leaves** (`apps/sk/src/settings-ui/lib/config-labels.ts:LABEL_BY_PATH`)
+  — `llm.api_key` → "Primary API key", `repl.portalTokenTtlMin` →
+  "Portal token TTL (minutes)", etc. A coverage-lock test
+  (`apps/sk/src/settings-ui/__tests__/config-labels.test.ts`) fails
+  when a new leaf lands in the engine schema without a curated
+  label. Section dividers use humanized headers (`AI / LLM`,
+  `REPL chrome`, …). Description footer surfaces the engine
+  schema's `.describe(...)` text plus the canonical dotted path for
+  the selected row.
+- **User-facing copy de-jargoned**: `audit events` → `actions`,
+  `llm.invocation audit rows` → `AI requests`,
+  `prompt/completion` → `input/output tokens`, `leaf` → `setting`.
+
+### Fixed
+
+- **Activity heatmap was rendering empty for every tenant**
+  regardless of activity. Root cause: `bucketize` read
+  `entry.created_at` while the engine's audit-log endpoint emits
+  `entry.ts` — every row was silently dropped before the bucket map
+  was populated. Plus `GLYPHS[0] = " "` (a literal space) made
+  zero-count days invisible. Now reads `ts`, renders `·` for empty
+  days, and the regression test in `StatusTab.heatmap.ink.test.tsx`
+  asserts the peak glyph appears against seeded items.
+- **`/usage` was being autocompleted in place of `/audit`** for
+  member personas: fuzzy search on "audit" matched `/usage` (which
+  had no `requires`) once the member couldn't see `/audit`.
+  `/usage` now requires `audit:read` — semantically correct since
+  the Usage tab aggregates `llm.invocation` audit rows.
+
+### Removed
+
+- **Dead code swept**: `SettingsTab.tsx` (engine-section view),
+  `StatsTab.tsx` (heatmap moved into Status),
+  `components/Footer.tsx` (orphan after SettingsTab deletion),
+  `groupBySection` helper (callers all migrated to flat fields),
+  and 4 orphan keybinding actions (`settings:close`,
+  `settings:tab-next/prev`, `help:toggle`) with no consumer.
+
 ## [4.8.3] (2026-05-13)
 
 ### Fixed
