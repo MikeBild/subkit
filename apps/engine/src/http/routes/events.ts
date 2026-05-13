@@ -134,6 +134,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const channel = (body.channel ?? "event.emitted") as
       | "execution.status"
       | "workflow.chain"
+      | "workflow.lifecycle"
       | "connector.oauth"
       | "conversation.stream"
       | "event.emitted"

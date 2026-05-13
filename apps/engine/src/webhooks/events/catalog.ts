@@ -7,6 +7,7 @@
 // which events to consider for subscription matching.
 
 import { z } from "@hono/zod-openapi";
+import { ConnectorOauthCallbackPayloadSchema } from "../../pubsub/index.ts";
 
 const ExecutionSucceeded = z.object({
   execution_id: z.string().uuid(),
@@ -87,6 +88,16 @@ export const EVENT_CATALOG = {
       credential_id: "00000000-0000-0000-0000-000000000004",
       environment: "prod",
       expires_at: "2026-05-01T00:00:00.000Z",
+    },
+  },
+  "connector.oauth.callback_succeeded": {
+    name: "connector.oauth.callback_succeeded",
+    schema: ConnectorOauthCallbackPayloadSchema,
+    example: {
+      connector_id: "00000000-0000-0000-0000-000000000003",
+      connector_slug: "google-gmail",
+      has_refresh_token: true,
+      source: "oauth_callback",
     },
   },
   "patch.proposed": {

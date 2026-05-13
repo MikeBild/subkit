@@ -15,10 +15,21 @@ describe("events catalog", () => {
       "execution.failed",
       "workflow.updated",
       "connector.oauth.refreshed",
+      "connector.oauth.callback_succeeded",
       "patch.proposed",
       "apikey.rotated",
       "conversation.committed",
     ]);
+  });
+
+  test("validateEventPayload accepts a connector.oauth.callback_succeeded payload", () => {
+    const res = validateEventPayload("connector.oauth.callback_succeeded", {
+      connector_id: "33333333-3333-4333-8333-333333333333",
+      connector_slug: "google-gmail",
+      has_refresh_token: true,
+      source: "oauth_callback",
+    });
+    expect(res.ok).toBe(true);
   });
 
   test("isKnownEventType", () => {

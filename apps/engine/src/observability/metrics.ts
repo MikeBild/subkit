@@ -516,7 +516,7 @@ function buildRegistry(): MetricsRegistry {
   });
   reg.registerCounter({
     name: METRIC_NAMES.AUTHORING_GATE_BLOCKS_TOTAL,
-    help: "Authoring-time gate refusals — workflow_unresolved_step_reference, workflow_cycle_detected, loop_authoring_requires_inspect, repair_loop_detected. Tells us how often the LLM hits these guards (high counts = the skill / prompt is failing to teach the rule).",
+    help: "Authoring-time gate refusals — workflow_unresolved_step_reference, workflow_cycle_detected, loop_authoring_requires_inspect, transform_authoring_requires_inspect, repair_loop_detected, critic_rejected. Tells us how often the LLM hits these guards (high counts = the skill / prompt is failing to teach the rule).",
     labels: ["code", "tool"],
   });
   reg.registerCounter({
