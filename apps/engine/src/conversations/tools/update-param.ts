@@ -13,6 +13,7 @@ import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
+import { evaluateTransformAuthoringGate } from "./transform-authoring-gate.ts";
 
 const inputSchema = z
   .object({
@@ -315,6 +316,62 @@ export const updateParamTool: ConversationTool = {
             },
           }),
         };
+      }
+
+      // Transform-authoring gate — symmetric narrow scope: only enforce
+      // when the edited step is a `transform` and the param touches the
+      // expression body (`expression`, `body`, `language`). Any other
+      // param on a transform — `id`, `silence_warnings`, etc. — must
+      // pass cleanly. The gate itself self-skips non-transform steps,
+      // but the relevance test keeps update_param usable as the
+      // documented fix path for a prior `transform_authoring_requires_inspect`
+      // rejection (mirror of the loop narrowing above).
+      const editedStepIsTransform = typeof step.kind === "string" && step.kind === "transform";
+      const paramTouchesTransformExpr =
+        args.param === "expression" ||
+        args.param === "body" ||
+        args.param === "language" ||
+        args.param.startsWith("expression.") ||
+        args.param.startsWith("body.");
+      if (editedStepIsTransform && paramTouchesTransformExpr) {
+        const transformGate = evaluateTransformAuthoringGate(
+          workflowDraft,
+          currentDraft.latest_preview ?? null,
+        );
+        if (!transformGate.ok) {
+          const summary = transformGate.blocks
+            .map(
+              (b) =>
+                `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
+                  b.reason === "no_dry_run_yet"
+                    ? "no dry-run has been recorded yet"
+                    : `\`${b.referenced_step_id}\` has no recent preview`
+                }`,
+            )
+            .join("; ");
+          recordAuthoringGateBlock({
+            code: "transform_authoring_requires_inspect",
+            tool: "update_param",
+          });
+          return {
+            ok: false,
+            data: buildGateError(currentDraft, {
+              error_code: "transform_authoring_requires_inspect",
+              message: `update would leave a transform step depending on data the upstream preview never recorded. ${summary}. Dry-run once so the scope is published, then re-apply.`,
+              recommended_mode: "workflow",
+              next_best_actions: [
+                "dry_run_workflow",
+                "inspect_workflow_draft",
+                "suggest_jsonata_paths",
+              ],
+              extra: {
+                gate_blocks: transformGate.blocks,
+                step_id: args.step_id,
+                param: args.param,
+              },
+            }),
+          };
+        }
       }
     }
 

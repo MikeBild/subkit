@@ -46,6 +46,7 @@ import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
+import { evaluateTransformAuthoringGate } from "./transform-authoring-gate.ts";
 
 const StepShape = z.record(z.string(), z.unknown());
 
@@ -592,6 +593,51 @@ export const buildWorkflowTool: ConversationTool = {
           data: buildGateError(currentDraft, {
             error_code: "loop_authoring_requires_inspect",
             message: `before committing a workflow with a loop step, dry-run once so the upstream step's actual output shape is recorded. ${summary}.`,
+            recommended_mode: "workflow",
+            next_best_actions: [
+              "dry_run_workflow",
+              "inspect_workflow_draft",
+              "suggest_jsonata_paths",
+            ],
+            extra: {
+              gate_blocks: gate.blocks,
+            },
+          }),
+        };
+      }
+    }
+
+    // Transform-authoring inspection gate — symmetric to the loop
+    // variant. Refuses a `build_workflow` payload whose transform steps
+    // cite `$scope.<X>...` for steps that have no recorded
+    // `output_preview` yet. Pre-fix v4.8.0 this was wired only into
+    // `propose_step` and `edit_workflow_patch`, so a one-shot
+    // `build_workflow` could bypass the gate entirely.
+    {
+      const gate = evaluateTransformAuthoringGate(
+        workflowDraft,
+        currentDraft.latest_preview ?? null,
+      );
+      if (!gate.ok) {
+        const summary = gate.blocks
+          .map(
+            (b) =>
+              `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
+                b.reason === "no_dry_run_yet"
+                  ? "no dry-run has been recorded yet"
+                  : `\`${b.referenced_step_id}\` has no recent preview`
+              }`,
+          )
+          .join("; ");
+        recordAuthoringGateBlock({
+          code: "transform_authoring_requires_inspect",
+          tool: "build_workflow",
+        });
+        return {
+          ok: false,
+          data: buildGateError(currentDraft, {
+            error_code: "transform_authoring_requires_inspect",
+            message: `before committing a workflow with a transform that reads upstream scope, dry-run once so the referenced step's actual output shape is recorded. ${summary}. Without a recorded shape the JSONata expression is a guess.`,
             recommended_mode: "workflow",
             next_best_actions: [
               "dry_run_workflow",
