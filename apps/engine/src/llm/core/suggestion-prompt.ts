@@ -93,12 +93,28 @@ export function assembleSuggestionPrompt(input: AssembleSuggestionPromptInput): 
   const perMsg = input.max_chars_per_message ?? DEFAULT_PER_MESSAGE_CHARS;
 
   const tail = input.recent_messages.slice(-max);
-  const messages: SubkitLlmMessage[] = tail
+  const built: SubkitLlmMessage[] = tail
     .filter((m) => typeof m.text === "string" && m.text.trim().length > 0)
     .map((m) => ({
       role: m.role,
       content: trimToTail(m.text.trim(), perMsg),
     }));
+
+  // Anthropic and some other providers reject `messages` arrays that end
+  // with an assistant turn — they treat it as an attempt to prefill the
+  // assistant's response. Suggest-next runs immediately after an
+  // assistant turn, so without this guard every model call ends with
+  // assistant role and the provider returns "This model does not support
+  // assistant message prefill. The conversation must end with a user
+  // message." (production session 16:09:50 against v4.10.0). The
+  // suggestion's job is to predict what the USER would type next, so we
+  // append a synthetic user nudge that frames the prediction explicitly.
+  // The system prompt already tells the model to reply with only the
+  // suggestion, so the nudge stays terse.
+  const messages: SubkitLlmMessage[] =
+    built.length > 0 && built[built.length - 1]!.role === "assistant"
+      ? [...built, { role: "user", content: "What would I type next?" }]
+      : built;
 
   return {
     system: SUGGESTION_SYSTEM_PROMPT,
