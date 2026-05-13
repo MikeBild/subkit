@@ -5,36 +5,33 @@
 
 import { z } from "@hono/zod-openapi";
 
-/** Parses a multi-line "Name: Value\nOther: Other" header string into a
- *  record, trimming whitespace on both sides. Returns `null` when no
- *  valid header line was found (so validation can fail with a useful
- *  message instead of silently coercing garbage). Empty lines are
- *  tolerated; lines without a `:` are rejected.
- *
- *  Header names are validated as RFC 7230 tokens — without this, a
- *  JSON-encoded string like `'{"Accept": "..."}'` would parse as a
- *  single header named `'{"Accept"'`, slip through validation, and
- *  blow up inside `new Headers()` at fetch time with the obtuse
- *  "Invalid header name" error (conversation 730c568a). */
-const HTTP_TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+import { looksLikeJsonObjectOrArray, parseHeaderLines } from "./types-helpers.ts";
+import {
+  MarkdownConfigSchema,
+  ReadabilityConfigSchema,
+  StructuredDataConfigSchema,
+  TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION,
+  TRANSFORM_LANGUAGES_NEEDING_EXPRESSION,
+} from "./types-web-scraper.ts";
 
-function parseHeaderLines(raw: string): Record<string, string> | null {
-  const out: Record<string, string> = {};
-  let saw = 0;
-  for (const lineRaw of raw.split(/\r?\n/)) {
-    const line = lineRaw.trim();
-    if (!line) continue;
-    const idx = line.indexOf(":");
-    if (idx <= 0) return null;
-    const name = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1).trim();
-    if (!name) return null;
-    if (!HTTP_TOKEN_RE.test(name)) return null;
-    out[name] = value;
-    saw += 1;
-  }
-  return saw > 0 ? out : null;
-}
+export type {
+  MarkdownOutput,
+  ReadabilityOutput,
+  StructuredDataOutput,
+} from "./types-web-scraper.ts";
+// Re-export the three web-scraper envelope schemas (#144) so existing
+// `import … from "./workflows/types.ts"` call sites keep working. The
+// definitions live in `./types-web-scraper.ts` to keep this file under
+// the 1000-LOC audit ceiling.
+export {
+  MarkdownOutputSchema,
+  ReadabilityOutputSchema,
+  StructuredDataOutputSchema,
+} from "./types-web-scraper.ts";
+
+// Helpers `parseHeaderLines`, `HTTP_TOKEN_RE`, and
+// `looksLikeJsonObjectOrArray` live in `./types-helpers.ts` so this
+// file stays under the 1000-LOC audit ceiling.
 
 // JSON value
 const JsonLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -130,19 +127,7 @@ const GraphQLConfigSchema: z.ZodType<GraphQLConfig> = z
       }),
   );
 
-function looksLikeJsonObjectOrArray(s: string): boolean {
-  const trimmed = s.trim();
-  if (trimmed.length === 0) return false;
-  const first = trimmed[0];
-  const last = trimmed[trimmed.length - 1];
-  if (!(first === "{" && last === "}") && !(first === "[" && last === "]")) return false;
-  try {
-    const parsed = JSON.parse(trimmed);
-    return parsed !== null && (typeof parsed === "object" || Array.isArray(parsed));
-  } catch {
-    return false;
-  }
-}
+// `looksLikeJsonObjectOrArray` moved to `./types-helpers.ts`.
 
 const baseStep = {
   id: z.string().min(1),
@@ -553,77 +538,11 @@ export const RequestStepSchema = z
   })
   .openapi("RequestStep");
 
-// Web-scraper transform languages (#144). Each operates on the upstream
-// step's HTML body (passed through `input`) and returns a typed JSON
-// envelope. No `expression` is consumed; per-language config arrives via
-// the matching nested block below.
-const ReadabilityConfigSchema = z
-  .object({
-    max_chars: z.number().int().positive().max(2_000_000).optional(),
-    length_guard: z.number().int().positive().max(2_000_000).optional(),
-  })
-  .openapi("ReadabilityConfig");
-const MarkdownConfigSchema = z
-  .object({
-    max_chars: z.number().int().positive().max(2_000_000).optional(),
-    preserve_links: z.boolean().optional(),
-    strip_tags: z.array(z.string().min(1)).optional(),
-    truncate: z.boolean().optional(),
-  })
-  .openapi("MarkdownConfig");
-const StructuredDataConfigSchema = z
-  .object({
-    types: z
-      .array(z.enum(["json-ld", "opengraph", "microdata"]))
-      .min(1)
-      .optional(),
-  })
-  .openapi("StructuredDataConfig");
-
-// Typed JSON envelopes returned by the three new transform languages.
-// Exposed in OpenAPI so downstream tooling (chat, dashboards, the
-// authoring gate) can address fields by name with confidence.
-export const ReadabilityOutputSchema = z
-  .object({
-    title: z.string().nullable(),
-    byline: z.string().nullable(),
-    excerpt: z.string().nullable(),
-    lang: z.string().nullable(),
-    site_name: z.string().nullable(),
-    published_at: z.string().nullable(),
-    content_html: z.string(),
-    length: z.number().int().nonnegative(),
-    url: z.string(),
-  })
-  .openapi("ReadabilityOutput");
-export const MarkdownOutputSchema = z
-  .object({
-    markdown: z.string(),
-    bytes: z.number().int().nonnegative(),
-    url: z.string(),
-    truncated: z.boolean(),
-    stripped_elements: z.array(z.string()),
-  })
-  .openapi("MarkdownOutput");
-export const StructuredDataOutputSchema = z
-  .object({
-    json_ld: z.array(z.record(z.string(), z.unknown())),
-    opengraph: z.record(z.string(), z.string()),
-    microdata: z.array(z.record(z.string(), z.unknown())),
-    url: z.string(),
-    found_any: z.boolean(),
-  })
-  .openapi("StructuredDataOutput");
-export type ReadabilityOutput = z.infer<typeof ReadabilityOutputSchema>;
-export type MarkdownOutput = z.infer<typeof MarkdownOutputSchema>;
-export type StructuredDataOutput = z.infer<typeof StructuredDataOutputSchema>;
-
-const TRANSFORM_LANGUAGES_NEEDING_EXPRESSION = new Set(["jsonata", "javascript"]);
-const TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION = new Set([
-  "readability",
-  "html-to-markdown",
-  "structured-data",
-]);
+// Web-scraper #144 — the three config + three output Zod schemas live
+// in `./types-web-scraper.ts` (imported above). The TransformStep
+// schema below references them inline; the language enum keeps the new
+// values in this file so the discriminated-union shape is visible at a
+// glance.
 
 export const TransformStepSchema = z
   .object({
