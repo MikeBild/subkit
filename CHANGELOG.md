@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.8.3] (2026-05-13)
+
+### Fixed
+
+- **`critic-integration.test.ts` fixture seeds `latest_preview`** so the
+  v4.8.0 transform-authoring gate (which fires on transforms reading
+  from un-previewed scope) does not block fixtures that exercise the
+  critic-verdict layer above it. Same pattern as
+  `edit-workflow-patch.test.ts` and `cycle-rejected-at-build.test.ts`.
+  Tests were green pre-v4.8.0 only because the gate didn't exist.
+
 ## [4.8.2] (2026-05-13)
 
 ### Fixed
