@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.10.1](https://github.com/MikeBild/subkit/compare/subkit-v4.10.0...subkit-v4.10.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* **suggest-next:** append user nudge when message tail is assistant role ([f4dc097](https://github.com/MikeBild/subkit/commit/f4dc0976c2464f1d6dce5b29c85a4cec51759e2a))
+
 ## [4.10.0](https://github.com/MikeBild/subkit/compare/subkit-v4.9.0...subkit-v4.10.0) (2026-05-13)
 
 
