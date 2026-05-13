@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.8.2] (2026-05-13)
+
+### Fixed
+
+- **Transform-authoring gate now mirrors the loop-gate's probe-evidence
+  exemption.** v4.8.0 shipped the new gate without the
+  `probedConnectorSlugs` option the loop-gate already used, so any
+  workflow that successfully probed a connector and then authored a
+  transform reading from that probe's request step would be rejected
+  unless an extra `dry_run_workflow` ran in between — the exact UX
+  regression the loop-gate's exemption was designed to prevent.
+- **Both authoring gates now recognise three connector-binding shapes,
+  not just one.** `transitivelyExempt` (used by both loop- and
+  transform-gate) and `collectProbedConnectorSlugs` previously only
+  looked at `step.connector_id` / `step.connector_slug`. They now also
+  walk for `${connector.<slug>.*}` placeholders in any string leaf of
+  the step config, which is how reference-impl-style and legacy
+  workflows bind a step to a connector. Without this, the v4.8.0 CI
+  fixtures (and a dozen `build_workflow + authoring-critic` tests) all
+  failed the moment the new transform gate started firing.
+
 ## [4.8.1] (2026-05-13)
 
 ### Added
