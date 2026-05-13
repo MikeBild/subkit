@@ -258,39 +258,63 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
 
   // JSON inline path (#144) — separate OpenAPI route so Zod validates
   // the body up-front and the spec advertises the JSON contract.
-  app.openapi(createInlineRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const body = c.req.valid("json");
-    const byteSize = Buffer.byteLength(body.content, "utf8");
-    if (byteSize > KNOWLEDGE_SOURCE_MAX_BYTES) {
+  // 422 is the documented validation-failure status on `createInlineRoute`.
+  // Without this `defaultHook`, Hono's zod-openapi returns 400 on Zod
+  // failure, drifting from the OpenAPI spec and forcing clients to
+  // branch on both codes. The hook normalises to 422 + a typed error
+  // envelope that matches `ErrorSchema`.
+  app.openapi(
+    createInlineRoute,
+    async (c) => {
+      const principal = requireAuth(c);
+      const db = c.get("db");
+      const body = c.req.valid("json");
+      const byteSize = Buffer.byteLength(body.content, "utf8");
+      if (byteSize > KNOWLEDGE_SOURCE_MAX_BYTES) {
+        return c.json(
+          {
+            code: "content_too_large",
+            message: `Content exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes`,
+          },
+          413,
+        );
+      }
+      const { content, mime_type, source_uri, ...inputFields } = body;
+      const filename = source_uri ?? `${inputFields.slug ?? inputFields.name}.md`;
+      const source = await svc.createKnowledgeSource(
+        {
+          tenant_id: principal.tenant_id,
+          input: inputFields,
+          upload: {
+            buffer: Buffer.from(content, "utf8"),
+            filename,
+            mime: mime_type,
+          },
+          actor_id: principal.id,
+          source_type_override: "inline",
+          source_uri_override: source_uri ?? filename,
+        },
+        db,
+      );
+      return c.json(source, 201);
+    },
+    (result, c) => {
+      if (result.success) return undefined;
       return c.json(
         {
-          code: "content_too_large",
-          message: `Content exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes`,
+          code: "validation_failed",
+          message: "request body did not satisfy CreateKnowledgeSourceInlineBody",
+          details: {
+            issues: result.error.issues.map((i) => ({
+              path: i.path.join("."),
+              message: i.message,
+            })),
+          },
         },
-        413,
+        422,
       );
-    }
-    const { content, mime_type, source_uri, ...inputFields } = body;
-    const filename = source_uri ?? `${inputFields.slug ?? inputFields.name}.md`;
-    const source = await svc.createKnowledgeSource(
-      {
-        tenant_id: principal.tenant_id,
-        input: inputFields,
-        upload: {
-          buffer: Buffer.from(content, "utf8"),
-          filename,
-          mime: mime_type,
-        },
-        actor_id: principal.id,
-        source_type_override: "inline",
-        source_uri_override: source_uri ?? filename,
-      },
-      db,
-    );
-    return c.json(source, 201);
-  });
+    },
+  );
 
   // Legacy multipart upload route (non-OpenAPI). File uploads only.
   app.post("/v1/knowledge-sources", async (c) => {

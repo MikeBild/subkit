@@ -7,13 +7,11 @@ export { classifyPatch, classifyRateLimitFromTemplate } from "./classifier.ts";
 export type { FailingStepSnapshot } from "./drift-detector.ts";
 export { analyzeStepFailure, renderDriftDiff } from "./drift-detector.ts";
 export { applyPatchToStep, runFixtureDryRun } from "./fixture-runner.ts";
-export type {
-  AnalyzerConfig,
-  AnalyzerRunSample,
-  OptimizationCandidate,
-  OptimizationKind,
-} from "./optimization-analyzer.ts";
-export { analyzeRuns } from "./optimization-analyzer.ts";
+// Note: `optimization-analyzer.ts` is intentionally NOT re-exported
+// from this barrel until the matching pg-boss handler + persistence
+// schema land. Until then the analyzer is invocable only via a direct
+// import so accidental callers cannot treat its output as an
+// authoritative persisted candidate.
 export type { AutohealPolicy } from "./policy.ts";
 export {
   DEFAULT_AUTOHEAL_POLICY,

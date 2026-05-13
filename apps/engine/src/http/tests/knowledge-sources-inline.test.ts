@@ -43,8 +43,9 @@ describe("POST /v1/knowledge-sources/inline — validation", () => {
       },
       body: JSON.stringify({ content: "no name field" }),
     });
-    // Hono's OpenAPI validator returns 400 for Zod failures by default.
-    expect([400, 422]).toContain(res.status);
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("validation_failed");
   });
 
   test("non-URL source_uri → 400", async () => {

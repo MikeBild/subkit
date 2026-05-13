@@ -28,6 +28,7 @@ import {
 } from "../../../connectors/drivers/postgres.ts";
 import { executeS3Request, type S3Method } from "../../../connectors/drivers/s3.ts";
 import { withEgressAudit } from "../../../connectors/egress.ts";
+import { EgressBlockedError, RobotsDisallowedError } from "../../../connectors/egress-guard.ts";
 import { getConnectorForEnvironment } from "../../../connectors/service.ts";
 import { connectorEndpointSchemas, connectors } from "../../../db/schema/index.ts";
 import {
@@ -1064,18 +1065,17 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     // failures emitted by buildRequestPlan. Otherwise these surface as
     // a generic `request_setup_error` and the operator can't
     // distinguish "robots.txt blocked you" from "the URL is malformed".
-    const typedCode =
-      err && typeof err === "object" && typeof (err as { code?: unknown }).code === "string"
-        ? (err as { code: string }).code === "robots_disallowed" ||
-          (err as { code: string }).code === "egress_blocked"
-          ? (err as { code: string }).code
-          : null
-        : null;
+    const code =
+      err instanceof RobotsDisallowedError
+        ? "robots_disallowed"
+        : err instanceof EgressBlockedError
+          ? "egress_blocked"
+          : "request_setup_error";
     return {
       status: "failed",
       retry_count: 0,
       duration_ms: Date.now() - start,
-      error: buildStepErrorDetail({ code: typedCode ?? "request_setup_error", err }),
+      error: buildStepErrorDetail({ code, err }),
     };
   }
 
