@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.10.0](https://github.com/MikeBild/subkit/compare/subkit-v4.9.0...subkit-v4.10.0) (2026-05-13)
+
+
+### Features
+
+* **conversation:** inline auto-persist on green probe and green dry-run ([6bebb09](https://github.com/MikeBild/subkit/commit/6bebb09dc09d599c3731e1a8c6f66ef071abe1e1))
+
+
+### Documentation
+
+* align authoring + connector docs with inline auto-persist contract ([f13e2c5](https://github.com/MikeBild/subkit/commit/f13e2c5afe1cdcc7d58300770d79f3f8f27d55c9))
+
 ## [4.9.0] (2026-05-13)
 
 ### Changed
