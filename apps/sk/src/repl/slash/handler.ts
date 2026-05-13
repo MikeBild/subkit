@@ -249,7 +249,18 @@ export type PaneSpec =
       token_id: string;
       expires_at: string;
       workflow_id: string;
-    };
+    }
+  | {
+      // `/permissions`, `/profile`, `/admin` — single-pane modals that
+      // wrap the corresponding *Tab via SinglePane. Lifted out of
+      // /settings as part of the 5-tab refactor; only the 5 surfaces
+      // {Status, Config, Usage, Skills, Knowledge} remain inside
+      // SettingsModal.
+      kind: "permissions";
+      tenant?: string | null;
+    }
+  | { kind: "profile"; tenant?: string | null }
+  | { kind: "admin"; tenant?: string | null };
 
 export interface SlashHandlerContext {
   client: EngineClient;
@@ -1797,12 +1808,29 @@ export async function handleSlash(
         return `init failed: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
-    case "config": {
+    case "config":
+    case "usage": {
+      // Deep-link into the SettingsModal on the matching tab — claude-code
+      // parity for `/config`, `/usage`. Status is the default landing,
+      // so `/settings` alone (handled in case "settings" below) also
+      // works. The legacy `config-form` 4-field user-settings prompt
+      // moved to `/config-form` so this slot can host the full Config
+      // tab (every engine leaf, searchable).
+      const initialTab = dispatchName === "config" ? "Config" : "Usage";
+      if (ctx.openPane) {
+        ctx.openPane({ kind: "settings", initialTab });
+        return null;
+      }
+      return `open \`sk\` with the Ink REPL to use /${dispatchName}, or edit ${join(homedir(), ".sk", "settings.json")} directly`;
+    }
+    case "config-form": {
+      // Original 4-field user-settings prompt — kept for scripted /
+      // muscle-memory use; the full Config surface lives behind /config.
       if (ctx.openPane) {
         const current = loadSettings(process.cwd()).merged;
         ctx.openPane({
           kind: "config-form",
-          title: "config",
+          title: "config-form",
           fields: [
             {
               name: "model",
@@ -1867,7 +1895,7 @@ export async function handleSlash(
         });
         return null;
       }
-      return `edit ${join(homedir(), ".sk", "settings.json")} or run /config in the Ink REPL for a guided form`;
+      return `edit ${join(homedir(), ".sk", "settings.json")} or run /config-form in the Ink REPL for a guided form`;
     }
     case "feedback":
     case "bug": {
@@ -1898,6 +1926,14 @@ export async function handleSlash(
       // Unknown profile name
       if (subArg) {
         return `profile "${subArg}" not found. Available: ${profileNames.join(", ")}`;
+      }
+
+      // /profile (no args, Ink host) → open the SinglePane ProfileCommand.
+      // Readline fallback (and `/env` alias) keeps the text listing.
+      if (name === "profile" && ctx.openPane) {
+        const tenant = ctx.statusSnapshot?.tenant.slug ?? null;
+        ctx.openPane({ kind: "profile", tenant });
+        return null;
       }
 
       // /profile (no args) → list

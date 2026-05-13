@@ -73,14 +73,3 @@ function mapKind(leaf: SettingLeafEntry): FormFieldKind {
       return "json";
   }
 }
-
-export function groupBySection(fields: FormField[]): Map<string, FormField[]> {
-  const out = new Map<string, FormField[]>();
-  for (const f of fields) {
-    const head = f.path.split(".")[0] ?? "";
-    const list = out.get(head) ?? [];
-    list.push(f);
-    out.set(head, list);
-  }
-  return out;
-}

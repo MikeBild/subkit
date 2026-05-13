@@ -1,10 +1,8 @@
-// Stats tab — calendar heatmap of recent activity sourced from the
-// audit log. Toggle the window with `1` (Last 7), `2` (Last 30),
-// `3` (All time — capped at the engine's audit-log retention).
-//
-// The heatmap is ASCII-only — no new dependency. Rows are weeks,
-// columns are weekdays (Mon–Sun); intensity is rendered as one of
-// five glyphs based on count quintile.
+// Calendar heatmap of recent activity sourced from the audit log.
+// Rows are weeks, columns are weekdays (Mon–Sun); intensity is rendered
+// as one of five glyphs based on count quintile. Toggle the window with
+// `1` (Last 7), `2` (Last 30), `3` (All time). Lifted from the former
+// StatsTab so the Status surface owns activity visualization.
 
 import { Box, Text, useInput } from "ink";
 import type React from "react";
@@ -23,10 +21,21 @@ const WINDOW_LABEL: Record<WindowKey, string> = {
   all: "All time",
 };
 
-const GLYPHS = [" ", "·", "▒", "▓", "█"] as const;
+// Glyph gradient mirrors GitHub's contribution graph: a faint dot for
+// empty days (so the grid shape is visible even on quiet weeks) plus
+// four ascending shades for intensity. Earlier `GLYPHS[0] = " "`
+// rendered empty days as invisible spaces and the grid disappeared
+// whenever activity was sparse — the user would see a blank gap
+// between the toggle row and the totals row.
+const GLYPHS = ["·", "░", "▒", "▓", "█"] as const;
 
 interface AuditEntry {
-  created_at?: unknown;
+  // The engine's audit-log endpoint returns rows with `ts` (an ISO
+  // string), not `created_at`. The earlier shape mismatch silently
+  // dropped every row in `bucketize` so the heatmap always showed
+  // zero counts regardless of actual activity. See
+  // `apps/engine/src/http/routes/audit-log.ts:38` (AuditEntrySchema).
+  ts?: unknown;
 }
 
 function dayKey(iso: string): string {
@@ -36,14 +45,27 @@ function dayKey(iso: string): string {
 function bucketize(items: AuditEntry[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const e of items) {
-    if (typeof e.created_at !== "string") continue;
-    const k = dayKey(e.created_at);
+    if (typeof e.ts !== "string") continue;
+    const k = dayKey(e.ts);
     m.set(k, (m.get(k) ?? 0) + 1);
   }
   return m;
 }
 
-export const StatsTab: React.FC<Props> = ({ client }) => {
+function computeStreak(buckets: Map<string, number>): number {
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    if ((buckets.get(iso) ?? 0) > 0) streak++;
+    else break;
+  }
+  return streak;
+}
+
+export const ActivityHeatmap: React.FC<Props> = ({ client }) => {
   const [items, setItems] = useState<AuditEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,7 +101,6 @@ export const StatsTab: React.FC<Props> = ({ client }) => {
   const buckets = useMemo(() => bucketize(items), [items]);
   const days = windowKey === "7" ? 7 : windowKey === "30" ? 30 : Math.max(1, items.length);
   const today = new Date();
-  // Build a chronological day list newest → oldest within the window.
   const dayList: { iso: string; count: number }[] = [];
   for (let i = 0; i < days; i++) {
     const d = new Date(today);
@@ -89,7 +110,6 @@ export const StatsTab: React.FC<Props> = ({ client }) => {
   }
   dayList.reverse();
 
-  // Quintile bands: split max-count into 4 thresholds.
   const max = dayList.reduce((m, d) => Math.max(m, d.count), 0);
   const bandFor = (c: number): number => {
     if (max === 0) return 0;
@@ -101,7 +121,6 @@ export const StatsTab: React.FC<Props> = ({ client }) => {
     return 4;
   };
 
-  // Group into weeks of 7 cols.
   const weeks: { iso: string; count: number }[][] = [];
   for (let i = 0; i < dayList.length; i += 7) {
     weeks.push(dayList.slice(i, i + 7));
@@ -112,7 +131,7 @@ export const StatsTab: React.FC<Props> = ({ client }) => {
 
   return (
     <Box flexDirection="column">
-      <Text bold>Activity heatmap</Text>
+      <Text bold>Activity</Text>
       <Box marginTop={1}>
         <Text color="gray">
           1 Last 7 · 2 Last 30 · 3 All time · current: {WINDOW_LABEL[windowKey]}
@@ -135,25 +154,13 @@ export const StatsTab: React.FC<Props> = ({ client }) => {
       </Box>
       <Box marginTop={1} flexDirection="column">
         <Text color="gray">
-          totals: {totals} audit events · streak: {streak} day(s)
+          totals: {totals} actions · streak: {streak} day(s)
         </Text>
         <Text color="gray">
-          heatmap glyphs: ░ {GLYPHS[0]} · {GLYPHS[1]} · {GLYPHS[2]} · {GLYPHS[3]} · {GLYPHS[4]}
+          legend: {GLYPHS[0]} none · {GLYPHS[1]} low · {GLYPHS[2]} med · {GLYPHS[3]} high ·{" "}
+          {GLYPHS[4]} peak
         </Text>
       </Box>
     </Box>
   );
 };
-
-function computeStreak(buckets: Map<string, number>): number {
-  let streak = 0;
-  const today = new Date();
-  for (let i = 0; i < 365; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const iso = d.toISOString().slice(0, 10);
-    if ((buckets.get(iso) ?? 0) > 0) streak++;
-    else break;
-  }
-  return streak;
-}

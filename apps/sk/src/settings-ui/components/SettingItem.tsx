@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type React from "react";
+import { labelForPath } from "../lib/config-labels.ts";
 import type { FormField } from "../lib/zod-to-form-fields.ts";
 
 interface Props {
@@ -25,16 +26,17 @@ export const SettingItem: React.FC<Props> = ({ field, selected }) => {
         : field.source === "global"
           ? "green"
           : "gray";
+  const label = labelForPath(field.path);
   return (
     <Box>
       {selected ? <Text color="cyan">{cursor} </Text> : <Text>{cursor} </Text>}
       <Box width={44}>
         {selected ? (
           <Text color="cyan" bold>
-            {field.path}
+            {label}
           </Text>
         ) : (
-          <Text>{field.path}</Text>
+          <Text>{label}</Text>
         )}
       </Box>
       <Box width={28}>

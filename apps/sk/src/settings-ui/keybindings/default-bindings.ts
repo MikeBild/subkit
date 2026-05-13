@@ -1,10 +1,18 @@
-// Default keybindings for `sk settings configure`.
+// Default keybindings for the settings-ui surfaces.
 //
 // Operator overrides are not yet wired in — the loader call site
 // pulls from this map directly. When we add `~/.sk/keybindings.json`
 // (mirroring claude-code's pattern), `useKeybinding` will merge the
 // operator's overlay over these defaults the same way claude-code's
 // `loadBindings` does.
+//
+// Only contexts that have a live consumer are listed — `resolveAction`
+// is called from ConfigTab + SkillsTab (Settings, Search), FieldEditor
+// (Field), and ConfirmModal (Confirm). The outer SettingsModal handles
+// Esc / arrow / `[` / `]` directly via `useInput`, so there is no
+// `settings:tab-next` / `settings:close` binding here. Operator surfaces
+// (`/permissions`, `/profile`, `/admin`) use the SinglePane shell for
+// Esc — also not via `resolveAction`.
 
 import type { KeybindingBlock } from "./schema.ts";
 
@@ -12,15 +20,10 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
   {
     context: "Settings",
     bindings: {
-      tab: "settings:tab-next",
-      "shift+tab": "settings:tab-prev",
       uparrow: "list:prev",
       downarrow: "list:next",
       return: "list:edit",
-      escape: "settings:close",
-      q: "settings:close",
       "/": "search:focus",
-      "?": "help:toggle",
     },
   },
   {
@@ -47,11 +50,5 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       return: "field:commit",
       "ctrl+r": "field:reveal-secret",
     },
-  },
-  {
-    // The Global context covers app-level concerns the modal shouldn't
-    // intercept (Ctrl-C exits via Ink's built-in handler).
-    context: "Global",
-    bindings: {},
   },
 ];

@@ -1,6 +1,8 @@
-// Usage + Stats tabs (M5 of #159).
-// Asserts both tabs render audit-derived data with empty-state and
-// loaded-state coverage. Stats tab toggle keys are exercised.
+// Usage tab (M5 of #159).
+// Asserts the Usage tab renders audit-derived data with empty-state
+// and loaded-state coverage. The former Stats tab has been merged
+// into the Status tab as an embedded ActivityHeatmap — coverage for
+// that lives in apps/sk/src/settings-ui/__tests__/StatusTab.heatmap.ink.test.tsx.
 
 import { describe, expect, mock, test } from "bun:test";
 import type React from "react";
@@ -42,11 +44,10 @@ async function navigateTo(
 ): Promise<ReturnType<typeof renderInk>> {
   const node = (
     <SettingsModal
-      sections={new Map()}
+      fields={[]}
       pendingRestartKeys={[]}
       overrideKeys={[]}
       client={client}
-      isAdmin={false}
       onExit={() => {}}
     />
   ) as React.ReactElement;
@@ -85,7 +86,7 @@ describe("UsageTab — token aggregation by flow (M5 + G6 closure)", () => {
         created_at: "2024-11-14T22:13:20.000Z",
       },
     ];
-    const ui = await navigateTo(makeClient(items), 3);
+    const ui = await navigateTo(makeClient(items), 2);
     try {
       await ui.waitFor((t) => t.includes("Token usage"));
       await ui.waitFor((t) => t.includes("chat") && t.includes("summarize"));
@@ -96,7 +97,7 @@ describe("UsageTab — token aggregation by flow (M5 + G6 closure)", () => {
       expect(txt).toContain("summarize");
       expect(txt).toContain("tool-chain");
       // grand totals row
-      expect(txt).toMatch(/totals: 2,050 prompt \+ 675 completion = 2,725/);
+      expect(txt).toMatch(/totals: 2,050 input \+ 675 output = 2,725 tokens/);
       // conversation.completed should NOT have leaked in.
       expect(txt).not.toMatch(/9,999/);
     } finally {
@@ -104,39 +105,12 @@ describe("UsageTab — token aggregation by flow (M5 + G6 closure)", () => {
     }
   });
 
-  test("renders empty state when no llm.invocation events exist", async () => {
-    const ui = await navigateTo(makeClient([]), 3);
+  test("renders empty state when no AI requests recorded", async () => {
+    const ui = await navigateTo(makeClient([]), 2);
     try {
       await ui.waitFor((t) => t.includes("Token usage"));
-      await ui.waitFor((t) => t.includes("no llm.invocation events found"));
-      expect(ui.text()).toContain("no llm.invocation events");
-    } finally {
-      ui.unmount();
-    }
-  });
-});
-
-describe("StatsTab — heatmap (M5)", () => {
-  test("renders heatmap and totals", async () => {
-    const today = "2024-11-14T22:13:20.000Z";
-    const items = Array.from({ length: 12 }, () => ({ created_at: today }));
-    const ui = await navigateTo(makeClient(items), 4);
-    try {
-      await ui.waitFor((t) => t.includes("Activity heatmap"));
-      await ui.waitFor((t) => /totals: 12 audit events/.test(t));
-      expect(ui.text()).toContain("Last 30 days");
-    } finally {
-      ui.unmount();
-    }
-  });
-
-  test("toggle '1' switches to Last 7 days window", async () => {
-    const ui = await navigateTo(makeClient([]), 4);
-    try {
-      await ui.waitFor((t) => t.includes("Activity heatmap"));
-      await ui.type("1");
-      await ui.waitFor((t) => t.includes("current: Last 7 days"));
-      expect(ui.text()).toContain("Last 7 days");
+      await ui.waitFor((t) => t.includes("no AI requests recorded"));
+      expect(ui.text()).toContain("no AI requests recorded for this tenant yet");
     } finally {
       ui.unmount();
     }

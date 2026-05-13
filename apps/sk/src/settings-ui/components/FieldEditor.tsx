@@ -2,6 +2,7 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
 import { resolveAction } from "../keybindings/useKeybinding.ts";
+import { labelForPath } from "../lib/config-labels.ts";
 import type { FormField } from "../lib/zod-to-form-fields.ts";
 
 interface Props {
@@ -102,11 +103,15 @@ export const FieldEditor: React.FC<Props> = ({ field, onCommit, onCancel }) => {
 
   const display =
     field.kind === "secret" && !reveal && buffer.length > 0 ? "•".repeat(buffer.length) : buffer;
+  const label = labelForPath(field.path);
   return (
     <Box flexDirection="column">
       <Box>
-        <Text bold>{field.path}</Text>
-        <Text color="gray"> ({field.kind})</Text>
+        <Text bold>{label}</Text>
+        <Text color="gray">
+          {"  ·  "}
+          {field.path} ({field.kind})
+        </Text>
       </Box>
       {field.description ? <Text color="gray">{field.description}</Text> : null}
       <Box marginTop={1}>

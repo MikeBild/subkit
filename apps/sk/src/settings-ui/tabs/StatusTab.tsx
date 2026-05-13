@@ -2,6 +2,12 @@
 // is mounted; cleanup on unmount cancels the timer (tab unmounts when
 // the outer shell switches tabs, so polling stops).
 //
+// Embeds the activity heatmap below the runtime properties (former
+// Stats tab, merged here to match the claude-code Status layout).
+// The heatmap captures `1`/`2`/`3` for window toggles via its own
+// useInput; StatusTab itself has no key handlers, so there is no
+// collision.
+//
 // Note: rows that depend on REPL state (session id, cwd-relative
 // permission mode, token-usage) require coupling that doesn't exist in
 // the standalone `sk settings` invocation. Those rows render "unknown"
@@ -13,6 +19,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
 import type { EngineClient } from "../../engine-client.ts";
+import { ActivityHeatmap } from "../components/ActivityHeatmap.tsx";
 import type { FormField } from "../lib/zod-to-form-fields.ts";
 
 interface Props {
@@ -189,6 +196,12 @@ export const StatusTab: React.FC<Props> = ({
           label="setting sources"
           value={settingSources.length > 0 ? settingSources.join(" · ") : "all defaults"}
         />
+      </Box>
+      <Box marginTop={1}>
+        <Text color="gray">─────────────────────────────</Text>
+      </Box>
+      <Box marginTop={1}>
+        <ActivityHeatmap client={client} />
       </Box>
       <Box marginTop={1}>
         <Text color="gray">

@@ -37,7 +37,12 @@ function mimeFor(filename: string): string {
 
 interface Props {
   client: EngineClient;
-  onSearchActiveChange?: (active: boolean) => void;
+  /**
+   * Fired when this tab "owns Esc" — see ConfigTab for the contract.
+   * KnowledgeTab owns Esc while search is active, while the ingest
+   * prompt is open, or while a delete confirmation is pending.
+   */
+  onInnerEscape?: (active: boolean) => void;
 }
 
 interface SourceRow {
@@ -68,7 +73,7 @@ function pickLastIndexed(raw: Record<string, unknown>): string | null {
   return null;
 }
 
-export const KnowledgeTab: React.FC<Props> = ({ client, onSearchActiveChange }) => {
+export const KnowledgeTab: React.FC<Props> = ({ client, onInnerEscape }) => {
   const [rows, setRows] = useState<SourceRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,8 +88,9 @@ export const KnowledgeTab: React.FC<Props> = ({ client, onSearchActiveChange }) 
   const [ingesting, setIngesting] = useState(false);
 
   useEffect(() => {
-    onSearchActiveChange?.(searchActive || searchQuery.length > 0);
-  }, [searchActive, searchQuery, onSearchActiveChange]);
+    const ownsEsc = searchActive || searchQuery.length > 0 || ingestOpen || pendingDelete !== null;
+    onInnerEscape?.(ownsEsc);
+  }, [searchActive, searchQuery, ingestOpen, pendingDelete, onInnerEscape]);
 
   useEffect(() => {
     let cancelled = false;

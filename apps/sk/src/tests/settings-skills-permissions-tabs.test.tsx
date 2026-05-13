@@ -1,10 +1,13 @@
-// Skills + Permissions tabs + ConsentPrompt (M6 of #159).
+// Skills tab (via SettingsModal) + PermissionsTab (rendered directly,
+// no longer reachable from /settings — see PermissionsCommand wiring
+// in apps/sk/src/settings-ui/PermissionsCommand.tsx) + ConsentPrompt.
 
 import { describe, expect, mock, test } from "bun:test";
 import type React from "react";
 import type { EngineClient } from "../engine-client.ts";
 import { ConsentPrompt } from "../repl/components/ConsentPrompt.tsx";
 import { SettingsModal } from "../settings-ui/SettingsModal.tsx";
+import { PermissionsTab } from "../settings-ui/tabs/PermissionsTab.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 
 function makeSkillsClient(
@@ -53,11 +56,10 @@ async function navigateTo(
 ): Promise<ReturnType<typeof renderInk>> {
   const node = (
     <SettingsModal
-      sections={new Map()}
+      fields={[]}
       pendingRestartKeys={[]}
       overrideKeys={[]}
       client={client}
-      isAdmin={false}
       onExit={() => {}}
     />
   ) as React.ReactElement;
@@ -72,7 +74,8 @@ describe("SkillsTab — multi-select toggle (M6)", () => {
       { id: "s1", title: "draft-workflow", scope: "global", status: "active" },
       { id: "s2", title: "lint-recipe", scope: "global", status: "archived" },
     ]);
-    const ui = await navigateTo(client, 5); // Skills tab is idx 5
+    // Status(0) → Config(1) → Usage(2) → Skills(3)
+    const ui = await navigateTo(client, 3);
     try {
       await ui.waitFor((t) => t.includes("draft-workflow"));
       const txt = ui.text();
@@ -89,7 +92,7 @@ describe("SkillsTab — multi-select toggle (M6)", () => {
     const { client, archive } = makeSkillsClient([
       { id: "s1", title: "draft-workflow", scope: "global", status: "active" },
     ]);
-    const ui = await navigateTo(client, 5);
+    const ui = await navigateTo(client, 3);
     try {
       await ui.waitFor((t) => t.includes("draft-workflow"));
       await ui.type(" ");
@@ -101,10 +104,9 @@ describe("SkillsTab — multi-select toggle (M6)", () => {
   });
 });
 
-describe("PermissionsTab — radio with three options (M6)", () => {
+describe("PermissionsTab — radio with three options (rendered direct, M6)", () => {
   test("renders three options with Default selected initially", async () => {
-    const { client } = makeSkillsClient([]);
-    const ui = await navigateTo(client, 6); // Permissions tab idx 6
+    const ui = renderInk(<PermissionsTab />);
     try {
       await ui.waitFor((t) => t.includes("Permission mode"));
       const txt = ui.text();
@@ -119,8 +121,7 @@ describe("PermissionsTab — radio with three options (M6)", () => {
   });
 
   test("arrow + enter selects a different option", async () => {
-    const { client } = makeSkillsClient([]);
-    const ui = await navigateTo(client, 6);
+    const ui = renderInk(<PermissionsTab />);
     try {
       await ui.waitFor((t) => t.includes("Permission mode"));
       await ui.press("down");
@@ -139,34 +140,10 @@ describe("PermissionsTab — radio with three options (M6)", () => {
       diagnostics: { pending_restart_keys: [], override_keys: [] },
     }));
     const client = {
-      skBootstrap: mock(async () => ({
-        whoami: {
-          id: "u1",
-          kind: "user" as const,
-          tenant_id: "t1",
-          tenant_slug: "acme",
-          email: "u@a.test",
-          role_name: "admin",
-          provider: "firebase",
-          base_url: "http://localhost:3000",
-          scopes: null,
-        },
-        permissions: [],
-        permissions_checked: [],
-        tenant: { id: "t1", slug: "acme", display_name: null },
-        recent_sessions: [],
-        flags: {},
-        server_time: "2024-11-14T22:13:20.000Z",
-      })),
-      listMcpTools: mock(async () => ({ items: [] })),
-      listMcpPrompts: mock(async () => ({ items: [] })),
-      listMcpResources: mock(async () => ({ items: [] })),
-      tailAuditLog: mock(async () => ({ items: [] })),
-      listSkills: mock(async () => ({ items: [] })),
       listSettings,
       setSetting,
     } as unknown as EngineClient;
-    const ui = await navigateTo(client, 6);
+    const ui = renderInk(<PermissionsTab client={client} />);
     try {
       await ui.waitFor((t) => t.includes("Permission mode"));
       await ui.press("down");

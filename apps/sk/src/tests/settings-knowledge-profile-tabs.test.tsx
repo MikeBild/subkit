@@ -48,11 +48,10 @@ async function navigateTo(
 ): Promise<ReturnType<typeof renderInk>> {
   const node = (
     <SettingsModal
-      sections={new Map()}
+      fields={[]}
       pendingRestartKeys={[]}
       overrideKeys={[]}
       client={client}
-      isAdmin={false}
       onExit={() => {}}
     />
   ) as React.ReactElement;
@@ -103,7 +102,7 @@ describe("KnowledgeTab — inline ingest (G8 closure)", () => {
       deleteKnowledgeSource: mock(async () => undefined),
     } as unknown as EngineClient;
 
-    const ui = await navigateTo(client, 7);
+    const ui = await navigateTo(client, 4);
     try {
       await ui.waitFor((t) => t.includes("Knowledge sources"));
       await ui.type("i");
@@ -136,7 +135,7 @@ describe("KnowledgeTab (M7)", () => {
         { id: "k2", name: "incidents.md", status: "indexing" },
       ],
     });
-    const ui = await navigateTo(client, 7); // Knowledge is idx 7
+    const ui = await navigateTo(client, 4); // Knowledge is idx 7
     try {
       await ui.waitFor((t) => t.includes("Knowledge sources"));
       await ui.waitFor((t) => t.includes("playbook.md"));
@@ -154,7 +153,7 @@ describe("KnowledgeTab (M7)", () => {
     const { client, deleteKs } = makeClient({
       knowledgeSources: [{ id: "k1", name: "playbook.md", status: "ready" }],
     });
-    const ui = await navigateTo(client, 7);
+    const ui = await navigateTo(client, 4);
     try {
       await ui.waitFor((t) => t.includes("playbook.md"));
       await ui.type("d");
@@ -170,7 +169,7 @@ describe("KnowledgeTab (M7)", () => {
 
   test("renders empty state when no sources", async () => {
     const { client } = makeClient({ knowledgeSources: [] });
-    const ui = await navigateTo(client, 7);
+    const ui = await navigateTo(client, 4);
     try {
       await ui.waitFor((t) => t.includes("Knowledge sources"));
       await ui.waitFor((t) => t.includes("no knowledge sources"));
@@ -181,10 +180,31 @@ describe("KnowledgeTab (M7)", () => {
   });
 });
 
-describe("ProfileTab (M7)", () => {
+describe("ProfileTab (M7) — rendered direct, no longer reachable from /settings", () => {
+  // Profile is mounted via /profile → ProfileCommand SinglePane.
+  // See apps/sk/src/settings-ui/ProfileCommand.tsx for that wiring;
+  // these unit tests cover the tab body directly so the assertions
+  // stay tight to ProfileTab's contract.
+  async function renderProfile(opts: { email?: string } = {}): Promise<{
+    ui: ReturnType<typeof renderInk>;
+    fired: string[];
+  }> {
+    const { client } = makeClient(opts);
+    const { ProfileTab } = await import("../settings-ui/tabs/ProfileTab.tsx");
+    const fired: string[] = [];
+    const ui = renderInk(
+      <ProfileTab
+        client={client}
+        onAction={(a) => {
+          fired.push(a.kind);
+        }}
+      />,
+    );
+    return { ui, fired };
+  }
+
   test("renders identity card from skBootstrap", async () => {
-    const { client } = makeClient({ email: "carol@acme.test" });
-    const ui = await navigateTo(client, 8); // Profile is idx 8
+    const { ui } = await renderProfile({ email: "carol@acme.test" });
     try {
       await ui.waitFor((t) => t.includes("carol@acme.test"));
       const txt = ui.text();
@@ -199,8 +219,7 @@ describe("ProfileTab (M7)", () => {
   });
 
   test("renders inline action menu (G7 closure replaces CLI hint)", async () => {
-    const { client } = makeClient({});
-    const ui = await navigateTo(client, 8);
+    const { ui } = await renderProfile();
     try {
       await ui.waitFor((t) => t.includes("Profile"));
       await ui.waitFor((t) => t.includes("Start a new session"));
@@ -214,19 +233,7 @@ describe("ProfileTab (M7)", () => {
   });
 
   test("'n' fires the new-session action sink (G7)", async () => {
-    const { client } = makeClient({});
-    const fired: string[] = [];
-    // Render ProfileTab directly so we can plug the onAction sink
-    // without rebuilding all the SettingsModal scaffolding.
-    const { ProfileTab } = await import("../settings-ui/tabs/ProfileTab.tsx");
-    const ui = renderInk(
-      <ProfileTab
-        client={client}
-        onAction={(a) => {
-          fired.push(a.kind);
-        }}
-      />,
-    );
+    const { ui, fired } = await renderProfile();
     try {
       await ui.waitFor((t) => t.includes("Profile"));
       await ui.type("n");

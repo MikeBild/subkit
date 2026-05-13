@@ -18,6 +18,13 @@ export async function dispatchInspectSlash(
 ): Promise<string | null | undefined> {
   switch (name) {
     case "skills": {
+      // Deep-link into the SettingsModal Skills tab when an Ink host is
+      // available — interactive activation/archive lives there. Readline
+      // hosts get the legacy read-only list.
+      if (ctx.openPane) {
+        ctx.openPane({ kind: "settings", initialTab: "Skills" });
+        return null;
+      }
       const r = await ctx.client.listSkills();
       if (r.items.length === 0) return "no skills in scope";
       const lines = r.items.map((s) => `${s.scope.padEnd(8)} ${s.title}`);
@@ -41,6 +48,15 @@ export async function dispatchInspectSlash(
       return panify(ctx, "mcp catalog", lines);
     }
     case "permissions": {
+      // Ink host present → mount the SinglePane PermissionsCommand so
+      // the user can change repl.permissionMode interactively. The
+      // readline fallback below preserves the read-only "list granted
+      // permissions" behavior used in scripted environments.
+      if (ctx.openPane) {
+        const tenant = ctx.statusSnapshot?.tenant.slug ?? null;
+        ctx.openPane({ kind: "permissions", tenant });
+        return null;
+      }
       if (ctx.allowedPermissions.length === 0) return "no permissions probe cached";
       return panify(
         ctx,
@@ -48,6 +64,14 @@ export async function dispatchInspectSlash(
         ctx.allowedPermissions.map((p) => `  ${p}`),
         `${ctx.allowedPermissions.length} granted`,
       );
+    }
+    case "admin": {
+      if (ctx.openPane) {
+        const tenant = ctx.statusSnapshot?.tenant.slug ?? null;
+        ctx.openPane({ kind: "admin", tenant });
+        return null;
+      }
+      return "open `sk` with the Ink REPL to use /admin";
     }
     case "audit": {
       const res = await ctx.client.tailAuditLog({ limit: 20 });
@@ -62,6 +86,13 @@ export async function dispatchInspectSlash(
       return panify(ctx, "audit log", lines, `latest ${rows.length}`);
     }
     case "knowledge": {
+      // Deep-link into the SettingsModal Knowledge tab when an Ink host
+      // is available — ingest / delete / inspect live there. Readline
+      // hosts get the legacy read-only list.
+      if (ctx.openPane) {
+        ctx.openPane({ kind: "settings", initialTab: "Knowledge" });
+        return null;
+      }
       const r = await ctx.client.listKnowledgeSources({ limit: 20 });
       if (r.items.length === 0) return "no knowledge sources";
       const lines = r.items.map((ks) => {

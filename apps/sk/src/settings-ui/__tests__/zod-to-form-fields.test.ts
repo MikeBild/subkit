@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { SettingLeafEntry } from "../../engine-client.ts";
-import { groupBySection, leafToFormField } from "../lib/zod-to-form-fields.ts";
+import { leafToFormField } from "../lib/zod-to-form-fields.ts";
 
 function leaf(partial: Partial<SettingLeafEntry> & { path: string }): SettingLeafEntry {
   return {
@@ -71,19 +71,5 @@ describe("leafToFormField", () => {
     );
     expect(f.source).toBe("tenant");
     expect(f.description).toBe("Primary LLM API key");
-  });
-});
-
-describe("groupBySection", () => {
-  test("groups by the first dotted segment, preserves order", () => {
-    const fields = [
-      leafToFormField(leaf({ path: "log.level" })),
-      leafToFormField(leaf({ path: "server.port" })),
-      leafToFormField(leaf({ path: "log.format" })),
-      leafToFormField(leaf({ path: "llm.api_key" })),
-    ];
-    const grouped = groupBySection(fields);
-    expect([...grouped.keys()]).toEqual(["log", "server", "llm"]);
-    expect(grouped.get("log")!.map((f) => f.path)).toEqual(["log.level", "log.format"]);
   });
 });

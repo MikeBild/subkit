@@ -123,6 +123,9 @@ import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "./repl/version-mismatch-banner.tsx";
 import { loadWhatsNew, loadWhatsNewSync } from "./repl/welcome-banner/whats-new.ts";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
+import { AdminCommand } from "./settings-ui/AdminCommand.tsx";
+import { PermissionsCommand } from "./settings-ui/PermissionsCommand.tsx";
+import { ProfileCommand } from "./settings-ui/ProfileCommand.tsx";
 import { SettingsPane } from "./settings-ui/SettingsPane.tsx";
 import { bodyOf, errorToPanel } from "./shell/ErrorPanel.tsx";
 import { type NoticeItem, NoticeStack, type NoticeTone } from "./shell/NoticeStack.tsx";
@@ -3736,9 +3739,21 @@ export const InkApp: React.FC<InkAppProps> = ({
           sessionTokens={pane.sessionTokens ?? session.usage?.turn_tokens ?? null}
           weekTokens={pane.weekTokens ?? null}
           onDismiss={() => setPane(null)}
-          onProfileAction={(action) => {
-            // G7 closure of #159 M7 — wire ProfileTab actions back into
-            // ink-app session state where applicable.
+        />
+      ) : null}
+      {pane?.kind === "permissions" && engineClient ? (
+        <PermissionsCommand
+          client={engineClient}
+          tenant={pane.tenant ?? null}
+          onDismiss={() => setPane(null)}
+        />
+      ) : null}
+      {pane?.kind === "profile" && engineClient ? (
+        <ProfileCommand
+          client={engineClient}
+          tenant={pane.tenant ?? null}
+          onDismiss={() => setPane(null)}
+          onAction={(action) => {
             if (action.kind === "new-session") {
               setSession(initialSessionState(null));
               return;
@@ -3749,9 +3764,16 @@ export const InkApp: React.FC<InkAppProps> = ({
               else exit();
               return;
             }
-            // switch-tenant requires REPL restart; the ProfileTab has
+            // switch-tenant requires REPL restart; ProfileTab has
             // already written the config and surfaced a notice.
           }}
+        />
+      ) : null}
+      {pane?.kind === "admin" && engineClient ? (
+        <AdminCommand
+          client={engineClient}
+          tenant={pane.tenant ?? null}
+          onDismiss={() => setPane(null)}
         />
       ) : null}
       {pane?.kind === "config-form" ? (

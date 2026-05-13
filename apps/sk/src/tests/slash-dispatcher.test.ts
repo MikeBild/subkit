@@ -54,15 +54,29 @@ describe("classifySlash", () => {
   // the Ink host intercepts it before dispatch). Without this contract,
   // a future `routing: "local"` slash with no handler case falls
   // through to the generic "not wired" banner in the readline REPL.
-  test("every routing:'local' command has a handler case OR is Ink-intercepted", () => {
+  test("every routing:'local' command has a handler case OR sub-dispatcher entry OR is Ink-intercepted", () => {
     const handlerSrc = readFileSync("apps/sk/src/repl/slash/handler.ts", "utf8");
+    // /permissions and /admin are routing:'local' but dispatched via
+    // the inspect sub-dispatcher (they open a SinglePane after the
+    // 5-tab refactor). Include sub-dispatcher sources in the lookup so
+    // the contract permits routing through a per-category dispatcher,
+    // just like the routing:'engine' counterpart below.
+    const subDispatcherSrcs: string[] = [
+      readFileSync("apps/sk/src/repl/slash/handlers/admin-lists.ts", "utf8"),
+      readFileSync("apps/sk/src/repl/slash/handlers/inspect.ts", "utf8"),
+      readFileSync("apps/sk/src/repl/slash/handlers/auth-redirects.ts", "utf8"),
+    ];
     const intercepted = new Set<string>(INK_INTERCEPTED_LOCAL_SLASHES);
     const violations: string[] = [];
     for (const name of _localOnlySnapshot()) {
       if (intercepted.has(name)) continue;
-      const re = new RegExp(`case\\s+"${name}"\\s*:`);
-      if (!re.test(handlerSrc)) {
-        violations.push(`/${name}: no handler case AND not in INK_INTERCEPTED_LOCAL_SLASHES`);
+      const caseRe = new RegExp(`case\\s+"${name}"\\s*:`);
+      const inHandler = caseRe.test(handlerSrc);
+      const inSubDispatcher = subDispatcherSrcs.some((src) => caseRe.test(src));
+      if (!inHandler && !inSubDispatcher) {
+        violations.push(
+          `/${name}: no handler case, no sub-dispatcher entry, not in INK_INTERCEPTED_LOCAL_SLASHES`,
+        );
       }
     }
     expect(violations).toEqual([]);

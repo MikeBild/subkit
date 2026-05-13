@@ -171,12 +171,12 @@ const configureCommand = defineCommand({
   meta: {
     name: "configure",
     description:
-      "Interactive Ink form for editing settings (Tab to switch sections, Enter to edit, Esc to exit). In non-TTY environments use --non-interactive to print the JSON contract instead.",
+      "Interactive Ink palette for inspecting settings (← / → cycles tabs, type to filter in Config, Enter to edit, Esc to exit). In non-TTY environments use --non-interactive to print the JSON contract instead.",
   },
   args: {
     tab: {
       type: "string" as const,
-      description: "Open directly on a section (e.g. llm, auth, observability)",
+      description: "Open directly on a tab: Status | Config | Usage | Skills | Knowledge",
     },
     "non-interactive": {
       type: "boolean" as const,

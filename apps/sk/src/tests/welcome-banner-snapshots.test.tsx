@@ -71,54 +71,49 @@ describe("WelcomeBanner — visibility snapshots (H9)", () => {
 });
 
 describe("SettingsModal — tab strip visibility snapshots (H9)", () => {
-  test("non-admin: 9 tabs visible without truncation", async () => {
+  test("5 canonical tabs visible without truncation", async () => {
     const ui = renderInk(
       <SettingsModal
-        sections={new Map()}
+        fields={[]}
         pendingRestartKeys={[]}
         overrideKeys={[]}
         client={stubClient}
-        isAdmin={false}
         onExit={() => {}}
       />,
     );
     try {
-      await ui.waitFor((t) => t.includes("Settings") && t.includes("Profile"));
+      await ui.waitFor((t) => t.includes("Status") && t.includes("Knowledge"));
       const txt = ui.text();
-      const tabs = [
-        "Settings",
-        "Status",
-        "Config",
-        "Usage",
-        "Stats",
-        "Skills",
-        "Permissions",
-        "Knowledge",
-        "Profile",
-      ];
+      const tabs = ["Status", "Config", "Usage", "Skills", "Knowledge"];
       for (const tab of tabs) {
-        expect(txt, `tab "${tab}" missing in non-admin render`).toContain(tab);
+        expect(txt, `tab "${tab}" missing in tab strip`).toContain(tab);
       }
     } finally {
       ui.unmount();
     }
   });
 
-  test("admin: all 10 tabs visible including Admin", async () => {
+  test("operator surfaces (Permissions / Profile / Admin) are NOT inside /settings", async () => {
+    // Confirms the 5-tab refactor: these surfaces moved to their own
+    // SinglePane slash commands. The presence of bare words like
+    // "Profile" elsewhere in the frame is unlikely with empty sections.
     const ui = renderInk(
       <SettingsModal
-        sections={new Map()}
+        fields={[]}
         pendingRestartKeys={[]}
         overrideKeys={[]}
         client={stubClient}
-        isAdmin={true}
         onExit={() => {}}
       />,
     );
     try {
-      await ui.waitFor((t) => t.includes("Admin"));
+      await ui.waitFor((t) => t.includes("Status"));
       const txt = ui.text();
-      expect(txt).toContain("Admin");
+      expect(txt).not.toMatch(/\bPermissions\b/);
+      expect(txt).not.toMatch(/\bProfile\b/);
+      expect(txt).not.toMatch(/\bAdmin\b/);
+      expect(txt).not.toMatch(/\bStats\b/);
+      expect(txt).not.toMatch(/^Settings\s/m);
     } finally {
       ui.unmount();
     }

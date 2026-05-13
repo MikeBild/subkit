@@ -293,7 +293,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "conversation:write",
     argsSchema: z.tuple([z.string().min(1)]),
   },
-  { name: "profile", aliases: ["env"], help: "List or switch profiles", category: "auth" },
+  {
+    name: "profile",
+    aliases: ["env"],
+    help: "Open the profile palette (identity card + actions) — `/profile <name>` to switch",
+    category: "auth",
+  },
   { name: "login", help: "Authenticate against the engine", category: "auth" },
   { name: "logout", help: "Drop the active profile", category: "auth" },
   { name: "tenant", help: "List or switch tenants", category: "auth", requires: "identity:read" },
@@ -322,8 +327,41 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "mcp",
     requires: "mcp:read",
   },
-  { name: "config", help: "Open settings.json in $EDITOR", category: "util" },
-  { name: "permissions", help: "Show your granted permissions", category: "util" },
+  {
+    name: "config",
+    help: "Open the Config tab of sk settings (every engine setting, searchable)",
+    category: "util",
+    routing: "local",
+  },
+  {
+    name: "config-form",
+    help: "Legacy 4-field user-settings form (model / SK.md / mention size / status-line refresh)",
+    category: "util",
+    routing: "local",
+  },
+  {
+    name: "usage",
+    help: "Show token usage across recent AI requests (input / output / total per flow)",
+    category: "util",
+    routing: "local",
+    // The Usage tab aggregates the same `llm.invocation` audit events
+    // that /audit reads, so it shares /audit's permission. Hiding it
+    // from members also keeps fuzzy autocomplete from picking /usage
+    // when the operator types /audit (which they cannot see either).
+    requires: "audit:read",
+  },
+  {
+    name: "permissions",
+    help: "Open the permission-mode picker (Default / Auto-review / Plan only / Full Access)",
+    category: "util",
+    routing: "local",
+  },
+  {
+    name: "admin",
+    help: "Open the admin palette — RBAC, API keys, system accounts, portal tokens, hooks",
+    category: "admin",
+    routing: "local",
+  },
   { name: "audit", help: "Tail your audit log", category: "admin", requires: "audit:read" },
   {
     name: "logs",
@@ -438,16 +476,15 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "context",
     routing: "local",
   },
-  // M2 of #159 — open the 10-tab settings palette inside the REPL.
-  // Passes sessionId / permissionMode / token counters to the modal so
-  // the Status tab renders real values.
+  // Open the settings palette inside the REPL. Passes sessionId /
+  // permissionMode / token counters to the modal so the Status tab
+  // renders real values. Operator surfaces (Permissions / Profile /
+  // Admin) live in their own SinglePane commands — see /permissions,
+  // /profile, /admin.
   {
     name: "settings",
     aliases: ["preferences"],
-    // W3 of PR #161 review (round 6): help string lists every tab in
-    // ALL_TABS order — adding the literal "Settings" tab back to the
-    // front so the count + the names match.
-    help: "Open the 10-tab settings palette (Settings / Status / Config / Usage / Stats / Skills / Permissions / Knowledge / Profile / Admin)",
+    help: "Open the 5-tab settings palette (Status / Config / Usage / Skills / Knowledge)",
     category: "util",
     routing: "local",
   },

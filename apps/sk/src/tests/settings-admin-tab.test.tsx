@@ -1,15 +1,21 @@
-// Admin tab role-gated CRUD (M8 of #159).
-// Asserts:
-//   * Admin tab is hidden for non-admin principals
-//   * Admin sub-tab strip renders all 7 sub-tabs when isAdmin=true
+// Admin role-gated CRUD (M8 of #159).
+// AdminTab is no longer reachable from /settings — it's mounted via
+// /admin → AdminCommand (apps/sk/src/settings-ui/AdminCommand.tsx)
+// which wraps AdminTab in SinglePane. These unit tests cover the tab
+// body directly:
+//   * Sub-tab strip renders all 7 sub-tabs
 //   * 1–7 jumps directly to a sub-tab
 //   * API key revoke flow ends in revokeApiKey() and an inline status flash
 //   * Portal token revoke flow ends in revokePortalToken().
+//
+// The "Admin tab hidden for non-admin" UX gate now lives in
+// AdminCommand (probes skBootstrap, shows a "no admin permissions"
+// message). See PermissionsCommand/ProfileCommand tests for the
+// SinglePane parity.
 
 import { describe, expect, mock, test } from "bun:test";
-import type React from "react";
 import type { EngineClient } from "../engine-client.ts";
-import { SettingsModal } from "../settings-ui/SettingsModal.tsx";
+import { AdminTab } from "../settings-ui/tabs/AdminTab.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 
 function makeClient(opts: {
@@ -61,49 +67,12 @@ function makeClient(opts: {
   return { client, revokeApiKey, revokePortalToken };
 }
 
-async function navigateToAdmin(client: EngineClient): Promise<ReturnType<typeof renderInk>> {
-  const node = (
-    <SettingsModal
-      sections={new Map()}
-      pendingRestartKeys={[]}
-      overrideKeys={[]}
-      client={client}
-      isAdmin={true}
-      onExit={() => {}}
-    />
-  ) as React.ReactElement;
-  const ui = renderInk(node);
-  // Admin is index 9 (last) when isAdmin=true.
-  for (let i = 0; i < 9; i++) await ui.press("right");
-  await ui.waitFor((t) => t.includes("Admin") && t.includes("RBAC"));
-  return ui;
-}
-
 describe("AdminTab — role-gated CRUD (M8)", () => {
-  test("Admin tab hidden when isAdmin=false", async () => {
+  test("renders all 7 sub-tabs", async () => {
     const { client } = makeClient({});
-    const ui = renderInk(
-      <SettingsModal
-        sections={new Map()}
-        pendingRestartKeys={[]}
-        overrideKeys={[]}
-        client={client}
-        isAdmin={false}
-        onExit={() => {}}
-      />,
-    );
+    const ui = renderInk(<AdminTab client={client} />);
     try {
-      await ui.waitFor((t) => t.includes("Settings") && t.includes("Profile"));
-      expect(ui.text()).not.toContain("Admin");
-    } finally {
-      ui.unmount();
-    }
-  });
-
-  test("renders all 7 sub-tabs when isAdmin=true", async () => {
-    const { client } = makeClient({});
-    const ui = await navigateToAdmin(client);
-    try {
+      await ui.waitFor((t) => t.includes("RBAC"));
       const txt = ui.text();
       expect(txt).toContain("RBAC");
       expect(txt).toContain("Subscriptions");
@@ -121,8 +90,9 @@ describe("AdminTab — role-gated CRUD (M8)", () => {
     const { client } = makeClient({
       apiKeys: [{ id: "k1", name: "ci-bot", status: "active" }],
     });
-    const ui = await navigateToAdmin(client);
+    const ui = renderInk(<AdminTab client={client} />);
     try {
+      await ui.waitFor((t) => t.includes("RBAC"));
       await ui.type("3");
       await ui.waitFor((t) => t.includes("ci-bot"));
       const txt = ui.text();
@@ -199,8 +169,9 @@ describe("AdminTab — role-gated CRUD (M8)", () => {
     const { client, revokePortalToken } = makeClient({
       portalTokens: [{ id: "p1", label: "ipad", expires_at: "2030-01-01T00:00:00Z" }],
     });
-    const ui = await navigateToAdmin(client);
+    const ui = renderInk(<AdminTab client={client} />);
     try {
+      await ui.waitFor((t) => t.includes("RBAC"));
       await ui.type("7");
       await ui.waitFor((t) => t.includes("ipad"));
       await ui.type("x");

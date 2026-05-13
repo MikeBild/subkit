@@ -93,12 +93,21 @@ function makeClient(opts: {
       mime_type: null,
     })),
   }));
-  return { skBootstrap, listMcpTools, listMcpPrompts, listMcpResources } as unknown as EngineClient;
+  // The Status tab now embeds the ActivityHeatmap, which fetches the
+  // audit log. Stub it to an empty result so the heatmap doesn't render
+  // a `failed:` row and collide with the MCP-failure assertion below.
+  const tailAuditLog = mock(async () => ({ items: [] }));
+  return {
+    skBootstrap,
+    listMcpTools,
+    listMcpPrompts,
+    listMcpResources,
+    tailAuditLog,
+  } as unknown as EngineClient;
 }
 
-function makeSections(): Map<string, FormField[]> {
-  const sections = new Map<string, FormField[]>();
-  sections.set("llm", [
+function makeFields(): FormField[] {
+  return [
     {
       path: "llm.model",
       kind: "text",
@@ -109,24 +118,21 @@ function makeSections(): Map<string, FormField[]> {
       source: "global",
       description: "active model",
     },
-  ]);
-  return sections;
+  ];
 }
 
 async function renderOnStatusTab(client: EngineClient): Promise<ReturnType<typeof renderInk>> {
   const node = (
     <SettingsModal
-      sections={makeSections()}
+      fields={makeFields()}
       pendingRestartKeys={[]}
       overrideKeys={[]}
       client={client}
-      isAdmin={false}
       onExit={() => {}}
     />
   ) as React.ReactElement;
   const ui = renderInk(node);
-  // Settings (0) → Status (1)
-  await ui.press("right");
+  // Status is the default landing tab (idx 0) — no navigation needed.
   await ui.waitFor((t) => t.includes("Runtime status"));
   return ui;
 }
@@ -187,11 +193,10 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
     const client = makeClient({});
     const ui = renderInk(
       <SettingsModal
-        sections={makeSections()}
+        fields={makeFields()}
         pendingRestartKeys={[]}
         overrideKeys={[]}
         client={client}
-        isAdmin={false}
         sessionId="abc12345-def6-7890-abcd-ef1234567890"
         sessionTitle="my migration draft"
         permissionMode="auto"
@@ -201,8 +206,7 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
       />,
     );
     try {
-      // Settings (idx 0) → Status (idx 1)
-      await ui.press("right");
+      // Status is the default landing tab (idx 0).
       await ui.waitFor((t) => t.includes("Runtime status"));
       const txt = ui.text();
       expect(txt).toContain("abc12345");
@@ -219,16 +223,15 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
     const client = makeClient({});
     const ui = renderInk(
       <SettingsModal
-        sections={makeSections()}
+        fields={makeFields()}
         pendingRestartKeys={[]}
         overrideKeys={[]}
         client={client}
-        isAdmin={false}
         onExit={() => {}}
       />,
     );
     try {
-      await ui.press("right");
+      // Status is the default landing tab (idx 0).
       await ui.waitFor((t) => t.includes("Runtime status"));
       const txt = ui.text();
       // Permission mode + token counters should fall back to "—" when
@@ -267,10 +270,11 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
       }),
       listMcpPrompts: mock(async () => ({ items: [] })),
       listMcpResources: mock(async () => ({ items: [] })),
+      tailAuditLog: mock(async () => ({ items: [] })),
     } as unknown as EngineClient;
     const ui = await renderOnStatusTab(client);
     try {
-      await ui.waitFor((t) => t.includes("failed:"));
+      await ui.waitFor((t) => t.includes("ECONNREFUSED"));
       expect(ui.text()).toContain("ECONNREFUSED");
     } finally {
       ui.unmount();

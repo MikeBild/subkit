@@ -14,6 +14,13 @@ import { AdminCreateForm } from "./AdminCreateForm.tsx";
 
 interface Props {
   client: EngineClient;
+  /**
+   * Fired when this sub-tab owns Esc — true while a revoke
+   * confirmation, the create form, or the "shown once" issued-secret
+   * panel is up. Threaded up to AdminTab → AdminCommand so the
+   * outer shell's Esc handler stays suppressed.
+   */
+  onInnerEscape?: (active: boolean) => void;
 }
 
 interface KeyRow {
@@ -42,7 +49,7 @@ function pickLastUsed(raw: Record<string, unknown>): string | null {
   return typeof v === "string" ? v : null;
 }
 
-export const ApiKeysSubTab: React.FC<Props> = ({ client }) => {
+export const ApiKeysSubTab: React.FC<Props> = ({ client, onInnerEscape }) => {
   const [rows, setRows] = useState<KeyRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,6 +59,10 @@ export const ApiKeysSubTab: React.FC<Props> = ({ client }) => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [issuedSecret, setIssuedSecret] = useState<{ id: string; token: string } | null>(null);
+
+  useEffect(() => {
+    onInnerEscape?.(pendingRevoke !== null || createOpen || issuedSecret !== null);
+  }, [pendingRevoke, createOpen, issuedSecret, onInnerEscape]);
 
   useEffect(() => {
     let cancelled = false;

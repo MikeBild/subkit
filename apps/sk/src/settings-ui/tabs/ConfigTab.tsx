@@ -20,6 +20,7 @@ import {
   TitleConfigurator,
 } from "../components/ValuePickers.tsx";
 import { resolveAction } from "../keybindings/useKeybinding.ts";
+import { labelForPath, sectionLabel } from "../lib/config-labels.ts";
 import type { FormField } from "../lib/zod-to-form-fields.ts";
 
 // G5 closure of #159 M11 / S2 of PR #161 review (round 6) — single
@@ -45,7 +46,15 @@ interface Props {
   fields: FormField[];
   tenant?: string;
   client: EngineClient;
-  onSearchActiveChange?: (active: boolean) => void;
+  /**
+   * Fired whenever this tab "owns Esc" — i.e. has an inner state that
+   * the next Esc keystroke should clear instead of dismissing the
+   * outer shell. The outer SettingsModal / SinglePane suppresses its
+   * own Esc handler while this is `true`. States that own Esc: an
+   * active search query, an open FieldEditor (`editing`), or a
+   * pending-restart confirmation (`pendingRestart`).
+   */
+  onInnerEscape?: (active: boolean) => void;
 }
 
 interface PendingRestart {
@@ -61,11 +70,36 @@ function isRestartRequiredError(err: unknown): { message: string } | null {
   return null;
 }
 
+// Number of rows visible in the leaf list at a time. The selected row
+// always remains visible: when listIdx is below the window we anchor
+// the window at the start; once listIdx pushes past the bottom we
+// scroll so the selected row sits roughly two rows above the floor.
+// 12 rows leaves headroom for the description footer, the search bar,
+// and the outer modal chrome on a typical 30-row terminal.
+const WINDOW_ROWS = 12;
+
+function pickWindow(total: number, idx: number, size: number): { start: number; end: number } {
+  if (total <= size) return { start: 0, end: total };
+  const half = Math.floor(size / 2);
+  let start = Math.max(0, idx - half);
+  const end = Math.min(total, start + size);
+  start = Math.max(0, end - size);
+  return { start, end };
+}
+
+// Default-route a fallback description when the engine schema didn't
+// supply one. Keeps the footer from showing an empty body for legacy
+// leaves; phrased as a hint, not a label, so the operator knows the
+// canonical metadata is missing upstream.
+function pickDescription(field: FormField): string {
+  return field.description ?? "(no description in engine schema)";
+}
+
 export const ConfigTab: React.FC<Props> = ({
   fields: initialFields,
   tenant,
   client,
-  onSearchActiveChange,
+  onInnerEscape,
 }) => {
   const [fields, setFields] = useState<FormField[]>(initialFields);
   const [searchActive, setSearchActive] = useState(false);
@@ -76,15 +110,19 @@ export const ConfigTab: React.FC<Props> = ({
   const [flash, setFlash] = useState<{ kind: "info" | "error" | "ok"; msg: string } | null>(null);
 
   useEffect(() => {
-    onSearchActiveChange?.(searchActive || searchQuery.length > 0);
-  }, [searchActive, searchQuery, onSearchActiveChange]);
+    const ownsEsc =
+      searchActive || searchQuery.length > 0 || editing !== null || pendingRestart !== null;
+    onInnerEscape?.(ownsEsc);
+  }, [searchActive, searchQuery, editing, pendingRestart, onInnerEscape]);
 
   const filtered = useMemo(() => {
     if (!searchQuery) return fields;
     const q = searchQuery.toLowerCase();
-    return fields.filter(
-      (f) => f.path.toLowerCase().includes(q) || (f.description ?? "").toLowerCase().includes(q),
-    );
+    return fields.filter((f) => {
+      if (f.path.toLowerCase().includes(q)) return true;
+      if (labelForPath(f.path).toLowerCase().includes(q)) return true;
+      return (f.description ?? "").toLowerCase().includes(q);
+    });
   }, [fields, searchQuery]);
 
   // Keep listIdx in bounds when the filter shrinks the visible list.
@@ -189,10 +227,28 @@ export const ConfigTab: React.FC<Props> = ({
     return <FieldEditor field={field} onCommit={(_f, v) => commit(v)} onCancel={cancel} />;
   };
 
+  // Window the list so the visible row count stays bounded. When the
+  // operator scrolls past the bottom of the window, the slice shifts
+  // forward; the selected row stays visible.
+  const { start: winStart, end: winEnd } = pickWindow(filtered.length, listIdx, WINDOW_ROWS);
+  const visible = filtered.slice(winStart, winEnd);
+  // Section dividers render a faint "── <section> ──" row each time
+  // the leaf prefix changes — but only when no search filter is
+  // active. A filtered list mixes sections and the divider stops being
+  // a useful boundary.
+  const sectionForRow = (row: FormField): string => row.path.split(".")[0] ?? "";
+  const showSections = !searchQuery;
+  const selected = filtered[listIdx];
+
   return (
     <Box flexDirection="column">
       <Box>
-        <Text color="gray">Type to filter · Enter / ↓ select · ↑ tabs · Esc clears filter</Text>
+        <Text color="gray">
+          Type to filter · Enter / ↓ select · ↑ tabs · Esc clears filter
+          {filtered.length > WINDOW_ROWS
+            ? ` · showing ${winStart + 1}–${winEnd} of ${filtered.length}`
+            : null}
+        </Text>
       </Box>
       <SearchInput
         query={searchQuery}
@@ -204,13 +260,42 @@ export const ConfigTab: React.FC<Props> = ({
         {filtered.length === 0 ? (
           <Text color="gray">
             {searchQuery
-              ? `no leaves match "${searchQuery}"`
+              ? `no settings match "${searchQuery}"`
               : "no editable settings for this scope"}
           </Text>
         ) : (
-          filtered.map((f, i) => <SettingItem key={f.path} field={f} selected={i === listIdx} />)
+          visible.map((f, i) => {
+            const absoluteIdx = winStart + i;
+            const prev = absoluteIdx > 0 ? filtered[absoluteIdx - 1] : null;
+            const showDivider =
+              showSections && (prev == null || sectionForRow(prev) !== sectionForRow(f));
+            return (
+              <Box key={f.path} flexDirection="column">
+                {showDivider ? (
+                  <Box marginTop={absoluteIdx === 0 ? 0 : 1}>
+                    <Text color="gray">── {sectionLabel(sectionForRow(f))}</Text>
+                  </Box>
+                ) : null}
+                <SettingItem field={f} selected={absoluteIdx === listIdx} />
+              </Box>
+            );
+          })
         )}
       </Box>
+      {selected ? (
+        <Box marginTop={1} flexDirection="column">
+          <Text color="gray">─────────────────────────────</Text>
+          <Box>
+            <Text color="cyan" bold>
+              {selected.path}
+            </Text>
+            <Text color="gray">{`  ·  ${selected.scope}`}</Text>
+            {selected.sensitive ? <Text color="yellow">{"  ·  secret"}</Text> : null}
+            {selected.requiresRestart ? <Text color="red">{"  ·  restart required"}</Text> : null}
+          </Box>
+          <Text>{pickDescription(selected)}</Text>
+        </Box>
+      ) : null}
       {flash ? (
         <Box marginTop={1}>
           <Text color={flash.kind === "error" ? "red" : flash.kind === "info" ? "yellow" : "green"}>
@@ -237,7 +322,7 @@ export const ConfigTab: React.FC<Props> = ({
           onYes={() => void onCommit(pendingRestart.field, pendingRestart.value, { force: true })}
           onNo={() => {
             setPendingRestart(null);
-            setFlash({ kind: "info", msg: "cancelled — leaf unchanged" });
+            setFlash({ kind: "info", msg: "cancelled — setting unchanged" });
           }}
         />
       ) : null}

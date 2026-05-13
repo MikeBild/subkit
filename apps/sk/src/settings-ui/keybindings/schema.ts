@@ -10,13 +10,10 @@
 
 import { z } from "zod";
 
-export const SETTINGS_CONTEXTS = ["Global", "Settings", "Search", "Confirm", "Field"] as const;
+export const SETTINGS_CONTEXTS = ["Settings", "Search", "Confirm", "Field"] as const;
 export type SettingsContext = (typeof SETTINGS_CONTEXTS)[number];
 
 export const SETTINGS_ACTIONS = [
-  "settings:close",
-  "settings:tab-next",
-  "settings:tab-prev",
   "list:next",
   "list:prev",
   "list:edit",
@@ -27,7 +24,6 @@ export const SETTINGS_ACTIONS = [
   "field:cancel",
   "confirm:yes",
   "confirm:no",
-  "help:toggle",
 ] as const;
 export type SettingsAction = (typeof SETTINGS_ACTIONS)[number];
 

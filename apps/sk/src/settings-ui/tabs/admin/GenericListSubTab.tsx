@@ -18,6 +18,13 @@ interface Props {
     fields: readonly AdminFormField[];
     submit: (values: Record<string, string>) => Promise<void>;
   };
+  /**
+   * Fired when this sub-tab owns Esc — currently only while the
+   * AdminCreateForm is open. Threaded up to AdminTab → AdminCommand
+   * so the outer SinglePane's Esc handler stays suppressed until the
+   * inner form is closed.
+   */
+  onInnerEscape?: (active: boolean) => void;
 }
 
 function defaultRowLabel(raw: Record<string, unknown>): string {
@@ -34,6 +41,7 @@ export const GenericListSubTab: React.FC<Props> = ({
   fetcher,
   rowLabel,
   createForm,
+  onInnerEscape,
 }) => {
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +49,10 @@ export const GenericListSubTab: React.FC<Props> = ({
   const [createOpen, setCreateOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [actionFlash, setActionFlash] = useState<string | null>(null);
+
+  useEffect(() => {
+    onInnerEscape?.(createOpen);
+  }, [createOpen, onInnerEscape]);
 
   useEffect(() => {
     let cancelled = false;

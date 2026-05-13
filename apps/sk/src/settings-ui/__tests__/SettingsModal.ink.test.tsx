@@ -17,10 +17,9 @@ import type {
   SettingsListResponse,
 } from "../../engine-client.ts";
 import { ConfirmModal } from "../components/ConfirmModal.tsx";
-import { Footer } from "../components/Footer.tsx";
 import { SearchInput } from "../components/SearchInput.tsx";
 import { SettingItem } from "../components/SettingItem.tsx";
-import { groupBySection, leafToFormField } from "../lib/zod-to-form-fields.ts";
+import { leafToFormField } from "../lib/zod-to-form-fields.ts";
 import { SettingsModal } from "../SettingsModal.tsx";
 
 const FIXTURE_LEAVES: SettingLeafEntry[] = [
@@ -60,7 +59,7 @@ const FIXTURE_LEAVES: SettingLeafEntry[] = [
   },
 ];
 
-const SECTIONS = groupBySection(FIXTURE_LEAVES.map(leafToFormField));
+const FIELDS = FIXTURE_LEAVES.map(leafToFormField);
 
 interface StubState {
   setCalls: Array<{ path: string; value: unknown; force?: boolean }>;
@@ -86,15 +85,39 @@ function buildStubClient(state: StubState): EngineClient {
       diagnostics: { pending_restart_keys: [], override_keys: [] },
     }),
     getSetting: async (): Promise<SettingLeafEntry> => FIXTURE_LEAVES[0]!,
+    // The Status tab (default landing) polls these on mount.
+    skBootstrap: async () => ({
+      whoami: {
+        id: "u1",
+        kind: "user" as const,
+        tenant_id: "t1",
+        tenant_slug: "acme",
+        email: "u@a.test",
+        role_name: "admin",
+        provider: "firebase",
+        base_url: "http://localhost:3000",
+        scopes: null,
+      },
+      permissions: [],
+      permissions_checked: [],
+      tenant: { id: "t1", slug: "acme", display_name: null },
+      recent_sessions: [],
+      flags: {},
+      server_time: "2024-11-14T22:13:20.000Z",
+    }),
+    listMcpTools: async () => ({ items: [] }),
+    listMcpPrompts: async () => ({ items: [] }),
+    listMcpResources: async () => ({ items: [] }),
+    tailAuditLog: async () => ({ items: [] }),
   } as unknown as EngineClient;
 }
 
 describe("SettingsModal — render shape", () => {
-  test("renders sections, the first leaf in the active tab, and the cursor", () => {
+  test("renders the 5-tab header strip with Status landing by default", () => {
     const state: StubState = { setCalls: [], putResult: { value: "x", requiresRestart: false } };
     const { lastFrame, unmount } = render(
       <SettingsModal
-        sections={SECTIONS}
+        fields={FIELDS}
         pendingRestartKeys={[]}
         overrideKeys={[]}
         client={buildStubClient(state)}
@@ -102,34 +125,14 @@ describe("SettingsModal — render shape", () => {
       />,
     );
     const frame = lastFrame() ?? "";
-    // M2 of #159 replaced the legacy `sk settings configure` title with
-    // a 10-tab strip header. The contract is the literal `sk settings`
-    // prefix plus the cycle hint — the per-tab content (sections, leaves,
-    // cursor) is what the rest of the assertions cover.
     expect(frame).toContain("sk settings");
     expect(frame).toMatch(/cycles? tabs/);
-    expect(frame).toContain("log");
-    expect(frame).toContain("llm");
-    expect(frame).toContain("log.level");
-    expect(frame).toMatch(/▸ +log\.level/);
-    unmount();
-  });
-
-  test("shows the diagnostics banners only when populated", () => {
-    const state: StubState = { setCalls: [], putResult: { value: "x", requiresRestart: false } };
-    const { lastFrame, unmount } = render(
-      <SettingsModal
-        sections={SECTIONS}
-        pendingRestartKeys={["llm.api_key"]}
-        overrideKeys={["llm.api_key"]}
-        client={buildStubClient(state)}
-        onExit={() => undefined}
-      />,
-    );
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("pending restart:");
-    expect(frame).toContain("active overrides:");
-    expect(frame).toContain("llm.api_key");
+    // 5 canonical tabs in order
+    for (const tab of ["Status", "Config", "Usage", "Skills", "Knowledge"]) {
+      expect(frame, `tab "${tab}" missing from header`).toContain(tab);
+    }
+    // Status is the default landing — header for that tab body
+    expect(frame).toContain("Runtime status");
     unmount();
   });
 
@@ -137,7 +140,7 @@ describe("SettingsModal — render shape", () => {
     const state: StubState = { setCalls: [], putResult: { value: "x", requiresRestart: false } };
     const { lastFrame, unmount } = render(
       <SettingsModal
-        sections={SECTIONS}
+        fields={FIELDS}
         pendingRestartKeys={[]}
         overrideKeys={[]}
         tenant="tenant-X"
@@ -149,11 +152,32 @@ describe("SettingsModal — render shape", () => {
     unmount();
   });
 
-  test("initialTab opens directly on the requested section", () => {
+  test("initialTab='Config' opens directly on the Config tab", () => {
     const state: StubState = { setCalls: [], putResult: { value: "x", requiresRestart: false } };
     const { lastFrame, unmount } = render(
       <SettingsModal
-        sections={SECTIONS}
+        fields={FIELDS}
+        pendingRestartKeys={[]}
+        overrideKeys={[]}
+        initialTab="Config"
+        client={buildStubClient(state)}
+        onExit={() => undefined}
+      />,
+    );
+    // Config tab body renders the filter hint + every leaf label.
+    // Row bodies use the curated label from lib/config-labels.ts;
+    // llm.api_key's label is "Primary API key".
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("Type to filter");
+    expect(frame).toContain("Primary API key");
+    unmount();
+  });
+
+  test("legacy initialTab (e.g. an engine section name) falls back to Status", () => {
+    const state: StubState = { setCalls: [], putResult: { value: "x", requiresRestart: false } };
+    const { lastFrame, unmount } = render(
+      <SettingsModal
+        fields={FIELDS}
         pendingRestartKeys={[]}
         overrideKeys={[]}
         initialTab="llm"
@@ -161,7 +185,8 @@ describe("SettingsModal — render shape", () => {
         onExit={() => undefined}
       />,
     );
-    expect(lastFrame() ?? "").toContain("llm.api_key");
+    // `llm` is no longer a tab — pickInitialOuter returns 0 (Status).
+    expect(lastFrame() ?? "").toContain("Runtime status");
     unmount();
   });
 });
@@ -232,33 +257,6 @@ describe("ConfirmModal", () => {
     expect(frame).toContain("log.level requires a restart");
     expect(frame).toContain("Y");
     expect(frame).toContain("N / Esc");
-    unmount();
-  });
-});
-
-describe("Footer", () => {
-  test("nav mode lists Tab / ↑↓ / Enter / / / Esc hints", () => {
-    const { lastFrame, unmount } = render(<Footer editing={false} />);
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("Tab");
-    expect(frame).toContain("↑/↓");
-    expect(frame).toContain("Enter");
-    expect(frame).toContain("Esc");
-    unmount();
-  });
-
-  test("editing mode shows commit / cancel / reveal", () => {
-    const { lastFrame, unmount } = render(<Footer editing={true} />);
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("commit");
-    expect(frame).toContain("cancel");
-    expect(frame).toContain("reveal secret");
-    unmount();
-  });
-
-  test("confirm mode shows force retry hint", () => {
-    const { lastFrame, unmount } = render(<Footer editing={false} confirming={true} />);
-    expect(lastFrame() ?? "").toContain("retry with force");
     unmount();
   });
 });

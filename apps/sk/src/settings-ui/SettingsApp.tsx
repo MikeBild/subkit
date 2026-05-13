@@ -2,21 +2,13 @@ import { Box, render, Text, useApp, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
 import type { EngineClient, SettingLeafEntry } from "../engine-client.ts";
-import { isAdminFromPermissions } from "./lib/admin-gate.ts";
-import { groupBySection, leafToFormField } from "./lib/zod-to-form-fields.ts";
+import { leafToFormField } from "./lib/zod-to-form-fields.ts";
 import { SettingsModal } from "./SettingsModal.tsx";
 
 export interface SettingsAppOptions {
   client: EngineClient;
   tenant?: string;
   initialTab?: string;
-  // R11-W5 review fix: dropped the `profileName` prop. It was
-  // documented as a no-op pending a `SettingsModal` refactor that
-  // would expose `scrollTop` / `expandedKeys` / `partialFieldEdits`
-  // on unmount — but a typed-but-ignored prop is a typed lie.
-  // Re-add when the modal-state threading lands; the
-  // draft-store module + tests at `lib/draft-store.ts` are kept
-  // ready for it.
 }
 
 interface State {
@@ -25,15 +17,7 @@ interface State {
   items: SettingLeafEntry[];
   pendingRestartKeys: string[];
   overrideKeys: string[];
-  isAdmin: boolean;
 }
-
-// Admin-tab visibility helper lifted to lib/admin-gate.ts.
-// W3 + S2 of PR #161 review round 2: previous heuristic was too
-// liberal — `api_key:read`, `identity:read`, `portal_token:read` are
-// member-scoped per `apps/engine/src/rbac/seed.ts`, so every tenant
-// member saw the Admin tab. The shared helper now keys on permissions
-// the built-in `member` role is *guaranteed not* to have.
 
 const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => void }> = ({
   client,
@@ -47,38 +31,20 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
     items: [],
     pendingRestartKeys: [],
     overrideKeys: [],
-    isAdmin: false,
   });
-  // R5-W1 + R11-W5: the draft-store integration was a no-op (the
-  // modal didn't expose state on unmount). The `profileName` prop
-  // was dropped (R11-W5). When `SettingsModal` is refactored to
-  // expose `initialDraft` / `onClose(snapshot)`, re-add the prop
-  // and wire the load/save here keyed on the active profile +
-  // tenant. The `lib/draft-store.ts` module + its tests stay ready.
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const opts: { tenant?: string } = tenant ? { tenant } : {};
-        // Fetch settings + bootstrap (for admin-permission probe) in parallel.
-        // skBootstrap failure is non-fatal: we degrade to non-admin (no Admin
-        // tab) and surface the settings list either way.
-        const [settingsRes, bootstrap] = await Promise.all([
-          client.listSettings(opts),
-          client
-            .skBootstrap()
-            .then((b) => b)
-            .catch(() => null),
-        ]);
+        const settingsRes = await client.listSettings(opts);
         if (cancelled) return;
-        const perms = bootstrap?.permissions ?? [];
         setState({
           loading: false,
           items: settingsRes.items,
           pendingRestartKeys: settingsRes.diagnostics.pending_restart_keys,
           overrideKeys: settingsRes.diagnostics.override_keys,
-          isAdmin: isAdminFromPermissions(perms),
         });
       } catch (err) {
         if (cancelled) return;
@@ -88,7 +54,6 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
           items: [],
           pendingRestartKeys: [],
           overrideKeys: [],
-          isAdmin: false,
         });
       }
     })();
@@ -125,14 +90,12 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
   }
 
   const fields = state.items.map(leafToFormField);
-  const sections = groupBySection(fields);
 
   const modalProps: React.ComponentProps<typeof SettingsModal> = {
-    sections,
+    fields,
     pendingRestartKeys: state.pendingRestartKeys,
     overrideKeys: state.overrideKeys,
     client,
-    isAdmin: state.isAdmin,
     onExit: (code) => {
       exit();
       onExit(code);

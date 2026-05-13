@@ -26,6 +26,13 @@ interface Props {
    * that need REPL-runtime cooperation.
    */
   onAction?: (action: ProfileAction) => void;
+  /**
+   * Fired when this tab "owns Esc" — see ConfigTab for the contract.
+   * ProfileTab owns Esc while the tenant picker is open so the outer
+   * shell (SinglePane / SettingsModal) doesn't dismiss the pane on
+   * the same Esc keystroke that closes the picker.
+   */
+  onInnerEscape?: (active: boolean) => void;
 }
 
 export type ProfileAction =
@@ -49,13 +56,17 @@ interface TenantRow {
   display_name: string | null;
 }
 
-export const ProfileTab: React.FC<Props> = ({ client, onAction }) => {
+export const ProfileTab: React.FC<Props> = ({ client, onAction, onInnerEscape }) => {
   const [snap, setSnap] = useState<IdentitySnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tenantList, setTenantList] = useState<TenantRow[]>([]);
   const [tenantPickerOpen, setTenantPickerOpen] = useState(false);
   const [tenantIdx, setTenantIdx] = useState(0);
   const [flash, setFlash] = useState<{ kind: "ok" | "error"; msg: string } | null>(null);
+
+  useEffect(() => {
+    onInnerEscape?.(tenantPickerOpen);
+  }, [tenantPickerOpen, onInnerEscape]);
 
   useEffect(() => {
     let cancelled = false;

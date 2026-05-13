@@ -12,7 +12,11 @@ import { resolveAction } from "../keybindings/useKeybinding.ts";
 
 interface Props {
   client: EngineClient;
-  onSearchActiveChange?: (active: boolean) => void;
+  /**
+   * Fired when this tab "owns Esc" — see ConfigTab for the contract.
+   * SkillsTab owns Esc only while its search is active.
+   */
+  onInnerEscape?: (active: boolean) => void;
 }
 
 interface SkillRow {
@@ -30,7 +34,7 @@ function readStatus(item: { id: string; title: string; scope: string }): string 
   return typeof r.status === "string" ? r.status : "draft";
 }
 
-export const SkillsTab: React.FC<Props> = ({ client, onSearchActiveChange }) => {
+export const SkillsTab: React.FC<Props> = ({ client, onInnerEscape }) => {
   const [rows, setRows] = useState<SkillRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,8 +52,8 @@ export const SkillsTab: React.FC<Props> = ({ client, onSearchActiveChange }) => 
   const [activationFlash, setActivationFlash] = useState<string | null>(null);
 
   useEffect(() => {
-    onSearchActiveChange?.(searchActive || searchQuery.length > 0);
-  }, [searchActive, searchQuery, onSearchActiveChange]);
+    onInnerEscape?.(searchActive || searchQuery.length > 0);
+  }, [searchActive, searchQuery, onInnerEscape]);
 
   useEffect(() => {
     let cancelled = false;

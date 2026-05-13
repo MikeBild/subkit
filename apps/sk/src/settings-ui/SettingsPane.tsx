@@ -7,10 +7,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
 import type { EngineClient, SettingLeafEntry } from "../engine-client.ts";
-// W3 + S2 of PR #161 review round 2: shared `isAdminFromPermissions`
-// helper, lifted from this file + SettingsApp.tsx.
-import { isAdminFromPermissions } from "./lib/admin-gate.ts";
-import { groupBySection, leafToFormField } from "./lib/zod-to-form-fields.ts";
+import { leafToFormField } from "./lib/zod-to-form-fields.ts";
 import { SettingsModal } from "./SettingsModal.tsx";
 
 export interface SettingsPaneProps {
@@ -23,7 +20,6 @@ export interface SettingsPaneProps {
   sessionTokens?: number | null;
   weekTokens?: number | null;
   onDismiss: () => void;
-  onProfileAction?: (action: import("./tabs/ProfileTab.tsx").ProfileAction) => void;
 }
 
 interface State {
@@ -32,7 +28,6 @@ interface State {
   items: SettingLeafEntry[];
   pendingRestartKeys: string[];
   overrideKeys: string[];
-  isAdmin: boolean;
   /** H2 closure of #159 — fetched lazily once sessionId is known. */
   fetchedSessionTitle?: string | null;
 }
@@ -47,14 +42,12 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
   sessionTokens,
   weekTokens,
   onDismiss,
-  onProfileAction,
 }) => {
   const [state, setState] = useState<State>({
     loading: true,
     items: [],
     pendingRestartKeys: [],
     overrideKeys: [],
-    isAdmin: false,
   });
 
   useEffect(() => {
@@ -62,15 +55,8 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
     (async () => {
       try {
         const opts: { tenant?: string } = tenant ? { tenant } : {};
-        // H2 closure of #159 — fetch the conversation alongside settings
-        // so the Status tab's "session name" row populates from the
-        // engine when the host doesn't supply `sessionTitle`.
-        const [settingsRes, bootstrap, convDetail] = await Promise.all([
+        const [settingsRes, convDetail] = await Promise.all([
           client.listSettings(opts),
-          client
-            .skBootstrap()
-            .then((b) => b)
-            .catch(() => null),
           sessionId
             ? client
                 .getConversation(sessionId)
@@ -79,7 +65,6 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
             : Promise.resolve(null),
         ]);
         if (cancelled) return;
-        const perms = bootstrap?.permissions ?? [];
         const conv = convDetail as { conversation?: { title?: string | null } } | null;
         const fetchedTitle = conv?.conversation?.title ?? null;
         setState({
@@ -87,7 +72,6 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
           items: settingsRes.items,
           pendingRestartKeys: settingsRes.diagnostics.pending_restart_keys,
           overrideKeys: settingsRes.diagnostics.override_keys,
-          isAdmin: isAdminFromPermissions(perms),
           fetchedSessionTitle: fetchedTitle,
         });
       } catch (err) {
@@ -98,7 +82,6 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
           items: [],
           pendingRestartKeys: [],
           overrideKeys: [],
-          isAdmin: false,
         });
       }
     })();
@@ -124,14 +107,12 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
   }
 
   const fields = state.items.map(leafToFormField);
-  const sections = groupBySection(fields);
 
   const props: React.ComponentProps<typeof SettingsModal> = {
-    sections,
+    fields,
     pendingRestartKeys: state.pendingRestartKeys,
     overrideKeys: state.overrideKeys,
     client,
-    isAdmin: state.isAdmin,
     onExit: () => onDismiss(),
   };
   if (tenant !== undefined) props.tenant = tenant;
@@ -145,6 +126,5 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
   if (permissionMode !== undefined) props.permissionMode = permissionMode;
   if (sessionTokens !== undefined) props.sessionTokens = sessionTokens;
   if (weekTokens !== undefined) props.weekTokens = weekTokens;
-  if (onProfileAction !== undefined) props.onProfileAction = onProfileAction;
   return <SettingsModal {...props} />;
 };

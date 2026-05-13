@@ -97,12 +97,10 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
     <Box flexDirection="column">
       <Text bold>Token usage</Text>
       <Box marginTop={1} flexDirection="column">
+        <Text color="gray">Last 200 AI requests for this tenant.</Text>
         <Text color="gray">
-          Aggregating last 200 `llm.invocation` audit rows for the current tenant.
-        </Text>
-        <Text color="gray">
-          totals: {totalPrompt.toLocaleString()} prompt + {totalCompletion.toLocaleString()}{" "}
-          completion = {grandTotal.toLocaleString()}
+          totals: {totalPrompt.toLocaleString()} input + {totalCompletion.toLocaleString()} output ={" "}
+          {grandTotal.toLocaleString()} tokens
         </Text>
       </Box>
       <Box marginTop={1} flexDirection="column">
@@ -110,7 +108,7 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
         {loading ? <Text>loading…</Text> : null}
         {error ? <Text color="red">failed: {error}</Text> : null}
         {!loading && !error && rows.length === 0 ? (
-          <Text color="gray">no llm.invocation events found in this scope</Text>
+          <Text color="gray">no AI requests recorded for this tenant yet</Text>
         ) : null}
         {rows.map((r) => (
           <UsageBar

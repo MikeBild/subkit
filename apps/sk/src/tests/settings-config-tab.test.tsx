@@ -10,9 +10,8 @@ import { renderInk } from "./helpers/ink.tsx";
 
 const stubClient = {} as unknown as EngineClient;
 
-function makeSections(): Map<string, FormField[]> {
-  const sections = new Map<string, FormField[]>();
-  sections.set("llm", [
+function makeFields(): FormField[] {
+  return [
     {
       path: "llm.model",
       kind: "text",
@@ -33,8 +32,6 @@ function makeSections(): Map<string, FormField[]> {
       source: "global",
       description: "sampling temperature",
     },
-  ]);
-  sections.set("knowledge", [
     {
       path: "knowledge.embed.model",
       kind: "text",
@@ -45,18 +42,16 @@ function makeSections(): Map<string, FormField[]> {
       source: "global",
       description: "embedding model",
     },
-  ]);
-  return sections;
+  ];
 }
 
 function renderModalOnConfig(): ReturnType<typeof renderInk> {
   const node = (
     <SettingsModal
-      sections={makeSections()}
+      fields={makeFields()}
       pendingRestartKeys={[]}
       overrideKeys={[]}
       client={stubClient}
-      isAdmin={false}
       onExit={() => {}}
     />
   ) as React.ReactElement;
@@ -64,8 +59,7 @@ function renderModalOnConfig(): ReturnType<typeof renderInk> {
 }
 
 async function navigateToConfigTab(ui: ReturnType<typeof renderInk>): Promise<void> {
-  // Settings (idx 0) → Status (1) → Config (2)
-  await ui.press("right");
+  // Status (idx 0) → Config (idx 1)
   await ui.press("right");
   await ui.waitFor((t) => t.includes("Type to filter"));
 }
@@ -76,9 +70,13 @@ describe("ConfigTab — flat searchable settings list (M3)", () => {
     try {
       await navigateToConfigTab(ui);
       const txt = ui.text();
-      expect(txt).toContain("llm.model");
-      expect(txt).toContain("llm.temperature");
-      expect(txt).toContain("knowledge.embed.model");
+      // Row bodies render curated labels (see lib/config-labels.ts).
+      // Section dividers humanize the section key.
+      expect(txt).toContain("── AI / LLM");
+      expect(txt).toContain("── Knowledge");
+      // The fixture's `llm.temperature` isn't in LABEL_BY_PATH; the
+      // formatLabel fallback ("Temperature") renders instead.
+      expect(txt).toContain("Temperature");
     } finally {
       ui.unmount();
     }
@@ -90,6 +88,7 @@ describe("ConfigTab — flat searchable settings list (M3)", () => {
       await navigateToConfigTab(ui);
       await ui.type("/");
       await ui.type("knowledge");
+      // Selected-row footer surfaces the canonical path.
       await ui.waitFor((t) => t.includes("knowledge.embed.model"));
       const txt = ui.text();
       expect(txt).toContain("knowledge.embed.model");
@@ -103,11 +102,10 @@ describe("ConfigTab — flat searchable settings list (M3)", () => {
     let exitCode: number | undefined;
     const ui = renderInk(
       <SettingsModal
-        sections={makeSections()}
+        fields={makeFields()}
         pendingRestartKeys={[]}
         overrideKeys={[]}
         client={stubClient}
-        isAdmin={false}
         onExit={(c) => {
           exitCode = c;
         }}
@@ -128,9 +126,7 @@ describe("ConfigTab — flat searchable settings list (M3)", () => {
   });
 
   test("Enter on a picker-eligible row opens a ValuePicker (G5 closure)", async () => {
-    // Build a sections map with ui.theme so it appears in the Config tab.
-    const sections = new Map<string, FormField[]>();
-    sections.set("ui", [
+    const themeFields: FormField[] = [
       {
         path: "ui.theme",
         kind: "text",
@@ -141,19 +137,18 @@ describe("ConfigTab — flat searchable settings list (M3)", () => {
         source: "global",
         description: "REPL color theme",
       },
-    ]);
+    ];
     const ui = renderInk(
       <SettingsModal
-        sections={sections}
+        fields={themeFields}
         pendingRestartKeys={[]}
         overrideKeys={[]}
         client={stubClient}
-        isAdmin={false}
         onExit={() => {}}
       />,
     );
     try {
-      await ui.press("right");
+      // Status (idx 0) → Config (idx 1)
       await ui.press("right");
       await ui.waitFor((t) => t.includes("ui.theme"));
       await ui.press("enter");
@@ -169,11 +164,10 @@ describe("ConfigTab — flat searchable settings list (M3)", () => {
     let exitCode: number | undefined;
     const ui = renderInk(
       <SettingsModal
-        sections={makeSections()}
+        fields={makeFields()}
         pendingRestartKeys={[]}
         overrideKeys={[]}
         client={stubClient}
-        isAdmin={false}
         onExit={(c) => {
           exitCode = c;
         }}
