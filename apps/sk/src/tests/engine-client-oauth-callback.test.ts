@@ -9,6 +9,7 @@
 //   5. cancels cleanly on caller `signal`.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { flush, waitFor } from "../../../engine/src/test-helpers/determinism/wait.ts";
 import type { FetchLike } from "../engine-client.ts";
 
 let originalEnv: NodeJS.ProcessEnv;
@@ -98,10 +99,10 @@ describe("EngineClient.subscribeConnectorOAuthCallback", () => {
       },
     });
 
-    // Wait briefly for the background reader to consume the frames.
-    for (let i = 0; i < 20 && received === null; i++) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
+    // Wait for the background reader to consume the frames. Microtask
+    // polling — the reader runs in the same event loop, so a wall-clock
+    // sleep would only mask races.
+    await waitFor(() => received !== null, { label: "oauth callback received" });
 
     expect(received).not.toBeNull();
     expect(received!.connector_id).toBe("22222222-2222-2222-2222-222222222222");
@@ -145,8 +146,11 @@ describe("EngineClient.subscribeConnectorOAuthCallback", () => {
         fired = true;
       },
     });
-    // Let the reader process all queued frames.
-    await new Promise((r) => setTimeout(r, 40));
+    // Let the reader process all queued frames. Microtask flushes are
+    // enough — the reader is in-process and doesn't wait on the wall
+    // clock. A few flushes give it room to consume the buffered frames
+    // and decide they don't match.
+    for (let i = 0; i < 8; i++) await flush();
     expect(fired).toBe(false);
     handle.cancel();
     controllerRef.close();
@@ -178,8 +182,8 @@ describe("EngineClient.subscribeConnectorOAuthCallback", () => {
     expect(observedSignal!.aborted).toBe(false);
     ac.abort();
     // Internal AbortController is composed with caller signal, so it
-    // should now be aborted too.
-    await new Promise((r) => setTimeout(r, 20));
+    // should propagate the abort on the next microtask tick.
+    await waitFor(() => observedSignal!.aborted, { label: "signal aborted" });
     expect(observedSignal!.aborted).toBe(true);
     // cancel() is idempotent post-abort.
     handle.cancel();
