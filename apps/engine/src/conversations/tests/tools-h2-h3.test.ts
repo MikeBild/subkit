@@ -7,6 +7,7 @@ import { getTool, listTools } from "../tools/index.ts";
 
 describe("conversation tools — registration", () => {
   const EXPECTED_AUTHORING_TOOLS = [
+    "analyze_scrape_target",
     "ask_user_choice",
     "ask_user_confirm",
     "ask_user_form",
