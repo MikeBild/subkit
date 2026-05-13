@@ -134,15 +134,30 @@ Errors are typed: 403 on policy denial, 404 when the connector id is unknown, 42
 
 ## Conversational Creation Contract
 
-Connector creation through the conversational surface follows a single, observable contract:
+Connector creation through the conversational surface follows a single, observable contract. Two persistence paths, one for non-OAuth credentials and one for OAuth2:
+
+**Non-OAuth (bearer / header / query / basic / aws_sigv4):**
 
 1. The agent calls `discover_connector_endpoints` to ground its endpoint choices in real spec data.
 2. The agent calls `start_connector_from_template` (or `start_connector_from_description`) to create a draft.
-3. The agent calls `ask_user_form(type: password, sensitive: true)` to collect credentials. The form payload carries an optional `commit_intent: { kind: "save_connector_draft", payload, description }`.
-4. When the operator submits the form, the conversation harness applies the connector + credential write atomically — DB row, encrypted credential, audit entry — BEFORE the agent's next turn. The agent does NOT need to call `save_connector_draft` for the normal commit path.
-5. The agent calls `probe_connector_draft` (or `call_connector` for richer iteration) to verify the persisted connector.
+3. The agent calls `ask_user_form(type: password, sensitive: true)` to collect the credential. The form value lands on the draft via the credential cache; no `commit_intent` is needed.
+4. The agent calls `probe_connector_draft`. A green probe (`ok: true`) persists the connector + credential atomically inside the same tool call — DB row, encrypted credential, audit entry — and the response envelope carries `auto_saved: true` plus the saved connector shape. The agent does NOT need to call `save_connector_draft` afterward.
+5. The agent calls `call_connector` to iterate / paginate / sample.
 
-The diagnostic tools `save_connector_draft` and `save_workflow_draft` remain available for credential rotation, recovery from a partial write, or a force-save after a failed probe (`force_save: true`). They are idempotent — a re-issue against an already-persisted connector returns `{ ok: true, data: { already_persisted: true } }` without a double-write. Audit rows distinguish the two paths via `reason: "auto_persist_on_confirmation"` vs `reason: "manual_re_issue"`.
+**OAuth2:**
+
+1–2. As above.
+3. `ask_user_form` collects `client_id` + `client_secret` and carries `commit_intent: { kind: "save_connector_draft", payload, description }`. The harness persists the connector + OAuth config on form submit (`authenticate_oauth` needs a persisted connector_id).
+4. `authenticate_oauth` opens the authorization URL; tokens land via the OAuth callback.
+5. `probe_connector_draft` verifies the access token works.
+
+The diagnostic tools `save_connector_draft` and `save_workflow_draft` remain available for credential rotation, recovery from a partial write, or a force-save after a failed probe (`force_save: true`). They are idempotent — a re-issue against an already-persisted connector returns `{ ok: true, data: { already_persisted: true } }` without a double-write. Audit rows distinguish the three persistence paths via `reason`:
+
+| Reason | Surface | Trigger |
+|---|---|---|
+| `auto_persist_on_green_probe` | `probe_connector_draft` (inline) | A successful probe |
+| `auto_persist_on_confirmation` | harness auto-persist | An `ask_user_form` carrying `commit_intent` (OAuth2 happy path, plus delete/revoke confirmations) |
+| `manual_re_issue` | `save_connector_draft` / `save_workflow_draft` (direct) | Operator-driven re-save, force-save, credential rotation |
 
 Credentials only flow through the masked form path. The `update_connector_draft` tool rejects any credential-shaped key in `config` with a structured `credential_must_use_form` envelope. Drivers no longer accept inline credentials from `connector.config` at probe time. There is no shortcut.
 

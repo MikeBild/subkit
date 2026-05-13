@@ -75,9 +75,9 @@ The approval gate sits on top of additional hard quality gates:
 - A connector cannot be saved from the guided conversation flow until inspection, validation, and probe checkpoints are fresh.
 - A workflow cannot be committed from the guided conversation flow until inspection, validation, and preview checkpoints are fresh.
 - A workflow run always targets a persisted workflow version, never an ambiguous draft.
-- The normal conversation surface no longer exposes force-style bypasses for save or commit. Operators can still use explicit admin or development paths where appropriate, but the guided flow itself is strict.
-- In `permission_mode=auto`, the engine skips non-dangerous confirmation prompts and continues directly to the underlying state-changing action. The user should never have to confirm the same save twice in different forms.
-- Ready save states carry a structured next tool in the draft summary (`save_connector_draft` or `save_workflow_draft`). A short follow-up approval like "yes" in `permission_mode=auto` reuses that state instead of depending on transcript guesswork.
+- A green `probe_connector_draft` is the persistence trigger for a connector: the probe tool calls `saveConnectorAtomic` inline (audit reason `auto_persist_on_green_probe`) and returns the saved-connector envelope (`auto_saved: true`). The two-step "approve · Save the connector" prompt is gone for the happy path.
+- A clean `dry_run_workflow` is the persistence trigger for a workflow: the dry-run tool calls `commitWorkflowAtomic` inline (audit reason `auto_persist_on_green_dry_run`) and returns the committed-workflow envelope (`auto_committed: true`). The "yes — yes — commit this" loop is gone for the happy path.
+- Force overrides remain available for both: `force_save: true` on `save_connector_draft` after a failed probe, `force_commit: true` on `save_workflow_draft` after a failed dry-run. Both go through the explicit `ask_user_confirm` carrier so the operator's deviation from the green path is auditable.
 
 This matters because the approval is not meant to compensate for missing technical checks. It is the final human sign-off after the state machine has already established that the draft is internally coherent.
 
@@ -92,17 +92,17 @@ For connectors, the canonical path is:
 1. Start or update the connector draft
 2. Inspect the current draft
 3. Validate required fields and config shape
-4. Probe the real upstream boundary
-5. Save the connector
+4. Probe the real upstream boundary — a green probe persists the connector inline; the response envelope carries `auto_saved: true`
 
 For workflows, the canonical path is:
 
 1. Start or update the workflow draft
 2. Inspect the current draft
 3. Validate the graph and step schemas
-4. Preview with `dry_run_step`, `dry_run_transform`, or `dry_run_workflow`
-5. Commit the workflow
-6. Run the persisted workflow
+4. Preview with `dry_run_step`, `dry_run_transform`, or `dry_run_workflow` — a clean `dry_run_workflow` commits the workflow inline; the response envelope carries `auto_committed: true`
+5. Run the persisted workflow
+
+There is no separate "save" or "commit" step on the happy path; the verification step is the persistence step.
 
 The engine tracks these as fresh or stale checkpoints. Any draft mutation invalidates later checkpoints automatically. For example, editing a workflow after a successful preview makes the preview checkpoint stale, so the workflow must be previewed again before it can be committed.
 
