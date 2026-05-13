@@ -732,6 +732,15 @@ export class EngineClient {
       const decoder = new TextDecoder();
       let buffer = "";
       try {
+        // Replay guard: `/v1/events/stream` replays the last 50 rows
+        // on open (without Last-Event-ID). If the connector has been
+        // OAuth'd before, a prior `connector.oauth.callback_succeeded`
+        // for the same connector_id is in that replay — and would
+        // auto-confirm the CURRENT elicitation before the operator
+        // even finishes the new browser dance. The server announces
+        // the live cutover with a `hello` event after the replay; we
+        // ignore every payload-frame until that marker arrives.
+        let live = false;
         while (!ac.signal.aborted) {
           const chunk = await reader.read();
           if (chunk.done) break;
@@ -745,9 +754,16 @@ export class EngineClient {
             const eventLine = lines.find((l) => l.startsWith("event: "));
             const dataLine = lines.find((l) => l.startsWith("data: "));
             if (!dataLine) continue;
-            // The `hello` frame at stream open carries a cursor, not a
-            // callback payload — skip it.
-            if (eventLine && eventLine.slice("event: ".length).trim() === "hello") continue;
+            // The `hello` frame flips us from replay-discard mode into
+            // live-event mode. Skip the frame itself but mark `live`.
+            if (eventLine && eventLine.slice("event: ".length).trim() === "hello") {
+              live = true;
+              continue;
+            }
+            // Pre-hello frames are replay. Drop them — even if they
+            // match the connector_id filter, they represent a PAST
+            // OAuth completion, not the one the operator is doing now.
+            if (!live) continue;
             try {
               const payload = JSON.parse(dataLine.slice("data: ".length)) as {
                 connector_id?: unknown;

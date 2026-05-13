@@ -189,6 +189,48 @@ describe("EngineClient.subscribeConnectorOAuthCallback", () => {
     handle.cancel();
   });
 
+  test("discards replay events received before the `hello` frame (no false-positive auto-confirm)", async () => {
+    const { EngineClient } = await import("../engine-client.ts");
+    // SSE wire order on connect without Last-Event-ID:
+    //   1. replay of the last N rows AS the event types they carry
+    //      (could include a prior `connector.oauth.callback_succeeded`
+    //      for THIS connector_id from an earlier OAuth completion)
+    //   2. a `hello` frame announcing the live cursor
+    //   3. live events
+    // A naive consumer would auto-confirm on step 1's match. Replay
+    // events must be discarded.
+    const matchingPayload = JSON.stringify({
+      connector_id: "22222222-2222-2222-2222-222222222222",
+      connector_slug: "google-gmail",
+      has_refresh_token: true,
+    });
+    const { res, controllerRef } = makeSseResponse([
+      // Replay: prior OAuth completion for the same connector_id —
+      // MUST be ignored because it's not the current dance.
+      `event: connector.oauth.callback_succeeded\ndata: ${matchingPayload}\n\n`,
+      // Live cutover marker.
+      'event: hello\ndata: {"cursor":42}\n\n',
+    ]);
+    const fakeFetch: FetchLike = async () => res;
+    const client = new EngineClient({
+      engine_url: "https://engine.test",
+      api_key: "test-key",
+      fetchImpl: fakeFetch,
+    });
+    let fired = false;
+    const handle = await client.subscribeConnectorOAuthCallback({
+      connectorId: "22222222-2222-2222-2222-222222222222",
+      onSucceeded: () => {
+        fired = true;
+      },
+    });
+    // Give the reader time to process the replay frame and the hello.
+    for (let i = 0; i < 8; i++) await flush();
+    expect(fired).toBe(false);
+    handle.cancel();
+    controllerRef.close();
+  });
+
   test("raises SkTransportError on non-2xx response", async () => {
     const { EngineClient, SkTransportError } = await import("../engine-client.ts");
     const fakeFetch: FetchLike = async () =>
