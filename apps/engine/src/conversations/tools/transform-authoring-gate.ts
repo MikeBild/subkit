@@ -53,6 +53,20 @@ function isTransformStep(step: unknown): step is TransformLikeStep {
 }
 
 /**
+ * Optional set of connector slugs the operator successfully probed
+ * during the current conversation. When the transform's referenced
+ * step is a `request` against one of these connectors — directly or
+ * through a chain of intermediate transforms — the probe counts as
+ * shape evidence and the gate is exempted. Mirrors the loop-gate
+ * `probedConnectorSlugs` exemption: probing IS the engine's primary
+ * shape-discovery surface for HTTP/GraphQL connectors, and a probe
+ * that returned 200 + body is functionally equivalent to a dry-run.
+ */
+export interface TransformAuthoringGateOptions {
+  probedConnectorSlugs?: ReadonlySet<string>;
+}
+
+/**
  * Walk the draft's transform steps. For each, extract the referenced
  * step ids from its `expression`. Cross-reference against the latest
  * dry-run's `step_traces` slot. Return the list of blocks (empty when
@@ -60,10 +74,16 @@ function isTransformStep(step: unknown): step is TransformLikeStep {
  *
  * Transforms that read only from `$input` (no `$scope`/`$steps` refs)
  * are exempt — there is no upstream step to inspect.
+ *
+ * Transforms whose referenced step is a `request` against a probed
+ * connector — directly or through a chain of intermediate transforms —
+ * are also exempt: the probe IS the shape evidence the gate would
+ * otherwise demand from a dry-run.
  */
 export function evaluateTransformAuthoringGate(
   workflow: { steps: ReadonlyArray<Record<string, unknown>> },
   latestPreview: DraftDocument["latest_preview"],
+  options: TransformAuthoringGateOptions = {},
 ): TransformGateResult {
   const blocks: TransformGateBlock[] = [];
   const traces: WorkflowDraftStepPreview[] = Array.isArray(latestPreview?.step_traces)
@@ -73,14 +93,71 @@ export function evaluateTransformAuthoringGate(
   for (const t of traces) traceById.set(t.step_id, t);
 
   const stepIds = new Set<string>();
+  const stepById = new Map<string, Record<string, unknown>>();
   for (const step of workflow.steps) {
     if (
       typeof step === "object" &&
       step !== null &&
       typeof (step as { id?: unknown }).id === "string"
     ) {
-      stepIds.add((step as { id: string }).id);
+      const id = (step as { id: string }).id;
+      stepIds.add(id);
+      stepById.set(id, step as Record<string, unknown>);
     }
+  }
+
+  const probedSlugs = options.probedConnectorSlugs ?? new Set<string>();
+
+  /**
+   * Transitive probe-evidence exemption — identical contract to
+   * `loop-authoring-gate.ts#transitivelyExempt`. A request step routed
+   * through a probed connector counts as shape evidence; an
+   * intermediate transform that reads from such a request is also
+   * exempt, since the chain ultimately rests on the same probe.
+   * Depth-bounded to 16 to prevent pathological recursion through
+   * circular transform refs that earlier validators didn't catch.
+   *
+   * Connector binding is recognized in three forms:
+   *   1. explicit `step.connector_slug` field
+   *   2. `${connector.<slug>.*}` placeholders in any string leaf of
+   *      the step config (URL, headers, body, query) — the
+   *      reference-impl-style and legacy binding shape
+   *   3. recursive walk through a `transform` step's expression
+   */
+  function transitivelyExempt(stepId: string, seen = new Set<string>()): boolean {
+    if (seen.has(stepId) || seen.size > 16) return false;
+    seen.add(stepId);
+    const s = stepById.get(stepId);
+    if (!s) return false;
+    if (typeof s.connector_slug === "string" && probedSlugs.has(s.connector_slug as string)) {
+      return true;
+    }
+    // Placeholder-based binding: scan the step for
+    // `${connector.<slug>.*}` references and exempt when any matched
+    // slug is in the probed set. Mirrors the binding shape
+    // `collectProbedConnectorSlugs` picks up.
+    try {
+      const json = JSON.stringify(s);
+      const re = /\$\{\s*connector\.([a-zA-Z][a-zA-Z0-9_-]*)\b/g;
+      for (let m = re.exec(json); m !== null; m = re.exec(json)) {
+        const slug = m[1];
+        if (slug && probedSlugs.has(slug)) return true;
+      }
+    } catch {
+      // step contained an un-stringifyable value — fall through to
+      // the transform-chain check rather than failing closed here.
+    }
+    if ((s as { kind?: unknown }).kind !== "transform") return false;
+    const expr =
+      typeof s.expression === "string"
+        ? (s.expression as string)
+        : typeof s.data_selector === "string"
+          ? (s.data_selector as string)
+          : null;
+    if (!expr) return false;
+    const upstream = extractStepIdReferences(expr);
+    if (upstream.length === 0) return false;
+    return upstream.some((u) => transitivelyExempt(u, seen));
   }
 
   for (const step of workflow.steps) {
@@ -97,6 +174,11 @@ export function evaluateTransformAuthoringGate(
       // Self-reference (a transform reading its own output) is
       // impossible at runtime — skip.
       if (ref === step.id) continue;
+      // Probe-evidence exemption: when the referenced step is a
+      // request through a probed connector — directly or transitively
+      // through a chain of transforms — skip the gate. The probe IS
+      // the shape evidence.
+      if (transitivelyExempt(ref)) continue;
       const trace = traceById.get(ref);
       if (!trace || trace.output_preview === undefined || trace.output_preview === null) {
         blocks.push({

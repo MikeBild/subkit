@@ -612,11 +612,15 @@ export const buildWorkflowTool: ConversationTool = {
     // cite `$scope.<X>...` for steps that have no recorded
     // `output_preview` yet. Pre-fix v4.8.0 this was wired only into
     // `propose_step` and `edit_workflow_patch`, so a one-shot
-    // `build_workflow` could bypass the gate entirely.
+    // `build_workflow` could bypass the gate entirely. Passes
+    // `probedConnectorSlugs` so transforms reading from already-
+    // probed request steps are exempted (the probe IS the shape
+    // evidence — same exemption the loop gate uses).
     {
       const gate = evaluateTransformAuthoringGate(
         workflowDraft,
         currentDraft.latest_preview ?? null,
+        { probedConnectorSlugs },
       );
       if (!gate.ok) {
         const summary = gate.blocks

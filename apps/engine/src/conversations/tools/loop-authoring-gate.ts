@@ -129,6 +129,22 @@ export function evaluateLoopAuthoringGate(
     if (typeof s.connector_slug === "string" && probedSlugs.has(s.connector_slug as string)) {
       return true;
     }
+    // Placeholder-based binding: a step using
+    // `url: "${connector.<slug>.base_url}/..."` (or any other string
+    // leaf with a `${connector.<slug>.*}` reference) is bound to that
+    // connector for runtime purposes. Mirror the binding shape
+    // `collectProbedConnectorSlugs` picks up so a successful probe
+    // exempts the step regardless of which binding the LLM wrote.
+    try {
+      const json = JSON.stringify(s);
+      const re = /\$\{\s*connector\.([a-zA-Z][a-zA-Z0-9_-]*)\b/g;
+      for (let m = re.exec(json); m !== null; m = re.exec(json)) {
+        const slug = m[1];
+        if (slug && probedSlugs.has(slug)) return true;
+      }
+    } catch {
+      // fall through to the transform-chain check
+    }
     if ((s as { kind?: unknown }).kind !== "transform") return false;
     const expr =
       typeof s.expression === "string"

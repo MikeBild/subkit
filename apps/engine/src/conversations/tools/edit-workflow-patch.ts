@@ -229,15 +229,16 @@ export const editWorkflowPatchTool: ConversationTool = {
           }
         : (currentDraft.latest_preview ?? null);
 
-    const preTransformGate = evaluateTransformAuthoringGate(
-      workflowDraft,
-      currentDraft.latest_preview ?? null,
-    );
-    const preTransformBlockedIds = new Set(preTransformGate.blocks.map((b) => b.transform_step_id));
     const probedConnectorSlugs = await collectProbedConnectorSlugs(
       ctx,
       patched.steps as ReadonlyArray<Record<string, unknown>>,
     );
+    const preTransformGate = evaluateTransformAuthoringGate(
+      workflowDraft,
+      currentDraft.latest_preview ?? null,
+      { probedConnectorSlugs },
+    );
+    const preTransformBlockedIds = new Set(preTransformGate.blocks.map((b) => b.transform_step_id));
     const preLoopGate = evaluateLoopAuthoringGate(
       workflowDraft,
       currentDraft.latest_preview ?? null,
@@ -246,7 +247,9 @@ export const editWorkflowPatchTool: ConversationTool = {
     const preLoopBlockedIds = new Set(preLoopGate.blocks.map((b) => b.loop_step_id));
 
     {
-      const post = evaluateTransformAuthoringGate(patched, postPreview);
+      const post = evaluateTransformAuthoringGate(patched, postPreview, {
+        probedConnectorSlugs,
+      });
       const newBlocks = post.blocks.filter((b) => !preTransformBlockedIds.has(b.transform_step_id));
       if (newBlocks.length > 0) {
         const summary = newBlocks

@@ -334,9 +334,17 @@ export const updateParamTool: ConversationTool = {
         args.param.startsWith("expression.") ||
         args.param.startsWith("body.");
       if (editedStepIsTransform && paramTouchesTransformExpr) {
+        // Reuse the probe-evidence slug set the loop gate already
+        // collected above when relevant; otherwise compute fresh for
+        // this branch. Same exemption contract: a transform reading
+        // from a probed-connector request step is exempt.
+        const transformProbedSlugs = gateIsRelevant
+          ? probedConnectorSlugs
+          : await collectProbedConnectorSlugs(ctx, workflowDraft.steps);
         const transformGate = evaluateTransformAuthoringGate(
           workflowDraft,
           currentDraft.latest_preview ?? null,
+          { probedConnectorSlugs: transformProbedSlugs },
         );
         if (!transformGate.ok) {
           const summary = transformGate.blocks

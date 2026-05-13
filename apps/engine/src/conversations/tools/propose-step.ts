@@ -251,9 +251,15 @@ export const proposeStepTool: ConversationTool = {
     // garbage output (transcript `get-last-3-gmail-messages with human
     // output` — 3 retries to converge on the right fields).
     if (typeof args.step.kind === "string" && args.step.kind === "transform") {
+      // Probe-evidence exemption: a transform reading from a request
+      // routed through a probed connector — directly or through a
+      // chain of transforms — is exempt because the probe IS the
+      // shape evidence. Same contract as the loop-gate exemption.
+      const probedConnectorSlugs = await collectProbedConnectorSlugs(ctx, workflowDraft.steps);
       const gate = evaluateTransformAuthoringGate(
         workflowDraft,
         currentDraft.latest_preview ?? null,
+        { probedConnectorSlugs },
       );
       if (!gate.ok) {
         const summary = gate.blocks
