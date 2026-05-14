@@ -197,16 +197,14 @@ export const AuditAction = {
   // metadata never includes the raw expression (PII risk) — only a
   // 16-char sha256 prefix.
   CONVERSATION_DRY_RUN_TRANSFORM: "conversation.dry_run_transform",
-  CONVERSATION_ATTACHMENT_CREATED: "conversation.attachment_created",
-  CONVERSATION_ATTACHMENT_DELETED: "conversation.attachment_deleted",
 
   // Unified files resource. `FILE_DELETED` is emitted whenever the
   // engine removes a `files` row (hard delete) — covering the cleanup
   // cron's pending-orphan sweep (`reason: 'pending_expired'`) and the
   // unlinked-TTL hard-delete (`reason: 'unlinked_ttl'`) — as well as
-  // any future explicit DELETE surface. The legacy
-  // `CONVERSATION_ATTACHMENT_DELETED` action stays put for the
-  // pre-unification chat path; new file deletions land here.
+  // any future explicit DELETE surface. Wave-C consolidated the legacy
+  // `CONVERSATION_ATTACHMENT_*` actions into the canonical `FILE_*`
+  // vocabulary; new file deletions land here.
   FILE_DELETED: "file.deleted",
   // `FILE_CREATED` — inline-upload sink (`POST /v1/files/inline`)
   // persisted a new `files` row. Metadata carries `filename`,

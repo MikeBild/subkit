@@ -1,69 +1,87 @@
-// Conversation attachments HTTP surface.
+// Conversation attachments HTTP surface — thin wrapper over the
+// unified `files` + `file_links` resource (Wave C Step 6).
 //
-//   POST   /v1/conversations/:id/attachments              — upload (JSON body)
-//   GET    /v1/conversations/:id/attachments              — list
-//   GET    /v1/conversations/:id/attachments/:slug        — fetch meta + preview
-//   DELETE /v1/conversations/:id/attachments/:slug        — delete
+//   POST   /v1/conversations/:id/attachments              — upload (inline JSON body)
+//   GET    /v1/conversations/:id/attachments              — list linked files
+//   DELETE /v1/conversations/:id/attachments/:slug        — unlink (does NOT delete the file)
 //
-// The upload body is JSON (not multipart): { filename, content_type?,
-// content, content_encoding? }. `content` is either raw text or base64
-// when `content_encoding: "base64"`. This keeps the route compatible
-// with any HTTP client (Hono, curl, sk-CLI) without requiring a
-// multipart parser while giving us deterministic byte accounting.
+// URL shape is preserved for backwards compatibility with operator
+// tooling that POSTs to the legacy path. Under the hood every call
+// goes through the canonical `files` + `file_links` tables:
 //
-// Storage: when `DATA_DIR` env is set and writable we persist under
-// `${DATA_DIR}/attachments/<uuid>/<slug>` and store a `file://` URI.
-// Otherwise we fall back to `memory://` — tests use the in-memory store
-// directly via `putMemoryAttachment` (see conversations/attachments.ts).
+//   - POST decodes the JSON body, dedups + inserts a `files` row
+//     (sha256-scoped to the tenant), then attaches a `file_links` row
+//     pointing the file at the conversation under the derived slug.
+//     Audit emission lives on the canonical `/v1/files/*` surface
+//     (`FILE_CREATED` + `FILE_LINK_ADDED`); the legacy
+//     `conversation.attachment_*` actions are gone in this wave.
+//   - GET joins `file_links` with `files` filtered by the conversation.
+//   - DELETE removes the `file_links` row only — the `files` row stays
+//     for any other conversation / resource that still references it,
+//     and the cleanup cron eventually GCs orphans.
 //
-// Audit: every upload + delete writes a `conversation.attachment_created`
-// / `conversation.attachment_deleted` entry.
+// Body schema: either an `InlineUpload` ({ filename, content_base64 })
+// or a `{ $file: "fid_..." }` ref pointing at an existing file the
+// caller already uploaded via `/v1/files/inline`. The legacy `content`
+// + `content_encoding` fields are accepted as a temporary alias for
+// `content_base64` (utf8 → base64 server-side) so callers mid-migration
+// keep working without a coordinated client bump.
 
 import { createHash, randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../audit/index.ts";
 import {
-  clearMemoryAttachments as _clearMemoryAttachmentsUnused,
-  putMemoryAttachment,
-} from "../../conversations/index.ts";
-import { conversationAttachments, conversations } from "../../db/schema/index.ts";
-import { logger } from "../../logging/index.ts";
+  FileRefSchema,
+  FileSchema,
+  type FileWire,
+  MAX_INLINE_BYTES,
+  parseFileId,
+  toFileId,
+} from "../../api/files-schemas.ts";
+import { bucketSize } from "../../audit/buckets.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { getConfig } from "../../config/loader.ts";
+import type { Db } from "../../db/client.ts";
+import { conversations, fileLinks, files } from "../../db/schema/index.ts";
+import { requireFileForTenant } from "../../files/resolver.ts";
+import { getScanner } from "../../files/scanner.ts";
+import { getObjectStore } from "../../storage/object-store.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
-void _clearMemoryAttachmentsUnused;
-
 const IdParam = z.object({ id: z.string().uuid() });
 const SlugParam = z.object({ id: z.string().uuid(), slug: z.string().min(1) });
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB hard cap
-const PREVIEW_CHARS = 2000;
-
+/** Accepts either an inline JSON+base64 upload, an inline JSON+utf8
+ *  upload (legacy), or an existing-file ref. The route resolves any
+ *  of these to a canonical `files` row + `file_links` row. */
 const UploadBody = z
-  .object({
-    filename: z.string().min(1).max(255),
-    content_type: z.string().max(200).optional(),
-    content: z.string(),
-    content_encoding: z.enum(["utf8", "base64"]).default("utf8"),
-  })
+  .union([
+    FileRefSchema,
+    z.object({
+      filename: z.string().min(1).max(255),
+      content_type: z.string().max(200).optional(),
+      content_base64: z.string().min(1),
+    }),
+    // Legacy shape — `content` + optional `content_encoding`. Kept so
+    // callers mid-migration keep working without a coordinated client
+    // bump. Removed once external tooling has flipped to
+    // `content_base64`.
+    z.object({
+      filename: z.string().min(1).max(255),
+      content_type: z.string().max(200).optional(),
+      content: z.string(),
+      content_encoding: z.enum(["utf8", "base64"]).default("utf8"),
+    }),
+  ])
   .openapi("ConversationAttachmentUpload");
 
-const AttachmentSchema = z
-  .object({
-    slug: z.string(),
-    original_filename: z.string(),
-    content_type: z.string().nullable(),
-    size_bytes: z.number(),
-    sha256: z.string(),
-    preview: z.string().nullable(),
-    created_at: z.string(),
-  })
-  .openapi("ConversationAttachment");
+const AttachmentSchema = FileSchema.extend({
+  slug: z.string(),
+}).openapi("ConversationAttachment");
+type AttachmentWire = FileWire & { slug: string };
 
 const ListResponse = z
   .object({ attachments: z.array(AttachmentSchema) })
@@ -75,54 +93,44 @@ function slugify(filename: string): string {
   return sanitised.length === 0 ? `file-${Date.now().toString(36)}` : sanitised.slice(0, 48);
 }
 
-function isTextLike(ct: string | undefined): boolean {
-  if (!ct) return true;
-  return (
-    ct.startsWith("text/") ||
-    ct.includes("json") ||
-    ct.includes("yaml") ||
-    ct.includes("xml") ||
-    ct.includes("x-www-form-urlencoded")
-  );
+/** Wire-shape projection — extends the canonical `FileSchema` with the
+ *  per-conversation slug that the chat-text rewriter resolves. */
+function toAttachmentWire(row: typeof files.$inferSelect, slug: string): AttachmentWire {
+  return {
+    id: toFileId(row.id),
+    status: row.status,
+    filename: row.filename,
+    content_type: row.content_type,
+    size_bytes: row.size_bytes,
+    sha256: row.sha256,
+    scan_result: row.scan_result,
+    created_at: row.created_at.toISOString(),
+    updated_at: row.updated_at.toISOString(),
+    deleted_at: row.deleted_at ? row.deleted_at.toISOString() : null,
+    slug,
+  };
 }
 
-async function storeContent(
-  tenant_id: string,
-  conversation_id: string,
-  slug: string,
-  bytes: Uint8Array,
-): Promise<string> {
-  const dataDir = process.env.DATA_DIR;
-  if (dataDir && dataDir.length > 0) {
-    const dir = path.join(dataDir, "attachments", tenant_id, conversation_id);
-    try {
-      await fs.mkdir(dir, { recursive: true });
-      const safeSlug = slug.replace(/[^a-z0-9_-]/gi, "_");
-      const filePath = path.join(dir, `${safeSlug}-${randomUUID().slice(0, 8)}`);
-      await fs.writeFile(filePath, bytes);
-      return `file://${filePath}`;
-    } catch (err) {
-      logger.warn({
-        module: "http.conversation_attachments",
-        action: "disk_store_failed",
-        msg: "failed to write attachment to DATA_DIR — falling back to memory://",
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-  // Fallback: memory store keyed by (conversation_id:slug). Works out
-  // of the box for tests; real deployments should set DATA_DIR.
-  const key = `${conversation_id}:${slug}`;
-  const text = new TextDecoder().decode(bytes);
-  putMemoryAttachment(key, text);
-  return `memory://${key}`;
+function buildObjectKey(tenant_id: string, file_uuid: string, now: Date = new Date()): string {
+  const yyyy = now.getUTCFullYear().toString();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(now.getUTCDate()).padStart(2, "0");
+  return `${tenant_id}/${yyyy}/${mm}/${dd}/${file_uuid}`;
 }
 
-async function conversationExists(
-  db: AppEnv["Variables"]["db"],
-  tenant_id: string,
-  id: string,
-): Promise<boolean> {
+function composeStorageUri(key: string): string {
+  const cfg = getConfig().storage;
+  if (cfg.files.backend === "s3") return `s3://${cfg.files.bucket}/${key}`;
+  return `local://${key}`;
+}
+
+function streamFromBytes(bytes: Uint8Array): AsyncIterable<Uint8Array> {
+  return (async function* () {
+    yield bytes;
+  })();
+}
+
+async function conversationExists(db: Db, tenant_id: string, id: string): Promise<boolean> {
   const [row] = await db
     .select({ id: conversations.id })
     .from(conversations)
@@ -131,10 +139,77 @@ async function conversationExists(
   return Boolean(row);
 }
 
+/** Find or create a `files` row for the given bytes. Returns the row
+ *  along with a flag indicating whether dedup short-circuited the
+ *  upload. Mirrors the dedup logic in `POST /v1/files/inline`. */
+async function persistFileBytes(
+  db: Db,
+  params: {
+    tenant_id: string;
+    actor_id: string | null;
+    filename: string;
+    content_type: string | null;
+    bytes: Uint8Array;
+  },
+): Promise<{ row: typeof files.$inferSelect; dedup: boolean }> {
+  const sha256 = createHash("sha256").update(params.bytes).digest("hex");
+  const existing = await db
+    .select()
+    .from(files)
+    .where(and(eq(files.tenant_id, params.tenant_id), eq(files.sha256, sha256)))
+    .limit(1);
+  if (existing[0]) return { row: existing[0], dedup: true };
+
+  const file_uuid = randomUUID();
+  const key = buildObjectKey(params.tenant_id, file_uuid);
+  const storage_uri = composeStorageUri(key);
+  await getObjectStore().put(key, params.bytes);
+  const scan = await getScanner().scan(streamFromBytes(params.bytes), {
+    content_type: params.content_type,
+    filename: params.filename,
+  });
+  const status = scan.verdict === "clean" ? "ready" : "failed";
+  try {
+    const inserted = await db
+      .insert(files)
+      .values({
+        id: file_uuid,
+        tenant_id: params.tenant_id,
+        status,
+        filename: params.filename,
+        content_type: params.content_type,
+        size_bytes: params.bytes.byteLength,
+        storage_uri,
+        sha256,
+        scan_result: scan.verdict,
+        created_by: params.actor_id,
+      })
+      .returning();
+    const row = inserted[0];
+    if (row) return { row, dedup: false };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("files_tenant_sha256_uq") || msg.includes("duplicate key")) {
+      const again = await db
+        .select()
+        .from(files)
+        .where(and(eq(files.tenant_id, params.tenant_id), eq(files.sha256, sha256)))
+        .limit(1);
+      if (again[0]) {
+        try {
+          await getObjectStore().delete(key);
+        } catch {
+          /* best-effort */
+        }
+        return { row: again[0], dedup: true };
+      }
+    }
+    throw err;
+  }
+  throw new Error("files insert returned no row");
+}
+
 export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): void {
-  // Permission gate lives at the app mount point via `app.use`; Hono's
-  // route-level middleware doesn't compose with OpenAPIHono's createRoute
-  // type inference here.
   app.use("/v1/conversations/:id/attachments*", async (c, next) => {
     if (c.req.method === "GET") {
       return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
@@ -149,13 +224,11 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     security: [{ bearerAuth: [] }],
     request: {
       params: IdParam,
-      body: {
-        content: { "application/json": { schema: UploadBody } },
-      },
+      body: { content: { "application/json": { schema: UploadBody } } },
     },
     responses: {
       201: {
-        description: "Uploaded",
+        description: "Linked",
         content: { "application/json": { schema: AttachmentSchema } },
       },
       400: { description: "bad_input", content: { "application/json": { schema: ErrorSchema } } },
@@ -175,86 +248,130 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       return c.json({ code: "not_found", message: "conversation not found" }, 404);
     }
 
-    const bytes =
-      body.content_encoding === "base64"
-        ? Uint8Array.from(Buffer.from(body.content, "base64"))
-        : new TextEncoder().encode(body.content);
-    if (bytes.byteLength > MAX_BYTES) {
+    // Branch 1: `$file` ref — caller already uploaded via /v1/files/*.
+    // We just link it into the conversation.
+    if ("$file" in body) {
+      const fid_uuid = parseFileId(body.$file);
+      let fileRow: typeof files.$inferSelect;
+      try {
+        fileRow = await requireFileForTenant(db, tenant_id, fid_uuid);
+      } catch {
+        return c.json({ code: "not_found", message: "file not found" }, 404);
+      }
+      const slug = slugify(fileRow.filename);
+      await db
+        .insert(fileLinks)
+        .values({
+          tenant_id,
+          file_id: fileRow.id,
+          resource_type: "conversation",
+          resource_id: id,
+          slug,
+          role: "attachment",
+        })
+        .onConflictDoNothing();
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: principal.kind === "user" ? "user" : "system_account",
+          actor_id: principal.id,
+          action: AuditAction.FILE_LINK_ADDED,
+          resource_type: "file",
+          resource_id: fileRow.id,
+          result: "success",
+          metadata: { resource_type: "conversation", resource_id: id, slug },
+        },
+        db,
+      );
+      return c.json(toAttachmentWire(fileRow, slug), 201);
+    }
+
+    // Branch 2: inline upload (either `content_base64` or legacy `content`/`content_encoding`).
+    let bytes: Uint8Array;
+    let filename: string;
+    let content_type: string | null;
+    if ("content_base64" in body) {
+      filename = body.filename;
+      content_type = body.content_type ?? null;
+      try {
+        bytes = Uint8Array.from(Buffer.from(body.content_base64, "base64"));
+      } catch {
+        return c.json({ code: "bad_input", message: "invalid base64" }, 400);
+      }
+    } else {
+      filename = body.filename;
+      content_type = body.content_type ?? null;
+      bytes =
+        body.content_encoding === "base64"
+          ? Uint8Array.from(Buffer.from(body.content, "base64"))
+          : new TextEncoder().encode(body.content);
+    }
+    if (bytes.byteLength === 0) {
+      return c.json({ code: "bad_input", message: "empty content" }, 400);
+    }
+    if (bytes.byteLength > MAX_INLINE_BYTES) {
       return c.json(
-        { code: "too_large", message: `attachment exceeds ${MAX_BYTES} bytes cap` },
+        { code: "too_large", message: `attachment exceeds ${MAX_INLINE_BYTES} bytes cap` },
         413,
       );
     }
-
-    const slug = slugify(body.filename);
-    const sha256 = createHash("sha256").update(bytes).digest("hex");
-    const storage_uri = await storeContent(tenant_id, id, slug, bytes);
-
-    const ct = body.content_type ?? null;
-    const preview = isTextLike(ct ?? undefined)
-      ? new TextDecoder().decode(bytes).slice(0, PREVIEW_CHARS)
-      : null;
-
-    const [row] = await db
-      .insert(conversationAttachments)
+    const { row, dedup } = await persistFileBytes(db, {
+      tenant_id,
+      actor_id:
+        principal.kind === "user" || principal.kind === "system_account" ? principal.id : null,
+      filename,
+      content_type,
+      bytes,
+    });
+    const slug = slugify(filename);
+    await db
+      .insert(fileLinks)
       .values({
         tenant_id,
-        conversation_id: id,
+        file_id: row.id,
+        resource_type: "conversation",
+        resource_id: id,
         slug,
-        original_filename: body.filename,
-        content_type: ct,
-        size_bytes: bytes.byteLength,
-        storage_uri,
-        sha256,
-        preview,
+        role: "attachment",
       })
-      .onConflictDoUpdate({
-        target: [conversationAttachments.conversation_id, conversationAttachments.slug],
-        set: {
-          original_filename: body.filename,
-          content_type: ct,
-          size_bytes: bytes.byteLength,
-          storage_uri,
-          sha256,
-          preview,
-        },
-      })
-      .returning();
-    if (!row) {
-      return c.json({ code: "internal_error", message: "insert failed" }, 400);
-    }
+      .onConflictDoNothing();
 
+    // Audit the create + the link as two separate rows — mirrors the
+    // canonical `/v1/files/*` surface so a downstream query on
+    // `FILE_CREATED` / `FILE_LINK_ADDED` returns a consistent shape no
+    // matter which entry point landed the file.
     await auditAwait(
       {
         tenant_id,
         actor_type: principal.kind === "user" ? "user" : "system_account",
         actor_id: principal.id,
-        action: AuditAction.CONVERSATION_ATTACHMENT_CREATED,
-        resource_type: "conversation_attachment",
+        action: AuditAction.FILE_CREATED,
+        resource_type: "file",
         resource_id: row.id,
         result: "success",
         metadata: {
-          conversation_id: id,
-          slug,
-          content_type: ct,
-          size_bytes: bytes.byteLength,
+          filename,
+          content_type,
+          size_bytes_bucket: bucketSize(bytes.byteLength),
+          dedup,
         },
       },
       db,
     );
-
-    return c.json(
+    await auditAwait(
       {
-        slug: row.slug,
-        original_filename: row.original_filename,
-        content_type: row.content_type,
-        size_bytes: row.size_bytes,
-        sha256: row.sha256,
-        preview: row.preview,
-        created_at: row.created_at.toISOString(),
+        tenant_id,
+        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_id: principal.id,
+        action: AuditAction.FILE_LINK_ADDED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: "success",
+        metadata: { resource_type: "conversation", resource_id: id, slug },
       },
-      201,
+      db,
     );
+    return c.json(toAttachmentWire(row, slug), 201);
   });
 
   const listRoute = createRoute({
@@ -264,10 +381,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     security: [{ bearerAuth: [] }],
     request: { params: IdParam },
     responses: {
-      200: {
-        description: "OK",
-        content: { "application/json": { schema: ListResponse } },
-      },
+      200: { description: "OK", content: { "application/json": { schema: ListResponse } } },
       404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
     },
   });
@@ -279,26 +393,22 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       return c.json({ code: "not_found", message: "conversation not found" }, 404);
     }
     const rows = await db
-      .select()
-      .from(conversationAttachments)
+      .select({ link: fileLinks, file: files })
+      .from(fileLinks)
+      .innerJoin(files, eq(files.id, fileLinks.file_id))
       .where(
         and(
-          eq(conversationAttachments.tenant_id, principal.tenant_id),
-          eq(conversationAttachments.conversation_id, id),
+          eq(fileLinks.tenant_id, principal.tenant_id),
+          eq(fileLinks.resource_type, "conversation"),
+          eq(fileLinks.resource_id, id),
         ),
       )
-      .orderBy(desc(conversationAttachments.created_at));
+      .orderBy(desc(fileLinks.created_at));
     return c.json(
       {
-        attachments: rows.map((r) => ({
-          slug: r.slug,
-          original_filename: r.original_filename,
-          content_type: r.content_type,
-          size_bytes: r.size_bytes,
-          sha256: r.sha256,
-          preview: r.preview,
-          created_at: r.created_at.toISOString(),
-        })),
+        attachments: rows.map((r) =>
+          toAttachmentWire(r.file, r.link.slug ?? slugify(r.file.filename)),
+        ),
       },
       200,
     );
@@ -311,7 +421,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     security: [{ bearerAuth: [] }],
     request: { params: SlugParam },
     responses: {
-      204: { description: "Deleted" },
+      204: { description: "Unlinked" },
       404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
     },
   });
@@ -319,34 +429,28 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     const { id, slug } = c.req.valid("param");
     const principal = requireAuth(c);
     const db = c.get("db");
-    const [row] = await db
+    const [link] = await db
       .select()
-      .from(conversationAttachments)
+      .from(fileLinks)
       .where(
         and(
-          eq(conversationAttachments.tenant_id, principal.tenant_id),
-          eq(conversationAttachments.conversation_id, id),
-          eq(conversationAttachments.slug, slug),
+          eq(fileLinks.tenant_id, principal.tenant_id),
+          eq(fileLinks.resource_type, "conversation"),
+          eq(fileLinks.resource_id, id),
+          eq(fileLinks.slug, slug),
         ),
       )
       .limit(1);
-    if (!row) {
+    if (!link) {
       return c.json({ code: "not_found", message: "attachment not found" }, 404);
     }
-    await db.delete(conversationAttachments).where(eq(conversationAttachments.id, row.id));
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind === "user" ? "user" : "system_account",
-        actor_id: principal.id,
-        action: AuditAction.CONVERSATION_ATTACHMENT_DELETED,
-        resource_type: "conversation_attachment",
-        resource_id: row.id,
-        result: "success",
-        metadata: { conversation_id: id, slug },
-      },
-      db,
-    );
+    await db.delete(fileLinks).where(eq(fileLinks.id, link.id));
+    // Unlinking does NOT delete the file row — that's the cleanup
+    // cron's job once the row is orphaned (no remaining `file_links`).
     return c.body(null, 204);
   });
+
+  // Suppress `asc` import unused — kept available for future sort
+  // variants the operator UI may request.
+  void asc;
 }
