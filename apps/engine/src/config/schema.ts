@@ -335,7 +335,16 @@ const StorageSection = z
     files: z
       .object({
         backend: z.enum(["local", "s3"]).default("local").meta(global()),
-        dir: z.string().default("").meta(global()),
+        dir: z
+          .string()
+          .default("")
+          .describe("Local-disk root when backend=local. Ignored when backend=s3.")
+          .meta(global()),
+        bucket: z
+          .string()
+          .default("")
+          .describe("S3 bucket name when backend=s3. Ignored when backend=local.")
+          .meta(global()),
       })
       .prefault({})
       .describe(
@@ -369,18 +378,18 @@ const StorageSection = z
   .prefault({})
   .describe("Storage backends")
   // Cross-leaf invariant (#7): files.backend="s3" without
-  // storage.s3 credentials is a half-configured engine. Reject at
-  // parse time so an operator who flips backend without setting
-  // keys gets a precise validation error instead of a runtime
-  // surprise on the first file ingest.
+  // storage.s3 credentials OR without storage.files.bucket is a
+  // half-configured engine. Reject at parse time so an operator who
+  // flips backend without setting keys/bucket gets a precise validation
+  // error instead of a runtime surprise on the first file ingest.
   .refine(
     (s) => {
       if (s.files.backend !== "s3") return true;
-      return Boolean(s.s3.access_key && s.s3.secret_key);
+      return Boolean(s.s3.access_key && s.s3.secret_key && s.files.bucket);
     },
     {
       message:
-        "storage.files.backend='s3' requires storage.s3.access_key and storage.s3.secret_key",
+        "storage.files.backend='s3' requires storage.s3.access_key, storage.s3.secret_key, and storage.files.bucket",
       path: ["files", "backend"],
     },
   );

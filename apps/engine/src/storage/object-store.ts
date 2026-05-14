@@ -152,7 +152,7 @@ export function verifyLocalPresignToken(
  *
  * Locator format: keys are arbitrary slash-separated paths. The store
  * sandboxes them under `storage.files.dir` (default
- * `${os.tmpdir()}/sk-knowledge`). Path traversal (`..`) is rejected.
+ * `${os.tmpdir()}/sk-files`). Path traversal (`..`) is rejected.
  */
 export class LocalDiskObjectStore implements ObjectStore {
   private readonly root: string;
@@ -166,7 +166,7 @@ export class LocalDiskObjectStore implements ObjectStore {
       // module-level singleton so a `setConfigKey` write to
       // `storage.files.dir` is picked up on the next boot.
       const configured = safeReadConfigFilesDir();
-      this.root = configured && configured.length > 0 ? configured : join(tmpdir(), "sk-knowledge");
+      this.root = configured && configured.length > 0 ? configured : join(tmpdir(), "sk-files");
     }
   }
 
@@ -362,18 +362,13 @@ export function getObjectStore(): ObjectStore {
   const cfg = getConfig().storage;
   const backend = cfg.files.backend;
   if (backend === "s3") {
-    // The bucket convention for engine-managed file storage: the
-    // first path segment of `storage.s3.endpoint` if path-style, else
-    // the bucket from `storage.offload.bucket` is *not* reused — the
-    // operator picks one. For now we accept an explicit `dir` field
-    // containing the bucket name as a pragmatic v1 cut; a follow-up
-    // adds a typed `storage.files.bucket` knob.
-    const bucket = cfg.files.dir || "sk-files";
+    // Cross-leaf invariant in `config/schema.ts` guarantees `bucket` is
+    // non-empty when backend=s3 (rejected at config parse otherwise).
     cached = new S3ObjectStore({
       endpoint: cfg.s3.endpoint,
       accessKey: cfg.s3.access_key,
       secretKey: cfg.s3.secret_key,
-      bucket,
+      bucket: cfg.files.bucket,
     });
     return cached;
   }

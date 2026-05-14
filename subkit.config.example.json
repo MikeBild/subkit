@@ -109,7 +109,8 @@
     },
     "files": {
       "backend": "local",
-      "dir": ""
+      "dir": "",
+      "bucket": ""
     },
     "offload": {
       "bucket": "",
