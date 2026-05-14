@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.2](https://github.com/MikeBild/subkit/compare/subkit-v4.11.1...subkit-v4.11.2) (2026-05-14)
+
+
+### Bug Fixes
+
+* **build:** inline jsdom default-stylesheet.css for bun --compile so the compiled engine binary no longer needs filesystem access to the build-time runner workspace ([0352b48](https://github.com/MikeBild/subkit/commit/0352b48a1da098cfec905152bf716854d2ed8384))
+
 ## [4.11.1](https://github.com/MikeBild/subkit/compare/subkit-v4.11.0...subkit-v4.11.1) (2026-05-14)
 
 
