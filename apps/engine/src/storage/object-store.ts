@@ -66,15 +66,24 @@ export interface ObjectStore {
 
 /**
  * HMAC token claims for the local-disk presign URL. Bound to a
- * (tenant_id, key, expires_at) triple so a token leaks no further than
- * its owner's tenant scope. Signed with the engine instance secret
+ * (tenant_id, key, expires_at, size_bytes) tuple so a token leaks no
+ * further than its owner's tenant scope AND cannot be replayed to PUT
+ * arbitrarily-large bytes — the sink rejects 413 if the upload exceeds
+ * the bound size. Signed with the engine instance secret
  * (`auth.session.secret`) so a single HMAC primitive guards every
  * engine-minted token — rotating the session secret rotates them all.
+ *
+ * `size_bytes` is the claim the client made at `batch-create` time.
+ * Finalize still verifies sha256 (so a client that claims the right
+ * size with the wrong bytes still fails), but bounding the upload
+ * size up-front prevents the disk-fill / S3-cost amplification
+ * vector where a rogue holder of a valid token streams gigabytes.
  */
 export interface LocalPresignClaims {
   tenant_id: string;
   key: string;
   expires_at: number; // unix ms
+  size_bytes: number;
 }
 
 function localPresignSecret(): string {
@@ -110,7 +119,13 @@ export type VerifyLocalPresignResult =
   | { ok: true; claims: LocalPresignClaims }
   | { ok: false; reason: "malformed" | "signature_mismatch" | "expired" };
 
-/** Verify a local-presign token. Fails closed on any mismatch. */
+/** Verify a local-presign token. Fails closed on any mismatch.
+ *
+ *  The HMAC binds `size_bytes` (per `LocalPresignClaims`); the caller
+ *  is responsible for enforcing the size cap against the streamed body
+ *  using `claims.size_bytes` from the success case. We do not take
+ *  `size_bytes` as an `expected` field here because the body length
+ *  is only known after the stream completes. */
 export function verifyLocalPresignToken(
   token: string,
   expected: { tenant_id: string; key: string },
@@ -135,6 +150,18 @@ export function verifyLocalPresignToken(
   }
   if (claims.tenant_id !== expected.tenant_id || claims.key !== expected.key) {
     return { ok: false, reason: "signature_mismatch" };
+  }
+  if (
+    typeof claims.size_bytes !== "number" ||
+    !Number.isFinite(claims.size_bytes) ||
+    claims.size_bytes < 0
+  ) {
+    // A token minted before the size-bound rollout, or one whose
+    // payload was tampered with. Fail closed — the HMAC over the
+    // payload also covers the missing field, so a stripped claim
+    // would have failed the mac check above; this branch defends
+    // against an old token still in flight at deploy time.
+    return { ok: false, reason: "malformed" };
   }
   if (claims.expires_at < Date.now()) {
     return { ok: false, reason: "expired" };

@@ -163,11 +163,13 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     },
     responses: {
       200: { description: "Stored" },
+      400: { description: "bad_input", content: { "application/json": { schema: ErrorSchema } } },
       401: {
         description: "invalid_token",
         content: { "application/json": { schema: ErrorSchema } },
       },
       404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
+      413: { description: "too_large", content: { "application/json": { schema: ErrorSchema } } },
     },
   });
 
@@ -193,10 +195,43 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         401,
       );
     }
+    const boundSize = verdict.claims.size_bytes;
+
+    // Pre-flight content-length check. A non-chunked PUT MUST carry
+    // Content-Length; if the header is present and exceeds the bound
+    // we reject before consuming any bytes. Reject chunked transfers
+    // we cannot validate up-front (the streamed length check below
+    // is the second line of defence, but it costs disk + CPU; refuse
+    // chunked outright to keep the cheap path the only path for
+    // legitimate clients).
+    const transferEncoding = c.req.header("transfer-encoding");
+    if (transferEncoding && /chunked/i.test(transferEncoding)) {
+      return c.json(
+        { code: "bad_input", message: "chunked transfer-encoding not supported on presign sink" },
+        400,
+      );
+    }
+    const contentLengthHeader = c.req.header("content-length");
+    if (contentLengthHeader) {
+      const cl = Number(contentLengthHeader);
+      if (Number.isFinite(cl) && cl > boundSize) {
+        return c.json(
+          {
+            code: "too_large",
+            message: `body length ${cl} exceeds presign-bound size_bytes=${boundSize}`,
+          },
+          413,
+        );
+      }
+    }
+
     // Stream the body to the object store. `c.req.raw.body` is a
     // `ReadableStream<Uint8Array>` per the fetch API; collect to a
     // Buffer for the put API surface (object-store does not yet expose
-    // a streaming put — that's a separate Wave C concern).
+    // a streaming put — that's a separate Wave C concern). We track
+    // the running byte total against `boundSize` and abort early on
+    // overflow so a client that lies about Content-Length still cannot
+    // disk-fill us.
     const raw = c.req.raw.body;
     if (!raw) {
       return c.json({ code: "bad_input", message: "missing body" }, 400);
@@ -208,8 +243,22 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       const { done, value } = await reader.read();
       if (done) break;
       if (value) {
-        chunks.push(value);
         total += value.byteLength;
+        if (total > boundSize) {
+          try {
+            await reader.cancel();
+          } catch {
+            /* best-effort */
+          }
+          return c.json(
+            {
+              code: "too_large",
+              message: `streamed body exceeds presign-bound size_bytes=${boundSize}`,
+            },
+            413,
+          );
+        }
+        chunks.push(value);
       }
     }
     const body = new Uint8Array(total);
@@ -500,10 +549,16 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       let upload_url = presigned.url;
       const headers = { ...presigned.headers };
       if (isLocal) {
+        // size_bytes is bound into the HMAC: the upload sink rejects
+        // 413 if the streamed body exceeds the client's claimed size.
+        // Without this binding a valid token could be replayed to PUT
+        // arbitrary bytes; finalize would still fail on sha256, but
+        // the disk-fill / S3-cost has already happened.
         const token = mintLocalPresignToken({
           tenant_id,
           key,
           expires_at: expires_at.getTime(),
+          size_bytes: entry.size_bytes,
         });
         // Public sink lives at the engine root path. The client
         // composes a fully-qualified URL by prepending its engine base.
