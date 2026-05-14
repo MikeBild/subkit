@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.3](https://github.com/MikeBild/subkit/compare/subkit-v4.11.2...subkit-v4.11.3) (2026-05-14)
+
+
+### Bug Fixes
+
+* **build:** defer jsdom xhr-sync-worker require.resolve so the compiled engine binary doesn't crash on boot when the build-time runner workspace path is absent at runtime ([c56e27e](https://github.com/MikeBild/subkit/commit/c56e27e))
+
 ## [4.11.2](https://github.com/MikeBild/subkit/compare/subkit-v4.11.1...subkit-v4.11.2) (2026-05-14)
 
 
