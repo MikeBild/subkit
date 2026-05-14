@@ -17,10 +17,13 @@ import {
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/index.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { inspectExecutionStepTool } from "../inspect-execution-step.ts";
+
+const nextStorageUri = createDeterministicUuidFactory(0xfaceb00c);
 
 let ctx: TestDb;
 let tenant_id: string;
@@ -87,8 +90,10 @@ async function seedExecutionWithStep(opts: {
       step_key: opts.step_key,
       kind: "request",
       status: "succeeded",
-      // Mark the step as offloaded so the include_full_payload branch fires.
-      result_storage_uri: `fixture://${crypto.randomUUID()}`,
+      // Mark the step as offloaded so the include_full_payload branch
+      // fires. URI shape only — the tool queries fixtures by step_id,
+      // not by URI, so we use a deterministic factory.
+      result_storage_uri: `fixture://${nextStorageUri()}`,
       output_preview: { _truncated: "offloaded" },
     })
     .returning();

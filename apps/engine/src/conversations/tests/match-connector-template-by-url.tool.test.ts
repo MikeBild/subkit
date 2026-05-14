@@ -195,11 +195,12 @@ describe("matchConnectorTemplateByUrlTool", () => {
   test("does NOT surface connectors from another tenant on the same host", async () => {
     const toolCtx = await createToolCtx();
     // Seed a connector on a FRESH tenant (different actor) — same host
-    // and shape as the proposed Stripe match.
-    const foreignTenantSlug = `t-foreign-${Date.now().toString(36)}`;
+    // and shape as the proposed Stripe match. The DB is per-test and
+    // throwaway (createConversationTestCtx), so a fixed slug is safe
+    // and keeps the test deterministic.
     const [foreignTenant] = await toolCtx.db
       .insert(tenants)
-      .values({ slug: foreignTenantSlug, display_name: "Foreign Tenant" })
+      .values({ slug: "t-foreign-stripe-w2", display_name: "Foreign Tenant" })
       .returning();
     if (!foreignTenant) throw new Error("seed foreign tenant failed");
     await toolCtx.db.insert(connectors).values({
