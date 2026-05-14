@@ -185,5 +185,8 @@
     "openapi-typescript": "^7.13.0",
     "testcontainers": "^11.14.0",
     "typescript": "^5.9.3"
+  },
+  "patchedDependencies": {
+    "css-tree@3.2.1": "patches/css-tree@3.2.1.patch"
   }
 }
