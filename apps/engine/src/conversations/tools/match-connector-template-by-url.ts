@@ -1,6 +1,10 @@
 import { z } from "@hono/zod-openapi";
+import { and, eq, isNull } from "drizzle-orm";
+import { parseAtlassianResourceUrl } from "../../connectors/atlassian-tinyui.ts";
+import { baseUrlHost, compareConnectorOverlap } from "../../connectors/overlap.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { matchTemplatesByUrl } from "../../connectors/template-url-match.ts";
+import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import {
   allowedTemplateAuthTypes,
   inferTemplateRequiredFields,
@@ -51,12 +55,73 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
         matched_segment,
       };
     });
+    // Fix 3 — Atlassian tinyui / direct-page / Jira-issue resolver. When
+    // the URL is an Atlassian Cloud resource, decode the resource id so
+    // the LLM can build the workflow's first request step against the
+    // real resource on the FIRST dry-run (session 0498925e cost 3+
+    // probe round-trips to discover that /wiki/x/y4ozBQ → page 87263947).
+    const resolved_resource = parseAtlassianResourceUrl(args.url);
+
+    // Adoption E — inline "you already have X" hint. List the tenant's
+    // existing connectors on the same URL host AND score the structural
+    // overlap (driver + base_url_host + auth_type) against each
+    // template match's expected shape. The LLM gets reuse candidates in
+    // the same response and proposes reuse BEFORE drafting a duplicate
+    // (session 0498925e: the existing SI eMobility Jira basic-auth
+    // connector serves both Jira and Confluence on the same host —
+    // but the LLM only noticed AFTER proposing a new draft).
+    const urlHost = baseUrlHost(args.url);
+    const tenantConnectors = urlHost
+      ? await ctx.db
+          .select({
+            id: connectorsTable.id,
+            slug: connectorsTable.slug,
+            display_name: connectorsTable.display_name,
+            driver: connectorsTable.driver,
+            auth_type: connectorsTable.auth_type,
+            base_url: connectorsTable.base_url,
+          })
+          .from(connectorsTable)
+          .where(
+            and(eq(connectorsTable.tenant_id, ctx.tenant_id), isNull(connectorsTable.deleted_at)),
+          )
+      : [];
+    // For each template match, run the overlap scorer against the
+    // tenant's connectors and attach the top reuse candidate(s). The
+    // template's driver + auth_type drives the proposed shape; the URL
+    // host is the proposed base_url_host.
+    const matchesWithReuse = matches.map((match) => {
+      const reuseCandidates = compareConnectorOverlap(
+        tenantConnectors,
+        {
+          driver: match.driver,
+          base_url: args.url,
+          auth_type: match.auth_type,
+        },
+        { minScore: 2 },
+      ).map((m) => ({
+        connector_id: m.connector.id,
+        connector_slug: m.connector.slug,
+        connector_name: m.connector.display_name,
+        score: m.score,
+        matched_dimensions: m.dimensions,
+        reuse_recommendation:
+          m.score === 3
+            ? "exact_match_reuse"
+            : m.dimensions.includes("auth_type")
+              ? "reuse_with_host_override"
+              : "reuse_after_auth_check",
+      }));
+      return { ...match, existing_connector_candidates: reuseCandidates };
+    });
+
     return {
       ok: true,
       data: {
         url: args.url,
-        matched: matches.length > 0,
-        matches,
+        matched: matchesWithReuse.length > 0,
+        ...(resolved_resource ? { resolved_resource } : {}),
+        matches: matchesWithReuse,
       },
     };
   },

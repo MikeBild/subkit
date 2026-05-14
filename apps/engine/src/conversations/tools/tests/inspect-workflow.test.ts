@@ -173,4 +173,42 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     expect(inspectWorkflowTool.requires_skill).toBe("workflow-authoring");
     expect(inspectWorkflowTool.category).toBe("tenant_read");
   });
+
+  test("output_transform section reports last_step_passthrough when no transform set (Polish A)", async () => {
+    const draft = draftWithSteps([
+      { id: "fetch_page", kind: "request", method: "GET", path: "/wiki/api/v2/pages/87263947" },
+    ]);
+    const toolCtx = makeCtx(draft);
+    const result = await inspectWorkflowTool.execute(toolCtx, {
+      sections: ["output_transform"],
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.output_transform).toBeNull();
+    expect(data.output_behavior).toBe("last_step_passthrough");
+  });
+
+  test("output_transform section reports explicit_transform when one is declared", async () => {
+    const empty = createEmptyDraftDocument();
+    const draft = withWorkflowDraft(
+      empty,
+      {
+        ...empty.workflow,
+        name: "Test workflow",
+        slug: "test-wf",
+        description: "test",
+        steps: [{ id: "fetch_page", kind: "request", method: "GET", path: "/x" }],
+        output_transform: "data.body.storage.value",
+      } as never,
+      "test_seed",
+    );
+    const toolCtx = makeCtx(draft);
+    const result = await inspectWorkflowTool.execute(toolCtx, {
+      sections: ["output_transform"],
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.output_transform).toBe("data.body.storage.value");
+    expect(data.output_behavior).toBe("explicit_transform");
+  });
 });

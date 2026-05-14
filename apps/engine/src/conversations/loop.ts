@@ -865,6 +865,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       }
       return supportsExtendedThinking(route.provider, modelId);
     })();
+    // Anthropic API constraint (observed as `converse.failed` ×3 in
+    // session 0498925e): "Thinking may not be enabled when tool_choice
+    // forces tool use." The streamText call below sets `toolChoice` to
+    // a forced tool when `preferredTool` is defined, AND prepareStep
+    // (step-router) may flip toolChoice to "required" mid-turn. If
+    // either path may fire, suppress thinking for the whole turn —
+    // providerOptions are global to the streamText invocation, so we
+    // cannot toggle thinking per step.
+    const turnForcesTool = preferredTool !== undefined;
+    const thinkingThisTurn = turnEnableThinking && !turnForcesTool;
     logger.debug({
       module: "llm",
       action: "turn.provider_options",
@@ -875,7 +885,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       model: modelId,
       stage: draft.summary?.stage ?? "idle",
       parallel_tools_enabled: turnStageReadOnly,
-      extended_thinking_enabled: turnEnableThinking,
+      extended_thinking_enabled: thinkingThisTurn,
+      thinking_suppressed_by_forced_tool: turnEnableThinking && turnForcesTool,
       cache_supported: cacheSupported,
     });
     const result = streamText({
@@ -898,7 +909,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             providerOptions: {
               anthropic: {
                 disableParallelToolUse: !turnStageReadOnly,
-                ...(turnEnableThinking
+                ...(thinkingThisTurn
                   ? // claude-sonnet-4-5+/opus-4-6+ rejected the legacy
                     // `{ type: "enabled", budgetTokens }` shape
                     // ("thinking.type.enabled is not supported for this
@@ -968,6 +979,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           provider: route.provider,
           toolsByName,
           signals: stepRouterSignals,
+          turnThinkingEnabled: thinkingThisTurn,
         });
         if (!decision) return {};
         const result: Record<string, unknown> = {};

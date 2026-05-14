@@ -223,15 +223,37 @@ function extractRecentMessages(
 
 /**
  * Pulls the human-readable text out of the loop's persisted message
- * `content` shape. Today that's either a plain string (legacy /
- * synthetic frames) or the `{ text, _violations? }` payload built in
- * `loop.ts:1128`. The contract is intentionally narrow — adding a
- * new shape requires updating this function AND the
- * `suggest_next.content_shape_unrecognized` warning so a silent
+ * `content` shape. Today there are three known shapes:
+ *
+ *   1. plain string                              — legacy / synthetic frames
+ *   2. `{ text, _violations? }`                  — loop.ts:1128
+ *   3. AI SDK 6 multi-part content array         — assistant turns where
+ *      `{ role: "assistant", content: [{ type: "text", text: ... },
+ *                                       { type: "tool_use", ... }, ...] }`
+ *      is the natural shape. Session 0498925e fired
+ *      `suggest_next.content_shape_unrecognized` 16× because the
+ *      previous extractor only handled (1) and (2) and silently
+ *      dropped the array — the next-suggestion chip never populated
+ *      on turns that emitted a tool_use. Polish B flattens the array
+ *      and concatenates every `{ type: "text", text }` part so the
+ *      offer-parser sees the visible assistant prose.
+ *
+ * The contract is intentionally narrow — adding a new shape requires
+ * updating this function AND keeping the
+ * `suggest_next.content_shape_unrecognized` warning live so a silent
  * regression stays loud.
  */
 function extractText(content: unknown): string {
   if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const part of content) {
+      if (!part || typeof part !== "object") continue;
+      const p = part as { type?: unknown; text?: unknown };
+      if (p.type === "text" && typeof p.text === "string") parts.push(p.text);
+    }
+    return parts.join("");
+  }
   if (content && typeof content === "object" && "text" in content) {
     const t = (content as { text?: unknown }).text;
     return typeof t === "string" ? t : "";

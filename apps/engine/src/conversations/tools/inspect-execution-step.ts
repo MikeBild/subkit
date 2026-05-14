@@ -124,11 +124,24 @@ export const inspectExecutionStepTool: ConversationTool = {
     let fullPayload: unknown;
     let payloadSource: "preview" | "offload" | "none" = step.output_preview ? "preview" : "none";
     if (args.include_full_payload && step.result_storage_uri) {
+      // The fixture row's PRIMARY KEY (`executionFixtures.id`) is a
+      // random UUID minted at insert time; the FK back to the step row
+      // is `executionFixtures.step_id` (verified at `db/schema/executions.ts:137`
+      // and against `execution/offload.ts:177` which writes it). Querying
+      // by `.id` therefore never matches and the LLM saw `payload_source: "none"`
+      // even when the body was sitting in the table (session 0498925e:
+      // 279 KB Confluence body was offloaded but unreachable). We also
+      // filter on `kind = "offload"` so a self-healing fixture sharing
+      // the same step_id doesn't masquerade as the offloaded body.
       const fixtureRows = await ctx.db
         .select({ body: executionFixtures.body })
         .from(executionFixtures)
         .where(
-          and(eq(executionFixtures.tenant_id, ctx.tenant_id), eq(executionFixtures.id, step.id)),
+          and(
+            eq(executionFixtures.tenant_id, ctx.tenant_id),
+            eq(executionFixtures.step_id, step.id),
+            eq(executionFixtures.kind, "offload"),
+          ),
         )
         .limit(1);
       if (fixtureRows[0]?.body !== undefined && fixtureRows[0].body !== null) {
@@ -160,10 +173,22 @@ export const inspectExecutionStepTool: ConversationTool = {
                 "When iterating over a loop output, the canonical scope path is `$scope.<loop_id>.data[i].<body_step_id>.data.<field>`. Look at output_preview[0] to see the body_step_id keys for this loop.",
                 "dry_run_transform — author + test the next projection expression against this real shape before saving.",
               ]
-            : [
-                "dry_run_transform — author + test the next projection expression against this real shape before saving.",
-                "build_workflow / propose_step — adjust the upstream step or the downstream transform.",
-              ],
+            : step.kind === "request"
+              ? [
+                  `The request body is at \`$scope.${step.step_key}.data\`; status / headers live on the same envelope. Use this when authoring downstream transforms.`,
+                  "dry_run_transform — author + test the next projection expression against this real shape before saving.",
+                  "run_workflow — rerun with new input via the input_schema, or build_workflow to adjust the upstream connector params.",
+                ]
+              : step.kind === "transform"
+                ? [
+                    "The transform's projected shape is in output_preview. If it dropped fields, see suggest_jsonata_paths for the available scope keys.",
+                    "dry_run_transform — re-author the expression against this real shape before saving.",
+                    "build_workflow / propose_step — adjust the upstream step or the downstream transform.",
+                  ]
+                : [
+                    "dry_run_transform — author + test the next projection expression against this real shape before saving.",
+                    "build_workflow / propose_step — adjust the upstream step or the downstream transform.",
+                  ],
       },
     };
   },

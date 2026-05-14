@@ -103,6 +103,19 @@ export const inspectWorkflowTool: ConversationTool = {
             break;
           case "output_transform":
             result.output_transform = wf.output_transform ?? null;
+            // Derived hint so the LLM doesn't infer the public-output
+            // contract from the absence of `output_transform`. The
+            // engine returns the last step's scope_value as-is when no
+            // transform is declared (verified at `execution/engine.ts:854`
+            // and `tools/generated/writes/run-workflow.ts:545`), so for
+            // a single request step the workflow output IS the body.
+            // Stops the misdiagnosis from session 0498925e: "workflow
+            // doesn't define an output_transform, so output is null."
+            result.output_behavior = wf.output_transform
+              ? "explicit_transform"
+              : wf.output_transform_function
+                ? "transform_function"
+                : "last_step_passthrough";
             break;
           case "payload": {
             // Prefer the schema sample (declared canonical input).

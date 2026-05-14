@@ -57,6 +57,16 @@ export interface StepRouterParams {
   /** Available tools, keyed by name. Used for activeTools narrowing. */
   toolsByName: Record<string, ConversationTool>;
   signals: StepRouterSignals;
+  /**
+   * True when the loop has enabled `providerOptions.anthropic.thinking`
+   * for this entire turn. Anthropic rejects `tool_choice: { type: "tool" }`
+   * and `tool_choice: "any"`/`"required"` with thinking enabled, so this
+   * router must NOT set `toolChoice: "required"` when this is true —
+   * even if it would otherwise (multi-artifact continuation). Surfaces
+   * the constraint that `loop.ts` already enforces at the call-site for
+   * the `preferredTool` path.
+   */
+  turnThinkingEnabled?: boolean;
 }
 
 /**
@@ -354,10 +364,20 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
   let toolChoice: StepDecision["toolChoice"];
   let systemNudge: string | undefined;
   if (signals.multiArtifactIntent === true && priorStepWasSuccessfulConnectorAutoPersist(params)) {
-    toolChoice = "required";
+    // Anthropic API rejects thinking + forced tool_choice. When the
+    // turn enabled thinking at the providerOptions level we cannot
+    // also force a tool here — the systemNudge alone is enough to keep
+    // the model moving (it just won't be a hard constraint).
+    if (params.turnThinkingEnabled !== true) {
+      toolChoice = "required";
+    }
     systemNudge =
       "The user asked for both a connector AND a workflow in their most recent message. The connector is now saved. Continue with the workflow now — call the next authoring tool (start_workflow_from_goal or build_workflow). Do NOT end the turn with a `now let's …` closing sentence; the user already approved the multi-artifact intent.";
-    reasonParts.push("multi_artifact_continue");
+    reasonParts.push(
+      params.turnThinkingEnabled === true
+        ? "multi_artifact_continue_nudge_only"
+        : "multi_artifact_continue",
+    );
   }
 
   if (

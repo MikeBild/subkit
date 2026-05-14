@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { connectors } from "../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { createConversation } from "../service.ts";
 import type { ConversationTestCtx } from "../tests/setup.ts";
@@ -99,5 +100,89 @@ describe("matchConnectorTemplateByUrlTool", () => {
     const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, { url, limit: 3 });
     const data = result.data as { url: string };
     expect(data.url).toBe(url);
+  });
+
+  // Fix 3 — Atlassian tinyui resolver.
+  test("Atlassian tinyui URL surfaces resolved_resource with decoded page_id", async () => {
+    const toolCtx = await createToolCtx();
+    const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
+      url: "https://si-emobility.atlassian.net/wiki/x/y4ozBQ",
+      limit: 3,
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      resolved_resource?: { kind: string; page_id?: number; short?: string };
+    };
+    expect(data.resolved_resource).toEqual({
+      kind: "confluence_tinyui",
+      short: "y4ozBQ",
+      page_id: 87263947,
+    });
+  });
+
+  test("Confluence direct-page URL resolves the numeric page_id", async () => {
+    const toolCtx = await createToolCtx();
+    const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
+      url: "https://x.atlassian.net/wiki/spaces/PROD/pages/83907824/Sifinity+Control",
+      limit: 3,
+    });
+    const data = result.data as {
+      resolved_resource?: { kind: string; page_id: number };
+    };
+    expect(data.resolved_resource).toEqual({
+      kind: "confluence_page",
+      page_id: 83907824,
+    });
+  });
+
+  test("Non-Atlassian URLs do NOT include resolved_resource", async () => {
+    const toolCtx = await createToolCtx();
+    const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
+      url: "https://api.stripe.com/v1/charges",
+      limit: 3,
+    });
+    const data = result.data as { resolved_resource?: unknown };
+    expect(data.resolved_resource).toBeUndefined();
+  });
+
+  // Adoption E — existing-connector reuse candidates.
+  test("existing connector on same host surfaces as exact_match_reuse candidate", async () => {
+    const toolCtx = await createToolCtx();
+    // Seed a Stripe-shaped connector on the tenant's same host.
+    await toolCtx.db.insert(connectors).values({
+      tenant_id: toolCtx.tenant_id,
+      slug: "existing-stripe",
+      display_name: "Existing Stripe",
+      driver: "http",
+      auth_type: "bearer",
+      base_url: "https://api.stripe.com",
+    });
+    const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
+      url: "https://api.stripe.com/v1/charges",
+      limit: 3,
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      matches: Array<{
+        slug: string;
+        driver: string;
+        auth_type: string;
+        existing_connector_candidates: Array<{
+          connector_slug: string;
+          score: number;
+          reuse_recommendation: string;
+          matched_dimensions: string[];
+        }>;
+      }>;
+    };
+    const stripe = data.matches.find((m) => m.slug === "stripe");
+    expect(stripe).toBeDefined();
+    const candidates = stripe?.existing_connector_candidates ?? [];
+    // The seeded connector matches on driver + base_url_host + auth_type.
+    const exact = candidates.find((c) => c.connector_slug === "existing-stripe");
+    expect(exact).toBeDefined();
+    expect(exact?.score).toBe(3);
+    expect(exact?.reuse_recommendation).toBe("exact_match_reuse");
+    expect(exact?.matched_dimensions).toEqual(["driver", "base_url_host", "auth_type"]);
   });
 });

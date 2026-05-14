@@ -92,6 +92,49 @@ export function toInputExamples(
   return {};
 }
 
+// Map known error codes to concrete next-action suggestions. The
+// existing consecutive-failures cap (`MAX_CONSECUTIVE_FAILURES`) tells
+// the LLM "stop patching, ask the user" — but does not say WHAT to
+// ask about. Reading `signals.toolLastErrorHash` (populated below)
+// lets the cap message name the actual recovery tool for each error
+// code the model has seen this turn, so the surfaced ask_user_choice
+// can offer realistic options instead of "try a different approach."
+const ERROR_CODE_ALTERNATIVES: Record<string, string> = {
+  transform_authoring_requires_inspect:
+    "call inspect_execution_step(execution_id, step_key, include_full_payload: true) to read the upstream step's actual shape before authoring the transform",
+  step_update_invalid:
+    "the current draft step is invalid — call inspect_workflow_draft to see the validation errors, then propose_step with the corrected fields",
+  step_invalid:
+    "the step shape is wrong — call inspect_workflow_draft for the validation breakdown, then propose_step or update_param against the failing field",
+  unknown_step:
+    "the referenced step_id does not exist — call inspect_workflow_draft to list the actual step ids",
+  unresolved_identifier:
+    "the JSONata referenced a name not in scope — call suggest_jsonata_paths(workflow_id_or_draft) for the authoritative path list",
+  http_4xx:
+    "the request returned 4xx — call probe_connector to verify the endpoint shape, headers, and auth before retrying",
+  execution_not_found:
+    "the execution id is stale — call list_executions to get a current id, or run_workflow to produce a fresh execution",
+  verifier_rejected:
+    "the workflow verifier rejected the change — read the rejection reason and either revise the patch or call ask_user_confirm to confirm an exception",
+  repair_loop_detected:
+    "three consecutive runs surfaced the same authoring warning — stop, read data-handling.md / workflow-authoring.md, and propose a structurally different draft",
+};
+
+export function buildCapAlternatives(toolLastErrorHash: ReadonlyMap<string, string>): string {
+  if (toolLastErrorHash.size === 0) return "";
+  const seenCodes = new Set<string>();
+  const lines: string[] = [];
+  for (const shape of toolLastErrorHash.values()) {
+    const reason = shape.split("|", 1)[0] ?? "";
+    if (!reason || seenCodes.has(reason)) continue;
+    seenCodes.add(reason);
+    const hint = ERROR_CODE_ALTERNATIVES[reason];
+    if (hint) lines.push(`  • ${reason}: ${hint}`);
+  }
+  if (lines.length === 0) return "";
+  return `\nConcrete alternatives derived from the recent failures:\n${lines.join("\n")}`;
+}
+
 export function wrapOne(
   inner: ConversationTool,
   ctx: ToolContext,
@@ -184,11 +227,12 @@ export function wrapOne(
             tool: inner.name,
             consecutive_failures: signals.consecutiveFailures,
           });
+          const alternatives = buildCapAlternatives(signals.toolLastErrorHash);
           return {
             ok: false,
             data: {
               error_code: "consecutive_failures_cap",
-              message: `${signals.consecutiveFailures} tool calls have failed in a row — stop patching and emit ask_user_choice with concrete options derived from the most recent failure (e.g. "commit anyway", "revert the last patch", "hand-edit the workflow JSON"). The cap resets on the first successful tool call.`,
+              message: `${signals.consecutiveFailures} tool calls have failed in a row — stop patching and emit ask_user_choice with concrete options derived from the most recent failure (e.g. "commit anyway", "revert the last patch", "hand-edit the workflow JSON"). The cap resets on the first successful tool call.${alternatives}`,
               reason: "consecutive_failures_cap",
               consecutive_failures: signals.consecutiveFailures,
               next_best_actions: ["ask_user_choice", "ask_user_text", "inspect_workflow"],
@@ -1045,7 +1089,19 @@ export function wrapOne(
           }
         }
 
-        const truncated = truncateForLlm(resultPayload);
+        // get_raw_result exists to drain a stored `raw_ref` back into the
+        // model's context — its whole purpose is to bypass the truncator.
+        // If we re-run its output through truncateForLlm, the truncator
+        // mints a NEW raw_ref and tells the model "full payload available
+        // via get_raw_result(ref=...)" — and the model follows the
+        // breadcrumb forever (session 0498925e: 10 consecutive calls,
+        // each output growing by 8 chars = the length of the fresh ref).
+        // Skip the truncator for this single tool; if the payload exceeds
+        // context, the model already accepted that cost by asking for it.
+        const skipTruncate = inner.name === "get_raw_result";
+        const truncated = skipTruncate
+          ? ({ truncated: false, data: resultPayload } as const)
+          : truncateForLlm(resultPayload);
         events.push({
           type: "tool_result",
           call_id: toolCallId,
@@ -1176,12 +1232,13 @@ export function wrapOne(
               tool: inner.name,
               consecutive_failures: signals.consecutiveFailures,
             });
+            const capAlternatives = buildCapAlternatives(signals.toolLastErrorHash);
             events.push({
               type: "tool_log",
               call_id: "consecutive-failures",
               tool: inner.name,
               level: "warn",
-              message: `tool.consecutive_failures_cap: ${signals.consecutiveFailures} failed tool calls in a row — emit ask_user_choice / ask_user_text instead of patching further.`,
+              message: `tool.consecutive_failures_cap: ${signals.consecutiveFailures} failed tool calls in a row — emit ask_user_choice / ask_user_text instead of patching further.${capAlternatives}`,
               ts: new Date().toISOString(),
             });
           }
