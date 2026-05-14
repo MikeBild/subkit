@@ -8,19 +8,22 @@
 // parse the `[conv:<id>]` envelope that keys its plan cursor.
 
 import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import {
-  conversationAttachments,
   conversationElicitations,
   conversationMessages,
   conversationToolCalls,
+  fileLinks,
+  files,
 } from "../db/schema/index.ts";
+import { storageKey } from "../files/resolver.ts";
 import { countModelMessagesTokens } from "../llm/accounting/index.ts";
 import type { ModelCapabilities } from "../llm/core/capabilities.ts";
 import { getStaticCapabilities } from "../llm/core/capabilities.ts";
 import type { ProviderKind } from "../llm/core/model-init.ts";
+import { getObjectStore } from "../storage/object-store.ts";
 import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
 
 function approxValueSize(value: unknown): number {
@@ -56,9 +59,10 @@ const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
 
 /**
  * Build multimodal UserContent for a conversation turn that may reference
- * file attachments. For image/PDF attachments with a capable provider the
- * content part carries actual binary data; otherwise the file is inlined
- * as text (the existing behaviour).
+ * file attachments. Walks the chat-text for `@attachment:<slug>` tokens,
+ * resolves them via `file_links` joined with `files`, and emits image /
+ * file / text parts depending on the file's content_type and the
+ * provider capabilities.
  *
  * Returns `string` when no attachments are relevant (fast path, preserves
  * existing behaviour for all-text turns).
@@ -83,17 +87,23 @@ export async function buildUserContentParts(
 
   if (slugs.length === 0) return text;
 
-  const rows = await db
-    .select()
-    .from(conversationAttachments)
+  // Join `file_links` with `files` filtered to the conversation's
+  // resource scope. Slug uniqueness is enforced at the link level.
+  const linkRows = await db
+    .select({ slug: fileLinks.slug, file: files })
+    .from(fileLinks)
+    .innerJoin(files, eq(files.id, fileLinks.file_id))
     .where(
       and(
-        eq(conversationAttachments.tenant_id, tenant_id),
-        eq(conversationAttachments.conversation_id, conversation_id),
+        eq(fileLinks.tenant_id, tenant_id),
+        eq(fileLinks.resource_type, "conversation"),
+        eq(fileLinks.resource_id, conversation_id),
+        inArray(fileLinks.slug, slugs),
       ),
     );
 
-  const rowMap = new Map(rows.map((r) => [r.slug, r]));
+  const rowMap = new Map<string, (typeof linkRows)[number]["file"]>();
+  for (const r of linkRows) if (r.slug) rowMap.set(r.slug, r.file);
   const parts: Array<TextPart | ImagePart | FilePart> = [];
 
   // Build a text part for non-attachment text surrounding the refs
@@ -106,30 +116,42 @@ export async function buildUserContentParts(
 
     const mime = row.content_type ?? "application/octet-stream";
     const isImage = mime.startsWith("image/");
-    const isPdf = mime === "application/pdf" || row.original_filename.endsWith(".pdf");
+    const isPdf = mime === "application/pdf" || row.filename.endsWith(".pdf");
 
-    if (isImage && caps.supportsImage && row.storage_uri.startsWith("file://")) {
+    if (isImage && caps.supportsImage) {
       try {
-        const imgData = await Bun.file(row.storage_uri.slice("file://".length)).bytes();
+        const buf = await getObjectStore().get(storageKey(row.storage_uri));
+        const imgData = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
         parts.push({ type: "image", image: imgData, mediaType: mime });
         continue;
       } catch {
-        // fallback to text preview
+        // fallback to text path below
       }
     }
 
-    if (isPdf && caps.supportsFile && row.storage_uri.startsWith("file://")) {
+    if (isPdf && caps.supportsFile) {
       try {
-        const pdfData = await Bun.file(row.storage_uri.slice("file://".length)).bytes();
+        const buf = await getObjectStore().get(storageKey(row.storage_uri));
+        const pdfData = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
         parts.push({ type: "file", data: pdfData, mediaType: "application/pdf" });
         continue;
       } catch {
-        // fallback to text preview
+        // fallback to text path below
       }
     }
 
-    // Fallback: include preview text
-    if (row.preview) parts.push({ type: "text", text: `[${slug}]:\n${row.preview}` });
+    // Fallback: include a short preview of text content so the model
+    // sees what the operator attached. Bounded read (the truncating
+    // LLM-context path proper is Wave-C Step 8).
+    try {
+      const buf = await getObjectStore().get(storageKey(row.storage_uri));
+      const preview = new TextDecoder()
+        .decode(new Uint8Array(buf.buffer, buf.byteOffset, Math.min(buf.byteLength, 2000)))
+        .slice(0, 2000);
+      if (preview.length > 0) parts.push({ type: "text", text: `[${slug}]:\n${preview}` });
+    } catch {
+      // best-effort — silently skip a missing file
+    }
   }
 
   return parts.length === 1 && parts[0]?.type === "text" ? (parts[0] as TextPart).text : parts;

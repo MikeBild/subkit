@@ -22,7 +22,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction, ConversationForkedMetadataSchema } from "../../audit/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
-import { conversationMessages, conversations } from "../../db/schema/index.ts";
+import { conversationMessages, conversations, fileLinks } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
 import type { ConversationRecord } from "../types.ts";
 import { rowToRecord } from "./shared.ts";
@@ -161,6 +161,44 @@ export async function forkConversation(
       })),
     );
     copiedCount = messagesToCopy.length;
+  }
+
+  // R10 / C11: duplicate every `file_links` row that points at the
+  // source conversation so the fork holds independent references to
+  // the same `files.id`s. Without this, the cleanup cron could orphan
+  // a file the moment the source conversation is deleted — even
+  // though the fork still uses it. The new rows reuse the same
+  // (slug, role) so the chat-text rewriter resolves identically in
+  // the fork; `onConflictDoNothing` keeps the operation idempotent
+  // if the same fork is replayed.
+  const sourceLinks = await exec
+    .select({
+      file_id: fileLinks.file_id,
+      slug: fileLinks.slug,
+      role: fileLinks.role,
+    })
+    .from(fileLinks)
+    .where(
+      and(
+        eq(fileLinks.tenant_id, p.tenant_id),
+        eq(fileLinks.resource_type, "conversation"),
+        eq(fileLinks.resource_id, p.source_conversation_id),
+      ),
+    );
+  if (sourceLinks.length > 0) {
+    await exec
+      .insert(fileLinks)
+      .values(
+        sourceLinks.map((l) => ({
+          tenant_id: p.tenant_id,
+          file_id: l.file_id,
+          resource_type: "conversation" as const,
+          resource_id: row.id,
+          slug: l.slug,
+          role: l.role,
+        })),
+      )
+      .onConflictDoNothing();
   }
 
   // Log under `conversation.forked` (not `created`) so structured-log

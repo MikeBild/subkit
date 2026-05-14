@@ -15,10 +15,11 @@ import { recordToolPolicyConfirmationRequired } from "../audit/recorders/index.t
 import type { Db } from "../db/client.ts";
 import {
   connectorEndpointSchemas,
-  conversationAttachments,
   conversations,
   conversationToolCalls,
   executions,
+  fileLinks,
+  files,
 } from "../db/schema/index.ts";
 import {
   checkAndDecrement,
@@ -284,13 +285,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // Auto-load skills based on conversation context — attachment MIME
   // types, recent execution failures, and target workflow presence.
   // Deterministic keyword match against `skills.trigger_keywords`.
+  // Files are linked via `file_links WHERE resource_type='conversation'`.
   const attachmentMimeRows = await p.db
-    .select({ content_type: conversationAttachments.content_type })
-    .from(conversationAttachments)
+    .select({ content_type: files.content_type })
+    .from(fileLinks)
+    .innerJoin(files, eq(files.id, fileLinks.file_id))
     .where(
       and(
-        eq(conversationAttachments.tenant_id, p.tenant_id),
-        eq(conversationAttachments.conversation_id, p.conversation_id),
+        eq(fileLinks.tenant_id, p.tenant_id),
+        eq(fileLinks.resource_type, "conversation"),
+        eq(fileLinks.resource_id, p.conversation_id),
       ),
     );
   const attachmentMimeTypes = attachmentMimeRows
