@@ -3,7 +3,7 @@
 // covers padding edge cases and rejection of invalid shapes.
 
 import { describe, expect, it } from "bun:test";
-import { decodeAtlassianTinyui, parseAtlassianResourceUrl } from "./atlassian-tinyui.ts";
+import { decodeAtlassianTinyui, parseAtlassianCloudResourceUrl } from "./atlassian-tinyui.ts";
 
 describe("decodeAtlassianTinyui", () => {
   it("decodes the session-0498925e fixture y4ozBQ → 87263947", () => {
@@ -47,9 +47,9 @@ describe("decodeAtlassianTinyui", () => {
   });
 });
 
-describe("parseAtlassianResourceUrl", () => {
-  it("resolves the session-0498925e Confluence tinyui URL", () => {
-    const r = parseAtlassianResourceUrl("https://si-emobility.atlassian.net/wiki/x/y4ozBQ");
+describe("parseAtlassianCloudResourceUrl", () => {
+  it("resolves the session-0498925e Confluence Cloud tinyui URL", () => {
+    const r = parseAtlassianCloudResourceUrl("https://si-emobility.atlassian.net/wiki/x/y4ozBQ");
     expect(r).toEqual({
       kind: "confluence_tinyui",
       short: "y4ozBQ",
@@ -58,34 +58,36 @@ describe("parseAtlassianResourceUrl", () => {
   });
 
   it("resolves a direct Confluence page URL (numeric id in path)", () => {
-    const r = parseAtlassianResourceUrl(
+    const r = parseAtlassianCloudResourceUrl(
       "https://si-emobility.atlassian.net/wiki/spaces/PROD/pages/83907824/Sifinity+Control",
     );
     expect(r).toEqual({ kind: "confluence_page", page_id: 83907824 });
   });
 
   it("resolves a Jira issue URL", () => {
-    const r = parseAtlassianResourceUrl("https://si-emobility.atlassian.net/browse/EMOB-22926");
+    const r = parseAtlassianCloudResourceUrl(
+      "https://si-emobility.atlassian.net/browse/EMOB-22926",
+    );
     expect(r).toEqual({ kind: "jira_issue", key: "EMOB-22926" });
   });
 
   it("returns null for non-Atlassian hosts", () => {
-    expect(parseAtlassianResourceUrl("https://example.com/wiki/x/y4ozBQ")).toBe(null);
+    expect(parseAtlassianCloudResourceUrl("https://example.com/wiki/x/y4ozBQ")).toBe(null);
   });
 
   it("returns null for unrecognised Atlassian paths", () => {
-    expect(parseAtlassianResourceUrl("https://si-emobility.atlassian.net/")).toBe(null);
-    expect(parseAtlassianResourceUrl("https://si-emobility.atlassian.net/wiki/")).toBe(null);
+    expect(parseAtlassianCloudResourceUrl("https://si-emobility.atlassian.net/")).toBe(null);
+    expect(parseAtlassianCloudResourceUrl("https://si-emobility.atlassian.net/wiki/")).toBe(null);
   });
 
   it("returns null for malformed URLs", () => {
-    expect(parseAtlassianResourceUrl("not a url")).toBe(null);
-    expect(parseAtlassianResourceUrl("")).toBe(null);
+    expect(parseAtlassianCloudResourceUrl("not a url")).toBe(null);
+    expect(parseAtlassianCloudResourceUrl("")).toBe(null);
   });
 
   it("does NOT swallow a tinyui that fails to decode (short < 4 bytes)", () => {
     // 3-char short → 2 decoded bytes → page_id null but kind still set.
-    const r = parseAtlassianResourceUrl("https://x.atlassian.net/wiki/x/AQA");
+    const r = parseAtlassianCloudResourceUrl("https://x.atlassian.net/wiki/x/AQA");
     expect(r).toEqual({ kind: "confluence_tinyui", short: "AQA", page_id: null });
   });
 });

@@ -1,10 +1,9 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq, isNull } from "drizzle-orm";
-import { parseAtlassianResourceUrl } from "../../connectors/atlassian-tinyui.ts";
+import { parseAtlassianCloudResourceUrl } from "../../connectors/atlassian-tinyui.ts";
 import { baseUrlHost, compareConnectorOverlap } from "../../connectors/overlap.ts";
+import { listConnectors } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { matchTemplatesByUrl } from "../../connectors/template-url-match.ts";
-import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import {
   allowedTemplateAuthTypes,
   inferTemplateRequiredFields,
@@ -25,6 +24,11 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
   use_case:
     "Call this as soon as the operator pastes a concrete URL like https://api.stripe.com/v1/charges — before any manual connector setup.",
   example_input: { url: "https://api.stripe.com/v1/charges", limit: 3 },
+  important_notes: [
+    "Top-level `resolved_resource` is set when the URL is an Atlassian Cloud resource. Shapes: `{ kind: 'confluence_tinyui', short, page_id }` (page_id is null when the shortlink fails to decode), `{ kind: 'confluence_page', page_id }`, `{ kind: 'jira_issue', key }`. Use the resolved id when building the first request step so the dry-run hits the real resource.",
+    "Each `matches[].existing_connector_candidates[]` entry is a saved connector on this tenant that already serves the URL host. Scored on driver + base_url_host + auth_type (1-3). `reuse_recommendation` is one of: `exact_match_reuse` (score 3 — propose reuse unchanged, do NOT create a new draft); `reuse_with_host_override` (score 2, auth_type matches — propose forking or adjusting the base_url, confirm with the user); `reuse_after_auth_check` (score 2, driver+host match but auth_type differs — surface the conflict to the user before drafting).",
+    "Tenant-scoped: only connectors on the caller's tenant appear in `existing_connector_candidates` (foreign-tenant rows are filtered out by `listConnectors`). `resolved_resource` is decoded locally and carries no tenant data.",
+  ],
   inputSchema,
   category: "tenant_read",
   async execute(ctx, rawArgs): Promise<ToolResult> {
@@ -60,7 +64,7 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
     // the LLM can build the workflow's first request step against the
     // real resource on the FIRST dry-run (session 0498925e cost 3+
     // probe round-trips to discover that /wiki/x/y4ozBQ → page 87263947).
-    const resolved_resource = parseAtlassianResourceUrl(args.url);
+    const resolved_resource = parseAtlassianCloudResourceUrl(args.url);
 
     // Adoption E — inline "you already have X" hint. List the tenant's
     // existing connectors on the same URL host AND score the structural
@@ -70,22 +74,15 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
     // (session 0498925e: the existing SI eMobility Jira basic-auth
     // connector serves both Jira and Confluence on the same host —
     // but the LLM only noticed AFTER proposing a new draft).
+    // Use the canonical `listConnectors` service helper (capped at 500,
+    // tenant-scoped, soft-deleted rows excluded) instead of a hand-rolled
+    // select. `ConnectorView` already carries the `id / slug / display_name
+    // / driver / auth_type / base_url` shape `compareConnectorOverlap`
+    // expects, so the projection is implicit. Skipping the call when the
+    // URL has no parseable host avoids a tenant scan for inputs like
+    // "not-a-url".
     const urlHost = baseUrlHost(args.url);
-    const tenantConnectors = urlHost
-      ? await ctx.db
-          .select({
-            id: connectorsTable.id,
-            slug: connectorsTable.slug,
-            display_name: connectorsTable.display_name,
-            driver: connectorsTable.driver,
-            auth_type: connectorsTable.auth_type,
-            base_url: connectorsTable.base_url,
-          })
-          .from(connectorsTable)
-          .where(
-            and(eq(connectorsTable.tenant_id, ctx.tenant_id), isNull(connectorsTable.deleted_at)),
-          )
-      : [];
+    const tenantConnectors = urlHost ? await listConnectors(ctx.tenant_id, {}, ctx.db) : [];
     // For each template match, run the overlap scorer against the
     // tenant's connectors and attach the top reuse candidate(s). The
     // template's driver + auth_type drives the proposed shape; the URL

@@ -7,9 +7,9 @@
 // Charger Firmware (based on OCPP 2.0.1)").
 //
 // Jira issue keys (/browse/EMOB-22926) are already in a usable form
-// and need no decoding — `parseAtlassianResourceUrl` just lifts them
-// out of the URL so `match_connector_template_by_url` can return both
-// the template match and the resolved resource in one shot.
+// and need no decoding — `parseAtlassianCloudResourceUrl` just lifts
+// them out of the URL so `match_connector_template_by_url` can return
+// both the template match and the resolved resource in one shot.
 
 /**
  * Decode an Atlassian tinyui shortlink suffix into the underlying
@@ -27,18 +27,14 @@ export function decodeAtlassianTinyui(short: string): number | null {
   if (!/^[A-Za-z0-9_-]+$/.test(short)) return null;
   const padded = short + "=".repeat((4 - (short.length % 4)) % 4);
   const b64 = padded.replace(/-/g, "+").replace(/_/g, "/");
-  let bytes: Uint8Array;
-  try {
-    bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  } catch {
-    return null;
-  }
+  // Use Buffer.from(...) to match the engine's other base64 callers
+  // (see apps/engine/src/crypto/). `Buffer.from(str, "base64")` accepts
+  // invalid input by silently dropping non-base64 chars, but the regex
+  // above already rejects anything outside the base64url alphabet so
+  // the buffer cannot be "partially valid" by the time we reach here.
+  const bytes = Buffer.from(b64, "base64");
   if (bytes.length < 4) return null;
-  // DataView needs a fresh ArrayBuffer view rooted at byteOffset 0.
-  // Slice gives us that without copying the underlying buffer beyond
-  // the four bytes we read.
-  const view = new DataView(bytes.buffer, bytes.byteOffset, 4);
-  return view.getUint32(0, true);
+  return bytes.readUInt32LE(0);
 }
 
 /**
@@ -47,25 +43,28 @@ export function decodeAtlassianTinyui(short: string): number | null {
  * connector-template result, so the workflow draft's first request
  * step can hit the real resource on the first dry-run.
  */
-export type AtlassianResource =
+export type AtlassianCloudResource =
   | { kind: "confluence_page"; page_id: number }
   | { kind: "confluence_tinyui"; short: string; page_id: number | null }
   | { kind: "jira_issue"; key: string };
 
 /**
- * Parse a Confluence or Jira URL and return the resolved resource
- * descriptor, or `null` if the URL is not a recognised resource path.
+ * Parse a Confluence or Jira **Cloud** URL and return the resolved
+ * resource descriptor, or `null` if the URL is not a recognised
+ * resource path. Atlassian Server / Data Center URLs (`*.jira-dev.com`,
+ * on-prem Bitbucket, custom corporate hosts) are **not** in scope —
+ * they use different URL shapes and aren't decoded here.
  *
- * Recognised shapes:
+ * Recognised shapes (Cloud only):
  *   /wiki/x/<short>                            → tinyui (decoded to page_id when possible)
  *   /wiki/spaces/<space>/pages/<id>(/...)?     → numeric page
  *   /browse/<KEY-N>                            → Jira issue
  *
  * Domain handling: the URL host must be on `*.atlassian.net` or
- * `*.atlassian.com` — passing in a non-Atlassian URL returns `null`
- * so callers can use this as a pre-flight gate.
+ * `*.atlassian.com` — passing in a non-Atlassian-Cloud URL returns
+ * `null` so callers can use this as a pre-flight gate.
  */
-export function parseAtlassianResourceUrl(rawUrl: string): AtlassianResource | null {
+export function parseAtlassianCloudResourceUrl(rawUrl: string): AtlassianCloudResource | null {
   let url: URL;
   try {
     url = new URL(rawUrl);

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors } from "../../db/schema/index.ts";
+import { connectors, tenants } from "../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { createConversation } from "../service.ts";
 import type { ConversationTestCtx } from "../tests/setup.ts";
@@ -184,5 +184,46 @@ describe("matchConnectorTemplateByUrlTool", () => {
     expect(exact?.score).toBe(3);
     expect(exact?.reuse_recommendation).toBe("exact_match_reuse");
     expect(exact?.matched_dimensions).toEqual(["driver", "base_url_host", "auth_type"]);
+  });
+
+  // W2 regression: cross-tenant isolation. The new
+  // `existing_connector_candidates` surface must never leak rows from
+  // another tenant — even when the foreign-tenant row matches on
+  // driver + base_url_host + auth_type. Without this guard, a future
+  // change that drops the `tenant_id` predicate inside `listConnectors`
+  // (or replaces it with a hand-rolled select) would be silent.
+  test("does NOT surface connectors from another tenant on the same host", async () => {
+    const toolCtx = await createToolCtx();
+    // Seed a connector on a FRESH tenant (different actor) — same host
+    // and shape as the proposed Stripe match.
+    const foreignTenantSlug = `t-foreign-${Date.now().toString(36)}`;
+    const [foreignTenant] = await toolCtx.db
+      .insert(tenants)
+      .values({ slug: foreignTenantSlug, display_name: "Foreign Tenant" })
+      .returning();
+    if (!foreignTenant) throw new Error("seed foreign tenant failed");
+    await toolCtx.db.insert(connectors).values({
+      tenant_id: foreignTenant.id,
+      slug: "foreign-stripe",
+      display_name: "Foreign Stripe",
+      driver: "http",
+      auth_type: "bearer",
+      base_url: "https://api.stripe.com",
+    });
+    const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
+      url: "https://api.stripe.com/v1/charges",
+      limit: 3,
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      matches: Array<{
+        slug: string;
+        existing_connector_candidates: Array<{ connector_slug: string }>;
+      }>;
+    };
+    const stripe = data.matches.find((m) => m.slug === "stripe");
+    const candidates = stripe?.existing_connector_candidates ?? [];
+    // The foreign-tenant connector MUST NOT appear.
+    expect(candidates.find((c) => c.connector_slug === "foreign-stripe")).toBeUndefined();
   });
 });

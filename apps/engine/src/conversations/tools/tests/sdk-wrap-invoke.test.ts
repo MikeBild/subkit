@@ -1,10 +1,11 @@
-// Targeted tests for the get_raw_result truncation bypass (Fix 1) and the
-// concrete-alternatives generator used by the consecutive-failures cap
-// (Adoption D). Both live in sdk-wrap/invoke.ts but are written here to
-// keep the existing test layout (conversations/tools/tests/).
+// Targeted tests for the concrete-alternatives generator used by the
+// consecutive-failures cap (Adoption D). The helper itself lives in
+// `sdk-wrap/error-recovery-hints.ts`; this file also asserts that the
+// catalogue stays in sync with the error codes any tool actually
+// surfaces.
 
 import { describe, expect, it } from "bun:test";
-import { buildCapAlternatives } from "../sdk-wrap/invoke.ts";
+import { buildCapAlternatives, ERROR_CODE_ALTERNATIVES } from "../sdk-wrap/error-recovery-hints.ts";
 
 describe("buildCapAlternatives", () => {
   it("returns empty string when no failures are recorded", () => {
@@ -51,5 +52,32 @@ describe("buildCapAlternatives", () => {
     const errors = new Map([["propose_step", "raw_string_no_pipe"]]);
     // Whatever happens, the function must not throw and must return a string.
     expect(typeof buildCapAlternatives(errors)).toBe("string");
+  });
+});
+
+describe("ERROR_CODE_ALTERNATIVES catalogue", () => {
+  // Per the review (S4): the test should assert the catalogue stays
+  // complete relative to the error codes any tool can surface. These
+  // are the codes the engine emits today from `ok: false` branches —
+  // adding a new code without an entry here is a silent regression
+  // because the cap message falls back to the generic "ask the user".
+  const REGISTERED_ERROR_CODES = [
+    "transform_authoring_requires_inspect",
+    "step_update_invalid",
+    "step_invalid",
+    "unknown_step",
+    "unresolved_identifier",
+    "http_4xx",
+    "execution_not_found",
+    "verifier_rejected",
+    "repair_loop_detected",
+  ] as const;
+
+  it("has an entry for every registered error code", () => {
+    for (const code of REGISTERED_ERROR_CODES) {
+      expect(ERROR_CODE_ALTERNATIVES[code]).toBeDefined();
+      expect(typeof ERROR_CODE_ALTERNATIVES[code]).toBe("string");
+      expect((ERROR_CODE_ALTERNATIVES[code] ?? "").length).toBeGreaterThan(20);
+    }
   });
 });

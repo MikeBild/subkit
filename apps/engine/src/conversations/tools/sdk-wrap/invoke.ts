@@ -50,6 +50,7 @@ import type { TurnEvent } from "../../types.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
 import { truncateForLlm } from "../truncate.ts";
+import { buildCapAlternatives } from "./error-recovery-hints.ts";
 import {
   buildPolicyGateCommitIntent,
   confirmationMetadataForTool,
@@ -90,49 +91,6 @@ export function toInputExamples(
   _example: Readonly<Record<string, unknown>> | undefined,
 ): { inputExamples: Array<{ input: Record<string, unknown> }> } | Record<string, never> {
   return {};
-}
-
-// Map known error codes to concrete next-action suggestions. The
-// existing consecutive-failures cap (`MAX_CONSECUTIVE_FAILURES`) tells
-// the LLM "stop patching, ask the user" — but does not say WHAT to
-// ask about. Reading `signals.toolLastErrorHash` (populated below)
-// lets the cap message name the actual recovery tool for each error
-// code the model has seen this turn, so the surfaced ask_user_choice
-// can offer realistic options instead of "try a different approach."
-const ERROR_CODE_ALTERNATIVES: Record<string, string> = {
-  transform_authoring_requires_inspect:
-    "call inspect_execution_step(execution_id, step_key, include_full_payload: true) to read the upstream step's actual shape before authoring the transform",
-  step_update_invalid:
-    "the current draft step is invalid — call inspect_workflow_draft to see the validation errors, then propose_step with the corrected fields",
-  step_invalid:
-    "the step shape is wrong — call inspect_workflow_draft for the validation breakdown, then propose_step or update_param against the failing field",
-  unknown_step:
-    "the referenced step_id does not exist — call inspect_workflow_draft to list the actual step ids",
-  unresolved_identifier:
-    "the JSONata referenced a name not in scope — call suggest_jsonata_paths(workflow_id_or_draft) for the authoritative path list",
-  http_4xx:
-    "the request returned 4xx — call probe_connector to verify the endpoint shape, headers, and auth before retrying",
-  execution_not_found:
-    "the execution id is stale — call list_executions to get a current id, or run_workflow to produce a fresh execution",
-  verifier_rejected:
-    "the workflow verifier rejected the change — read the rejection reason and either revise the patch or call ask_user_confirm to confirm an exception",
-  repair_loop_detected:
-    "three consecutive runs surfaced the same authoring warning — stop, read data-handling.md / workflow-authoring.md, and propose a structurally different draft",
-};
-
-export function buildCapAlternatives(toolLastErrorHash: ReadonlyMap<string, string>): string {
-  if (toolLastErrorHash.size === 0) return "";
-  const seenCodes = new Set<string>();
-  const lines: string[] = [];
-  for (const shape of toolLastErrorHash.values()) {
-    const reason = shape.split("|", 1)[0] ?? "";
-    if (!reason || seenCodes.has(reason)) continue;
-    seenCodes.add(reason);
-    const hint = ERROR_CODE_ALTERNATIVES[reason];
-    if (hint) lines.push(`  • ${reason}: ${hint}`);
-  }
-  if (lines.length === 0) return "";
-  return `\nConcrete alternatives derived from the recent failures:\n${lines.join("\n")}`;
 }
 
 export function wrapOne(
