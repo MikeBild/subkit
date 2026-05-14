@@ -1,5 +1,11 @@
 // Tenant-scoped file resolver.
 //
+// SPOOL_THRESHOLD_BYTES: files larger than this are buffered to a tmpfile
+// before dispatch so the driver receives a seekable file-backed stream
+// instead of an in-memory iterable. 50 MB matches the plan D5 threshold.
+export const SPOOL_THRESHOLD_BYTES = 50 * 1024 * 1024;
+
+//
 // Two pieces:
 //
 //   1. `requireFileForTenant(db, tenant_id, fid)` — the single
