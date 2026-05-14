@@ -42,6 +42,7 @@ import {
   type StepRouterSignals,
   supportsExtendedThinking,
 } from "../llm/core/step-router.ts";
+import { resolveThinking } from "../llm/core/thinking-policy.ts";
 import { type CriticArtifact, type CriticVerdict, runCritic } from "../llm/critic/index.ts";
 import { LlmContextTooLarge, LlmQuotaExhausted } from "../llm/errors.ts";
 import { runOutputGuard, runOutputGuardStream } from "../llm/output-guard/index.ts";
@@ -865,16 +866,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       }
       return supportsExtendedThinking(route.provider, modelId);
     })();
-    // Anthropic API constraint (observed as `converse.failed` ×3 in
-    // session 0498925e): "Thinking may not be enabled when tool_choice
-    // forces tool use." The streamText call below sets `toolChoice` to
-    // a forced tool when `preferredTool` is defined, AND prepareStep
-    // (step-router) may flip toolChoice to "required" mid-turn. If
-    // either path may fire, suppress thinking for the whole turn —
-    // providerOptions are global to the streamText invocation, so we
-    // cannot toggle thinking per step.
+    // Anthropic API rejects thinking + forced tool_choice (observed as
+    // `converse.failed` ×3 in session 0498925e). The decision lives in
+    // `llm/core/thinking-policy.ts` so step-router can read the same
+    // policy when it considers escalating to `toolChoice: "required"`.
     const turnForcesTool = preferredTool !== undefined;
-    const thinkingThisTurn = turnEnableThinking && !turnForcesTool;
+    const thinkingDecision = resolveThinking({
+      enableThinking: turnEnableThinking,
+      forcesTool: turnForcesTool,
+    });
+    const thinkingThisTurn = thinkingDecision.enabled;
     logger.debug({
       module: "llm",
       action: "turn.provider_options",
@@ -886,7 +887,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       stage: draft.summary?.stage ?? "idle",
       parallel_tools_enabled: turnStageReadOnly,
       extended_thinking_enabled: thinkingThisTurn,
-      thinking_suppressed_by_forced_tool: turnEnableThinking && turnForcesTool,
+      thinking_suppressed_by_forced_tool: thinkingDecision.suppressedByForcedTool,
       cache_supported: cacheSupported,
     });
     const result = streamText({

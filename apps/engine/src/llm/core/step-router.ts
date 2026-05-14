@@ -13,6 +13,7 @@ import type { ConversationTool } from "../../conversations/tools/index.ts";
 import type { AuthoringStage } from "../../conversations/types.ts";
 import { logger } from "../../logging/logger.ts";
 import type { LlmProviderKind } from "../types.ts";
+import { resolveThinking } from "./thinking-policy.ts";
 
 // One-shot warning per provider — keeps logs clean when a tenant is
 // pinned to a provider whose ladder has no upgrade for the configured
@@ -364,17 +365,21 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
   let toolChoice: StepDecision["toolChoice"];
   let systemNudge: string | undefined;
   if (signals.multiArtifactIntent === true && priorStepWasSuccessfulConnectorAutoPersist(params)) {
-    // Anthropic API rejects thinking + forced tool_choice. When the
-    // turn enabled thinking at the providerOptions level we cannot
-    // also force a tool here — the systemNudge alone is enough to keep
-    // the model moving (it just won't be a hard constraint).
-    if (params.turnThinkingEnabled !== true) {
+    // Anthropic API rejects thinking + forced tool_choice; the policy
+    // helper is the single source of truth shared with `loop.ts`. When
+    // thinking is on for the turn, the systemNudge alone has to carry
+    // the constraint — the force becomes a soft instruction.
+    const thinking = resolveThinking({
+      enableThinking: params.turnThinkingEnabled === true,
+      forcesTool: true, // about to consider forcing one
+    });
+    if (!thinking.suppressedByForcedTool) {
       toolChoice = "required";
     }
     systemNudge =
       "The user asked for both a connector AND a workflow in their most recent message. The connector is now saved. Continue with the workflow now — call the next authoring tool (start_workflow_from_goal or build_workflow). Do NOT end the turn with a `now let's …` closing sentence; the user already approved the multi-artifact intent.";
     reasonParts.push(
-      params.turnThinkingEnabled === true
+      thinking.suppressedByForcedTool
         ? "multi_artifact_continue_nudge_only"
         : "multi_artifact_continue",
     );

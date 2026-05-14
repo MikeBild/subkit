@@ -36,6 +36,38 @@ const Input = z
   })
   .openapi("InspectExecutionStepToolInput");
 
+/**
+ * Per-kind recipe for what the LLM should do next after reading a
+ * step's output_preview. Kept as a switch (not a nested ternary) so
+ * adding the next step kind doesn't churn the call-site.
+ */
+function nextBestActionsFor(kind: string, step_key: string): string[] {
+  switch (kind) {
+    case "loop":
+      return [
+        "When iterating over a loop output, the canonical scope path is `$scope.<loop_id>.data[i].<body_step_id>.data.<field>`. Look at output_preview[0] to see the body_step_id keys for this loop.",
+        "dry_run_transform — author + test the next projection expression against this real shape before saving.",
+      ];
+    case "request":
+      return [
+        `The request body is at \`$scope.${step_key}.data\`; status / headers live on the same envelope. Use this when authoring downstream transforms.`,
+        "dry_run_transform — author + test the next projection expression against this real shape before saving.",
+        "run_workflow — rerun with new input via the input_schema, or build_workflow to adjust the upstream connector params.",
+      ];
+    case "transform":
+      return [
+        "The transform's projected shape is in output_preview. If it dropped fields, see suggest_jsonata_paths for the available scope keys.",
+        "dry_run_transform — re-author the expression against this real shape before saving.",
+        "build_workflow / propose_step — adjust the upstream step or the downstream transform.",
+      ];
+    default:
+      return [
+        "dry_run_transform — author + test the next projection expression against this real shape before saving.",
+        "build_workflow / propose_step — adjust the upstream step or the downstream transform.",
+      ];
+  }
+}
+
 export const inspectExecutionStepTool: ConversationTool = {
   name: "inspect_execution_step",
   description:
@@ -167,28 +199,7 @@ export const inspectExecutionStepTool: ConversationTool = {
         ...(fullPayload !== undefined ? { full_payload: fullPayload } : {}),
         payload_source: payloadSource,
         offloaded: step.result_storage_uri !== null,
-        next_best_actions:
-          step.kind === "loop"
-            ? [
-                "When iterating over a loop output, the canonical scope path is `$scope.<loop_id>.data[i].<body_step_id>.data.<field>`. Look at output_preview[0] to see the body_step_id keys for this loop.",
-                "dry_run_transform — author + test the next projection expression against this real shape before saving.",
-              ]
-            : step.kind === "request"
-              ? [
-                  `The request body is at \`$scope.${step.step_key}.data\`; status / headers live on the same envelope. Use this when authoring downstream transforms.`,
-                  "dry_run_transform — author + test the next projection expression against this real shape before saving.",
-                  "run_workflow — rerun with new input via the input_schema, or build_workflow to adjust the upstream connector params.",
-                ]
-              : step.kind === "transform"
-                ? [
-                    "The transform's projected shape is in output_preview. If it dropped fields, see suggest_jsonata_paths for the available scope keys.",
-                    "dry_run_transform — re-author the expression against this real shape before saving.",
-                    "build_workflow / propose_step — adjust the upstream step or the downstream transform.",
-                  ]
-                : [
-                    "dry_run_transform — author + test the next projection expression against this real shape before saving.",
-                    "build_workflow / propose_step — adjust the upstream step or the downstream transform.",
-                  ],
+        next_best_actions: nextBestActionsFor(step.kind, step.step_key),
       },
     };
   },

@@ -188,6 +188,25 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     expect(data.output_behavior).toBe("last_step_passthrough");
   });
 
+  // W2 (round-2 review): the output_transform section's `output_behavior`
+  // field lives in `important_notes` documentation, not a Zod schema.
+  // Assert the literal field name + literal enum members so a silent
+  // rename trips a test before shipping.
+  test("output_transform section keeps the literal field name 'output_behavior'", async () => {
+    const draft = draftWithSteps([{ id: "fetch_page", kind: "request", method: "GET", path: "/" }]);
+    const toolCtx = makeCtx(draft);
+    const result = await inspectWorkflowTool.execute(toolCtx, {
+      sections: ["output_transform"],
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(Object.keys(data)).toContain("output_behavior");
+    // Literal enum members must remain stable.
+    expect(["explicit_transform", "transform_function", "last_step_passthrough"]).toContain(
+      data.output_behavior as string,
+    );
+  });
+
   test("output_transform section reports explicit_transform when one is declared", async () => {
     const empty = createEmptyDraftDocument();
     const draft = withWorkflowDraft(

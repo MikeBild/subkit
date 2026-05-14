@@ -1,4 +1,13 @@
 // Tests for the structural connector-overlap scorer (Adoption A).
+//
+// Design note (S5 round-2 review): every `existingConnector(...)` call
+// builds the row from explicit fields, not by spreading `PROPOSED` as
+// a default. The earlier shape ("match everything by default, override
+// to differ") made it easy to write a regression where the helper's
+// implicit-match hid a real mismatch. The explicit shape forces every
+// dimension to be named on every test, so any future change to the
+// `ConnectorOverlapInput` interface trips every test instead of
+// silently inheriting from the proposed shape.
 
 import { describe, expect, it } from "bun:test";
 import { baseUrlHost, compareConnectorOverlap, scoreConnectorOverlap } from "./overlap.ts";
@@ -9,8 +18,16 @@ const PROPOSED = {
   auth_type: "basic",
 };
 
-function existingConnector(over: Partial<typeof PROPOSED> & { id: string }) {
-  return { ...PROPOSED, ...over };
+// Always declare every dimension explicitly — no spread of PROPOSED.
+type ExistingRow = {
+  id: string;
+  driver: string;
+  base_url: string | null;
+  auth_type: string;
+};
+
+function existingConnector(row: ExistingRow): ExistingRow {
+  return row;
 }
 
 describe("baseUrlHost", () => {
@@ -30,14 +47,27 @@ describe("baseUrlHost", () => {
 
 describe("scoreConnectorOverlap", () => {
   it("scores 3 (all dimensions match)", () => {
-    const r = scoreConnectorOverlap(existingConnector({ id: "c1" }), PROPOSED);
+    const r = scoreConnectorOverlap(
+      existingConnector({
+        id: "c1",
+        driver: "http",
+        base_url: "https://si-emobility.atlassian.net",
+        auth_type: "basic",
+      }),
+      PROPOSED,
+    );
     expect(r.score).toBe(3);
     expect(r.dimensions).toEqual(["driver", "base_url_host", "auth_type"]);
   });
 
   it("scores 2 when driver + host match but auth_type differs", () => {
     const r = scoreConnectorOverlap(
-      existingConnector({ id: "c2", auth_type: "oauth2_authorization_code" }),
+      existingConnector({
+        id: "c2",
+        driver: "http",
+        base_url: "https://si-emobility.atlassian.net",
+        auth_type: "oauth2_authorization_code",
+      }),
       PROPOSED,
     );
     expect(r.score).toBe(2);
@@ -46,7 +76,12 @@ describe("scoreConnectorOverlap", () => {
 
   it("scores 2 when driver + auth match but host differs", () => {
     const r = scoreConnectorOverlap(
-      existingConnector({ id: "c3", base_url: "https://example.atlassian.net" }),
+      existingConnector({
+        id: "c3",
+        driver: "http",
+        base_url: "https://example.atlassian.net",
+        auth_type: "basic",
+      }),
       PROPOSED,
     );
     expect(r.score).toBe(2);
@@ -57,6 +92,7 @@ describe("scoreConnectorOverlap", () => {
     const r = scoreConnectorOverlap(
       existingConnector({
         id: "c4",
+        driver: "http",
         base_url: "https://example.com",
         auth_type: "none",
       }),
@@ -82,7 +118,12 @@ describe("scoreConnectorOverlap", () => {
 
   it("does NOT count base_url_host when either side has no URL", () => {
     const r = scoreConnectorOverlap(
-      { ...PROPOSED, id: "c6", base_url: null as string | null },
+      existingConnector({
+        id: "c6",
+        driver: "http",
+        base_url: null,
+        auth_type: "basic",
+      }),
       PROPOSED,
     );
     expect(r.dimensions).not.toContain("base_url_host");
@@ -96,13 +137,24 @@ describe("compareConnectorOverlap", () => {
         // Score 1 — should drop with default threshold.
         existingConnector({
           id: "weak",
+          driver: "http",
           base_url: "https://example.com",
           auth_type: "none",
         }),
         // Score 2 — auth_type differs.
-        existingConnector({ id: "auth-mismatch", auth_type: "oauth2_authorization_code" }),
+        existingConnector({
+          id: "auth-mismatch",
+          driver: "http",
+          base_url: "https://si-emobility.atlassian.net",
+          auth_type: "oauth2_authorization_code",
+        }),
         // Score 3 — full match.
-        existingConnector({ id: "exact" }),
+        existingConnector({
+          id: "exact",
+          driver: "http",
+          base_url: "https://si-emobility.atlassian.net",
+          auth_type: "basic",
+        }),
       ],
       PROPOSED,
     );
@@ -118,6 +170,7 @@ describe("compareConnectorOverlap", () => {
       [
         existingConnector({
           id: "weak",
+          driver: "http",
           base_url: "https://example.com",
           auth_type: "none",
         }),
@@ -131,7 +184,14 @@ describe("compareConnectorOverlap", () => {
 
   it("returns no matches when minScore=3 and none are exact", () => {
     const matches = compareConnectorOverlap(
-      [existingConnector({ id: "near", auth_type: "oauth2_authorization_code" })],
+      [
+        existingConnector({
+          id: "near",
+          driver: "http",
+          base_url: "https://si-emobility.atlassian.net",
+          auth_type: "oauth2_authorization_code",
+        }),
+      ],
       PROPOSED,
       { minScore: 3 },
     );

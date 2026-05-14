@@ -25,9 +25,17 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
     "Call this as soon as the operator pastes a concrete URL like https://api.stripe.com/v1/charges — before any manual connector setup.",
   example_input: { url: "https://api.stripe.com/v1/charges", limit: 3 },
   important_notes: [
-    "Top-level `resolved_resource` is set when the URL is an Atlassian Cloud resource. Shapes: `{ kind: 'confluence_tinyui', short, page_id }` (page_id is null when the shortlink fails to decode), `{ kind: 'confluence_page', page_id }`, `{ kind: 'jira_issue', key }`. Use the resolved id when building the first request step so the dry-run hits the real resource.",
-    "Each `matches[].existing_connector_candidates[]` entry is a saved connector on this tenant that already serves the URL host. Scored on driver + base_url_host + auth_type (1-3). `reuse_recommendation` is one of: `exact_match_reuse` (score 3 — propose reuse unchanged, do NOT create a new draft); `reuse_with_host_override` (score 2, auth_type matches — propose forking or adjusting the base_url, confirm with the user); `reuse_after_auth_check` (score 2, driver+host match but auth_type differs — surface the conflict to the user before drafting).",
-    "Tenant-scoped: only connectors on the caller's tenant appear in `existing_connector_candidates` (foreign-tenant rows are filtered out by `listConnectors`). `resolved_resource` is decoded locally and carries no tenant data.",
+    "Top-level `resolved_resource` is set when the URL is an Atlassian Cloud resource.",
+    "`resolved_resource` shapes: `{ kind: 'confluence_tinyui', short, page_id }` (page_id is null when the shortlink fails to decode); `{ kind: 'confluence_page', page_id }`; `{ kind: 'jira_issue', key }`.",
+    "Use the `resolved_resource` id when building the first request step so the dry-run hits the real resource — do NOT probe the API to discover a value the matcher already gave you.",
+    "Each `matches[].existing_connector_candidates[]` entry is a saved connector on this tenant that already serves the URL host.",
+    "Reuse-candidate scoring: driver + base_url_host + auth_type, score 1-3 (count of matching dimensions).",
+    "`reuse_recommendation: 'exact_match_reuse'` (score 3) — propose reuse unchanged. Do NOT create a new draft.",
+    "`reuse_recommendation: 'reuse_with_host_override'` (score 2, auth_type matches) — propose forking or adjusting the base_url. Confirm with the user before either.",
+    "`reuse_recommendation: 'reuse_after_auth_check'` (score 2, driver+host match but auth_type differs) — surface the conflict to the user before drafting.",
+    "Tenant-scoped: only connectors on the caller's tenant appear in `existing_connector_candidates` (foreign-tenant rows are filtered out by `listConnectors`).",
+    "`resolved_resource` is decoded locally and carries no tenant data.",
+    "`tenant_connectors_truncated: true` is set when the tenant has more than 500 active connectors. Ask the user to narrow the search (vendor name, environment) so the reuse check can be exhaustive.",
   ],
   inputSchema,
   category: "tenant_read",
@@ -70,19 +78,20 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
     // existing connectors on the same URL host AND score the structural
     // overlap (driver + base_url_host + auth_type) against each
     // template match's expected shape. The LLM gets reuse candidates in
-    // the same response and proposes reuse BEFORE drafting a duplicate
-    // (session 0498925e: the existing SI eMobility Jira basic-auth
-    // connector serves both Jira and Confluence on the same host —
-    // but the LLM only noticed AFTER proposing a new draft).
-    // Use the canonical `listConnectors` service helper (capped at 500,
-    // tenant-scoped, soft-deleted rows excluded) instead of a hand-rolled
-    // select. `ConnectorView` already carries the `id / slug / display_name
-    // / driver / auth_type / base_url` shape `compareConnectorOverlap`
-    // expects, so the projection is implicit. Skipping the call when the
-    // URL has no parseable host avoids a tenant scan for inputs like
-    // "not-a-url".
+    // the same response and proposes reuse BEFORE drafting a duplicate.
+    //
+    // Pass `limit: 500` explicitly — `listConnectors`'s default is 100
+    // (`connectors/service.ts:263` evaluates `Math.min(opts.limit ?? 100, 500)`),
+    // and a tenant with >100 connectors would otherwise silently miss
+    // the existing-connector match this feature exists to surface. We
+    // surface `tenant_connectors_truncated` so the LLM knows the scan
+    // hit the cap and can ask the user to narrow the search.
+    const TENANT_CONNECTORS_CAP = 500;
     const urlHost = baseUrlHost(args.url);
-    const tenantConnectors = urlHost ? await listConnectors(ctx.tenant_id, {}, ctx.db) : [];
+    const tenantConnectors = urlHost
+      ? await listConnectors(ctx.tenant_id, { limit: TENANT_CONNECTORS_CAP }, ctx.db)
+      : [];
+    const tenant_connectors_truncated = tenantConnectors.length >= TENANT_CONNECTORS_CAP;
     // For each template match, run the overlap scorer against the
     // tenant's connectors and attach the top reuse candidate(s). The
     // template's driver + auth_type drives the proposed shape; the URL
@@ -118,6 +127,7 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
         url: args.url,
         matched: matchesWithReuse.length > 0,
         ...(resolved_resource ? { resolved_resource } : {}),
+        ...(tenant_connectors_truncated ? { tenant_connectors_truncated: true } : {}),
         matches: matchesWithReuse,
       },
     };

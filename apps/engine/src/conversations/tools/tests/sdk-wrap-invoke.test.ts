@@ -55,29 +55,125 @@ describe("buildCapAlternatives", () => {
   });
 });
 
-describe("ERROR_CODE_ALTERNATIVES catalogue", () => {
-  // Per the review (S4): the test should assert the catalogue stays
-  // complete relative to the error codes any tool can surface. These
-  // are the codes the engine emits today from `ok: false` branches —
-  // adding a new code without an entry here is a silent regression
-  // because the cap message falls back to the generic "ask the user".
-  const REGISTERED_ERROR_CODES = [
-    "transform_authoring_requires_inspect",
-    "step_update_invalid",
-    "step_invalid",
-    "unknown_step",
-    "unresolved_identifier",
-    "http_4xx",
-    "execution_not_found",
-    "verifier_rejected",
-    "repair_loop_detected",
-  ] as const;
+describe("ERROR_CODE_ALTERNATIVES catalogue completeness", () => {
+  // S3 (round-2 review): the previous hand-maintained list was a
+  // documentation drift hazard — adding a new `error_code` to any
+  // tool would land green even though the cap message falls back to
+  // the generic "ask the user". Now we grep the source for actual
+  // `error_code: "..."` literals and assert the catalogue covers each
+  // one. The catalogue is allowed to be a strict superset (some codes
+  // surfaced from infrastructure don't have a meaningful "next tool"),
+  // but a code shipped from a tool MUST have a hint.
 
-  it("has an entry for every registered error code", () => {
-    for (const code of REGISTERED_ERROR_CODES) {
-      expect(ERROR_CODE_ALTERNATIVES[code]).toBeDefined();
-      expect(typeof ERROR_CODE_ALTERNATIVES[code]).toBe("string");
-      expect((ERROR_CODE_ALTERNATIVES[code] ?? "").length).toBeGreaterThan(20);
+  // Subset of `error_code` literals that intentionally have no
+  // alternative — surfaced from infrastructure (engine, RBAC, OAuth,
+  // policy, validation framework) rather than from an authoring tool
+  // the model can recover from on its own. Adding to this set is a
+  // deliberate choice; explain WHY in the entry.
+  const EXEMPT_CODES = new Set<string>([
+    // RBAC + auth surfaces — recovery is "talk to your admin", not a
+    // different tool call.
+    "rbac_denied",
+    "credential_required",
+    "unauthorized",
+    "forbidden",
+    "permission_denied",
+    "permission_unknown",
+    "writes_not_allowed",
+    // Engine internals — the model can't avoid them by switching tools.
+    "engine_internal_error",
+    "execution_aborted",
+    "execution_timed_out",
+    "execution_cancelled",
+    "step_crash",
+    "state_read_failed",
+    "data_selector_error",
+    "output_transform_failed",
+    "validation_failed",
+    "run_failed",
+    "consecutive_failures_cap", // meta — fires when the cap itself trips
+    // Tool-surface errors where the recovery is the same tool with
+    // different args — no cross-tool alternative to recommend.
+    "input_validation_failed",
+    "invalid_input",
+    "slug_conflict_with_live_workflow",
+    "slug_conflict_with_live_connector",
+    "draft_not_found",
+    "no_active_draft",
+    "auth_mutation_not_allowed",
+    "auth_type_downgrade_blocked", // recovery is "ask the user to confirm the downgrade"
+    "builtin_immutable", // can't mutate, must fork — that's an authoring decision, not a tool swap
+    // Critic / policy gates — recovery is "revise based on the verdict".
+    "critic_rejected",
+    "destructive_skill_confirmation_required",
+    "tool_unavailable_in_state",
+    // Driver / connector capability gates — choose a different driver.
+    "driver_not_supported_for_call_connector",
+    // Credential / security violations — recovery is to redo via the
+    // designated form, not a different tool.
+    "credential_must_use_form",
+    "credential_placeholder_leak",
+    // Knowledge-source sizing — recovery is "ask the user to narrow / split".
+    "knowledge_source_empty",
+    "knowledge_source_too_large",
+  ]);
+
+  function findErrorCodeLiteralsInTools(): string[] {
+    // Synchronous fs walk constrained to the conversations/tools tree
+    // — the engine surface where the cap fires reads from
+    // signals.toolLastErrorHash, populated only by tool wrap. Going
+    // beyond this tree pulls in HTTP error mappers etc. that the cap
+    // never sees.
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const root = path.resolve(__dirname, "..");
+    const literals = new Set<string>();
+    const literalRe = /error_code:\s*['"]([a-z][a-z0-9_]+)['"]/g;
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === "tests" || entry.name === "node_modules") continue;
+          walk(full);
+        } else if (
+          entry.isFile() &&
+          entry.name.endsWith(".ts") &&
+          !entry.name.endsWith(".test.ts")
+        ) {
+          const src = fs.readFileSync(full, "utf8");
+          let m: RegExpExecArray | null;
+          // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex loop
+          while ((m = literalRe.exec(src)) !== null) {
+            const code = m[1];
+            if (code) literals.add(code);
+          }
+        }
+      }
+    };
+    walk(root);
+    return [...literals].sort();
+  }
+
+  it("has an entry for every error_code literal a tool surfaces (or marks it exempt)", () => {
+    const found = findErrorCodeLiteralsInTools();
+    // Discovery must find something — otherwise the regex is broken
+    // and we'd silently pass.
+    expect(found.length).toBeGreaterThan(0);
+    const missing = found.filter(
+      (code) => !(code in ERROR_CODE_ALTERNATIVES) && !EXEMPT_CODES.has(code),
+    );
+    expect({
+      missing_from_catalogue: missing,
+      hint: "add an entry to ERROR_CODE_ALTERNATIVES in sdk-wrap/error-recovery-hints.ts, OR add the code to EXEMPT_CODES in this test with a one-line WHY.",
+    }).toEqual({ missing_from_catalogue: [], hint: expect.any(String) });
+  });
+
+  it("every catalogue entry is a non-empty string", () => {
+    for (const [code, hint] of Object.entries(ERROR_CODE_ALTERNATIVES)) {
+      expect(typeof hint).toBe("string");
+      expect(hint.length).toBeGreaterThan(20); // any meaningful hint is >20 chars
+      // Catalogue keys are the same shape as the literals (lowercase + underscores).
+      expect(code).toMatch(/^[a-z][a-z0-9_]+$/);
     }
   });
 });

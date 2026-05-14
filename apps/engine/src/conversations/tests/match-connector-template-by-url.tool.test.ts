@@ -192,6 +192,147 @@ describe("matchConnectorTemplateByUrlTool", () => {
   // driver + base_url_host + auth_type. Without this guard, a future
   // change that drops the `tenant_id` predicate inside `listConnectors`
   // (or replaces it with a hand-rolled select) would be silent.
+  // W2 (round-2 review): the LLM-facing contract for the new output
+  // fields lives in `important_notes`, not in a Zod outputSchema. To
+  // catch silent renames at the test layer, assert the LITERAL field
+  // names appear in the result. A rename trips the test before it
+  // ships.
+  test("preserves the literal top-level field name 'resolved_resource' for an Atlassian URL", async () => {
+    const toolCtx = await createToolCtx();
+    const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
+      url: "https://si-emobility.atlassian.net/wiki/x/y4ozBQ",
+      limit: 3,
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(Object.keys(data)).toContain("resolved_resource");
+    const resolved = data.resolved_resource as Record<string, unknown>;
+    expect(resolved.kind).toBeDefined();
+  });
+
+  test("preserves the literal field name 'existing_connector_candidates' on every match", async () => {
+    const toolCtx = await createToolCtx();
+    const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
+      url: "https://api.stripe.com/v1/charges",
+      limit: 3,
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as { matches: Array<Record<string, unknown>> };
+    expect(data.matches.length).toBeGreaterThan(0);
+    for (const m of data.matches) {
+      expect(Object.keys(m)).toContain("existing_connector_candidates");
+    }
+  });
+
+  test("reuse-recommendation enum members are literally 'exact_match_reuse' | 'reuse_with_host_override' | 'reuse_after_auth_check'", async () => {
+    const toolCtx = await createToolCtx();
+    // Seed three connectors covering the three reuse_recommendation
+    // values so the literal enum string is exercised end-to-end.
+    await toolCtx.db.insert(connectors).values([
+      // score 3 -> exact_match_reuse
+      {
+        tenant_id: toolCtx.tenant_id,
+        slug: "rec-exact",
+        display_name: "rec-exact",
+        driver: "http",
+        auth_type: "bearer",
+        base_url: "https://api.stripe.com",
+      },
+      // score 2 with auth_type match (different host) -> reuse_with_host_override
+      {
+        tenant_id: toolCtx.tenant_id,
+        slug: "rec-with-host-override",
+        display_name: "rec-with-host-override",
+        driver: "http",
+        auth_type: "bearer",
+        base_url: "https://api.stripe-staging.example.com",
+      },
+      // score 2 with host match but different auth -> reuse_after_auth_check
+      {
+        tenant_id: toolCtx.tenant_id,
+        slug: "rec-after-auth-check",
+        display_name: "rec-after-auth-check",
+        driver: "http",
+        auth_type: "basic",
+        base_url: "https://api.stripe.com",
+      },
+    ]);
+    const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
+      url: "https://api.stripe.com/v1/charges",
+      limit: 3,
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      matches: Array<{
+        slug: string;
+        existing_connector_candidates: Array<{
+          connector_slug: string;
+          reuse_recommendation: string;
+        }>;
+      }>;
+    };
+    const stripe = data.matches.find((m) => m.slug === "stripe");
+    const candidates = stripe?.existing_connector_candidates ?? [];
+    const byRec = new Map(candidates.map((c) => [c.connector_slug, c.reuse_recommendation]));
+    expect(byRec.get("rec-exact")).toBe("exact_match_reuse");
+    expect(byRec.get("rec-after-auth-check")).toBe("reuse_after_auth_check");
+    // The host-override row has driver+auth match (host differs from
+    // the URL host), so we expect it to be in the score-2 set with
+    // `reuse_with_host_override`.
+    expect(byRec.get("rec-with-host-override")).toBe("reuse_with_host_override");
+  });
+
+  // W1 (round-2 review): listConnectors' default limit is 100, not
+  // 500 — Math.min(opts.limit ?? 100, 500). Seeding > 100 connectors
+  // with the high-score row at the tail proves the explicit
+  // `limit: 500` reaches deep enough to surface the match.
+  test("returns the high-score match even when the tenant has > 100 connectors", async () => {
+    const toolCtx = await createToolCtx();
+    // Seed 120 filler connectors on the same tenant. They share NO
+    // dimensions with the proposed Stripe shape (different driver,
+    // different host, different auth) so they all score 0 and the
+    // filler doesn't pollute the candidate list.
+    const filler = Array.from({ length: 120 }, (_, i) => ({
+      tenant_id: toolCtx.tenant_id,
+      slug: `filler-${i.toString().padStart(3, "0")}`,
+      display_name: `Filler ${i}`,
+      driver: "postgres",
+      auth_type: "none" as const,
+      base_url: `postgres://filler-${i}.local:5432/db`,
+    }));
+    await toolCtx.db.insert(connectors).values(filler);
+    // The high-score connector is inserted LAST so it's the most
+    // recent (listConnectors orders by created_at desc, then limit
+    // 500). This is the row the W1 fix must still reach.
+    await toolCtx.db.insert(connectors).values({
+      tenant_id: toolCtx.tenant_id,
+      slug: "high-score-stripe",
+      display_name: "High Score Stripe",
+      driver: "http",
+      auth_type: "bearer",
+      base_url: "https://api.stripe.com",
+    });
+    const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
+      url: "https://api.stripe.com/v1/charges",
+      limit: 3,
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      tenant_connectors_truncated?: boolean;
+      matches: Array<{
+        slug: string;
+        existing_connector_candidates: Array<{ connector_slug: string; score: number }>;
+      }>;
+    };
+    // Tenant has 121 connectors, cap is 500, so we are NOT truncated.
+    expect(data.tenant_connectors_truncated).toBeUndefined();
+    const stripe = data.matches.find((m) => m.slug === "stripe");
+    const candidates = stripe?.existing_connector_candidates ?? [];
+    const hit = candidates.find((c) => c.connector_slug === "high-score-stripe");
+    expect(hit).toBeDefined();
+    expect(hit?.score).toBe(3);
+  });
+
   test("does NOT surface connectors from another tenant on the same host", async () => {
     const toolCtx = await createToolCtx();
     // Seed a connector on a FRESH tenant (different actor) — same host
