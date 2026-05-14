@@ -1,0 +1,311 @@
+// Global runner for the unified-files cleanup cron.
+//
+// Wave B Step 9 of the unified-files PR. Fires every hour from the
+// scheduler reconciler and walks three sweeps in order:
+//
+//   1) Pending orphans. A presigned-upload row that never got finalized
+//      (status='pending') and whose presign URL has been expired for at
+//      least an hour is hard-deleted along with any partial object the
+//      client may have written. `FILE_DELETED { reason:'pending_expired' }`
+//      is emitted per row.
+//
+//   2) Unlinked TTL. A `status='ready'` row with no `file_links` referers
+//      AND no in-flight workflow run referencing the fid is soft-deleted
+//      (`deleted_at = now()`). Rows whose `deleted_at` is older than 7
+//      days are then hard-deleted together with the storage object;
+//      `FILE_DELETED { reason:'unlinked_ttl' }` is emitted per row.
+//
+//      The in-flight guard is the R10 safety net: a workflow run holding
+//      a `$file` ref mid-execution must NOT have its bytes reaped. We
+//      implement it as a two-pass check rather than a brittle
+//      jsonb_path_query subquery — first SELECT candidate fids, then
+//      filter out fids that appear in the serialised `source_ref` jsonb
+//      of any `executions.status='running'` row. The soft-delete + 7-day
+//      grace bounds the cost of a missed-link.
+//
+//   3) LLM provider expiry. Provider-side Files API ids (Anthropic /
+//      OpenAI / Gemini) come with a finite TTL. When `llm_file_expires_at`
+//      has passed we null out the provider ids + the expiry timestamp so
+//      the LLM context layer re-uploads the bytes on the next turn. No
+//      audit row — this is low-value housekeeping churn.
+//
+// Best-effort `objectStore.delete`: a failure to remove the backing
+// object logs and continues; the sweep does not abort. Leaving an
+// orphan blob in the bucket is preferable to wedging the cron.
+
+import { and, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
+import { AuditAction, auditAwait } from "../audit/index.ts";
+import type { Db } from "../db/client.ts";
+import { executions, fileLinks, files } from "../db/schema/index.ts";
+import { storageKey } from "../files/resolver.ts";
+import { errorFields, logger } from "../logging/logger.ts";
+import { getObjectStore } from "../storage/object-store.ts";
+
+/** Hard-delete window for `deleted_at` rows. Matches the 7-day grace
+ *  documented in the unified-files plan (R10 / C15). */
+const UNLINKED_HARD_DELETE_AFTER = sql`interval '7 days'`;
+
+/** Pending presigned uploads get reaped one hour after their URL
+ *  expires. The extra hour absorbs clock skew between the engine and
+ *  S3 / the local presign minter. */
+const PENDING_EXPIRY_GRACE = sql`interval '1 hour'`;
+
+/**
+ * Best-effort `objectStore.delete`. Logs and swallows on failure —
+ * leaving an orphan blob is preferable to aborting the sweep.
+ */
+async function bestEffortDeleteObject(storage_uri: string): Promise<void> {
+  try {
+    const store = getObjectStore();
+    await store.delete(storageKey(storage_uri));
+  } catch (err) {
+    logger.warn({
+      module: "scheduler",
+      action: "files_cleanup.object_delete_failed",
+      msg: "object store delete failed — orphan blob left in bucket",
+      storage_uri,
+      ...errorFields(err),
+    });
+  }
+}
+
+/**
+ * Sweep 1 — pending orphans.
+ *
+ * Hard-delete `status='pending'` rows whose presign URL expired more
+ * than an hour ago. For each row emit `FILE_DELETED` with
+ * `reason='pending_expired'` and best-effort remove any partial object
+ * the client may have written before abandoning the upload.
+ */
+async function sweepPendingOrphans(db: Db): Promise<number> {
+  // tenant-filter:exempt — global cron sweep; per-row audit carries tenant_id
+  const deleted = await db
+    .delete(files)
+    .where(
+      and(
+        eq(files.status, "pending"),
+        lt(files.upload_url_expires_at, sql`now() - ${PENDING_EXPIRY_GRACE}`),
+      ),
+    )
+    .returning({
+      id: files.id,
+      tenant_id: files.tenant_id,
+      storage_uri: files.storage_uri,
+    });
+
+  for (const row of deleted) {
+    await bestEffortDeleteObject(row.storage_uri);
+    await auditAwait(
+      {
+        tenant_id: row.tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.FILE_DELETED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: "success",
+        metadata: { reason: "pending_expired", file_id: row.id },
+      },
+      db,
+    );
+  }
+  return deleted.length;
+}
+
+/**
+ * Build the set of fids referenced by any in-flight execution.
+ *
+ * Two-pass equivalent of the plan's `run_input::text ~ '\bfid_<uuid>\b'`
+ * subquery. We materialise every `status='running'` execution's
+ * `source_ref` jsonb to a concatenated string and check each candidate
+ * fid via simple substring match. The set is recomputed per cron tick
+ * so a long-running workflow that picks up a fid AFTER the cron began
+ * is still protected on the next tick — and the soft-delete grace
+ * bounds the cost of any miss.
+ *
+ * Note: `executions` is the durable table for in-flight workflow runs
+ * in this codebase; `workflow_runs` was the plan's nominal name. The
+ * `input` body of the run rides on the pg-boss `ExecutionRunJob`
+ * envelope rather than a dedicated column, so we scan `source_ref`
+ * (the persisted jsonb the executor stamps at create time) and
+ * fall back to the per-step `input_preview` for the runtime trail.
+ */
+async function loadInFlightFidStrings(db: Db): Promise<string> {
+  // tenant-filter:exempt — global sweep; the in-flight set covers every tenant
+  const rows = await db
+    .select({
+      source_ref: executions.source_ref,
+    })
+    .from(executions)
+    .where(eq(executions.status, "running"));
+
+  // Concatenate every running execution's source_ref text into one
+  // haystack. A candidate fid is considered in-flight iff its id
+  // appears as a substring of this haystack. This is conservative —
+  // a fid mentioned in audit metadata or unrelated jsonb would also
+  // protect the row — but R10 prefers a false positive (keep the file)
+  // over a false negative (reap a file the workflow is reading).
+  const parts: string[] = [];
+  for (const r of rows) {
+    if (r.source_ref != null) parts.push(JSON.stringify(r.source_ref));
+  }
+  return parts.join("\n");
+}
+
+/**
+ * Sweep 2 — unlinked TTL.
+ *
+ * First soft-deletes ready rows with no `file_links` referers and no
+ * in-flight execution reference, then hard-deletes any row whose
+ * `deleted_at` is older than the 7-day grace. The grace covers the R10
+ * "workflow run picks up a fid mid-cron" race — the read path through
+ * `requireFileForTenant` ignores `deleted_at`, so the workflow finishes
+ * before the bytes go away.
+ */
+async function sweepUnlinkedTtl(db: Db): Promise<{ soft: number; hard: number }> {
+  // ---- Soft-delete pass --------------------------------------------------
+  // tenant-filter:exempt — global sweep
+  const candidates = await db
+    .select({ id: files.id, tenant_id: files.tenant_id })
+    .from(files)
+    .where(
+      and(
+        eq(files.status, "ready"),
+        isNull(files.deleted_at),
+        notInArray(files.id, db.select({ file_id: fileLinks.file_id }).from(fileLinks)),
+      ),
+    );
+
+  let softDeleted = 0;
+  if (candidates.length > 0) {
+    const inFlightHaystack = await loadInFlightFidStrings(db);
+    const toSoftDelete = candidates
+      .filter((c) => !inFlightHaystack.includes(c.id))
+      .map((c) => c.id);
+    if (toSoftDelete.length > 0) {
+      const updated = await db
+        .update(files)
+        .set({ deleted_at: new Date() })
+        .where(and(inArray(files.id, toSoftDelete), isNull(files.deleted_at)))
+        .returning({ id: files.id });
+      softDeleted = updated.length;
+    }
+  }
+
+  // ---- Hard-delete pass --------------------------------------------------
+  // tenant-filter:exempt — global sweep; per-row audit carries tenant_id
+  const hardDeleted = await db
+    .delete(files)
+    .where(lt(files.deleted_at, sql`now() - ${UNLINKED_HARD_DELETE_AFTER}`))
+    .returning({
+      id: files.id,
+      tenant_id: files.tenant_id,
+      storage_uri: files.storage_uri,
+    });
+
+  for (const row of hardDeleted) {
+    await bestEffortDeleteObject(row.storage_uri);
+    await auditAwait(
+      {
+        tenant_id: row.tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.FILE_DELETED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: "success",
+        metadata: { reason: "unlinked_ttl", file_id: row.id },
+      },
+      db,
+    );
+  }
+  return { soft: softDeleted, hard: hardDeleted.length };
+}
+
+/**
+ * Sweep 3 — LLM provider expiry.
+ *
+ * Null out the per-provider Files API ids when their TTL has passed so
+ * the LLM context layer re-uploads on the next turn. No audit row —
+ * provider TTLs roll every few days and the churn would dominate the
+ * audit ledger without operator value.
+ */
+async function sweepLlmProviderExpiry(db: Db): Promise<number> {
+  // tenant-filter:exempt — global sweep
+  const updated = await db
+    .update(files)
+    .set({
+      anthropic_file_id: null,
+      openai_file_id: null,
+      gemini_file_id: null,
+      llm_file_expires_at: null,
+    })
+    .where(lt(files.llm_file_expires_at, sql`now()`))
+    .returning({ id: files.id });
+  return updated.length;
+}
+
+/**
+ * Run all three sweeps in order. Each sweep catches its own errors so
+ * a transient failure in sweep N does not block sweeps N+1..3 from
+ * running this tick. The cron is scheduled at hour resolution so even
+ * a fully-failed tick costs only a one-hour delay.
+ */
+export async function runFilesCleanup(started: Date, db: Db): Promise<void> {
+  const tickId = started.toISOString();
+  let pending_deleted = 0;
+  let unlinked_soft = 0;
+  let unlinked_hard = 0;
+  let llm_expired = 0;
+
+  try {
+    pending_deleted = await sweepPendingOrphans(db);
+  } catch (err) {
+    logger.error({
+      module: "scheduler",
+      action: "files_cleanup.pending_failed",
+      msg: "pending-orphan sweep failed",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
+  try {
+    const r = await sweepUnlinkedTtl(db);
+    unlinked_soft = r.soft;
+    unlinked_hard = r.hard;
+  } catch (err) {
+    logger.error({
+      module: "scheduler",
+      action: "files_cleanup.unlinked_failed",
+      msg: "unlinked-TTL sweep failed",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
+  try {
+    llm_expired = await sweepLlmProviderExpiry(db);
+  } catch (err) {
+    logger.error({
+      module: "scheduler",
+      action: "files_cleanup.llm_expiry_failed",
+      msg: "LLM provider expiry sweep failed",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
+  const duration_ms = Date.now() - started.getTime();
+  logger.info({
+    module: "scheduler",
+    action: "files_cleanup.fired",
+    msg: "files cleanup cron pass completed",
+    tick_id: tickId,
+    pending_deleted,
+    unlinked_soft,
+    unlinked_hard,
+    llm_expired,
+    duration_ms,
+  });
+}

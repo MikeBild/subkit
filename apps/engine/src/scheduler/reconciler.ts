@@ -28,12 +28,21 @@ import {
 } from "../queue/handlers/ingest-knowledge.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { parseCronExpression, scheduleCron, unscheduleCron } from "./cron.ts";
+import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
 
 /** Fixed cadence for proactive drift scans (per scope decision). One
  *  hour balances early-detection value against the cost of repeated
  *  LLM repair calls when drift signals are emitted. */
 const PROACTIVE_DRIFT_SCAN_CADENCE_MS = 60 * 60 * 1000;
+
+/** Fixed cadence for the unified-files cleanup cron (Wave B Step 9 of
+ *  the unified-files PR). The sweeps are idempotent and bounded by a
+ *  7-day soft-delete grace, so an hour balances reaping latency against
+ *  cron cost. Multi-instance deployments may run the sweep twice per
+ *  cadence on rare clock-overlaps; that's safe — DELETE / UPDATE are
+ *  filtered by `now() - interval ...` so the second instance is a no-op. */
+const FILES_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
 export interface ReconcilerOptions {
   boss: PgBoss;
@@ -266,6 +275,11 @@ export class SchedulerReconciler {
   /** Signatures of currently-installed desired state, keyed by schedule key. */
   private installed: Map<string, string> = new Map();
   private stopped = false;
+  /** Last instant the files-cleanup cron ran. Used as an in-process
+   *  throttle so the 60 s reconciler tick only fires the cleanup once
+   *  per `FILES_CLEANUP_CADENCE_MS`. Multi-instance overlap is safe —
+   *  see the comment on the cadence constant. */
+  private lastFilesCleanupAt: Date | null = null;
 
   constructor(private readonly opts: ReconcilerOptions) {}
 
@@ -347,6 +361,20 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "drift_scan_failed",
         msg: "scheduler proactive drift scan pass failed",
+        ...errorFields(err),
+      });
+    });
+    // Unified-files cleanup cron (Wave B Step 9). Hour-throttled
+    // in-process; multi-instance overlap is safe — see the cadence
+    // constant comment. The runner walks three sweeps (pending
+    // orphans, unlinked TTL, LLM provider expiry); errors inside the
+    // sweeps are caught per-sweep so a failure does not abort the rest
+    // of the reconciler tick.
+    await this.reconcileFilesCleanup().catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "files_cleanup_failed",
+        msg: "scheduler files cleanup pass failed",
         ...errorFields(err),
       });
     });
@@ -673,6 +701,24 @@ export class SchedulerReconciler {
 
       await runProactiveDriftScanForTenant(tenant.id, now, this.opts.db);
     }
+  }
+
+  /**
+   * Throttle the files-cleanup cron to one fire per
+   * `FILES_CLEANUP_CADENCE_MS`. The reconciler ticks every 60 s; without
+   * this guard the cleanup would walk every row on every tick. The
+   * throttle is in-process — multiple engine instances may each run the
+   * sweep within the cadence window, but the sweeps are filtered by
+   * `now() - interval ...` so the second instance is a no-op rather
+   * than a correctness hazard.
+   */
+  async reconcileFilesCleanup(now: Date = new Date()): Promise<void> {
+    if (this.lastFilesCleanupAt !== null) {
+      const elapsed = now.getTime() - this.lastFilesCleanupAt.getTime();
+      if (elapsed < FILES_CLEANUP_CADENCE_MS) return;
+    }
+    this.lastFilesCleanupAt = now;
+    await runFilesCleanup(now, this.opts.db);
   }
 
   private async fireWorkflowSchedule(
