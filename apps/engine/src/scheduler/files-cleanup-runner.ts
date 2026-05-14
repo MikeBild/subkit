@@ -19,9 +19,13 @@
 //      a `$file` ref mid-execution must NOT have its bytes reaped. We
 //      implement it as a two-pass check rather than a brittle
 //      jsonb_path_query subquery — first SELECT candidate fids, then
-//      filter out fids that appear in the serialised `source_ref` jsonb
-//      of any `executions.status='running'` row. The soft-delete + 7-day
-//      grace bounds the cost of a missed-link.
+//      filter out fids that appear in the union of three in-flight
+//      haystacks: `executions.source_ref` (draft + step runs),
+//      `execution_steps.input_preview` joined to running executions
+//      (saved runs' runtime trail), and `pgboss.job.data` for queued
+//      `execution.run` jobs (catches the dispatch-but-not-yet-running
+//      window). The soft-delete + 7-day grace bounds the cost of a
+//      missed-link.
 //
 //   3) LLM provider expiry. Provider-side Files API ids (Anthropic /
 //      OpenAI / Gemini) come with a finite TTL. When `llm_file_expires_at`
@@ -36,9 +40,10 @@
 import { and, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
-import { executions, fileLinks, files } from "../db/schema/index.ts";
+import { executionSteps, executions, fileLinks, files } from "../db/schema/index.ts";
 import { storageKey } from "../files/resolver.ts";
 import { errorFields, logger } from "../logging/logger.ts";
+import { EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
 import { getObjectStore } from "../storage/object-store.ts";
 
 /** Hard-delete window for `deleted_at` rows. Matches the 7-day grace
@@ -116,39 +121,101 @@ async function sweepPendingOrphans(db: Db): Promise<number> {
  * Build the set of fids referenced by any in-flight execution.
  *
  * Two-pass equivalent of the plan's `run_input::text ~ '\bfid_<uuid>\b'`
- * subquery. We materialise every `status='running'` execution's
- * `source_ref` jsonb to a concatenated string and check each candidate
- * fid via simple substring match. The set is recomputed per cron tick
- * so a long-running workflow that picks up a fid AFTER the cron began
- * is still protected on the next tick — and the soft-delete grace
- * bounds the cost of any miss.
+ * subquery. We materialise three sources of in-flight state into one
+ * concatenated haystack, then test each candidate fid via substring
+ * match. The set is recomputed per cron tick so a long-running workflow
+ * that picks up a fid AFTER the cron began is still protected on the
+ * next tick — and the soft-delete grace bounds the cost of any miss.
  *
- * Note: `executions` is the durable table for in-flight workflow runs
- * in this codebase; `workflow_runs` was the plan's nominal name. The
- * `input` body of the run rides on the pg-boss `ExecutionRunJob`
- * envelope rather than a dedicated column, so we scan `source_ref`
- * (the persisted jsonb the executor stamps at create time) and
- * fall back to the per-step `input_preview` for the runtime trail.
+ * The three sources are unioned because saved-workflow runs go down a
+ * different code path than draft / step runs:
+ *
+ *   1. `executions.source_ref` — populated for draft + step runs
+ *      (the inline definition rides on the row). Saved runs set this
+ *      to NULL: their definition lives in `workflow_versions` and the
+ *      run input arrives via the pg-boss envelope. See
+ *      `apps/engine/src/execution/resolve-definition.ts`.
+ *
+ *   2. `execution_steps.input_preview` — the runtime trail for ANY
+ *      in-flight run (saved, draft, step). Each step's resolved input
+ *      is stamped here at dispatch time, so a fid that the workflow
+ *      pulled in via a `$file` placeholder shows up before the bytes
+ *      are read. This is the saved-run safety net for R10.
+ *
+ *   3. `pgboss.job.data` (queue=`execution.run`, state in created /
+ *      active / retry) — catches the queued-but-not-yet-running
+ *      window. The `ExecutionRunJob.input` body lives on the job
+ *      envelope. Without this scan a freshly-enqueued saved run could
+ *      have its fid reaped before the worker even picks the job up.
+ *
+ * Conservative by design: a fid mentioned in audit metadata or
+ * unrelated jsonb would also protect the row, but R10 prefers a false
+ * positive (keep the file) over a false negative (reap a file the
+ * workflow is reading).
  */
 async function loadInFlightFidStrings(db: Db): Promise<string> {
+  const parts: string[] = [];
+
+  // Source 1 — running executions' source_ref (draft + step runs).
   // tenant-filter:exempt — global sweep; the in-flight set covers every tenant
-  const rows = await db
+  const execRows = await db
     .select({
       source_ref: executions.source_ref,
     })
     .from(executions)
     .where(eq(executions.status, "running"));
-
-  // Concatenate every running execution's source_ref text into one
-  // haystack. A candidate fid is considered in-flight iff its id
-  // appears as a substring of this haystack. This is conservative —
-  // a fid mentioned in audit metadata or unrelated jsonb would also
-  // protect the row — but R10 prefers a false positive (keep the file)
-  // over a false negative (reap a file the workflow is reading).
-  const parts: string[] = [];
-  for (const r of rows) {
+  for (const r of execRows) {
     if (r.source_ref != null) parts.push(JSON.stringify(r.source_ref));
   }
+
+  // Source 2 — execution_steps.input_preview for any step whose parent
+  // execution is still running. This is the saved-workflow path:
+  // saved runs leave `source_ref=null` but stamp their resolved input
+  // here as each step dispatches.
+  // tenant-filter:exempt — global sweep
+  const stepRows = await db
+    .select({
+      input_preview: executionSteps.input_preview,
+    })
+    .from(executionSteps)
+    .innerJoin(executions, eq(executions.id, executionSteps.execution_id))
+    .where(eq(executions.status, "running"));
+  for (const r of stepRows) {
+    if (r.input_preview != null) parts.push(JSON.stringify(r.input_preview));
+  }
+
+  // Source 3 — pg-boss job envelope for execution.run jobs that are
+  // queued but not yet running (`created`, `active`, `retry`). The
+  // `pgboss` schema is the pg-boss canonical schema; `job.data` holds
+  // the `ExecutionRunJob` payload (input lives there for saved runs).
+  // Failed jobs (`failed`, `expired`, `cancelled`, `completed`) are
+  // excluded — those file refs are no longer in-flight.
+  try {
+    const jobRows = await db.execute<{ data: string | null }>(sql`
+      SELECT data::text AS data
+      FROM pgboss.job
+      WHERE name = ${EXECUTION_RUN_QUEUE}
+        AND state IN ('created', 'active', 'retry')
+    `);
+    // drizzle's `execute()` return shape varies by driver; normalise.
+    const rows: Array<{ data: string | null }> = Array.isArray(jobRows)
+      ? (jobRows as unknown as Array<{ data: string | null }>)
+      : ((jobRows as unknown as { rows?: Array<{ data: string | null }> }).rows ?? []);
+    for (const r of rows) {
+      if (r.data != null) parts.push(r.data);
+    }
+  } catch (err) {
+    // pg-boss schema may not exist in some test contexts; degrade
+    // gracefully — the executions + execution_steps scans above still
+    // protect the dominant in-flight paths.
+    logger.warn({
+      module: "scheduler",
+      action: "files_cleanup.pgboss_scan_failed",
+      msg: "pg-boss job scan failed — relying on executions + execution_steps for in-flight grace",
+      ...errorFields(err),
+    });
+  }
+
   return parts.join("\n");
 }
 
