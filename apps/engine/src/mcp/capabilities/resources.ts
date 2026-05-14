@@ -1,11 +1,12 @@
-// Connectors, Knowledge Sources, Skill Candidates, and Workflows → MCP
-// resources.
+// Connectors, Knowledge Sources, Skill Candidates, Workflows, and Files
+// → MCP resources.
 //
 // Each domain object becomes a resource at its respective URI:
 //   - `connector://<id>`       — connector metadata (no credentials)
 //   - `knowledge://<id>`       — knowledge source metadata + chunk count
 //   - `skill-candidate://<id>` — proposed skill improvement
 //   - `workflow://<id>`        — committed workflow definition
+//   - `file://<fid>`           — file metadata + content (text or base64)
 //
 // `resources/subscribe` is wired to outbox pub/sub: events for
 // subscribed resources push `notifications/resources/updated`.
@@ -14,8 +15,8 @@
 // and the per-channel forwarders are best-effort: a logger.warn on a
 // failed `sendResourceUpdated` is the only retry. Clients that need
 // strict consistency on a `workflow://<id>` / `connector://<id>` /
-// `knowledge://<id>` resource should poll `readResource` on critical
-// paths.
+// `knowledge://<id>` / `file://<fid>` resource should poll
+// `readResource` on critical paths.
 //
 // Notification payload is empty by MCP spec. `sendResourceUpdated`
 // carries only the URI; the lifecycle event's `type` discriminator
@@ -54,15 +55,20 @@ import {
   SubscribeRequestSchema,
   UnsubscribeRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { and, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as connectorSvc from "../../connectors/service.ts";
 import type { Db } from "../../db/client.ts";
+import { files } from "../../db/schema/index.ts";
+import { isTextLike } from "../../files/content-type.ts";
+import { FileNotFoundError, requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import * as knowledgeSvc from "../../knowledge/service.ts";
 import { logger } from "../../logging/logger.ts";
 import { globalEmitter, type PubSubEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { can } from "../../rbac/evaluator.ts";
 import * as skillCandidateSvc from "../../skill-candidates/service.ts";
+import { getObjectStore } from "../../storage/object-store.ts";
 import * as workflowSvc from "../../workflows/service.ts";
 
 export interface RegisterResourcesParams {
@@ -85,6 +91,9 @@ function skillCandidateUri(id: string): string {
 function workflowUri(id: string): string {
   return `workflow://${id}`;
 }
+function fileUri(id: string): string {
+  return `file://${id}`;
+}
 
 /** Prefix set the subscribe handler accepts. Anything else is dropped at
  *  subscribe time so a misbehaving client can't grow `subscribed` with
@@ -95,6 +104,7 @@ const SUBSCRIBE_URI_PREFIXES: readonly string[] = [
   "knowledge://",
   "skill-candidate://",
   "workflow://",
+  "file://",
 ];
 
 /** Cap per-session subscribed-URI tracking so a malicious or buggy
@@ -225,6 +235,28 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
 
       const scId = payload.skill_candidate_id as string | undefined;
       if (scId) await forwardIfSubscribed({ event, uri: skillCandidateUri(scId) });
+
+      // File finalize / status-change pings — matches `knowledge://` /
+      // `skill-candidate://` shape. The forwarder is gated on
+      // `file:read` so a custom-role principal that subscribed to a
+      // `file://<fid>` it learned out-of-band cannot piggy-back on the
+      // lifecycle event (#178 round-3 W1 parity).
+      const fileId = payload.file_id as string | undefined;
+      if (fileId) {
+        await forwardIfSubscribed({
+          event,
+          uri: fileUri(fileId),
+          rbacCheck: async () => {
+            const decision = await can(db, {
+              tenant_id: principal.tenant_id,
+              principal,
+              permission: "file:read",
+              resource: { type: "file", id: fileId },
+            });
+            return decision.allow;
+          },
+        });
+      }
     },
   );
 
@@ -322,11 +354,87 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       });
     }
 
+    // Files (ready + not soft-deleted, tenant-scoped). Soft-deleted
+    // files are filtered at the SQL layer (R10/C15): once `deleted_at`
+    // is set the cleanup cron will reap the row + bytes, and the
+    // resource must not advertise an id that's about to vanish.
+    // `pending` / `uploading` / `scanning` / `failed` / `expired` rows
+    // are also filtered — `list_resources` is the MCP surface for
+    // *readable* files only.
+    const fileRows = await db
+      .select({
+        id: files.id,
+        filename: files.filename,
+        content_type: files.content_type,
+        size_bytes: files.size_bytes,
+      })
+      .from(files)
+      .where(
+        and(
+          eq(files.tenant_id, principal.tenant_id),
+          eq(files.status, "ready"),
+          isNull(files.deleted_at),
+        ),
+      );
+    for (const f of fileRows) {
+      resources.push({
+        uri: fileUri(f.id),
+        name: f.filename,
+        description: `File (${f.content_type ?? "application/octet-stream"}, ${f.size_bytes} bytes)`,
+        mimeType: f.content_type ?? "application/octet-stream",
+      });
+    }
+
     return { resources };
   });
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const uri = req.params.uri;
+
+    // Files. Streams content from the object store after a tenant-isolated
+    // lookup. `requireFileForTenant` is the single chokepoint (Wave B
+    // tenant-isolation contract) — a cross-tenant fid throws
+    // `FileNotFoundError`, which we surface as `not_found` so existence
+    // of another tenant's file never leaks via timing or error text.
+    //
+    // Text vs blob shape is decided by `isTextLike` against the row's
+    // declared `content_type`; the MCP resource-contents envelope
+    // supports both branches. Unknown / null content types fall through
+    // to the text branch by design (see content-type.ts).
+    if (uri.startsWith("file://")) {
+      const fid = uri.slice("file://".length);
+      let row: Awaited<ReturnType<typeof requireFileForTenant>>;
+      try {
+        row = await requireFileForTenant(db, principal.tenant_id, fid);
+      } catch (err) {
+        if (err instanceof FileNotFoundError) {
+          throw new Error(`file not found: ${fid}`);
+        }
+        throw err;
+      }
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "file:read",
+        resource: { type: "file", id: row.id },
+      });
+      if (!decision.allow) {
+        const err = new Error(decision.reason ?? "permission_denied") as Error & {
+          code?: number;
+        };
+        err.code = -32001;
+        throw err;
+      }
+      const stream = await getObjectStore().openRead(storageKey(row.storage_uri));
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      const buf = Buffer.concat(chunks);
+      const mimeType = row.content_type ?? "application/octet-stream";
+      const body = isTextLike(row.content_type)
+        ? { uri, mimeType, text: buf.toString("utf8") }
+        : { uri, mimeType, blob: buf.toString("base64") };
+      return { contents: [body] };
+    }
 
     // Knowledge Sources
     if (uri.startsWith("knowledge://")) {
