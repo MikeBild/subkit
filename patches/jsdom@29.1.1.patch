@@ -1,3 +1,6 @@
+diff --git a/node_modules/jsdom/.bun-tag-7a50a515acb786c6 b/.bun-tag-7a50a515acb786c6
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/lib/jsdom/living/css/helpers/computed-style.js b/lib/jsdom/living/css/helpers/computed-style.js
 index a8da57febe42d0218e25afe3cd1d775ee7bb13be..40b30da5bd3b1f9ecb8f0c32ec497dfe6df6fcfa 100644
 --- a/lib/jsdom/living/css/helpers/computed-style.js
@@ -443,3 +446,24 @@ index a8da57febe42d0218e25afe3cd1d775ee7bb13be..40b30da5bd3b1f9ecb8f0c32ec497dfe
  let parsedDefaultStyleSheet;
  
  function getComputedStyleDeclaration(elementImpl) {
+diff --git a/lib/jsdom/living/xhr/XMLHttpRequest-impl.js b/lib/jsdom/living/xhr/XMLHttpRequest-impl.js
+index cbf82b19a5ae82ab559cb24c9db3287ec23df791..0000aa411b141085c91d1e88b989b08535f78849 100644
+--- a/lib/jsdom/living/xhr/XMLHttpRequest-impl.js
++++ b/lib/jsdom/living/xhr/XMLHttpRequest-impl.js
+@@ -28,7 +28,15 @@ const { parseJSONFromBytes } = require("../helpers/json");
+ const { asciiCaseInsensitiveMatch } = require("../helpers/strings");
+ const { serializeEntryList } = require("./multipart-form-data");
+ 
+-const syncWorkerFile = require.resolve("./xhr-sync-worker.js");
++// Patched for Bun --compile compatibility (subkit): the upstream
++// `require.resolve(...)` returned the GitHub-Actions runner workspace
++// path baked into the binary at build time, crashing the boot chain
++// because the path doesn't exist on production hosts. The subkit
++// engine only exercises jsdom for static HTML parsing (readability,
++// html-to-markdown, structured-data) and never triggers sync XHR, so
++// we defer resolution and surface a clear failure if the path is ever
++// dereferenced via `new Worker(syncWorkerFile)`.
++const syncWorkerFile = "./xhr-sync-worker.js";
+ 
+ // TODO: simplify after dropping Node.js v20 support
+ function trimUint8Array(arr, newSize) {
