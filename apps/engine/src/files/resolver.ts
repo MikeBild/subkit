@@ -67,7 +67,7 @@ export async function requireFileForTenant(
 
 /** Storage-URI parser: extract the backend key from a `local://`,
  *  `s3://<bucket>/`, or `memory://` URI. */
-function storageKey(storage_uri: string): string {
+export function storageKey(storage_uri: string): string {
   // `memory://<key>` — legacy in-process journey-test fixtures.
   if (storage_uri.startsWith("memory://")) return storage_uri.slice("memory://".length);
   if (storage_uri.startsWith("local://")) {

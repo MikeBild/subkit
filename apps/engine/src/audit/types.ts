@@ -200,6 +200,48 @@ export const AuditAction = {
   CONVERSATION_ATTACHMENT_CREATED: "conversation.attachment_created",
   CONVERSATION_ATTACHMENT_DELETED: "conversation.attachment_deleted",
 
+  // Unified files resource. `FILE_DELETED` is emitted whenever the
+  // engine removes a `files` row (hard delete) — covering the cleanup
+  // cron's pending-orphan sweep (`reason: 'pending_expired'`) and the
+  // unlinked-TTL hard-delete (`reason: 'unlinked_ttl'`) — as well as
+  // any future explicit DELETE surface. The legacy
+  // `CONVERSATION_ATTACHMENT_DELETED` action stays put for the
+  // pre-unification chat path; new file deletions land here.
+  FILE_DELETED: "file.deleted",
+  // `FILE_CREATED` — inline-upload sink (`POST /v1/files/inline`)
+  // persisted a new `files` row. Metadata carries `filename`,
+  // `content_type`, and `size_bytes_bucket` (never raw `size_bytes` —
+  // cardinality). Filename is permitted here only; downstream events
+  // (download, finalize, link) elide it to keep audit volume low.
+  FILE_CREATED: "file.created",
+  // `FILE_BATCH_CREATED` — one row per batch-create request (not per
+  // entry). Metadata records the batch shape (`count`, `dedup_hits`)
+  // so operators can chart presign throughput without joining back to
+  // the per-file `FILE_CREATED` rows that fire on finalize.
+  FILE_BATCH_CREATED: "file.batch_created",
+  // `FILE_FINALIZED` — presigned-upload path completed
+  // (`POST /v1/files/:id/finalize`). Metadata records the
+  // post-finalize status (`ready` / `failed`) and the verified
+  // sha256-match outcome. Paired with `FILE_SCAN_COMPLETED` when the
+  // synchronous scanner ran.
+  FILE_FINALIZED: "file.finalized",
+  // `FILE_DOWNLOADED` — `GET /v1/files/:id/content` served bytes to a
+  // caller. Metadata carries `size_bytes_bucket` and `range` (true /
+  // false) so compliance can chart exfil patterns without per-byte
+  // cardinality.
+  FILE_DOWNLOADED: "file.downloaded",
+  // `FILE_LINK_ADDED` — a polymorphic `file_links` row was attached
+  // pointing the file at an owning resource. Metadata carries
+  // `resource_type` + `resource_id`; the `file_id` is the audit row's
+  // primary resource.
+  FILE_LINK_ADDED: "file.link_added",
+  // `FILE_SCAN_COMPLETED` — the scanner (clamd / Noop) returned a
+  // verdict for an upload. Metadata: `verdict` (clean / infected),
+  // `engine` (scanner identifier), optional `signature`. Audited
+  // separately from `FILE_CREATED` / `FILE_FINALIZED` because a future
+  // async-scan path will decouple the two.
+  FILE_SCAN_COMPLETED: "file.scan_completed",
+
   SK_CLI_LOGIN: "sk_cli.login",
   SK_CLI_LOGOUT: "sk_cli.logout",
   SK_CLI_TENANT_SWITCHED: "sk_cli.tenant_switched",

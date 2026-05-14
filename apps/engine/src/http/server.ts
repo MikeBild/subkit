@@ -42,6 +42,7 @@ import { registerDiagnosticsRoutes } from "./routes/diagnostics/index.ts";
 import { registerDiscoveryRoutes } from "./routes/discovery.ts";
 import { registerEventRoutes } from "./routes/events.ts";
 import { registerExecutionRoutes } from "./routes/executions/index.ts";
+import { registerFileRoutes } from "./routes/files.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerHooksInboundRoutes } from "./routes/hooks-inbound.ts";
 import { registerApiKeyRoutes } from "./routes/identity/api-keys.ts";
@@ -212,6 +213,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerDiscoveryRoutes(app);
   registerConversationRoutes(app);
   registerConversationAttachmentRoutes(app);
+  registerFileRoutes(app);
   registerMcpCatalogRoutes(app);
   registerAiGenerateRoute(app);
   registerAiExtractRoute(app);
