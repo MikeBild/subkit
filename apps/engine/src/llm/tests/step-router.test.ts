@@ -255,4 +255,34 @@ describe("prepareStep — multi-artifact continuation", () => {
     );
     expect(decision?.toolChoice).toBeUndefined();
   });
+
+  // Fix 4: Anthropic API rejects thinking + forced tool_choice. When
+  // the loop has enabled thinking for the turn, the router must NOT
+  // upgrade the nudge into a hard `toolChoice: "required"` — the
+  // systemNudge alone has to do the work.
+  it("does NOT force toolChoice when turnThinkingEnabled is true (Anthropic API constraint)", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [priorStep("save_connector_draft", { source: "harness_auto_persist", ok: true })],
+        signals: { multiArtifactIntent: true, stage: "connector_persisted" },
+        turnThinkingEnabled: true,
+      }),
+    );
+    expect(decision?.toolChoice).toBeUndefined();
+    // The systemNudge should still fire — it's a soft instruction
+    // compatible with thinking.
+    expect(decision?.system).toMatch(/connector AND a workflow/i);
+    expect(decision?.reason).toContain("multi_artifact_continue_nudge_only");
+  });
+
+  it("forces toolChoice when turnThinkingEnabled is false (existing path)", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [priorStep("save_connector_draft", { source: "harness_auto_persist", ok: true })],
+        signals: { multiArtifactIntent: true, stage: "connector_persisted" },
+        turnThinkingEnabled: false,
+      }),
+    );
+    expect(decision?.toolChoice).toBe("required");
+  });
 });

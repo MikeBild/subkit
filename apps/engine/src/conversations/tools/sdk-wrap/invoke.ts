@@ -50,6 +50,7 @@ import type { TurnEvent } from "../../types.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
 import { truncateForLlm } from "../truncate.ts";
+import { buildCapAlternatives } from "./error-recovery-hints.ts";
 import {
   buildPolicyGateCommitIntent,
   confirmationMetadataForTool,
@@ -184,11 +185,12 @@ export function wrapOne(
             tool: inner.name,
             consecutive_failures: signals.consecutiveFailures,
           });
+          const alternatives = buildCapAlternatives(signals.toolLastErrorHash);
           return {
             ok: false,
             data: {
               error_code: "consecutive_failures_cap",
-              message: `${signals.consecutiveFailures} tool calls have failed in a row — stop patching and emit ask_user_choice with concrete options derived from the most recent failure (e.g. "commit anyway", "revert the last patch", "hand-edit the workflow JSON"). The cap resets on the first successful tool call.`,
+              message: `${signals.consecutiveFailures} tool calls have failed in a row — stop patching and emit ask_user_choice with concrete options derived from the most recent failure (e.g. "commit anyway", "revert the last patch", "hand-edit the workflow JSON"). The cap resets on the first successful tool call.${alternatives}`,
               reason: "consecutive_failures_cap",
               consecutive_failures: signals.consecutiveFailures,
               next_best_actions: ["ask_user_choice", "ask_user_text", "inspect_workflow"],
@@ -1045,7 +1047,19 @@ export function wrapOne(
           }
         }
 
-        const truncated = truncateForLlm(resultPayload);
+        // get_raw_result exists to drain a stored `raw_ref` back into the
+        // model's context — its whole purpose is to bypass the truncator.
+        // If we re-run its output through truncateForLlm, the truncator
+        // mints a NEW raw_ref and tells the model "full payload available
+        // via get_raw_result(ref=...)" — and the model follows the
+        // breadcrumb forever (session 0498925e: 10 consecutive calls,
+        // each output growing by 8 chars = the length of the fresh ref).
+        // Skip the truncator for this single tool; if the payload exceeds
+        // context, the model already accepted that cost by asking for it.
+        const skipTruncate = inner.name === "get_raw_result";
+        const truncated = skipTruncate
+          ? ({ truncated: false, data: resultPayload } as const)
+          : truncateForLlm(resultPayload);
         events.push({
           type: "tool_result",
           call_id: toolCallId,
@@ -1176,12 +1190,13 @@ export function wrapOne(
               tool: inner.name,
               consecutive_failures: signals.consecutiveFailures,
             });
+            const capAlternatives = buildCapAlternatives(signals.toolLastErrorHash);
             events.push({
               type: "tool_log",
               call_id: "consecutive-failures",
               tool: inner.name,
               level: "warn",
-              message: `tool.consecutive_failures_cap: ${signals.consecutiveFailures} failed tool calls in a row — emit ask_user_choice / ask_user_text instead of patching further.`,
+              message: `tool.consecutive_failures_cap: ${signals.consecutiveFailures} failed tool calls in a row — emit ask_user_choice / ask_user_text instead of patching further.${capAlternatives}`,
               ts: new Date().toISOString(),
             });
           }

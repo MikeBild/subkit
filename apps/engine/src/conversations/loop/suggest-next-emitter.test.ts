@@ -143,4 +143,38 @@ describe("buildNextSuggestionFrame", () => {
     expect(frame.reason).toBe("budget-pressure");
     expect(modelCalls).toBe(0);
   });
+
+  // Polish B regression: AI SDK 6 emits assistant message content as a
+  // multi-part array `[{ type: "text", text: "..." }, { type: "tool_use", ... }]`.
+  // Before the extractor learned this shape, `content_shape_unrecognized`
+  // fired 16× per session and the offer-parser never saw the visible
+  // prose. The text part must flow through to offer detection.
+  test("multi-part content array flattens text parts so the offer parser sees them", async () => {
+    // The Anthropic multi-part shape isn't in TurnEvent's narrow `content`
+    // type today (it expects `{ text }`). Cast through `unknown` so the
+    // test exercises the extractor's array branch without weakening the
+    // exported types.
+    const multiPartEvents = [
+      { type: "message", role: "user", content: { text: "build a workflow" } },
+      {
+        type: "message",
+        role: "assistant",
+        content: [
+          { type: "text", text: "Connector saved. " },
+          { type: "tool_use", id: "tu_1", name: "save_workflow_draft", input: {} },
+          { type: "text", text: "Want me to commit and push it?" },
+        ],
+      },
+      { type: "completed", status: "active" },
+    ] as unknown as ReadonlyArray<TurnEvent>;
+
+    const frame = await buildNextSuggestionFrame({
+      tenant_id: "t",
+      conversation_id: "c",
+      events: multiPartEvents,
+    });
+    if (frame.type !== "next_suggestion") throw new Error("unreachable");
+    expect(frame.suggestion).toBe("commit and push it");
+    expect(frame.reason).toBe("offer-detected");
+  });
 });

@@ -42,6 +42,7 @@ import {
   type StepRouterSignals,
   supportsExtendedThinking,
 } from "../llm/core/step-router.ts";
+import { resolveThinking } from "../llm/core/thinking-policy.ts";
 import { type CriticArtifact, type CriticVerdict, runCritic } from "../llm/critic/index.ts";
 import { LlmContextTooLarge, LlmQuotaExhausted } from "../llm/errors.ts";
 import { runOutputGuard, runOutputGuardStream } from "../llm/output-guard/index.ts";
@@ -865,6 +866,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       }
       return supportsExtendedThinking(route.provider, modelId);
     })();
+    // Anthropic API rejects thinking + forced tool_choice (observed as
+    // `converse.failed` ×3 in session 0498925e). The decision lives in
+    // `llm/core/thinking-policy.ts` so step-router can read the same
+    // policy when it considers escalating to `toolChoice: "required"`.
+    const turnForcesTool = preferredTool !== undefined;
+    const thinkingDecision = resolveThinking({
+      enableThinking: turnEnableThinking,
+      forcesTool: turnForcesTool,
+    });
+    const thinkingThisTurn = thinkingDecision.enabled;
     logger.debug({
       module: "llm",
       action: "turn.provider_options",
@@ -875,7 +886,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       model: modelId,
       stage: draft.summary?.stage ?? "idle",
       parallel_tools_enabled: turnStageReadOnly,
-      extended_thinking_enabled: turnEnableThinking,
+      extended_thinking_enabled: thinkingThisTurn,
+      thinking_suppressed_by_forced_tool: thinkingDecision.suppressedByForcedTool,
       cache_supported: cacheSupported,
     });
     const result = streamText({
@@ -898,7 +910,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             providerOptions: {
               anthropic: {
                 disableParallelToolUse: !turnStageReadOnly,
-                ...(turnEnableThinking
+                ...(thinkingThisTurn
                   ? // claude-sonnet-4-5+/opus-4-6+ rejected the legacy
                     // `{ type: "enabled", budgetTokens }` shape
                     // ("thinking.type.enabled is not supported for this
@@ -968,6 +980,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           provider: route.provider,
           toolsByName,
           signals: stepRouterSignals,
+          turnThinkingEnabled: thinkingThisTurn,
         });
         if (!decision) return {};
         const result: Record<string, unknown> = {};

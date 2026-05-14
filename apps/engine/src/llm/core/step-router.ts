@@ -13,6 +13,7 @@ import type { ConversationTool } from "../../conversations/tools/index.ts";
 import type { AuthoringStage } from "../../conversations/types.ts";
 import { logger } from "../../logging/logger.ts";
 import type { LlmProviderKind } from "../types.ts";
+import { resolveThinking } from "./thinking-policy.ts";
 
 // One-shot warning per provider — keeps logs clean when a tenant is
 // pinned to a provider whose ladder has no upgrade for the configured
@@ -57,6 +58,16 @@ export interface StepRouterParams {
   /** Available tools, keyed by name. Used for activeTools narrowing. */
   toolsByName: Record<string, ConversationTool>;
   signals: StepRouterSignals;
+  /**
+   * True when the loop has enabled `providerOptions.anthropic.thinking`
+   * for this entire turn. Anthropic rejects `tool_choice: { type: "tool" }`
+   * and `tool_choice: "any"`/`"required"` with thinking enabled, so this
+   * router must NOT set `toolChoice: "required"` when this is true —
+   * even if it would otherwise (multi-artifact continuation). Surfaces
+   * the constraint that `loop.ts` already enforces at the call-site for
+   * the `preferredTool` path.
+   */
+  turnThinkingEnabled?: boolean;
 }
 
 /**
@@ -354,10 +365,24 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
   let toolChoice: StepDecision["toolChoice"];
   let systemNudge: string | undefined;
   if (signals.multiArtifactIntent === true && priorStepWasSuccessfulConnectorAutoPersist(params)) {
-    toolChoice = "required";
+    // Anthropic API rejects thinking + forced tool_choice; the policy
+    // helper is the single source of truth shared with `loop.ts`. When
+    // thinking is on for the turn, the systemNudge alone has to carry
+    // the constraint — the force becomes a soft instruction.
+    const thinking = resolveThinking({
+      enableThinking: params.turnThinkingEnabled === true,
+      forcesTool: true, // about to consider forcing one
+    });
+    if (!thinking.suppressedByForcedTool) {
+      toolChoice = "required";
+    }
     systemNudge =
       "The user asked for both a connector AND a workflow in their most recent message. The connector is now saved. Continue with the workflow now — call the next authoring tool (start_workflow_from_goal or build_workflow). Do NOT end the turn with a `now let's …` closing sentence; the user already approved the multi-artifact intent.";
-    reasonParts.push("multi_artifact_continue");
+    reasonParts.push(
+      thinking.suppressedByForcedTool
+        ? "multi_artifact_continue_nudge_only"
+        : "multi_artifact_continue",
+    );
   }
 
   if (

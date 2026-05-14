@@ -62,6 +62,44 @@ unavailable in the current state — every error tells you what to do next.
 If the user has named a vendor, run `suggest_connector_templates` and offer
 the top match as an accelerator. Templates are an offer, never a requirement.
 
+## URL-first authoring — call `match_connector_template_by_url` before creating
+
+When the user pastes a concrete URL (Atlassian wiki link, Stripe charge URL,
+GitHub repo link…), run `match_connector_template_by_url({ url })` FIRST. The
+tool now returns three signals you must read before proposing a draft:
+
+- `matches[]` — the top-N template candidates ranked by URL pattern. Same
+  shape as `suggest_connector_templates`.
+- `resolved_resource` — when present, the resource embedded in the URL is
+  already decoded for you. Atlassian Cloud examples:
+  - `{ kind: "confluence_tinyui", short: "y4ozBQ", page_id: 87263947 }` →
+    use `page_id` (not the short) when building the page-fetch request.
+  - `{ kind: "confluence_page", page_id: 83907824 }` → direct page URL.
+  - `{ kind: "jira_issue", key: "EMOB-22926" }` → drop the key into the
+    Jira request path.
+  Decoding the resource id at match time saves 3+ probe round-trips —
+  do NOT call the API to discover an id the matcher already gave you.
+- `matches[].existing_connector_candidates[]` — saved connectors on the
+  tenant that already serve this URL host. Each candidate carries:
+  - `score` (1-3) and `matched_dimensions` (any subset of `driver`,
+    `base_url_host`, `auth_type`).
+  - `reuse_recommendation`:
+    - `"exact_match_reuse"` (score 3) — propose using this connector
+      unchanged. Do NOT create a new draft.
+    - `"reuse_with_host_override"` (score 2, auth matches) — propose
+      adjusting the existing connector's base URL OR forking it. Confirm
+      with the user before either.
+    - `"reuse_after_auth_check"` (score 2, auth differs) — auth shape
+      differs; surface the conflict to the user before drafting.
+
+Order of operations after a URL paste:
+
+1. `match_connector_template_by_url({ url })` — read all three signals above.
+2. If `existing_connector_candidates[0].reuse_recommendation === "exact_match_reuse"`,
+   skip directly to `build_workflow` against the existing connector.
+3. Otherwise, follow the happy path below — but pass `resolved_resource` (when
+   present) into the first request step so the dry-run hits the real resource.
+
 ## Happy path
 
 For bearer / header / query / basic / aws_sigv4 (the common case):

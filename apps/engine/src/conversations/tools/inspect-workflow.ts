@@ -13,6 +13,7 @@
 // next patch is authored against the real shape, not an imagined one.
 
 import { z } from "@hono/zod-openapi";
+import { deriveOutputBehavior } from "../../workflows/output-behavior.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -103,6 +104,15 @@ export const inspectWorkflowTool: ConversationTool = {
             break;
           case "output_transform":
             result.output_transform = wf.output_transform ?? null;
+            // Derived hint so the LLM doesn't infer the public-output
+            // contract from the absence of `output_transform`. See
+            // `apps/engine/src/workflows/output-behavior.ts` for the
+            // mapping to the engine's evaluation branches (single
+            // source of truth so CLI preview + diagnose_latest_execution
+            // can reuse it). Stops the misdiagnosis from session
+            // 0498925e: "workflow doesn't define an output_transform,
+            // so output is null."
+            result.output_behavior = deriveOutputBehavior(wf);
             break;
           case "payload": {
             // Prefer the schema sample (declared canonical input).
