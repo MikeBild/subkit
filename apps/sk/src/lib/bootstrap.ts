@@ -25,13 +25,11 @@ import type { EngineClient } from "../engine-client.ts";
 import { type ResolvedPersonaSnapshot, resolvePersonaShared } from "../persona-probe.ts";
 import type { PersonaProbe } from "../slash.ts";
 
-/** R8-S2: persisted-snapshot schema version. Bump on any
- *  field-shape change; readers reject mismatched versions.
- *  H1 of #159 follow-up — bumped to 2 when `prefs` was added. */
-// S6 of PR #161 review (round 5): bumped 2 → 3 with the addition of
-// `prefs.portalTokenTtlMin`. Older caches lack the field; `.strict()`
-// rejects them on read so the next bootstrap re-fetches with the new
-// shape.
+/** Persisted-snapshot schema version. Bump on any field-shape
+ *  change; readers reject mismatched versions. Current version
+ *  reflects `prefs.portalTokenTtlMin` being part of the wire shape;
+ *  older caches lack the field and `.strict()` rejects them on read
+ *  so the next bootstrap re-fetches with the new shape. */
 export const PERSISTED_SNAPSHOT_VERSION = 3 as const;
 
 /** R8-S1: derive a stable, sha256-fingerprinted cache key from a
@@ -103,7 +101,7 @@ export interface SkBootstrapSnapshot {
    *  compile. R4-W1. */
   flags: SkBootstrapFlags;
   /** REPL + UI + notification preferences resolved by the engine for
-   *  this principal. H1 of #159 follow-up. */
+   *  this principal. */
   prefs: SkBootstrapWireResponse["prefs"];
   /** Wall-clock time the snapshot was produced (ms since epoch). */
   fetchedAt: number;
@@ -160,13 +158,9 @@ const PersistedSnapshotSchema = z
     // is the migration boundary; the wire schema is the source of
     // truth for the new shape.
     flags: z.record(z.string(), z.boolean()),
-    // H1 of #159 follow-up — `prefs` carries REPL + UI + notification
-    // settings resolved by the engine.
-    //
-    // S4 of PR #161 review round 2: switched from `.passthrough()` to
-    // `.strict()`. The earlier laxness was justified as "future engine
-    // field shouldn't fail older CLIs", but the surrounding contract
-    // already pins shape via `PERSISTED_SNAPSHOT_VERSION` — a new
+    // `prefs` carries REPL + UI + notification settings resolved by
+    // the engine. Schema is `.strict()`: the surrounding contract
+    // pins shape via `PERSISTED_SNAPSHOT_VERSION`, so a new
     // engine-side prefs field requires a version bump anyway, and
     // strict rejection on the cache reader is the same fail-closed
     // posture every other persisted-shape leaf has. Allowing unknown

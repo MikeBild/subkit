@@ -47,8 +47,7 @@ export interface EmitSuggestNextFrameParams {
    * Production loop.ts does NOT pass this today — Skill records carry
    * slugs but no `verbs[]` field, so resolving an offered action to a
    * slash invocation isn't possible yet. Unit tests use this seam
-   * directly to validate the offer-skill code path. See the
-   * `TODO(suggest-next-skill-verbs)` comment in `loop.ts`.
+   * directly to validate the offer-skill code path.
    */
   loaded_skills?: ReadonlyArray<LoadedSkillHint>;
   /** Optional override for the model invoker (used by integration tests). */

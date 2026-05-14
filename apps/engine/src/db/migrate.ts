@@ -8,7 +8,7 @@
 // bodies as inline string literals; there is no runtime disk read for
 // migrations, no separate `migrate` container, and no way for a
 // parallel migrator to apply a different lineage onto the same
-// database. This is the structural fix for issue #149.
+// database.
 //
 // Why a custom runner instead of drizzle-orm's `migrate()`?
 // ---------------------------------------------------------

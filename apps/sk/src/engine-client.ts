@@ -84,10 +84,10 @@ function synthesizeRecoveredOutcome(detail: ConversationDetail): ConversationRun
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 /**
- * S7 of PR #161 review (round 4): Zod schema for the fork-from-message
- * response so a server that breaks the shape (or a future engine that
- * adds an unknown field interpreted by the wrong path) is rejected at
- * the CLI boundary instead of smuggled through as TS-shape-only.
+ * Zod schema for the fork-from-message response so a server that
+ * breaks the shape (or a future engine that adds an unknown field
+ * interpreted by the wrong path) is rejected at the CLI boundary
+ * instead of smuggled through as TS-shape-only.
  *
  * `conversation` is parsed loosely (the engine returns the full
  * ConversationSummary; we don't re-derive that schema here, that's
@@ -584,9 +584,9 @@ export class EngineClient {
   // --------------------------- Version diagnostics ---------------------------
   /**
    * Engine version + update + schema-drift posture. Backed by
-   * `/v1/diagnostics/version`, which requires `audit:read`. Issue #151
-   * P0-1 moved these fields off the public `/v1/health` so the engine
-   * stops leaking operational posture to unauthenticated callers.
+   * `/v1/diagnostics/version`, which requires `audit:read`. The
+   * public `/v1/health` deliberately omits these fields so the engine
+   * does not leak operational posture to unauthenticated callers.
    */
   diagnosticsVersion(): Promise<{
     engine_version: string;
@@ -986,13 +986,10 @@ export class EngineClient {
   /**
    * Fork a conversation at a specific message id. Creates a new
    * conversation copying messages up to and including the anchor.
-   * G10 closure of #159 M10.
    *
-   * S7 of PR #161 review (round 4): the response is parsed through a
-   * Zod schema rather than trusted by TS shape alone. The other
-   * engine-client methods will be migrated incrementally; the fork
-   * route is the first one introduced post-`SkBootstrapPrefsSchema`
-   * and matches that direction.
+   * The response is parsed through a Zod schema rather than trusted
+   * by TS shape alone, matching the schema-validation direction the
+   * rest of the engine-client surface is moving toward.
    */
   async forkConversationFromMessage(
     id: string,

@@ -70,13 +70,13 @@ import {
   type WrappedToolOutput,
 } from "./state.ts";
 
-// issue #165 / regression in v4.6.0: the `inputExamples` SDK channel
-// was emitted from this helper alongside the tool's `<example>`
-// description block. AI SDK 6 / Anthropic now strict-validates each
-// example against the projected JSON Schema, and the projection
-// reflexively seals every object with `additionalProperties: false`
-// (including `z.record(...)` values, which legitimately accept any
-// string key). That mismatch breaks every conversation turn with
+// The `inputExamples` SDK channel was emitted from this helper
+// alongside the tool's `<example>` description block. AI SDK 6 /
+// Anthropic now strict-validates each example against the projected
+// JSON Schema, and the projection reflexively seals every object with
+// `additionalProperties: false` (including `z.record(...)` values,
+// which legitimately accept any string key). That mismatch breaks
+// every conversation turn with
 // `tools.N.custom: Example at index 0 is invalid: False schema does
 // not allow <value>`. The model already reads the same example from
 // the `<example>` block compileDescription appends to the description,
@@ -117,7 +117,7 @@ export function wrapOne(
   return tool<Record<string, unknown>, WrappedToolOutput>({
     description: compileDescription(inner),
     inputSchema,
-    // issue #165: opt-in provider-native strict mode + inputExamples.
+    // Opt-in provider-native strict mode + inputExamples.
     ...(inner.strict ? { strict: true as const } : {}),
     // toInputExamples is intentionally a no-op since v4.6.0 — see the
     // helper's header for the AI SDK 6 / Anthropic strict-validation

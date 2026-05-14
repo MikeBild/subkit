@@ -217,15 +217,14 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "identity:read",
   },
   {
-    // S3 of PR #161 review round 2: `/install` is a single alias of
-    // `/onboard`, not a second entry. Two registry rows pointing at the
-    // same handler showed up twice in `/help`, doubled the audit
-    // surface for static inventory tools, and made it possible for
-    // future drift (different `requires`, different category) to slip
-    // in unnoticed. The handler still exposes both `case "install":`
-    // and `case "onboard":` because the dispatcher passes the typed
-    // name through — aliases resolve to the same `command`, but the
-    // raw user-typed string is what reaches the switch.
+    // `/install` is a single alias of `/onboard`, not a second entry.
+    // Two registry rows pointing at the same handler would show up
+    // twice in `/help`, double the audit surface for static inventory
+    // tools, and let future drift (different `requires`, different
+    // category) slip in unnoticed. The handler still exposes both
+    // `case "install":` and `case "onboard":` because the dispatcher
+    // passes the typed name through — aliases resolve to the same
+    // `command`, but the raw user-typed string reaches the switch.
     name: "onboard",
     aliases: ["install"],
     help: "Launch an interactive onboarding wizard — pick a template, enter credentials, probe, save",
@@ -391,11 +390,9 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     routing: "local",
   },
   {
-    // W5 of PR #161 review (round 5): the handler today returns the
-    // GitHub issues URL — log-bundle dispatch is a future feature.
-    // Help string mirrors observed behavior so /help and the slash
-    // don't drift; updating one without the other is the kind of
-    // thing reviewers stop trusting.
+    // The handler returns the GitHub issues URL — log-bundle dispatch
+    // is a future feature. Help string mirrors observed behavior so
+    // /help and the slash don't drift.
     name: "feedback",
     aliases: ["bug"],
     help: "Open the subkit GitHub issues URL for filing a bug or feature request",
@@ -441,16 +438,15 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "util",
     routing: "local",
   },
-  // M9 of #159 — universal chat-REPL muscle-memory slashes.
+  // Universal chat-REPL muscle-memory slashes.
   {
-    // W1 of PR #161 review (round 4): the in-memory transcript happy
-    // path is local, but S5 of round 2 added a fallback that calls
-    // `client.getConversation` when the local cache is empty
+    // The in-memory transcript happy path is local, but a fallback
+    // calls `client.getConversation` when the local cache is empty
     // (resumed session, paged history, REPL booted into an existing
     // conversation). That request fails 403 for any principal lacking
     // `conversation:read`. Declaring the perm here filters /copy out
-    // of /help for read-denied personas instead of letting them hit a
-    // cryptic engine error mid-keystroke.
+    // of /help for read-denied personas instead of letting them hit
+    // a cryptic engine error mid-keystroke.
     name: "copy",
     help: "Copy the last assistant message (markdown) to the clipboard",
     category: "util",
@@ -488,9 +484,8 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "util",
     routing: "local",
   },
-  // M12 of #159 — mobile / portal connect via QR code.
-  // W1 of PR #161 review (round 2): the engine route at
-  // POST /v1/identity/portal-tokens requires `portal_token:write`,
+  // Mobile / portal connect via QR code. The engine route
+  // `POST /v1/identity/portal-tokens` requires `portal_token:write`,
   // not `:read`. Declaring the slash with `:read` would let it
   // appear in /help for read-only operators who would then hit a
   // 403 from the server.
@@ -539,13 +534,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "admin",
     requires: "discovery:read",
   },
-  // M13/G11 + H4 of #159: per-service install-* slashes were collapsed
-  // into a single `/install` slash that opens the existing onboarding
-  // wizard (template picker → credential prompt → probe → save). S3
-  // of PR #161 review round 2 collapsed the second registry row into
-  // an `aliases: ["install"]` entry on `/onboard` above, so this spot
-  // is now intentionally empty. Removed-slash guidance for the old
-  // per-service `install-*` names still lives in
+  // Per-service `install-*` slashes were collapsed into a single
+  // `/install` slash that opens the existing onboarding wizard
+  // (template picker → credential prompt → probe → save). The
+  // alias lives on `/onboard` above as `aliases: ["install"]`, so
+  // this spot is intentionally empty. Removed-slash guidance for the
+  // old per-service `install-*` names lives in
   // `dispatcher.ts:REMOVED_SLASH_GUIDANCE`.
   // admin list commands
   {

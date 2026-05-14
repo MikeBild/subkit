@@ -41,9 +41,8 @@ export interface RespondElicitationParams {
    */
   onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
   /** Pre-registered AbortController — see RunLoopParams.turn_abort_ctrl.
-   *  Required as of #148: the HTTP route handler / MCP tool path
-   *  registers on the synchronous frame of request-accept and threads
-   *  through. */
+   *  Required: the HTTP route handler / MCP tool path registers on
+   *  the synchronous frame of request-accept and threads through. */
   turn_abort_ctrl: AbortController;
 }
 

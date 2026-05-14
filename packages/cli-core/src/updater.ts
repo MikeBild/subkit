@@ -1,10 +1,10 @@
 // Self-update module for `sk` and `engine` binaries.
 // Downloads new versions from GitHub Releases, verifies a signed
-// `SHA256SUMS` (Ed25519 over the file body — issue #151 P0-3) and the
-// per-binary SHA256, then atomically replaces the running binary in
-// place. Retains the prior signed binary under
-// `<cacheDir>/versions/<version>/<binaryName>` so a bad release can be
-// reverted via `rollbackTo()` without internet access (issue #151 P0-4).
+// `SHA256SUMS` (Ed25519 over the file body) and the per-binary
+// SHA256, then atomically replaces the running binary in place.
+// Retains the prior signed binary under
+// `<cacheDir>/versions/<version>/<binaryName>` so a bad release can
+// be reverted via `rollbackTo()` without internet access.
 
 import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
 import {
@@ -61,7 +61,7 @@ export interface UpdateCache {
 }
 
 /** Returned by `performUpdate()` so the engine-side audit recorder
- *  has the metadata it needs (#151 P0-2). */
+ *  has the metadata it needs. */
 export interface PerformUpdateResult {
   from_version: string;
   to_version: string;
@@ -202,10 +202,10 @@ export async function checkForUpdate(
 
 /**
  * Verify an Ed25519 signature over `message` using `publicKeyPem` (PEM
- * SPKI). Returns `true` only on a valid signature. Issue #151 P0-3:
- * the only piece of crypto we need at the cli-core layer is "did this
- * `SHA256SUMS` come from the project key?" — we don't sign or generate
- * keys here, so the surface stays tiny.
+ * SPKI). Returns `true` only on a valid signature. The cli-core layer
+ * only needs to answer "did this `SHA256SUMS` come from the project
+ * key?" — no signing or key generation here, so the surface stays
+ * tiny.
  */
 export function verifySignature(
   message: string | Buffer,
@@ -419,9 +419,7 @@ export async function performUpdate(
   }
   const sigAsset = info.assets.find((a) => a.name === "SHA256SUMS.sig");
   if (!sigAsset) {
-    throw new Error(
-      "no SHA256SUMS.sig file found in release — refusing to install (issue #151 P0-3)",
-    );
+    throw new Error("no SHA256SUMS.sig file found in release — refusing to install");
   }
 
   const sumsRes = await fetchImpl(sumsAsset.url);
@@ -434,9 +432,7 @@ export async function performUpdate(
 
   const publicKeyPem = config.publicKey ?? RELEASE_PUBLIC_KEY;
   if (!verifySignature(sumsText, sigBuf, publicKeyPem)) {
-    throw new Error(
-      "signature verification failed for SHA256SUMS — refusing to install (issue #151 P0-3)",
-    );
+    throw new Error("signature verification failed for SHA256SUMS — refusing to install");
   }
 
   const expectedHash = parseChecksum(sumsText, assetName);
@@ -497,9 +493,9 @@ export async function performUpdate(
       chmodSync(tmpPath, 0o755);
     }
 
-    // macOS ad-hoc codesign. Failures are surfaced — the previous
-    // try/catch swallow could mask permission / spctl issues that the
-    // operator needs to know about. Issue #151 P0-3.
+    // macOS ad-hoc codesign. Failures are surfaced — a swallowed
+    // try/catch would mask permission / spctl issues the operator
+    // needs to know about.
     if (process.platform === "darwin") {
       const { execSync } = await import("node:child_process");
       try {
@@ -521,8 +517,8 @@ export async function performUpdate(
     }
 
     // Park the running binary in the retention dir BEFORE the swap so
-    // a crash mid-rename leaves us with either the new binary in place
-    // or a recoverable copy of the old one. Issue #151 P0-4.
+    // a crash mid-rename leaves us with either the new binary in
+    // place or a recoverable copy of the old one.
     retainCurrentBinary(config, fromVersion, execPath);
 
     // Atomic-ish replace. The retention dir is the canonical source of

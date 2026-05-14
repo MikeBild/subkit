@@ -4,8 +4,6 @@
 // transform can leak data via `response_filters` decisions or transform
 // output. Does NOT create an `executions` row but DOES audit-log under
 // EXECUTION_COMPLETED so the trail is consistent with full runs.
-//
-// Phase 4 of the 2026-05 architecture audit (issue #92).
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";

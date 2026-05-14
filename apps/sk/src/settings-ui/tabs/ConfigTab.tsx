@@ -23,12 +23,11 @@ import { resolveAction } from "../keybindings/useKeybinding.ts";
 import { labelForPath, sectionLabel } from "../lib/config-labels.ts";
 import type { FormField } from "../lib/zod-to-form-fields.ts";
 
-// G5 closure of #159 M11 / S2 of PR #161 review (round 6) — single
-// registry mapping a setting path to the Ink picker component that
-// renders it. Adding a row here is the *only* hook needed to surface
-// a value picker; the picker writes via the same setSetting path the
-// FieldEditor uses. Earlier code carried the path list in
-// `PICKER_PATHS` plus a parallel switch statement; drift between the
+// Single registry mapping a setting path to the Ink picker component
+// that renders it. Adding a row here is the *only* hook needed to
+// surface a value picker; the picker writes via the same setSetting
+// path the FieldEditor uses. A separate `PICKER_PATHS` list plus a
+// parallel switch statement would drift between the
 // two was a future-bug waiting to happen.
 type PickerProps = {
   initial: string;

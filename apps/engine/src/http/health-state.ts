@@ -12,8 +12,7 @@ export interface EngineHealthState {
    * whose hash isn't in this binary's embedded set — i.e. the schema
    * state was set by a different engine lineage. Surfaced in
    * `/v1/diagnostics/version` (gated by `audit:read`) so operators see
-   * the alarm without leaking it to unauthenticated callers
-   * (issue #149; relocated off public `/v1/health` in #151 P0-1).
+   * the alarm without leaking it to unauthenticated callers.
    */
   schema_drift: boolean;
 }

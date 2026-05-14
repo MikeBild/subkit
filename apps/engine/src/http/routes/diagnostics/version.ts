@@ -2,13 +2,14 @@
 //
 //   GET /v1/diagnostics/version
 //
-// Issue #151 P0-1. Replaces the operational fields that used to ship on
-// the public `/v1/health` and gave any internet caller a recon vector
-// (which engine version, is it stale, is the schema drifted). Mirrors
-// the layering of `diagnostics/drift.ts`: `audit:read` permission via
-// the path-scoped middleware in `diagnostics/index.ts`, an
-// `auditAwait`-bound row before the response goes out, and a Zod
-// response shape registered as a named OpenAPI component.
+// The operational fields (engine version, latest available release,
+// schema-drift posture) live here behind `audit:read` instead of on
+// the public `/v1/health`, so an unauthenticated caller cannot
+// fingerprint the engine. Mirrors the layering of
+// `diagnostics/drift.ts`: `audit:read` permission via the path-scoped
+// middleware in `diagnostics/index.ts`, an `auditAwait`-bound row
+// before the response goes out, and a Zod response shape registered
+// as a named OpenAPI component.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";

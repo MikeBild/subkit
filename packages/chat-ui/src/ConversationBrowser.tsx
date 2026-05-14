@@ -24,12 +24,11 @@ export interface AssistantTurnRef {
   message_id: string;
   excerpt: string;
   /**
-   * S2 of PR #161 review (round 5): nullable so the host can encode
-   * "engine-side timestamp not propagated yet" explicitly rather
-   * than smuggling that meaning through the empty string. The renderer
-   * still falls back to an em-dash for both `null` and `""`, so
-   * existing call sites that pass `""` keep working — but new call
-   * sites should prefer `null` for "missing".
+   * Nullable so the host can encode "engine-side timestamp not
+   * propagated yet" explicitly rather than smuggling that meaning
+   * through the empty string. The renderer falls back to an em-dash
+   * for both `null` and `""`; new call sites should prefer `null`
+   * for "missing".
    */
   created_at: string | null;
 }
@@ -41,9 +40,9 @@ export interface ConversationBrowserProps {
   title?: string;
   inputDisabled?: boolean;
   /**
-   * G10 closure of #159 M10 — when supplied, the rewind sub-mode shows
-   * a real assistant-turn timeline and lets the operator fork a new
-   * conversation from any prior turn.
+   * When supplied, the rewind sub-mode shows a real assistant-turn
+   * timeline and lets the operator fork a new conversation from any
+   * prior turn.
    */
   currentTurns?: readonly AssistantTurnRef[];
   onForkFromTurn?: (message_id: string) => void;
@@ -93,10 +92,10 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
   const theme = useTheme();
   const [focused, setFocused] = useState(0);
   const [filter, setFilter] = useState("");
-  // M10 + G10 of #159 — `t` toggles between the session-list view and
-  // the current-session turn-timeline. When `currentTurns` is provided,
-  // the timeline lists each assistant turn; selecting one calls
-  // `onForkFromTurn` which posts to the engine fork-from-message route.
+  // `t` toggles between the session-list view and the current-session
+  // turn-timeline. When `currentTurns` is provided, the timeline
+  // lists each assistant turn; selecting one calls `onForkFromTurn`
+  // which posts to the engine fork-from-message route.
   const [view, setView] = useState<"list" | "turns">("list");
   const [turnIdx, setTurnIdx] = useState(0);
 
@@ -200,12 +199,11 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
                     </Text>
                   </Box>
                   <Box marginLeft={2}>
-                    {/* W4 of PR #161 review round 2: empty `created_at`
-                        renders as `—` rather than fabricating a
-                        relative time. The CLI doesn't currently
-                        propagate the engine-side timestamp through
-                        MessageState; until it does, falsified
-                        "moments ago" labels are worse than honest dashes. */}
+                    {/* Empty `created_at` renders as `—` rather than
+                        fabricating a relative time. The CLI doesn't
+                        currently propagate the engine-side timestamp
+                        through MessageState; falsified "moments ago"
+                        labels would be worse than honest dashes. */}
                     <Text color={theme.severity.dim}>
                       {turn.created_at ? formatRelativeTime(turn.created_at) : "—"}
                     </Text>

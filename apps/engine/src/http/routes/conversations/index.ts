@@ -22,7 +22,6 @@
 //   GET    /v1/conversations/:id/stream                    — SSE replay of the latest run
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { replayEvents } from "../../../conversations/index.ts";
 import { requireAnyPermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerCollectionRoutes } from "./collection.ts";
@@ -78,9 +77,9 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/conversations/:id/cancel", async (c, next) => {
     return requireAnyPermission(["conversation:cancel", "workflow:write"])(c, next);
   });
-  // C1 of PR #161 review — fork-from-message inserts a new conversation
-  // row plus copies of N message rows. State-mutating writes require the
-  // same `conversation:write` / `workflow:write` gate as compact /
+  // Fork-from-message inserts a new conversation row plus copies of N
+  // message rows. State-mutating writes require the same
+  // `conversation:write` / `workflow:write` gate as compact /
   // messages. Without this middleware Hono 4.12's `app.use("/:id", …)`
   // does not cover sub-paths and the route was reachable by any
   // authenticated principal.
@@ -115,7 +114,4 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   registerToolPoliciesRoutes(app);
   registerStreamRoutes(app);
   registerSuggestNextFeedbackRoute(app);
-
-  // Touch the helper so the biome unused-import pass does not reject.
-  void replayEvents;
 }

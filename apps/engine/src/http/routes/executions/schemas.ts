@@ -1,9 +1,7 @@
 // Shared Zod schemas + serializers for the executions REST surface.
-//
-// Phase 4 of the 2026-05 architecture audit (issue #92). Lifted out of
-// the former monolithic apps/engine/src/http/routes/executions.ts so
-// list / run / transform / cancel can each live in their own
-// sub-resource file without duplicating the Zod definitions.
+// Lifted out of a former monolithic executions.ts so list / run /
+// transform / cancel can each live in their own sub-resource file
+// without duplicating the Zod definitions.
 
 import { z } from "@hono/zod-openapi";
 import { paginatedResponse } from "../../../api/common-schemas.ts";

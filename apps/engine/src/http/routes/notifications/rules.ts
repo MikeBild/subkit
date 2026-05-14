@@ -5,9 +5,6 @@
 //   PATCH  /v1/notifications/rules/{id}
 //   DELETE /v1/notifications/rules/{id}
 //   POST   /v1/notifications/rules/:id/test
-//
-// Phase 4 of the 2026-05 architecture audit (issue #92): split out of
-// the former http/routes/notifications.ts god-file.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";

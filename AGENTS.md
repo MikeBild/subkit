@@ -209,6 +209,11 @@ Directory-local overrides:
 - **Inline comments explain WHY, not WHAT.** Remove any comment that restates what the
   function or variable name already says. Keep only non-obvious constraints, workarounds
   for specific bugs, and subtle invariants. One line max; no multi-line docblocks.
+- **No ticket coupling in comments or docs.** Inline comments, `TODO`s, and docs must not
+  reference PR numbers, issue IDs, `bug-N` labels, review-wave letters (`W1`, `S3`, `R2-W4`,
+  `P0-1`), or round numbers. Either the invariant is permanent and belongs in code, or the
+  follow-up is real and belongs in the issue tracker — not in source. Enforced by
+  `bun run check:terminology`.
 
 ## Validation And Testing
 

@@ -98,11 +98,10 @@ const forkFromMessageRoute = createRoute({
       description: "OK",
       content: { "application/json": { schema: ForkFromMessageResponse } },
     },
-    // W2 of PR #161 review (round 5): document the auth + RBAC error
-    // shapes so generated CLIs see the envelope. 401 fires from
-    // `requireAuth` (no/invalid bearer); 403 fires from
-    // `requireAnyPermission(["conversation:write", "workflow:write"])`
-    // registered alongside the route.
+    // Document the auth + RBAC error shapes so generated CLIs see the
+    // envelope. 401 fires from `requireAuth` (no/invalid bearer); 403
+    // fires from `requireAnyPermission(["conversation:write",
+    // "workflow:write"])` registered alongside the route.
     401: {
       description: "Unauthenticated",
       content: { "application/json": { schema: ErrorSchema } },
@@ -180,10 +179,10 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
         source_conversation_id: id,
         anchor_message_id: message_id,
         actor_id: principal.id,
-        // W1 of PR #161 review (round 5): every HTTP entry into the
-        // fork service tags the audit row as `api`. Other channels
-        // (CLI direct invocation, scheduler) would pass their own
-        // value when they invoke `forkConversation` directly.
+        // Every HTTP entry into the fork service tags the audit row
+        // as `api`. Other channels (CLI direct invocation, scheduler)
+        // pass their own value when they invoke `forkConversation`
+        // directly.
         request_source: "api",
       },
       db,

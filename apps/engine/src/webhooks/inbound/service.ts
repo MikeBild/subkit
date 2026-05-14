@@ -544,9 +544,8 @@ export async function handleInbound(
     // Inactive bindings are a denial. Trigger-origin rows surface a
     // `failed_verification` audit so compliance dashboards see the
     // attempt; crud-origin rows preserve the historical "silent
-    // denial" behaviour (no audit row was ever written for inactive
-    // CRUD rows pre-#46) so we don't change the contract on the
-    // existing surface.
+    // denial" behaviour (no audit row written for inactive CRUD rows)
+    // so we don't change the contract on the existing surface.
     if (origin === "trigger") {
       audit(
         {

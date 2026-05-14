@@ -1,7 +1,7 @@
 // Read-only list rendering for admin resources, with an optional inline
-// create form (G9 closure of #159 M8). When `createForm` is supplied,
-// pressing `c` opens the form; on submit, `createForm.submit` is invoked
-// with the form values and the list is refreshed.
+// create form. When `createForm` is supplied, pressing `c` opens the
+// form; on submit, `createForm.submit` is invoked with the form values
+// and the list is refreshed.
 
 import { Box, Text, useInput } from "ink";
 import type React from "react";

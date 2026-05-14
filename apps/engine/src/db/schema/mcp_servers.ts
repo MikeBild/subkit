@@ -25,10 +25,9 @@
 // CHECK constraint below fails the INSERT/UPDATE if it sees a key
 // matching the known-secret pattern at the root of `auth_config`.
 //
-// Audit-action vocabulary (issue #171 will land the writers). The
-// configuration table is tenant-mutable state, so every write MUST
-// emit an `audit_log` row via the standard audit recorder. The
-// committed action vocabulary is:
+// Audit-action vocabulary. The configuration table is tenant-mutable
+// state, so every write MUST emit an `audit_log` row via the
+// standard audit recorder. The committed action vocabulary is:
 //
 //     mcp_server.registered    — INSERT into mcp_servers
 //     mcp_server.config_updated — UPDATE of url / auth_config / namespace

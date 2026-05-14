@@ -171,17 +171,17 @@ export interface InkAppProps {
   permissionMode?: PermissionMode;
   /**
    * Engine client passed in from the REPL host. Today only the embedded
-   * /settings pane (G2 closure of #159 M4) needs it; all other engine
-   * traffic flows through onPrompt / onSlash / onSelectConversation
-   * callbacks. When absent, the embedded /settings pane is unavailable
-   * and falls back to suggesting the standalone `sk settings` CLI.
+   * /settings pane needs it; all other engine traffic flows through
+   * onPrompt / onSlash / onSelectConversation callbacks. When absent,
+   * the embedded /settings pane is unavailable and falls back to
+   * suggesting the standalone `sk settings` CLI.
    */
   engineClient?: EngineClient;
   /**
    * Engine-resolved REPL/UI/notification preferences. Drives `notify()`
-   * inside `applyEventStream` (H1 closure of #159 G3) — push fires
-   * when `pushNotifyEnabled` is true and the turn exceeded the
-   * threshold. When omitted, push notifications stay off.
+   * inside `applyEventStream` — push fires when `pushNotifyEnabled`
+   * is true and the turn exceeded the threshold. When omitted, push
+   * notifications stay off.
    */
   prefs?: {
     pushNotifyEnabled: boolean;
@@ -190,13 +190,13 @@ export interface InkAppProps {
     quietHoursEnd: string;
   };
   /**
-   * W3 of PR #161 review (round 5): per-process override for the
-   * push-notify gate, populated from `SK_PUSH_NOTIFY` /
-   * `SK_PUSH_NOTIFY_THRESHOLD_MS` exactly once at REPL boot. Reading
-   * env on every turn made an `export SK_PUSH_NOTIFY=1` mid-REPL
-   * silently change behavior; reading once at boot keeps the gate
-   * aligned with the rest of the boot-time wiring. The fields are
-   * optional so a missing env value cleanly defers to `prefs`.
+   * Per-process override for the push-notify gate, populated from
+   * `SK_PUSH_NOTIFY` / `SK_PUSH_NOTIFY_THRESHOLD_MS` exactly once at
+   * REPL boot. Reading env on every turn would let a mid-REPL
+   * `export SK_PUSH_NOTIFY=1` silently change behavior; reading once
+   * at boot keeps the gate aligned with the rest of the boot-time
+   * wiring. The fields are optional so a missing env value cleanly
+   * defers to `prefs`.
    */
   pushNotifyOverride?: {
     enabled?: boolean;
@@ -1943,13 +1943,13 @@ export const InkApp: React.FC<InkAppProps> = ({
       conversationId?: string | null,
     ): Promise<void> => {
       if (!events) return;
-      // G3 closure of #159 M12 — record the turn start so we can decide
-      // whether to ring an OS notification when the stream completes.
-      // Opt-in via SK_PUSH_NOTIFY=1; threshold via SK_PUSH_NOTIFY_THRESHOLD_MS
+      // Record the turn start so we can decide whether to ring an OS
+      // notification when the stream completes. Opt-in via
+      // SK_PUSH_NOTIFY=1; threshold via SK_PUSH_NOTIFY_THRESHOLD_MS
       // (defaults to NOTIFY_DEFAULTS.thresholdMs = 30s). The env vars
-      // are read once at REPL boot and passed in via `pushNotifyOverride`
-      // (W3 of PR #161 review round 5) — a mid-REPL `export` no longer
-      // changes behavior unexpectedly.
+      // are read once at REPL boot and passed in via
+      // `pushNotifyOverride` so a mid-REPL `export` cannot silently
+      // change behavior.
       const turnStartedAt = Date.now();
       let notifyTitle = "subkit";
       let next: SkSessionState = {
@@ -1986,8 +1986,8 @@ export const InkApp: React.FC<InkAppProps> = ({
       // long enough and the operator opted in. notify() itself no-ops
       // when stdout isn't a TTY (e.g. piped output, CI), so this is
       // safe to call unconditionally.
-      // H1 closure of #159 G3 — primary read is the engine-resolved
-      // prefs (notifications.push.*); env vars survive as a per-process
+      // Primary read is the engine-resolved prefs
+      // (notifications.push.*); env vars survive as a per-process
       // override so tests / one-shot operator switches don't need a
       // setSetting round-trip.
       const elapsedMs = Date.now() - turnStartedAt;
@@ -2777,10 +2777,9 @@ export const InkApp: React.FC<InkAppProps> = ({
       // freshly-arrived elicit_request event.
       if (elicitOpen) return;
 
-      // W1 of PR #161 review (round 6): when the portal-token pane
-      // is open, 'y' copies the (one-shot) URL to the OS clipboard
-      // via OSC 52. The pane closes after copy so the bytes never
-      // sit on screen longer than necessary.
+      // When the portal-token pane is open, 'y' copies the (one-shot)
+      // URL to the OS clipboard via OSC 52. The pane closes after
+      // copy so the bytes never sit on screen longer than necessary.
       if (pane?.kind === "portal-token" && (char === "y" || char === "Y")) {
         const url = pane.url;
         void import("@cli-core/clipboard.ts").then(({ osc52Copy }) => {
@@ -3662,17 +3661,14 @@ export const InkApp: React.FC<InkAppProps> = ({
           currentTurns={session.messages
             .filter((m): m is typeof m & { id: string } => m.role === "assistant" && Boolean(m.id))
             .map((m) => ({
-              // H3 closure of #159 — only persisted messages (carrying
-              // an engine-issued id) appear in the rewind timeline.
-              // W4 of PR #161 review (round 2) + S2 of round 5:
-              // MessageState doesn't currently carry the engine-side
-              // `created_at`. Pass `null` so `ConversationBrowser`
-              // renders `—`; fabricating `new Date().toISOString()` at
-              // render time stamped every turn with the same "now"
-              // and re-stamped them on every keystroke. Round 5 widened
-              // the type from `string` to `string | null` so the
-              // missing case is encoded explicitly instead of through
-              // an empty string.
+              // Only persisted messages (carrying an engine-issued
+              // id) appear in the rewind timeline. MessageState
+              // doesn't currently carry the engine-side `created_at`,
+              // so we pass `null` and `ConversationBrowser` renders
+              // `—`. Fabricating `new Date().toISOString()` at render
+              // time would stamp every turn with the same "now" and
+              // re-stamp them on every keystroke; the `string | null`
+              // type encodes the missing case explicitly.
               message_id: m.id,
               excerpt: typeof m.content === "string" ? m.content : "(non-text turn)",
               created_at: null,
@@ -3686,10 +3682,10 @@ export const InkApp: React.FC<InkAppProps> = ({
                 void onSelectConversation?.(res.conversation.id);
               })
               .catch((err: unknown) => {
-                // W3 of PR #161 review — surface 403/404/5xx from the
-                // fork endpoint (RBAC denial, cross-tenant, server)
-                // into the NoticeStack so the operator sees the
-                // failure instead of a frozen pane.
+                // Surface 403/404/5xx from the fork endpoint (RBAC
+                // denial, cross-tenant, server) into the NoticeStack
+                // so the operator sees the failure instead of a
+                // frozen pane.
                 const msg = err instanceof Error ? err.message : String(err);
                 showError(`fork failed: ${msg}`);
                 setPane(null);

@@ -1,5 +1,5 @@
-// Profile tab — read-only identity card from skBootstrap PLUS an
-// inline action menu (G7 closure of #159 M7).
+// Profile tab — read-only identity card from skBootstrap plus an
+// inline action menu.
 //
 // Actions:
 //   n  Start a new session  (clears the active conversation id)
@@ -110,14 +110,14 @@ export const ProfileTab: React.FC<Props> = ({ client, onAction, onInnerEscape })
     }
   };
 
-  // S3 of PR #161 review (round 6): defer the disk I/O off the
-  // render thread via `queueMicrotask` so a slow mount or antivirus
-  // hook on `~/.sk/config.json` doesn't hitch Ink's reconciler. The
-  // function still returns the updated profile synchronously to the
-  // caller — but the disk write happens on the next microtask tick.
-  // `loadConfig` / `saveProfile` remain sync because every other
-  // caller in the CLI assumes synchronous semantics; switching this
-  // single call site is the lowest-cost mitigation.
+  // Defer the disk I/O off the render thread via `queueMicrotask`
+  // so a slow mount or antivirus hook on `~/.sk/config.json` doesn't
+  // hitch Ink's reconciler. The function still returns the updated
+  // profile synchronously to the caller — the disk write happens on
+  // the next microtask tick. `loadConfig` / `saveProfile` remain
+  // sync because every other caller in the CLI assumes synchronous
+  // semantics; switching this single call site is the lowest-cost
+  // mitigation.
   const persistTenant = (tenant_id: string): ResolvedProfile | null => {
     try {
       const cfg = loadConfig();

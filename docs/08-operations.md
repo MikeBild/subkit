@@ -179,7 +179,7 @@ The upgrade script wraps everything in a single transaction. If anything inside 
 
 ---
 
-## Self-update + release signing (issue #151 P0)
+## Self-update + release signing
 
 The engine and `sk` binaries verify a signed `SHA256SUMS` (Ed25519) on
 every `engine --self-update` / `sk update` before they will replace the

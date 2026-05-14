@@ -187,8 +187,8 @@ export async function bindFromWorkflow(
     });
   }
   // Stash the calendar gates inside the schedule's `input` payload so
-  // they survive without a schema migration. The reconciler in #47
-  // honours these on fire; for now they round-trip on the row.
+  // they survive without a schema migration. The reconciler honours
+  // these on fire; for now they round-trip on the row.
   const inputPayload = {
     business_days_only: input.trigger.business_days_only ?? false,
     skip_dates: input.trigger.skip_dates ?? [],

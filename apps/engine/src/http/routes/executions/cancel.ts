@@ -7,8 +7,6 @@
 //       running on this process.
 //   (c) Otherwise, write an abort_requested outbox event so another
 //       worker process can observe it.
-//
-// Phase 4 of the 2026-05 architecture audit (issue #92).
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";

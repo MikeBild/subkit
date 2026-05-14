@@ -12,10 +12,9 @@ import { OPENAPI_INFO } from "../openapi.ts";
 // /v1/health is unauthenticated and reachable from the public internet.
 // It MUST stay minimal — no fields that leak operational posture
 // (which secrets are present, which provider is wired, model names,
-// schema-drift state, update availability). The fields stripped here
-// for issue #151 P0-1 — `db_schema_drift`, `update_available`,
-// `latest_version` — moved behind `audit:read` at
-// `GET /v1/diagnostics/version`.
+// schema-drift state, update availability). The operational fields
+// (`db_schema_drift`, `update_available`, `latest_version`) live
+// behind `audit:read` at `GET /v1/diagnostics/version`.
 
 const HealthResponse = z
   .object({

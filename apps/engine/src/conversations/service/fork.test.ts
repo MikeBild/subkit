@@ -1,8 +1,8 @@
-// C2 of PR #161 review — engine-side unit coverage for forkConversation.
-// Asserts the tenant-isolation contract: cross-tenant lookups return
-// null, anchor-from-other-conversation returns null, and copied
-// messages are bound to the new conversation row under the same
-// tenant. Audit metadata is asserted via the audit-log table.
+// Engine-side unit coverage for forkConversation. Asserts the
+// tenant-isolation contract: cross-tenant lookups return null,
+// anchor-from-other-conversation returns null, and copied messages
+// are bound to the new conversation row under the same tenant. Audit
+// metadata is asserted via the audit-log table.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
@@ -66,7 +66,7 @@ async function seedConversationWithMessages(tenantLabel: string, count: number):
   return { tenant_id, conversation_id, message_ids };
 }
 
-describe("forkConversation (C2 of PR #161 review)", () => {
+describe("forkConversation", () => {
   test("happy path: copies messages 0..N, returns new conversation id, writes audit row", async () => {
     const seed = await seedConversationWithMessages("happy", 5);
     const anchor = seed.message_ids[2]!; // fork at message #3
@@ -122,12 +122,12 @@ describe("forkConversation (C2 of PR #161 review)", () => {
     expect(meta.forked_from).toBe(seed.conversation_id);
     expect(meta.anchor_message_id).toBe(anchor);
     expect(meta.copied_message_count).toBe(3);
-    // W3 of PR #161 review (round 4): under the cap, `truncated`
-    // is false and `source_message_count` matches the copied count.
+    // Under the cap, `truncated` is false and `source_message_count`
+    // matches the copied count.
     expect(meta.truncated).toBe(false);
     expect(meta.source_message_count).toBe(3);
     expect(result!.truncated).toBe(false);
-    // W1 of PR #161 review (round 5): request_source is recorded.
+    // request_source is recorded.
     expect(meta.request_source).toBe("api");
   });
 
@@ -217,7 +217,7 @@ describe("forkConversation (C2 of PR #161 review)", () => {
     expect(result!.copied_message_count).toBe(2); // messages 0 + 1
   });
 
-  // W3 of PR #161 review (round 4): hard cap on copied messages.
+  // Hard cap on copied messages.
   // Use a small synthetic FORK_COPY_MESSAGE_CAP-derived count via
   // monkey-patching the constant is not feasible (it's exported), so
   // instead this test uses the live cap and asserts the contract by

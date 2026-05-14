@@ -1,7 +1,6 @@
 // Knowledge tab — list of tenant knowledge sources with inline ingest,
-// delete, and refresh. G8 closure of #159 M7: ingest is no longer
-// CLI-only; pressing `i` opens an inline path-input that reads the
-// file from disk and POSTs via createKnowledgeSource.
+// delete, and refresh. Pressing `i` opens an inline path-input that
+// reads the file from disk and POSTs via createKnowledgeSource.
 //
 // Path resolution: the typed value is treated as either an absolute
 // path or a path relative to the current cwd. Drag-and-drop on
@@ -131,24 +130,22 @@ export const KnowledgeTab: React.FC<Props> = ({ client, onInnerEscape }) => {
     setActionFlash(null);
     try {
       const abs = isAbsolute(ingestPath) ? ingestPath : resolve(process.cwd(), ingestPath);
-      // W6 of PR #161 review (round 6): UX guard lifted to
-      // `lib/knowledge-ingest-guard.ts` so the contract is unit-
-      // testable and a future widening of the deny-list cannot
-      // drift past the test suite. The guard covers both Unix
-      // (/etc /proc /sys /var /dev /root + ~/.ssh ~/.aws ~/.gnupg
-      // ~/.kube ~/.docker ~/.config ~/.sk) and Windows
-      // (C:\Windows, C:\Program Files, AppData, ~/.ssh) — earlier
-      // round-4 guard was Linux-only and missed credentials roots.
+      // UX guard lives in `lib/knowledge-ingest-guard.ts` so the
+      // contract is unit-testable and a future widening of the
+      // deny-list cannot drift past the test suite. The guard covers
+      // both Unix (/etc /proc /sys /var /dev /root + ~/.ssh ~/.aws
+      // ~/.gnupg ~/.kube ~/.docker ~/.config ~/.sk) and Windows
+      // (C:\Windows, C:\Program Files, AppData, ~/.ssh).
       const stats = await stat(abs);
       const guard = checkIngestGuard({ absolutePath: abs, sizeBytes: stats.size });
       if (guard.rejected) {
         setActionFlash(guard.reason ?? "ingest refused");
         return;
       }
-      // S-2 of PR #161 review (round 3): async read so a multi-MB
-      // knowledge source (PDFs, large docs) doesn't hitch the Ink
-      // render thread while the file is being slurped from disk. The
-      // surrounding state (`ingesting`) already drives the spinner.
+      // Async read so a multi-MB knowledge source (PDFs, large docs)
+      // doesn't hitch the Ink render thread while the file is being
+      // slurped from disk. The surrounding state (`ingesting`) drives
+      // the spinner.
       const content = await readFile(abs);
       const name = abs.split("/").pop() ?? ingestPath;
       const mime = mimeFor(name);

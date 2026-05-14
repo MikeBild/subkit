@@ -1,4 +1,4 @@
-// G9 closure of #159 M8 — generic create form for admin resources.
+// Generic create form for admin resources.
 // The operator types a JSON body, presses Enter to submit. The form
 // captures one or more field-by-field text inputs OR a single JSON
 // blob (selected via shape="json"). Validation is server-side: an

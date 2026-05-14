@@ -11,7 +11,7 @@
 //   - `?tenant=<id>` unset + leaf scope=global → write global
 // Three response envelopes:
 //   - 200 success: { value, requiresRestart }
-//   - 422 validation: { code, message, path, expected }   (issue #59 wire)
+//   - 422 validation: { code, message, path, expected }
 //   - 409 restart-required: { code, message, requiresRestart }
 // Tenant operators must have settings:write; the route additionally
 // enforces that `?tenant=<id>` matches the actor's principal_tenant_id

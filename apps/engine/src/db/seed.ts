@@ -12,14 +12,13 @@
 //
 // `seedTenantBootstrap` is also exported. It is the call-driven primitive
 // used by the first-run `/v1/setup` flow (see
-// `apps/engine/src/onboarding/bootstrap.ts`) — the previous `BOOTSTRAP_*`
-// env-var startup path was retired in #70 once `POST /v1/setup` + `sk
-// init --token` became the supported onboarding surface.
+// `apps/engine/src/onboarding/bootstrap.ts`) — `BOOTSTRAP_*` env-var
+// startup is not supported; `POST /v1/setup` + `sk init --token` is
+// the onboarding surface.
 //
 // `seedAtBoot(db)` is the engine-boot orchestrator: idempotent, called
-// from `runServer()` after migrations have applied. Replaces the old
-// `bun run db:seed` CLI script (issue #149: collapse migrate + seed
-// into the single engine binary).
+// from `runServer()` after migrations have applied. Migrate + seed
+// live in the single engine binary; no separate `db:seed` CLI step.
 //
 // Every created row writes an audit entry. Issued API keys are printed
 // to stdout exactly once with a bright warning — they cannot be recovered.
@@ -79,9 +78,9 @@ async function seedEssentials(db: Db): Promise<SeededRoleIds> {
  * Explicit payload accepted by `seedTenantBootstrap`. The caller (the
  * `/v1/setup` route handler via `onboarding/bootstrap.ts`, or the `sk
  * init` headless flow that posts the same payload) holds the four
- * operator-supplied values and passes them directly. The previous
- * `BOOTSTRAP_*` env-var path was retired in #70 — `/v1/setup` is now
- * the only supported onboarding surface.
+ * operator-supplied values and passes them directly. `/v1/setup` is
+ * the only supported onboarding surface; `BOOTSTRAP_*` env-vars are
+ * not honored.
  */
 export interface TenantBootstrapPayload {
   admin_email: string;

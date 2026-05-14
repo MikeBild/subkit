@@ -1,9 +1,9 @@
 // Permissions tab — radio Default / Auto-review / Full Access.
 // Maps onto the sk REPL's permission_mode (`ask` / `auto` / `yolo`)
-// and now persists via the engine setting `repl.permissionMode`
-// (G4 closure of #159 M6). Loads the current value from the engine on
-// mount; Enter writes via `setSetting`. Inline error reported on
-// failure; success flash on commit.
+// and persists via the engine setting `repl.permissionMode`. Loads
+// the current value from the engine on mount; Enter writes via
+// `setSetting`. Inline error reported on failure; success flash on
+// commit.
 
 import { Box, Text, useInput } from "ink";
 import type React from "react";

@@ -141,9 +141,9 @@ export interface RunLoopParams {
    * request-accept (or right after row insert in the create flow)
    * and threads it through. The loop consumes it; lifetime ownership
    * stays with the caller (whoever registered also unregisters in
-   * their `finally`). Required as of #148 — every caller of
-   * `runLoop` now threads a controller, and the legacy "register
-   * here as a fallback" path was retired.
+   * their `finally`). Every caller of `runLoop` threads a controller
+   * — there is no fallback registration here, which would re-open
+   * the cancel race.
    */
   turn_abort_ctrl: AbortController;
   /**
@@ -1700,11 +1700,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // for skills (matched action becomes plain user input). Adding
   // verbs to the skills schema lights up `/skill <slug> <verb>`
   // suggestions without further loop changes.
-  // TODO(suggest-next-skill-verbs): tracked at PR #162 follow-up —
-  // once Skill records carry a `verbs: string[]` field, thread
-  // `loaded_skills: loadedSkills.map(slug => ({ slug, verbs: ... }))`
-  // here. Until then `LoadedSkillHint.verbs` is unused in production
-  // (covered by unit tests only).
+  // `LoadedSkillHint.verbs` is unused in production today (covered by
+  // unit tests only). When Skill records carry a `verbs: string[]`
+  // field, thread `loaded_skills: loadedSkills.map(slug => ({ slug,
+  // verbs }))` here so the offer-skill slash variant can resolve.
   let suggestionFrame: TurnEvent;
   if (completedStatus === "abandoned") {
     suggestionFrame = nextSuggestion({

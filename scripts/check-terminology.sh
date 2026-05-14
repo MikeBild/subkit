@@ -61,6 +61,27 @@ else
   done
 fi
 
+# Ticket-coupling guard: comments and docs must not reference PR
+# numbers, issue IDs, bug labels, review waves, or roadmap phases.
+# The git history owns ticket linkage; comments own invariants.
+#
+# Carve-out: apps/engine/.audit-loop-policy.md mentions a literal
+# `issue #66` because that GitHub issue IS the audit-loop pause
+# command (`/audit pause` on issue #66). Real operating procedure,
+# not stale ticket coupling.
+ticket_pattern='(PR #[0-9]+|issue #[0-9]+|bug-[0-9]+|W[0-9]+ of (PR|round)|[SWPGR][0-9]+ of PR #[0-9]+|round [0-9]+ review|P0-[0-9]+|TODO\([^)]*[0-9]+\)|[A-Z]+[0-9]* closure of #[0-9]+|[A-Z][0-9]+ of #[0-9]+|of #[0-9]+ [A-Z][0-9]+|closure of #[0-9]+|(retired|landed|fixed|added) in #[0-9]+|as of #[0-9]+|(pre|post)-#[0-9]+|in PR #[0-9]+)'
+ticket_hits=$(grep -REn "$ticket_pattern" apps/ docs/ packages/ README.md \
+    --include='*.ts' --include='*.tsx' --include='*.md' \
+    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=tests \
+    --exclude-dir=fixtures --exclude-dir=__tests__ --exclude-dir=out \
+    --exclude-dir=seed --exclude=CHANGELOG.md 2>/dev/null \
+    | grep -vE '\.audit-loop-policy\.md:[0-9]+:.*issue #66' || true)
+if [ -n "$ticket_hits" ]; then
+  echo "ERROR: ticket-coupling references found. Replace with present-tense invariants." >&2
+  echo "$ticket_hits" >&2
+  fail=1
+fi
+
 # OpenAPI-generated types must not carry the dead Automation schemas.
 if grep -n 'Automation' packages/cli-core/src/engine-api/openapi.d.ts >/dev/null 2>&1; then
   echo "ERROR: packages/cli-core/src/engine-api/openapi.d.ts still contains 'Automation' — run 'bun run gen:openapi-client'" >&2

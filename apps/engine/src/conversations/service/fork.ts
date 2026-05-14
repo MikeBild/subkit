@@ -3,21 +3,19 @@
 // message up to and including the anchor message into the new
 // conversation, and returns the new conversation id.
 //
-// G10 closure of #159 M10. Tool calls and elicitations are NOT
-// copied — they're tied to the message ids in the source conversation
-// and re-running them in the fork would duplicate their side effects.
-// The forked conversation IS seeded with the source's `draft`,
-// `memory`, `model`, target_connector_id, target_workflow_id, and
-// `loaded_skills` so the next turn lands in the same authoring state
-// the operator was in when they pressed `t`. (The earlier "clean
-// session" wording was wrong — W2 of PR #161 review.)
+// Tool calls and elicitations are NOT copied — they're tied to the
+// message ids in the source conversation and re-running them in the
+// fork would duplicate their side effects. The forked conversation
+// IS seeded with the source's `draft`, `memory`, `model`,
+// target_connector_id, target_workflow_id, and `loaded_skills` so the
+// next turn lands in the same authoring state the operator was in.
 //
 // Caveat: assistant messages whose content text references
 // `tool_call_id` values from the source will keep those references
 // even though the matching tool_call rows are not copied. The CLI
 // renderer treats unknown tool_call_id refs as plain text, so the
-// fork is still readable; it's flagged here for incident-reading
-// audit consumers (S2 of PR #161 review).
+// fork is still readable; flagged for incident-reading audit
+// consumers.
 
 import { and, asc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
@@ -40,7 +38,7 @@ export interface ForkConversationParams {
    * AGENTS.md request_source enum value identifying the calling channel
    * (`api`, `cli`, `scheduler`, etc.). Recorded on the audit row so
    * SIEM/BI consumers can split forks by source without correlating
-   * trace_ids. W1 of PR #161 review (round 5).
+   * trace_ids.
    */
   request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui";
 }
@@ -51,24 +49,23 @@ export interface ForkConversationResult {
   anchor_message_id: string;
   copied_message_count: number;
   /**
-   * W3 of PR #161 review (round 4): true when the fork hit
-   * `FORK_COPY_MESSAGE_CAP` and copied only the most-recent
-   * `FORK_COPY_MESSAGE_CAP` messages up to the anchor instead of
-   * every message from index 0. Surfaces a deliberate truncation
-   * to operators + audit consumers. The fork is still functional
-   * (the anchor message is always included) — older context is
-   * dropped to bound storage / memory amplification.
+   * True when the fork hit `FORK_COPY_MESSAGE_CAP` and copied only
+   * the most-recent `FORK_COPY_MESSAGE_CAP` messages up to the anchor
+   * instead of every message from index 0. Surfaces a deliberate
+   * truncation to operators + audit consumers. The fork is still
+   * functional (the anchor message is always included) — older
+   * context is dropped to bound storage / memory amplification.
    */
   truncated: boolean;
 }
 
 /**
- * W3 of PR #161 review (round 4): hard cap on messages copied per
- * fork operation. Without it, a multi-thousand-message conversation
- * fed into `/fork` linearly amplifies storage + memory: the SELECT
- * pulls every row, the INSERT writes every row, and a malicious
- * caller with `conversation:write` could repeatedly fork from
- * second-to-last to amplify storage indefinitely.
+ * Hard cap on messages copied per fork operation. Without it, a
+ * multi-thousand-message conversation fed into `/fork` linearly
+ * amplifies storage + memory: the SELECT pulls every row, the INSERT
+ * writes every row, and a malicious caller with `conversation:write`
+ * could repeatedly fork from second-to-last to amplify storage
+ * indefinitely.
  *
  * 5,000 chosen as 5x the typical incident-mode authoring loop length
  * (~1,000 turns × ~3 rows/turn ≈ 3,000) — well above any realistic
@@ -103,12 +100,12 @@ export async function forkConversation(
         eq(conversationMessages.conversation_id, p.source_conversation_id),
       ),
     )
-    // W7 of PR #161 review (round 6): tiebreak on id so identical
-    // `created_at` clock-ticks (Postgres `defaultNow()` resolves to
-    // `clock_timestamp()` per insert; bulk inserts can return ties)
-    // produce a deterministic order. The findIndex anchor lookup is
-    // already id-keyed, but the sliced copy and the test assertions
-    // assume insertion order matches `ORDER BY` — this restores that.
+    // Tiebreak on id so identical `created_at` clock-ticks (Postgres
+    // `defaultNow()` resolves to `clock_timestamp()` per insert; bulk
+    // inserts can return ties) produce a deterministic order. The
+    // findIndex anchor lookup is already id-keyed, but the sliced
+    // copy and the test assertions assume insertion order matches
+    // `ORDER BY`.
     .orderBy(asc(conversationMessages.created_at), asc(conversationMessages.id));
   const anchorIdx = allMessages.findIndex((m) => m.id === p.anchor_message_id);
   if (anchorIdx < 0) return null;
@@ -141,11 +138,11 @@ export async function forkConversation(
   // INSERT below — read-then-write semantics). New rows get fresh ids;
   // `created_at` is set to "now" so the fork's timeline orders cleanly.
   //
-  // W3 of PR #161 review (round 4): clamp to FORK_COPY_MESSAGE_CAP to
-  // bound storage amplification on long sessions. When the cap fires
-  // we keep the most recent N messages up to and including the
-  // anchor; older context is dropped. The anchor message is always
-  // preserved (slice end is anchorIdx+1).
+  // Clamp to FORK_COPY_MESSAGE_CAP to bound storage amplification on
+  // long sessions. When the cap fires we keep the most recent N
+  // messages up to and including the anchor; older context is
+  // dropped. The anchor message is always preserved (slice end is
+  // anchorIdx+1).
   const fullSlice = allMessages.slice(0, anchorIdx + 1);
   const truncated = fullSlice.length > FORK_COPY_MESSAGE_CAP;
   const messagesToCopy = truncated
@@ -166,9 +163,9 @@ export async function forkConversation(
     copiedCount = messagesToCopy.length;
   }
 
-  // S1 of PR #161 review round 2: log under `conversation.forked`
-  // (not `created`) so structured-log readers can split forks from
-  // greenfield creates the same way the audit row does.
+  // Log under `conversation.forked` (not `created`) so structured-log
+  // readers can split forks from greenfield creates the same way the
+  // audit row does.
   log.conversation.forked({
     conversation_id: row.id,
     tenant_id: p.tenant_id,
@@ -188,18 +185,17 @@ export async function forkConversation(
       tenant_id: p.tenant_id,
       actor_type: p.actor_id ? "user" : "system",
       actor_id: p.actor_id,
-      // W1 of PR #161 review — distinct fork action for audit-log
-      // incident readers. Metadata still records source + anchor +
-      // count so the previous CONVERSATION_CREATED-style query path
-      // can be reconstructed by joining on `forked_from`.
+      // Distinct fork action for audit-log incident readers. Metadata
+      // still records source + anchor + count so a CREATED-style
+      // query path can be reconstructed by joining on `forked_from`.
       action: AuditAction.CONVERSATION_FORKED,
       resource_type: "conversation",
       resource_id: row.id,
       result: "success",
       reason: `forked from ${p.source_conversation_id} at message ${p.anchor_message_id}`,
-      // W1 of PR #161 review (round 5): metadata is now Zod-validated
-      // against `ConversationForkedMetadataSchema` before audit emit so
-      // a future contributor cannot drop a load-bearing field
+      // Metadata is Zod-validated against
+      // `ConversationForkedMetadataSchema` before audit emit so a
+      // future contributor cannot drop a load-bearing field
       // (`request_source`, `truncated`, `tool_calls_omitted`, ...)
       // without a parse-time error. The `.parse()` call throws on
       // contract drift, which is the right failure mode here — the
@@ -208,20 +204,18 @@ export async function forkConversation(
         forked_from: p.source_conversation_id,
         anchor_message_id: p.anchor_message_id,
         copied_message_count: copiedCount,
-        // S-1 of PR #161 review (round 3): make the deliberately
-        // omitted side-effect rows self-describing on the audit row,
-        // so an incident reader reconstructing state from `audit_log`
-        // alone doesn't have to open the source comment to learn what
-        // the fork did NOT carry over. The contract here is documented
-        // both in the route description (`lifecycle.ts`) and in the
-        // service-layer header above; the audit row is now the third
-        // independent home for it.
+        // The deliberately omitted side-effect rows are
+        // self-describing on the audit row, so an incident reader
+        // reconstructing state from `audit_log` alone doesn't have to
+        // open the source comment to learn what the fork did NOT
+        // carry over. The contract is documented in the route
+        // description (`lifecycle.ts`) and the service-layer header
+        // above; the audit row is the third independent home for it.
         tool_calls_omitted: true,
         elicitations_omitted: true,
-        // W3 of PR #161 review (round 4): record both the cap-hit
-        // flag and the original count so audit-only incident readers
-        // can detect a truncation event without joining back to the
-        // source conversation.
+        // Record both the cap-hit flag and the original count so
+        // audit-only incident readers can detect a truncation event
+        // without joining back to the source conversation.
         truncated,
         source_message_count: fullSlice.length,
         copy_cap: FORK_COPY_MESSAGE_CAP,

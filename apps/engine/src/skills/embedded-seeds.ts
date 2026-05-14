@@ -1,4 +1,4 @@
-// Build-time embedded skill-seed bundle (issue #149).
+// Build-time embedded skill-seed bundle.
 //
 // Each Markdown skill is imported as text via the
 // `with { type: "text" }` import attribute, so `bun build --compile`

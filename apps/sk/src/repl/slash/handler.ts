@@ -235,13 +235,13 @@ export type PaneSpec =
       weekTokens?: number | null;
     }
   | {
-      // W1 of PR #161 review (round 6): the portal-token mint flow
-      // never returns the plaintext token through the slash result —
-      // slash returns are persisted into the assistant transcript and
-      // the token is short-lived but bearer-equivalent. Render the
-      // QR + URL inline in a transient pane (mirroring the AdminTab
-      // ApiKeysSubTab "shown once" yellow panel) and dismiss on Esc /
-      // 'y' (copy via OSC 52). The token id (not the secret) is the
+      // The portal-token mint flow never returns the plaintext token
+      // through the slash result — slash returns are persisted into
+      // the assistant transcript and the token is short-lived but
+      // bearer-equivalent. Render the QR + URL inline in a transient
+      // pane (mirroring the AdminTab ApiKeysSubTab "shown once"
+      // yellow panel) and dismiss on Esc / 'y' (copy via OSC 52). The
+      // token id (not the secret) is the
       // only thing we surface back to the transcript.
       kind: "portal-token";
       url: string;
@@ -293,9 +293,9 @@ export interface SlashHandlerContext {
     label: string;
   } | null;
   /**
-   * Engine-resolved REPL preferences. S6 of PR #161 review (round 5)
-   * adds `portalTokenTtlMin` here so `/session` can mint with the
-   * tenant-tuned TTL instead of a magic 15-minute literal.
+   * Engine-resolved REPL preferences. Carries `portalTokenTtlMin` so
+   * `/session` mints with the tenant-tuned TTL instead of a magic
+   * 15-minute literal.
    */
   prefs?: {
     portalTokenTtlMin?: number;
@@ -570,10 +570,10 @@ export async function handleSlash(
   const plan = classifySlash(name);
   if (plan.routing === "unknown") {
     debugLog("dialog.warning", { reason: "unknown_slash", slash_name: name }, {});
-    // M13 of #159 — short-circuit removed/never-shipped slashes with
-    // a one-line guidance message pointing at the new home. The
-    // guidance map lives in the dispatcher to keep the registry pure;
-    // entries decay one release after the actual delete pass per
+    // Short-circuit removed/never-shipped slashes with a one-line
+    // guidance message pointing at the new home. The guidance map
+    // lives in the dispatcher to keep the registry pure; entries
+    // decay one release after the actual delete pass per
     // "no backwards-compat shims".
     const hint = removedSlashGuidance(name);
     if (hint) return `/${name} ${hint}`;
@@ -594,11 +594,11 @@ export async function handleSlash(
       return `/${name}: invalid args — ${where}${issue?.message ?? "schema validation failed"}`;
     }
   }
-  // S6 of PR #161 review (round 6): switch on the canonical command
-  // name (post-alias resolution) rather than the typed string. The
-  // dispatcher's `resolveSlashCommand` already maps `/install` →
-  // `/onboard` (and `/quit` → `/exit`, `/bug` → `/feedback`, etc.)
-  // through `command.aliases`. Switching on `plan.command?.name`
+  // Switch on the canonical command name (post-alias resolution)
+  // rather than the typed string. The dispatcher's
+  // `resolveSlashCommand` already maps `/install` → `/onboard`
+  // (and `/quit` → `/exit`, `/bug` → `/feedback`, etc.) through
+  // `command.aliases`. Switching on `plan.command?.name`
   // means the handler can drop the `case "install":` fallthrough
   // mirrors and there's exactly one branch per canonical slash.
   // When the command isn't in the registry (unknown / removed) the
@@ -1368,12 +1368,11 @@ export async function handleSlash(
           break;
         }
       }
-      // S5 of PR #161 review round 2: when the in-memory transcript
-      // does not contain an assistant turn (resumed session, paged
-      // history scrolled past it, or REPL booted into an existing
-      // conversation), fall back to the engine's persisted messages.
-      // We avoid a network call when the in-memory cache already has
-      // text, so the happy path stays fully local.
+      // When the in-memory transcript does not contain an assistant
+      // turn (resumed session, paged history scrolled past it, or
+      // REPL booted into an existing conversation), fall back to the
+      // engine's persisted messages. The happy path stays fully local
+      // when the in-memory cache already has text.
       if (lastText === "" && ctx.session.conversationId) {
         try {
           const detail = await ctx.client.getConversation(ctx.session.conversationId);
@@ -1418,11 +1417,11 @@ export async function handleSlash(
       }
     }
     case "fork": {
-      // W2 of PR #161 review (round 2): wired to the engine
-      // fork-from-message route. /fork creates a real fork at the
-      // most recent persisted assistant message, copying messages
-      // 0..N into a new conversation, and switches the local
-      // sessionId to the new one. The original conversation stays
+      // Wired to the engine fork-from-message route. /fork creates a
+      // real fork at the most recent persisted assistant message,
+      // copying messages 0..N into a new conversation, and switches
+      // the local sessionId to the new one. The original conversation
+      // stays
       // resumable via /resume. For the in-conversation timeline
       // picker (`/resume → t`), see ConversationBrowser.
       const sourceId = ctx.session.conversationId;
@@ -1445,10 +1444,10 @@ export async function handleSlash(
         const res = await ctx.client.forkConversationFromMessage(sourceId, anchorId);
         ctx.setConversationId(res.conversation.id);
         const short = res.conversation.id.slice(0, 8);
-        // W3 of PR #161 review (round 4): annotate the truncation
-        // outcome inline so the operator notices when older context
-        // was dropped at fork time. The anchor is always preserved;
-        // it's only earlier messages that get clipped.
+        // Annotate the truncation outcome inline so the operator
+        // notices when older context was dropped at fork time. The
+        // anchor is always preserved; only earlier messages get
+        // clipped.
         const truncationNote = res.truncated
           ? " — earlier history was truncated at the per-fork copy cap"
           : "";
@@ -1478,14 +1477,12 @@ export async function handleSlash(
     case "session": {
       // Mint a portal token scoped to the workflow id provided in args
       // and render a terminal QR + URL. TTL is operator-tunable via
-      // `repl.portalTokenTtlMin` (S6 of PR #161 review round 5);
-      // tenant-scoped via the engine's existing
-      // /v1/identity/portal-tokens audit invariants. M12 of #159.
+      // `repl.portalTokenTtlMin`; tenant-scoped via the engine's
+      // existing /v1/identity/portal-tokens audit invariants.
       //
-      // W1 + W2 of PR #161 review (round 6): the plaintext URL is a
-      // bearer-equivalent secret. Earlier code returned the URL as
-      // the slash result, which the REPL persists into the assistant
-      // transcript. We now route the secret into a dedicated pane
+      // The plaintext URL is a bearer-equivalent secret. Returning the
+      // URL as the slash result would persist it into the assistant
+      // transcript, so the secret is routed into a dedicated pane
       // (`kind: "portal-token"`) — the host renders the QR + URL
       // inline, dismisses on Esc / 'y' (copy via OSC 52), and the
       // slash return only carries non-secret context (token id,

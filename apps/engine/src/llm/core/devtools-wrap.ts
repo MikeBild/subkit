@@ -1,4 +1,4 @@
-// DevTools wrap (issue #164).
+// DevTools wrap.
 //
 // In non-production environments we wrap the resolved `LanguageModel` with
 // `@ai-sdk/devtools`'s middleware so each `streamText`/`generateText` call

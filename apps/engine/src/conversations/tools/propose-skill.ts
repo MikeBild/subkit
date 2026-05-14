@@ -26,7 +26,7 @@ export const proposeSkillTool: ConversationTool = {
     "Use this when you identify operational rules, best practices, or conventions.",
   inputSchema,
   category: "draft_write" as const,
-  // Strict mode safe here: schema is all concrete types (issue #165).
+  // Strict mode safe here: schema is all concrete types.
   strict: true,
   example_input: {
     scope: "global",

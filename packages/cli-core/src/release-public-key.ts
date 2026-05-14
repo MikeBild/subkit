@@ -1,5 +1,5 @@
 // Ed25519 public key used to verify signatures over `SHA256SUMS` for
-// releases of this project. Issue #151 P0-3.
+// releases of this project.
 //
 // The public key is, by definition, *public* — committing it here is
 // safe and intentional. The matching private key is held only as the

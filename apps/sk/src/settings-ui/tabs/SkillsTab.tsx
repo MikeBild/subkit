@@ -42,13 +42,12 @@ export const SkillsTab: React.FC<Props> = ({ client, onInnerEscape }) => {
   const [searchActive, setSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [toggleError, setToggleError] = useState<string | null>(null);
-  // S3 of PR #161 review (round 4): a flash that distinguishes
-  // "activated existing skill" from "activated draft skill". The
-  // engine's `listSkills` returns rows with `status: draft|active|
-  // archived` — pressing space on a draft promotes draft → active,
-  // which is the operator-explicit promotion path AGENTS.md
-  // describes as legal. The label difference is purely UX so the
-  // operator notices a promotion happened.
+  // A flash that distinguishes "activated existing skill" from
+  // "activated draft skill". The engine's `listSkills` returns rows
+  // with `status: draft|active|archived` — pressing space on a draft
+  // promotes draft → active, the operator-explicit promotion path
+  // AGENTS.md describes as legal. The label difference is purely UX
+  // so the operator notices a promotion happened.
   const [activationFlash, setActivationFlash] = useState<string | null>(null);
 
   useEffect(() => {
@@ -104,9 +103,9 @@ export const SkillsTab: React.FC<Props> = ({ client, onInnerEscape }) => {
         const wasDraft = row.status === "draft";
         await client.activateSkill(row.id);
         setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, status: "active" } : r)));
-        // S3 of PR #161 review (round 4): explicit "promoted draft → active"
-        // wording for draft promotion so the operator never mistakes the
-        // toggle for a no-op state flip on an already-promoted Skill.
+        // Explicit "promoted draft → active" wording for draft
+        // promotion so the operator never mistakes the toggle for a
+        // no-op state flip on an already-promoted Skill.
         setActivationFlash(
           wasDraft ? `activated draft skill ${row.title}` : `activated ${row.title}`,
         );

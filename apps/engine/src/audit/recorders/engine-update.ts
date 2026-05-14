@@ -1,4 +1,4 @@
-// Engine self-update audit recorders. Issue #151 P0-2 / P0-4.
+// Engine self-update audit recorders.
 //
 // `engine --self-update` and `engine --rollback` mutate the running
 // binary from a host shell with no HTTP context. The audit row is the

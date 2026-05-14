@@ -480,27 +480,26 @@ const TokensSection = z
   .prefault({})
   .describe("Token budget");
 
-// G4 closure of #159 M6 — sk REPL session preferences. Tenant-scoped so
-// each operator picks a default permission mode that the next REPL run
-// honors at startup. The four-value union mirrors PermissionMode in the
-// CLI; the Permissions tab in /settings writes here.
+// sk REPL session preferences. Tenant-scoped so each operator picks a
+// default permission mode that the next REPL run honors at startup.
+// The four-value union mirrors PermissionMode in the CLI; the
+// Permissions tab in /settings writes here.
 const ReplSection = z
   .object({
     permissionMode: z
       .enum(["ask", "auto", "plan", "yolo"])
       .default("ask")
       .describe(
-        // S7 of PR #161 review round 2: keep the description to data
-        // semantics; sk-specific UI hints (slash names, key chords)
-        // belong in the slash registry / docs, not the OpenAPI surface.
+        // Keep the description to data semantics; sk-specific UI
+        // hints (slash names, key chords) belong in the slash registry
+        // / docs, not the OpenAPI surface.
         "Default REPL permission mode for the principal: ask, auto, plan, or yolo.",
       )
       .meta(tenant()),
-    // S6 of PR #161 review round 5: surface the `/session` portal-
-    // token TTL as an operator-tunable setting instead of hardcoding
-    // 15 minutes in the slash handler. Tenant-scoped so different
-    // tenants can pick different security/usability tradeoffs without
-    // a CLI release.
+    // Operator-tunable `/session` portal-token TTL instead of a
+    // hardcoded 15 minutes in the slash handler. Tenant-scoped so
+    // different tenants can pick different security/usability
+    // tradeoffs without a CLI release.
     portalTokenTtlMin: z
       .number()
       .int()
@@ -513,15 +512,15 @@ const ReplSection = z
   .prefault({})
   .describe("sk REPL session preferences");
 
-// H1 closure of #159 — sk REPL push-notification preferences.
-// Tenant-scoped so each operator picks their own threshold + opt-in.
-// `quietHoursStart` and `quietHoursEnd` are 24h "HH:MM" wall-clock
-// strings (local timezone) that the CLI uses to suppress emits. An
-// empty string disables the time-window check.
+// sk REPL push-notification preferences. Tenant-scoped so each
+// operator picks their own threshold + opt-in. `quietHoursStart` and
+// `quietHoursEnd` are 24h "HH:MM" wall-clock strings (local timezone)
+// that the CLI uses to suppress emits. An empty string disables the
+// time-window check.
 //
-// S1 of PR #161 review (round 6): single source of truth for the
-// HH:MM-or-empty regex. The base section + the tenant overlay both
-// reuse this — a future change to the format only edits one place.
+// Single source of truth for the HH:MM-or-empty regex. The base
+// section + the tenant overlay both reuse this — a future change to
+// the format only edits one place.
 const QuietHoursStringSchema = z
   .string()
   .regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM (24h, leading-zero hour) or empty");
@@ -543,14 +542,14 @@ const NotificationsSection = z
           .default(30)
           .describe("Minimum elapsed turn seconds before a notification fires.")
           .meta(tenant()),
-        // W2 of PR #161 review (round 4): regex-constrain the wall-
-        // clock string at the engine boundary. Bare `z.string()` let
-        // `"99:99"` or `"foo"` round-trip through the API silently;
-        // the CLI's `parseHHMM` then quietly fell back to "no quiet
-        // hours". Constraining here makes the OpenAPI surface honest
-        // and protects every other consumer (chat adapter, future
-        // workflow steps) from the same trap. Pinned shape lives in
-        // `QuietHoursStringSchema` above (S1 of round 6).
+        // Regex-constrain the wall-clock string at the engine
+        // boundary. Bare `z.string()` lets `"99:99"` or `"foo"`
+        // round-trip through the API silently; the CLI's `parseHHMM`
+        // then quietly falls back to "no quiet hours". Constraining
+        // here makes the OpenAPI surface honest and protects every
+        // other consumer (chat adapter, future workflow steps) from
+        // the same trap. Pinned shape lives in
+        // `QuietHoursStringSchema` above.
         quietHoursStart: QuietHoursStringSchema.default("")
           .describe("Quiet-hours window start (HH:MM, local TZ). Empty disables the window.")
           .meta(tenant()),
@@ -563,10 +562,10 @@ const NotificationsSection = z
   .prefault({})
   .describe("sk REPL notification preferences");
 
-// G5 closure of #159 M11 — UI value pickers (theme, personality, title,
-// statusline). Tenant-scoped so each operator's REPL runs with their
-// preferred chrome. The Config tab opens the matching ValuePicker
-// component when one of these rows is selected.
+// UI value pickers (theme, personality, title, statusline). Tenant-
+// scoped so each operator's REPL runs with their preferred chrome.
+// The Config tab opens the matching ValuePicker component when one
+// of these rows is selected.
 const UiSection = z
   .object({
     theme: z
@@ -821,9 +820,8 @@ const TenantOverlaySchema = z
           .object({
             enabled: z.boolean().optional(),
             thresholdSec: z.number().int().positive().max(3600).optional(),
-            // W2 of PR #161 review (round 4): mirror the regex from
-            // `NotificationsSection` via the shared
-            // `QuietHoursStringSchema` constant (S1 of round 6).
+            // Mirror the regex from `NotificationsSection` via the
+            // shared `QuietHoursStringSchema` constant.
             quietHoursStart: QuietHoursStringSchema.optional(),
             quietHoursEnd: QuietHoursStringSchema.optional(),
           })

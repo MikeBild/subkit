@@ -14,13 +14,12 @@
 // `reason: "manual_re_issue"`. That distinction lets operators tell
 // the two writes apart in the audit trail.
 //
-// TODO(bug-6 follow-up): the LLM-facing tool name should become
-// `save_workflow_draft` to match the symmetric `save_connector_draft`
-// surface. This is a wide rename (~100 files: mcp catalog, intent
+// The LLM-facing tool name is intentionally asymmetric with
+// `save_connector_draft`. Renaming this tool to `save_workflow_draft`
+// requires coordinated updates across ~100 files (mcp catalog, intent
 // detector, authoring palette, state gate, tool policies, build
-// workflow, mock provider, plus the corresponding tests + journey
-// fixtures + seed skill bodies). Tracked separately so it lands as
-// one cohesive commit instead of bleeding through five bug fixes.
+// workflow, mock provider, plus tests, journey fixtures, and seed
+// skill bodies) and so is sequenced as its own change.
 
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";

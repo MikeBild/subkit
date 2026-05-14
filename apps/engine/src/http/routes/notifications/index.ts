@@ -1,10 +1,6 @@
-// Notifications HTTP surface — entry point.
-//
-// Phase 4 of the 2026-05 architecture audit (issue #92). The former
-// http/routes/notifications.ts (771 LOC) split into three sub-resource
-// modules — channels, rules, deliveries. Public API is unchanged: the
-// engine's server.ts still calls `registerNotificationRoutes(app)`,
-// which delegates to the three sub-files.
+// Notifications HTTP surface — entry point. Delegates to three
+// sub-resource modules: channels, rules, deliveries. `server.ts`
+// calls `registerNotificationRoutes(app)`.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { AppEnv } from "../../openapi.ts";

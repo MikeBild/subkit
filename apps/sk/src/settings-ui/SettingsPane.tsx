@@ -28,7 +28,7 @@ interface State {
   items: SettingLeafEntry[];
   pendingRestartKeys: string[];
   overrideKeys: string[];
-  /** H2 closure of #159 — fetched lazily once sessionId is known. */
+  /** Fetched lazily once sessionId is known. */
   fetchedSessionTitle?: string | null;
 }
 

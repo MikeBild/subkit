@@ -4,19 +4,14 @@
 // gate is purely a UX filter so non-admins don't see a tab they can't
 // use.
 //
-// W3 + S2 of PR #161 review (round 2): narrowed from the previous
-// over-liberal set ({rbac:read, api_key:read, audit:read,
-// identity:read, portal_token:read}) which was member-scoped and
-// surfaced the Admin tab to every tenant member.
-//
-// W4 + S5 of PR #161 review (round 4): widened to mirror the engine's
-// `memberPermissionFilter` deny-list at `apps/engine/src/rbac/seed.ts:48`.
-// The earlier four-permission probe missed admin-class permissions
-// like `api_key:rotate` / `api_key:revoke` / `credential:write` /
-// `rbac:write`, so a principal granted only those would still see the
-// Admin tab hidden — server-side RBAC enforced, but the UX cliff was
-// real. Both checks below are exact matches OR prefix matches that
-// follow the engine's deny-list shape.
+// The probe mirrors the engine's `memberPermissionFilter` deny-list
+// at `apps/engine/src/rbac/seed.ts` so that holding any admin-class
+// permission (`api_key:rotate`, `api_key:revoke`, `credential:write`,
+// `rbac:write`, etc.) reveals the Admin tab. A narrower member-only
+// probe would leave the tab hidden for a principal granted only those
+// permissions even though server-side RBAC accepts their writes.
+// Both checks below are exact matches OR prefix matches that follow
+// the engine's deny-list shape.
 //
 // **Stay in lockstep:** every entry/prefix below MUST mirror an
 // exclusion in `apps/engine/src/rbac/seed.ts:memberPermissionFilter`.

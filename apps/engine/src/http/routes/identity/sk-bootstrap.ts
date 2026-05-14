@@ -41,11 +41,10 @@ import { HttpError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
-// S1 of PR #161 review (round 5): tighten id + tenant_id to UUIDs so
-// the wire schema matches what the route actually emits + what the
-// `enforceTenantMatch` guard already expects. Bare `z.string()`
-// happily round-tripped values that the rest of the engine assumes
-// are UUIDs.
+// Pin id + tenant_id to UUIDs so the wire schema matches what the
+// route actually emits + what the `enforceTenantMatch` guard already
+// expects. Bare `z.string()` would round-trip values that the rest of
+// the engine assumes are UUIDs.
 const SkBootstrapWhoamiSchema = z.object({
   id: z.string().uuid(),
   kind: z.enum(["user", "system_account"]),
@@ -121,10 +120,10 @@ const UxGatingPermissionEnum = z.enum(
 // in this module mutates it.
 const PERMISSIONS_CHECKED_RESPONSE: UxGatingPermission[] = [...UX_GATING_PERMISSIONS];
 
-// G4 + G5 closure of #159 — REPL + UI preferences resolved from
-// the global defaults overlaid with the principal's tenant overrides.
-// The CLI consumes these on startup so its initial render reflects
-// what the operator picked in /settings → Permissions / Config.
+// REPL + UI preferences resolved from the global defaults overlaid
+// with the principal's tenant overrides. The CLI consumes these on
+// startup so its initial render reflects what the operator picked in
+// /settings → Permissions / Config.
 const SkBootstrapPrefsSchema = z
   .object({
     permissionMode: z
@@ -146,9 +145,8 @@ const SkBootstrapPrefsSchema = z
       .string()
       .describe("Quiet-hours window start (HH:MM, local TZ). Empty disables."),
     quietHoursEnd: z.string().describe("Quiet-hours window end (HH:MM, local TZ). Empty disables."),
-    // S6 of PR #161 review (round 5): operator-tunable portal-token
-    // TTL minted by /session. Tenant overlay → global → built-in
-    // 15-minute default.
+    // Operator-tunable portal-token TTL minted by /session. Tenant
+    // overlay → global → built-in 15-minute default.
     portalTokenTtlMin: z
       .number()
       .int()
@@ -486,9 +484,9 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
 }
 
 /**
- * G4 + G5 closure of #159 — resolve REPL + UI preferences for the
- * bootstrap response. Reads the global defaults from the loaded config,
- * then overlays the principal's tenant-specific overrides (if any).
+ * Resolve REPL + UI preferences for the bootstrap response. Reads the
+ * global defaults from the loaded config, then overlays the
+ * principal's tenant-specific overrides (if any).
  */
 function resolvePrefs(tenantId: string): {
   permissionMode: "ask" | "auto" | "plan" | "yolo";
@@ -517,7 +515,7 @@ function resolvePrefs(tenantId: string): {
       overlay?.notifications?.push?.quietHoursStart ?? cfg.notifications.push.quietHoursStart,
     quietHoursEnd:
       overlay?.notifications?.push?.quietHoursEnd ?? cfg.notifications.push.quietHoursEnd,
-    // S6 of PR #161 review (round 5): tenant overlay → global → 15.
+    // Tenant overlay → global → built-in 15-minute default.
     portalTokenTtlMin: overlay?.repl?.portalTokenTtlMin ?? cfg.repl.portalTokenTtlMin,
   };
 }

@@ -5,7 +5,7 @@
 //   - `connector://<id>`       — connector metadata (no credentials)
 //   - `knowledge://<id>`       — knowledge source metadata + chunk count
 //   - `skill-candidate://<id>` — proposed skill improvement
-//   - `workflow://<id>`        — committed workflow definition (issue #169)
+//   - `workflow://<id>`        — committed workflow definition
 //
 // `resources/subscribe` is wired to outbox pub/sub: events for
 // subscribed resources push `notifications/resources/updated`.
@@ -186,12 +186,11 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     await forwardIfSubscribed({ event, uri: connectorUri(connectorId) });
   });
 
-  // Issue #169 — workflow.lifecycle channel. Every committed
+  // workflow.lifecycle channel. Every committed
   // create/update/delete/restore/metadata-patch in workflows/service.ts
   // emits here. An `rbacCheck` is wired so that even a portal-scoped
   // principal that learned a workflow id out-of-band cannot subscribe
-  // and receive lifecycle pings for workflows it cannot `readResource`
-  // (W2 in PR #178 review).
+  // and receive lifecycle pings for workflows it cannot `readResource`.
   const offWorkflowLifecycle = emitter.on(
     "workflow.lifecycle",
     async (event: EventEnvelope<unknown>) => {
@@ -408,7 +407,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       };
     }
 
-    // Workflows (issue #169)
+    // Workflows
     if (uri.startsWith("workflow://")) {
       const id = uri.slice("workflow://".length);
       const wf = await workflowSvc.getWorkflow(principal.tenant_id, id, db);

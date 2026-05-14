@@ -40,10 +40,9 @@ export interface AppendMessageParams {
   /** Client-supplied permission mode for this turn. */
   permission_mode?: ConversationPermissionMode | null;
   /** Pre-registered AbortController — see RunLoopParams.turn_abort_ctrl.
-   *  Required as of #148: the HTTP route handler / MCP tool path
-   *  registers on the synchronous frame of request-accept and threads
-   *  through. The runLoop fallback that pre-#148 covered missing
-   *  controllers has been retired. */
+   *  Required: the HTTP route handler / MCP tool path registers on
+   *  the synchronous frame of request-accept and threads through.
+   *  runLoop does not fall back to creating its own controller. */
   turn_abort_ctrl: AbortController;
   /**
    * Client-side opt-out for the next-message preview frame. When true

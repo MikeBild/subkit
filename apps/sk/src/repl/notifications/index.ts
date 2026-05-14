@@ -1,8 +1,8 @@
 // Long-running execution notifications.
 //
-// `spawnSync` is imported at top-level (S6 of PR #161 review) — it's
-// a function reference, not an executable side effect, so the cost
-// is the same whether or not `isOsDoNotDisturb` runs.
+// `spawnSync` is imported at top-level — it's a function reference,
+// not an executable side effect, so the cost is the same whether or
+// not `isOsDoNotDisturb` runs.
 
 import { spawnSync } from "node:child_process";
 
@@ -72,8 +72,7 @@ export const NOTIFY_DEFAULTS: { thresholdMs: number } = {
  * disables the window. The window may wrap midnight: when `start >
  * end`, the active window is `[start, 24:00) ∪ [00:00, end)`.
  *
- * H1 closure of #159 G3 — pairs with the `notifications.push.quietHours*`
- * engine settings.
+ * Pairs with the `notifications.push.quietHours*` engine settings.
  */
 export function inQuietHoursWindow(start: string, end: string, now: Date): boolean {
   const s = parseHHMM(start);
@@ -98,10 +97,10 @@ function parseHHMM(s: string): number | null {
 }
 
 /**
- * H11 closure of #159 — best-effort OS Do-Not-Disturb probe. Returns
- * true only when the platform reports DND active; on any failure
- * (unsupported OS, missing tooling, permission error, timeout)
- * returns false so the caller falls back to the time-window check.
+ * Best-effort OS Do-Not-Disturb probe. Returns true only when the
+ * platform reports DND active; on any failure (unsupported OS,
+ * missing tooling, permission error, timeout) returns false so the
+ * caller falls back to the time-window check.
  *
  * macOS: uses `defaults read com.apple.ncprefs.plist dnd_prefs` style
  *   probes which are unreliable across versions; instead we inspect
@@ -115,14 +114,10 @@ function parseHHMM(s: string): number | null {
  * Windows: not supported here; the OS itself respects Focus Assist
  *   for OSC9 notifications already.
  *
- * S6 of PR #161 review round 2: the result is cached so that
- * `spawnSync` (with a 200 ms timeout per probe) doesn't run on every
- * notification gate.
- *
- * W6 of PR #161 review round 4: switched the cache from process-
- * lifetime to a 5-minute TTL so operators who toggle DND mid-REPL
- * pick up the new state within at most 5 minutes — without paying
- * the spawn cost on every gate. An explicit
+ * The result is cached with a 5-minute TTL so `spawnSync` (with a
+ * 200 ms timeout per probe) doesn't run on every notification gate,
+ * yet operators who toggle DND mid-REPL pick up the new state within
+ * at most 5 minutes. An explicit
  * `resetOsDoNotDisturbCacheForTests` is exported so unit tests can
  * re-probe without leaking state.
  */

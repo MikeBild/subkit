@@ -7,11 +7,10 @@
 // to mint a tool call.
 //
 // Routing is read off the `SlashCommand.routing` field in
-// `apps/sk/src/slash.ts` — never inferred from the bare name. This
-// closes a subtle loophole flagged in PR #145 (R1-S2 / R2-W4): if
-// routing is decided by a hard-coded name list, a future slash command
-// of the same name could silently bypass server-side RBAC + audit.
-// Tagging at registration removes that class of bug.
+// `apps/sk/src/slash.ts` — never inferred from the bare name. If
+// routing were decided by a hard-coded name list, a future slash
+// command of the same name could silently bypass server-side RBAC +
+// audit. Tagging at registration removes that class of bug.
 //
 // Default for any command without an explicit `routing` is `"engine"`
 // — i.e. forward to the engine so RBAC + audit run on the same path
@@ -47,10 +46,10 @@ export function classifySlash(name: string): SlashDispatchPlan {
 }
 
 /**
- * M13 of #159 — one-release guidance for slashes that have been
- * removed from the registry (or that callers occasionally try to use
- * because they exist in another tool). Returns the guidance line when
- * the bare name matches; null otherwise.
+ * One-release guidance for slashes that have been removed from the
+ * registry (or that callers occasionally try to use because they
+ * exist in another tool). Returns the guidance line when the bare
+ * name matches; null otherwise.
  *
  * The guidance map covers two cohorts:
  *

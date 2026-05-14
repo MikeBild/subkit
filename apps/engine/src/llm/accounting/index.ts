@@ -1,6 +1,5 @@
-// One surface for LLM token + budget accounting — Phase 3 of the
-// 2026-05 architecture audit (issue #89). Consolidates four files
-// that previously lived under three different subsystems:
+// One surface for LLM token + budget accounting. Consolidates four
+// files that previously lived under three different subsystems:
 //
 //   count.ts       — pre-call token counting (was llm/tokens.ts)
 //   budget.ts      — per-tenant monthly budget + ledger

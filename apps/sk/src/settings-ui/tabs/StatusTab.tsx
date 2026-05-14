@@ -11,8 +11,7 @@
 // Note: rows that depend on REPL state (session id, cwd-relative
 // permission mode, token-usage) require coupling that doesn't exist in
 // the standalone `sk settings` invocation. Those rows render "unknown"
-// here and are populated only when the modal is hosted by the REPL —
-// future work, see issue #159 follow-ups.
+// here and are populated only when the modal is hosted by the REPL.
 
 import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";

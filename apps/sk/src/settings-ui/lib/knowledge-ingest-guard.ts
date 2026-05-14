@@ -1,8 +1,8 @@
-// W6 of PR #161 review (round 6): UX guard for the Knowledge tab's
-// inline ingest path. Lifted out of KnowledgeTab.tsx so the contract
-// is unit-testable without driving the Ink render tree, and so a
-// future contributor cannot widen one half (the deny-list) without
-// the other half (the test) lighting up.
+// UX guard for the Knowledge tab's inline ingest path. Lifted out of
+// KnowledgeTab.tsx so the contract is unit-testable without driving
+// the Ink render tree, and so a future contributor cannot widen one
+// half (the deny-list) without the other half (the test) lighting
+// up.
 //
 // This is **not** a security boundary. The engine accepts whatever
 // bytes the operator forwards, scopes them to the tenant, and runs

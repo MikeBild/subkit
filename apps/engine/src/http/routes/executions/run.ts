@@ -4,8 +4,6 @@
 //   • saved  → references a persisted workflow by id
 //   • draft  → inline WorkflowDef, no commit required
 //   • step   → single StepDef, one-step synthetic workflow
-//
-// Phase 4 of the 2026-05 architecture audit (issue #92).
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";

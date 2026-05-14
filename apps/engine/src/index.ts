@@ -511,10 +511,10 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // --self-update: download newer binary, replace, exit. Issue #151
-  // P0-2 added audit/log/metric instrumentation, so the path now opens
-  // a short-lived db handle — DATABASE_URL must be set in the shell
-  // environment (sourced from /etc/default/sk-engine on the droplet).
+  // --self-update: download newer binary, replace, exit. The update
+  // path writes audit/log/metric rows, so it opens a short-lived db
+  // handle — DATABASE_URL must be set in the shell environment
+  // (sourced from /etc/default/sk-engine on the droplet).
   if (process.argv.includes(SELF_UPDATE_FLAG)) {
     const { runSelfUpdate } = await import("./self-update.ts");
     try {
@@ -530,7 +530,6 @@ async function main(): Promise<void> {
 
   // --rollback [--to=X.Y.Z]: swap to a previously retained signed
   // binary. Same env requirement as --self-update (audit row needs db).
-  // Issue #151 P0-4.
   if (process.argv.includes(ROLLBACK_FLAG)) {
     const { z } = await import("zod");
     const { runRollback } = await import("./self-update.ts");

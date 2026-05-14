@@ -1,8 +1,7 @@
 // Engine self-update + rollback logic, extracted for testability.
 // Invoked via `engine --self-update` and `engine --rollback`. Both
 // paths require DATABASE_URL because the audit row is the only paper
-// trail for a privileged change that mutates the running binary —
-// see issue #151 P0-2 / P0-4.
+// trail for a privileged change that mutates the running binary.
 //
 // DB requirements per branch:
 //   `runSelfUpdate` "already at latest" → no DB (returns before the recorder).
@@ -196,7 +195,7 @@ export async function runSelfUpdate(
 }
 
 /** Restore a previously retained signed binary in place of the
- *  currently running one. Issue #151 P0-4. */
+ *  currently running one. */
 export async function runRollback(
   target: string | "previous" = "previous",
   /** See `runSelfUpdate`. */

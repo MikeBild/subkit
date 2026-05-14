@@ -152,11 +152,11 @@ export function resolveProfile(opts: ResolveOptions = {}): ResolvedProfile {
 export function saveProfile(updates: ResolvedProfile, path: string = configPath()): void {
   const disk = loadConfig(path);
   disk.active_profile = updates.name;
-  // S2 of PR #161 review (round 4): when the operator signs out the
-  // ResolvedProfile carries `api_key: ""`. Persisting that as a
-  // literal empty string risks future code paths sending
-  // `Authorization: Bearer ` (with trailing space) and lighting up the
-  // engine's 401 path with a misleading "principal token absent" log.
+  // When the operator signs out the ResolvedProfile carries
+  // `api_key: ""`. Persisting that as a literal empty string risks
+  // future code paths sending `Authorization: Bearer ` (with trailing
+  // space) and lighting up the engine's 401 path with a misleading
+  // "principal token absent" log.
   // The engine-client already short-circuits empty strings via
   // `if (this.apiKey)`, but stripping the field at the disk boundary
   // keeps the persisted shape honest: a profile is either signed in

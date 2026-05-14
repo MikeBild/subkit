@@ -23,11 +23,11 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 3000;
 
 /**
- * W5 of PR #161 review (round 4): when the remote fetch fails this
- * many times in a row, suppress further attempts for
- * `CIRCUIT_OPEN_MS`. Air-gapped operators get the env-var opt-out;
- * unreliable-network operators get the breaker so the REPL doesn't
- * burn 3-second timeouts on every cold-cache boot.
+ * When the remote fetch fails this many times in a row, suppress
+ * further attempts for `CIRCUIT_OPEN_MS`. Air-gapped operators get
+ * the env-var opt-out; unreliable-network operators get the breaker
+ * so the REPL doesn't burn 3-second timeouts on every cold-cache
+ * boot.
  */
 const FAILURE_THRESHOLD = 3;
 const CIRCUIT_OPEN_MS = 7 * 24 * 60 * 60 * 1000;
@@ -35,9 +35,9 @@ const CIRCUIT_OPEN_MS = 7 * 24 * 60 * 60 * 1000;
 export interface WhatsNewCache {
   headline: string;
   fetchedAt: number;
-  /** W5 of round 4: consecutive remote-fetch failure count. Resets on success. */
+  /** Consecutive remote-fetch failure count. Resets on success. */
   failureCount?: number;
-  /** W5 of round 4: when the breaker opens, the timestamp it opened at. */
+  /** When the breaker opens, the timestamp it opened at. */
   circuitOpenedAt?: number;
 }
 
@@ -56,12 +56,9 @@ export function changelogHead(body: string = bundledChangelog): string | null {
     const version = m[1];
     const tail = (m[2] ?? "").trim();
     if (!version) continue;
-    // S7 of PR #161 review (round 5): pass the bundled-CHANGELOG path
-    // through the same sanitizer the cache/remote paths use, so a
-    // future automated changelog merge that smuggles ANSI/control
-    // bytes can't paint over the banner. The earlier code returned
-    // the raw `v${version} ${tail}` and only sanitized cache/remote
-    // — closing that hole here.
+    // Pass the bundled-CHANGELOG path through the same sanitizer the
+    // cache/remote paths use, so a future automated changelog merge
+    // that smuggles ANSI/control bytes can't paint over the banner.
     return sanitizeHeadline(tail ? `v${version} ${tail}` : `v${version}`);
   }
   return null;
@@ -72,11 +69,11 @@ export interface WhatsNewRemote {
 }
 
 /**
- * W5 of PR #161 review (round 6): Zod schema for the remote payload
- * so a hostile or buggy upstream cannot smuggle nested objects /
- * arrays past `sanitizeHeadline`. `.strict()` rejects unknown keys —
- * if the contract grows, the engine bumps the schema and the CLI
- * surfaces the parse failure as a fetch failure (breaker bumps).
+ * Zod schema for the remote payload so a hostile or buggy upstream
+ * cannot smuggle nested objects / arrays past `sanitizeHeadline`.
+ * `.strict()` rejects unknown keys — if the contract grows, the
+ * engine bumps the schema and the CLI surfaces the parse failure as
+ * a fetch failure (breaker bumps).
  */
 const WhatsNewRemoteSchema = z.object({ headline: z.string() }).strict();
 
@@ -84,17 +81,15 @@ const WhatsNewRemoteSchema = z.object({ headline: z.string() }).strict();
  * Resolve the remote endpoint URL. Returns null when the operator
  * has not explicitly opted in.
  *
- * W4 of PR #161 review (round 6): the default posture is **opt-in**.
- * `SK_WHATS_NEW_URL` unset → no network call (CLI falls back to the
- * bundled CHANGELOG head). To enable, set the env var to the
- * upstream JSON URL. The opt-out sentinels (`""`, `"disabled"`,
- * `"off"`, `"0"`) are kept for compatibility with operators who
- * inherited a populated default and want to disable it explicitly,
- * but they're no longer load-bearing — the default is now silent.
+ * The default posture is **opt-in**. `SK_WHATS_NEW_URL` unset → no
+ * network call (CLI falls back to the bundled CHANGELOG head). To
+ * enable, set the env var to the upstream JSON URL. The opt-out
+ * sentinels (`""`, `"disabled"`, `"off"`, `"0"`) are accepted so
+ * operators can disable an inherited populated value explicitly.
  *
- * Air-gapped deploys remain documented in `docs/03-input-surfaces.md`
- * + `docs/07-security-governance.md`; the default posture matches
- * those docs.
+ * Air-gapped deploys are documented in `docs/03-input-surfaces.md` +
+ * `docs/07-security-governance.md`; the default posture matches those
+ * docs.
  */
 export function whatsNewUrl(): string | null {
   const fromEnv = process.env.SK_WHATS_NEW_URL;
@@ -111,12 +106,10 @@ export const RECOMMENDED_WHATS_NEW_URL = DEFAULT_URL;
 /**
  * ANSI / OSC strip + control-byte filter. Used by `sanitizeHeadline`.
  *
- * Implementation note (W5 of PR #161 review round 2): regex sources
- * use explicit `\x1b` / `\x07` JS escapes only — no literal
- * control bytes embedded in the source — so the file stays text-on
- * disk. The previous version had raw ESC / BEL bytes inside the
- * regex literals, which made `git` flag the file as binary and hid
- * future diffs from review.
+ * Regex sources use explicit `\x1b` / `\x07` JS escapes only — no
+ * literal control bytes embedded in the source — so the file stays
+ * text-on-disk. Raw ESC / BEL bytes inside regex literals make `git`
+ * flag the file as binary and hide future diffs from review.
  */
 function stripAnsiAndControlBytes(input: string): string {
   // CSI: ESC [ <params> <final-byte (A-Za-z)>
@@ -169,11 +162,11 @@ export function readCache(path: string = whatsNewCachePath()): WhatsNewCache | n
 }
 
 /**
- * W5 of PR #161 review (round 4): true when the breaker is open —
- * `failureCount >= FAILURE_THRESHOLD` AND the open timestamp is
- * within the last `CIRCUIT_OPEN_MS`. While open, `loadWhatsNew`
- * skips the network call and falls back to cache → bundled
- * CHANGELOG. The next successful fetch resets the breaker.
+ * True when the breaker is open — `failureCount >=
+ * FAILURE_THRESHOLD` AND the open timestamp is within the last
+ * `CIRCUIT_OPEN_MS`. While open, `loadWhatsNew` skips the network
+ * call and falls back to cache → bundled CHANGELOG. The next
+ * successful fetch resets the breaker.
  */
 export function isCircuitOpen(cache: WhatsNewCache | null, now: number): boolean {
   if (!cache) return false;
@@ -245,9 +238,9 @@ export async function loadWhatsNew(opts: LoadWhatsNewOptions = {}): Promise<stri
   const cached = readCache(cachePath);
   if (cached && isFresh(cached, now())) return sanitizeHeadline(cached.headline);
 
-  // W5 of PR #161 review (round 4): if the breaker is open we never
-  // touch the network. The cache is served (stale-OK) and the
-  // bundled CHANGELOG covers the empty-cache case.
+  // When the breaker is open we never touch the network. The cache
+  // is served (stale-OK) and the bundled CHANGELOG covers the
+  // empty-cache case.
   if (isCircuitOpen(cached, now())) {
     return sanitizeHeadline(cached?.headline) ?? changelogHead();
   }
@@ -255,13 +248,12 @@ export async function loadWhatsNew(opts: LoadWhatsNewOptions = {}): Promise<stri
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  // W5 of PR #161 review (round 4): identify CLI traffic in the
-  // upstream's access log. Operators inspecting `updates.subkit.dev`
-  // logs need to be able to tell sk-cli requests from generic Bun
-  // fetches in case throttling / quota policies need to apply.
-  // `BUILD_VERSION` is bun-`define`d at compile time — fall back to
-  // a literal "unknown" when running under bun test where the define
-  // isn't replaced.
+  // Identify CLI traffic in the upstream's access log. Operators
+  // inspecting `updates.subkit.dev` logs need to be able to tell
+  // sk-cli requests from generic Bun fetches in case throttling /
+  // quota policies need to apply. `BUILD_VERSION` is bun-`define`d at
+  // compile time — fall back to a literal "unknown" when running
+  // under bun test where the define isn't replaced.
   // biome-ignore lint/suspicious/noExplicitAny: BUILD_VERSION is a build-time replace
   const declaredVersion = (globalThis as any).BUILD_VERSION;
   const skVersion = typeof declaredVersion === "string" ? declaredVersion : "unknown";
@@ -276,10 +268,10 @@ export async function loadWhatsNew(opts: LoadWhatsNewOptions = {}): Promise<stri
       recordFailure(cached, cachePath, now());
       return sanitizeHeadline(cached?.headline) ?? changelogHead();
     }
-    // W5 of PR #161 review (round 6): Zod-validate the remote payload
-    // before render. `.strict()` rejects unknown keys; failure is
-    // counted as a fetch failure (breaker bumps), not silently
-    // smuggled through `sanitizeHeadline`.
+    // Zod-validate the remote payload before render. `.strict()`
+    // rejects unknown keys; failure is counted as a fetch failure
+    // (breaker bumps), not silently smuggled through
+    // `sanitizeHeadline`.
     const rawBody = (await res.json()) as unknown;
     const parsed = WhatsNewRemoteSchema.safeParse(rawBody);
     if (!parsed.success) {

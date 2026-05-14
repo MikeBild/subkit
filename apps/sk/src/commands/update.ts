@@ -6,8 +6,7 @@
 // (see `@cli-core/updater::performUpdate`), so rollback only works
 // after at least one self-update has run. The cli-side rollback writes
 // no audit row — `sk` is the operator's CLI, not a server, and has no
-// database. The engine-side `engine --rollback` is the audited path
-// (issue #151 P0-4).
+// database. The engine-side `engine --rollback` is the audited path.
 
 import {
   checkForUpdate,

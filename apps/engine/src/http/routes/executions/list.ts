@@ -3,8 +3,6 @@
 //   GET /v1/executions
 //   GET /v1/executions/{id}
 //   GET /v1/executions/{id}/steps
-//
-// Phase 4 of the 2026-05 architecture audit (issue #92).
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, desc, eq } from "drizzle-orm";

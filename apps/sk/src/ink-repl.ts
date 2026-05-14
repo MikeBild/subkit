@@ -68,7 +68,7 @@ interface ResolvedPersona {
   /** Where the snapshot came from: network, disk cache, or the
    *  legacy tiered fallback. R7-S1. */
   source: "network" | "cache" | "fallback";
-  /** Engine-resolved REPL/UI/notification prefs. H1 closure of #159 G3. */
+  /** Engine-resolved REPL/UI/notification prefs. */
   prefs: SkBootstrapSnapshot["prefs"];
 }
 
@@ -830,23 +830,21 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     }
   };
 
-  // W3 of PR #161 review (round 5): read the per-process push-notify
-  // overrides exactly once at REPL boot. Earlier the env was sampled
-  // inside `applyEventStream` on every turn, which meant an
-  // `export SK_PUSH_NOTIFY=1` mid-REPL silently changed behavior.
-  // Reading once here keeps the override aligned with the rest of
-  // the boot-time wiring; operators who need to flip it without
-  // restarting the REPL should switch the engine-side
+  // Read the per-process push-notify overrides exactly once at REPL
+  // boot. Sampling the env inside `applyEventStream` on every turn
+  // would let an `export SK_PUSH_NOTIFY=1` silently change behavior
+  // mid-REPL. Reading once here keeps the override aligned with the
+  // rest of the boot-time wiring; operators who need to flip it
+  // without restarting should switch the engine-side
   // `notifications.push.*` setting through `/settings → Notifications`.
   const pushNotifyOverride: { enabled?: boolean; thresholdMs?: number } = {};
   const envEnabledRaw = process.env.SK_PUSH_NOTIFY;
   if (envEnabledRaw === "1") pushNotifyOverride.enabled = true;
   else if (envEnabledRaw === "0") pushNotifyOverride.enabled = false;
-  // S5 of PR #161 review (round 6): require pure decimal digits.
-  // `Number("0xff")` returns 255 (silently accepts hex);
-  // `Number("12px")` returns NaN (caught by isFinite, but not the
-  // pattern we want to encode). The /^\d+$/ test rejects both
-  // before we even call parseInt. Empty/missing → no override.
+  // Require pure decimal digits. `Number("0xff")` returns 255
+  // (silently accepts hex); `Number("12px")` returns NaN (caught by
+  // isFinite, but not the pattern we want to encode). The /^\d+$/
+  // test rejects both before parseInt. Empty/missing → no override.
   const rawThreshold = process.env.SK_PUSH_NOTIFY_THRESHOLD_MS?.trim() ?? "";
   if (/^\d+$/.test(rawThreshold)) {
     const envThreshold = Number.parseInt(rawThreshold, 10);
@@ -919,17 +917,17 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       onSlash,
       onSelectConversation,
       onCancelConversation: (id: string) => currentClient.cancelConversation(id),
-      // G2 closure of #159 M4 — the embedded /settings pane needs an
-      // EngineClient to fetch the settings list. Pass the active client
-      // through so the modal renders inside the REPL with REPL state.
+      // The embedded /settings pane needs an EngineClient to fetch
+      // the settings list. Pass the active client through so the
+      // modal renders inside the REPL with REPL state.
       engineClient: currentClient,
-      // H1 closure of #159 G3 — pass the engine-resolved push/notification
-      // prefs so applyEventStream can call notify() without an env-var
-      // hop. When the engine is older than #159 the snapshot's prefs
-      // come from `fromLegacy()` defaults.
+      // Pass the engine-resolved push/notification prefs so
+      // applyEventStream can call notify() without an env-var hop.
+      // On older engines the snapshot's prefs come from `fromLegacy()`
+      // defaults.
       prefs: active.persona.prefs,
-      // W3 of PR #161 review (round 5) — per-process env override
-      // sampled exactly once at REPL boot. See declaration above.
+      // Per-process env override sampled exactly once at REPL boot.
+      // See declaration above.
       pushNotifyOverride,
     });
   };

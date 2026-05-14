@@ -165,9 +165,9 @@ export const AuditAction = {
   DATA_IMPORTED: "data.imported",
 
   CONVERSATION_CREATED: "conversation.created",
-  // W1 of PR #161 review — distinct action so audit-log queries can
-  // separate forks (which clone prior tenant content) from greenfield
-  // creates. Metadata still carries forked_from / anchor_message_id /
+  // Distinct action so audit-log queries can separate forks (which
+  // clone prior tenant content) from greenfield creates. Metadata
+  // still carries forked_from / anchor_message_id /
   // copied_message_count.
   CONVERSATION_FORKED: "conversation.forked",
   CONVERSATION_COMPLETED: "conversation.completed",
@@ -344,22 +344,20 @@ export const AuditAction = {
   // version diagnostics endpoint. Mirrors `DIAGNOSTICS_DRIFT_READ`:
   // the response exposes engine version, latest available release,
   // and schema-drift posture, so compliance teams want a paper trail.
-  // Issue #151 P0-1.
   DIAGNOSTICS_VERSION_READ: "diagnostics.version_read",
   // `engine --self-update` lifecycle. The binary self-mutates from a
   // host shell with no HTTP context; the audit row is the only evidence
   // a privileged change happened. Tenant: SYSTEM_TENANT_ID. Actor:
-  // system_account `engine-self-update`. Issue #151 P0-2/P0-4.
+  // system_account `engine-self-update`.
   ENGINE_UPDATE_INITIATED: "engine.update.initiated",
   ENGINE_UPDATE_COMPLETED: "engine.update.completed",
   ENGINE_UPDATE_FAILED: "engine.update.failed",
   ENGINE_UPDATE_ROLLED_BACK: "engine.update.rolled_back",
 
   // ---------------------------------------------------------------------
-  // External MCP servers (issue #171 writer; schema landed with #166).
-  // Reserve the typed constants here so the writer cannot mint
-  // free-string action values. Vocabulary mirrors the doc-block at the
-  // top of apps/engine/src/db/schema/mcp_servers.ts.
+  // External MCP servers. Reserve the typed constants here so the
+  // writer cannot mint free-string action values. Vocabulary mirrors
+  // the doc-block at the top of apps/engine/src/db/schema/mcp_servers.ts.
   // ---------------------------------------------------------------------
   MCP_SERVER_REGISTERED: "mcp_server.registered",
   MCP_SERVER_CONFIG_UPDATED: "mcp_server.config_updated",
@@ -402,11 +400,11 @@ export type AuditResult = "success" | "denied" | "error";
 
 /** `conversation.forked` metadata. Emitted from
  *  `forkConversation` (service) when an operator forks a conversation
- *  at a specific message id. W1 of PR #161 review (round 5):
- *  pinning the schema so SIEM/BI consumers can reconstruct the
- *  truncation outcome and the request channel without joining back
- *  to the source conversation. The request_source field follows the
- *  AGENTS.md enum and is the same one used by ToolPolicyChangedMetadata. */
+ *  at a specific message id. The schema is pinned so SIEM/BI consumers
+ *  can reconstruct the truncation outcome and the request channel
+ *  without joining back to the source conversation. The request_source
+ *  field follows the AGENTS.md enum and is the same one used by
+ *  ToolPolicyChangedMetadata. */
 export const ConversationForkedMetadataSchema = z.object({
   /** Source conversation id; the fork's `forked_from` join key. */
   forked_from: z.string().uuid(),
@@ -534,9 +532,9 @@ export const EngineUpdateMetadataSchema = z.object({
   sha256: z.union([z.string().regex(/^[0-9a-f]{64}$/), z.literal("")]),
   /** Which CLI path triggered the row. The pair `(request_source,
    *  audit_log.actor_type)` records the dispatch path; we deliberately
-   *  do NOT carry an `actor: "cli"` literal because issue #151 §6
-   *  declares any HTTP / MCP self-update surface an anti-goal — the
-   *  column would invite drift. DO NOT WIDEN. */
+   *  do NOT carry an `actor: "cli"` literal because any HTTP / MCP
+   *  self-update surface is an anti-goal — the column would invite
+   *  drift. DO NOT WIDEN. */
   request_source: z.enum(["self-update", "rollback"]),
   /** Reason an update failed. Set on FAILED only. */
   reason: z.string().optional(),

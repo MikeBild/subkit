@@ -8,7 +8,6 @@
 //   4. Setup           — what does /v1/diagnostics/setup say overall + per-section?
 //   5. Schema drift    — does this engine binary's embedded migration set
 //                        match the rows in `drizzle.__drizzle_migrations`?
-//                        (issue #149)
 //   6. Version match   — does the CLI version match the engine's version?
 //                        Mismatches usually surface as missing routes or
 //                        wire-shape drift.
@@ -199,16 +198,14 @@ export const doctorCommand = defineCommand({
         detail: "skipped — fix profile + reachability first",
       });
     } else {
-      // Issue #151 P0-1 moved the `db_schema_drift` flag off `/v1/health`
-      // (it was leaking operational posture to unauthenticated callers).
-      // The `audit:read`-gated `/v1/diagnostics/drift` is the canonical
-      // source of the actionable detail, so always pull it. The
-      // pre-#151 `lastHealth.db_schema_drift === false` short-circuit
-      // is gone; every `sk doctor` run now writes one
-      // `DIAGNOSTICS_DRIFT_READ` audit row, even on a clean DB. That
-      // is intentional — operators searching `audit_log` for drift
-      // reads will see the doctor invocations alongside any genuine
-      // probes.
+      // The `audit:read`-gated `/v1/diagnostics/drift` is the
+      // canonical source of the actionable drift detail (the public
+      // `/v1/health` deliberately omits it to avoid leaking
+      // operational posture to unauthenticated callers), so always
+      // pull it. Every `sk doctor` run writes one
+      // `DIAGNOSTICS_DRIFT_READ` audit row, even on a clean DB —
+      // intentional, so operators searching `audit_log` for drift
+      // reads see doctor invocations alongside any genuine probes.
       try {
         const report = await client.driftReport();
         const unknown = report.unknown_in_db.length;

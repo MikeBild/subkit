@@ -355,13 +355,12 @@ export const METRIC_NAMES = {
   // exposing the secret value itself. Set at every loadConfig() and
   // every setConfigKey() commit.
   SETTINGS_OVERRIDE_ACTIVE: "settings_override_active",
-  // 4.3.0 (issue #151 P0-2/P0-4) — engine self-update + rollback
-  // outcomes. Cardinality is intentionally bounded: `result` is one of
-  // `success` / `failed` / `rollback` (kept in lockstep with the
-  // `engine.update.*` audit action names so SREs don't have to
-  // remember an off-by-one), `channel` is `stable` / `beta`. Version
-  // labels are NOT included — semver is unbounded over time and would
-  // explode the series.
+  // Engine self-update + rollback outcomes. Cardinality is
+  // intentionally bounded: `result` is one of `success` / `failed` /
+  // `rollback` (kept in lockstep with the `engine.update.*` audit
+  // action names so SREs don't have to remember an off-by-one),
+  // `channel` is `stable` / `beta`. Version labels are NOT included —
+  // semver is unbounded over time and would explode the series.
   ENGINE_UPDATE_TOTAL: "engine_update_total",
   // Next-message suggestion outcomes — `outcome` is one of `generated`,
   // `accepted`, `dismissed`, `typed_over`, `suppressed`, `budget_pressure`,
@@ -382,7 +381,7 @@ function buildRegistry(): MetricsRegistry {
   });
   reg.registerCounter({
     name: METRIC_NAMES.ENGINE_UPDATE_TOTAL,
-    help: "Engine self-update + rollback outcomes (issue #151).",
+    help: "Engine self-update + rollback outcomes.",
     labels: ["result", "channel"],
   });
   reg.registerCounter({

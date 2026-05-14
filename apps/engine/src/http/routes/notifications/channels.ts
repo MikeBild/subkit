@@ -5,10 +5,8 @@
 //   PATCH  /v1/notifications/channels/{id}
 //   DELETE /v1/notifications/channels/{id}
 //
-// Phase 4 of the 2026-05 architecture audit (issue #92): split out of
-// the former http/routes/notifications.ts god-file into its own
-// sub-resource module. Schemas live next to the routes that use them
-// — same Zod-first contract; the only structural change is locality.
+// Schemas live next to the routes that use them — same Zod-first
+// contract.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";

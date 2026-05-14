@@ -521,7 +521,7 @@ export class SchedulerReconciler {
         // an unbounded number of catch-up enqueues.
         continue;
       }
-      // Calendar gates (issue #47). The trigger's `business_days_only`
+      // Calendar gates. The trigger's `business_days_only`
       // and `skip_dates` round-trip through the schedule's `input`
       // jsonb column (see `bindFromWorkflow`). We intentionally do
       // NOT advance `last_enqueued_at` on a calendar-skip — the next
