@@ -2,16 +2,17 @@
 //
 // Conversation tools (save_connector_draft, build_workflow) call this
 // when an authoring step crosses a boundary that benefits from
-// extracted endpoint metadata. The helper reads attachment payloads
-// via the same content reader the @attachment:slug resolver uses,
-// then delegates to runDocumentAnalysisFlow which writes to the
-// endpoint registry and emits the DOCUMENT_ANALYZED audit row.
+// extracted endpoint metadata. The helper reads files linked to the
+// conversation via the unified `files` + `file_links` resource, then
+// delegates to runDocumentAnalysisFlow which writes to the endpoint
+// registry and emits the DOCUMENT_ANALYZED audit row.
 
-import { eq } from "drizzle-orm";
-import { type ContentReader, defaultContentReader } from "../../conversations/attachments.ts";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { conversationAttachments } from "../../db/schema/index.ts";
+import { fileLinks, files } from "../../db/schema/index.ts";
+import { storageKey } from "../../files/resolver.ts";
 import { logger } from "../../logging/logger.ts";
+import { getObjectStore } from "../../storage/object-store.ts";
 import {
   type DocumentAnalysisAttachment,
   type DocumentAnalysisResult,
@@ -28,43 +29,53 @@ export interface AnalyzeConversationAttachmentsParams {
   slugs?: string[];
   /** Free-form goal forwarded to runDocumentAnalysisFlow. */
   goal?: string;
-  /** Test override. */
-  read?: ContentReader;
 }
 
 export async function analyzeConversationAttachments(
   p: AnalyzeConversationAttachmentsParams,
 ): Promise<DocumentAnalysisResult | null> {
-  // tenant-filter:exempt — tenant-scoped via parent flow id; verified by caller
   const rows = await p.db
-    .select()
-    .from(conversationAttachments)
-    .where(eq(conversationAttachments.conversation_id, p.conversation_id));
+    .select({ link: fileLinks, file: files })
+    .from(fileLinks)
+    .innerJoin(files, eq(files.id, fileLinks.file_id))
+    .where(
+      and(
+        eq(fileLinks.tenant_id, p.tenant_id),
+        eq(fileLinks.resource_type, "conversation"),
+        eq(fileLinks.resource_id, p.conversation_id),
+      ),
+    );
 
   const slugs = p.slugs;
-  const candidates = slugs ? rows.filter((r) => slugs.includes(r.slug)) : rows;
+  const candidates = slugs
+    ? rows.filter((r) => r.link.slug !== null && slugs.includes(r.link.slug))
+    : rows;
   if (candidates.length === 0) return null;
 
-  const reader = p.read ?? defaultContentReader;
+  const store = getObjectStore();
   const attachments: DocumentAnalysisAttachment[] = [];
   for (const row of candidates) {
     let content: string | undefined;
     try {
-      content = await reader(row.storage_uri);
+      const buf = await store.get(storageKey(row.file.storage_uri));
+      content = new TextDecoder().decode(
+        new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
+      );
     } catch (err) {
       logger.warn({
         module: "analyze-conversation-attachments",
         action: "read_failed",
         tenant_id: p.tenant_id,
-        slug: row.slug,
+        slug: row.link.slug,
+        file_id: row.file.id,
         error: err instanceof Error ? err.message : String(err),
       });
       continue;
     }
     attachments.push({
-      storage_uri: row.storage_uri,
-      mime_type: row.content_type ?? "application/octet-stream",
-      filename: row.original_filename,
+      storage_uri: row.file.storage_uri,
+      mime_type: row.file.content_type ?? "application/octet-stream",
+      filename: row.file.filename,
       content,
     });
   }
