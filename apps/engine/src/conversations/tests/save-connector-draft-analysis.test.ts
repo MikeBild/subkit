@@ -8,13 +8,12 @@ import { and, eq } from "drizzle-orm";
 import {
   auditLog,
   connectorEndpointSchemas,
-  conversationAttachments,
   conversations,
   tenants,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
-import { clearMemoryAttachments, putMemoryAttachment } from "../attachments.ts";
+import { attachInlineForTest } from "../../files/test-helpers.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -54,24 +53,19 @@ beforeAll(async () => {
     .values({ tenant_id, status: "active" })
     .returning();
   conversation_id = conv!.id;
-  // Seed the OpenAPI spec as an attachment via memory:// reader.
-  const key = `${conversation_id}:widgets-spec`;
-  putMemoryAttachment(key, SPEC);
-  await ctx.db.insert(conversationAttachments).values({
+  // Seed the OpenAPI spec via the unified files resource.
+  await attachInlineForTest({
+    db: ctx.db,
     tenant_id,
     conversation_id,
-    slug: "widgets-spec",
-    original_filename: "widgets.json",
+    filename: "widgets.json",
     content_type: "application/json",
-    size_bytes: SPEC.length,
-    storage_uri: `memory://${key}`,
-    sha256: "fake",
-    preview: SPEC.slice(0, 200),
+    content: SPEC,
+    slug: "widgets-spec",
   });
 });
 
 afterAll(async () => {
-  clearMemoryAttachments();
   await ctx.cleanup();
 });
 

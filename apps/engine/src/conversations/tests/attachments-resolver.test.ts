@@ -1,18 +1,26 @@
-// attachments.ts — parser + resolver tests.
+// attachments.ts — parser + resolver tests against the unified
+// `files` + `file_links` resource.
 //
-// Uses memory:// URIs + putMemoryAttachment so the tests don't need S3
-// or a filesystem path. The DB is still real (testcontainer) because
-// the resolver queries conversation_attachments by (conv_id, slug).
+// Wave-C Step 6 collapsed the legacy `conversation_attachments` table
+// + in-process MEMORY_STORE into the canonical files resource. The
+// tests below exercise the new surface:
+//   - `parseAttachmentSlugs` (chat-text token scan, pure)
+//   - `resolveAttachmentSlugsInText` (slug → `[file:fid_...]` rewriter
+//     scoped to `file_links WHERE resource_type='conversation'`)
+//   - `walkAndResolve` (JSON `$file` ref → ResolvedFile, the canonical
+//     tenant-isolation chokepoint).
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { conversationAttachments, conversations, tenants } from "../../db/schema/index.ts";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { parseFileId } from "../../api/files-schemas.ts";
+import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { attachInlineForTest } from "../../files/test-helpers.ts";
 import {
-  clearMemoryAttachments,
-  collectAttachmentSlugs,
-  parseAttachmentRefs,
-  putMemoryAttachment,
-  resolveAttachments,
+  FileNotFoundError,
+  parseAttachmentSlugs,
+  type ResolvedFile,
+  resolveAttachmentSlugsInText,
+  walkAndResolve,
 } from "../attachments.ts";
 
 let ctx: TestDb;
@@ -34,191 +42,192 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-afterEach(() => {
-  clearMemoryAttachments();
-});
-
-async function seedAttachment(opts: {
-  slug: string;
-  content: string;
-  filename?: string;
-  content_type?: string | null;
-}): Promise<void> {
-  const key = `${conversation_id}:${opts.slug}`;
-  putMemoryAttachment(key, opts.content);
-  await ctx.db
-    .insert(conversationAttachments)
-    .values({
-      tenant_id,
-      conversation_id,
-      slug: opts.slug,
-      original_filename: opts.filename ?? `${opts.slug}.txt`,
-      content_type: opts.content_type ?? "text/plain",
-      size_bytes: opts.content.length,
-      storage_uri: `memory://${key}`,
-      sha256: "fake",
-      preview: opts.content.slice(0, 200),
-    })
-    .onConflictDoNothing();
-}
-
-describe("parseAttachmentRefs — happy-path shapes", () => {
-  test("single ref, standalone", () => {
-    const refs = parseAttachmentRefs("@attachment:stripe-spec");
+describe("parseAttachmentSlugs — chat-text scan", () => {
+  test("single ref", () => {
+    const refs = parseAttachmentSlugs("@attachment:stripe-spec");
     expect(refs).toHaveLength(1);
     expect(refs[0]!.slug).toBe("stripe-spec");
-    expect(refs[0]!.isStandalone).toBe(true);
   });
 
-  test("single ref, embedded — isStandalone=false", () => {
-    const refs = parseAttachmentRefs("use @attachment:spec now");
+  test("single embedded ref", () => {
+    const refs = parseAttachmentSlugs("use @attachment:spec now");
     expect(refs).toHaveLength(1);
     expect(refs[0]!.slug).toBe("spec");
-    expect(refs[0]!.isStandalone).toBe(false);
   });
 
   test("two refs in one string", () => {
-    const refs = parseAttachmentRefs("@attachment:a and @attachment:b");
-    expect(refs).toHaveLength(2);
+    const refs = parseAttachmentSlugs("@attachment:a and @attachment:b");
     expect(refs.map((r) => r.slug)).toEqual(["a", "b"]);
   });
 
   test("invalid slug (uppercase) is not matched", () => {
-    const refs = parseAttachmentRefs("@attachment:BadSlug");
-    expect(refs).toEqual([]);
+    expect(parseAttachmentSlugs("@attachment:BadSlug")).toEqual([]);
   });
 });
 
-describe("collectAttachmentSlugs — deep walk", () => {
-  test("finds slugs in nested object/array structures", () => {
-    const slugs = collectAttachmentSlugs({
-      headers: { authorization: "Bearer X" },
-      body: {
-        file: "@attachment:spec",
-        refs: [{ slug: "@attachment:notes" }, "@attachment:extra"],
-      },
-    });
-    expect(slugs.sort()).toEqual(["extra", "notes", "spec"]);
-  });
-
-  test("returns [] for payloads without refs", () => {
-    expect(collectAttachmentSlugs({ a: 1, b: [1, 2] })).toEqual([]);
-  });
-});
-
-describe("resolveAttachments — standalone vs embedded", () => {
-  test("standalone JSON attachment → parsed object replaces the string", async () => {
-    await seedAttachment({
-      slug: "users-json",
-      filename: "users.json",
-      content_type: "application/json",
-      content: JSON.stringify([{ id: 1, email: "ada@example.test" }]),
-    });
-    const r = await resolveAttachments(
-      { body: "@attachment:users-json" },
-      { tenant_id, conversation_id, db: ctx.db },
-    );
-    expect(r.unresolved).toEqual([]);
-    const body = (r.value as { body: unknown }).body;
-    expect(Array.isArray(body)).toBe(true);
-    expect((body as Array<{ id: number }>)[0]!.id).toBe(1);
-  });
-
-  test("standalone text attachment → raw string replaces the string", async () => {
-    await seedAttachment({
-      slug: "note",
-      content: "Use only v3 endpoints.",
-      content_type: "text/plain",
-    });
-    const r = await resolveAttachments(
-      { instructions: "@attachment:note" },
-      { tenant_id, conversation_id, db: ctx.db },
-    );
-    expect((r.value as { instructions: string }).instructions).toBe("Use only v3 endpoints.");
-  });
-
-  test("embedded ref → inline raw text substitution", async () => {
-    await seedAttachment({ slug: "x", content: "ALPHA" });
-    const r = await resolveAttachments(
-      { line: "prefix @attachment:x suffix" },
-      { tenant_id, conversation_id, db: ctx.db },
-    );
-    expect((r.value as { line: string }).line).toBe("prefix ALPHA suffix");
-  });
-
-  test("multiple refs in one string all substitute", async () => {
-    await seedAttachment({ slug: "a", content: "A1" });
-    await seedAttachment({ slug: "b", content: "B2" });
-    const r = await resolveAttachments(
-      { line: "@attachment:a / @attachment:b" },
-      { tenant_id, conversation_id, db: ctx.db },
-    );
-    expect((r.value as { line: string }).line).toBe("A1 / B2");
-  });
-
-  test("unresolved slug → entry in unresolved + literal kept in string", async () => {
-    const r = await resolveAttachments(
-      { body: "@attachment:nope" },
-      { tenant_id, conversation_id, db: ctx.db },
-    );
-    expect(r.unresolved).toHaveLength(1);
-    expect(r.unresolved[0]!.slug).toBe("nope");
-    expect(r.unresolved[0]!.reason).toBe("not_found");
-    // Body stays as the literal marker
-    expect((r.value as { body: string }).body).toBe("@attachment:nope");
-  });
-
-  test("slugs_used is deduplicated across the whole walk", async () => {
-    await seedAttachment({ slug: "shared", content: "S" });
-    const r = await resolveAttachments(
-      {
-        headers: { a: "@attachment:shared" },
-        body: { nested: "@attachment:shared here" },
-      },
-      { tenant_id, conversation_id, db: ctx.db },
-    );
-    expect(r.slugs_used).toEqual(["shared"]);
-  });
-});
-
-describe("resolveAttachments — non-string values pass through", () => {
-  test("numbers, booleans, nulls unchanged", async () => {
-    const input = { n: 42, b: true, z: null };
-    const r = await resolveAttachments(input, {
+describe("resolveAttachmentSlugsInText — chat-text rewriter", () => {
+  test("known slug → [file:fid_...] sentinel", async () => {
+    const att = await attachInlineForTest({
+      db: ctx.db,
       tenant_id,
       conversation_id,
-      db: ctx.db,
+      filename: "users.json",
+      content_type: "application/json",
+      content: JSON.stringify([{ id: 1 }]),
+      slug: "users-json",
     });
-    expect(r.value).toEqual(input);
-    expect(r.slugs_used).toEqual([]);
+    const r = await resolveAttachmentSlugsInText("use @attachment:users-json now", {
+      db: ctx.db,
+      tenant_id,
+      conversation_id,
+    });
+    expect(r.unresolved).toEqual([]);
+    expect(r.resolved).toEqual([{ slug: "users-json", file_id: att.file_id }]);
+    expect(r.text).toBe(`use [file:${att.file_id}] now`);
+  });
+
+  test("unknown slug → literal kept, surfaced in unresolved", async () => {
+    const r = await resolveAttachmentSlugsInText("@attachment:nope", {
+      db: ctx.db,
+      tenant_id,
+      conversation_id,
+    });
+    expect(r.unresolved).toEqual(["nope"]);
+    expect(r.text).toBe("@attachment:nope");
+  });
+
+  test("multiple refs all rewritten in one pass", async () => {
+    const a = await attachInlineForTest({
+      db: ctx.db,
+      tenant_id,
+      conversation_id,
+      filename: "a.txt",
+      content: "A1",
+      slug: "a",
+    });
+    const b = await attachInlineForTest({
+      db: ctx.db,
+      tenant_id,
+      conversation_id,
+      filename: "b.txt",
+      content: "B2",
+      slug: "b",
+    });
+    const r = await resolveAttachmentSlugsInText("@attachment:a / @attachment:b", {
+      db: ctx.db,
+      tenant_id,
+      conversation_id,
+    });
+    expect(r.text).toBe(`[file:${a.file_id}] / [file:${b.file_id}]`);
   });
 });
 
-describe("resolveAttachments — cross-conversation isolation", () => {
-  test("attachment from another conversation does not resolve", async () => {
-    // Seed an attachment on a DIFFERENT conversation.
+describe("walkAndResolve — JSON `$file` resolver", () => {
+  test("standalone ref → ResolvedFile leaf", async () => {
+    const att = await attachInlineForTest({
+      db: ctx.db,
+      tenant_id,
+      conversation_id,
+      filename: "spec.json",
+      content_type: "application/json",
+      content: JSON.stringify({ ok: true }),
+      slug: "spec",
+    });
+    const cache = new Map<string, ResolvedFile>();
+    const out = await walkAndResolve<unknown>(
+      { body: { $file: att.file_id } },
+      { db: ctx.db, tenant_id },
+      cache,
+    );
+    const body = (out as { body: ResolvedFile }).body;
+    expect(body.filename).toBe("spec.json");
+    expect(body.content_type).toBe("application/json");
+    expect(body.size_bytes).toBeGreaterThan(0);
+  });
+
+  test("nested ref deep in object", async () => {
+    const att = await attachInlineForTest({
+      db: ctx.db,
+      tenant_id,
+      conversation_id,
+      filename: "nested.txt",
+      content: "ALPHA",
+      slug: "alpha",
+    });
+    const cache = new Map<string, ResolvedFile>();
+    const out = await walkAndResolve<unknown>(
+      { a: { b: [{ $file: att.file_id }] } },
+      { db: ctx.db, tenant_id },
+      cache,
+    );
+    const leaf = (out as { a: { b: ResolvedFile[] } }).a.b[0]!;
+    expect(leaf.filename).toBe("nested.txt");
+  });
+
+  test("unknown fid → FileNotFoundError", async () => {
+    const cache = new Map<string, ResolvedFile>();
+    await expect(
+      walkAndResolve(
+        { body: { $file: "fid_00000000-0000-0000-0000-000000000000" } },
+        { db: ctx.db, tenant_id },
+        cache,
+      ),
+    ).rejects.toBeInstanceOf(FileNotFoundError);
+  });
+
+  test("cross-tenant fid → FileNotFoundError (chokepoint)", async () => {
+    // Create another tenant + conversation; attach a file there.
+    const [otherT] = await ctx.db
+      .insert(tenants)
+      .values({ slug: "t-att-2", display_name: "T2" })
+      .returning();
     const [otherConv] = await ctx.db
       .insert(conversations)
-      .values({ tenant_id, status: "active" })
+      .values({ tenant_id: otherT!.id, status: "active" })
       .returning();
-    const key = `${otherConv!.id}:isolated`;
-    putMemoryAttachment(key, "cross-leak");
-    await ctx.db.insert(conversationAttachments).values({
-      tenant_id,
+    const att = await attachInlineForTest({
+      db: ctx.db,
+      tenant_id: otherT!.id,
       conversation_id: otherConv!.id,
+      filename: "isolated.txt",
+      content: "cross-leak",
       slug: "isolated",
-      original_filename: "iso.txt",
-      content_type: "text/plain",
-      size_bytes: 11,
-      storage_uri: `memory://${key}`,
-      sha256: "x",
     });
-    // Attempt to resolve from OUR conversation.
-    const r = await resolveAttachments(
-      { body: "@attachment:isolated" },
-      { tenant_id, conversation_id, db: ctx.db },
+    // Resolve from OUR tenant — must throw.
+    const cache = new Map<string, ResolvedFile>();
+    await expect(
+      walkAndResolve<unknown>({ $file: att.file_id }, { db: ctx.db, tenant_id }, cache),
+    ).rejects.toBeInstanceOf(FileNotFoundError);
+    // Sanity — the file does exist under its real tenant.
+    const okCache = new Map<string, ResolvedFile>();
+    const out = await walkAndResolve<unknown>(
+      { $file: att.file_id },
+      { db: ctx.db, tenant_id: otherT!.id },
+      okCache,
     );
-    expect(r.unresolved[0]!.reason).toBe("not_found");
-    expect(JSON.stringify(r.value).includes("cross-leak")).toBe(false);
+    expect((out as ResolvedFile).filename).toBe("isolated.txt");
+    // Ensure the wire id parses back to the underlying uuid.
+    expect(parseFileId(att.file_id)).toBe(att.file_uuid);
+  });
+
+  test("per-call cache prevents double-read", async () => {
+    const att = await attachInlineForTest({
+      db: ctx.db,
+      tenant_id,
+      conversation_id,
+      filename: "cache.txt",
+      content: "X",
+      slug: "cache-test",
+    });
+    const cache = new Map<string, ResolvedFile>();
+    const out = await walkAndResolve<unknown>(
+      [{ $file: att.file_id }, { $file: att.file_id }],
+      { db: ctx.db, tenant_id },
+      cache,
+    );
+    const a = (out as ResolvedFile[])[0]!;
+    const b = (out as ResolvedFile[])[1]!;
+    expect(a).toBe(b); // identity-equal — cache populated on the first walk
+    expect(cache.size).toBe(1);
   });
 });

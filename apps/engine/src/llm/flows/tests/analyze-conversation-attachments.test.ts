@@ -1,18 +1,19 @@
-// analyzeConversationAttachments — bridges conversation_attachments to
-// runDocumentAnalysisFlow. Real DB; OpenAPI spec is fed through
-// memory:// reader so no filesystem touch.
+// analyzeConversationAttachments — bridges conversation attachments
+// (via the unified `files` + `file_links` resource) to
+// runDocumentAnalysisFlow. Real DB; bytes flow through the
+// production LocalDiskObjectStore so the read path matches what the
+// engine sees at runtime.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { clearMemoryAttachments, putMemoryAttachment } from "../../../conversations/attachments.ts";
 import {
   connectorEndpointSchemas,
   connectors,
-  conversationAttachments,
   conversations,
   tenants,
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { attachInlineForTest } from "../../../files/test-helpers.ts";
 import { analyzeConversationAttachments } from "../analyze-conversation-attachments.ts";
 
 let ctx: TestDb;
@@ -71,41 +72,31 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-beforeEach(() => {
-  clearMemoryAttachments();
-});
-
-async function seedAttachment(slug: string, content: string, contentType: string): Promise<void> {
-  const key = `${conversation_id}:${slug}`;
-  putMemoryAttachment(key, content);
-  await ctx.db
-    .insert(conversationAttachments)
-    .values({
-      tenant_id,
-      conversation_id,
-      slug,
-      original_filename: `${slug}.json`,
-      content_type: contentType,
-      size_bytes: content.length,
-      storage_uri: `memory://${key}`,
-      sha256: "fake",
-      preview: content.slice(0, 200),
-    })
-    .onConflictDoNothing();
-}
-
 describe("analyzeConversationAttachments", () => {
   test("returns null when conversation has no attachments", async () => {
+    // Use a freshly created conversation so prior tests can't pollute.
+    const [emptyConv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "active" })
+      .returning();
     const result = await analyzeConversationAttachments({
       tenant_id,
-      conversation_id,
+      conversation_id: emptyConv!.id,
       db: ctx.db,
     });
     expect(result).toBeNull();
   });
 
   test("parses an OpenAPI attachment and persists registry rows", async () => {
-    await seedAttachment("stripe-spec", STRIPE_OPENAPI, "application/json");
+    await attachInlineForTest({
+      db: ctx.db,
+      tenant_id,
+      conversation_id,
+      filename: "stripe-spec.json",
+      content_type: "application/json",
+      content: STRIPE_OPENAPI,
+      slug: "stripe-spec",
+    });
 
     const result = await analyzeConversationAttachments({
       tenant_id,
@@ -133,16 +124,33 @@ describe("analyzeConversationAttachments", () => {
   });
 
   test("respects slugs filter — only analyzes the requested attachments", async () => {
-    await seedAttachment("spec-a", STRIPE_OPENAPI, "application/json");
-    await seedAttachment(
-      "spec-b",
-      JSON.stringify({ openapi: "3.0.0", info: { title: "x", version: "1" }, paths: {} }),
-      "application/json",
-    );
+    // Fresh conversation so the filter test starts from a clean state.
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "active" })
+      .returning();
+    await attachInlineForTest({
+      db: ctx.db,
+      tenant_id,
+      conversation_id: conv!.id,
+      filename: "spec-a.json",
+      content_type: "application/json",
+      content: STRIPE_OPENAPI,
+      slug: "spec-a",
+    });
+    await attachInlineForTest({
+      db: ctx.db,
+      tenant_id,
+      conversation_id: conv!.id,
+      filename: "spec-b.json",
+      content_type: "application/json",
+      content: JSON.stringify({ openapi: "3.0.0", info: { title: "x", version: "1" }, paths: {} }),
+      slug: "spec-b",
+    });
 
     const onlyB = await analyzeConversationAttachments({
       tenant_id,
-      conversation_id,
+      conversation_id: conv!.id,
       db: ctx.db,
       slugs: ["spec-b"],
     });
