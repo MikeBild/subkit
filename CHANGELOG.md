@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.1](https://github.com/MikeBild/subkit/compare/subkit-v4.11.0...subkit-v4.11.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* **build:** patch css-tree to use static ESM JSON imports for bun --compile ([a4b924f](https://github.com/MikeBild/subkit/commit/a4b924f8f0f39c3a2048bec257a900f0303b7acf))
+
 ## [4.11.0](https://github.com/MikeBild/subkit/compare/subkit-v4.10.1...subkit-v4.11.0) (2026-05-14)
 
 
