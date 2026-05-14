@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.11.0](https://github.com/MikeBild/subkit/compare/subkit-v4.10.1...subkit-v4.11.0) (2026-05-14)
+
+
+### Features
+
+* **connectors:** web-scraper template + three transform languages ([#144](https://github.com/MikeBild/subkit/issues/144)) [skip-review] ([#182](https://github.com/MikeBild/subkit/issues/182)) ([6dc0b72](https://github.com/MikeBild/subkit/commit/6dc0b72cbb9fdc7e739425a07f2357a3aa5c8f73))
+* **self-healing:** proactive drift scan + admin HTTP/MCP/sk surfaces ([acb1837](https://github.com/MikeBild/subkit/commit/acb183768c5a36c4e861c391546d459fb223d308))
+
+
+### Bug Fixes
+
+* **conversation:** unblock workflow output read path + URL-driven authoring [skip-review] ([#183](https://github.com/MikeBild/subkit/issues/183)) ([23b7f33](https://github.com/MikeBild/subkit/commit/23b7f33a15215b2e993847fa241c89fbeace7d2a))
+
+
+### Miscellaneous
+
+* **docs:** tighten inline comments + add ticket-coupling gate ([3f8959c](https://github.com/MikeBild/subkit/commit/3f8959ccfc8ba15700df1edf7a8f05758497fa1e))
+
 ## [4.10.1](https://github.com/MikeBild/subkit/compare/subkit-v4.10.0...subkit-v4.10.1) (2026-05-13)
 
 
