@@ -1578,6 +1578,23 @@ export class EngineClient {
     return this.request("POST", `/v1/patch-candidates/${encodeURIComponent(id)}/reject`, body);
   }
 
+  // -------------------- Self-Healing Scans --------------------
+  triggerSelfHealingScan(
+    body: { workflow_id?: string; connector_id?: string } = {},
+    opts: { idempotencyKey?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const extraHeaders = opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {};
+    return this.request("POST", "/v1/self-healing/scans", body, undefined, undefined, extraHeaders);
+  }
+  listSelfHealingScans(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/self-healing/scans", undefined, query);
+  }
+  getSelfHealingScan(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/self-healing/scans/${encodeURIComponent(id)}`);
+  }
+
   // -------------------- Inbound Hooks --------------------
   listHooksInbound(): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", "/v1/webhooks/inbound");

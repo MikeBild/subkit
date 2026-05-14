@@ -18,13 +18,30 @@ export {
   resolvePolicy,
   shouldAutoApply,
 } from "./policy.ts";
-export type { RunSelfHealingParams, SelfHealingResult } from "./service.ts";
+export type {
+  ProactiveScanFilters,
+  ScannedSignal,
+  ScannedSignalContext,
+  ScanResult,
+  UnanchoredDrift,
+} from "./proactive-scanner.ts";
+export { scanForDrift } from "./proactive-scanner.ts";
+export type {
+  ProcessSignalOptions,
+  ProcessSignalResult,
+  RunSelfHealingParams,
+  SelfHealingResult,
+  SignalContext,
+  SignalSource,
+} from "./service.ts";
 export * from "./service.ts";
 export {
   approvePatchCandidate,
+  processDriftSignal,
   rejectPatchCandidate,
   runSelfHealingLoop,
 } from "./service.ts";
+export { scanStdlibDrift } from "./stdlib-drift-scan.ts";
 export type {
   DriftSignal,
   DryRunFixture,

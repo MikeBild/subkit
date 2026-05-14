@@ -7,12 +7,18 @@
 // locally via setInterval because pg-boss' cron is minute-resolution.
 
 import { CronExpressionParser } from "cron-parser";
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
-import { connectors, knowledgeSources, workflows, workflowsSchedules } from "../db/schema/index.ts";
+import {
+  connectors,
+  knowledgeSources,
+  tenants,
+  workflows,
+  workflowsSchedules,
+} from "../db/schema/index.ts";
 import { createExecution } from "../execution/state.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { enqueueIngest, INGEST_DOCS_QUEUE } from "../queue/handlers/ingest-docs.ts";
@@ -22,6 +28,12 @@ import {
 } from "../queue/handlers/ingest-knowledge.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { parseCronExpression, scheduleCron, unscheduleCron } from "./cron.ts";
+import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
+
+/** Fixed cadence for proactive drift scans (per scope decision). One
+ *  hour balances early-detection value against the cost of repeated
+ *  LLM repair calls when drift signals are emitted. */
+const PROACTIVE_DRIFT_SCAN_CADENCE_MS = 60 * 60 * 1000;
 
 export interface ReconcilerOptions {
   boss: PgBoss;
@@ -324,6 +336,20 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
+    // Proactive self-healing drift scan. Per-tenant CAS-stamp on
+    // `tenants.last_proactive_scan_at` gives multi-instance deployments
+    // exactly-once firing per cadence; the scan itself runs `scanForDrift`
+    // followed by `processDriftSignal({ allowAutoApply: false })` per
+    // signal so every Patch Candidate produced this way is parked for
+    // operator review regardless of policy/classification gates.
+    await this.reconcileProactiveDriftScans().catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "drift_scan_failed",
+        msg: "scheduler proactive drift scan pass failed",
+        ...errorFields(err),
+      });
+    });
     const desired = await this.computeDesired();
 
     // Add/update cron schedules via pg-boss.
@@ -584,6 +610,68 @@ export class SchedulerReconciler {
           ...errorFields(err),
         });
       }
+    }
+  }
+
+  /**
+   * Proactive self-healing drift scan. Each live tenant whose
+   * `last_proactive_scan_at` is NULL or older than the cadence wins
+   * a CAS-stamp and is scanned exactly once per cadence.
+   *
+   * Per fired tenant:
+   *   1) Insert a `self_healing_scans` row with status='running' and
+   *      source='scheduler'. This row is the durable record of the
+   *      scan attempt; the SELF_HEALING_SCAN_TRIGGERED audit row
+   *      points at its id.
+   *   2) Run `scanForDrift({ tenant_id })` (pure DB read).
+   *   3) For each signal call `processDriftSignal(..., {
+   *      allowAutoApply: false })` so the Patch Candidate is always
+   *      proposed, never silently applied — operator review remains
+   *      the sole apply path on the proactive branch.
+   *   4) Update the scan row with counters + duration_ms + status,
+   *      and emit the SELF_HEALING_SCAN_COMPLETED audit row.
+   *
+   * Failures inside steps 2-3 are caught per-tenant: the scan row
+   * lands in status='failed' with the error text, the audit row is
+   * still emitted, and the next reconciler tick keeps sweeping the
+   * other tenants.
+   */
+  async reconcileProactiveDriftScans(now: Date = new Date()): Promise<void> {
+    // tenant-filter:exempt — proactive drift scan sweeps every tenant; row carries tenant_id forward
+    const cadenceCutoff = new Date(now.getTime() - PROACTIVE_DRIFT_SCAN_CADENCE_MS);
+    const dueRows = await this.opts.db
+      .select({
+        id: tenants.id,
+        last_proactive_scan_at: tenants.last_proactive_scan_at,
+      })
+      .from(tenants)
+      .where(
+        and(
+          isNull(tenants.deleted_at),
+          or(
+            isNull(tenants.last_proactive_scan_at),
+            lt(tenants.last_proactive_scan_at, cadenceCutoff),
+          ),
+        ),
+      );
+
+    for (const tenant of dueRows) {
+      // Compare-and-set on `last_proactive_scan_at`: a concurrent
+      // reconciler in another engine instance racing for the same
+      // tenant only sees one successful UPDATE; the loser's
+      // RETURNING comes back empty and skips the scan.
+      const priorWhere =
+        tenant.last_proactive_scan_at === null
+          ? isNull(tenants.last_proactive_scan_at)
+          : eq(tenants.last_proactive_scan_at, tenant.last_proactive_scan_at);
+      const stamped = await this.opts.db
+        .update(tenants)
+        .set({ last_proactive_scan_at: now })
+        .where(and(eq(tenants.id, tenant.id), priorWhere))
+        .returning({ id: tenants.id });
+      if (stamped.length === 0) continue;
+
+      await runProactiveDriftScanForTenant(tenant.id, now, this.opts.db);
     }
   }
 

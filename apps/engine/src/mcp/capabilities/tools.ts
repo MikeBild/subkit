@@ -72,6 +72,12 @@ import {
   listRecipesMcpTool,
 } from "../tools/recipes.ts";
 import {
+  handleSelfHealingScan,
+  SELF_HEALING_SCAN_TOOL_NAME,
+  type SelfHealingScanArgs,
+  selfHealingScanMcpTool,
+} from "../tools/self-healing-scan.ts";
+import {
   handleTestConnector,
   TEST_CONNECTOR_TOOL_NAME,
   type TestConnectorArgs,
@@ -312,6 +318,14 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     if (flags.showTenantReads || flags.showTenantWrites) {
       tools.push(...listTenantTools({ allowWrites: flags.showTenantWrites }));
     }
+    // Self-healing scan is a privileged admin operation: it triggers
+    // LLM repair calls and writes Patch Candidate rows. We only
+    // surface it in admin MCP mode AND when the principal can write
+    // tenant state. The handler additionally enforces the `admin`
+    // role on the principal.
+    if (mode === "admin" && flags.showTenantWrites) {
+      tools.push(selfHealingScanMcpTool);
+    }
     return { tools };
   });
 
@@ -445,6 +459,25 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           module: "mcp",
           action: "mcp.tool.result",
           msg: "mcp test_connector completed",
+          tool: name,
+          duration_ms: Date.now() - started,
+          is_error: !result.ok,
+        });
+        return {
+          isError: !result.ok,
+          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
+        };
+      }
+
+      if (name === SELF_HEALING_SCAN_TOOL_NAME) {
+        const result = await handleSelfHealingScan(
+          { db, principal },
+          args as unknown as SelfHealingScanArgs,
+        );
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.result",
+          msg: "mcp self_healing.scan completed",
           tool: name,
           duration_ms: Date.now() - started,
           is_error: !result.ok,

@@ -127,6 +127,16 @@ export const AuditAction = {
   PATCH_CANDIDATE_APPROVED: "patch_candidate.approved",
   PATCH_CANDIDATE_REJECTED: "patch_candidate.rejected",
 
+  // Proactive self-healing drift scan lifecycle (admin HTTP, scheduler tick, MCP).
+  //  - TRIGGERED is emitted before the scan runs, with metadata.source =
+  //    "admin_http" | "scheduler" | "mcp" and the filters payload.
+  //  - COMPLETED is emitted after the scan finishes (or fails) with the
+  //    counter metadata so operators can chart drift surface area without
+  //    joining back to `self_healing_scans`. PATCH_CANDIDATE_PROPOSED still
+  //    fires per candidate created inside the scan.
+  SELF_HEALING_SCAN_TRIGGERED: "self_healing.scan.triggered",
+  SELF_HEALING_SCAN_COMPLETED: "self_healing.scan.completed",
+
   SUBSCRIPTION_CREATED: "subscription.created",
   SUBSCRIPTION_UPDATED: "subscription.updated",
   SUBSCRIPTION_DELETED: "subscription.deleted",

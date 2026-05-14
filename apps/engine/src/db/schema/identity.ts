@@ -31,6 +31,12 @@ export const tenants = pgTable(
     llm_fallback: text("llm_fallback"),
     llm_monthly_token_budget: bigint("llm_monthly_token_budget", { mode: "number" }),
     egress_guard_mode: egressGuardModeEnum("egress_guard_mode"),
+    // Stamp set by the scheduler when a proactive self-healing drift scan
+    // last fired for this tenant. The reconciler uses a compare-and-set on
+    // this column to ensure exactly-once firing per cadence across multi-
+    // instance deployments. NULL means "never scanned" — the next pass
+    // fires immediately.
+    last_proactive_scan_at: timestamp("last_proactive_scan_at", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

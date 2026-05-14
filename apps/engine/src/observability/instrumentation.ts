@@ -254,6 +254,64 @@ export function recordSelfHealingRepairRetried(args: {
   });
 }
 
+export type ProactiveDriftScanSource = "scheduler" | "admin_http" | "mcp";
+
+export function recordProactiveDriftScan(args: {
+  tenant_id: string;
+  source: ProactiveDriftScanSource;
+  status: "succeeded" | "failed";
+  duration_ms: number;
+}): void {
+  safe(() => {
+    const reg = getMetrics();
+    reg.inc(METRIC_NAMES.PROACTIVE_DRIFT_SCANS_TOTAL, {
+      tenant_id: args.tenant_id,
+      source: args.source,
+      status: args.status,
+    });
+    if (Number.isFinite(args.duration_ms)) {
+      reg.observe(METRIC_NAMES.PROACTIVE_DRIFT_SCAN_DURATION_SECONDS, args.duration_ms / 1000, {
+        source: args.source,
+      });
+    }
+  });
+}
+
+export function recordProactiveDriftSignal(args: { tenant_id: string; signal_type: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.PROACTIVE_DRIFT_SIGNALS_TOTAL, {
+      tenant_id: args.tenant_id,
+      signal_type: args.signal_type,
+    });
+  });
+}
+
+export function recordProactiveDriftCandidate(args: {
+  tenant_id: string;
+  classification: "safe" | "unsafe";
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.PROACTIVE_DRIFT_CANDIDATES_TOTAL, {
+      tenant_id: args.tenant_id,
+      classification: args.classification,
+    });
+  });
+}
+
+export function recordProactiveDriftUnanchored(args: {
+  tenant_id: string;
+  signal_type: string;
+  reason: "hook_surface_not_supported" | "no_workflow_anchor";
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.PROACTIVE_DRIFT_UNANCHORED_TOTAL, {
+      tenant_id: args.tenant_id,
+      signal_type: args.signal_type,
+      reason: args.reason,
+    });
+  });
+}
+
 export function recordExecutionWarningsEmitted(args: {
   tenant_id: string;
   step_kind: string;

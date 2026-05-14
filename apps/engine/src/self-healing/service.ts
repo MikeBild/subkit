@@ -1,22 +1,37 @@
 // Self-healing orchestration.
 //
-// `runSelfHealingLoop` is the single entry point the queue handler
-// calls. It ties together every module in this folder:
+// Two entry points:
 //
-//   1. Load the failing `execution_steps` row (or a synthetic snapshot
-//      passed directly by callers that already hold it).
-//   2. Pull the last `schema_versions` row for the connector/endpoint.
-//   3. Run the drift detector.
-//   4. If drift is recognised, call the `repair` LLM flow with the
-//      rendered drift diff.
-//   5. Persist a `patch_candidates` row with `status = 'proposed'`.
-//   6. Classify the proposal.
-//   7. Load the most recent `execution_fixtures` row for the endpoint
-//      and run the fixture dry-run.
-//   8. Resolve the tenant/workflow policy and decide auto-apply.
-//   9. Auto-apply (write a new `workflow_versions` row + audit row)
-//      OR park for review (`status = 'proposed'` stays).
-//  10. Write the `patch.proposed` outbox event regardless.
+//   * `runSelfHealingLoop` — reactive wrapper used by the pg-boss
+//     `workflow.repair` queue handler. Loads a failing step snapshot,
+//     runs the drift detector, and (if a signal is recognised) hands
+//     off to `processDriftSignal` with `allowAutoApply: true`.
+//
+//   * `processDriftSignal` — the signal-to-candidate pipeline,
+//     reusable by reactive AND proactive callers (scheduler tick,
+//     admin POST /v1/self-healing/scans, the MCP `self_healing.scan`
+//     tool). Proactive callers pass `allowAutoApply: false` so the
+//     resulting Patch Candidate is always parked for operator review,
+//     no matter how clean the classification + fixture dry-run come
+//     out. This preserves the human-in-the-loop guarantee that
+//     proactive scans never silently mutate a tenant's workflows.
+//
+// The downstream sequence inside `processDriftSignal`:
+//
+//   1. Render the drift diff for the LLM.
+//   2. Load the most recent `execution_fixtures` row for the
+//      connector/endpoint (if any).
+//   3. Bounded repair loop — up to MAX_REPAIR_ATTEMPTS turns of
+//      LLM repair -> classifier -> fixture dry-run; rejections fold
+//      back into `previous_attempts` so the model revises rather
+//      than re-emits.
+//   4. Resolve the tenant/workflow policy.
+//   5. Decide auto-apply (gated by `options.allowAutoApply`).
+//   6. Persist `patch_candidates` row (status='proposed') + audit
+//      `PATCH_CANDIDATE_PROPOSED` + outbox event `patch.proposed`.
+//   7. Optionally auto-apply (writes a new `workflow_versions` row
+//      and an `auto_applied` audit row) when allowed AND all gates
+//      pass.
 //
 // Every decision fires a log line so operators can replay the path
 // from pg-boss telemetry alone. Audit rows are written for the four
@@ -75,6 +90,80 @@ export interface RunSelfHealingParams extends WorkflowRepairJob {
    * this undefined — the service pulls the row by id.
    */
   step_snapshot?: FailingStepSnapshot;
+}
+
+/**
+ * Which subsystem produced the signal. Recorded on the persisted
+ * Patch Candidate (inside the `diff` JSONB) so audit consumers can
+ * filter "patches born from reactive failures" vs "patches born from
+ * a proactive scan" without joining back through pg-boss logs.
+ */
+export type SignalSource = "reactive" | "proactive_scheduler" | "proactive_admin" | "proactive_mcp";
+
+/**
+ * The full context required to turn a `DriftSignal` into a Patch
+ * Candidate. Reactive callers populate every field from a failing-step
+ * snapshot. Proactive callers (which have no real failing step)
+ * synthesise `repair_input.failing_step_id` from the signal's anchor
+ * resource and leave `dry_run_step` undefined so the fixture dry-run
+ * gate is skipped — there is no concrete persisted step to patch.
+ */
+export interface SignalContext {
+  tenant_id: string;
+  workflow_id: string;
+  execution_id: string | null;
+  step_id: string | null;
+  connector_id?: string | null;
+  endpoint_key?: string | null;
+  actor_id: string | null;
+  source: SignalSource;
+  /** Set on proactive call paths so candidate rows can be traced
+   *  back to the originating `self_healing_scans` row. */
+  scan_id?: string;
+  /** Input to the LLM repair flow. The `failing_step_id` slot must
+   *  carry a stable identifier — the persisted step id for reactive
+   *  callers, a `proactive:<kind>:<resource>` token for proactive
+   *  callers. The id is only used for prompt grounding + telemetry
+   *  metadata; the patch_candidates row is keyed on workflow_id. */
+  repair_input: {
+    failing_step_id: string;
+    request?: unknown;
+    response?: unknown;
+  };
+  /** When present AND a fixture exists for the connector/endpoint,
+   *  the dry-run gate runs. Reactive callers always pass this from
+   *  the snapshot. Proactive callers leave it undefined: there is no
+   *  persisted step config to apply the patch to in-memory, so the
+   *  gate is skipped. */
+  dry_run_step?: DryRunStep;
+}
+
+export interface ProcessSignalOptions {
+  /**
+   * When false, the function NEVER auto-applies the patch — the
+   * candidate is always persisted in `status='proposed'` regardless
+   * of classification, fixture dry-run, or policy. Proactive callers
+   * (scheduler tick, admin HTTP, MCP tool) pass false. Reactive
+   * callers pass true and the existing policy/classification/fixture
+   * gates decide whether `autoApplyPatch` runs.
+   */
+  allowAutoApply: boolean;
+}
+
+export interface ProcessSignalResult {
+  candidate_id: string;
+  classification: "safe" | "unsafe";
+  status: "proposed" | "applied";
+  auto_applied: boolean;
+  dry_run_passed: boolean | null;
+  proposal: PatchProposal;
+  /**
+   * Resolved tenant/workflow autoheal policy at the time the
+   * candidate was persisted. Surfaced on the return so callers
+   * (e.g. the reactive wrapper, queue handler log line) can include
+   * it in observability output without re-resolving.
+   */
+  policy: import("./policy.ts").AutohealPolicy;
 }
 
 function buildDryRunStep(snapshot: FailingStepSnapshot): DryRunStep {
@@ -240,6 +329,353 @@ async function autoApplyPatch(
   return inserted.id;
 }
 
+/**
+ * Turn a recognised drift signal into a persisted Patch Candidate.
+ *
+ * Reactive callers (the pg-boss `workflow.repair` handler) pass
+ * `allowAutoApply: true` and the existing classification + fixture +
+ * policy gates decide whether the patch auto-applies.
+ *
+ * Proactive callers (scheduler tick, admin POST, MCP) pass
+ * `allowAutoApply: false`. The Patch Candidate is always persisted
+ * in `status='proposed'` and the existing approve/reject HTTP routes
+ * remain the sole apply path.
+ */
+export async function processDriftSignal(
+  signal: DriftSignal,
+  ctx: SignalContext,
+  options: ProcessSignalOptions,
+  exec?: Db,
+): Promise<ProcessSignalResult> {
+  const db = exec ?? getDb();
+
+  const diff = renderDriftDiff(signal);
+  const fixture = await loadFixture(
+    ctx.tenant_id,
+    ctx.connector_id ?? null,
+    ctx.endpoint_key ?? null,
+    db,
+  );
+
+  // Bounded repair loop. The LLM may need to revise — fold each
+  // rejection back into prior_failures so the next attempt is not a
+  // near-duplicate.
+  const rejectionChain: Array<{
+    attempt: number;
+    classification: "safe" | "unsafe";
+    dry_run_passed: boolean | null;
+    reason: string;
+  }> = [];
+  const previousAttempts: PreviousRepairAttempt[] = [];
+
+  let proposal: PatchProposal | null = null;
+  let decision: ReturnType<typeof classifyPatch> | null = null;
+  let dryRunOk = false;
+  let dryRunError: string | undefined;
+
+  for (let attempt = 1; attempt <= MAX_REPAIR_ATTEMPTS; attempt++) {
+    let repair: Awaited<ReturnType<typeof runRepairFlow>>;
+    try {
+      repair = await runRepairFlow(
+        {
+          tenant_id: ctx.tenant_id,
+          execution_id: ctx.execution_id ?? ctx.scan_id ?? "proactive",
+          failing_step: {
+            id: ctx.repair_input.failing_step_id,
+            ...(ctx.repair_input.request !== undefined
+              ? { request: ctx.repair_input.request }
+              : {}),
+            ...(ctx.repair_input.response !== undefined
+              ? { response: ctx.repair_input.response }
+              : {}),
+          },
+          drift_diff: diff,
+          ...(ctx.connector_id ? { connector_id: ctx.connector_id } : {}),
+          ...(previousAttempts.length > 0 ? { previous_attempts: [...previousAttempts] } : {}),
+        },
+        db,
+      );
+    } catch (err) {
+      if (err instanceof LlmQuotaExhausted && proposal) {
+        logger.warn({
+          module: "self-healing",
+          action: "repair.budget_exhausted",
+          msg: "LLM budget exhausted mid-retry — persisting last proposal",
+          tenant_id: ctx.tenant_id,
+          workflow_id: ctx.workflow_id,
+          attempts_done: attempt - 1,
+        });
+        break;
+      }
+      throw err;
+    }
+
+    proposal = repair.patch_proposal;
+    decision = classifyPatch(proposal, signal);
+    logger.info({
+      module: "self-healing",
+      action: "patch.classified",
+      msg: "patch classified",
+      tenant_id: ctx.tenant_id,
+      workflow_id: ctx.workflow_id,
+      classification: decision.classification,
+      reasons: decision.reasons,
+      attempt,
+      source: ctx.source,
+    });
+
+    // Fixture dry-run gate. Skipped entirely when the caller has no
+    // concrete DryRunStep (proactive scans) or when no fixture row
+    // exists for the connector/endpoint.
+    dryRunOk = false;
+    dryRunError = undefined;
+    if (fixture && ctx.dry_run_step) {
+      const dryRun = await runFixtureDryRun({
+        step: ctx.dry_run_step,
+        patch: proposal,
+        fixture: { request: fixture.request, response: fixture.response },
+      });
+      dryRunOk = dryRun.ok;
+      if (!dryRun.ok) dryRunError = dryRun.error;
+      if (dryRun.ok) {
+        log.selfHealing.fixture.passed({
+          tenant_id: ctx.tenant_id,
+          workflow_id: ctx.workflow_id,
+          fixture_id: fixture.id,
+        });
+      } else {
+        log.selfHealing.fixture.failed({
+          tenant_id: ctx.tenant_id,
+          workflow_id: ctx.workflow_id,
+          fixture_id: fixture.id,
+          error: dryRun.error,
+        });
+      }
+    } else if (attempt === 1) {
+      logger.info({
+        module: "self-healing",
+        action: "fixture.missing",
+        msg: ctx.dry_run_step
+          ? "no fixture available — auto-apply disabled"
+          : "no dry-run step (proactive scan) — fixture gate skipped",
+        tenant_id: ctx.tenant_id,
+        workflow_id: ctx.workflow_id,
+        source: ctx.source,
+      });
+    }
+
+    const classifierOk = decision.classification === "safe";
+    const fixtureOk = !fixture || !ctx.dry_run_step || dryRunOk;
+    if (classifierOk && fixtureOk) break;
+
+    const reason =
+      !classifierOk && !fixtureOk
+        ? `unsafe classification (${decision.reasons.join("; ") || "no reasons"}) and fixture dry-run failed (${dryRunError ?? "unknown"})`
+        : !classifierOk
+          ? `unsafe classification: ${decision.reasons.join("; ") || "no reasons"}`
+          : `fixture dry-run failed: ${dryRunError ?? "unknown"}`;
+    rejectionChain.push({
+      attempt,
+      classification: decision.classification,
+      dry_run_passed: fixture && ctx.dry_run_step ? dryRunOk : null,
+      reason,
+    });
+    previousAttempts.push({ proposal, rejection: reason });
+  }
+
+  if (!proposal || !decision) {
+    throw new Error("repair flow returned no proposal");
+  }
+
+  if (rejectionChain.length > 0) {
+    recordSelfHealingRepairRetried({
+      tenant_id: ctx.tenant_id,
+      attempts: rejectionChain.length + 1,
+    });
+  }
+
+  const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);
+  const wouldAutoApply = shouldAutoApply({
+    policy,
+    classification: decision.classification,
+    fixture_passed: dryRunOk,
+    has_fixture: !!fixture && !!ctx.dry_run_step,
+  });
+  const autoApply = options.allowAutoApply && wouldAutoApply;
+
+  logger.info({
+    module: "self-healing",
+    action: "policy.resolved",
+    msg: "auto-heal policy resolved",
+    tenant_id: ctx.tenant_id,
+    workflow_id: ctx.workflow_id,
+    policy,
+    classification: decision.classification,
+    has_fixture: Boolean(fixture && ctx.dry_run_step),
+    fixture_passed: dryRunOk,
+    auto_apply: autoApply,
+    auto_apply_allowed_by_caller: options.allowAutoApply,
+    source: ctx.source,
+  });
+
+  const txOut = await db.transaction(async (tx) => {
+    const [candidate] = await tx
+      .insert(patchCandidates)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id: ctx.workflow_id,
+        classification: decision.classification,
+        // Only stamp `fixture_id` on the row when the dry-run gate
+        // actually ran against this fixture. Proactive scans load
+        // the fixture (so connector+endpoint match a recorded one)
+        // but skip the gate because they have no concrete persisted
+        // step to apply the patch to in-memory — stamping the id
+        // would mislead operators into thinking the patch was
+        // dry-run-validated.
+        ...(fixture && ctx.dry_run_step ? { fixture_id: fixture.id } : {}),
+        diff: {
+          drift_signal: signal,
+          drift_diff: diff,
+          proposal,
+          classification_reasons: decision.reasons,
+          dry_run: {
+            ok: dryRunOk,
+            error: dryRunError ?? null,
+            fixture_id: fixture?.id ?? null,
+            // Records that we never even ran the gate — useful when
+            // operators read the candidate diff and wonder why
+            // dry_run.ok is false.
+            skipped: !ctx.dry_run_step || !fixture,
+          },
+          policy,
+          step_id: ctx.step_id,
+          execution_id: ctx.execution_id,
+          source: ctx.source,
+          ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
+          ...(rejectionChain.length > 0 ? { rejection_chain: rejectionChain } : {}),
+        },
+        status: "proposed",
+      })
+      .returning();
+    assertInsertRow(candidate, "patch_candidates");
+
+    // Only stamp `fixture_id` on the audit metadata when the dry-run
+    // gate actually ran against it. Mirrors the same predicate used
+    // for the patch_candidates.fixture_id column above so forensic
+    // queries on the audit row never imply a candidate was fixture-
+    // validated when the gate was skipped (proactive scans).
+    const gatedFixtureId = fixture && ctx.dry_run_step ? fixture.id : null;
+    await auditAwait(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_type: "system",
+        action: AuditAction.PATCH_CANDIDATE_PROPOSED,
+        resource_type: "patch_candidate",
+        resource_id: candidate.id,
+        result: "success",
+        metadata: {
+          workflow_id: ctx.workflow_id,
+          classification: decision.classification,
+          policy,
+          drift_kind: signal.kind,
+          fixture_id: gatedFixtureId,
+          dry_run_ok: dryRunOk,
+          dry_run_skipped: !ctx.dry_run_step || !fixture,
+          reasons: decision.reasons,
+          source: ctx.source,
+          ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
+        },
+      },
+      tx,
+    );
+
+    log.selfHealing.patch.proposed({
+      candidate_id: candidate.id,
+      workflow_id: ctx.workflow_id,
+      tenant_id: ctx.tenant_id,
+      classification: decision.classification,
+      policy,
+      dry_run_ok: dryRunOk,
+      auto_apply: autoApply,
+    });
+    await writeEvent(tx, {
+      tenant_id: ctx.tenant_id,
+      channel: "notification.emitted",
+      type: "patch.proposed",
+      payload: {
+        patch_candidate_id: candidate.id,
+        workflow_id: ctx.workflow_id,
+        classification: decision.classification,
+        policy,
+        dry_run_ok: dryRunOk,
+        source: ctx.source,
+        ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
+      },
+    });
+
+    let appliedVersionId: string | null = null;
+    if (autoApply) {
+      appliedVersionId = await autoApplyPatch(tx, {
+        tenant_id: ctx.tenant_id,
+        workflow_id: ctx.workflow_id,
+        candidate_id: candidate.id,
+        proposal,
+      });
+      if (appliedVersionId) {
+        await auditAwait(
+          {
+            tenant_id: ctx.tenant_id,
+            actor_type: "system",
+            action: AuditAction.PATCH_CANDIDATE_AUTO_APPLIED,
+            resource_type: "patch_candidate",
+            resource_id: candidate.id,
+            result: "success",
+            metadata: {
+              workflow_id: ctx.workflow_id,
+              new_workflow_version_id: appliedVersionId,
+              fixture_id: gatedFixtureId,
+              classification: decision.classification,
+              policy,
+              source: ctx.source,
+            },
+          },
+          tx,
+        );
+      }
+    }
+
+    return { candidate, appliedVersionId };
+  });
+
+  const auto_applied = !!txOut.appliedVersionId;
+  recordPatchCandidate({
+    classification: decision.classification,
+    decision: auto_applied ? "auto_applied" : "parked",
+  });
+  logger.info({
+    module: "self-healing",
+    action: auto_applied ? "patch.auto_applied" : "patch.parked",
+    msg: auto_applied ? "self-healing auto-applied patch" : "self-healing parked patch for review",
+    tenant_id: ctx.tenant_id,
+    workflow_id: ctx.workflow_id,
+    patch_candidate_id: txOut.candidate.id,
+    classification: decision.classification,
+    policy,
+    fixture_passed: dryRunOk,
+    source: ctx.source,
+  });
+
+  return {
+    candidate_id: txOut.candidate.id,
+    classification: decision.classification,
+    status: auto_applied ? "applied" : "proposed",
+    auto_applied,
+    dry_run_passed: fixture && ctx.dry_run_step ? dryRunOk : null,
+    proposal,
+    policy,
+  };
+}
+
 export async function runSelfHealingLoop(
   params: RunSelfHealingParams,
   exec?: Db,
@@ -299,298 +735,47 @@ export async function runSelfHealingLoop(
     drift_kind: signal.kind,
   });
 
-  // 4–6. Bounded repair loop. We let the LLM revise up to
-  // MAX_REPAIR_ATTEMPTS times when the classifier marks the proposal
-  // unsafe OR the fixture dry-run rejects it. Rejection context is
-  // folded into `prior_failures` so each attempt starts with the
-  // structured reasons the previous attempt was rejected.
-  const diff = renderDriftDiff(signal);
-  const fixture = await loadFixture(params.tenant_id, params.connector_id, params.endpoint_key, db);
-
-  const rejectionChain: Array<{
-    attempt: number;
-    classification: "safe" | "unsafe";
-    dry_run_passed: boolean | null;
-    reason: string;
-  }> = [];
-  const previousAttempts: PreviousRepairAttempt[] = [];
-
-  let proposal: PatchProposal | null = null;
-  let decision: ReturnType<typeof classifyPatch> | null = null;
-  let dryRunOk = false;
-  let dryRunError: string | undefined;
-
-  for (let attempt = 1; attempt <= MAX_REPAIR_ATTEMPTS; attempt++) {
-    let repair: Awaited<ReturnType<typeof runRepairFlow>>;
-    try {
-      repair = await runRepairFlow(
-        {
-          tenant_id: params.tenant_id,
-          execution_id: params.execution_id ?? "unknown",
-          failing_step: {
-            id: snapshot.id,
-            request: snapshot.request_meta,
-            response: snapshot.output_preview,
-          },
-          drift_diff: diff,
-          ...(params.connector_id ? { connector_id: params.connector_id } : {}),
-          ...(previousAttempts.length > 0 ? { previous_attempts: [...previousAttempts] } : {}),
-        },
-        db,
-      );
-    } catch (err) {
-      // Budget exhaustion aborts the retry loop but keeps whatever we
-      // proposed last so the operator still has something to review.
-      if (err instanceof LlmQuotaExhausted && proposal) {
-        logger.warn({
-          module: "self-healing",
-          action: "repair.budget_exhausted",
-          msg: "LLM budget exhausted mid-retry — persisting last proposal",
-          tenant_id: params.tenant_id,
-          workflow_id: params.workflow_id,
-          attempts_done: attempt - 1,
-        });
-        break;
-      }
-      throw err;
-    }
-
-    proposal = repair.patch_proposal;
-    decision = classifyPatch(proposal, signal);
-    logger.info({
-      module: "self-healing",
-      action: "patch.classified",
-      msg: "patch classified",
-      tenant_id: params.tenant_id,
-      workflow_id: params.workflow_id,
-      classification: decision.classification,
-      reasons: decision.reasons,
-      attempt,
-    });
-
-    // Fixture dry-run for this attempt (no network).
-    dryRunOk = false;
-    dryRunError = undefined;
-    if (fixture) {
-      const dryRun = await runFixtureDryRun({
-        step: buildDryRunStep(snapshot),
-        patch: proposal,
-        fixture: { request: fixture.request, response: fixture.response },
-      });
-      dryRunOk = dryRun.ok;
-      if (!dryRun.ok) dryRunError = dryRun.error;
-      if (dryRun.ok) {
-        log.selfHealing.fixture.passed({
-          tenant_id: params.tenant_id,
-          workflow_id: params.workflow_id,
-          fixture_id: fixture.id,
-        });
-      } else {
-        log.selfHealing.fixture.failed({
-          tenant_id: params.tenant_id,
-          workflow_id: params.workflow_id,
-          fixture_id: fixture.id,
-          error: dryRun.error,
-        });
-      }
-    } else if (attempt === 1) {
-      logger.info({
-        module: "self-healing",
-        action: "fixture.missing",
-        msg: "no fixture available — auto-apply disabled",
-        tenant_id: params.tenant_id,
-        workflow_id: params.workflow_id,
-      });
-    }
-
-    // Stop as soon as the proposal clears both gates.
-    const classifierOk = decision.classification === "safe";
-    const fixtureOk = !fixture || dryRunOk;
-    if (classifierOk && fixtureOk) break;
-
-    // Record the rejection reason and feed it into the next attempt.
-    const reason =
-      !classifierOk && !fixtureOk
-        ? `unsafe classification (${decision.reasons.join("; ") || "no reasons"}) and fixture dry-run failed (${dryRunError ?? "unknown"})`
-        : !classifierOk
-          ? `unsafe classification: ${decision.reasons.join("; ") || "no reasons"}`
-          : `fixture dry-run failed: ${dryRunError ?? "unknown"}`;
-    rejectionChain.push({
-      attempt,
-      classification: decision.classification,
-      dry_run_passed: fixture ? dryRunOk : null,
-      reason,
-    });
-    previousAttempts.push({ proposal, rejection: reason });
-  }
-
-  if (!proposal || !decision) {
-    // Defensive: should not reach here because the loop always runs at
-    // least once. Fall back to empty-result semantics.
-    return emptyResult("repair flow returned no proposal");
-  }
-
-  if (rejectionChain.length > 0) {
-    recordSelfHealingRepairRetried({
-      tenant_id: params.tenant_id,
-      attempts: rejectionChain.length + 1,
-    });
-  }
-
-  // 7. Resolve policy.
-  const policy = await resolvePolicy(params.tenant_id, params.workflow_id, db);
-  const autoApply = shouldAutoApply({
-    policy,
-    classification: decision.classification,
-    fixture_passed: dryRunOk,
-    has_fixture: !!fixture,
-  });
-  logger.info({
-    module: "self-healing",
-    action: "policy.resolved",
-    msg: "auto-heal policy resolved",
-    tenant_id: params.tenant_id,
-    workflow_id: params.workflow_id,
-    policy,
-    classification: decision.classification,
-    has_fixture: Boolean(fixture),
-    fixture_passed: dryRunOk,
-    auto_apply: autoApply,
-  });
-
-  // 8. Write the patch_candidates row + audit + optionally auto-apply
-  // all inside a single transaction so the outbox event + audit rows
-  // commit with the domain change.
-  const txOut = await db.transaction(async (tx) => {
-    const [candidate] = await tx
-      .insert(patchCandidates)
-      .values({
-        tenant_id: params.tenant_id,
-        workflow_id: params.workflow_id,
-        classification: decision.classification,
-        ...(fixture ? { fixture_id: fixture.id } : {}),
-        diff: {
-          drift_signal: signal,
-          drift_diff: diff,
-          proposal,
-          classification_reasons: decision.reasons,
-          dry_run: { ok: dryRunOk, error: dryRunError ?? null, fixture_id: fixture?.id ?? null },
-          policy,
-          step_id: snapshot.id,
-          execution_id: params.execution_id,
-          ...(rejectionChain.length > 0 ? { rejection_chain: rejectionChain } : {}),
-        },
-        status: "proposed",
-      })
-      .returning();
-    assertInsertRow(candidate, "patch_candidates");
-
-    // patch_candidate.proposed audit row.
-    await auditAwait(
+  let result: ProcessSignalResult;
+  try {
+    result = await processDriftSignal(
+      signal,
       {
         tenant_id: params.tenant_id,
-        actor_type: "system",
-        action: AuditAction.PATCH_CANDIDATE_PROPOSED,
-        resource_type: "patch_candidate",
-        resource_id: candidate.id,
-        result: "success",
-        metadata: {
-          workflow_id: params.workflow_id,
-          classification: decision.classification,
-          policy,
-          drift_kind: signal.kind,
-          fixture_id: fixture?.id ?? null,
-          dry_run_ok: dryRunOk,
-          reasons: decision.reasons,
+        workflow_id: params.workflow_id,
+        execution_id: params.execution_id,
+        step_id: snapshot.id,
+        connector_id: params.connector_id ?? null,
+        endpoint_key: params.endpoint_key ?? null,
+        actor_id: null,
+        source: "reactive",
+        repair_input: {
+          failing_step_id: snapshot.id,
+          request: snapshot.request_meta,
+          response: snapshot.output_preview,
         },
+        dry_run_step: buildDryRunStep(snapshot),
       },
-      tx,
+      { allowAutoApply: true },
+      db,
     );
-
-    // patch.proposed outbox event.
-    log.selfHealing.patch.proposed({
-      candidate_id: candidate.id,
-      workflow_id: params.workflow_id,
-      tenant_id: params.tenant_id,
-      classification: decision.classification,
-      policy,
-      dry_run_ok: dryRunOk,
-      auto_apply: autoApply,
-    });
-    await writeEvent(tx, {
-      tenant_id: params.tenant_id,
-      channel: "notification.emitted",
-      type: "patch.proposed",
-      payload: {
-        patch_candidate_id: candidate.id,
-        workflow_id: params.workflow_id,
-        classification: decision.classification,
-        policy,
-        dry_run_ok: dryRunOk,
-      },
-    });
-
-    let appliedVersionId: string | null = null;
-    if (autoApply) {
-      appliedVersionId = await autoApplyPatch(tx, {
-        tenant_id: params.tenant_id,
-        workflow_id: params.workflow_id,
-        candidate_id: candidate.id,
-        proposal,
-      });
-      if (appliedVersionId) {
-        await auditAwait(
-          {
-            tenant_id: params.tenant_id,
-            actor_type: "system",
-            action: AuditAction.PATCH_CANDIDATE_AUTO_APPLIED,
-            resource_type: "patch_candidate",
-            resource_id: candidate.id,
-            result: "success",
-            metadata: {
-              workflow_id: params.workflow_id,
-              new_workflow_version_id: appliedVersionId,
-              fixture_id: fixture?.id ?? null,
-              classification: decision.classification,
-              policy,
-            },
-          },
-          tx,
-        );
-      }
+  } catch (err) {
+    if (err instanceof Error && err.message === "repair flow returned no proposal") {
+      return emptyResult("repair flow returned no proposal");
     }
-
-    return { candidate, appliedVersionId };
-  });
-
-  const auto_applied = !!txOut.appliedVersionId;
-  recordPatchCandidate({
-    classification: decision.classification,
-    decision: auto_applied ? "auto_applied" : "parked",
-  });
-  logger.info({
-    module: "self-healing",
-    action: auto_applied ? "patch.auto_applied" : "patch.parked",
-    msg: auto_applied ? "self-healing auto-applied patch" : "self-healing parked patch for review",
-    tenant_id: params.tenant_id,
-    workflow_id: params.workflow_id,
-    patch_candidate_id: txOut.candidate.id,
-    classification: decision.classification,
-    policy,
-    fixture_passed: dryRunOk,
-  });
+    throw err;
+  }
 
   return {
     drift_detected: true,
     drift_signal: signal,
-    patch_candidate_id: txOut.candidate.id,
-    proposal,
-    classification: decision.classification,
-    dry_run_passed: fixture ? dryRunOk : null,
-    auto_applied,
-    reason: auto_applied
-      ? `auto-applied (policy=${policy})`
-      : `parked (policy=${policy}, classification=${decision.classification})`,
+    patch_candidate_id: result.candidate_id,
+    proposal: result.proposal,
+    classification: result.classification,
+    dry_run_passed: result.dry_run_passed,
+    auto_applied: result.auto_applied,
+    reason: result.auto_applied
+      ? `auto-applied (policy=${result.policy})`
+      : `parked (policy=${result.policy}, classification=${result.classification})`,
   };
 }
 

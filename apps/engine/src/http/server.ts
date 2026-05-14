@@ -63,6 +63,7 @@ import { registerNotificationRoutes } from "./routes/notifications/index.ts";
 import { registerPatchCandidateRoutes } from "./routes/patch-candidates.ts";
 import { registerRbacRoutes } from "./routes/rbac/index.ts";
 import { registerRequestHookRoutes } from "./routes/request-hooks.ts";
+import { registerSelfHealingRoutes } from "./routes/self-healing.ts";
 import { registerSettingsRoutes } from "./routes/settings.ts";
 import { registerSetupRoute } from "./routes/setup.ts";
 import { registerSkillCandidateRoutes } from "./routes/skill-candidates.ts";
@@ -217,6 +218,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerAiRepairRoute(app);
   registerAiSummarizeRoute(app);
   registerPatchCandidateRoutes(app);
+  registerSelfHealingRoutes(app);
   registerHooksInboundRoutes(app);
   registerRequestHookRoutes(app);
   registerChatRoutes(app, { registry: opts.chatRegistry ?? new ChatAdapterRegistry() });

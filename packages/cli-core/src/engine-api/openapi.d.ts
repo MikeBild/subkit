@@ -5945,6 +5945,155 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/self-healing/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List proactive drift scans */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "running" | "succeeded" | "failed";
+                    source?: "scheduler" | "admin_http" | "mcp";
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SelfHealingScanListResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Trigger a proactive drift scan */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "idempotency-key"?: string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SelfHealingScanRequest"];
+                };
+            };
+            responses: {
+                /** @description Scan complete */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SelfHealingScanResponse"];
+                    };
+                };
+                /** @description Idempotent replay — returning prior scan result */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SelfHealingScanResponse"];
+                    };
+                };
+                /** @description Admin role required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/self-healing/scans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch a proactive drift scan */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SelfHealingScanRecord"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/webhooks/inbound": {
         parameters: {
             query?: never;
@@ -9582,6 +9731,62 @@ export interface components {
         };
         RejectPatchCandidateBody: {
             reason?: string;
+        };
+        SelfHealingScanResponse: {
+            /** Format: uuid */
+            scan_id: string;
+            signals_detected: number;
+            candidates_created: number;
+            unanchored_detected: number;
+            duration_ms: number;
+            candidates: components["schemas"]["SelfHealingScanCandidate"][];
+            unanchored: components["schemas"]["SelfHealingScanUnanchored"][];
+            idempotent_replay?: boolean;
+        };
+        SelfHealingScanCandidate: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape";
+            /** @enum {string} */
+            classification: "safe" | "unsafe";
+            /** @enum {string} */
+            status: "proposed";
+        };
+        SelfHealingScanUnanchored: {
+            /** @enum {string} */
+            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape";
+            /** @enum {string} */
+            reason: "hook_surface_not_supported" | "no_workflow_anchor";
+            resource_id: string;
+        };
+        SelfHealingScanRequest: {
+            /** Format: uuid */
+            workflow_id?: string;
+            /** Format: uuid */
+            connector_id?: string;
+        };
+        SelfHealingScanListResponse: {
+            items: components["schemas"]["SelfHealingScanRecord"][];
+        };
+        SelfHealingScanRecord: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenant_id: string;
+            source: string;
+            filters?: unknown;
+            /** Format: uuid */
+            actor_id: string | null;
+            idempotency_key: string | null;
+            signals_detected: number;
+            candidates_created: number;
+            unanchored_detected: number;
+            duration_ms: number | null;
+            status: string;
+            error: string | null;
+            created_at: string;
+            updated_at: string;
         };
         WebhookInboundListResponse: {
             items: components["schemas"]["WebhookInbound"][];

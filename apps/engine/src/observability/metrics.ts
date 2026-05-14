@@ -369,6 +369,38 @@ export const METRIC_NAMES = {
   // (sk-cli posts feedback that lands as `accepted` / `dismissed` /
   // `typed_over`). Cardinality is bounded — no suggestion text label.
   SK_SUGGEST_NEXT_TOTAL: "sk_suggest_next_total",
+  // Proactive self-healing drift scan instrumentation. The scheduler /
+  // admin HTTP / MCP entry points share this label set so dashboards
+  // can compare cadence:
+  //   * proactive_drift_scans_total      — one per scan invocation,
+  //     labelled by source (scheduler / admin_http / mcp) and
+  //     terminal status (succeeded / failed). Cardinality bounded
+  //     by tenant_id × 3 × 2.
+  //   * proactive_drift_signals_total    — one per emitted signal,
+  //     labelled by drift kind. Operators chart this against
+  //     candidates_total to see how many signals got promoted.
+  //   * proactive_drift_candidates_total — one per Patch Candidate
+  //     created from a proactive scan, labelled by classification.
+  //     Distinct from the existing PATCH_CANDIDATES_TOTAL counter
+  //     (which mixes reactive + proactive) so dashboards can split
+  //     the funnel.
+  //   * proactive_drift_scan_duration_seconds — histogram of scan
+  //     wall-clock duration, labelled by source. Lets SREs spot a
+  //     scan that has started running long (e.g. an unbounded LLM
+  //     retry loop) without trawling logs.
+  PROACTIVE_DRIFT_SCANS_TOTAL: "proactive_drift_scans_total",
+  PROACTIVE_DRIFT_SIGNALS_TOTAL: "proactive_drift_signals_total",
+  PROACTIVE_DRIFT_CANDIDATES_TOTAL: "proactive_drift_candidates_total",
+  PROACTIVE_DRIFT_SCAN_DURATION_SECONDS: "proactive_drift_scan_duration_seconds",
+  /**
+   * Drift the scanner detected but could not promote to a Patch
+   * Candidate because no workflow anchor exists (hook surface, or a
+   * connector no workflow references). Operators chart this against
+   * `proactive_drift_signals_total` to see how much of detected
+   * drift the current candidate model can act on — high unanchored
+   * counts point at follow-up work to land hook-level candidates.
+   */
+  PROACTIVE_DRIFT_UNANCHORED_TOTAL: "proactive_drift_unanchored_total",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -502,6 +534,32 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.SELF_HEALING_REPAIR_RETRIED_TOTAL,
     help: "Self-healing repair-flow retries (final attempts count per drift signal).",
     labels: ["tenant_id", "attempts"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.PROACTIVE_DRIFT_SCANS_TOTAL,
+    help: "Proactive self-healing drift scans, partitioned by source (scheduler / admin_http / mcp) and terminal status.",
+    labels: ["tenant_id", "source", "status"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.PROACTIVE_DRIFT_SIGNALS_TOTAL,
+    help: "Anchored drift signals from proactive scans (those promoted toward a Patch Candidate), partitioned by signal kind. Drift that lacked a workflow anchor is tracked separately by `proactive_drift_unanchored_total`; the sum is `signals_detected` on the scan response.",
+    labels: ["tenant_id", "signal_type"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.PROACTIVE_DRIFT_CANDIDATES_TOTAL,
+    help: "Patch Candidates created from proactive scans, partitioned by classification. Always parked as 'proposed' — never auto-applied.",
+    labels: ["tenant_id", "classification"],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.PROACTIVE_DRIFT_SCAN_DURATION_SECONDS,
+    help: "Wall-clock duration of a proactive drift scan, in seconds.",
+    labels: ["source"],
+    buckets: [0.1, 0.5, 1, 5, 15, 60, 300],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.PROACTIVE_DRIFT_UNANCHORED_TOTAL,
+    help: "Drift detected by proactive scans that could not be promoted to a Patch Candidate (no workflow anchor).",
+    labels: ["tenant_id", "signal_type", "reason"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.EXECUTION_WARNINGS_EMITTED_TOTAL,

@@ -38,6 +38,7 @@ import { patchCandidatesCommand } from "./commands/patch-candidates.ts";
 import { portalTokensCommand } from "./commands/portal-tokens.ts";
 import { profileCommand } from "./commands/profile.ts";
 import { rbacCommand } from "./commands/rbac.ts";
+import { selfHealingCommand } from "./commands/self-healing.ts";
 import { sessionsCommand, skLs, skRename, skRm, skShow } from "./commands/sessions.ts";
 import { settingsCommand } from "./commands/settings.ts";
 import { skillCandidatesCommand } from "./commands/skill-candidates.ts";
@@ -488,6 +489,7 @@ const mainCommand = defineCommand({
     discovery: discoveryCommand,
     executions: executionsCommand,
     "patch-candidates": patchCandidatesCommand,
+    "self-healing": selfHealingCommand,
     hooks: hooksCommand,
     subscriptions: subscriptionsCommand,
     events: eventsCommand,
@@ -651,6 +653,7 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   discovery: { command: discoveryCommand, requires: "discovery:read" },
   executions: { command: executionsCommand, requires: "execution:read" },
   "patch-candidates": { command: patchCandidatesCommand, requires: "workflow:read" },
+  "self-healing": { command: selfHealingCommand, requires: "workflow:write" },
   hooks: { command: hooksCommand, requires: "inbound_hook:read" },
   subscriptions: { command: subscriptionsCommand, requires: "subscription:read" },
   events: { command: eventsCommand, requires: "audit:read" },
