@@ -50,6 +50,7 @@ import {
 import { bucketSize } from "../../audit/buckets.ts";
 import { AuditAction, audit, auditAwait } from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
+import { writeEvent } from "../../db/events.ts";
 import { fileLinks, files } from "../../db/schema/index.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import { getScanner } from "../../files/scanner.ts";
@@ -656,6 +657,15 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         db,
       );
+      // MCP notification — subscribers on `file://<sibling_fid>` get
+      // an update ping. The sibling row is the canonical home for the
+      // bytes after this dedup-collapse.
+      await writeEvent(db, {
+        tenant_id,
+        channel: "notification.emitted",
+        type: "file.finalized",
+        payload: { file_id: toFileId(sibling[0].id), dedup: true },
+      });
       return c.json(toFileWire(sibling[0]), 200);
     }
 
@@ -711,6 +721,21 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         signature: scan.signature ?? null,
       },
     });
+
+    // MCP notification — only on the ready transition. A failed scan
+    // moves status to `failed`; MCP subscribers see no update (R10:
+    // they couldn't read the bytes anyway). The forwarder in
+    // `apps/engine/src/mcp/capabilities/resources.ts` re-checks
+    // `file:read` before forwarding, so a portal-scoped principal
+    // that learned the fid out-of-band cannot piggy-back.
+    if (status === "ready") {
+      await writeEvent(db, {
+        tenant_id,
+        channel: "notification.emitted",
+        type: "file.finalized",
+        payload: { file_id: toFileId(updated.id) },
+      });
+    }
 
     return c.json(toFileWire(updated), 200);
   });
@@ -1028,6 +1053,18 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
+    // MCP notification — subscribers on `file://<fid>` get a ping
+    // so they can react to the file disappearing. The forwarder
+    // re-checks `file:read`; a row that has just been soft-deleted
+    // still resolves (the resolver ignores `deleted_at` per R10's
+    // grace window) so the RBAC re-check passes during the
+    // notification window.
+    await writeEvent(db, {
+      tenant_id: principal.tenant_id,
+      channel: "notification.emitted",
+      type: "file.deleted",
+      payload: { file_id: toFileId(row.id) },
+    });
     return c.body(null, 204);
   });
 
