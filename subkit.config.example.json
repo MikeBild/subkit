@@ -107,7 +107,7 @@
       "access_key": "",
       "secret_key": ""
     },
-    "knowledge": {
+    "files": {
       "backend": "local",
       "dir": ""
     },

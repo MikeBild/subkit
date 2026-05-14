@@ -111,8 +111,8 @@ Storage backends
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `storage.knowledge.backend` | enum("local" \| "s3") | `"local"` | global | no | no |  |
-| `storage.knowledge.dir` | string | `""` | global | no | no |  |
+| `storage.files.backend` | enum("local" \| "s3") | `"local"` | global | no | no |  |
+| `storage.files.dir` | string | `""` | global | no | no |  |
 | `storage.offload.access_key` | string | `""` | global | yes | no |  |
 | `storage.offload.bucket` | string | `""` | global | no | no | S3 bucket for execution-payload offload; empty disables offload |
 | `storage.offload.endpoint` | string | `""` | global | no | no | Optional S3 endpoint override (MinIO, R2, etc.) |
