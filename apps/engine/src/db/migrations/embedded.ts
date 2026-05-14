@@ -36,6 +36,7 @@ import sql0015AiSdk6Foundation from "./0015_ai_sdk_6_foundation.sql" with { type
 import sql0016ExternalCallMeteringProviderSlug from "./0016_external_call_metering_provider_slug.sql" with { type: "text" };
 import sql0017DropConnectorOauthRedirectUri from "./0017_drop_connector_oauth_redirect_uri.sql" with { type: "text" };
 import sql0018ProactiveDriftScans from "./0018_proactive_drift_scans.sql" with { type: "text" };
+import sql0019FilesUnify from "./0019_files_unify.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -79,6 +80,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0016_external_call_metering_provider_slug": sql0016ExternalCallMeteringProviderSlug,
   "0017_drop_connector_oauth_redirect_uri": sql0017DropConnectorOauthRedirectUri,
   "0018_proactive_drift_scans": sql0018ProactiveDriftScans,
+  "0019_files_unify": sql0019FilesUnify,
 };
 
 const journal = journalMeta as unknown as Journal;

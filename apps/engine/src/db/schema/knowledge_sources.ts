@@ -23,6 +23,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
+import { files } from "./files.ts";
 import { tenants } from "./identity.ts";
 import { workflows } from "./workflows.ts";
 
@@ -65,8 +66,13 @@ export const knowledgeSources = pgTable(
     scope: knowledgeSourceScopeEnum("scope").notNull().default("global"),
     workflow_id: uuid("workflow_id").references(() => workflows.id, { onDelete: "set null" }),
     status: knowledgeSourceStatusEnum("status").notNull().default("active"),
-    source_type: text("source_type").notNull(), // file_upload | url | inline
+    source_type: text("source_type").notNull(), // file_upload | url | inline | discovery_endpoint_index
     source_uri: text("source_uri").notNull(), // original filename or URL
+    // Unified-files pointer. Populated for `source_type='file_upload'`;
+    // NULL for the `url|inline|discovery_endpoint_index` variants which
+    // continue to read through `source_uri`. ON DELETE SET NULL so a
+    // file purge does not cascade-delete the knowledge source row.
+    file_id: uuid("file_id").references(() => files.id, { onDelete: "set null" }),
     mime_type: text("mime_type"),
     version: text("version").notNull(), // SHA-256 fingerprint of content
     bytes_total: integer("bytes_total").notNull().default(0),

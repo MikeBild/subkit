@@ -16,6 +16,7 @@ export * from "./discovery.ts";
 export * from "./events.ts";
 export * from "./executions.ts";
 export * from "./external_call_metering.ts";
+export * from "./files.ts";
 export * from "./identity.ts";
 export * from "./knowledge_sources.ts";
 export * from "./llm.ts";
