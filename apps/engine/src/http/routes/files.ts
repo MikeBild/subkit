@@ -450,20 +450,28 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    audit({
-      tenant_id,
-      actor_type: actorType(principal),
-      actor_id: principal.id,
-      action: AuditAction.FILE_SCAN_COMPLETED,
-      resource_type: "file",
-      resource_id: row.id,
-      result: scan.verdict === "clean" ? "success" : "denied",
-      metadata: {
-        verdict: scan.verdict,
-        engine: scan.engine,
-        signature: scan.signature ?? null,
+    // `auditAwait` sequentially so a test reading `audit_log`
+    // immediately after the route returns sees both rows. Both are
+    // required to be persisted before the response; the cost is one
+    // extra round-trip, which the route already pays for the
+    // FILE_CREATED row above.
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: actorType(principal),
+        actor_id: principal.id,
+        action: AuditAction.FILE_SCAN_COMPLETED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: scan.verdict === "clean" ? "success" : "denied",
+        metadata: {
+          verdict: scan.verdict,
+          engine: scan.engine,
+          signature: scan.signature ?? null,
+        },
       },
-    });
+      db,
+    );
 
     return c.json(toFileWire(row), 201);
   });
@@ -762,20 +770,26 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    audit({
-      tenant_id,
-      actor_type: actorType(principal),
-      actor_id: principal.id,
-      action: AuditAction.FILE_SCAN_COMPLETED,
-      resource_type: "file",
-      resource_id: updated.id,
-      result: scan.verdict === "clean" ? "success" : "denied",
-      metadata: {
-        verdict: scan.verdict,
-        engine: scan.engine,
-        signature: scan.signature ?? null,
+    // `auditAwait` sequentially — see inline handler comment above
+    // (FILE_SCAN_COMPLETED must be persisted before the route returns
+    // so test ordering against `audit_log` is deterministic).
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: actorType(principal),
+        actor_id: principal.id,
+        action: AuditAction.FILE_SCAN_COMPLETED,
+        resource_type: "file",
+        resource_id: updated.id,
+        result: scan.verdict === "clean" ? "success" : "denied",
+        metadata: {
+          verdict: scan.verdict,
+          engine: scan.engine,
+          signature: scan.signature ?? null,
+        },
       },
-    });
+      db,
+    );
 
     // MCP notification — only on the ready transition. A failed scan
     // moves status to `failed`; MCP subscribers see no update (R10:
