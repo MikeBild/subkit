@@ -150,7 +150,7 @@ export async function executeS3Request(p: {
   connector: ConnectorView;
   method: S3Method;
   path: string;
-  body?: string | Uint8Array | Buffer | null;
+  body?: string | Uint8Array | Buffer | AsyncIterable<Uint8Array> | null;
   /** Content-Type for PUT. Forwarded to the s3-lite-client putObject. */
   contentType?: string;
   /** Object metadata for PUT. Each entry rides as `x-amz-meta-<key>`. */
@@ -264,12 +264,38 @@ export async function executeS3Request(p: {
           credential_id,
         };
       }
-      const data =
-        typeof p.body === "string"
-          ? p.body
-          : p.body instanceof Uint8Array
-            ? p.body
-            : new Uint8Array(p.body as Buffer);
+      // Buffer AsyncIterable bodies (from ResolvedFile.openRead) up to a
+      // reasonable cap. s3-lite-client's putObject does not accept streams
+      // natively; we collect chunks into a Uint8Array before passing them.
+      // Files larger than 50 MB should be spooled to tmpfile by the
+      // step-runner before reaching here, keeping per-call memory bounded.
+      let data: string | Uint8Array;
+      if (
+        p.body !== null &&
+        typeof p.body === "object" &&
+        Symbol.asyncIterator in (p.body as object)
+      ) {
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of p.body as AsyncIterable<Uint8Array>) {
+          chunks.push(chunk);
+        }
+        const total = chunks.reduce((n, c) => n + c.byteLength, 0);
+        const merged = new Uint8Array(total);
+        let offset = 0;
+        for (const chunk of chunks) {
+          merged.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        data = merged;
+      } else {
+        const syncBody = p.body as string | Uint8Array | Buffer;
+        data =
+          typeof syncBody === "string"
+            ? syncBody
+            : syncBody instanceof Uint8Array
+              ? syncBody
+              : new Uint8Array(syncBody);
+      }
       const putOpts: Record<string, unknown> = {};
       if (p.contentType) putOpts.metadata = { "Content-Type": p.contentType };
       if (p.metadata) {

@@ -18508,6 +18508,66 @@
   },
   {
     "version": 1,
+    "slug": "generic-multipart-upload",
+    "name": "Generic Multipart Upload",
+    "driver": "http",
+    "base_url": null,
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": null,
+    "ingestion_source": null,
+    "ingestion_url": null,
+    "icon": "generic-http.svg",
+    "description": "Upload files to any HTTP endpoint via multipart/form-data. Use the `multipart` step field with `$file` references resolved from the unified files resource.",
+    "category": "files",
+    "tags": ["file-upload", "multipart", "http", "generic"],
+    "setup_instructions": "Set base_url to the target HTTP service that accepts multipart/form-data POST requests. Configure credentials (bearer token or header) as required by the service. Use the `multipart` field on request steps to attach files via `$file` references.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer Token",
+        "description": "Bearer token auth for the target upload endpoint.",
+        "oauth": null
+      },
+      {
+        "auth_type": "header",
+        "label": "API Key Header",
+        "description": "Custom header-based API key auth.",
+        "oauth": null
+      },
+      {
+        "auth_type": "none",
+        "label": "No Auth",
+        "description": "No authentication (public or internally-trusted endpoint).",
+        "oauth": null
+      }
+    ],
+    "url_pattern": null,
+    "keywords": ["upload", "multipart", "form-data", "file"],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "Bearer Token",
+        "placeholder": "Enter the bearer token for the upload endpoint",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null
+  },
+  {
+    "version": 1,
     "slug": "web-scraper",
     "name": "Web Scraper",
     "driver": "http",
