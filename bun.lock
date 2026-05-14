@@ -138,6 +138,7 @@
     },
   },
   "patchedDependencies": {
+    "jsdom@29.1.1": "patches/jsdom@29.1.1.patch",
     "css-tree@3.2.1": "patches/css-tree@3.2.1.patch",
   },
   "packages": {

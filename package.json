@@ -187,6 +187,7 @@
     "typescript": "^5.9.3"
   },
   "patchedDependencies": {
-    "css-tree@3.2.1": "patches/css-tree@3.2.1.patch"
+    "css-tree@3.2.1": "patches/css-tree@3.2.1.patch",
+    "jsdom@29.1.1": "patches/jsdom@29.1.1.patch"
   }
 }
