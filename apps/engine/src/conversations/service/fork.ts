@@ -199,6 +199,34 @@ export async function forkConversation(
         })),
       )
       .onConflictDoNothing();
+
+    // Per-row audit emission — one `FILE_LINK_ADDED` per duplicated
+    // link with `source: "fork"` so compliance can distinguish
+    // user-initiated links (HTTP `/v1/files/...`, REPL attach) from
+    // fork-cascaded ones. Per-row matches the rest of the audit
+    // surface (each `FILE_LINK_ADDED` upstream is one row); the noise
+    // is bounded by typical conversation size (≤10 attachments).
+    for (const l of sourceLinks) {
+      await auditAwait(
+        {
+          tenant_id: p.tenant_id,
+          actor_type: p.actor_id ? "user" : "system",
+          actor_id: p.actor_id,
+          action: AuditAction.FILE_LINK_ADDED,
+          resource_type: "file",
+          resource_id: l.file_id,
+          result: "success",
+          metadata: {
+            resource_type: "conversation",
+            resource_id: row.id,
+            slug: l.slug,
+            role: l.role,
+            source: "fork",
+          },
+        },
+        exec,
+      );
+    }
   }
 
   // Log under `conversation.forked` (not `created`) so structured-log
