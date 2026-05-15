@@ -56,6 +56,11 @@ import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import { getScanner } from "../../files/scanner.ts";
 import { logger } from "../../logging/index.ts";
 import {
+  observeFileUploadDuration,
+  recordFileDedupHit,
+  recordFileScanResult,
+} from "../../observability/instrumentation.ts";
+import {
   getObjectStore,
   mintLocalPresignToken,
   verifyLocalPresignToken,
@@ -317,6 +322,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const tenant_id = principal.tenant_id;
+    // Wall-clock start for FILES_UPLOAD_DURATION_SECONDS — the
+    // observation lands in every terminal branch below (success / error /
+    // too_large is excluded as a pre-validation reject, not an upload
+    // attempt).
+    const uploadStartedAt = Date.now();
 
     // Decode base64 → bytes. `Buffer.from(..., "base64")` is permissive
     // (whitespace OK, padding optional) which matches the inline-attach
@@ -350,6 +360,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     if (existing[0]) {
       // Don't re-write the object; existing row is the canonical home.
+      recordFileDedupHit();
       await auditAwait(
         {
           tenant_id,
@@ -368,6 +379,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         db,
       );
+      observeFileUploadDuration({
+        outcome: "success",
+        duration_ms: Date.now() - uploadStartedAt,
+      });
       return c.json(toFileWire(existing[0]), 200);
     }
 
@@ -384,6 +399,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       content_type: body.content_type ?? null,
       filename: body.filename,
     });
+    recordFileScanResult({ verdict: scan.verdict });
 
     const status = scan.verdict === "clean" ? "ready" : "failed";
 
@@ -423,12 +439,25 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           } catch {
             /* best-effort */
           }
+          recordFileDedupHit();
+          observeFileUploadDuration({
+            outcome: "success",
+            duration_ms: Date.now() - uploadStartedAt,
+          });
           return c.json(toFileWire(again[0]), 200);
         }
       }
+      observeFileUploadDuration({
+        outcome: "error",
+        duration_ms: Date.now() - uploadStartedAt,
+      });
       throw err;
     }
     if (!row) {
+      observeFileUploadDuration({
+        outcome: "error",
+        duration_ms: Date.now() - uploadStartedAt,
+      });
       return c.json({ code: "internal_error", message: "insert failed" }, 400);
     }
 
@@ -473,6 +502,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
 
+    observeFileUploadDuration({
+      outcome: scan.verdict === "clean" ? "success" : "scan_infected",
+      duration_ms: Date.now() - uploadStartedAt,
+    });
     return c.json(toFileWire(row), 201);
   });
 
@@ -519,6 +552,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           .limit(1);
         if (existing[0]) {
           dedup_hits++;
+          recordFileDedupHit();
           results.push({
             id: toFileId(existing[0].id),
             upload_url: "",
@@ -635,6 +669,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const tenant_id = principal.tenant_id;
     const fid_uuid = parseFileId(id);
+    // Wall-clock for FILES_UPLOAD_DURATION_SECONDS — covers the
+    // server-side finalize pass (digest + sibling-dedup + scan + row
+    // update). The presigned-PUT itself is client-side and not
+    // measured here.
+    const finalizeStartedAt = Date.now();
 
     let row: typeof files.$inferSelect;
     try {
@@ -685,6 +724,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         db,
       );
+      observeFileUploadDuration({
+        outcome: "sha_mismatch",
+        duration_ms: Date.now() - finalizeStartedAt,
+      });
       return c.json(
         { code: "sha256_mismatch", message: "uploaded bytes hash does not match asserted sha256" },
         422,
@@ -707,6 +750,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         /* best-effort */
       }
       await db.delete(files).where(eq(files.id, row.id));
+      recordFileDedupHit();
       await auditAwait(
         {
           tenant_id,
@@ -729,6 +773,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         type: "file.finalized",
         payload: { file_id: toFileId(sibling[0].id), dedup: true },
       });
+      observeFileUploadDuration({
+        outcome: "success",
+        duration_ms: Date.now() - finalizeStartedAt,
+      });
       return c.json(toFileWire(sibling[0]), 200);
     }
 
@@ -738,6 +786,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       content_type: row.content_type ?? null,
       filename: row.filename,
     });
+    recordFileScanResult({ verdict: scan.verdict });
     const status = scan.verdict === "clean" ? "ready" : "failed";
     const [updated] = await db
       .update(files)
@@ -806,6 +855,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       });
     }
 
+    observeFileUploadDuration({
+      outcome: status === "ready" ? "success" : "scan_infected",
+      duration_ms: Date.now() - finalizeStartedAt,
+    });
     return c.json(toFileWire(updated), 200);
   });
 

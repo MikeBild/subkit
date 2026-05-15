@@ -401,6 +401,64 @@ export const METRIC_NAMES = {
    * counts point at follow-up work to land hook-level candidates.
    */
   PROACTIVE_DRIFT_UNANCHORED_TOTAL: "proactive_drift_unanchored_total",
+
+  // ----- Unified files resource (Wave E) ---------------------------------
+  // The files surface owns its own metric ladder so an operator can see at
+  // a glance how the storage substrate is behaving without grepping the
+  // execution / LLM ladders.
+  /**
+   * Per-tenant live row count, partitioned by status (`pending` /
+   * `uploading` / `ready` / `failed` / `expired`). Updated on every
+   * create / finalize / delete transition and reconciled by the cleanup
+   * cron. Operators chart `ready` vs. `pending` to spot a stuck upload
+   * pipeline (rising `pending` with flat `ready`) and total row count
+   * against the storage backend's object count to spot orphan leaks.
+   */
+  FILES_TOTAL: "subkit_files_total",
+  /**
+   * Per-tenant sum of `size_bytes` across `files WHERE deleted_at IS
+   * NULL`. Drives a "bytes-on-disk per tenant" panel; spikes here paired
+   * with a flat row count point at a single very large upload that may
+   * need a TTL or quota nudge.
+   */
+  FILES_BYTES_TOTAL: "subkit_files_bytes_total",
+  /**
+   * Counts every dedup short-circuit — both the inline path
+   * (sha256-match on POST /v1/files/inline) and the finalize sibling-
+   * dedup branch. Operators chart this against `subkit_files_total` to
+   * gauge how much storage cost the dedup index is saving.
+   */
+  FILES_DEDUP_HITS_TOTAL: "subkit_files_dedup_hits_total",
+  /**
+   * Histogram of inline-upload + finalize wall-clock duration, labelled
+   * by terminal outcome (`success` / `scan_infected` / `sha_mismatch` /
+   * `error`). p95 of `success` tracks user-perceived upload latency;
+   * a rising `error` bucket points at a degraded storage backend.
+   */
+  FILES_UPLOAD_DURATION_SECONDS: "subkit_files_upload_duration_seconds",
+  /**
+   * Per-tenant counter of bytes shipped inline to the LLM via the
+   * `file_part` strategy. R3: a runaway inline channel can blow the
+   * per-turn token budget — chart this against
+   * `subkit_files_llm_cap_downgrades_total` to see how often the
+   * 250 KiB per-turn cap is biting.
+   */
+  FILES_LLM_INLINE_BYTES_TOTAL: "subkit_files_llm_inline_bytes_total",
+  /**
+   * Per-tenant counter of files force-downgraded from `file_part` to
+   * `text_extract` because the per-turn 250 KiB inline budget was
+   * exhausted. Non-zero values mean the model is seeing parser-extracted
+   * text instead of the raw bytes — which is the safe fallback but
+   * worse signal for image / PDF input.
+   */
+  FILES_LLM_CAP_DOWNGRADES_TOTAL: "subkit_files_llm_cap_downgrades_total",
+  /**
+   * Counter of scanner verdicts (`clean` / `infected`). Any non-zero
+   * `infected` value is operator-actionable: the scanner caught
+   * malware before it became readable to a workflow, but the upload
+   * source still warrants follow-up.
+   */
+  FILES_SCAN_RESULTS_TOTAL: "subkit_files_scan_results_total",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -636,6 +694,45 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.SETTINGS_OVERRIDE_ACTIVE,
     help: "Active SK_OVERRIDE_<key> env overrides. 1 per dotted leaf path while the override is in effect; never carries the value itself.",
     labels: ["key"],
+  });
+
+  // ----- Unified files resource (Wave E) ---------------------------------
+  reg.registerGauge({
+    name: METRIC_NAMES.FILES_TOTAL,
+    help: "Live `files` rows per tenant, partitioned by status (pending / uploading / ready / failed / expired). Refreshed on transitions and reconciled by the cleanup cron.",
+    labels: ["tenant_id", "status"],
+  });
+  reg.registerGauge({
+    name: METRIC_NAMES.FILES_BYTES_TOTAL,
+    help: "Per-tenant sum of `size_bytes` across `files WHERE deleted_at IS NULL`.",
+    labels: ["tenant_id"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.FILES_DEDUP_HITS_TOTAL,
+    help: "Dedup short-circuits — inline path (sha256-match) + finalize sibling-dedup branch.",
+    labels: [],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.FILES_UPLOAD_DURATION_SECONDS,
+    help: "Wall-clock duration of inline upload + finalize, labelled by terminal outcome (success / scan_infected / sha_mismatch / error).",
+    labels: ["outcome"],
+    // p50 ~50ms inline; p95 ~5s for finalize on a slow scanner.
+    buckets: [0.05, 0.25, 1, 5, 30, 120],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.FILES_LLM_INLINE_BYTES_TOTAL,
+    help: "Per-tenant bytes shipped inline to the LLM via the `file_part` strategy. Chart against `subkit_files_llm_cap_downgrades_total` to spot per-turn cap pressure.",
+    labels: ["tenant_id"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.FILES_LLM_CAP_DOWNGRADES_TOTAL,
+    help: "Per-tenant files force-downgraded from `file_part` to `text_extract` because the per-turn 250 KiB inline budget was exhausted.",
+    labels: ["tenant_id"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.FILES_SCAN_RESULTS_TOTAL,
+    help: "Scanner verdicts (`clean` / `infected`). Any `infected` value is operator-actionable.",
+    labels: ["verdict"],
   });
 
   return reg;

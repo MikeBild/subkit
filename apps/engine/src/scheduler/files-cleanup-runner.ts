@@ -37,12 +37,13 @@
 // object logs and continues; the sweep does not abort. Leaving an
 // orphan blob in the bucket is preferable to wedging the cron.
 
-import { and, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, fileLinks, files } from "../db/schema/index.ts";
 import { storageKey } from "../files/resolver.ts";
 import { errorFields, logger } from "../logging/logger.ts";
+import { setFilesBytesTotal, setFilesTotal } from "../observability/instrumentation.ts";
 import { EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
 import { getObjectStore } from "../storage/object-store.ts";
 
@@ -313,6 +314,45 @@ async function sweepLlmProviderExpiry(db: Db): Promise<number> {
 }
 
 /**
+ * Sweep 4 — refresh `subkit_files_total{tenant_id,status}` and
+ * `subkit_files_bytes_total{tenant_id}` gauges.
+ *
+ * Single GROUP BY pass that bundles row count + size sum per
+ * (tenant_id, status). Only live rows (deleted_at IS NULL) participate
+ * — soft-deleted rows are accounted out of the live size budget so the
+ * gauge tracks "bytes the operator can think of as on-disk for this
+ * tenant". Hourly cadence is precise enough for an SLO panel; the route
+ * handlers don't need to bump deltas.
+ */
+async function refreshFilesGauges(db: Db): Promise<void> {
+  // tenant-filter:exempt — global sweep, gauge labels include tenant_id
+  const rows = await db
+    .select({
+      tenant_id: files.tenant_id,
+      status: files.status,
+      n: count(),
+      bytes: sql<string | number>`COALESCE(SUM(${files.size_bytes}), 0)`,
+    })
+    .from(files)
+    .where(isNull(files.deleted_at))
+    .groupBy(files.tenant_id, files.status);
+
+  const bytesByTenant = new Map<string, number>();
+  for (const r of rows) {
+    setFilesTotal({
+      tenant_id: r.tenant_id,
+      status: r.status,
+      value: Number(r.n),
+    });
+    const prior = bytesByTenant.get(r.tenant_id) ?? 0;
+    bytesByTenant.set(r.tenant_id, prior + Number(r.bytes));
+  }
+  for (const [tenant_id, value] of bytesByTenant.entries()) {
+    setFilesBytesTotal({ tenant_id, value });
+  }
+}
+
+/**
  * Run all three sweeps in order. Each sweep catches its own errors so
  * a transient failure in sweep N does not block sweeps N+1..3 from
  * running this tick. The cron is scheduled at hour resolution so even
@@ -358,6 +398,21 @@ export async function runFilesCleanup(started: Date, db: Db): Promise<void> {
       module: "scheduler",
       action: "files_cleanup.llm_expiry_failed",
       msg: "LLM provider expiry sweep failed",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
+  // Gauge refresh runs after the row-mutating sweeps so the snapshot
+  // reflects the post-sweep live set. Failure here is non-fatal — the
+  // gauges keep their last value until the next tick.
+  try {
+    await refreshFilesGauges(db);
+  } catch (err) {
+    logger.warn({
+      module: "scheduler",
+      action: "files_cleanup.gauges_refresh_failed",
+      msg: "files gauge refresh failed — gauges retain prior values",
       tick_id: tickId,
       ...errorFields(err),
     });

@@ -529,3 +529,110 @@ export function recordLlmContextAssembled(args: {
     });
   });
 }
+
+// ---------------------------------------------------------------------------
+// Unified files resource (Wave E)
+// ---------------------------------------------------------------------------
+
+/** Allow-list for `status` label on FILES_TOTAL — keeps cardinality
+ *  bounded if a future status string sneaks in. */
+const FILES_STATUS_VALUES = new Set<string>(["pending", "uploading", "ready", "failed", "expired"]);
+
+/** Allow-list for `outcome` label on FILES_UPLOAD_DURATION_SECONDS. */
+const FILES_UPLOAD_OUTCOMES = new Set<string>([
+  "success",
+  "scan_infected",
+  "sha_mismatch",
+  "error",
+]);
+
+/** Allow-list for `verdict` label on FILES_SCAN_RESULTS_TOTAL. */
+const FILES_SCAN_VERDICTS = new Set<string>(["clean", "infected"]);
+
+/**
+ * Set the live `subkit_files_total{tenant_id,status}` gauge to an
+ * absolute value. Called by the cleanup cron (which already sweeps every
+ * row) with reconciled counts; route handlers don't need to touch the
+ * gauge — the cron's hourly cadence is fast enough for an SLO panel.
+ */
+export function setFilesTotal(args: { tenant_id: string; status: string; value: number }): void {
+  safe(() => {
+    getMetrics().set(METRIC_NAMES.FILES_TOTAL, args.value, {
+      tenant_id: args.tenant_id,
+      status: FILES_STATUS_VALUES.has(args.status) ? args.status : "other",
+    });
+  });
+}
+
+/** Set `subkit_files_bytes_total{tenant_id}` to the reconciled live byte
+ *  sum. Same call site as `setFilesTotal` — the cleanup cron computes
+ *  both in one pass. */
+export function setFilesBytesTotal(args: { tenant_id: string; value: number }): void {
+  safe(() => {
+    getMetrics().set(METRIC_NAMES.FILES_BYTES_TOTAL, args.value, {
+      tenant_id: args.tenant_id,
+    });
+  });
+}
+
+/** Increment `subkit_files_dedup_hits_total` once per dedup short-circuit
+ *  (inline sha256-match or finalize sibling-dedup). */
+export function recordFileDedupHit(): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.FILES_DEDUP_HITS_TOTAL, {});
+  });
+}
+
+/** Observe `subkit_files_upload_duration_seconds{outcome}`. The caller
+ *  is the inline-upload + finalize handlers; `duration_ms` covers the
+ *  whole server-side path (decode → store.put → scan → row insert). */
+export function observeFileUploadDuration(args: { outcome: string; duration_ms: number }): void {
+  safe(() => {
+    if (!Number.isFinite(args.duration_ms)) return;
+    getMetrics().observe(METRIC_NAMES.FILES_UPLOAD_DURATION_SECONDS, args.duration_ms / 1000, {
+      outcome: FILES_UPLOAD_OUTCOMES.has(args.outcome) ? args.outcome : "error",
+    });
+  });
+}
+
+/** Increment `subkit_files_llm_inline_bytes_total{tenant_id}` by the
+ *  bytes the file-context assembler shipped via the `file_part`
+ *  strategy. R3: this is the runtime backstop on the per-turn token
+ *  blowup risk. */
+export function recordFileLlmInlineBytes(args: { tenant_id: string; bytes: number }): void {
+  safe(() => {
+    if (!Number.isFinite(args.bytes) || args.bytes <= 0) return;
+    getMetrics().inc(
+      METRIC_NAMES.FILES_LLM_INLINE_BYTES_TOTAL,
+      { tenant_id: args.tenant_id },
+      args.bytes,
+    );
+  });
+}
+
+/** Increment `subkit_files_llm_cap_downgrades_total{tenant_id}` per
+ *  file force-routed to `text_extract` because the per-turn inline
+ *  budget was exhausted. Companion signal to
+ *  `recordFileLlmInlineBytes`. */
+export function recordFileLlmCapDowngrade(args: { tenant_id: string; count: number }): void {
+  safe(() => {
+    if (!Number.isFinite(args.count) || args.count <= 0) return;
+    getMetrics().inc(
+      METRIC_NAMES.FILES_LLM_CAP_DOWNGRADES_TOTAL,
+      { tenant_id: args.tenant_id },
+      args.count,
+    );
+  });
+}
+
+/** Increment `subkit_files_scan_results_total{verdict}` per scanner
+ *  result. Unknown verdicts collapse to `infected` (the safer side of
+ *  the allow-list — surfaces an alert rather than silently swallowing
+ *  a new verdict). */
+export function recordFileScanResult(args: { verdict: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.FILES_SCAN_RESULTS_TOTAL, {
+      verdict: FILES_SCAN_VERDICTS.has(args.verdict) ? args.verdict : "infected",
+    });
+  });
+}

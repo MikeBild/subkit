@@ -21,6 +21,10 @@ import { countModelMessagesTokens } from "../llm/accounting/index.ts";
 import { getStaticCapabilities } from "../llm/core/capabilities.ts";
 import { buildFileContentBlocks, type FileContentBlock } from "../llm/core/file-context.ts";
 import type { ProviderKind } from "../llm/core/model-init.ts";
+import {
+  recordFileLlmCapDowngrade,
+  recordFileLlmInlineBytes,
+} from "../observability/instrumentation.ts";
 import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
 
 function approxValueSize(value: unknown): number {
@@ -90,6 +94,19 @@ export async function buildUserContentParts(
     capabilities: caps,
     fids,
   });
+
+  // R3 instrumentation — surface the per-turn inline bytes + cap
+  // downgrades. The assembler already enforces the 250 KiB hard cap;
+  // these counters give the operator a per-tenant view of how often
+  // the cap is biting (rising downgrades = the model is increasingly
+  // seeing parser-extracted text instead of raw bytes for image / PDF
+  // input). Both helpers are no-throw.
+  if (assembled.inline_bytes > 0) {
+    recordFileLlmInlineBytes({ tenant_id, bytes: assembled.inline_bytes });
+  }
+  if (assembled.inline_cap_downgrades > 0) {
+    recordFileLlmCapDowngrade({ tenant_id, count: assembled.inline_cap_downgrades });
+  }
 
   // Strip the sentinels from the surrounding prose so the LLM sees the
   // human-readable text plus the assembled content blocks separately.
