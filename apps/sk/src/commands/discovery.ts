@@ -1,29 +1,12 @@
 import { readFileSync } from "node:fs";
-import { basename, extname } from "node:path";
+import { basename } from "node:path";
 import { exitCodeFor } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
-
-const MIME_MAP: Record<string, string> = {
-  ".pdf": "application/pdf",
-  ".txt": "text/plain",
-  ".md": "text/markdown",
-  ".html": "text/html",
-  ".htm": "text/html",
-  ".json": "application/json",
-  ".csv": "text/csv",
-  ".xml": "application/xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-};
-
-function detectMime(filePath: string): string {
-  return MIME_MAP[extname(filePath).toLowerCase()] ?? "application/octet-stream";
-}
+import { detectMime } from "../utils/mime.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List discovery runs" },
