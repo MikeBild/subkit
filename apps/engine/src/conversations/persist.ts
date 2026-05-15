@@ -8,22 +8,18 @@
 // parse the `[conv:<id>]` envelope that keys its plan cursor.
 
 import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import {
   conversationElicitations,
   conversationMessages,
   conversationToolCalls,
-  fileLinks,
-  files,
 } from "../db/schema/index.ts";
-import { storageKey } from "../files/resolver.ts";
 import { countModelMessagesTokens } from "../llm/accounting/index.ts";
-import type { ModelCapabilities } from "../llm/core/capabilities.ts";
 import { getStaticCapabilities } from "../llm/core/capabilities.ts";
+import { buildFileContentBlocks, type FileContentBlock } from "../llm/core/file-context.ts";
 import type { ProviderKind } from "../llm/core/model-init.ts";
-import { getObjectStore } from "../storage/object-store.ts";
 import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
 
 function approxValueSize(value: unknown): number {
@@ -57,104 +53,99 @@ const REPLAY_TAIL_MESSAGES = 16;
 const TOOL_OUTPUT_VERBATIM_TURNS = 3;
 const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
 
+/** Pulls every `[file:fid_<uuid>]` sentinel out of chat text. The sentinel
+ *  is the canonical post-rewriter form for attachment refs: the loop's
+ *  `resolveAttachmentSlugsInText` call rewrites `@attachment:<slug>`
+ *  tokens to this shape before persistence so every downstream surface
+ *  sees one normalized representation. */
+const FILE_SENTINEL_RE = /\[file:(fid_[A-Za-z0-9_-]+)\]/g;
+
 /**
- * Build multimodal UserContent for a conversation turn that may reference
- * file attachments. Walks the chat-text for `@attachment:<slug>` tokens,
- * resolves them via `file_links` joined with `files`, and emits image /
- * file / text parts depending on the file's content_type and the
- * provider capabilities.
+ * Build multimodal UserContent for a conversation turn that may
+ * reference file attachments. Routes every `[file:fid_...]` sentinel
+ * through the canonical `buildFileContentBlocks` strategy router
+ * (file_api / file_part / text_extract — see `llm/core/file-context.ts`).
  *
- * Returns `string` when no attachments are relevant (fast path, preserves
- * existing behaviour for all-text turns).
+ * Returns a plain string when the turn has no file refs (fast path,
+ * preserves existing behaviour for all-text turns).
  */
 export async function buildUserContentParts(
   db: Db,
   tenant_id: string,
-  conversation_id: string,
+  _conversation_id: string,
   text: string,
   provider: ProviderKind = "anthropic",
 ): Promise<string | Array<TextPart | ImagePart | FilePart>> {
-  const caps: ModelCapabilities = getStaticCapabilities(provider);
-
-  // Quick exit: no attachment references → plain string (unchanged behaviour)
-  const ATTACHMENT_RE = /@attachment:([a-z0-9][a-z0-9_-]{0,62})\b/g;
-  const slugs: string[] = [];
-  for (let m = ATTACHMENT_RE.exec(text); m !== null; m = ATTACHMENT_RE.exec(text)) {
-    const slug = m[1];
-    if (slug) slugs.push(slug);
+  // Quick exit: no file sentinels → plain string (unchanged behaviour).
+  const fids: string[] = [];
+  for (let m = FILE_SENTINEL_RE.exec(text); m !== null; m = FILE_SENTINEL_RE.exec(text)) {
+    const fid = m[1];
+    if (fid && !fids.includes(fid)) fids.push(fid);
   }
-  ATTACHMENT_RE.lastIndex = 0;
+  FILE_SENTINEL_RE.lastIndex = 0;
 
-  if (slugs.length === 0) return text;
+  if (fids.length === 0) return text;
 
-  // Join `file_links` with `files` filtered to the conversation's
-  // resource scope. Slug uniqueness is enforced at the link level.
-  const linkRows = await db
-    .select({ slug: fileLinks.slug, file: files })
-    .from(fileLinks)
-    .innerJoin(files, eq(files.id, fileLinks.file_id))
-    .where(
-      and(
-        eq(fileLinks.tenant_id, tenant_id),
-        eq(fileLinks.resource_type, "conversation"),
-        eq(fileLinks.resource_id, conversation_id),
-        inArray(fileLinks.slug, slugs),
-      ),
-    );
+  const caps = getStaticCapabilities(provider);
+  const assembled = await buildFileContentBlocks({
+    db,
+    tenant_id,
+    provider,
+    capabilities: caps,
+    fids,
+  });
 
-  const rowMap = new Map<string, (typeof linkRows)[number]["file"]>();
-  for (const r of linkRows) if (r.slug) rowMap.set(r.slug, r.file);
+  // Strip the sentinels from the surrounding prose so the LLM sees the
+  // human-readable text plus the assembled content blocks separately.
+  const textWithoutRefs = text.replace(FILE_SENTINEL_RE, "").replace(/\s+/g, " ").trim();
+
   const parts: Array<TextPart | ImagePart | FilePart> = [];
-
-  // Build a text part for non-attachment text surrounding the refs
-  const textWithoutRefs = text.replace(/@attachment:[a-z0-9][a-z0-9_-]{0,62}\b/g, "").trim();
   if (textWithoutRefs) parts.push({ type: "text", text: textWithoutRefs });
-
-  for (const slug of slugs) {
-    const row = rowMap.get(slug);
-    if (!row) continue;
-
-    const mime = row.content_type ?? "application/octet-stream";
-    const isImage = mime.startsWith("image/");
-    const isPdf = mime === "application/pdf" || row.filename.endsWith(".pdf");
-
-    if (isImage && caps.supportsImage) {
-      try {
-        const buf = await getObjectStore().get(storageKey(row.storage_uri));
-        const imgData = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-        parts.push({ type: "image", image: imgData, mediaType: mime });
-        continue;
-      } catch {
-        // fallback to text path below
-      }
-    }
-
-    if (isPdf && caps.supportsFile) {
-      try {
-        const buf = await getObjectStore().get(storageKey(row.storage_uri));
-        const pdfData = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-        parts.push({ type: "file", data: pdfData, mediaType: "application/pdf" });
-        continue;
-      } catch {
-        // fallback to text path below
-      }
-    }
-
-    // Fallback: include a short preview of text content so the model
-    // sees what the operator attached. Bounded read (the truncating
-    // LLM-context path proper is Wave-C Step 8).
-    try {
-      const buf = await getObjectStore().get(storageKey(row.storage_uri));
-      const preview = new TextDecoder()
-        .decode(new Uint8Array(buf.buffer, buf.byteOffset, Math.min(buf.byteLength, 2000)))
-        .slice(0, 2000);
-      if (preview.length > 0) parts.push({ type: "text", text: `[${slug}]:\n${preview}` });
-    } catch {
-      // best-effort — silently skip a missing file
-    }
+  for (const block of assembled.blocks) {
+    parts.push(...toAiSdkParts(block));
   }
-
+  if (parts.length === 0) return text;
   return parts.length === 1 && parts[0]?.type === "text" ? (parts[0] as TextPart).text : parts;
+}
+
+/** Translate one assembler block into AI SDK content parts. `file_api`
+ *  carries the provider-native id through `providerOptions` so the
+ *  upstream provider adapter can splice the native reference shape into
+ *  the request without re-uploading. `file_part` becomes a FilePart for
+ *  PDFs / generic binaries or an ImagePart for image media types
+ *  (depending on capabilities). `text_extract` becomes a TextPart. */
+function toAiSdkParts(block: FileContentBlock): Array<TextPart | ImagePart | FilePart> {
+  if (block.strategy === "file_api") {
+    // Round-trip the provider-native shape through JSON so it satisfies
+    // the AI SDK's `JSONValue` constraint on `providerOptions` (typed
+    // unions don't widen automatically).
+    const native = JSON.parse(JSON.stringify(block.native));
+    return [
+      {
+        type: "file",
+        data: new Uint8Array(0),
+        mediaType: block.content_type,
+        filename: block.filename,
+        providerOptions: {
+          [block.provider]: { file_id: block.file_id, native },
+        },
+      },
+    ];
+  }
+  if (block.strategy === "file_part") {
+    if (block.mediaType.startsWith("image/")) {
+      return [{ type: "image", image: block.data, mediaType: block.mediaType }];
+    }
+    return [
+      {
+        type: "file",
+        data: block.data,
+        mediaType: block.mediaType,
+        filename: block.filename,
+      },
+    ];
+  }
+  return [{ type: "text", text: block.text }];
 }
 
 export async function appendMessage(
