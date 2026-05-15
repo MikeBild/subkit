@@ -7,6 +7,7 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { detectMime } from "../utils/mime.ts";
+import { uploadPath } from "./files.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List knowledge sources" },
@@ -82,10 +83,35 @@ const createCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
       const filePath = args.file;
+      // First register the bytes in the unified `files` table. Every
+      // CLI surface that ingests a local path funnels through
+      // `uploadPath` so the file is dedup-able + auditable. The
+      // resulting fid is linked to the knowledge_source after creation
+      // — until the engine route accepts `file_id` directly, the
+      // legacy multipart call is still the persistence path, but the
+      // file row makes the audit trail honest.
+      const file = await uploadPath(client, filePath, { quiet: true });
       const fileBuffer = readFileSync(filePath);
       const mime_type = detectMime(filePath);
       const name = args.title ?? basename(filePath);
-      const ks = await client.createKnowledgeSource({ name, content: fileBuffer, mime_type });
+      const ks = (await client.createKnowledgeSource({
+        name,
+        content: fileBuffer,
+        mime_type,
+      })) as Record<string, unknown>;
+      const ksId = typeof ks.id === "string" ? ks.id : null;
+      if (ksId) {
+        try {
+          await client.linkFile(file.id, {
+            resource_type: "knowledge_source",
+            resource_id: ksId,
+          });
+        } catch {
+          // Linking is best-effort — the knowledge source already
+          // owns its bytes; the file_link is a cross-reference for
+          // future provenance queries.
+        }
+      }
       printJson(ks);
     } catch (err) {
       process.stderr.write(

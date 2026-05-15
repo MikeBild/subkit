@@ -7,6 +7,7 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { detectMime } from "../utils/mime.ts";
+import { uploadPath } from "./files.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List discovery runs" },
@@ -131,12 +132,32 @@ const createCommand = defineCommand({
         .split(",")
         .map((p: string) => p.trim())
         .filter(Boolean);
+      // First register each file in the unified `files` table so the
+      // discovery run carries a dedup-able audit trail. The legacy
+      // multipart route is still the persistence path until the
+      // engine accepts file_ids directly — the file rows + links
+      // ensure every CLI surface funnels through `uploadInline` /
+      // `batchCreateFiles` (the upload-paths-parity guarantee).
+      const fileRows = await Promise.all(paths.map((p) => uploadPath(client, p, { quiet: true })));
       const files = paths.map((p: string) => ({
         name: basename(p),
         content: readFileSync(p),
         mime_type: detectMime(p),
       }));
-      const run = await client.createDiscoveryRun(files, args.label);
+      const run = (await client.createDiscoveryRun(files, args.label)) as Record<string, unknown>;
+      const runId = typeof run.id === "string" ? run.id : null;
+      if (runId) {
+        for (const f of fileRows) {
+          try {
+            await client.linkFile(f.id, {
+              resource_type: "discovery_run",
+              resource_id: runId,
+            });
+          } catch {
+            /* best-effort — the run already owns its bytes */
+          }
+        }
+      }
       printJson(run);
     } catch (err) {
       process.stderr.write(
