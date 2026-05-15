@@ -87,6 +87,75 @@ describe("scrub-secrets", () => {
     });
   });
 
+  describe("presigned-URL query-string redaction (R4)", () => {
+    test("redacts an S3 sigv4 presigned PUT URL", () => {
+      const url =
+        "https://my-bucket.s3.amazonaws.com/tenants/abc/2026/05/file?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20260514%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260514T120000Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=abc123def456";
+      const out = scrubString(url);
+      expect(out).not.toContain("X-Amz-Signature");
+      expect(out).not.toContain("X-Amz-Credential");
+      expect(out).not.toContain("AKIAIOSFODNN7EXAMPLE");
+      expect(out).toContain("?<presign-redacted>");
+      expect(out.startsWith("https://my-bucket.s3.amazonaws.com/tenants/abc/2026/05/file")).toBe(
+        true,
+      );
+    });
+
+    test("redacts a GCS V4 signed URL", () => {
+      const url =
+        "https://storage.googleapis.com/my-bucket/path/to/object?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=service-account%40project.iam.gserviceaccount.com%2F20260514%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20260514T120000Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=abcdef0123456789";
+      const out = scrubString(url);
+      expect(out).not.toContain("X-Goog-Signature");
+      expect(out).not.toContain("X-Goog-Credential");
+      expect(out).toContain("?<presign-redacted>");
+      expect(out.startsWith("https://storage.googleapis.com/my-bucket/path/to/object")).toBe(true);
+    });
+
+    test("redacts a generic HMAC presign with `signature=` (lowercase)", () => {
+      const url =
+        "https://files.example.com/v1/files/fid_abc/upload?expires=1700000000&signature=deadbeefcafe";
+      const out = scrubString(url);
+      expect(out).not.toContain("signature=deadbeefcafe");
+      expect(out).not.toContain("expires=1700000000");
+      expect(out).toContain("?<presign-redacted>");
+      expect(out.startsWith("https://files.example.com/v1/files/fid_abc/upload")).toBe(true);
+    });
+
+    test("redacts a generic HMAC presign with `Signature=` (uppercase)", () => {
+      const url = "https://files.example.com/v1/files/fid_xyz/upload?token=abc&Signature=zzz9";
+      const out = scrubString(url);
+      expect(out).not.toContain("Signature=zzz9");
+      expect(out).toContain("?<presign-redacted>");
+    });
+
+    test("does NOT redact a normal URL with non-signature query params", () => {
+      const url = "https://example.com/api?page=1&limit=20";
+      const out = scrubString(url);
+      expect(out).toBe(url);
+    });
+
+    test("redacts presign URLs nested inside an audit metadata object", () => {
+      const presign =
+        "https://bucket.s3.amazonaws.com/key?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=topsecret";
+      const audit = {
+        action: "file.batch_created",
+        metadata: {
+          presign_url: presign,
+          files: [{ id: "fid_1", upload_url: presign }],
+          notes: `Issued presign URL ${presign} for tenant t1.`,
+        },
+      };
+      const out = scrubSecrets(audit);
+      const json = JSON.stringify(out);
+      expect(json).not.toContain("topsecret");
+      expect(json).not.toContain("X-Amz-Signature");
+      expect(json).toContain("?<presign-redacted>");
+      // The non-query portion of the URL is preserved so an operator can
+      // still recognise the tenant + bucket from an audit row.
+      expect(json).toContain("https://bucket.s3.amazonaws.com/key");
+    });
+  });
+
   describe("object-mode walking", () => {
     test("redacts a sensitive-key string value entirely", () => {
       const out = scrubSecrets({

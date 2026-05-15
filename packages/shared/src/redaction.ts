@@ -68,8 +68,47 @@ export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
   { kind: "bearer", regex: /Bearer\s+[A-Za-z0-9._-]+/gi },
 ];
 
+/**
+ * Presigned-URL query-string detector. Matches any URL whose query
+ * string carries an upload-signature parameter and replaces the entire
+ * query with a fixed sentinel so the signature, expiry, and any other
+ * parameters never land in audit / log storage.
+ *
+ * Closes R4 (Wave E): a presigned PUT URL surfaces in audit metadata
+ * (e.g. `audit_log.metadata.presign_url` from `FILE_BATCH_CREATED`),
+ * and audit rows are append-only — a leaked HMAC survives forever and
+ * the URL itself confers write access to the underlying object until
+ * the signature expires (typically 1h, but cloud providers allow up to
+ * 7 days).
+ *
+ * Covered URL flavours:
+ *   - S3 sigv4: `?X-Amz-Algorithm=...&X-Amz-Signature=...`
+ *   - GCS V4 / V2 signed URLs: `?X-Goog-Algorithm=...&X-Goog-Signature=...`
+ *   - Generic HMAC presign: `?signature=...` or `?Signature=...`
+ *
+ * The detection is intentionally narrow on the query parameter name —
+ * a normal URL like `https://example.com/api?page=1` is left alone.
+ */
+const PRESIGN_QUERY_RE =
+  /\bhttps?:\/\/[^\s"'<>]+\?[^\s"'<>]*(?:X-Amz-(?:Algorithm|Signature|Credential)|X-Goog-(?:Algorithm|Signature|Credential)|[Ss]ignature=)[^\s"'<>]*/g;
+const PRESIGN_REDACTED_QUERY = "?<presign-redacted>";
+
+function scrubPresignUrls(value: string): string {
+  if (value.indexOf("?") === -1) return value;
+  return value.replace(PRESIGN_QUERY_RE, (match) => {
+    const q = match.indexOf("?");
+    if (q === -1) return match;
+    return `${match.slice(0, q)}${PRESIGN_REDACTED_QUERY}`;
+  });
+}
+
 export function scrubString(value: string): string {
-  let out = value;
+  // Strip presign URL query strings BEFORE the per-pattern token loop
+  // so the in-query secrets (X-Amz-Signature, X-Goog-Signature, JWT-
+  // shaped credentials inside X-Amz-Credential) are never touched —
+  // we replace the whole query, which is both cheaper and free of the
+  // false-positive risk of trying to match individual signature bytes.
+  let out = scrubPresignUrls(value);
   for (const { kind, regex } of SECRET_PATTERNS) {
     if (out.indexOf("REDACTED:") !== -1 && !regex.test(out)) {
       regex.lastIndex = 0;
@@ -119,7 +158,7 @@ export function scrubSecrets(payload: unknown): unknown {
 }
 
 function scrubLogString(value: string): string {
-  let out = value;
+  let out = scrubPresignUrls(value);
   for (const re of LOG_SCRUBBERS) {
     out = out.replace(re, DEFAULT_REDACTED);
   }
