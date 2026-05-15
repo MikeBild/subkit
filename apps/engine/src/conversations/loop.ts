@@ -57,6 +57,7 @@ import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instr
 import { now } from "../utils/clock.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
+import { resolveAttachmentSlugsInText } from "./attachments.ts";
 import { expandPriorFailuresFromToolCalls } from "./authoring-critic/prior-failures.ts";
 import { startNewWorkflowDraft } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
@@ -192,12 +193,28 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
 
   const usageBefore = await monthlyUsage(p.tenant_id, p.db).catch(() => 0);
 
+  // Rewrite `@attachment:<slug>` chat-text tokens to the canonical
+  // `[file:fid_...]` sentinel before persistence so every downstream
+  // surface (model-message replay, LLM file-context assembler, audit)
+  // sees a single normalized form. Unresolved slugs stay as the literal
+  // `@attachment:<slug>` token so the model can ask a clarifying
+  // question on the next turn. Slug → file_id lookup is scoped to this
+  // conversation's `file_links` rows by `resolveAttachmentSlugsInText`.
+  let ingestedUserMessage: string | null = p.user_message;
   if (p.user_message) {
-    await appendMessage(p.db, p.tenant_id, p.conversation_id, "user", { text: p.user_message });
-    events.push({ type: "message", role: "user", content: { text: p.user_message } });
+    const rewrite = await resolveAttachmentSlugsInText(p.user_message, {
+      db: p.db,
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+    });
+    ingestedUserMessage = rewrite.text;
+    await appendMessage(p.db, p.tenant_id, p.conversation_id, "user", {
+      text: ingestedUserMessage,
+    });
+    events.push({ type: "message", role: "user", content: { text: ingestedUserMessage } });
   }
 
-  const detectedIntent = detectUserIntent(p.user_message);
+  const detectedIntent = detectUserIntent(ingestedUserMessage);
   let workflowIdForTurn = p.workflow_id;
 
   // Draft state for the turn — tools mutate via ctx.setDraft, which
@@ -249,7 +266,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       await appendSnapshot(p.tenant_id, p.conversation_id, next, p.db);
     },
     abortSignal: turnAbortCtrl.signal,
-    recentUserMessage: p.user_message ?? null,
+    recentUserMessage: ingestedUserMessage ?? null,
   };
 
   const route = await resolveModelRoute(p.tenant_id, p.db);
@@ -264,14 +281,14 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       detectedIntent.forceTool === "run_workflow" ||
       detectedIntent.forceTool === "build_workflow" ||
       detectedIntent.forceTool === "save_workflow_draft",
-    multiArtifactIntent: detectMultiArtifactIntent(p.user_message),
+    multiArtifactIntent: detectMultiArtifactIntent(ingestedUserMessage),
     priorCriticFail: false,
   };
 
   // Pre-check budget. Worst case: `budget` steps × ~1 K output each +
   // the assembled prompt. Matches the envelope `callWithFallback`
   // used before A5.
-  const currentUserText = p.user_message ?? "continue";
+  const currentUserText = ingestedUserMessage ?? "continue";
   // Thread loaded skills from the conversation row into the prompt so
   // on-demand knowledge from `load_skill(slug)` actually reaches the
   // model. Also thread `surface` so per-surface prompt variants fire.
@@ -733,7 +750,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // (a) the detector sees a strong run-intent verb in any supported
   // language and (b) that tool actually exists in the palette this turn.
   const stateDrivenTool = inferStateDrivenFollowUpTool({
-    latestUserText: p.user_message,
+    latestUserText: ingestedUserMessage,
     permission_mode: p.permission_mode ?? null,
     summary: draft.summary,
   });
