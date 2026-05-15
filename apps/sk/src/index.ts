@@ -459,6 +459,16 @@ const mainCommand = defineCommand({
     },
     connector: { type: "string", description: "Bind the new conversation to a connector slug" },
     workflow: { type: "string", description: "Bind the new conversation to a workflow id" },
+    attach: {
+      // Wave-D Step-6: repeatable `--attach <path>` flag for `-p`
+      // headless mode. Each path is uploaded via `uploadPath` and
+      // linked to the (possibly resumed) ephemeral conversation
+      // BEFORE the prompt runs. Citty surfaces repeated string flags
+      // as `string | string[]`; the dispatcher below normalises.
+      type: "string",
+      description:
+        "Upload a file and attach it to the conversation before the prompt runs (repeatable, headless -p only)",
+    },
   },
   subCommands: {
     login: loginCommand,
@@ -550,6 +560,20 @@ const mainCommand = defineCommand({
     }
 
     if (headlessPrompt) {
+      // Citty surfaces a repeated `--attach <path>` flag as either
+      // `string` (single occurrence) or `string[]` (≥2). Normalise so
+      // `runHeadless` always sees a `readonly string[]`. Empty strings
+      // are dropped so a stray `--attach=` doesn't fan into a phantom
+      // upload attempt.
+      const attachRaw = args.attach as string | string[] | undefined;
+      const attach: readonly string[] =
+        attachRaw === undefined
+          ? []
+          : Array.isArray(attachRaw)
+            ? attachRaw.filter((p): p is string => typeof p === "string" && p.length > 0)
+            : attachRaw.length > 0
+              ? [attachRaw]
+              : [];
       const result = await runHeadless({
         profile,
         prompt: headlessPrompt,
@@ -558,6 +582,7 @@ const mainCommand = defineCommand({
         ...(resumeId ? { resume: resumeId } : {}),
         ...(args.connector ? { connector_id: String(args.connector) } : {}),
         ...(args.workflow ? { workflow_id: String(args.workflow) } : {}),
+        ...(attach.length > 0 ? { attach } : {}),
       });
       process.exit(result.exitCode);
     }

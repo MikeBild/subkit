@@ -58,6 +58,16 @@ export const INK_INTERCEPTED_LOCAL_SLASHES = Object.freeze([
   // /exit / /quit are handled at the readline input loop (process exit);
   // `handleSlash` is never reached for these.
   "exit",
+  // Wave-D Step-6: `/upload` uploads a local file via the engine's
+  // unified Files resource and inserts a `{"$file":"fid_..."}` leaf
+  // at the cursor. The Ink host owns the cursor + paste-store, so it
+  // intercepts the slash directly.
+  "upload",
+  // Wave-D Step-6: `/files` opens an interactive picker over files
+  // linked to the active conversation. Inserts an `@file:fid_...`
+  // mention at the cursor on selection — composer state lives in the
+  // Ink host.
+  "files",
 ] as const);
 
 /**
@@ -407,8 +417,31 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   {
     name: "attach",
     aliases: ["file"],
-    help: "Attach a local file (`/attach path/to/file.pdf`) as a paste ref",
+    help: "Upload a local file and insert a $file ref (`/attach path/to/file.pdf`)",
     category: "context",
+  },
+  {
+    // Wave-D Step-6: `/upload <path>` is the explicit verb form of
+    // `/attach`. The slash is routed locally because the Ink host
+    // owns the composer + paste-store; the actual upload talks to
+    // the engine via `EngineClient.uploadInline` / presigned PUT
+    // (RBAC + audit run server-side).
+    name: "upload",
+    help: "Upload a local file and insert a $file ref (`/upload path/to/file.pdf`)",
+    category: "context",
+    routing: "local",
+    requires: "file:write",
+    argsSchema: z.tuple([z.string().min(1, "path required")]).rest(z.string()),
+  },
+  {
+    // Wave-D Step-6: `/files` lists files already linked to the
+    // active conversation and lets the user insert an `@file:fid_…`
+    // mention at the cursor.
+    name: "files",
+    help: "Browse files linked to this conversation and insert an @file mention",
+    category: "context",
+    routing: "local",
+    requires: "file:read",
   },
   {
     name: "queue",

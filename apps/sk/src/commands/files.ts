@@ -107,7 +107,13 @@ function finishProgress(opts: UploadProgressOpts): void {
 /** Upload a local path, picking inline or presigned-PUT based on size.
  *  Returns the resulting `FileWire` row. Shared by the `upload` /
  *  `attach` verbs and (later) the rewired knowledge / discovery /
- *  workflow / headless flows. */
+ *  workflow / headless flows.
+ *
+ *  `opts.onProgress` is invoked once per uploaded chunk during the
+ *  presigned PUT phase. Callers that want a custom UX (e.g. the Ink
+ *  REPL's status line) pass this in lieu of `quiet`/`json` so they
+ *  can route the cumulative event into their own renderer without
+ *  having stderr scribbled on. */
 export async function uploadPath(
   client: EngineClient,
   filePath: string,
@@ -116,6 +122,7 @@ export async function uploadPath(
     dedup?: boolean;
     quiet?: boolean;
     json?: boolean;
+    onProgress?: (ev: UploadProgressEvent) => void;
   } = {},
 ): Promise<FileWire> {
   if (!existsSync(filePath)) {
@@ -161,9 +168,10 @@ export async function uploadPath(
     // Engine recognised an existing file by sha256 — no upload needed.
     return await client.getFile(entry.id);
   }
-  const stream = readableFromBytes(bytes, filename, entry.id, bytes.byteLength, (ev) =>
-    renderProgress(ev, progress),
-  );
+  const stream = readableFromBytes(bytes, filename, entry.id, bytes.byteLength, (ev) => {
+    renderProgress(ev, progress);
+    opts.onProgress?.(ev);
+  });
   // The local presign sink rejects chunked transfer-encoding (per
   // engine/files.ts:208). Bun's `fetch` adds `transfer-encoding:
   // chunked` for ReadableStream bodies unless we set `content-length`
