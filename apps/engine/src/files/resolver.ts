@@ -61,10 +61,14 @@ export async function requireFileForTenant(
   tenant_id: string,
   fid: string,
 ): Promise<FileRow> {
+  // Wire format is `fid_<uuid>`; the DB column is `uuid`. Strip the
+  // `fid_` prefix before the SELECT so a wire-format ref doesn't
+  // miss against the typed column.
+  const uuid = fid.startsWith("fid_") ? fid.slice("fid_".length) : fid;
   const rows = await db
     .select()
     .from(files)
-    .where(and(eq(files.tenant_id, tenant_id), eq(files.id, fid)))
+    .where(and(eq(files.tenant_id, tenant_id), eq(files.id, uuid)))
     .limit(1);
   const row = rows[0];
   if (!row) throw new FileNotFoundError(fid);
