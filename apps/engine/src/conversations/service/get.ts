@@ -10,6 +10,7 @@ import {
   conversations,
   conversationToolCalls,
 } from "../../db/schema/index.ts";
+import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { loadDraft } from "../draft.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type {
@@ -18,6 +19,24 @@ import type {
   ConversationToolCallRecord,
 } from "../types.ts";
 import { type Executor, rowToRecord } from "./shared.ts";
+
+/**
+ * Strip every `[file:fid_<uuid>]` sentinel out of a stored message
+ * content blob. The persisted shape is `string` for legacy rows or
+ * `{ text: string }` for the rewriter-canonical shape; both are walked.
+ * Anything else (tool decision notes, structured payloads) passes
+ * through untouched.
+ */
+function stripContentSentinels(content: unknown): unknown {
+  if (typeof content === "string") return stripFileSentinelsForDisplay(content);
+  if (content && typeof content === "object" && "text" in content) {
+    const obj = content as Record<string, unknown>;
+    if (typeof obj.text === "string") {
+      return { ...obj, text: stripFileSentinelsForDisplay(obj.text) };
+    }
+  }
+  return content;
+}
 
 export async function getConversation(
   tenant_id: string,
@@ -93,7 +112,13 @@ export async function getConversation(
         id: m.id,
         conversation_id: m.conversation_id,
         role: m.role as ConversationMessageRecord["role"],
-        content: m.content,
+        // Strip `[file:fid_<uuid>]` sentinels from the content surfaced
+        // to API consumers (CLI/REPL, web UI, MCP detail readers). The
+        // canonical persisted form keeps the sentinel for replay
+        // routing in `buildModelMessages`; the human/API surface gets
+        // a `[file]` placeholder. Without this, the raw fid would land
+        // in any UI that renders the conversation transcript.
+        content: stripContentSentinels(m.content),
         created_at: m.created_at.toISOString(),
       }),
     ),

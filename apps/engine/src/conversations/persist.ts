@@ -16,6 +16,7 @@ import {
   conversationMessages,
   conversationToolCalls,
 } from "../db/schema/index.ts";
+import { FILE_SENTINEL_RE } from "../files/sentinel.ts";
 import { countModelMessagesTokens } from "../llm/accounting/index.ts";
 import { getStaticCapabilities } from "../llm/core/capabilities.ts";
 import { buildFileContentBlocks, type FileContentBlock } from "../llm/core/file-context.ts";
@@ -53,13 +54,6 @@ const REPLAY_TAIL_MESSAGES = 16;
 const TOOL_OUTPUT_VERBATIM_TURNS = 3;
 const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
 
-/** Pulls every `[file:fid_<uuid>]` sentinel out of chat text. The sentinel
- *  is the canonical post-rewriter form for attachment refs: the loop's
- *  `resolveAttachmentSlugsInText` call rewrites `@attachment:<slug>`
- *  tokens to this shape before persistence so every downstream surface
- *  sees one normalized representation. */
-const FILE_SENTINEL_RE = /\[file:(fid_[A-Za-z0-9_-]+)\]/g;
-
 /**
  * Build multimodal UserContent for a conversation turn that may
  * reference file attachments. Routes every `[file:fid_...]` sentinel
@@ -77,12 +71,14 @@ export async function buildUserContentParts(
   provider: ProviderKind = "anthropic",
 ): Promise<string | Array<TextPart | ImagePart | FilePart>> {
   // Quick exit: no file sentinels → plain string (unchanged behaviour).
+  // Use a fresh regex per scan so concurrent buildUserContentParts calls
+  // don't collide on the shared `lastIndex`.
+  const scanRe = new RegExp(FILE_SENTINEL_RE.source, "g");
   const fids: string[] = [];
-  for (let m = FILE_SENTINEL_RE.exec(text); m !== null; m = FILE_SENTINEL_RE.exec(text)) {
+  for (let m = scanRe.exec(text); m !== null; m = scanRe.exec(text)) {
     const fid = m[1];
     if (fid && !fids.includes(fid)) fids.push(fid);
   }
-  FILE_SENTINEL_RE.lastIndex = 0;
 
   if (fids.length === 0) return text;
 
@@ -97,7 +93,8 @@ export async function buildUserContentParts(
 
   // Strip the sentinels from the surrounding prose so the LLM sees the
   // human-readable text plus the assembled content blocks separately.
-  const textWithoutRefs = text.replace(FILE_SENTINEL_RE, "").replace(/\s+/g, " ").trim();
+  const stripRe = new RegExp(FILE_SENTINEL_RE.source, "g");
+  const textWithoutRefs = text.replace(stripRe, "").replace(/\s+/g, " ").trim();
 
   const parts: Array<TextPart | ImagePart | FilePart> = [];
   if (textWithoutRefs) parts.push({ type: "text", text: textWithoutRefs });
@@ -245,6 +242,15 @@ interface BuildModelMessagesOpts {
   conversationEnvelope?: boolean;
   /** Conversation id — required when `conversationEnvelope` is true. */
   conversation_id?: string;
+  /**
+   * Provider routing for the per-turn file-strategy assembler. Every
+   * replayed user-role message that carries a `[file:fid_...]` sentinel
+   * is routed through `buildUserContentParts(provider)` so prior turns
+   * reuse the same file_api / file_part / text_extract decision as the
+   * current turn — and reuse the cached provider-native file id where
+   * applicable. Defaults to `"anthropic"` to match the production loop.
+   */
+  provider?: ProviderKind;
 }
 
 function messageText(content: unknown): string {
@@ -484,7 +490,44 @@ export async function buildModelMessages(
       const content = item.msg.content;
       if (role === "system") continue;
       if (role === "user") {
-        out.push({ role: "user", content: messageText(content) });
+        // Route every replayed user-role message through the same
+        // strategy assembler the current turn uses. Without this, prior
+        // turns that referenced a file would ship the literal sentinel
+        // `[file:fid_<uuid>]` to the LLM as raw text — no file_api /
+        // file_part / text_extract assembly, no provider-id reuse on
+        // prior turns. See FIX block 1 in checkpoint C: turn 2 must
+        // see turn 1's user message ALSO as a content block, not as
+        // raw sentinel text. The strategy router's per-turn 250 KiB
+        // cap continues to apply per-message — a multi-turn
+        // conversation with several files degrades to text_extract
+        // faster, which is correct.
+        const text = messageText(content);
+        const userPartsProvider = opts.provider ?? "anthropic";
+        if (db && tenant_id && /\[file:fid_/.test(text)) {
+          // We need a Db (not just Executor) for the strategy router;
+          // the production loop always passes one. Fall through to the
+          // plain string when only an Executor is available — the only
+          // call site without a Db is direct-tx replay, which doesn't
+          // ship file refs.
+          const dbForRouter = db as unknown as Db;
+          const parts = await buildUserContentParts(
+            dbForRouter,
+            tenant_id,
+            conversation_id,
+            text,
+            userPartsProvider,
+          );
+          // `buildUserContentParts` returns `string | Array<TextPart |
+          // ImagePart | FilePart>`, which is exactly the AI SDK
+          // `UserContent` shape — push as a typed user message.
+          if (typeof parts === "string") {
+            out.push({ role: "user", content: parts });
+          } else {
+            out.push({ role: "user", content: parts });
+          }
+        } else {
+          out.push({ role: "user", content: text });
+        }
       } else if (role === "assistant") {
         const text = messageText(content);
         if (text.length > 0) out.push({ role: "assistant", content: text });

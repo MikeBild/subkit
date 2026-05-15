@@ -16,6 +16,7 @@ import { generateText, type LanguageModel, type ModelMessage } from "ai";
 import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
+import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { initializeModel } from "../../llm/core/model-init.ts";
 import type { RecentMessage } from "../../llm/core/suggestion-prompt.ts";
 import { logger } from "../../logging/logger.ts";
@@ -243,6 +244,17 @@ function extractRecentMessages(
  * regression stays loud.
  */
 function extractText(content: unknown): string {
+  // Strip `[file:fid_<uuid>]` sentinels before the suggestion prompt
+  // sees the text. The suggestion model never re-resolves file refs
+  // through `buildUserContentParts` (the prompt is intentionally
+  // minimal, no DB-roundtrip allowed — see the design note below); a
+  // literal sentinel in the prompt would either confuse the model or
+  // leak the raw fid into the suggestion preview text.
+  const raw = extractTextRaw(content);
+  return stripFileSentinelsForDisplay(raw);
+}
+
+function extractTextRaw(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     const parts: string[] = [];
