@@ -27,6 +27,7 @@ import { doctorCommand } from "./commands/doctor.ts";
 import { eventsCommand } from "./commands/events.ts";
 import { executionsCommand } from "./commands/executions.ts";
 import { extractCommand } from "./commands/extract.ts";
+import { attachCommand, filesCommand } from "./commands/files.ts";
 import { healthCommand } from "./commands/health.ts";
 import { hooksCommand } from "./commands/hooks.ts";
 import { initCommand } from "./commands/init.ts";
@@ -477,6 +478,8 @@ const mainCommand = defineCommand({
     logs: logsCommand,
     settings: settingsCommand,
     extract: extractCommand,
+    files: filesCommand,
+    attach: attachCommand,
     auth: authCommand,
     // operator commands
     workflows: workflowsCommand,
@@ -604,6 +607,9 @@ const PERM_TIER: Record<string, number> = {
   "discovery:read": 3,
   "subscription:read": 3,
   "inbound_hook:read": 3,
+  "file:read": 1,
+  "file:write": 1,
+  "file:delete": 1,
   "mcp:read": 2,
   "skill:read": 2,
   "knowledge:read": 2,
@@ -641,6 +647,8 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   logs: { command: logsCommand, requires: "audit:read" },
   settings: { command: settingsCommand, requires: "settings:read" },
   extract: { command: extractCommand, requires: "conversation:write" },
+  files: { command: filesCommand, requires: "file:read" },
+  attach: { command: attachCommand, requires: "file:write" },
   auth: { command: authCommand, requires: "connector:write" },
   // operator
   workflows: { command: workflowsCommand, requires: "workflow:read" },
