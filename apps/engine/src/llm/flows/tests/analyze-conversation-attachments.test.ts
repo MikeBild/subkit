@@ -129,13 +129,21 @@ describe("analyzeConversationAttachments", () => {
       .insert(conversations)
       .values({ tenant_id, status: "active" })
       .returning();
+    const { randomBytes } = await import("node:crypto");
+    const tag = randomBytes(4).toString("hex");
+    // Parse + re-serialise with a unique `x-test-tag` field so sha256 differs
+    // from earlier tests that used the same STRIPE_OPENAPI literal.
+    const stripeTagged = JSON.stringify({
+      ...JSON.parse(STRIPE_OPENAPI),
+      "x-test-tag": `${tag}-a`,
+    });
     await attachInlineForTest({
       db: ctx.db,
       tenant_id,
       conversation_id: conv!.id,
       filename: "spec-a.json",
       content_type: "application/json",
-      content: STRIPE_OPENAPI,
+      content: stripeTagged,
       slug: "spec-a",
     });
     await attachInlineForTest({
@@ -144,7 +152,12 @@ describe("analyzeConversationAttachments", () => {
       conversation_id: conv!.id,
       filename: "spec-b.json",
       content_type: "application/json",
-      content: JSON.stringify({ openapi: "3.0.0", info: { title: "x", version: "1" }, paths: {} }),
+      content: JSON.stringify({
+        openapi: "3.0.0",
+        info: { title: "x", version: "1" },
+        paths: {},
+        "x-test-tag": `${tag}-b`,
+      }),
       slug: "spec-b",
     });
 
