@@ -8006,7 +8006,8 @@
           },
           "size_bytes": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 5368709120
           },
           "sha256": {
             "type": "string",
@@ -16569,6 +16570,16 @@
           },
           "409": {
             "description": "conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large",
             "content": {
               "application/json": {
                 "schema": {
