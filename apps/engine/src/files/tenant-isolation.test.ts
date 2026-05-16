@@ -5,7 +5,7 @@
 // MCP read_resource. Real Postgres + config loaded.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import type {
   ListResourcesRequest,
   ListResourcesResult,
@@ -13,11 +13,20 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { apiKeys, conversations, tenants, users } from "../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
 import { registerResourcesCapability } from "../mcp/capabilities/resources.ts";
 import { PubSubEmitter } from "../pubsub/emitter.ts";
+import {
+  createDeterministicHexFactory,
+  createDeterministicUuidFactory,
+} from "../test-helpers/determinism/ids.ts";
 import { attachInlineForTest } from "./test-helpers.ts";
+
+// Deterministic id sources: seeded per-test so plays back identically.
+// createHttpTestServer / createTestDb provision a fresh DB per run, so
+// per-call uniqueness within the test is sufficient.
+const uuid = createDeterministicUuidFactory(0x1501a7);
+const nextHex = createDeterministicHexFactory(0x150bbb);
 
 type RequestHandlerEntry = {
   schema: { shape: { method: { value: string } } };
@@ -72,7 +81,9 @@ beforeAll(async () => {
     .values({ tenant_id: tenantBId, email: "admin@iso-b.local", role: "admin" })
     .returning();
   if (!uB) throw new Error("seed user B");
-  const rand = randomBytes(24).toString("base64url").slice(0, 32);
+  // Deterministic 24 bytes encoded base64url, then sliced like the
+  // original randomBytes(24).toString("base64url").slice(0, 32) call.
+  const rand = Buffer.from(nextHex(24), "hex").toString("base64url").slice(0, 32);
   const pt = `wf_live_${rand}`;
   await srv.db.insert(apiKeys).values({
     tenant_id: tenantBId,
@@ -131,7 +142,7 @@ describe("tenant isolation — HTTP", () => {
       },
       body: JSON.stringify({
         resource_type: "conversation",
-        resource_id: randomUUID(),
+        resource_id: uuid(),
         slug: "cross-tenant",
       }),
     });
@@ -143,7 +154,7 @@ describe("tenant isolation — MCP read_resource", () => {
   test("MCP read_resource('file://<fidAUuid>') with tenant B principal → throws", async () => {
     const stub = newStub();
     const principalB: ResolvedPrincipal = {
-      id: randomUUID(),
+      id: uuid(),
       tenant_id: tenantBId,
       kind: "user",
       email: "admin@iso-b.local",
@@ -170,7 +181,7 @@ describe("tenant isolation — MCP read_resource", () => {
   test("MCP list_resources with tenant B does NOT include tenant A file UUID", async () => {
     const stub = newStub();
     const principalB: ResolvedPrincipal = {
-      id: randomUUID(),
+      id: uuid(),
       tenant_id: tenantBId,
       kind: "user",
       email: "admin@iso-b.local",

@@ -18,6 +18,7 @@ import {
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { runFilesCleanup } from "../../scheduler/files-cleanup-runner.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { forkConversation } from "./fork.ts";
 
 let srv: HttpTestServer;
@@ -145,7 +146,7 @@ describe("forkConversation + file_links", () => {
     expect(result).not.toBeNull();
 
     // Run the cleanup cron — files linked from both source + fork should NOT be reaped
-    await runFilesCleanup(new Date(), srv.db);
+    await runFilesCleanup(new Date(FROZEN_NOW), srv.db);
 
     // The file row must still be `ready` (not `deleted`)
     const [fileRow] = await srv.db

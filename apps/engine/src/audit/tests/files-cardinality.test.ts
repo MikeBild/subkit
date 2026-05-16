@@ -9,13 +9,18 @@
 // round-trip the audit rows through the full audit.ts write path.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { SizeBucket } from "../../audit/buckets.ts";
 import { bucketSize } from "../../audit/buckets.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+
+// Deterministic uuid source: seeded so the test replays identically and
+// `no-random-uuid-in-tests` stays green. createTestDb provisions a fresh
+// DB per run, so per-call uniqueness within the test is sufficient.
+const uuid = createDeterministicUuidFactory(0xfacaad);
 
 const VALID_BUCKETS: SizeBucket[] = ["<1KB", "<1MB", "<10MB", "<100MB", ">=100MB"];
 
@@ -55,12 +60,12 @@ async function emitFileEvent(
   sizeBytes: number,
   filename?: string,
 ) {
-  const file_id = randomUUID();
+  const file_id = uuid();
   await auditAwait(
     {
       tenant_id,
       actor_type: "user",
-      actor_id: randomUUID(),
+      actor_id: uuid(),
       action: AuditAction[action],
       resource_type: "file",
       resource_id: file_id,
@@ -110,12 +115,12 @@ describe("files audit cardinality", () => {
 
   test("FILE_CREATED rows may carry filename; other actions must not", async () => {
     const createdId = await emitFileEvent("FILE_CREATED", 1024, "report.pdf");
-    const downloadedId = randomUUID();
+    const downloadedId = uuid();
     await auditAwait(
       {
         tenant_id,
         actor_type: "user",
-        actor_id: randomUUID(),
+        actor_id: uuid(),
         action: AuditAction.FILE_DOWNLOADED,
         resource_type: "file",
         resource_id: downloadedId,

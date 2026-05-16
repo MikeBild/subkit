@@ -7,7 +7,6 @@
 //   - unknown fid → read_resource throws (no cross-tenant leak)
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import type {
   ListResourcesRequest,
   ListResourcesResult,
@@ -20,7 +19,12 @@ import { conversations, files } from "../../db/schema/index.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { PubSubEmitter } from "../../pubsub/emitter.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { registerResourcesCapability } from "../capabilities/resources.ts";
+
+// Deterministic uuid source: seeded so the test replays identically.
+const uuid = createDeterministicUuidFactory(0x3c9f11);
 
 type RequestHandlerEntry = {
   schema: { shape: { method: { value: string } } };
@@ -73,7 +77,7 @@ afterAll(async () => {
 
 function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
   return {
-    id: randomUUID(),
+    id: uuid(),
     tenant_id: srv.tenantId,
     kind: "user",
     email: "admin@mcp-file.local",
@@ -93,7 +97,7 @@ describe("MCP file:// resource", () => {
       filename: "mcp-read.txt",
       content: "mcp-content-hello",
       content_type: "text/plain",
-      slug: `mcp-read-${randomUUID().slice(0, 8)}`,
+      slug: `mcp-read-${uuid().slice(0, 8)}`,
     });
 
     const stub = newStub();
@@ -125,7 +129,7 @@ describe("MCP file:// resource", () => {
       conversation_id,
       filename: "mcp-listed.txt",
       content: "listed-content",
-      slug: `mcp-listed-${randomUUID().slice(0, 8)}`,
+      slug: `mcp-listed-${uuid().slice(0, 8)}`,
     });
 
     const stub = newStub();
@@ -150,11 +154,14 @@ describe("MCP file:// resource", () => {
       conversation_id,
       filename: "mcp-deleted.txt",
       content: "deleted-content",
-      slug: `mcp-deleted-${randomUUID().slice(0, 8)}`,
+      slug: `mcp-deleted-${uuid().slice(0, 8)}`,
     });
 
-    // Soft-delete the file
-    await srv.db.update(files).set({ deleted_at: new Date() }).where(eq(files.id, att.file_uuid));
+    // Soft-delete the file (FROZEN_NOW keeps the timestamp replayable).
+    await srv.db
+      .update(files)
+      .set({ deleted_at: new Date(FROZEN_NOW) })
+      .where(eq(files.id, att.file_uuid));
 
     const stub = newStub();
     registerResourcesCapability({
@@ -183,7 +190,7 @@ describe("MCP file:// resource", () => {
     const readHandler = handlerFor(stub, "resources/read");
     const req: ReadResourceRequest = {
       method: "resources/read",
-      params: { uri: `file://${randomUUID()}` },
+      params: { uri: `file://${uuid()}` },
     };
     await expect(readHandler(req)).rejects.toThrow();
   });

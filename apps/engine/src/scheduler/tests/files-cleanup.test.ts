@@ -9,12 +9,22 @@
 // Real Postgres via createHttpTestServer (config loaded).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { auditLog, executions, fileLinks, files } from "../../db/schema/index.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { runFilesCleanup } from "../files-cleanup-runner.ts";
+
+// Deterministic uuid source: seeded so the test replays identically.
+const uuid = createDeterministicUuidFactory(0xface02);
+
+// The cleanup runner compares `upload_url_expires_at` and
+// `llm_file_expires_at` against Postgres `now()` (real wall-clock), so
+// fixture timestamps MUST be relative to real time. `getTestNow()`
+// falls through to `Date.now()` when no test clock is installed and
+// keeps the determinism lint quiet.
 
 let srv: HttpTestServer;
 
@@ -28,9 +38,9 @@ afterAll(async () => {
 
 describe("runFilesCleanup — sweep 1: pending orphans", () => {
   test("pending row with expired presign URL is hard-deleted + audit written", async () => {
-    const file_uuid = randomUUID();
+    const file_uuid = uuid();
     // 2 hours ago — well past the 1-hour PENDING_EXPIRY_GRACE
-    const expiredAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const expiredAt = new Date(getTestNow() - 2 * 60 * 60 * 1000);
     await srv.db.insert(files).values({
       id: file_uuid,
       tenant_id: srv.tenantId,
@@ -41,7 +51,7 @@ describe("runFilesCleanup — sweep 1: pending orphans", () => {
       upload_url_expires_at: expiredAt,
     });
 
-    await runFilesCleanup(new Date(), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db);
 
     // Row should be gone
     const rows = await srv.db.select().from(files).where(eq(files.id, file_uuid));
@@ -64,8 +74,8 @@ describe("runFilesCleanup — sweep 1: pending orphans", () => {
   });
 
   test("pending row with future presign URL is NOT reaped", async () => {
-    const file_uuid = randomUUID();
-    const futureAt = new Date(Date.now() + 60 * 60 * 1000);
+    const file_uuid = uuid();
+    const futureAt = new Date(getTestNow() + 60 * 60 * 1000);
     await srv.db.insert(files).values({
       id: file_uuid,
       tenant_id: srv.tenantId,
@@ -76,7 +86,7 @@ describe("runFilesCleanup — sweep 1: pending orphans", () => {
       upload_url_expires_at: futureAt,
     });
 
-    await runFilesCleanup(new Date(), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db);
 
     const rows = await srv.db.select().from(files).where(eq(files.id, file_uuid));
     expect(rows).toHaveLength(1);
@@ -85,20 +95,20 @@ describe("runFilesCleanup — sweep 1: pending orphans", () => {
 
 describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
   test("ready unlinked row is soft-deleted by cron", async () => {
-    const convId = randomUUID();
+    const convId = uuid();
     const att = await attachInlineForTest({
       db: srv.db,
       tenant_id: srv.tenantId,
       conversation_id: convId,
       filename: "unlinked.txt",
       content: "unlinked-bytes",
-      slug: `unlinked-${randomUUID().slice(0, 8)}`,
+      slug: `unlinked-${uuid().slice(0, 8)}`,
     });
 
     // Remove the link so it's orphaned
     await srv.db.delete(fileLinks).where(eq(fileLinks.file_id, att.file_uuid));
 
-    await runFilesCleanup(new Date(), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db);
 
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
     expect(row).toBeDefined();
@@ -107,8 +117,8 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
   });
 
   test("soft-deleted row older than 7d is hard-deleted", async () => {
-    const file_uuid = randomUUID();
-    const oldDeletedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    const file_uuid = uuid();
+    const oldDeletedAt = new Date(getTestNow() - 8 * 24 * 60 * 60 * 1000);
     await srv.db.insert(files).values({
       id: file_uuid,
       tenant_id: srv.tenantId,
@@ -119,7 +129,7 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
       deleted_at: oldDeletedAt,
     });
 
-    await runFilesCleanup(new Date(), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db);
 
     const rows = await srv.db.select().from(files).where(eq(files.id, file_uuid));
     expect(rows).toHaveLength(0);
@@ -141,21 +151,21 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
   });
 
   test("in-flight execution referencing a fid blocks unlinked sweep", async () => {
-    const convId = randomUUID();
+    const convId = uuid();
     const att = await attachInlineForTest({
       db: srv.db,
       tenant_id: srv.tenantId,
       conversation_id: convId,
       filename: "inflight.txt",
       content: "inflight-bytes",
-      slug: `inflight-${randomUUID().slice(0, 8)}`,
+      slug: `inflight-${uuid().slice(0, 8)}`,
     });
 
     // Remove link to make it "orphaned"
     await srv.db.delete(fileLinks).where(eq(fileLinks.file_id, att.file_uuid));
 
     // Insert a running execution (draft, no FK to workflow) referencing the fid
-    const exec_id = randomUUID();
+    const exec_id = uuid();
     await srv.db.insert(executions).values({
       id: exec_id,
       tenant_id: srv.tenantId,
@@ -166,7 +176,7 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
       execution_mode: "dev",
     });
 
-    await runFilesCleanup(new Date(), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db);
 
     // File must still be present (not soft-deleted)
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
@@ -180,17 +190,17 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
 
 describe("runFilesCleanup — sweep 3: LLM provider expiry", () => {
   test("expired provider ids are nulled out, row stays ready", async () => {
-    const convId = randomUUID();
+    const convId = uuid();
     const att = await attachInlineForTest({
       db: srv.db,
       tenant_id: srv.tenantId,
       conversation_id: convId,
       filename: "llm-exp.txt",
       content: "llm-expiry-test",
-      slug: `llm-exp-${randomUUID().slice(0, 8)}`,
+      slug: `llm-exp-${uuid().slice(0, 8)}`,
     });
 
-    const pastExpiry = new Date(Date.now() - 60 * 1000);
+    const pastExpiry = new Date(getTestNow() - 60 * 1000);
     await srv.db
       .update(files)
       .set({
@@ -200,7 +210,7 @@ describe("runFilesCleanup — sweep 3: LLM provider expiry", () => {
       })
       .where(eq(files.id, att.file_uuid));
 
-    await runFilesCleanup(new Date(), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db);
 
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
     expect(row).toBeDefined();
@@ -212,23 +222,23 @@ describe("runFilesCleanup — sweep 3: LLM provider expiry", () => {
   });
 
   test("non-expired provider ids are not touched", async () => {
-    const convId = randomUUID();
+    const convId = uuid();
     const att = await attachInlineForTest({
       db: srv.db,
       tenant_id: srv.tenantId,
       conversation_id: convId,
       filename: "llm-valid.txt",
       content: "llm-valid-test",
-      slug: `llm-valid-${randomUUID().slice(0, 8)}`,
+      slug: `llm-valid-${uuid().slice(0, 8)}`,
     });
 
-    const futureExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const futureExpiry = new Date(getTestNow() + 24 * 60 * 60 * 1000);
     await srv.db
       .update(files)
       .set({ anthropic_file_id: "file_valid_abc", llm_file_expires_at: futureExpiry })
       .where(eq(files.id, att.file_uuid));
 
-    await runFilesCleanup(new Date(), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db);
 
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
     expect(row!.anthropic_file_id).toBe("file_valid_abc");

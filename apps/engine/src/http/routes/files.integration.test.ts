@@ -6,17 +6,21 @@
 // loadConfig); real local-disk object store.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog, tenants, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+
+// Deterministic 24-byte source for synthetic api keys. Seeded for replay.
+const nextHex = createDeterministicHexFactory(0xf117e7);
 
 function sha256Hex(v: string | Buffer): string {
   return createHash("sha256").update(v).digest("hex");
 }
 
 function genKey() {
-  const rand = randomBytes(24).toString("base64url").slice(0, 32);
+  const rand = Buffer.from(nextHex(24), "hex").toString("base64url").slice(0, 32);
   const pt = `wf_live_${rand}`;
   return { pt, prefix: pt.slice(0, 12), hash: sha256Hex(pt) };
 }

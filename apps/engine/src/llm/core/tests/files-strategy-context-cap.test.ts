@@ -4,22 +4,31 @@
 // Does NOT call a real LLM. Uses the mock uploader pattern.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomBytes, randomUUID } from "node:crypto";
-
-// Prefix every fixture buffer with random bytes so sha256 is unique
-// across test runs (residual rows from a prior failed run would
-// otherwise collide on the UNIQUE(tenant_id, sha256) index).
-function uniqueBuffer(size: number, fill: string): Buffer {
-  const prefix = randomBytes(16);
-  return Buffer.concat([prefix, Buffer.alloc(Math.max(0, size - 16), fill)]);
-}
 
 import { conversations, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { attachInlineForTest } from "../../../files/test-helpers.ts";
+import {
+  createDeterministicHexFactory,
+  createDeterministicUuidFactory,
+} from "../../../test-helpers/determinism/ids.ts";
 import { getStaticCapabilities } from "../capabilities.ts";
 import { buildFileContentBlocks, FILE_PART_PER_TURN_CAP_BYTES } from "../file-context.ts";
 import type { UploadFileParams } from "../files-api.ts";
+
+// Deterministic id sources: seeded so the test replays identically.
+// createTestDb provisions a fresh DB per run, so per-call uniqueness
+// within the test is sufficient to keep sha256 distinct across fixtures.
+const uuid = createDeterministicUuidFactory(0xfacaa1);
+const nextHex = createDeterministicHexFactory(0xfacaa2);
+
+// Prefix every fixture buffer with deterministic-but-unique bytes so
+// sha256 is unique within the test (the UNIQUE(tenant_id, sha256) index
+// would otherwise collide between fixtures that share the same fill).
+function uniqueBuffer(size: number, fill: string): Buffer {
+  const prefix = Buffer.from(nextHex(16), "hex");
+  return Buffer.concat([prefix, Buffer.alloc(Math.max(0, size - 16), fill)]);
+}
 
 let ctx: TestDb;
 let tenant_id: string;
@@ -57,7 +66,7 @@ describe("250 KiB per-turn inline cap", () => {
       filename: "under-cap.bin",
       content,
       content_type: "application/octet-stream",
-      slug: `under-cap-${randomUUID().slice(0, 8)}`,
+      slug: `under-cap-${uuid().slice(0, 8)}`,
     });
 
     const caps = {
@@ -103,7 +112,7 @@ describe("250 KiB per-turn inline cap", () => {
       filename: "cap-file1.bin",
       content: content1,
       content_type: "application/octet-stream",
-      slug: `cap-f1-${randomUUID().slice(0, 8)}`,
+      slug: `cap-f1-${uuid().slice(0, 8)}`,
     });
     const att2 = await attachInlineForTest({
       db: ctx.db,
@@ -112,7 +121,7 @@ describe("250 KiB per-turn inline cap", () => {
       filename: "cap-file2.bin",
       content: content2,
       content_type: "application/octet-stream",
-      slug: `cap-f2-${randomUUID().slice(0, 8)}`,
+      slug: `cap-f2-${uuid().slice(0, 8)}`,
     });
 
     const caps = {
@@ -156,7 +165,7 @@ describe("250 KiB per-turn inline cap", () => {
       filename: "triple-1.bin",
       content: firstContent,
       content_type: "application/octet-stream",
-      slug: `triple-1-${randomUUID().slice(0, 8)}`,
+      slug: `triple-1-${uuid().slice(0, 8)}`,
     });
     const att2 = await attachInlineForTest({
       db: ctx.db,
@@ -165,7 +174,7 @@ describe("250 KiB per-turn inline cap", () => {
       filename: "triple-2.bin",
       content: bigContent2,
       content_type: "application/octet-stream",
-      slug: `triple-2-${randomUUID().slice(0, 8)}`,
+      slug: `triple-2-${uuid().slice(0, 8)}`,
     });
     const att3 = await attachInlineForTest({
       db: ctx.db,
@@ -174,7 +183,7 @@ describe("250 KiB per-turn inline cap", () => {
       filename: "triple-3.bin",
       content: bigContent3,
       content_type: "application/octet-stream",
-      slug: `triple-3-${randomUUID().slice(0, 8)}`,
+      slug: `triple-3-${uuid().slice(0, 8)}`,
     });
 
     const caps = {

@@ -6,14 +6,23 @@
 // stays at 1). This covers the "provider-id caching" invariant from D6.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { conversations, files, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { attachInlineForTest } from "../../../files/test-helpers.ts";
+import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { getStaticCapabilities } from "../capabilities.ts";
 import { buildFileContentBlocks } from "../file-context.ts";
 import type { UploadedFile, UploadFileParams } from "../files-api.ts";
+
+// Deterministic uuid source for synthetic provider-side file ids.
+const uuid = createDeterministicUuidFactory(0xfa9e75);
+
+// `buildFileContentBlocks` compares `llm_file_expires_at` to the
+// production clock seam (real `Date.now()` unless a test clock is
+// installed), so fixture expirations MUST be relative to live time.
+// `getTestNow()` falls through to `Date.now()` and stays lint-quiet.
 
 let ctx: TestDb;
 let tenant_id: string;
@@ -57,9 +66,9 @@ describe("Files API persistence across turns", () => {
     const mockUploader = async (params: UploadFileParams): Promise<UploadedFile> => {
       uploadCallCount++;
       return {
-        file_id: `file_persist_${randomUUID().replace(/-/g, "").slice(0, 12)}`,
+        file_id: `file_persist_${uuid().replace(/-/g, "").slice(0, 12)}`,
         provider: params.provider as "anthropic",
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expires_at: new Date(getTestNow() + 7 * 24 * 60 * 60 * 1000),
         bytes: params.data.byteLength,
         filename: params.filename,
         mime_type: params.mimeType,
@@ -100,9 +109,9 @@ describe("Files API persistence across turns", () => {
     const mockUploader = async (params: UploadFileParams): Promise<UploadedFile> => {
       uploadCallCount++;
       return {
-        file_id: `file_cached_${randomUUID().replace(/-/g, "").slice(0, 12)}`,
+        file_id: `file_cached_${uuid().replace(/-/g, "").slice(0, 12)}`,
         provider: params.provider as "anthropic",
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expires_at: new Date(getTestNow() + 7 * 24 * 60 * 60 * 1000),
         bytes: params.data.byteLength,
         filename: params.filename,
         mime_type: params.mimeType,

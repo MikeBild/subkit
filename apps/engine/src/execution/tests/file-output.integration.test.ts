@@ -8,20 +8,24 @@
 // execution completes (the file row and object-store entry are intact).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { requireFileForTenant } from "../../files/resolver.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
+import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 
 let ctx: EngineTestCtx;
 
+// Deterministic 16-byte prefix per call: keeps sha256 unique across
+// fixtures within the test while remaining replayable run-to-run.
+const nextHex = createDeterministicHexFactory(0xf00e2f);
+
 /** Unique bytes to avoid sha256 collision. */
 function uniqueBytes(tag: string): Buffer {
-  return Buffer.concat([randomBytes(16), Buffer.from(tag)]);
+  return Buffer.concat([Buffer.from(nextHex(16), "hex"), Buffer.from(tag)]);
 }
 
 const FAKE_CONV_ID = "00000000-0000-0000-0000-000000000002";

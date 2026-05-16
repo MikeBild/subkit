@@ -20,6 +20,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { boot, cli, type E2EEnv, expectSuccess, parseJson, run, shutdown } from "./setup.ts";
 
+// Deferred scenarios that need infrastructure not present in this
+// environment (MinIO, ClamAV, MCP stdio harness, etc.). Opt in by
+// setting SK_RUN_DEFERRED_FILES_E2E=1.
+const RUN_DEFERRED = process.env.SK_RUN_DEFERRED_FILES_E2E === "1";
+const skipDeferred = !RUN_DEFERRED;
+
 // ---------------------------------------------------------------------------
 // Shared fixture setup
 // ---------------------------------------------------------------------------
@@ -177,7 +183,7 @@ describe("E3: presigned upload (large file)", () => {
 // ---------------------------------------------------------------------------
 
 describe("E4: S3 backend", () => {
-  test.skip("E4 requires MinIO testcontainer — deferred", () => {
+  test.skipIf(skipDeferred)("E4 requires MinIO testcontainer — deferred", () => {
     // TODO: requires MinIO testcontainer. Boot engine with
     // SK_STORAGE_BACKEND=s3 + MinIO credentials; re-run E1 + E3
     // assertions. Presign URL should point at MinIO; downloaded bytes
@@ -225,11 +231,14 @@ describe("E5: headless --attach with mock LLM", () => {
 // ---------------------------------------------------------------------------
 
 describe("E6: provider id reuse", () => {
-  test.skip("E6 requires Anthropic Files API stub with call counter — deferred", () => {
-    // TODO: requires an Anthropic stub that counts POST /v1/files calls.
-    // Boot engine with LLM_PROVIDER=anthropic pointing at the stub.
-    // Assert counter stays at 1 across two turns of the same conversation.
-  });
+  test.skipIf(skipDeferred)(
+    "E6 requires Anthropic Files API stub with call counter — deferred",
+    () => {
+      // TODO: requires an Anthropic stub that counts POST /v1/files calls.
+      // Boot engine with LLM_PROVIDER=anthropic pointing at the stub.
+      // Assert counter stays at 1 across two turns of the same conversation.
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -240,7 +249,7 @@ describe("E6: provider id reuse", () => {
 // ---------------------------------------------------------------------------
 
 describe("E7: REPL attach persistence", () => {
-  test.skip("E7 requires interactive REPL harness — deferred", () => {
+  test.skipIf(skipDeferred)("E7 requires interactive REPL harness — deferred", () => {
     // TODO: requires an interactive REPL driver. Consider building a
     // line-based stdio harness that sends slash commands as raw text.
   });
@@ -278,7 +287,7 @@ describe("E8: workflow file input + multipart out", () => {
 // ---------------------------------------------------------------------------
 
 describe("E9: discovery from file", () => {
-  test.skip("E9 requires discovery pipeline + provider stub — deferred", () => {
+  test.skipIf(skipDeferred)("E9 requires discovery pipeline + provider stub — deferred", () => {
     // TODO: seed a discovery workflow that accepts a file input.
     // `sk discovery create --file ./fixtures/openapi.json --label test`
     // → poll for completion → verify $file ref in proposed connector.
@@ -292,7 +301,7 @@ describe("E9: discovery from file", () => {
 // ---------------------------------------------------------------------------
 
 describe("E10: knowledge from file", () => {
-  test.skip("E10 requires knowledge-sources --file CLI path — deferred", () => {
+  test.skipIf(skipDeferred)("E10 requires knowledge-sources --file CLI path — deferred", () => {
     // TODO: `sk knowledge-sources create --file ./fixtures/manual.md --title "Manual"`
     // Verify linked file_id and searchable chunks.
   });
@@ -337,7 +346,7 @@ describe("E11: tenant cross-leak isolation", () => {
 // ---------------------------------------------------------------------------
 
 describe("E12: migration backfill", () => {
-  test.skip("E12 requires pre-migration fixture + migrate run — deferred", () => {
+  test.skipIf(skipDeferred)("E12 requires pre-migration fixture + migrate run — deferred", () => {
     // TODO: spin up engine at pre-0019 schema, insert legacy
     // conversation_attachments rows, run migration, verify via sk files list.
   });
@@ -396,10 +405,13 @@ describe("E13: conversation fork preserves files", () => {
 // ---------------------------------------------------------------------------
 
 describe("E14: range download", () => {
-  test.skip("E14 requires engine Range header support verification — deferred", () => {
-    // TODO: upload 12 MB file, curl -H "Range: bytes=1048576-2097151"
-    // against engine, verify 206 Partial Content + exact bytes.
-  });
+  test.skipIf(skipDeferred)(
+    "E14 requires engine Range header support verification — deferred",
+    () => {
+      // TODO: upload 12 MB file, curl -H "Range: bytes=1048576-2097151"
+      // against engine, verify 206 Partial Content + exact bytes.
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -411,7 +423,7 @@ describe("E14: range download", () => {
 // ---------------------------------------------------------------------------
 
 describe("E15: cleanup cron lifecycle", () => {
-  test.skip("E15 requires clock advancement or cron job enqueue — deferred", () => {
+  test.skipIf(skipDeferred)("E15 requires clock advancement or cron job enqueue — deferred", () => {
     // TODO: create pending file with expired upload_url, trigger cron,
     // verify row reaped. Create ready unlinked file, advance clock 7d,
     // verify hard-delete.
@@ -464,7 +476,7 @@ describe("E16: audit completeness", () => {
 // ---------------------------------------------------------------------------
 
 describe("E17: MCP file resource", () => {
-  test.skip("E17 requires MCP stdio subprocess harness — deferred", () => {
+  test.skipIf(skipDeferred)("E17 requires MCP stdio subprocess harness — deferred", () => {
     // TODO: spawn engine MCP server, call read_resource("file://<fid>"),
     // verify bytes + list_resources notification.
   });

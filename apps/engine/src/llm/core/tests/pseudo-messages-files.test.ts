@@ -10,14 +10,26 @@
 // Real Postgres via createHttpTestServer (config loaded). Mock LLM uploader.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { conversations, files } from "../../../db/schema/index.ts";
 import { attachInlineForTest } from "../../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
+import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
+import {
+  createDeterministicHexFactory,
+  createDeterministicUuidFactory,
+} from "../../../test-helpers/determinism/ids.ts";
 import { getStaticCapabilities } from "../capabilities.ts";
 import { buildFileContentBlocks, FILE_PART_PER_TURN_CAP_BYTES } from "../file-context.ts";
 import type { UploadedFile, UploadFileParams } from "../files-api.ts";
+
+// Deterministic id sources: seeded so the test replays identically.
+const uuid = createDeterministicUuidFactory(0xb31a91);
+const nextHex = createDeterministicHexFactory(0xb31a92);
+
+// `buildFileContentBlocks` compares `llm_file_expires_at` to the live
+// clock seam, so fixture expirations MUST be relative to real time.
+// `getTestNow()` falls through to `Date.now()` and stays lint-quiet.
 
 let srv: HttpTestServer;
 let conversation_id: string;
@@ -43,9 +55,9 @@ function makeMockUploader(uploadCounts: Map<string, number>) {
     const key = `${params.provider}:${params.filename}`;
     uploadCounts.set(key, (uploadCounts.get(key) ?? 0) + 1);
     return {
-      file_id: `file_mock_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
+      file_id: `file_mock_${uuid().replace(/-/g, "").slice(0, 16)}`,
       provider: params.provider as "anthropic",
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      expires_at: new Date(getTestNow() + 7 * 24 * 60 * 60 * 1000),
       bytes: params.data.byteLength,
       filename: params.filename,
       mime_type: params.mimeType,
@@ -62,7 +74,7 @@ describe("buildFileContentBlocks — file_part strategy (mock model)", () => {
       filename: "small.pdf",
       content: "PDF content here",
       content_type: "application/pdf",
-      slug: `small-pdf-${randomUUID().slice(0, 8)}`,
+      slug: `small-pdf-${uuid().slice(0, 8)}`,
     });
 
     const caps = { ...getStaticCapabilities("mock"), supportsFile: true, filesApiSupport: false };
@@ -96,7 +108,7 @@ describe("buildFileContentBlocks — file_part strategy (mock model)", () => {
       filename: "text-only.txt",
       content: "plain text content for extraction",
       content_type: "text/plain",
-      slug: `text-extract-${randomUUID().slice(0, 8)}`,
+      slug: `text-extract-${uuid().slice(0, 8)}`,
     });
 
     const caps = { ...getStaticCapabilities("mock"), supportsFile: false, filesApiSupport: false };
@@ -123,11 +135,11 @@ describe("buildFileContentBlocks — per-turn inline cap", () => {
   test("files exceeding 250 KiB cumulative cap are downgraded to text_extract", async () => {
     const chunkSize = Math.floor(FILE_PART_PER_TURN_CAP_BYTES * 0.6); // 60% of cap per file
 
-    // Prefix every fixture with random bytes so sha256 is unique per
-    // file (dedup would otherwise collapse identical-content rows).
-    const { randomBytes } = await import("node:crypto");
+    // Prefix every fixture with deterministic-but-unique bytes so sha256
+    // is unique per file (dedup would otherwise collapse identical
+    // content rows). The hex factory advances per call.
     const makeContent = (size: number, tag: string) =>
-      Buffer.concat([randomBytes(16), Buffer.alloc(Math.max(0, size - 16), tag)]);
+      Buffer.concat([Buffer.from(nextHex(16), "hex"), Buffer.alloc(Math.max(0, size - 16), tag)]);
 
     const att1 = await attachInlineForTest({
       db: srv.db,
@@ -136,7 +148,7 @@ describe("buildFileContentBlocks — per-turn inline cap", () => {
       filename: "cap1.bin",
       content: makeContent(chunkSize, "X"),
       content_type: "application/octet-stream",
-      slug: `cap1-${randomUUID().slice(0, 8)}`,
+      slug: `cap1-${uuid().slice(0, 8)}`,
     });
     const att2 = await attachInlineForTest({
       db: srv.db,
@@ -145,7 +157,7 @@ describe("buildFileContentBlocks — per-turn inline cap", () => {
       filename: "cap2.bin",
       content: makeContent(chunkSize, "Y"),
       content_type: "application/octet-stream",
-      slug: `cap2-${randomUUID().slice(0, 8)}`,
+      slug: `cap2-${uuid().slice(0, 8)}`,
     });
 
     const caps = {
@@ -184,7 +196,7 @@ describe("buildFileContentBlocks — file_api strategy", () => {
       filename: "big.pdf",
       content: bigContent,
       content_type: "application/pdf",
-      slug: `big-pdf-${randomUUID().slice(0, 8)}`,
+      slug: `big-pdf-${uuid().slice(0, 8)}`,
     });
 
     const caps = { ...getStaticCapabilities("anthropic") }; // filesApiSupport: true
@@ -224,7 +236,7 @@ describe("buildFileContentBlocks — file_api strategy", () => {
       filename: "cached.pdf",
       content: bigContent,
       content_type: "application/pdf",
-      slug: `cached-pdf-${randomUUID().slice(0, 8)}`,
+      slug: `cached-pdf-${uuid().slice(0, 8)}`,
     });
 
     const caps = { ...getStaticCapabilities("anthropic") };

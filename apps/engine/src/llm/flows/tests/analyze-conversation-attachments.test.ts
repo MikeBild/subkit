@@ -14,7 +14,12 @@ import {
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { attachInlineForTest } from "../../../files/test-helpers.ts";
+import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { analyzeConversationAttachments } from "../analyze-conversation-attachments.ts";
+
+// Deterministic 4-byte tag source: keeps the `x-test-tag` distinct per
+// fixture so sha256 differs from earlier tests that share STRIPE_OPENAPI.
+const nextHex = createDeterministicHexFactory(0xa11ac0);
 
 let ctx: TestDb;
 let tenant_id: string;
@@ -129,8 +134,7 @@ describe("analyzeConversationAttachments", () => {
       .insert(conversations)
       .values({ tenant_id, status: "active" })
       .returning();
-    const { randomBytes } = await import("node:crypto");
-    const tag = randomBytes(4).toString("hex");
+    const tag = nextHex(4);
     // Parse + re-serialise with a unique `x-test-tag` field so sha256 differs
     // from earlier tests that used the same STRIPE_OPENAPI literal.
     const stripeTagged = JSON.stringify({

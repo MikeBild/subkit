@@ -5,13 +5,17 @@
 // via the `requireFileForTenant` path that ignores `deleted_at`).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { fileLinks, files } from "../../db/schema/index.ts";
 import { requireFileForTenant, resolvedFromRow } from "../../files/resolver.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { runFilesCleanup } from "../files-cleanup-runner.ts";
+
+// Deterministic uuid source: seeded so the test replays identically.
+const uuid = createDeterministicUuidFactory(0xface01);
 
 let srv: HttpTestServer;
 
@@ -25,20 +29,20 @@ afterAll(async () => {
 
 describe("files cleanup race — soft-delete grace", () => {
   test("soft-deleted file is still readable via requireFileForTenant (grace window)", async () => {
-    const convId = randomUUID();
+    const convId = uuid();
     const att = await attachInlineForTest({
       db: srv.db,
       tenant_id: srv.tenantId,
       conversation_id: convId,
       filename: "race-grace.txt",
       content: "race-grace-content",
-      slug: `race-grace-${randomUUID().slice(0, 8)}`,
+      slug: `race-grace-${uuid().slice(0, 8)}`,
     });
     // Remove the link so it becomes an unlinked candidate
     await srv.db.delete(fileLinks).where(eq(fileLinks.file_id, att.file_uuid));
 
     // Run cleanup — this will soft-delete the file
-    await runFilesCleanup(new Date(), srv.db);
+    await runFilesCleanup(new Date(FROZEN_NOW), srv.db);
 
     // File should now be soft-deleted but not hard-deleted
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
@@ -61,18 +65,18 @@ describe("files cleanup race — soft-delete grace", () => {
   });
 
   test("file with active link is not soft-deleted by cron", async () => {
-    const convId = randomUUID();
+    const convId = uuid();
     const att = await attachInlineForTest({
       db: srv.db,
       tenant_id: srv.tenantId,
       conversation_id: convId,
       filename: "race-relink.txt",
       content: "race-relink-content",
-      slug: `race-relink-${randomUUID().slice(0, 8)}`,
+      slug: `race-relink-${uuid().slice(0, 8)}`,
     });
     // The link already exists from attachInlineForTest — this file is LINKED.
 
-    await runFilesCleanup(new Date(), srv.db);
+    await runFilesCleanup(new Date(FROZEN_NOW), srv.db);
 
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
     expect(row).toBeDefined();

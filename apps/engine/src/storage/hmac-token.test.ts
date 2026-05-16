@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import type { LocalPresignClaims } from "./object-store.ts";
 import { mintLocalPresignToken, verifyLocalPresignToken } from "./object-store.ts";
 
@@ -38,7 +39,10 @@ function validClaims(overrides?: Partial<LocalPresignClaims>): LocalPresignClaim
   return {
     tenant_id: "tenant-abc",
     key: "tenants/tenant-abc/2024/01/01/file-uuid",
-    expires_at: Date.now() + 60_000,
+    // verifyLocalPresignToken reads real wall-clock via Date.now(), so
+    // these timestamps must be live too — getTestNow() falls through to
+    // Date.now() when no test clock is installed.
+    expires_at: getTestNow() + 60_000,
     size_bytes: 1024,
     ...overrides,
   };
@@ -84,7 +88,7 @@ describe("mintLocalPresignToken + verifyLocalPresignToken", () => {
   });
 
   test("expired token is rejected with reason='expired'", () => {
-    const claims = validClaims({ expires_at: Date.now() - 1_000 });
+    const claims = validClaims({ expires_at: getTestNow() - 1_000 });
     const token = mintLocalPresignToken(claims);
     const result = verifyLocalPresignToken(token, {
       tenant_id: claims.tenant_id,
