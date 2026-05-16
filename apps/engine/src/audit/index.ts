@@ -7,5 +7,6 @@ export * from "./audit.ts";
 // in `@shared/audit-source`); re-exported here so existing
 // `from "../../audit"` imports keep working without churn.
 export * from "./audit-source.ts";
+export * from "./buckets.ts";
 export * from "./query.ts";
 export * from "./types.ts";

@@ -47,8 +47,7 @@ import {
   parseFileId,
   toFileId,
 } from "../../api/files-schemas.ts";
-import { bucketSize } from "../../audit/buckets.ts";
-import { AuditAction, audit, auditAwait } from "../../audit/index.ts";
+import { AuditAction, audit, auditAwait, bucketSize } from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { writeEvent } from "../../db/events.ts";
 import { fileLinks, files } from "../../db/schema/index.ts";
@@ -59,7 +58,7 @@ import {
   observeFileUploadDuration,
   recordFileDedupHit,
   recordFileScanResult,
-} from "../../observability/instrumentation.ts";
+} from "../../observability/index.ts";
 import {
   getObjectStore,
   mintLocalPresignToken,
@@ -187,6 +186,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     // exists in `pending` state from `batch-create`; we look it up
     // without a tenant scope (the token IS the auth claim — it embeds
     // the tenant), then assert the claim matches the row.
+    // tenant-filter:exempt — HMAC presign token embeds tenant_id; row verified against claims.tenant_id below.
     const rows = await db.select().from(files).where(eq(files.id, fid_uuid)).limit(1);
     const row = rows[0];
     if (!row) {
@@ -900,19 +900,22 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     // Cursor: opaque ISO `created_at` timestamp; rows older than the
     // cursor are returned. Last-page cursors are nullable in the
     // response envelope.
-    const conditions = [eq(files.tenant_id, tenant_id), isNull(files.deleted_at)];
-    if (q.status) conditions.push(eq(files.status, q.status));
+    // List handler — `tenantConds` is the documented name the audit AST
+    // scan picks up as a tenant signal (see `.tenant-filter-allowlist.txt`
+    // convention note). Do not rename.
+    const tenantConds = [eq(files.tenant_id, tenant_id), isNull(files.deleted_at)];
+    if (q.status) tenantConds.push(eq(files.status, q.status));
     if (q.cursor) {
       const cursorDate = new Date(q.cursor);
       if (!Number.isNaN(cursorDate.getTime())) {
-        conditions.push(lt(files.created_at, cursorDate));
+        tenantConds.push(lt(files.created_at, cursorDate));
       }
     }
 
     let rows = await db
       .select()
       .from(files)
-      .where(and(...conditions))
+      .where(and(...tenantConds))
       .orderBy(desc(files.created_at))
       .limit(limit + 1);
 

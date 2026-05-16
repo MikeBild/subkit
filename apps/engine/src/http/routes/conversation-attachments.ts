@@ -39,8 +39,7 @@ import {
   parseFileId,
   toFileId,
 } from "../../api/files-schemas.ts";
-import { bucketSize } from "../../audit/buckets.ts";
-import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { AuditAction, auditAwait, bucketSize } from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, fileLinks, files } from "../../db/schema/index.ts";
