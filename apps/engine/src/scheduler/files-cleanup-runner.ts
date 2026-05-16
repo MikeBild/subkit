@@ -38,7 +38,7 @@
 // orphan blob in the bucket is preferable to wedging the cron.
 
 import { and, count, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
-import { AuditAction, auditAwait } from "../audit/index.ts";
+import { AuditAction, auditAwait, FileDeletedMetadataSchema } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, fileLinks, files } from "../db/schema/index.ts";
 import { storageKey } from "../files/resolver.ts";
@@ -110,7 +110,10 @@ async function sweepPendingOrphans(db: Db): Promise<number> {
         resource_type: "file",
         resource_id: row.id,
         result: "success",
-        metadata: { reason: "pending_expired", file_id: row.id },
+        metadata: FileDeletedMetadataSchema.parse({
+          file_id: row.id,
+          reason: "pending_expired",
+        }),
       },
       db,
     );
@@ -282,7 +285,10 @@ async function sweepUnlinkedTtl(db: Db): Promise<{ soft: number; hard: number }>
         resource_type: "file",
         resource_id: row.id,
         result: "success",
-        metadata: { reason: "unlinked_ttl", file_id: row.id },
+        metadata: FileDeletedMetadataSchema.parse({
+          file_id: row.id,
+          reason: "unlinked_ttl",
+        }),
       },
       db,
     );

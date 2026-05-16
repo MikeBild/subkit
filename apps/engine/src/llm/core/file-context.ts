@@ -46,6 +46,20 @@ import type { ProviderKind } from "./model-init.ts";
  *  capabilities would otherwise pick `file_part`. */
 export const FILE_PART_PER_TURN_CAP_BYTES = 250 * 1024;
 
+/** Per-file ceiling on bytes read for the `text_extract` path. A 10 MB
+ *  CSV would otherwise be loaded whole into the LLM context window;
+ *  cap at 1 MB and append a truncation marker. The cap applies BEFORE
+ *  the knowledge-source parser runs — the parser may produce more or
+ *  fewer characters than bytes, but the upstream byte read is the only
+ *  surface that can blow past the model's token budget. */
+export const TEXT_EXTRACT_PER_FILE_MAX_BYTES = 1024 * 1024;
+
+/** Per-turn ceiling on cumulative `text_extract` bytes. Three medium
+ *  CSVs at the per-file cap would still bury the model. Once the
+ *  running total would exceed this, subsequent files emit a one-line
+ *  placeholder ("skipped, per-turn cap reached") instead of being read. */
+export const TEXT_EXTRACT_PER_TURN_CAP_BYTES = 4 * 1024 * 1024;
+
 /** The three supported providers for the Files API path. `chooseFileStrategy`
  *  returns `file_api` only for caps with `filesApiSupport: true`, which in
  *  the static matrix maps to anthropic / openai / gemini. */
@@ -150,6 +164,12 @@ export async function buildFileContentBlocks(
   const uploader = p.uploader ?? uploadFileViaApi;
   let inline_bytes = 0;
   let inline_cap_downgrades = 0;
+  // Per-turn `text_extract` budget. Tracked separately from
+  // `inline_bytes` because the two strategies have different cost
+  // models: `file_part` ships raw bytes (LLM has its own image / PDF
+  // tokeniser), while `text_extract` lands as plain text directly in
+  // the context window — so much smaller files still dwarf the budget.
+  let text_extract_bytes = 0;
 
   // Resolve each fid through the tenant-isolation chokepoint. The
   // resolver returns a ResolvedFile leaf; we still need the raw row
@@ -239,8 +259,16 @@ export async function buildFileContentBlocks(
       strategy = "text_extract";
     }
 
-    // text_extract — always the safe fallback.
-    blocks.push(await assembleTextExtractBlock(resolved));
+    // text_extract — always the safe fallback. The block helper caps
+    // each file at `TEXT_EXTRACT_PER_FILE_MAX_BYTES` and returns the
+    // truncated-byte count so we can accumulate against the per-turn
+    // cap. Files arriving after the per-turn cap is exhausted get a
+    // one-line placeholder instead of being read.
+    const block = await assembleTextExtractBlock(resolved, {
+      perTurnBudgetRemaining: TEXT_EXTRACT_PER_TURN_CAP_BYTES - text_extract_bytes,
+    });
+    blocks.push(block.block);
+    text_extract_bytes += block.bytes_read;
   }
 
   return { blocks, inline_bytes, inline_cap_downgrades };
@@ -443,13 +471,48 @@ async function assembleFilePartBlock(resolved: ResolvedFile): Promise<FileConten
 /** text_extract — load + parse the file using the knowledge-source
  *  parser. On parse failure (unsupported format, binary garbage,
  *  decode error) returns a `[file: filename]` placeholder block so
- *  the turn never crashes. */
-async function assembleTextExtractBlock(resolved: ResolvedFile): Promise<FileContentBlock> {
+ *  the turn never crashes.
+ *
+ *  Caps:
+ *  - Per-file: read at most `TEXT_EXTRACT_PER_FILE_MAX_BYTES`; append a
+ *    `[file truncated at N bytes]` marker when the file was longer.
+ *  - Per-turn: if the caller signals the per-turn budget is exhausted
+ *    (`perTurnBudgetRemaining <= 0`) skip the read entirely and emit a
+ *    one-line `[file <name>: skipped, per-turn cap reached]` placeholder. */
+async function assembleTextExtractBlock(
+  resolved: ResolvedFile,
+  budget: { perTurnBudgetRemaining: number },
+): Promise<{ block: FileContentBlock; bytes_read: number }> {
   const placeholderText = `[file: ${resolved.filename}]`;
+  const contentType = resolved.content_type ?? "application/octet-stream";
+
+  if (budget.perTurnBudgetRemaining <= 0) {
+    return {
+      block: {
+        strategy: "text_extract",
+        filename: resolved.filename,
+        content_type: contentType,
+        text: `[file ${resolved.filename}: skipped, per-turn cap reached]`,
+        placeholder: true,
+      },
+      bytes_read: 0,
+    };
+  }
+
+  // Per-file cap: never read more than the per-file ceiling and never
+  // more than the remaining per-turn budget.
+  const perFileLimit = Math.min(
+    TEXT_EXTRACT_PER_FILE_MAX_BYTES,
+    Math.max(1, budget.perTurnBudgetRemaining),
+  );
+
   let bytes: Uint8Array;
+  let truncated = false;
   try {
     const stream = await resolved.openRead();
-    bytes = await collectStream(stream);
+    const read = await collectStreamWithLimit(stream, perFileLimit);
+    bytes = read.bytes;
+    truncated = read.truncated;
   } catch (err) {
     logger.warn({
       module: "llm.file_context",
@@ -458,11 +521,14 @@ async function assembleTextExtractBlock(resolved: ResolvedFile): Promise<FileCon
       error: err instanceof Error ? err.message : String(err),
     });
     return {
-      strategy: "text_extract",
-      filename: resolved.filename,
-      content_type: resolved.content_type ?? "application/octet-stream",
-      text: placeholderText,
-      placeholder: true,
+      block: {
+        strategy: "text_extract",
+        filename: resolved.filename,
+        content_type: contentType,
+        text: placeholderText,
+        placeholder: true,
+      },
+      bytes_read: 0,
     };
   }
 
@@ -478,35 +544,46 @@ async function assembleTextExtractBlock(resolved: ResolvedFile): Promise<FileCon
       error: err instanceof Error ? err.message : String(err),
     });
     return {
-      strategy: "text_extract",
-      filename: resolved.filename,
-      content_type: resolved.content_type ?? "application/octet-stream",
-      text: placeholderText,
-      placeholder: true,
+      block: {
+        strategy: "text_extract",
+        filename: resolved.filename,
+        content_type: contentType,
+        text: placeholderText,
+        placeholder: true,
+      },
+      bytes_read: bytes.byteLength,
     };
   }
+
+  const truncationMarker = truncated ? `\n\n[file truncated at ${bytes.byteLength} bytes]` : "";
 
   try {
     const format = detectFormat(resolved.filename, resolved.content_type ?? undefined);
     const chunks = parseFileToChunks(text, resolved.filename, format);
     if (chunks.length === 0) {
       return {
-        strategy: "text_extract",
-        filename: resolved.filename,
-        content_type: resolved.content_type ?? "application/octet-stream",
-        text: placeholderText,
-        placeholder: true,
+        block: {
+          strategy: "text_extract",
+          filename: resolved.filename,
+          content_type: contentType,
+          text: placeholderText + truncationMarker,
+          placeholder: true,
+        },
+        bytes_read: bytes.byteLength,
       };
     }
     const joined = chunks
       .map((c) => (c.title ? `## ${c.title}\n\n${c.content}` : c.content))
       .join("\n\n");
     return {
-      strategy: "text_extract",
-      filename: resolved.filename,
-      content_type: resolved.content_type ?? "application/octet-stream",
-      text: `[${resolved.filename}]\n${joined}`,
-      placeholder: false,
+      block: {
+        strategy: "text_extract",
+        filename: resolved.filename,
+        content_type: contentType,
+        text: `[${resolved.filename}]\n${joined}${truncationMarker}`,
+        placeholder: false,
+      },
+      bytes_read: bytes.byteLength,
     };
   } catch (err) {
     logger.warn({
@@ -517,11 +594,14 @@ async function assembleTextExtractBlock(resolved: ResolvedFile): Promise<FileCon
       error: err instanceof Error ? err.message : String(err),
     });
     return {
-      strategy: "text_extract",
-      filename: resolved.filename,
-      content_type: resolved.content_type ?? "application/octet-stream",
-      text: placeholderText,
-      placeholder: true,
+      block: {
+        strategy: "text_extract",
+        filename: resolved.filename,
+        content_type: contentType,
+        text: placeholderText + truncationMarker,
+        placeholder: true,
+      },
+      bytes_read: bytes.byteLength,
     };
   }
 }
@@ -544,4 +624,39 @@ async function collectStream(stream: AsyncIterable<Uint8Array>): Promise<Uint8Ar
     offset += chunk.byteLength;
   }
   return out;
+}
+
+/** Variant of `collectStream` that stops reading once `limit` bytes
+ *  have been buffered. Returns `truncated: true` when the underlying
+ *  stream had more bytes than were read; the caller is responsible for
+ *  surfacing the truncation to the user/LLM. */
+async function collectStreamWithLimit(
+  stream: AsyncIterable<Uint8Array>,
+  limit: number,
+): Promise<{ bytes: Uint8Array; truncated: boolean }> {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let truncated = false;
+  for await (const chunk of stream) {
+    if (total >= limit) {
+      truncated = true;
+      break;
+    }
+    if (total + chunk.byteLength > limit) {
+      const room = limit - total;
+      chunks.push(chunk.subarray(0, room));
+      total += room;
+      truncated = true;
+      break;
+    }
+    chunks.push(chunk);
+    total += chunk.byteLength;
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { bytes: out, truncated };
 }

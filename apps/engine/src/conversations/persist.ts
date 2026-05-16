@@ -8,19 +8,21 @@
 // parse the `[conv:<id>]` envelope that keys its plan cursor.
 
 import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
+import { fileLinks } from "../db/schema/files.ts";
 import {
   conversationElicitations,
   conversationMessages,
   conversationToolCalls,
 } from "../db/schema/index.ts";
-import { FILE_SENTINEL_RE } from "../files/sentinel.ts";
+import { extractFileSentinels, replaceFileSentinels } from "../files/sentinel.ts";
 import { countModelMessagesTokens } from "../llm/accounting/index.ts";
 import { getStaticCapabilities } from "../llm/core/capabilities.ts";
 import { buildFileContentBlocks, type FileContentBlock } from "../llm/core/file-context.ts";
 import type { ProviderKind } from "../llm/core/model-init.ts";
+import { logger } from "../logging/logger.ts";
 import {
   recordFileLlmCapDowngrade,
   recordFileLlmInlineBytes,
@@ -70,21 +72,69 @@ const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
 export async function buildUserContentParts(
   db: Db,
   tenant_id: string,
-  _conversation_id: string,
+  conversation_id: string,
   text: string,
   provider: ProviderKind = "anthropic",
 ): Promise<string | Array<TextPart | ImagePart | FilePart>> {
   // Quick exit: no file sentinels → plain string (unchanged behaviour).
-  // Use a fresh regex per scan so concurrent buildUserContentParts calls
-  // don't collide on the shared `lastIndex`.
-  const scanRe = new RegExp(FILE_SENTINEL_RE.source, "g");
-  const fids: string[] = [];
-  for (let m = scanRe.exec(text); m !== null; m = scanRe.exec(text)) {
-    const fid = m[1];
-    if (fid && !fids.includes(fid)) fids.push(fid);
-  }
+  const fids = extractFileSentinels(text);
 
   if (fids.length === 0) return text;
+
+  // Privilege-boundary check: every fid extracted from raw user prose
+  // MUST be linked to THIS conversation via `file_links`. The
+  // `@attachment:<slug>` rewriter only produces sentinels for slugs that
+  // ARE in `file_links`, so the legitimate authoring path is unchanged.
+  // The attack we close: a user types `[file:fid_<real-uuid>]` into the
+  // prompt directly, naming a fid that exists in their tenant but is
+  // attached to a different conversation. Without this check the
+  // resolver would pull bytes from that file into the current turn.
+  // Strip un-linked sentinels to a `[file]` placeholder so the model
+  // sees a neutral artefact instead of confusing missing-file errors.
+  const fidUuids = fids
+    .map((fid) => (fid.startsWith("fid_") ? fid.slice("fid_".length) : null))
+    .filter((u): u is string => u !== null);
+  const linkedRows =
+    fidUuids.length > 0
+      ? await db
+          .select({ file_id: fileLinks.file_id })
+          .from(fileLinks)
+          .where(
+            and(
+              eq(fileLinks.tenant_id, tenant_id),
+              eq(fileLinks.resource_type, "conversation"),
+              eq(fileLinks.resource_id, conversation_id),
+              inArray(fileLinks.file_id, fidUuids),
+            ),
+          )
+      : [];
+  const linkedSet = new Set(linkedRows.map((r) => r.file_id));
+  const allowedFids: string[] = [];
+  const deniedFids: string[] = [];
+  for (const fid of fids) {
+    const uuid = fid.startsWith("fid_") ? fid.slice("fid_".length) : null;
+    if (uuid && linkedSet.has(uuid)) allowedFids.push(fid);
+    else deniedFids.push(fid);
+  }
+  if (deniedFids.length > 0) {
+    logger.warn({
+      module: "conversations.persist",
+      action: "user_content.unlinked_sentinel_stripped",
+      tenant_id,
+      conversation_id,
+      denied_count: deniedFids.length,
+      // Truncated to keep the log compact; the count alone is the
+      // operator signal — repeated stripping would surface in the
+      // metric, not the log line.
+      sample: deniedFids.slice(0, 3),
+    });
+  }
+
+  if (allowedFids.length === 0) {
+    // Every sentinel was un-linked; collapse them all to placeholders.
+    const stripped = (await replaceFileSentinels(text, () => "[file]")) as string;
+    return stripped.replace(/\s+/g, " ").trim();
+  }
 
   const caps = getStaticCapabilities(provider);
   const assembled = await buildFileContentBlocks({
@@ -92,7 +142,7 @@ export async function buildUserContentParts(
     tenant_id,
     provider,
     capabilities: caps,
-    fids,
+    fids: allowedFids,
   });
 
   // R3 instrumentation — surface the per-turn inline bytes + cap
@@ -110,8 +160,12 @@ export async function buildUserContentParts(
 
   // Strip the sentinels from the surrounding prose so the LLM sees the
   // human-readable text plus the assembled content blocks separately.
-  const stripRe = new RegExp(FILE_SENTINEL_RE.source, "g");
-  const textWithoutRefs = text.replace(stripRe, "").replace(/\s+/g, " ").trim();
+  // Un-linked sentinels become a literal `[file]` placeholder so the
+  // model never sees the raw fid the user typed.
+  const replaced = (await replaceFileSentinels(text, (fid) =>
+    allowedFids.includes(fid) ? "" : "[file]",
+  )) as string;
+  const textWithoutRefs = replaced.replace(/\s+/g, " ").trim();
 
   const parts: Array<TextPart | ImagePart | FilePart> = [];
   if (textWithoutRefs) parts.push({ type: "text", text: textWithoutRefs });
@@ -520,7 +574,7 @@ export async function buildModelMessages(
         // faster, which is correct.
         const text = messageText(content);
         const userPartsProvider = opts.provider ?? "anthropic";
-        if (db && tenant_id && /\[file:fid_/.test(text)) {
+        if (db && tenant_id && extractFileSentinels(text).length > 0) {
           // We need a Db (not just Executor) for the strategy router;
           // the production loop always passes one. Fall through to the
           // plain string when only an Executor is available — the only

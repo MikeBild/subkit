@@ -39,7 +39,14 @@ import {
   parseFileId,
   toFileId,
 } from "../../api/files-schemas.ts";
-import { AuditAction, auditAwait, bucketSize } from "../../audit/index.ts";
+import {
+  AuditAction,
+  auditAwait,
+  bucketSize,
+  FileCreatedMetadataSchema,
+  FileLinkAddedMetadataSchema,
+  FileLinkRemovedMetadataSchema,
+} from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, fileLinks, files } from "../../db/schema/index.ts";
@@ -278,7 +285,12 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
           resource_type: "file",
           resource_id: fileRow.id,
           result: "success",
-          metadata: { resource_type: "conversation", resource_id: id, slug },
+          metadata: FileLinkAddedMetadataSchema.parse({
+            file_id: fileRow.id,
+            resource_type: "conversation",
+            resource_id: id,
+            slug,
+          }),
         },
         db,
       );
@@ -348,12 +360,14 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
         resource_type: "file",
         resource_id: row.id,
         result: "success",
-        metadata: {
+        metadata: FileCreatedMetadataSchema.parse({
+          file_id: row.id,
           filename,
           content_type,
           size_bytes_bucket: bucketSize(bytes.byteLength),
+          sha256_prefix: row.sha256 ? row.sha256.slice(0, 16) : undefined,
           dedup,
-        },
+        }),
       },
       db,
     );
@@ -366,7 +380,12 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
         resource_type: "file",
         resource_id: row.id,
         result: "success",
-        metadata: { resource_type: "conversation", resource_id: id, slug },
+        metadata: FileLinkAddedMetadataSchema.parse({
+          file_id: row.id,
+          resource_type: "conversation",
+          resource_id: id,
+          slug,
+        }),
       },
       db,
     );
@@ -459,12 +478,12 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
         resource_type: "file",
         resource_id: link.file_id,
         result: "success",
-        metadata: {
+        metadata: FileLinkRemovedMetadataSchema.parse({
           file_id: link.file_id,
           resource_type: "conversation",
           resource_id: id,
           slug,
-        },
+        }),
       },
       db,
     );

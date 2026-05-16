@@ -562,6 +562,114 @@ export const DiagnosticsVersionReadMetadataSchema = z.object({
 });
 export type DiagnosticsVersionReadMetadata = z.infer<typeof DiagnosticsVersionReadMetadataSchema>;
 
+// ---------------------------------------------------------------------------
+// `FILE_*` metadata schemas — pinned so SIEM/BI consumers have a stable
+// contract per action. Filename is allowed only on `FILE_CREATED`
+// (cardinality call: download is high-frequency, finalize / link can be
+// joined back to the create row via `file_id`). `size_bytes_bucket` uses
+// the same coarse enum as the existing `bucketSize` helper.
+
+/** Coarse size buckets emitted by `bucketSize` — pinned here so the
+ *  per-action schemas can reuse the same enum without importing the
+ *  helper (which lives in `audit/buckets.ts` and would cause a cycle if
+ *  we imported it into `audit/types.ts`). The values must stay in sync
+ *  with `audit/buckets.ts:SizeBucket`. */
+const SizeBucketSchema = z.enum(["<1KB", "<1MB", "<10MB", "<100MB", ">=100MB"]);
+
+/** `file.created` metadata. Filename + content_type are the user-supplied
+ *  shape captured at upload; sha256_prefix is the first 16 hex chars of
+ *  the asserted sha256 (truncated so a SIEM-side index is small but a
+ *  forensic JOIN against an external sha256 is still tractable). The
+ *  `dedup` flag distinguishes inline dedup hits (an existing row was
+ *  reused, no new bytes written) from cold creates. */
+export const FileCreatedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  size_bytes_bucket: SizeBucketSchema,
+  content_type: z.string().nullable(),
+  filename: z.string(),
+  sha256_prefix: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/)
+    .optional(),
+  dedup: z.boolean().optional(),
+});
+export type FileCreatedMetadata = z.infer<typeof FileCreatedMetadataSchema>;
+
+/** `file.link_added` metadata. */
+export const FileLinkAddedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  resource_type: z.string(),
+  resource_id: z.string().uuid(),
+  slug: z.string().nullable().optional(),
+  role: z.string().nullable().optional(),
+  source: z.string().optional(),
+});
+export type FileLinkAddedMetadata = z.infer<typeof FileLinkAddedMetadataSchema>;
+
+/** `file.link_removed` metadata. Same shape as `FileLinkAddedMetadata`. */
+export const FileLinkRemovedMetadataSchema = FileLinkAddedMetadataSchema;
+export type FileLinkRemovedMetadata = z.infer<typeof FileLinkRemovedMetadataSchema>;
+
+/** `file.finalized` metadata. `status` is the post-finalize row status
+ *  (ready / failed / denied). `outcome` describes the verifier branch
+ *  taken (e.g. `sha256_mismatch`, `size_cap`); `dedup` is set on the
+ *  sibling-collapse path. */
+export const FileFinalizedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  status: z.enum(["ready", "failed", "denied"]).optional(),
+  size_bytes_bucket: SizeBucketSchema,
+  sha256_prefix: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/)
+    .optional(),
+  outcome: z.string().optional(),
+  dedup: z.boolean().optional(),
+  content_type: z.string().nullable().optional(),
+});
+export type FileFinalizedMetadata = z.infer<typeof FileFinalizedMetadataSchema>;
+
+/** `file.downloaded` metadata. Deliberately no filename — download is
+ *  high-frequency and the audit volume would inflate. `range` is true
+ *  when the request carried an HTTP Range header. `content_type` is
+ *  preserved (it's already a low-cardinality column on the file row). */
+export const FileDownloadedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  size_bytes_bucket: SizeBucketSchema,
+  range: z.boolean().optional(),
+  content_type: z.string().nullable().optional(),
+});
+export type FileDownloadedMetadata = z.infer<typeof FileDownloadedMetadataSchema>;
+
+/** `file.deleted` metadata. `reason` is a free-form short string —
+ *  current emitters use `user_request`, `pending_expired`,
+ *  `unlinked_ttl`. */
+export const FileDeletedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  reason: z.string(),
+});
+export type FileDeletedMetadata = z.infer<typeof FileDeletedMetadataSchema>;
+
+/** `file.scan_completed` metadata. Optional `signature` carries the
+ *  scanner's match identifier when the verdict is `infected`. */
+export const FileScanCompletedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  verdict: z.string(),
+  engine: z.string(),
+  signature: z.string().nullable().optional(),
+});
+export type FileScanCompletedMetadata = z.infer<typeof FileScanCompletedMetadataSchema>;
+
+/** `file.batch_created` metadata. `total_size_bytes_bucket` is the
+ *  bucket for the SUM of `size_bytes` across every entry — operators
+ *  read this to chart batch shape without joining back to per-file
+ *  rows. `dedup_hits` mirrors the response field. */
+export const FileBatchCreatedMetadataSchema = z.object({
+  count: z.number().int().nonnegative(),
+  total_size_bytes_bucket: SizeBucketSchema.optional(),
+  dedup_hits: z.number().int().nonnegative(),
+});
+export type FileBatchCreatedMetadata = z.infer<typeof FileBatchCreatedMetadataSchema>;
+
 /** `engine.update.*` metadata. Shared by initiated/completed/failed/
  *  rolled_back. The binary swap is the prototypical privileged action:
  *  there is no HTTP context, so the row is the audit story. Issue #151. */

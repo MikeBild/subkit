@@ -48,7 +48,19 @@ import {
   parseFileId,
   toFileId,
 } from "../../api/files-schemas.ts";
-import { AuditAction, audit, auditAwait, bucketSize } from "../../audit/index.ts";
+import {
+  AuditAction,
+  audit,
+  auditAwait,
+  bucketSize,
+  FileBatchCreatedMetadataSchema,
+  FileCreatedMetadataSchema,
+  FileDeletedMetadataSchema,
+  FileDownloadedMetadataSchema,
+  FileFinalizedMetadataSchema,
+  FileLinkAddedMetadataSchema,
+  FileScanCompletedMetadataSchema,
+} from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { writeEvent } from "../../db/events.ts";
 import { fileLinks, files } from "../../db/schema/index.ts";
@@ -392,12 +404,14 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           resource_type: "file",
           resource_id: existing[0].id,
           result: "success",
-          metadata: {
+          metadata: FileCreatedMetadataSchema.parse({
+            file_id: existing[0].id,
             filename: body.filename,
             content_type: body.content_type ?? null,
             size_bytes_bucket: bucketSize(bytes.byteLength),
+            sha256_prefix: sha256.slice(0, 16),
             dedup: true,
-          },
+          }),
         },
         db,
       );
@@ -502,12 +516,14 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         resource_type: "file",
         resource_id: row.id,
         result: "success",
-        metadata: {
+        metadata: FileCreatedMetadataSchema.parse({
+          file_id: row.id,
           filename: body.filename,
           content_type: body.content_type ?? null,
           size_bytes_bucket: bucketSize(bytes.byteLength),
+          sha256_prefix: sha256.slice(0, 16),
           dedup: false,
-        },
+        }),
       },
       db,
     );
@@ -525,11 +541,12 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         resource_type: "file",
         resource_id: row.id,
         result: scan.verdict === "clean" ? "success" : "denied",
-        metadata: {
+        metadata: FileScanCompletedMetadataSchema.parse({
+          file_id: row.id,
           verdict: scan.verdict,
           engine: scan.engine,
           signature: scan.signature ?? null,
-        },
+        }),
       },
       db,
     );
@@ -650,6 +667,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       });
     }
 
+    const totalSize = body.files.reduce((sum, e) => sum + (e.size_bytes ?? 0), 0);
     await auditAwait(
       {
         tenant_id,
@@ -659,10 +677,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         resource_type: "file",
         resource_id: null,
         result: "success",
-        metadata: {
+        metadata: FileBatchCreatedMetadataSchema.parse({
           count: body.files.length,
+          total_size_bytes_bucket: bucketSize(totalSize),
           dedup_hits,
-        },
+        }),
       },
       db,
     );
@@ -734,11 +753,13 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           resource_type: "file",
           resource_id: row.id,
           result: "denied",
-          metadata: {
+          metadata: FileFinalizedMetadataSchema.parse({
+            file_id: row.id,
+            status: "denied",
             outcome: "size_cap",
             content_type: row.content_type,
             size_bytes_bucket: bucketSize(row.size_bytes),
-          },
+          }),
         },
         db,
       );
@@ -790,11 +811,14 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           resource_type: "file",
           resource_id: row.id,
           result: "denied",
-          metadata: {
+          metadata: FileFinalizedMetadataSchema.parse({
+            file_id: row.id,
+            status: "denied",
             outcome: "sha256_mismatch",
             content_type: row.content_type,
             size_bytes_bucket: bucketSize(digest.size),
-          },
+            sha256_prefix: digest.sha256.slice(0, 16),
+          }),
         },
         db,
       );
@@ -834,7 +858,13 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           resource_type: "file",
           resource_id: sibling[0].id,
           result: "success",
-          metadata: { dedup: true, size_bytes_bucket: bucketSize(digest.size) },
+          metadata: FileFinalizedMetadataSchema.parse({
+            file_id: sibling[0].id,
+            status: "ready",
+            dedup: true,
+            size_bytes_bucket: bucketSize(digest.size),
+            sha256_prefix: digest.sha256.slice(0, 16),
+          }),
         },
         db,
       );
@@ -885,11 +915,13 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         resource_type: "file",
         resource_id: updated.id,
         result: "success",
-        metadata: {
+        metadata: FileFinalizedMetadataSchema.parse({
+          file_id: updated.id,
+          status,
           content_type: updated.content_type,
           size_bytes_bucket: bucketSize(digest.size),
-          status,
-        },
+          sha256_prefix: digest.sha256.slice(0, 16),
+        }),
       },
       db,
     );
@@ -905,11 +937,12 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         resource_type: "file",
         resource_id: updated.id,
         result: scan.verdict === "clean" ? "success" : "denied",
-        metadata: {
+        metadata: FileScanCompletedMetadataSchema.parse({
+          file_id: updated.id,
           verdict: scan.verdict,
           engine: scan.engine,
           signature: scan.signature ?? null,
-        },
+        }),
       },
       db,
     );
@@ -1185,11 +1218,12 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       resource_type: "file",
       resource_id: row.id,
       result: "success",
-      metadata: {
+      metadata: FileDownloadedMetadataSchema.parse({
+        file_id: row.id,
         content_type: row.content_type,
         size_bytes_bucket: bucketSize(total),
         range: Boolean(range),
-      },
+      }),
     });
 
     if (range) {
@@ -1248,7 +1282,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         resource_type: "file",
         resource_id: row.id,
         result: "success",
-        metadata: { reason: "user_request" },
+        metadata: FileDeletedMetadataSchema.parse({
+          file_id: row.id,
+          reason: "user_request",
+        }),
       },
       db,
     );
@@ -1344,10 +1381,13 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         resource_type: "file",
         resource_id: row.id,
         result: "success",
-        metadata: {
+        metadata: FileLinkAddedMetadataSchema.parse({
+          file_id: row.id,
           resource_type: body.resource_type,
           resource_id: body.resource_id,
-        },
+          slug: body.slug ?? null,
+          role: body.role ?? null,
+        }),
       },
       db,
     );
