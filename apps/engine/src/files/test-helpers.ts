@@ -52,8 +52,17 @@ function buildObjectKey(tenant_id: string, file_uuid: string, now: Date = new Da
 }
 
 function composeStorageUri(key: string): string {
-  const cfg = getConfig().storage;
-  if (cfg.files.backend === "s3") return `s3://${cfg.files.bucket}/${key}`;
+  // Resilient against tests that haven't bootstrapped the config
+  // loader. Default to the local backend (the test ObjectStore is
+  // local-disk in every harness we ship); fall back to local for
+  // s3-backed deployments too, since the test never goes through the
+  // real download path here.
+  try {
+    const cfg = getConfig().storage;
+    if (cfg.files.backend === "s3") return `s3://${cfg.files.bucket}/${key}`;
+  } catch {
+    /* config not loaded — tests default to local */
+  }
   return `local://${key}`;
 }
 

@@ -424,8 +424,18 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       row = inserted[0];
     } catch (err) {
       // Concurrent dedup race: catch the unique violation, re-SELECT.
+      // Drizzle wraps PG errors as DrizzleQueryError whose `.message` is
+      // "Failed query: …"; the original PG constraint message lives in
+      // `.cause.message`. Check both so the race path works regardless of
+      // whether the error is unwrapped or not.
+      const causeMsg = err instanceof Error && err.cause instanceof Error ? err.cause.message : "";
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("files_tenant_sha256_uq") || msg.includes("duplicate key")) {
+      if (
+        msg.includes("files_tenant_sha256_uq") ||
+        msg.includes("duplicate key") ||
+        causeMsg.includes("files_tenant_sha256_uq") ||
+        causeMsg.includes("duplicate key")
+      ) {
         const again = await db
           .select()
           .from(files)

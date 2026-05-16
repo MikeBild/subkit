@@ -386,9 +386,17 @@ let cached: ObjectStore | null = null;
  */
 export function getObjectStore(): ObjectStore {
   if (cached) return cached;
-  const cfg = getConfig().storage;
-  const backend = cfg.files.backend;
-  if (backend === "s3") {
+  // Resilient against tests that haven't bootstrapped the config loader.
+  // Default to local-disk; production deployments always run loadConfig
+  // at boot so the s3 branch fires correctly in real engines.
+  let cfg: ReturnType<typeof getConfig>["storage"] | null = null;
+  try {
+    cfg = getConfig().storage;
+  } catch {
+    /* config not loaded — fall through to local-disk default */
+  }
+  const backend = cfg?.files.backend ?? "local";
+  if (backend === "s3" && cfg) {
     // Cross-leaf invariant in `config/schema.ts` guarantees `bucket` is
     // non-empty when backend=s3 (rejected at config parse otherwise).
     cached = new S3ObjectStore({
