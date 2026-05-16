@@ -92,14 +92,38 @@ export const InlineUploadSchema = z
 
 const SHA256_REGEX = /^[0-9a-f]{64}$/;
 
+/** Hard ceiling on any presign-issued upload. A client may declare an
+ *  oversize `size_bytes` at batch-create time; we reject the entry at
+ *  the schema layer before minting a token. The finalize verifier
+ *  re-enforces this against the row before doing the digest read so a
+ *  pre-cap-rollout token in flight cannot drive the engine into a
+ *  multi-GB disk read. 5 GB matches the per-object S3 single-PUT limit;
+ *  multipart uploads against larger objects land in a future wave. */
+export const MAX_PRESIGN_BYTES = 5 * 1024 * 1024 * 1024;
+
+/** Same ceiling, surfaced as a finalize-side guard name so the call
+ *  sites read symmetrically. They are intentionally one constant; if a
+ *  future wave splits the two (e.g. multipart raising the presign ceiling
+ *  while finalize keeps a smaller streamed-digest budget) the names give
+ *  the right knob to turn. */
+export const MAX_FINALIZE_VERIFY_BYTES = MAX_PRESIGN_BYTES;
+
 /** Per-file entry in a batch-create request. The client supplies known
  *  metadata up front; the engine returns either a presigned PUT URL (new
- *  upload) or a dedup hit pointing at an existing file id. */
+ *  upload) or a dedup hit pointing at an existing file id. The
+ *  `MAX_PRESIGN_BYTES` cap on `size_bytes` is the engine-side defence
+ *  against a rogue client minting a 100 GB token. */
 export const BatchCreateEntrySchema = z
   .object({
     filename: z.string().min(1).max(255),
     content_type: z.string().max(200).optional(),
-    size_bytes: z.number().int().nonnegative(),
+    size_bytes: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(MAX_PRESIGN_BYTES, {
+        message: `size_bytes exceeds presign ceiling of ${MAX_PRESIGN_BYTES} bytes`,
+      }),
     /** Optional client-supplied sha256 (hex). When present, enables the
      *  dedup-probe fast path; the server still verifies on finalize. */
     sha256: z.string().regex(SHA256_REGEX).optional(),

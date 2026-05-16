@@ -43,6 +43,7 @@ import {
   InlineUploadSchema,
   LinkRequestSchema,
   ListFilesQuerySchema,
+  MAX_FINALIZE_VERIFY_BYTES,
   MAX_INLINE_BYTES,
   parseFileId,
   toFileId,
@@ -202,20 +203,14 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     const boundSize = verdict.claims.size_bytes;
 
-    // Pre-flight content-length check. A non-chunked PUT MUST carry
-    // Content-Length; if the header is present and exceeds the bound
-    // we reject before consuming any bytes. Reject chunked transfers
-    // we cannot validate up-front (the streamed length check below
-    // is the second line of defence, but it costs disk + CPU; refuse
-    // chunked outright to keep the cheap path the only path for
-    // legitimate clients).
-    const transferEncoding = c.req.header("transfer-encoding");
-    if (transferEncoding && /chunked/i.test(transferEncoding)) {
-      return c.json(
-        { code: "bad_input", message: "chunked transfer-encoding not supported on presign sink" },
-        400,
-      );
-    }
+    // Pre-flight Content-Length check. When the client sends a
+    // Content-Length header we cheaply reject 413 before reading bytes.
+    // Chunked / HTTP/2 / streamed clients send no Content-Length; we do
+    // NOT reject those — the streaming-overflow guard below is the
+    // authoritative check and aborts the producer the moment the
+    // running total crosses the bound. The previous chunked-reject
+    // branch broke curl `-T pipe`, fetch `body: ReadableStream`, and
+    // any HTTP/2 client.
     const contentLengthHeader = c.req.header("content-length");
     if (contentLengthHeader) {
       const cl = Number(contentLengthHeader);
@@ -230,49 +225,76 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       }
     }
 
-    // Stream the body to the object store. `c.req.raw.body` is a
-    // `ReadableStream<Uint8Array>` per the fetch API; collect to a
-    // Buffer for the put API surface (object-store does not yet expose
-    // a streaming put — that's a separate Wave C concern). We track
-    // the running byte total against `boundSize` and abort early on
-    // overflow so a client that lies about Content-Length still cannot
-    // disk-fill us.
+    // Stream the body straight through to the object store. `c.req.raw.body`
+    // is a `ReadableStream<Uint8Array>` per the fetch API; we wrap it in
+    // an async generator that tracks cumulative bytes against `boundSize`
+    // and throws on overflow. The generator is consumed by
+    // `objectStore.putStream`, which pipes to disk (local) or to the S3
+    // PUT body (S3) without buffering the full payload in memory.
     const raw = c.req.raw.body;
     if (!raw) {
       return c.json({ code: "bad_input", message: "missing body" }, 400);
     }
-    const reader = raw.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        total += value.byteLength;
-        if (total > boundSize) {
-          try {
-            await reader.cancel();
-          } catch {
-            /* best-effort */
-          }
-          return c.json(
-            {
-              code: "too_large",
-              message: `streamed body exceeds presign-bound size_bytes=${boundSize}`,
-            },
-            413,
-          );
-        }
-        chunks.push(value);
+
+    class StreamedOverflowError extends Error {
+      constructor() {
+        super(`streamed body exceeds presign-bound size_bytes=${boundSize}`);
+        this.name = "StreamedOverflowError";
       }
     }
-    const body = new Uint8Array(total);
-    let off = 0;
-    for (const c2 of chunks) {
-      body.set(c2, off);
-      off += c2.byteLength;
+
+    async function* boundedBody(): AsyncIterable<Uint8Array> {
+      const reader = raw!.getReader();
+      let total = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) return;
+          if (!value) continue;
+          total += value.byteLength;
+          if (total > boundSize) {
+            // Cancel upstream so the client side of the socket gets EOF
+            // promptly; the StreamedOverflowError surfaces to the caller
+            // and translates to a 413 below.
+            try {
+              await reader.cancel();
+            } catch {
+              /* best-effort */
+            }
+            throw new StreamedOverflowError();
+          }
+          yield value;
+        }
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          /* best-effort */
+        }
+      }
     }
-    await getObjectStore().put(key, body);
+
+    try {
+      await getObjectStore().putStream(key, boundedBody());
+    } catch (err) {
+      if (err instanceof StreamedOverflowError) {
+        // Best-effort: drop any partial object we may have started
+        // writing. Idempotent — delete() no-ops if the key is absent.
+        try {
+          await getObjectStore().delete(key);
+        } catch {
+          /* best-effort */
+        }
+        return c.json(
+          {
+            code: "too_large",
+            message: err.message,
+          },
+          413,
+        );
+      }
+      throw err;
+    }
     return c.body(null, 200);
   });
 
@@ -665,6 +687,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       200: { description: "Finalized", content: { "application/json": { schema: FileSchema } } },
       404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
       409: { description: "conflict", content: { "application/json": { schema: ErrorSchema } } },
+      413: { description: "too_large", content: { "application/json": { schema: ErrorSchema } } },
       422: {
         description: "sha256_mismatch",
         content: { "application/json": { schema: ErrorSchema } },
@@ -693,6 +716,47 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     if (row.status !== "pending" && row.status !== "uploading") {
       return c.json({ code: "conflict", message: `cannot finalize: status=${row.status}` }, 409);
+    }
+
+    // Pre-digest size guard. The presign sink already rejects oversize
+    // bodies, and the schema bounds `size_bytes` at batch-create time,
+    // but a row that landed before the cap rollout (or one mutated out
+    // of band) could still drive the digest pass into a multi-GB read.
+    // Fail fast at 413 and audit the denial so operators see the event
+    // without sifting through schema-rejection logs.
+    if (row.size_bytes > MAX_FINALIZE_VERIFY_BYTES) {
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: actorType(principal),
+          actor_id: principal.id,
+          action: AuditAction.FILE_FINALIZED,
+          resource_type: "file",
+          resource_id: row.id,
+          result: "denied",
+          metadata: {
+            outcome: "size_cap",
+            content_type: row.content_type,
+            size_bytes_bucket: bucketSize(row.size_bytes),
+          },
+        },
+        db,
+      );
+      logger.warn({
+        module: "http.files",
+        action: "finalize.size_cap",
+        msg: "finalize denied — row size exceeds finalize-verify ceiling",
+        file_id: row.id,
+        size_bytes: row.size_bytes,
+        cap: MAX_FINALIZE_VERIFY_BYTES,
+      });
+      return c.json(
+        {
+          code: "too_large",
+          message: `file size ${row.size_bytes} exceeds finalize-verify ceiling of ${MAX_FINALIZE_VERIFY_BYTES} bytes`,
+        },
+        413,
+      );
     }
 
     // Verify the bytes the client PUT match the asserted digest.

@@ -446,6 +446,28 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     await db.delete(fileLinks).where(eq(fileLinks.id, link.id));
     // Unlinking does NOT delete the file row — that's the cleanup
     // cron's job once the row is orphaned (no remaining `file_links`).
+    // Emit `FILE_LINK_REMOVED` so the audit ledger keeps a symmetric
+    // attach/detach pair (paired with `FILE_LINK_ADDED` emitted by the
+    // POST handler above and by the canonical `/v1/files/:id/links`
+    // route).
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_id: principal.id,
+        action: AuditAction.FILE_LINK_REMOVED,
+        resource_type: "file",
+        resource_id: link.file_id,
+        result: "success",
+        metadata: {
+          file_id: link.file_id,
+          resource_type: "conversation",
+          resource_id: id,
+          slug,
+        },
+      },
+      db,
+    );
     return c.body(null, 204);
   });
 

@@ -233,6 +233,14 @@ export const AuditAction = {
   // `resource_type` + `resource_id`; the `file_id` is the audit row's
   // primary resource.
   FILE_LINK_ADDED: "file.link_added",
+  // `FILE_LINK_REMOVED` — a `file_links` row was deleted. Emitted
+  // whenever a caller unlinks a file from an owning resource (today:
+  // `DELETE /v1/conversations/:id/attachments/:slug`). The file row
+  // itself stays in place — the cleanup cron GCs orphans after the
+  // unlinked-TTL grace. Symmetric to `FILE_LINK_ADDED`, same metadata
+  // shape, so audit-readers can chart attach/detach pairs by joining on
+  // `(file_id, resource_id)`.
+  FILE_LINK_REMOVED: "file.link_removed",
   // `FILE_SCAN_COMPLETED` — the scanner (clamd / Noop) returned a
   // verdict for an upload. Metadata: `verdict` (clean / infected),
   // `engine` (scanner identifier), optional `signature`. Audited

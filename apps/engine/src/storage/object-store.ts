@@ -10,10 +10,11 @@
 // with the S3 backend reusing the `storage.s3.*` credential block.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { getConfig } from "../config/loader.ts";
 import { envIntOr } from "../utils/env-config.ts";
@@ -35,6 +36,14 @@ export interface ObjectHead {
 export interface ObjectStore {
   /** Persist `body` at `key`. Overwrites if present. */
   put(key: string, body: Buffer | Uint8Array): Promise<void>;
+
+  /** Persist a streamed body at `key`. Overwrites if present. The
+   *  iterable is consumed exactly once; the caller is responsible for
+   *  bounded-size enforcement (e.g. counting bytes inside a wrapping
+   *  generator and aborting the producer). Local disk pipes through
+   *  `fs.createWriteStream`; S3 hands the underlying ReadableStream
+   *  straight to `putObject` so neither backend doubles peak memory. */
+  putStream(key: string, body: AsyncIterable<Uint8Array>): Promise<void>;
 
   /** Fetch the bytes at `key`. Throws if not found. */
   get(key: string): Promise<Buffer>;
@@ -214,6 +223,18 @@ export class LocalDiskObjectStore implements ObjectStore {
     await writeFile(target, body);
   }
 
+  async putStream(key: string, body: AsyncIterable<Uint8Array>): Promise<void> {
+    const target = this.resolveKey(key);
+    await mkdir(dirname(target), { recursive: true });
+    // `pipeline` consumes the async iterable into the write stream and
+    // resolves only when the write tail has been flushed to disk. Errors
+    // surface from either side as a rejected promise — the caller sees a
+    // single failure surface rather than having to wire `'error'`
+    // listeners on the raw stream.
+    const out = createWriteStream(target);
+    await pipeline(body, out);
+  }
+
   async get(key: string): Promise<Buffer> {
     const target = this.resolveKey(key);
     return await readFile(target);
@@ -317,6 +338,40 @@ export class S3ObjectStore implements ObjectStore {
 
   async put(key: string, body: Buffer | Uint8Array): Promise<void> {
     await this.client.putObject(key, body instanceof Buffer ? new Uint8Array(body) : body);
+  }
+
+  async putStream(key: string, body: AsyncIterable<Uint8Array>): Promise<void> {
+    // s3-lite-client's `putObject` accepts `ReadableStream<Uint8Array>`
+    // directly (see node_modules/@bradenmacdonald/s3-lite-client/client.ts
+    // around the streamOrData branch). Wrap the async iterable into a
+    // ReadableStream so the client can drive its multipart machinery
+    // without us buffering the whole body in process memory.
+    const iterator = body[Symbol.asyncIterator]();
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const { value, done } = await iterator.next();
+          if (done) {
+            controller.close();
+            return;
+          }
+          if (value) controller.enqueue(value);
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+      async cancel(reason) {
+        // Propagate cancellation to the source iterator if it supports it.
+        if (typeof iterator.return === "function") {
+          try {
+            await iterator.return(reason);
+          } catch {
+            /* best-effort */
+          }
+        }
+      },
+    });
+    await this.client.putObject(key, stream);
   }
 
   async get(key: string): Promise<Buffer> {
