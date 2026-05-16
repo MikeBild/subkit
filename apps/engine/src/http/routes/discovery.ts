@@ -293,6 +293,12 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
   // Codebase-archive upload. Accepts a zip and extracts its contents
   // into a discovery run. Filters out binaries, generated dirs, and
   // lockfiles so the LLM only sees semantically interesting files.
+  //
+  // TODO(files): C20 — route through /v1/files/inline + fid. The archive
+  // should be uploaded via POST /v1/files/inline first; the route should
+  // then accept a `fid` param and produce `files` + `file_links(resource_type
+  // ='discovery_run')` rows instead of consuming the multipart buffer
+  // in-process. See apps/engine/src/discovery/tests/analyze-archive-via-files-inline.test.ts.
   app.post("/v1/discovery/runs/from-archive", async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
