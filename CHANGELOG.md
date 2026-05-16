@@ -1,5 +1,42 @@
 # Changelog
 
+## [4.12.0](https://github.com/MikeBild/subkit/compare/subkit-v4.11.3...subkit-v4.12.0) (2026-05-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **files:** `storage.knowledge.*` config keys renamed to `storage.files.*`. Operators must `sk settings configure` (or set `SK_OVERRIDE_STORAGE__FILES__*` env vars). Was: `storage.knowledge.backend`, `storage.knowledge.dir`. Now: `storage.files.backend`, `storage.files.dir`, **new** `storage.files.bucket` (required when `backend=s3`).
+* **files:** `conversation_attachments` table dropped. Migration `0019` backfills existing rows into the unified `files` + `file_links` tables. Production engines migrate automatically on boot — no operator action required.
+* **audit:** Audit actions `conversation.attachment_created` and `conversation.attachment_deleted` removed. Replaced by `file.created` + `file.link_added` + `file.deleted`. Compliance dashboards filtering on the old action names must be updated.
+
+
+### Features
+
+* **files:** unified `files` resource exposing 10 HTTP routes under `/v1/files/*` — inline + presigned upload, dedup by content hash, finalize, list/get/download/delete, link, stats. Single `requireFileForTenant` chokepoint enforces tenant isolation across every surface.
+* **mcp:** `file://<fid>` resource scheme. `list_resources` + `read_resource` gated by the `file:read` permission.
+* **sk:** `sk files {list,get,upload,download,delete,link,stats}` command tree plus the `sk attach <conv-id> <path>` shortcut.
+* **sk:** headless `sk -p --attach <path>` for CI/automation pipelines.
+* **sk:** REPL `/upload <path>`, `/files`, and `@file:fid_...` mention completions.
+* **workflows:** `sk workflows run --input-file K=<path>` uploads the file and substitutes `{$file: fid}` into the input JSON before enqueue.
+* **executions:** `sk executions get` text output now lists produced output files with a `sk files download` hint.
+* **workflows:** workflow `input_schema` gained a typed `file` leaf (additive — existing schemas unchanged). `RequestStepSchema.multipart` for multipart-out connectors.
+* **llm:** `chooseFileStrategy` resolves provider Files API → inline base64 (≤250 KiB cumulative per turn) → text_extract. Provider `file_id` is reused across turns; a cleanup cron clears expired ids.
+* **connectors:** `generic_multipart_upload` template demonstrating file-in workflows.
+
+
+### Observability
+
+* **observability:** 7 new Prometheus metrics under the `subkit_files_*` namespace.
+* **audit:** 7 new audit actions: `file.created`, `file.batch_created`, `file.finalized`, `file.downloaded`, `file.deleted`, `file.link_added`, `file.scan_completed`.
+* **audit:** presigned-URL query params (`X-Amz-Signature`, `X-Goog-Signature`, `signature=`) automatically redacted in both audit entries and structured logs.
+
+
+### Limitations / follow-ups
+
+* **knowledge:** knowledge-source ingestion chunker does not yet read via `files.file_id`; the schema column exists and is backfilled, but `createKnowledgeSource` still consumes a caller-supplied buffer. Locked by `apps/engine/src/knowledge/tests/chunker-file-resolve.test.ts`.
+* **discovery:** the `POST /v1/discovery/runs/from-archive` route still parses multipart in-process and has not yet been routed through `POST /v1/files/inline`. Locked by `apps/engine/src/discovery/tests/analyze-archive-via-files-inline.test.ts`.
+* Both gaps are non-blocking — knowledge and discovery still work end-to-end; they are simply not yet unified through the files API.
+
 ## [4.11.3](https://github.com/MikeBild/subkit/compare/subkit-v4.11.2...subkit-v4.11.3) (2026-05-14)
 
 
