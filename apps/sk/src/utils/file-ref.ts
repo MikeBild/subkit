@@ -1,13 +1,13 @@
 // Helpers for the `{ "$file": "fid_..." }` reference shape and the
 // `@file:fid_...` chat-text mention.
 //
-// Cross-cutting decision D2 (plan §Cross-cutting): the reference shape
-// inside arbitrary JSON values is always `{ "$file": "fid_<uuid>" }`.
-// Tool args, workflow inputs, audit metadata, conversation snapshot —
-// every surface uses the same leaf. In chat text, `@file:fid_...`
-// survives as a short mention; the engine rewrites it to `$file` at
-// message-ingest time, but the CLI also recognises it so the REPL can
-// resolve it client-side before submit.
+// Invariant: the reference shape inside arbitrary JSON values is
+// always `{ "$file": "fid_<uuid>" }`. Tool args, workflow inputs,
+// audit metadata, conversation snapshot — every surface uses the
+// same leaf. In chat text, `@file:fid_...` survives as a short
+// mention; the engine rewrites it to `$file` at message-ingest
+// time, but the CLI also recognises it so the REPL can resolve it
+// client-side before submit.
 
 /** Wire shape for a file reference embedded in arbitrary JSON. */
 export interface FileRef {

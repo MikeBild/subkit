@@ -460,11 +460,11 @@ const mainCommand = defineCommand({
     connector: { type: "string", description: "Bind the new conversation to a connector slug" },
     workflow: { type: "string", description: "Bind the new conversation to a workflow id" },
     attach: {
-      // Wave-D Step-6: repeatable `--attach <path>` flag for `-p`
-      // headless mode. Each path is uploaded via `uploadPath` and
-      // linked to the (possibly resumed) ephemeral conversation
-      // BEFORE the prompt runs. Citty surfaces repeated string flags
-      // as `string | string[]`; the dispatcher below normalises.
+      // Repeatable `--attach <path>` flag for `-p` headless mode.
+      // Each path is uploaded via `uploadPath` and linked to the
+      // (possibly resumed) ephemeral conversation BEFORE the prompt
+      // runs. Citty surfaces repeated string flags as
+      // `string | string[]`; the dispatcher below normalises.
       type: "string",
       description:
         "Upload a file and attach it to the conversation before the prompt runs (repeatable, headless -p only)",

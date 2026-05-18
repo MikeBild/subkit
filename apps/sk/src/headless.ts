@@ -48,13 +48,13 @@ export interface HeadlessRunOptions {
   connector_id?: string;
   workflow_id?: string;
   /**
-   * Wave-D Step-6: paths to upload + link as attachments BEFORE the
-   * prompt runs. Each path is uploaded through `uploadPath`, linked
-   * to the (possibly freshly minted) conversation with
-   * `role: "attachment"`, and (under `--output stream-json`) a
-   * `{"file_attached": ...}` line is emitted per file. A read /
-   * upload / link failure short-circuits the whole turn — the
-   * prompt does not run with partial attachments.
+   * Paths to upload + link as attachments BEFORE the prompt runs.
+   * Each path is uploaded through `uploadPath`, linked to the
+   * (possibly freshly minted) conversation with `role: "attachment"`,
+   * and (under `--output stream-json`) a `{"file_attached": ...}`
+   * line is emitted per file. A read / upload / link failure
+   * short-circuits the whole turn — the prompt does not run with
+   * partial attachments.
    */
   attach?: readonly string[];
   /** Optional writable sink — tests pass a memory buffer. */
@@ -187,8 +187,8 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
 
   // Handle --resume: append a user message to an existing conversation.
   // Otherwise create a new one with the prompt as `initial_message`.
-  // Wave-D Step-6: when `--attach` is set, we always create-then-
-  // append so file links can be inserted between the two calls.
+  // When `--attach` is set we always create-then-append so file
+  // links can be inserted between the two calls.
   try {
     if (conversationId) {
       if (hasAttach) {
@@ -290,11 +290,11 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     return { exitCode: e.exit, session, conversation_id: conversationId };
   }
 
-  // Wave-D Step-6: upload + link every `--attach` before the prompt
-  // runs. Stream-json emits `{"file_attached": fid, "filename": ...}`
-  // per file; text/json modes report on stderr. Any upload/link error
-  // short-circuits with ATTACH_FAILED so the prompt never runs against
-  // a partial attachment set.
+  // Upload + link every `--attach` before the prompt runs.
+  // Stream-json emits `{"file_attached": fid, "filename": ...}` per
+  // file; text/json modes report on stderr. Any upload/link error
+  // short-circuits with ATTACH_FAILED so the prompt never runs
+  // against a partial attachment set.
   if (hasAttach && conversationId) {
     try {
       for (const p of attachPaths) {

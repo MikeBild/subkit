@@ -1513,20 +1513,20 @@ export const InkApp: React.FC<InkAppProps> = ({
   const queueRef = useRef(createQueue());
   const [queuedCount, setQueuedCount] = useState(0);
   const [pendingAttachments, setPendingAttachments] = useState<StoredPaste[]>([]);
-  // Wave-D Step-6: transient status-line message channel. Upload
-  // progress writes here on every chunk; the next status-line tick
-  // (≤500 ms) folds it into `status_message`. The string is cleared
-  // synchronously when the upload completes or fails. Held as a ref
-  // — the status-line tick reads from `current` each interval, so
-  // we don't need a state update per chunk.
+  // Transient status-line message channel. Upload progress writes
+  // here on every chunk; the next status-line tick (≤500 ms) folds
+  // it into `status_message`. The string is cleared synchronously
+  // when the upload completes or fails. Held as a ref — the
+  // status-line tick reads from `current` each interval, so we
+  // don't need a state update per chunk.
   const transientStatusRef = useRef<string | null>(null);
   const setTransientStatus = useCallback((msg: string | null) => {
     transientStatusRef.current = msg;
   }, []);
-  // Wave-D Step-6: cache of the most recent numbered listings rendered
-  // into a text pane (today: `/files`). The slash dispatch keeps a
-  // tiny Map<cacheKey, rows[]> so `/files <n>` can resolve the n-th
-  // row without re-listing.
+  // Cache of the most recent numbered listings rendered into a text
+  // pane (today: `/files`). The slash dispatch keeps a tiny
+  // Map<cacheKey, rows[]> so `/files <n>` can resolve the n-th row
+  // without re-listing.
   const recentListsRef = useRef<Map<string, unknown[]>>(new Map());
   const syncPendingAttachments = useCallback(() => {
     setPendingAttachments([...pasteStoreRef.current.all()]);
@@ -1764,11 +1764,11 @@ export const InkApp: React.FC<InkAppProps> = ({
           null,
         tokens_today: statusSnapshot?.tokens_today ?? null,
         connectors_count: statusSnapshot?.connectors_count ?? null,
-        // Wave-D Step-6: surface transient upload progress (and any
-        // future short-lived status messages) here. The ref is set by
-        // `/upload` / `/attach` while a presigned PUT is in flight and
-        // cleared on completion or failure — matches the upload-
-        // progress callback cadence (per-chunk).
+        // Surface transient upload progress (and any other short-lived
+        // status messages) here. The ref is set by `/upload` /
+        // `/attach` while a presigned PUT is in flight and cleared on
+        // completion or failure — matches the upload-progress callback
+        // cadence (per-chunk).
         status_message: transientStatusRef.current,
         permission_mode: activeMode,
         cwd: cwdValue,
@@ -1897,11 +1897,11 @@ export const InkApp: React.FC<InkAppProps> = ({
           showError(`/${name}: not a file: ${raw}`);
           return true;
         }
-        // Wave-D Step-6: upload to the engine's unified Files resource
-        // and splice a `{"$file":"fid_..."}` leaf at the cursor. The
-        // status-line ticker reads `transientStatusRef.current` every
-        // 500 ms and surfaces the rendered progress line. Errors are
-        // surfaced via `showError` and leave the composer untouched.
+        // Upload to the engine's unified Files resource and splice a
+        // `{"$file":"fid_..."}` leaf at the cursor. The status-line
+        // ticker reads `transientStatusRef.current` every 500 ms and
+        // surfaces the rendered progress line. Errors are surfaced
+        // via `showError` and leave the composer untouched.
         const onProgress = (ev: UploadProgressEvent): void => {
           setTransientStatus(renderProgressLine(ev));
         };
@@ -1940,8 +1940,8 @@ export const InkApp: React.FC<InkAppProps> = ({
         return true;
       }
       if (name === "files") {
-        // Wave-D Step-6: numbered-list picker over files linked to the
-        // active conversation. `/files` lists; `/files <n>` inserts the
+        // Numbered-list picker over files linked to the active
+        // conversation. `/files` lists; `/files <n>` inserts the
         // n-th row's `@file:fid_...` mention at the cursor. The
         // mention is rewritten to `{"$file":"..."}` at submit time by
         // `expandRefs` in `repl/paste-store.ts`.

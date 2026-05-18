@@ -15,12 +15,12 @@
 // back inline and emit file / image refs as separate `@`-mentions so
 // the existing mention resolver can pick them up.
 //
-// Wave-D Step-6: `/upload`, `/files`, and the rewritten `/attach`
-// handler bypass this local store entirely — they upload to the
-// engine's unified Files resource and splice a `{"$file":"fid_..."}`
-// JSON leaf at the cursor. `expandRefs` additionally recognises
-// `@file:fid_...` mentions in the composed text and rewrites them to
-// the same JSON leaf at submit (see `parseAllFileMentions`).
+// `/upload`, `/files`, and the rewritten `/attach` handler bypass
+// this local store entirely — they upload to the engine's unified
+// Files resource and splice a `{"$file":"fid_..."}` JSON leaf at
+// the cursor. `expandRefs` additionally recognises `@file:fid_...`
+// mentions in the composed text and rewrites them to the same JSON
+// leaf at submit (see `parseAllFileMentions`).
 //
 // This mirrors Claude Code's paste-ref system (see history.ts in
 // anthropics/claude-code) but keeps the API small and subkit-native.
@@ -162,22 +162,22 @@ export interface ExpandedPrompt {
  * image / file ref paths into `attachmentPaths` so the caller can
  * append them as `@path` mentions before sending the turn.
  *
- * Also recognises Wave-D `@file:fid_<uuid>` mentions in the composer
- * text and rewrites each occurrence to the canonical JSON file leaf
- * `{"$file":"fid_..."}` (Cross-cutting decision D2). The leaf is
- * spliced inline so downstream prompt parsing sees the wire shape
- * without needing a second resolution pass.
+ * Also recognises `@file:fid_<uuid>` mentions in the composer text
+ * and rewrites each occurrence to the canonical JSON file leaf
+ * `{"$file":"fid_..."}`. The leaf is spliced inline so downstream
+ * prompt parsing sees the wire shape without needing a second
+ * resolution pass.
  *
  * Unknown / stale refs are left verbatim — they'll look like
  * `[Pasted text #99]` in the transcript, which is a clear signal the
  * underlying content was already freed.
  */
 export function expandRefs(input: string, store: PasteStore): ExpandedPrompt {
-  // Wave-D file mentions are a separate, regex-driven rewrite so they
-  // continue to work for resumed conversations whose paste-store has
-  // been recreated empty. We process them BEFORE the legacy `[…#N]`
-  // refs so an `@file:fid_…` token cannot collide with a stale
-  // numbered slot.
+  // Engine-backed file mentions are a separate, regex-driven rewrite
+  // so they continue to work for resumed conversations whose paste-
+  // store has been recreated empty. We process them BEFORE the legacy
+  // `[…#N]` refs so an `@file:fid_…` token cannot collide with a
+  // stale numbered slot.
   let working = rewriteFileMentions(input);
   const matches = [...working.matchAll(REF_RE)];
   if (matches.length === 0) {
@@ -206,10 +206,10 @@ export function expandRefs(input: string, store: PasteStore): ExpandedPrompt {
   return { prompt: working, attachmentPaths, consumedIds };
 }
 
-/** Wave-D Step-6: rewrite every `@file:fid_<uuid>` mention to its
- *  canonical JSON `$file` leaf. Done as a single regex pass so the
- *  original cursor-relative offsets in `expandRefs` stay correct
- *  after substitution. */
+/** Rewrite every `@file:fid_<uuid>` mention to its canonical JSON
+ *  `$file` leaf. Done as a single regex pass so the original
+ *  cursor-relative offsets in `expandRefs` stay correct after
+ *  substitution. */
 function rewriteFileMentions(input: string): string {
   const mentions = parseAllFileMentions(input);
   if (mentions.length === 0) return input;

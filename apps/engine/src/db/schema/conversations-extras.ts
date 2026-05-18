@@ -29,8 +29,7 @@ export const conversationDrafts = pgTable(
 
 // `conversationAttachments` was dropped in migration 0019 — every
 // caller now reads from `files` + `file_links` directly. See
-// `apps/engine/src/db/schema/files.ts` and the Wave-C Step 6 rewrite
-// notes for the migration story.
+// `apps/engine/src/db/schema/files.ts` for the canonical schema.
 
 // Conversation draft snapshots (migration 0028).
 //
