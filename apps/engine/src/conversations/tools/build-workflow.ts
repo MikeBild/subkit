@@ -34,7 +34,7 @@ import {
   validateUnsupportedPlaceholders,
 } from "../../workflows/reference-validator.ts";
 import { sampleToSchema } from "../../workflows/sample-to-schema.ts";
-import { WorkflowDefSchema } from "../../workflows/types.ts";
+import { TriggerSchema, WorkflowDefSchema } from "../../workflows/types.ts";
 import { runCriticAgent } from "../authoring-critic/critic-agent.ts";
 import { shouldRunCritic } from "../authoring-critic/gating.ts";
 import type { AuthoringCriticVerdict, CriticRejectedDetails } from "../authoring-critic/types.ts";
@@ -67,6 +67,15 @@ const BuildWorkflowInput = z
     output_schema: z.record(z.string(), z.unknown()).optional(),
     output_transform: z.string().optional(),
     environment: z.enum(["dev", "prod"]).default("dev"),
+    /** Workflow-level trigger. If the goal phrases recurring cadence
+     *  (daily / hourly / weekdays / every N minutes / "every Monday at
+     *  HH:MM" / "täglich um 18 Uhr" / etc.), bind it here as
+     *  `{ kind: "schedule", cron, tz }` so the schedule binding is
+     *  part of the workflow definition. The persistence layer
+     *  (`applyTriggerBindings`) upserts the `workflows_schedules`
+     *  row on commit. Never call `create_schedule` separately for a
+     *  brand-new workflow — the trigger field is the single source. */
+    trigger: TriggerSchema.optional(),
   })
   .openapi("BuildWorkflowToolInput");
 
@@ -213,6 +222,7 @@ export const buildWorkflowTool: ConversationTool = {
       ...(args.description ? { description: args.description } : {}),
       ...(args.input_schema ? { input_schema: args.input_schema } : {}),
       ...(args.output_schema ? { output_schema: args.output_schema } : {}),
+      ...(args.trigger ? { trigger: args.trigger } : {}),
       steps: args.steps,
     });
     if (!defValidation.success) {
@@ -454,6 +464,7 @@ export const buildWorkflowTool: ConversationTool = {
     if (input_schema) workflowDraft.input_schema = input_schema;
     if (args.output_schema) workflowDraft.output_schema = args.output_schema;
     if (args.output_transform) workflowDraft.output_transform = args.output_transform;
+    if (args.trigger) workflowDraft.trigger = args.trigger;
 
     // Cycle detection — pre-flight before the draft is accepted. A
     // workflow whose `${scope.X}` placeholders form a loop never
