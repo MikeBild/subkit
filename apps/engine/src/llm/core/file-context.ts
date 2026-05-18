@@ -36,6 +36,12 @@
 // ladder under `apps/engine/src/observability/`.
 
 import { and, eq } from "drizzle-orm";
+import {
+  AuditAction,
+  auditAwait,
+  bucketSize,
+  ContentPartSentMetadataSchema,
+} from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import { files } from "../../db/schema/files.ts";
 import { type ResolvedFile, resolveSingleFid } from "../../files/resolver.ts";
@@ -358,6 +364,32 @@ async function assembleFileApiBlock(a: AssembleFileApiArgs): Promise<FileContent
   // design the uploader stays pure (no DB binding); the file-context
   // module (this caller) owns the persistence side effect.
   await persistProviderUpload(a.db, a.tenant_id, a.resolved.id, a.provider, uploaded);
+
+  // Audit the egress as a discrete `CONTENT_PART_SENT` row. The
+  // wrapping `LLM_INVOCATION` still fires from the invocation side;
+  // this audit isolates the per-file upload as a separately
+  // queryable event so SIEM consumers can chart per-tenant byte
+  // egress to provider Files APIs. Only fresh uploads land an audit
+  // row — cached `<provider>_file_id` reuse short-circuited above
+  // and pays no bandwidth.
+  await auditAwait(
+    {
+      tenant_id: a.tenant_id,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.CONTENT_PART_SENT,
+      resource_type: "file",
+      resource_id: a.resolved.id,
+      result: "success",
+      metadata: ContentPartSentMetadataSchema.parse({
+        provider: a.provider,
+        file_id: a.resolved.id,
+        content_type: a.resolved.content_type ?? "application/octet-stream",
+        size_bytes_bucket: bucketSize(data.byteLength),
+      }),
+    },
+    a.db,
+  );
 
   return makeFileApiBlock({
     provider: a.provider,

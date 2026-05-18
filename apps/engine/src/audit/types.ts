@@ -737,6 +737,34 @@ export const FileUploadReceivedMetadataSchema = z.object({
 });
 export type FileUploadReceivedMetadata = z.infer<typeof FileUploadReceivedMetadataSchema>;
 
+/** `content_part.sent` metadata — emitted from the LLM file-context
+ *  assembler immediately after a fresh upload to a provider Files API
+ *  (Anthropic / OpenAI / Gemini). Closes the per-file byte-egress audit
+ *  gap: prior to this row the only persisted evidence of an outbound
+ *  file shipment was the `<provider>_file_id` column on the `files`
+ *  row, which a SIEM consumer can't chart at per-tenant byte
+ *  granularity. The wrapping `LLM_INVOCATION` row still fires from the
+ *  invocation side; this audit isolates the upload as a discrete event.
+ *  Cached-fid reuse (no new upload) does NOT emit — only the fresh
+ *  upload that consumes bandwidth lands a row. */
+export const ContentPartSentMetadataSchema = z.object({
+  /** Provider the bytes were shipped to. */
+  provider: z.enum(["anthropic", "openai", "gemini"]),
+  /** Local `files.id` whose bytes were uploaded — primary correlation
+   *  key for joining back to the canonical row. */
+  file_id: z.string().uuid(),
+  /** MIME type the uploader sent to the provider (defaults to
+   *  `application/octet-stream` upstream when the row column is null). */
+  content_type: z.string(),
+  /** Coarse size bucket — never a raw byte count (cardinality). */
+  size_bytes_bucket: SizeBucketSchema,
+  /** Canonical request_source — see `RequestSourceSchema` for the full
+   *  list. Optional because file-context assembly can happen on a
+   *  scheduler-driven turn that doesn't carry an HTTP context. */
+  request_source: RequestSourceSchema.optional(),
+});
+export type ContentPartSentMetadata = z.infer<typeof ContentPartSentMetadataSchema>;
+
 /** `engine.update.*` metadata. Shared by initiated/completed/failed/
  *  rolled_back. The binary swap is the prototypical privileged action:
  *  there is no HTTP context, so the row is the audit story. Issue #151. */
