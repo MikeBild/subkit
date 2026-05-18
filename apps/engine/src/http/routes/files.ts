@@ -26,7 +26,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, count, desc, eq, isNull, lt, sql } from "drizzle-orm";
-import type { MiddlewareHandler } from "hono";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   BatchCreateRequestSchema,
@@ -51,6 +50,7 @@ import {
 } from "../../api/files-schemas.ts";
 import {
   AuditAction,
+  actorType,
   auditAwait,
   bucketSize,
   FileBatchCreatedMetadataSchema,
@@ -117,11 +117,6 @@ function toFileWire(row: typeof files.$inferSelect): FileWire {
   };
 }
 
-/** Map principal → audit actor_type. */
-function actorType(p: { kind: "user" | "system_account" }): "user" | "system_account" {
-  return p.kind === "user" ? "user" : "system_account";
-}
-
 /** Sentinel `ScanResult` used when the scan exceeds
  *  `SCANNER_TIMEOUT_SECONDS`. The caller flips the row to
  *  `status='scanning'` (NOT `ready`) so the cleanup cron can reap rows
@@ -184,7 +179,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     method: "put",
     path: "/v1/files/{id}/upload",
     tags: [TAG],
-    // No security entry — the HMAC token is the auth surface.
+    // `security: []` is the explicit "no bearer required" marker
+    // (S13). Without it, OpenAPI tooling inherits the document's
+    // top-level security entry; an empty array overrides that, making
+    // the HMAC-token-as-auth surface visible in the generated spec.
+    security: [],
     request: {
       params: FileIdParam,
       query: z.object({
@@ -366,31 +365,37 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   // ---------------------------------------------------------------------
-  // Permission gate — applies to every other `/v1/files*` route.
-  // The local upload sink above is registered first, so this middleware
-  // never short-circuits it. The pre-existing `app.use("*", auth)` in
-  // the server still fires before this; the bypass only works because
-  // the local-upload handler returns a `Response` before any further
-  // middleware in the chain has cause to reject. Operators relying on
-  // mTLS-only deployments should pin a network policy in front.
+  // Per-route permission gates — each `/v1/files*` route below declares
+  // its required permission at the registration site via
+  // `app.use(<path>, requireAnyPermission([...]))`. Adding a route now
+  // forces a permission decision at the same call-site instead of
+  // silently inheriting from a verb-mapping switch (the previous gate
+  // collapsed `else → file:write`, so a future POST that should be
+  // read-flavoured — e.g. `:verify-sha256` — would inherit `file:write`
+  // without the author noticing). The local-disk presign sink is
+  // exempt by registration order: it sits above this comment and uses
+  // HMAC-as-auth, so no `app.use(...)` covers its path.
   // ---------------------------------------------------------------------
 
-  // Hono path matching: `*` requires at least one trailing char, so
-  // `/v1/files*` matches `/v1/files/inline` but NOT bare `/v1/files`.
-  // Register both patterns so the gate also fires on the list and
-  // stats endpoints. Matches the pattern used by audit-log routes.
-  const filesPermissionGate: MiddlewareHandler<AppEnv> = async (c, next) => {
-    // Skip the gate for the local presign sink — it has its own auth.
-    if (c.req.method === "PUT" && /\/v1\/files\/[^/]+\/upload$/.test(c.req.path)) {
-      return next();
+  app.use("/v1/files", requireAnyPermission(["file:read"]));
+  app.use("/v1/files/inline", requireAnyPermission(["file:write"]));
+  app.use("/v1/files/batch-create", requireAnyPermission(["file:write"]));
+  app.use("/v1/files/stats", requireAnyPermission(["file:read"]));
+  // Per-{id} routes — Hono path matching: each `app.use` below applies
+  // to GET/POST/DELETE under that template. The `/v1/files/:id` line
+  // covers the metadata GET and the soft-delete DELETE; per-method
+  // splits via inline checks would obscure the symmetry, so we instead
+  // declare the dominant verb's permission here and the DELETE handler
+  // below pre-validates via the same `requireAnyPermission` if needed.
+  app.use("/v1/files/:id", async (c, next) => {
+    if (c.req.method === "DELETE") {
+      return requireAnyPermission(["file:delete"])(c, next);
     }
-    const method = c.req.method;
-    if (method === "GET") return requireAnyPermission(["file:read"])(c, next);
-    if (method === "DELETE") return requireAnyPermission(["file:delete"])(c, next);
-    return requireAnyPermission(["file:write"])(c, next);
-  };
-  app.use("/v1/files", filesPermissionGate);
-  app.use("/v1/files/*", filesPermissionGate);
+    return requireAnyPermission(["file:read"])(c, next);
+  });
+  app.use("/v1/files/:id/content", requireAnyPermission(["file:read"]));
+  app.use("/v1/files/:id/finalize", requireAnyPermission(["file:write"]));
+  app.use("/v1/files/:id/links", requireAnyPermission(["file:write"]));
 
   // ---------------------------------------------------------------------
   // POST /v1/files/inline
