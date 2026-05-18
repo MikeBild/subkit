@@ -31,6 +31,10 @@
 * **audit:** presigned-URL query params (`X-Amz-Signature`, `X-Goog-Signature`, `signature=`) automatically redacted in both audit entries and structured logs.
 
 
+### Operator notes
+
+* **files:** deploy a real `FileScanner` (e.g. clamd) before accepting tenant uploads; the default `NoopScanner` reports every file as clean. The engine now logs `files.scanner.noop_in_production` at boot when `NODE_ENV=production` and no real scanner is wired.
+
 ### Limitations / follow-ups
 
 * **knowledge:** knowledge-source ingestion chunker does not yet read via `files.file_id`; the schema column exists and is backfilled, but `createKnowledgeSource` still consumes a caller-supplied buffer. Locked by `apps/engine/src/knowledge/tests/chunker-file-resolve.test.ts`.

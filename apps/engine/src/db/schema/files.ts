@@ -116,6 +116,10 @@ export const fileLinks = pgTable(
 // `GET /v1/files/stats` without reading `audit_log`, so the dashboard
 // stat is independent of audit retention.
 
+// One row per tenant; UPSERT-bumped from the inline + batch-create
+// dedup paths. Never deleted directly — relies on ON DELETE CASCADE
+// from tenants.id. No created_at: first-hit time is not currently a
+// product requirement.
 export const filesDedupSeen = pgTable("files_dedup_seen", {
   tenant_id: uuid("tenant_id")
     .primaryKey()

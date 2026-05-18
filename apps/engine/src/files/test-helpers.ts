@@ -7,6 +7,11 @@
 // content read path identical to production — `requireFileForTenant`
 // + `openRead` see the same shape they'd see for a real upload.
 //
+// IMPORTANT: this helper bypasses the HTTP route layer — no `audit_log`
+// row is written at attach time. Tests that assert on `audit_log` must
+// drive uploads via the real route (fetch `/v1/files/inline`) to
+// exercise the emission path.
+//
 // Used by:
 //   - `apps/engine/src/conversations/tests/attachments-resolver.test.ts`
 //   - `apps/engine/src/conversations/tests/save-connector-draft-analysis.test.ts`
