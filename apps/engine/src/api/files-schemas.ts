@@ -268,12 +268,11 @@ export const FileListResponseSchema = z
 // Caps
 // ---------------------------------------------------------------------------
 
-/** Hard cap on inline-upload payload size. Above this the client must
- *  go through the presigned-PUT path (`/v1/files/batch-create` →
- *  `PUT <upload_url>` → `/v1/files/:id/finalize`). Mirrors the legacy
- *  10 MB conversation-attachment cap, halved because base64 inflates
- *  the JSON body by ~33% so a 5 MiB payload lands as ~7 MiB on the wire. */
-export const MAX_INLINE_BYTES = 5 * 1024 * 1024;
+// Inline-upload cap — single source of truth lives in
+// `packages/shared/src/files-constants.ts` so the CLI and the engine
+// can never drift on the size that splits inline from presigned
+// uploads.
+export { MAX_INLINE_BYTES } from "@shared/index.ts";
 
 // ---------------------------------------------------------------------------
 // Inferred TS types

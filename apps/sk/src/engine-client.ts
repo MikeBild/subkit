@@ -143,10 +143,11 @@ export interface FileStatsWire {
   scan_verdicts: Record<string, number>;
 }
 
-/** Inline-upload cap mirrored from the engine (`MAX_INLINE_BYTES`).
- *  Above this the CLI must use `batchCreateFiles` + `putToPresignedUrl`
- *  + `finalizeFile`. */
-export const MAX_INLINE_BYTES = 5 * 1024 * 1024;
+/** Inline-upload cap — re-exported from the shared constant so the
+ *  CLI cannot drift from the engine's 413 threshold. Above this the
+ *  CLI must use `batchCreateFiles` + `putToPresignedUrl` +
+ *  `finalizeFile`. */
+export { MAX_INLINE_BYTES } from "@shared/files-constants.ts";
 
 // ---------- Files Zod schemas ----------
 // Mirror `apps/engine/src/api/files-schemas.ts` so a server that breaks

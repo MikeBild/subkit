@@ -357,14 +357,14 @@ export class LocalDiskObjectStore implements ObjectStore {
 /**
  * S3-backed object store, talking to any S3-compatible service via
  * `@bradenmacdonald/s3-lite-client`. The credential block lives at
- * `storage.s3.*` (shared with the connector driver), the bucket lives
- * at `storage.offload.bucket` is *not* used — engine-managed file
- * storage gets its own bucket via a separate config knob (operator
- * convention: the engine bucket is the `storage.s3.endpoint`'s default
- * bucket). For the v1 cut we read the bucket from the `storage.s3`
- * section via the `endpoint`-encoded bucket; if a future revision
- * adds an explicit `storage.files.bucket` knob, the constructor below
- * is the place to wire it.
+ * `storage.s3.*` (shared with the connector driver). The bucket is
+ * read from `storage.files.bucket` (a dedicated knob — separate from
+ * `storage.offload.bucket`, which is reserved for execution-output
+ * offload). The constructor takes `bucket` as an explicit option so
+ * tests can plug a fixture bucket without touching the global config;
+ * production wiring goes through `getObjectStoreForTenant` (and the
+ * module-level singleton below) which reads `storage.files.bucket`
+ * from the resolved config.
  */
 export class S3ObjectStore implements ObjectStore {
   private readonly client: S3Client;

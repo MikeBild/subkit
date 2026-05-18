@@ -45,6 +45,14 @@
 //          archived shouldn't have its fid reaped before it resumes.
 //      The soft-delete + 7-day grace bounds the cost of a missed-link.
 //
+// Audit `actor_type` convention: every row emitted from this cron
+// is `actor_type: "system"` (with `actor_id: null`). The audit_log
+// schema allows both `"system"` and `"system_account"`; the
+// distinction is "actor-less machine sweep" (`"system"`) vs
+// "service-account principal carrying a row id" (`"system_account"`).
+// The cleanup cron has no principal — it is a process-wide tick —
+// so `"system"` is the correct choice here.
+//
 //   3) LLM provider expiry. Provider-side Files API ids (Anthropic /
 //      OpenAI / Gemini) come with a finite TTL. When `llm_file_expires_at`
 //      has passed we null out the provider ids + the expiry timestamp so
@@ -246,93 +254,55 @@ async function loadInFlightFidStrings(db: Db): Promise<string> {
     if (r.input_preview != null) parts.push(JSON.stringify(r.input_preview));
   }
 
-  // Source 3 — pg-boss job envelope for execution.run jobs that are
-  // queued but not yet running. The `pgboss` schema is the canonical
-  // pg-boss schema; `job.data` holds the `ExecutionRunJob` payload
-  // (input lives there for saved runs).
-  // States included:
-  //   - `created`, `active`, `retry`  → live job envelope
-  //   - `scheduled`                   → long-horizon scheduled job
-  //     (a workflow run dispatched with `startAfter` to fire hours/days
-  //     later). Without this the file ref could be reaped before the
-  //     job fires.
-  // Excluded: `failed`, `expired`, `cancelled`, `completed` — no longer
-  // in-flight.
+  // Sources 3 / 4 / 5 — pg-boss state, unioned into a single
+  // round-trip to keep the per-tick query count bounded on large
+  // queues. Three contributors share the `data::text` column:
+  //
+  //   - `pgboss.job`      (state ∈ created|active|retry|scheduled
+  //                        for queue `execution.run`): live or
+  //                        soon-to-run envelopes carrying
+  //                        `ExecutionRunJob.input`.
+  //   - `pgboss.schedule` (all rows): recurring schedule definitions
+  //     replayed into `pgboss.job` on each cron tick.
+  //   - `pgboss.archive`  (state ∈ active|retry for queue
+  //                        `execution.run`): rows archived mid-
+  //                        flight that the engine might resume after
+  //                        a redeploy / replay.
+  //
+  // Excluded states (`completed`, `failed`, `expired`, `cancelled`)
+  // genuinely cannot resume so their fids are fair game. Outer
+  // try/catch degrades to "pg-boss not present" — the executions +
+  // execution_steps scans above still protect the dominant paths.
   try {
-    const jobRows = await db.execute<{ data: string | null }>(sql`
+    const pgbossRows = await db.execute<{ data: string | null }>(sql`
       SELECT data::text AS data
       FROM pgboss.job
       WHERE name = ${EXECUTION_RUN_QUEUE}
         AND state IN ('created', 'active', 'retry', 'scheduled')
-    `);
-    // drizzle's `execute()` return shape varies by driver; normalise.
-    const rows: Array<{ data: string | null }> = Array.isArray(jobRows)
-      ? (jobRows as unknown as Array<{ data: string | null }>)
-      : ((jobRows as unknown as { rows?: Array<{ data: string | null }> }).rows ?? []);
-    for (const r of rows) {
-      if (r.data != null) parts.push(r.data);
-    }
-  } catch (err) {
-    // pg-boss schema may not exist in some test contexts; degrade
-    // gracefully — the executions + execution_steps scans above still
-    // protect the dominant in-flight paths.
-    logger.warn({
-      module: "scheduler",
-      action: "files_cleanup.pgboss_scan_failed",
-      msg: "pg-boss job scan failed — relying on executions + execution_steps for in-flight grace",
-      ...errorFields(err),
-    });
-  }
-
-  // Source 4 — pg-boss recurring schedule definitions. `pgboss.schedule`
-  // stores `(name, cron, data, options)` rows that pg-boss replays into
-  // `pgboss.job` on each cron tick. A schedule whose `data` carries a
-  // `$file` ref would lose its file between ticks without this scan.
-  try {
-    const scheduleRows = await db.execute<{ data: string | null }>(sql`
+      UNION ALL
       SELECT data::text AS data
       FROM pgboss.schedule
-    `);
-    const rows: Array<{ data: string | null }> = Array.isArray(scheduleRows)
-      ? (scheduleRows as unknown as Array<{ data: string | null }>)
-      : ((scheduleRows as unknown as { rows?: Array<{ data: string | null }> }).rows ?? []);
-    for (const r of rows) {
-      if (r.data != null) parts.push(r.data);
-    }
-  } catch (err) {
-    logger.warn({
-      module: "scheduler",
-      action: "files_cleanup.pgboss_schedule_scan_failed",
-      msg: "pg-boss schedule scan failed — relying on job + executions scans for in-flight grace",
-      ...errorFields(err),
-    });
-  }
-
-  // Source 5 — pg-boss archive for jobs that were in-flight at the
-  // archive boundary. pg-boss periodically moves rows from `pgboss.job`
-  // to `pgboss.archive` to keep the live table small; rows archived
-  // while in `active`/`retry` state still reference a fid that the
-  // engine might resume (after a redeploy / replay). Excluded states
-  // (`completed`, `failed`, `expired`, `cancelled`) genuinely cannot
-  // resume so their fids are fair game.
-  try {
-    const archiveRows = await db.execute<{ data: string | null }>(sql`
+      UNION ALL
       SELECT data::text AS data
       FROM pgboss.archive
       WHERE name = ${EXECUTION_RUN_QUEUE}
         AND state IN ('active', 'retry')
     `);
-    const rows: Array<{ data: string | null }> = Array.isArray(archiveRows)
-      ? (archiveRows as unknown as Array<{ data: string | null }>)
-      : ((archiveRows as unknown as { rows?: Array<{ data: string | null }> }).rows ?? []);
+    // drizzle's `execute()` return shape varies by driver; normalise.
+    const rows: Array<{ data: string | null }> = Array.isArray(pgbossRows)
+      ? (pgbossRows as unknown as Array<{ data: string | null }>)
+      : ((pgbossRows as unknown as { rows?: Array<{ data: string | null }> }).rows ?? []);
     for (const r of rows) {
       if (r.data != null) parts.push(r.data);
     }
   } catch (err) {
+    // pg-boss schema may not exist in some test contexts; degrade
+    // gracefully — the executions + execution_steps scans above
+    // still protect the dominant in-flight paths.
     logger.warn({
       module: "scheduler",
-      action: "files_cleanup.pgboss_archive_scan_failed",
-      msg: "pg-boss archive scan failed — relying on job + schedule scans for in-flight grace",
+      action: "files_cleanup.pgboss_scan_failed",
+      msg: "pg-boss in-flight scan failed — relying on executions + execution_steps for in-flight grace",
       ...errorFields(err),
     });
   }

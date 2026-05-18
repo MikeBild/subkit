@@ -38,11 +38,12 @@ async function api(method: string, path: string, body?: unknown): Promise<Respon
 }
 
 describe("POST /v1/conversations/:id/attachments", () => {
-  test("uploads an attachment (legacy utf8 body) and returns 201", async () => {
+  test("uploads an attachment (utf8 source, base64 wire) and returns 201", async () => {
+    const raw = "openapi: 3.0.3\ninfo:\n  title: Stripe";
     const res = await api("POST", `/v1/conversations/${conversation_id}/attachments`, {
       filename: "stripe-spec.yaml",
       content_type: "application/yaml",
-      content: "openapi: 3.0.3\ninfo:\n  title: Stripe",
+      content_base64: Buffer.from(raw, "utf8").toString("base64"),
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as {
@@ -63,7 +64,7 @@ describe("POST /v1/conversations/:id/attachments", () => {
     // allow-random: unique per-test id for a 404 lookup.
     const res = await api("POST", `/v1/conversations/${crypto.randomUUID()}/attachments`, {
       filename: "x.txt",
-      content: "hello",
+      content_base64: Buffer.from("hello", "utf8").toString("base64"),
     });
     expect(res.status).toBe(404);
   });
@@ -73,7 +74,7 @@ describe("POST /v1/conversations/:id/attachments", () => {
     const big = "a".repeat(6 * 1024 * 1024);
     const res = await api("POST", `/v1/conversations/${conversation_id}/attachments`, {
       filename: "big.txt",
-      content: big,
+      content_base64: Buffer.from(big, "utf8").toString("base64"),
     });
     expect(res.status).toBe(413);
   });
@@ -94,7 +95,7 @@ describe("POST /v1/conversations/:id/attachments", () => {
   test("audit row written under the canonical FILE_LINK_ADDED action", async () => {
     await api("POST", `/v1/conversations/${conversation_id}/attachments`, {
       filename: "for-audit.txt",
-      content: "hello audit",
+      content_base64: Buffer.from("hello audit", "utf8").toString("base64"),
     });
     const audits = await srv.db
       .select()
@@ -128,7 +129,7 @@ describe("DELETE /v1/conversations/:id/attachments/:slug", () => {
   test("unlinks the file from the conversation (204) but leaves the row", async () => {
     const up = await api("POST", `/v1/conversations/${conversation_id}/attachments`, {
       filename: "to-delete.txt",
-      content: "bye",
+      content_base64: Buffer.from("bye", "utf8").toString("base64"),
     });
     const { slug } = (await up.json()) as { slug: string };
     const del = await api("DELETE", `/v1/conversations/${conversation_id}/attachments/${slug}`);

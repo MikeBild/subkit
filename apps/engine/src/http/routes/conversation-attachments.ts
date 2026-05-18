@@ -31,10 +31,10 @@
 //
 // Body schema: either an `InlineUpload` ({ filename, content_base64 })
 // or a `{ $file: "fid_..." }` ref pointing at an existing file the
-// caller already uploaded via `/v1/files/inline`. The legacy `content`
-// + `content_encoding` fields are accepted as a temporary alias for
-// `content_base64` (utf8 → base64 server-side) so callers mid-migration
-// keep working without a coordinated client bump.
+// caller already uploaded via `/v1/files/inline`. The historic
+// `content` + `content_encoding` body shape is no longer accepted —
+// the CLI emits `content_base64` exclusively and there is no other
+// known caller.
 
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
@@ -71,9 +71,9 @@ import type { AppEnv } from "../openapi.ts";
 const IdParam = z.object({ id: z.string().uuid() });
 const SlugParam = z.object({ id: z.string().uuid(), slug: z.string().min(1) });
 
-/** Accepts either an inline JSON+base64 upload, an inline JSON+utf8
- *  upload (legacy), or an existing-file ref. The route resolves any
- *  of these to a canonical `files` row + `file_links` row. */
+/** Accepts either an inline JSON+base64 upload or an existing-file
+ *  ref. The route resolves either to a canonical `files` row +
+ *  `file_links` row. */
 const UploadBody = z
   .union([
     FileRefSchema,
@@ -81,16 +81,6 @@ const UploadBody = z
       filename: z.string().min(1).max(255),
       content_type: z.string().max(200).optional(),
       content_base64: z.string().min(1),
-    }),
-    // Legacy shape — `content` + optional `content_encoding`. Kept so
-    // callers mid-migration keep working without a coordinated client
-    // bump. Removed once external tooling has flipped to
-    // `content_base64`.
-    z.object({
-      filename: z.string().min(1).max(255),
-      content_type: z.string().max(200).optional(),
-      content: z.string(),
-      content_encoding: z.enum(["utf8", "base64"]).default("utf8"),
     }),
   ])
   .openapi("ConversationAttachmentUpload");
@@ -328,25 +318,15 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       return c.json(toAttachmentWire(fileRow, slug), 201);
     }
 
-    // Branch 2: inline upload (either `content_base64` or legacy `content`/`content_encoding`).
+    // Branch 2: inline upload — `content_base64` is the only accepted
+    // shape. The handler upstream already rejected `$file`-ref bodies.
+    const filename = body.filename;
+    const content_type = body.content_type ?? null;
     let bytes: Uint8Array;
-    let filename: string;
-    let content_type: string | null;
-    if ("content_base64" in body) {
-      filename = body.filename;
-      content_type = body.content_type ?? null;
-      try {
-        bytes = Uint8Array.from(Buffer.from(body.content_base64, "base64"));
-      } catch {
-        return c.json({ code: "bad_input", message: "invalid base64" }, 400);
-      }
-    } else {
-      filename = body.filename;
-      content_type = body.content_type ?? null;
-      bytes =
-        body.content_encoding === "base64"
-          ? Uint8Array.from(Buffer.from(body.content, "base64"))
-          : new TextEncoder().encode(body.content);
+    try {
+      bytes = Uint8Array.from(Buffer.from(body.content_base64, "base64"));
+    } catch {
+      return c.json({ code: "bad_input", message: "invalid base64" }, 400);
     }
     if (bytes.byteLength === 0) {
       return c.json({ code: "bad_input", message: "empty content" }, 400);

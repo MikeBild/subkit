@@ -179,6 +179,11 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
         source_conversation_id: id,
         anchor_message_id: message_id,
         actor_id: principal.id,
+        // Thread the principal kind through so the audit row uses
+        // the same `actor_type` taxonomy as every other emit site —
+        // `system_account` callers no longer get collapsed to
+        // `user`.
+        actor_type: principal.kind === "user" ? "user" : "system_account",
         // Every HTTP entry into the fork service tags the audit row
         // as `api`. Other channels (CLI direct invocation, scheduler)
         // pass their own value when they invoke `forkConversation`

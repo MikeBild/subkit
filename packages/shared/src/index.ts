@@ -13,6 +13,7 @@ export {
   ConnectorOperationError,
   isConnectorOperationError,
 } from "./connector-operation-error.ts";
+export { MAX_INLINE_BYTES } from "./files-constants.ts";
 export { type JsonlTrimOptions, trimJsonlFile } from "./jsonl-ring.ts";
 export type { SecretKind, SecretPattern } from "./redaction.ts";
 export {

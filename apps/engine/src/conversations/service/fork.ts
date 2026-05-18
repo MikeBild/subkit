@@ -36,15 +36,23 @@ export interface ForkConversationParams {
   source_conversation_id: string;
   anchor_message_id: string;
   actor_id: string | null;
+  /** Audit `actor_type`. Routes pass the resolved principal kind
+   *  (`"user"` for human callers, `"system_account"` for service
+   *  accounts) so the fork audit row matches every other emit site's
+   *  taxonomy. `"system"` is reserved for actor-less cron sweeps;
+   *  fork always has a caller. Defaults to `"user"` only when
+   *  `actor_id` is set and the caller didn't bother to specify, so
+   *  the legacy call shape keeps working. */
+  actor_type?: "user" | "system_account";
   /** Optional title override; defaults to "fork — <source>". */
   title?: string | null;
   /**
-   * AGENTS.md request_source enum value identifying the calling channel
+   * Canonical request_source value identifying the calling channel
    * (`api`, `cli`, `scheduler`, etc.). Recorded on the audit row so
    * SIEM/BI consumers can split forks by source without correlating
    * trace_ids.
    */
-  request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui";
+  request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat";
 }
 
 export interface ForkConversationResult {
@@ -214,7 +222,7 @@ export async function forkConversation(
       await auditAwait(
         {
           tenant_id: p.tenant_id,
-          actor_type: p.actor_id ? "user" : "system",
+          actor_type: p.actor_type ?? (p.actor_id ? "user" : "system"),
           actor_id: p.actor_id,
           action: AuditAction.FILE_LINK_ADDED,
           resource_type: "file",
