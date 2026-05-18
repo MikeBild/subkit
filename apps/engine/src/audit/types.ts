@@ -452,6 +452,24 @@ export const AuditAction = {
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];
 
+/** Set of every `file.*` audit action — declarative so downstream
+ *  filters (SIEM exporters, MCP capability surfaces, the
+ *  `files-actions.test.ts` set-equality assertion) can match without
+ *  re-deriving the prefix grammar inline. Extend this whenever a new
+ *  `FILE_*` action lands; the cardinality test will fail if the action
+ *  is declared on `AuditAction` but not here. */
+export const FILE_AUDIT_ACTIONS: ReadonlySet<AuditActionValue> = new Set([
+  AuditAction.FILE_CREATED,
+  AuditAction.FILE_BATCH_CREATED,
+  AuditAction.FILE_FINALIZED,
+  AuditAction.FILE_UPLOAD_RECEIVED,
+  AuditAction.FILE_DOWNLOADED,
+  AuditAction.FILE_DELETED,
+  AuditAction.FILE_LINK_ADDED,
+  AuditAction.FILE_LINK_REMOVED,
+  AuditAction.FILE_SCAN_COMPLETED,
+]);
+
 export type AuditActorType = "user" | "system_account" | "system";
 export type AuditResult = "success" | "denied" | "error";
 
@@ -604,7 +622,11 @@ export const FileCreatedMetadataSchema = z.object({
   file_id: z.string().uuid(),
   size_bytes_bucket: SizeBucketSchema,
   content_type: z.string().nullable(),
-  filename: z.string(),
+  // Capped at 255 to mirror `InlineUploadSchema.filename` and
+  // `BatchCreateEntrySchema.filename` (api/files-schemas.ts). Without
+  // this cap a future emitter passing an unbounded filename would
+  // inflate `audit_log.metadata` row size + index width.
+  filename: z.string().max(255),
   sha256_prefix: z
     .string()
     .regex(/^[0-9a-f]{16}$/)

@@ -4,7 +4,7 @@
 // in types.ts produces a test failure rather than silent audit-log drift.
 
 import { describe, expect, test } from "bun:test";
-import { AuditAction } from "./types.ts";
+import { AuditAction, FILE_AUDIT_ACTIONS } from "./types.ts";
 
 describe("FILE_* audit actions", () => {
   test("FILE_CREATED serialises to 'file.created'", () => {
@@ -66,6 +66,18 @@ describe("FILE_* audit actions", () => {
         "file.upload_received",
       ]),
     );
+  });
+
+  test("FILE_AUDIT_ACTIONS matches the file.* prefix membership", () => {
+    // The declarative set should equal the prefix-derived set so a
+    // future addition that updates one but not the other fails loudly.
+    // Downstream SIEM / MCP filters import `FILE_AUDIT_ACTIONS` instead
+    // of re-deriving the prefix grammar inline — this assertion keeps
+    // the two views from drifting.
+    const prefixMatched = new Set(
+      Object.values(AuditAction).filter((v) => String(v).startsWith("file.")),
+    );
+    expect(new Set(FILE_AUDIT_ACTIONS)).toEqual(prefixMatched);
   });
 
   test("AuditAction values are all strings (no accidental undefined)", () => {

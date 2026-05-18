@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { SizeBucket } from "../../audit/buckets.ts";
 import { bucketSize } from "../../audit/buckets.ts";
-import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { AuditAction, auditAwait, FileCreatedMetadataSchema } from "../../audit/index.ts";
 import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -164,6 +164,29 @@ describe("files audit cardinality", () => {
     const downloadedMeta = downloadedRows[0]!.metadata as Record<string, unknown>;
     // FILE_DOWNLOADED must NOT carry filename
     expect(downloadedMeta.filename).toBeUndefined();
+  });
+
+  test("FileCreatedMetadataSchema rejects filenames longer than 255 chars", () => {
+    // Mirrors the cap on `InlineUploadSchema.filename` and
+    // `BatchCreateEntrySchema.filename` (api/files-schemas.ts). A
+    // future emitter that bypassed the wire-schema cap would otherwise
+    // inflate `audit_log.metadata` row size unboundedly.
+    const tooLong = "x".repeat(256);
+    const justRight = "x".repeat(255);
+    const result = FileCreatedMetadataSchema.safeParse({
+      file_id: "11111111-1111-1111-1111-111111111111",
+      size_bytes_bucket: "<1KB",
+      content_type: null,
+      filename: tooLong,
+    });
+    expect(result.success).toBe(false);
+    const ok = FileCreatedMetadataSchema.safeParse({
+      file_id: "11111111-1111-1111-1111-111111111111",
+      size_bytes_bucket: "<1KB",
+      content_type: null,
+      filename: justRight,
+    });
+    expect(ok.success).toBe(true);
   });
 
   test("bucketSize produces correct bucket for boundary values", () => {
