@@ -11,6 +11,7 @@
 // abort the request.
 
 import type { Context } from "hono";
+import { logger } from "../logging/logger.ts";
 import { type RequestSource, RequestSourceSchema } from "../observability/service-metadata.ts";
 
 /** Project the trace-middleware-set `request_source` onto the
@@ -18,9 +19,24 @@ import { type RequestSource, RequestSourceSchema } from "../observability/servic
  *  (raw test invocations that skip the middleware) or carries a
  *  value the schema does not recognise. Never throws — the audit row
  *  is the compliance-of-record and must not be the source of a
- *  request-aborting error. */
+ *  request-aborting error.
+ *
+ *  When a non-undefined raw value is rejected by the schema, emits a
+ *  `debug` log so the operator can diagnose a trace-middleware widening
+ *  that forgot to update `RequestSourceSchema`. Missing variable
+ *  (`undefined` raw) is the common case in tests that skip the
+ *  middleware and intentionally silent. */
 export function readRequestSource(c: Context): RequestSource | undefined {
   const raw = c.get("request_source") as unknown;
   const parsed = RequestSourceSchema.safeParse(raw);
-  return parsed.success ? parsed.data : undefined;
+  if (parsed.success) return parsed.data;
+  if (raw !== undefined) {
+    logger.debug({
+      module: "audit",
+      action: "request_source.rejected",
+      msg: "trace-middleware set a request_source the audit schema does not recognise",
+      raw: typeof raw === "string" ? raw : JSON.stringify(raw),
+    });
+  }
+  return undefined;
 }

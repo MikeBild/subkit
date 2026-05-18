@@ -139,6 +139,26 @@ export function mintLocalPresignToken(claims: LocalPresignClaims): string {
   return signLocalPresign(claims, localPresignSecret());
 }
 
+/** Compose the engine-relative URL the client PUTs against to upload
+ *  to the local-disk presign sink. The caller (typically the
+ *  `batch-create` route) prepends its public engine origin to make a
+ *  fully-qualified URL. The query-string component is URL-encoded so
+ *  a token containing `+`, `/`, or `=` survives transit even if the
+ *  HTTP layer would otherwise interpret it. Mirrors the format the
+ *  `PUT /v1/files/{id}/upload` route parses via `c.req.valid("query")`.
+ *
+ *  Pair with `parseLocalPresignClaims` for a roundtrip — the helper at
+ *  `apps/engine/src/storage/hmac-token.test.ts` exercises the full
+ *  mint → compose → parse-claims cycle so a future change to the URL
+ *  shape (e.g. moving the token into a header) fails the test. */
+export function composeLocalPresignUrl(args: {
+  fid: string;
+  token: string;
+  expires_at: number;
+}): string {
+  return `/v1/files/${args.fid}/upload?token=${encodeURIComponent(args.token)}&expires_at=${args.expires_at}`;
+}
+
 export type VerifyLocalPresignResult =
   | { ok: true; claims: LocalPresignClaims }
   | { ok: false; reason: "malformed" | "signature_mismatch" | "expired" };

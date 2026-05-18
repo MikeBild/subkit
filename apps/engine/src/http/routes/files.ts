@@ -67,6 +67,7 @@ import {
 import { getConfig } from "../../config/loader.ts";
 import { writeEvent } from "../../db/events.ts";
 import { fileLinks, files } from "../../db/schema/index.ts";
+import { buildObjectKey, composeStorageUri, streamFromBytes } from "../../files/object-key.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import type { ScanResult } from "../../files/scanner.ts";
 import { getScanner, SCANNER_TIMEOUT_SECONDS } from "../../files/scanner.ts";
@@ -77,6 +78,7 @@ import {
   recordFileScanResult,
 } from "../../observability/index.ts";
 import {
+  composeLocalPresignUrl,
   getObjectStore,
   mintLocalPresignToken,
   parseLocalPresignClaims,
@@ -95,27 +97,10 @@ const FileIdParam = z.object({
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Compose the storage URI for a backend-agnostic key. Mirrors the
- *  reverse of `storageKey(uri)` so a future test can round-trip a key
- *  through `composeStorageUri` → `storageKey` and recover the input. */
-function composeStorageUri(key: string): string {
-  const cfg = getConfig().storage;
-  if (cfg.files.backend === "s3") {
-    return `s3://${cfg.files.bucket}/${key}`;
-  }
-  return `local://${key}`;
-}
-
-/** Object-store key shape: `<tenant>/<yyyy>/<mm>/<dd>/<uuid>`. Tenant
- *  prefix bounds the tenant-isolation blast radius at the storage
- *  layer; date partitioning keeps cold-storage lifecycle rules cheap;
- *  the filename lives in the DB row, never in the path. */
-function buildObjectKey(tenant_id: string, file_uuid: string, now: Date = new Date()): string {
-  const yyyy = now.getUTCFullYear().toString();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(now.getUTCDate()).padStart(2, "0");
-  return `${tenant_id}/${yyyy}/${mm}/${dd}/${file_uuid}`;
-}
+// `buildObjectKey`, `composeStorageUri`, and `streamFromBytes` are
+// shared with the portal-wrapper attachment route — they live in
+// `apps/engine/src/files/object-key.ts` so a change to the key shape
+// or storage-URI composition lands once.
 
 /** Wire-shape projection — converts DB ids to `fid_<uuid>` and dates to ISO. */
 function toFileWire(row: typeof files.$inferSelect): FileWire {
@@ -136,15 +121,6 @@ function toFileWire(row: typeof files.$inferSelect): FileWire {
 /** Map principal → audit actor_type. */
 function actorType(p: { kind: "user" | "system_account" }): "user" | "system_account" {
   return p.kind === "user" ? "user" : "system_account";
-}
-
-/** Open an iterator over a fixed byte buffer for the synchronous scan
- *  + sha256 path. Avoids holding the whole stream API for in-memory
- *  payloads while still satisfying `ScanMeta`. */
-function streamFromBytes(bytes: Uint8Array): AsyncIterable<Uint8Array> {
-  return (async function* () {
-    yield bytes;
-  })();
 }
 
 /** Sentinel `ScanResult` used when the scan exceeds
@@ -763,9 +739,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         });
         // Public sink lives at the engine root path. The client
         // composes a fully-qualified URL by prepending its engine base.
-        upload_url = `/v1/files/${toFileId(file_uuid)}/upload?token=${encodeURIComponent(
+        upload_url = composeLocalPresignUrl({
+          fid: toFileId(file_uuid),
           token,
-        )}&expires_at=${expires_at.getTime()}`;
+          expires_at: expires_at.getTime(),
+        });
       }
 
       results.push({

@@ -10,7 +10,12 @@ import { join } from "node:path";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import type { LocalPresignClaims } from "./object-store.ts";
-import { mintLocalPresignToken, verifyLocalPresignToken } from "./object-store.ts";
+import {
+  composeLocalPresignUrl,
+  mintLocalPresignToken,
+  parseLocalPresignClaims,
+  verifyLocalPresignToken,
+} from "./object-store.ts";
 
 let cfgDir: string;
 
@@ -182,5 +187,56 @@ describe("mintLocalPresignToken + verifyLocalPresignToken", () => {
   test("empty string token is rejected", () => {
     const result = verifyLocalPresignToken("", { tenant_id: "t", key: "k" });
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("composeLocalPresignUrl ↔ mintLocalPresignToken ↔ parseLocalPresignClaims", () => {
+  test("roundtrips a minted token through the URL and back to claims", () => {
+    const claims = validClaims();
+    const token = mintLocalPresignToken(claims);
+    const url = composeLocalPresignUrl({
+      fid: "fid_11111111-2222-4333-8444-555555555555",
+      token,
+      expires_at: claims.expires_at,
+    });
+    // The URL must contain the URL-encoded token (no raw `+` or `=` in
+    // the query value) and the expires_at as a bare integer.
+    expect(url).toContain(`token=${encodeURIComponent(token)}`);
+    expect(url).toContain(`expires_at=${claims.expires_at}`);
+    expect(url.startsWith("/v1/files/fid_")).toBe(true);
+    expect(url.includes("/upload?")).toBe(true);
+
+    // Decode the URL the way a downstream client would (URLSearchParams
+    // does percent-decoding on read) and feed the token back through
+    // parseLocalPresignClaims to recover the original claims verbatim.
+    const queryStart = url.indexOf("?");
+    const params = new URLSearchParams(url.slice(queryStart + 1));
+    const decodedToken = params.get("token");
+    expect(decodedToken).toBe(token);
+    const parsed = parseLocalPresignClaims(decodedToken ?? "");
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.claims.tenant_id).toBe(claims.tenant_id);
+      expect(parsed.claims.key).toBe(claims.key);
+      expect(parsed.claims.size_bytes).toBe(claims.size_bytes);
+      expect(parsed.claims.expires_at).toBe(claims.expires_at);
+    }
+  });
+
+  test("URL-encoding survives tokens containing special chars", () => {
+    // Mint many tokens to virtually guarantee one contains a `+`, `/`,
+    // or `=` in the base64url payload or MAC; encodeURIComponent must
+    // preserve every byte across the roundtrip.
+    for (let i = 0; i < 25; i++) {
+      const claims = validClaims({ size_bytes: i });
+      const token = mintLocalPresignToken(claims);
+      const url = composeLocalPresignUrl({
+        fid: `fid_11111111-2222-4333-8444-55555555555${i % 10}`,
+        token,
+        expires_at: claims.expires_at,
+      });
+      const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+      expect(params.get("token")).toBe(token);
+    }
   });
 });

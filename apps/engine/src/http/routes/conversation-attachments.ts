@@ -36,7 +36,6 @@
 // the CLI emits `content_base64` exclusively and there is no other
 // known caller.
 
-import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
@@ -58,12 +57,10 @@ import {
   FileScanCompletedMetadataSchema,
   readRequestSource,
 } from "../../audit/index.ts";
-import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, fileLinks, files } from "../../db/schema/index.ts";
+import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
 import { requireFileForTenant } from "../../files/resolver.ts";
-import { getScanner } from "../../files/scanner.ts";
-import { getObjectStore } from "../../storage/object-store.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -118,25 +115,6 @@ function toAttachmentWire(row: typeof files.$inferSelect, slug: string): Attachm
   };
 }
 
-function buildObjectKey(tenant_id: string, file_uuid: string, now: Date = new Date()): string {
-  const yyyy = now.getUTCFullYear().toString();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(now.getUTCDate()).padStart(2, "0");
-  return `${tenant_id}/${yyyy}/${mm}/${dd}/${file_uuid}`;
-}
-
-function composeStorageUri(key: string): string {
-  const cfg = getConfig().storage;
-  if (cfg.files.backend === "s3") return `s3://${cfg.files.bucket}/${key}`;
-  return `local://${key}`;
-}
-
-function streamFromBytes(bytes: Uint8Array): AsyncIterable<Uint8Array> {
-  return (async function* () {
-    yield bytes;
-  })();
-}
-
 async function conversationExists(db: Db, tenant_id: string, id: string): Promise<boolean> {
   const [row] = await db
     .select({ id: conversations.id })
@@ -144,93 +122,6 @@ async function conversationExists(db: Db, tenant_id: string, id: string): Promis
     .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, id)))
     .limit(1);
   return Boolean(row);
-}
-
-/** Scanner output exposed to the caller so it can emit a
- *  `FILE_SCAN_COMPLETED` audit row symmetric with the canonical
- *  `/v1/files/inline` route. `null` is returned on the dedup branch —
- *  no fresh scan ran, no audit row to emit. */
-interface PersistedScan {
-  verdict: string;
-  engine: string;
-  signature: string | null;
-}
-
-/** Find or create a `files` row for the given bytes. Returns the row
- *  along with a flag indicating whether dedup short-circuited the
- *  upload and (for fresh inserts) the scanner verdict so the caller
- *  can emit the symmetric `FILE_SCAN_COMPLETED` audit row. Mirrors the
- *  dedup logic in `POST /v1/files/inline`. */
-async function persistFileBytes(
-  db: Db,
-  params: {
-    tenant_id: string;
-    actor_id: string | null;
-    filename: string;
-    content_type: string | null;
-    bytes: Uint8Array;
-  },
-): Promise<{ row: typeof files.$inferSelect; dedup: boolean; scan: PersistedScan | null }> {
-  const sha256 = createHash("sha256").update(params.bytes).digest("hex");
-  const existing = await db
-    .select()
-    .from(files)
-    .where(and(eq(files.tenant_id, params.tenant_id), eq(files.sha256, sha256)))
-    .limit(1);
-  if (existing[0]) return { row: existing[0], dedup: true, scan: null };
-
-  const file_uuid = randomUUID();
-  const key = buildObjectKey(params.tenant_id, file_uuid);
-  const storage_uri = composeStorageUri(key);
-  await getObjectStore().put(key, params.bytes);
-  const scan = await getScanner().scan(streamFromBytes(params.bytes), {
-    content_type: params.content_type,
-    filename: params.filename,
-  });
-  const status = scan.verdict === "clean" ? "ready" : "failed";
-  const scanInfo: PersistedScan = {
-    verdict: scan.verdict,
-    engine: scan.engine,
-    signature: scan.signature ?? null,
-  };
-  try {
-    const inserted = await db
-      .insert(files)
-      .values({
-        id: file_uuid,
-        tenant_id: params.tenant_id,
-        status,
-        filename: params.filename,
-        content_type: params.content_type,
-        size_bytes: params.bytes.byteLength,
-        storage_uri,
-        sha256,
-        scan_result: scan.verdict,
-        created_by: params.actor_id,
-      })
-      .returning();
-    const row = inserted[0];
-    if (row) return { row, dedup: false, scan: scanInfo };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("files_tenant_sha256_uq") || msg.includes("duplicate key")) {
-      const again = await db
-        .select()
-        .from(files)
-        .where(and(eq(files.tenant_id, params.tenant_id), eq(files.sha256, sha256)))
-        .limit(1);
-      if (again[0]) {
-        try {
-          await getObjectStore().delete(key);
-        } catch {
-          /* best-effort */
-        }
-        return { row: again[0], dedup: true, scan: null };
-      }
-    }
-    throw err;
-  }
-  throw new Error("files insert returned no row");
 }
 
 export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -338,10 +229,9 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
         413,
       );
     }
-    const { row, dedup, scan } = await persistFileBytes(db, {
+    const { row, dedup, scan } = await persistInlineUpload(db, {
       tenant_id,
-      actor_id:
-        principal.kind === "user" || principal.kind === "system_account" ? principal.id : null,
+      actor_id: principal.id,
       filename,
       content_type,
       bytes,
