@@ -641,3 +641,22 @@ export function recordFileScanResult(args: { verdict: string }): void {
     });
   });
 }
+
+/** Allow-list for `source` label on
+ *  `subkit_files_cleanup_pgboss_scan_missing_total`. Mirrors the three
+ *  pg-boss tables the cleanup runner queries inside the in-flight
+ *  fid-set scan (`pgboss.job`, `pgboss.schedule`, `pgboss.archive`). */
+const FILES_CLEANUP_PGBOSS_SOURCES = new Set<string>(["job", "schedule", "archive"]);
+
+/** Increment `subkit_files_cleanup_pgboss_scan_missing_total{source}`
+ *  once per failed pg-boss in-flight scan. Operators wire an alert on
+ *  this counter — non-zero in production means the pg-boss schema is
+ *  absent (deploy regression) and the cleanup cron has degraded to
+ *  skip the unlinked-TTL soft-delete pass. */
+export function recordFilesCleanupPgbossScanMissing(args: { source: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.FILES_CLEANUP_PGBOSS_SCAN_MISSING_TOTAL, {
+      source: FILES_CLEANUP_PGBOSS_SOURCES.has(args.source) ? args.source : "job",
+    });
+  });
+}

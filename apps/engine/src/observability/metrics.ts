@@ -459,6 +459,17 @@ export const METRIC_NAMES = {
    * source still warrants follow-up.
    */
   FILES_SCAN_RESULTS_TOTAL: "subkit_files_scan_results_total",
+  /**
+   * Counter of pg-boss in-flight scans that failed because the
+   * `pgboss` schema was absent. In production this is a serious
+   * deploy regression — pg-boss is the queue substrate; missing
+   * schema means migrations didn't apply. The cleanup cron skips
+   * the unlinked-TTL soft-delete pass for the tick when any scan
+   * fails (so a file referenced by an in-flight job that is
+   * unreachable through the failed scan path is NOT reaped).
+   * `source` is one of `job`, `schedule`, `archive`.
+   */
+  FILES_CLEANUP_PGBOSS_SCAN_MISSING_TOTAL: "subkit_files_cleanup_pgboss_scan_missing_total",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -733,6 +744,11 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.FILES_SCAN_RESULTS_TOTAL,
     help: "Scanner verdicts (`clean` / `infected`). Any `infected` value is operator-actionable.",
     labels: ["verdict"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.FILES_CLEANUP_PGBOSS_SCAN_MISSING_TOTAL,
+    help: "pg-boss in-flight scans that failed because the `pgboss` schema is absent — a serious deploy regression in production. The cleanup cron skips the unlinked-TTL soft-delete pass for the tick when any scan fails. `source` is one of `job`, `schedule`, `archive`.",
+    labels: ["source"],
   });
 
   return reg;

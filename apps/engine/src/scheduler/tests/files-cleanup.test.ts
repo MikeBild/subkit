@@ -16,6 +16,7 @@ import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setu
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { runFilesCleanup } from "../files-cleanup-runner.ts";
+import { bootstrapMinimalPgbossSchema } from "./pgboss-bootstrap.ts";
 
 // Deterministic uuid source: seeded so the test replays identically.
 const uuid = createDeterministicUuidFactory(0xface02);
@@ -30,6 +31,11 @@ let srv: HttpTestServer;
 
 beforeAll(async () => {
   srv = await createHttpTestServer("files-cleanup");
+  // The cleanup runner's in-flight scan queries `pgboss.{job,schedule,archive}`.
+  // W5: missing pg-boss schema is now treated as a deploy regression and the
+  // soft-delete pass is skipped. Tests that want to exercise soft-delete need
+  // the schema bootstrapped (empty tables — zero in-flight refs).
+  await bootstrapMinimalPgbossSchema(srv.db);
 }, 60_000);
 
 afterAll(async () => {

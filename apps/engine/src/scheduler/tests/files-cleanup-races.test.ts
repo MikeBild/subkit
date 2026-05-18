@@ -13,6 +13,7 @@ import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setu
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { runFilesCleanup } from "../files-cleanup-runner.ts";
+import { bootstrapMinimalPgbossSchema } from "./pgboss-bootstrap.ts";
 
 // Deterministic uuid source: seeded so the test replays identically.
 const uuid = createDeterministicUuidFactory(0xface01);
@@ -21,6 +22,9 @@ let srv: HttpTestServer;
 
 beforeAll(async () => {
   srv = await createHttpTestServer("files-cleanup-races");
+  // See files-cleanup.test.ts: bootstrap pg-boss tables so the
+  // in-flight scan succeeds and the soft-delete pass runs (W5).
+  await bootstrapMinimalPgbossSchema(srv.db);
 }, 60_000);
 
 afterAll(async () => {

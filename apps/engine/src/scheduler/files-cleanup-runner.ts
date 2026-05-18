@@ -69,7 +69,11 @@ import type { Db } from "../db/client.ts";
 import { executionSteps, executions, fileLinks, files } from "../db/schema/index.ts";
 import { storageKey } from "../files/resolver.ts";
 import { errorFields, logger } from "../logging/logger.ts";
-import { setFilesBytesTotal, setFilesTotal } from "../observability/instrumentation.ts";
+import {
+  recordFilesCleanupPgbossScanMissing,
+  setFilesBytesTotal,
+  setFilesTotal,
+} from "../observability/instrumentation.ts";
 import { EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
 import { getObjectStore } from "../storage/object-store.ts";
 
@@ -223,8 +227,21 @@ async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_sca
  * prefers a false positive (keep the file) over a false negative
  * (reap a file the workflow is reading).
  */
-async function loadInFlightFidStrings(db: Db): Promise<string> {
+/** Shape returned by `loadInFlightFidStrings`. `pgboss_scan_failed` is
+ *  `true` when ANY of the three pg-boss scans (job / schedule / archive)
+ *  threw — typically because the `pgboss` schema is absent (deploy
+ *  regression). When set, the caller MUST skip the soft-delete pass
+ *  for the tick: a file referenced by an in-flight job that is
+ *  unreachable through the failed scan path would otherwise be reaped
+ *  while the workflow holds it. */
+interface InFlightFidScan {
+  haystack: string;
+  pgboss_scan_failed: boolean;
+}
+
+async function loadInFlightFidStrings(db: Db): Promise<InFlightFidScan> {
   const parts: string[] = [];
+  let pgboss_scan_failed = false;
 
   // Source 1 — running executions' source_ref (draft + step runs).
   // tenant-filter:exempt — global sweep; the in-flight set covers every tenant
@@ -296,18 +313,29 @@ async function loadInFlightFidStrings(db: Db): Promise<string> {
       if (r.data != null) parts.push(r.data);
     }
   } catch (err) {
-    // pg-boss schema may not exist in some test contexts; degrade
-    // gracefully — the executions + execution_steps scans above
-    // still protect the dominant in-flight paths.
-    logger.warn({
+    // The unioned scan covers three pg-boss tables (`job`,
+    // `schedule`, `archive`); a missing `pgboss` schema fails them
+    // all at once. We record one increment per source so an alert
+    // can fire on the counter regardless of which table the SQL
+    // engine reported first, and escalate to `error` (was `warn`):
+    // in production this is a deploy regression — the queue
+    // substrate is unreachable. The caller (sweepUnlinkedTtl) reads
+    // the `pgboss_scan_failed` flag and skips the soft-delete pass
+    // for the tick so a file referenced by an unreachable in-flight
+    // job is NOT reaped while the workflow holds it.
+    pgboss_scan_failed = true;
+    recordFilesCleanupPgbossScanMissing({ source: "job" });
+    recordFilesCleanupPgbossScanMissing({ source: "schedule" });
+    recordFilesCleanupPgbossScanMissing({ source: "archive" });
+    logger.error({
       module: "scheduler",
       action: "files_cleanup.pgboss_scan_failed",
-      msg: "pg-boss in-flight scan failed — relying on executions + execution_steps for in-flight grace",
+      msg: "pg-boss in-flight scan failed — deploy regression in production; unlinked-TTL soft-delete pass skipped this tick",
       ...errorFields(err),
     });
   }
 
-  return parts.join("\n");
+  return { haystack: parts.join("\n"), pgboss_scan_failed };
 }
 
 /**
@@ -336,17 +364,35 @@ async function sweepUnlinkedTtl(db: Db): Promise<{ soft: number; hard: number }>
 
   let softDeleted = 0;
   if (candidates.length > 0) {
-    const inFlightHaystack = await loadInFlightFidStrings(db);
-    const toSoftDelete = candidates
-      .filter((c) => !inFlightHaystack.includes(c.id))
-      .map((c) => c.id);
-    if (toSoftDelete.length > 0) {
-      const updated = await db
-        .update(files)
-        .set({ deleted_at: new Date() })
-        .where(and(inArray(files.id, toSoftDelete), isNull(files.deleted_at)))
-        .returning({ id: files.id });
-      softDeleted = updated.length;
+    const scan = await loadInFlightFidStrings(db);
+    if (scan.pgboss_scan_failed) {
+      // Conservative: when the pg-boss scan is unreachable we do NOT
+      // soft-delete this tick. A file referenced by an unreachable
+      // in-flight job (queued, scheduled, archived) would otherwise
+      // be reaped while the workflow still holds it. The hard-delete
+      // pass below stays — it operates on rows that have ALREADY been
+      // soft-deleted long enough ago (UNLINKED_HARD_DELETE_AFTER) to
+      // outlast every plausible deploy fix. Logged at debug so a
+      // dashboard reader correlates with the error log from the scan
+      // failure itself.
+      logger.warn({
+        module: "scheduler",
+        action: "files_cleanup.unlinked_soft_delete_skipped",
+        msg: "skipping unlinked-TTL soft-delete pass — pg-boss scan unreachable; in-flight files cannot be guarded this tick",
+      });
+    } else {
+      const inFlightHaystack = scan.haystack;
+      const toSoftDelete = candidates
+        .filter((c) => !inFlightHaystack.includes(c.id))
+        .map((c) => c.id);
+      if (toSoftDelete.length > 0) {
+        const updated = await db
+          .update(files)
+          .set({ deleted_at: new Date() })
+          .where(and(inArray(files.id, toSoftDelete), isNull(files.deleted_at)))
+          .returning({ id: files.id });
+        softDeleted = updated.length;
+      }
     }
   }
 
