@@ -174,14 +174,16 @@ describe("files audit cardinality", () => {
     const tooLong = "x".repeat(256);
     const justRight = "x".repeat(255);
     const result = FileCreatedMetadataSchema.safeParse({
-      file_id: "11111111-1111-1111-1111-111111111111",
+      // Strict UUID v4 pattern — version nibble must be 4, variant nibble in 8-b.
+      file_id: "11111111-1111-4111-9111-111111111111",
       size_bytes_bucket: "<1KB",
       content_type: null,
       filename: tooLong,
     });
     expect(result.success).toBe(false);
     const ok = FileCreatedMetadataSchema.safeParse({
-      file_id: "11111111-1111-1111-1111-111111111111",
+      // Strict UUID v4 pattern — version nibble must be 4, variant nibble in 8-b.
+      file_id: "11111111-1111-4111-9111-111111111111",
       size_bytes_bucket: "<1KB",
       content_type: null,
       filename: justRight,

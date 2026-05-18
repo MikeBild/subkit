@@ -8,7 +8,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { actorType } from "../../../audit/actor.ts";
+import { actorType } from "../../../audit/index.ts";
 import * as svc from "../../../conversations/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";

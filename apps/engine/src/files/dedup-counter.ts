@@ -1,12 +1,11 @@
 // Per-tenant dedup-hit persistence helper.
 //
-// W6 (PR #186): the `dedup_hits` field on `GET /v1/files/stats`
-// previously read from `audit_log` (`action='file.created'` +
-// `metadata->>'dedup' = 'true'`), which coupled compliance retention to
-// dashboard accuracy. A shorter audit retention silently dropped the
-// stat. The `files_dedup_seen` table owns the counter independently —
-// one UPSERT-bumped row per tenant; the stats query becomes a single
-// indexed lookup.
+// The `dedup_hits` field on `GET /v1/files/stats` is owned by this
+// counter, not by `audit_log`. Reading the audit ledger would couple
+// compliance retention to dashboard accuracy — a shorter audit
+// retention would silently drop the stat. The `files_dedup_seen` table
+// owns the counter independently: one UPSERT-bumped row per tenant,
+// and the stats query is a single indexed lookup.
 //
 // Call this helper on EVERY dedup short-circuit path:
 //   - inline upload sha256-match (POST /v1/files/inline)
