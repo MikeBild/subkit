@@ -15,6 +15,7 @@
 // (SDKs, snapshot tests) reads from those names.
 
 import { z } from "@hono/zod-openapi";
+import { FILE_LINK_RESOURCE_TYPES } from "@shared/index.ts";
 
 // ---------------------------------------------------------------------------
 // File id wire format
@@ -177,17 +178,11 @@ export const FinalizeRequestSchema = z
 // Link (POST /v1/files/:id/links)
 // ---------------------------------------------------------------------------
 
-/** Shared between `LinkRequestSchema.resource_type` and
- *  `ListFilesQuerySchema.linked_to`. Centralised so a future enum
- *  addition (or rename) flows through both surfaces without drift. */
-export const FILE_LINK_RESOURCE_TYPES = [
-  "conversation",
-  "knowledge_source",
-  "skill",
-  "connector",
-  "workflow_run",
-  "discovery_run",
-] as const;
+/** Re-exported from `@shared/files-constants` so the engine, CLI, and
+ *  any other client-package surface share one enum. See the constant's
+ *  docstring for the rationale; bind the Zod / OpenAPI schema to the
+ *  shared tuple so renames / additions flow through every surface. */
+export { FILE_LINK_RESOURCE_TYPES };
 
 export const FileLinkResourceTypeSchema = z
   .enum(FILE_LINK_RESOURCE_TYPES)

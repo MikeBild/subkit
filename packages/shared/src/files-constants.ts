@@ -18,3 +18,18 @@
  *  JSON body by ~33% so a 5 MiB payload lands as ~7 MiB on the
  *  wire. */
 export const MAX_INLINE_BYTES = 5 * 1024 * 1024;
+
+/** Resource types a file link may target. Shared between the engine
+ *  (`LinkRequestSchema.resource_type`, `ListFilesQuerySchema.linked_to`)
+ *  and the CLI (`parseResourceRef`) so an enum addition / rename flows
+ *  through every surface without drift. */
+export const FILE_LINK_RESOURCE_TYPES = [
+  "conversation",
+  "knowledge_source",
+  "skill",
+  "connector",
+  "workflow_run",
+  "discovery_run",
+] as const;
+
+export type FileLinkResourceType = (typeof FILE_LINK_RESOURCE_TYPES)[number];

@@ -14,7 +14,13 @@ import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
-import { EngineClient, type FileWire, MAX_INLINE_BYTES } from "../engine-client.ts";
+import {
+  EngineClient,
+  FILE_LINK_RESOURCE_TYPES,
+  type FileLinkResourceType,
+  type FileWire,
+  MAX_INLINE_BYTES,
+} from "../engine-client.ts";
 import { detectMime } from "../utils/mime.ts";
 import {
   readableFromBytes,
@@ -55,13 +61,7 @@ function humanBytes(n: number): string {
  *  type rejection path is a public contract surface even though the
  *  helper itself is local to this module. */
 export function parseResourceRef(s: string): {
-  resource_type:
-    | "conversation"
-    | "knowledge_source"
-    | "skill"
-    | "connector"
-    | "workflow_run"
-    | "discovery_run";
+  resource_type: FileLinkResourceType;
   resource_id: string;
 } {
   const colon = s.indexOf(":");
@@ -70,18 +70,12 @@ export function parseResourceRef(s: string): {
   }
   const t = s.slice(0, colon);
   const id = s.slice(colon + 1);
-  const allowed = [
-    "conversation",
-    "knowledge_source",
-    "skill",
-    "connector",
-    "workflow_run",
-    "discovery_run",
-  ] as const;
-  if (!(allowed as readonly string[]).includes(t)) {
-    throw new Error(`bad resource_type '${t}': must be one of ${allowed.join(", ")}`);
+  if (!(FILE_LINK_RESOURCE_TYPES as readonly string[]).includes(t)) {
+    throw new Error(
+      `bad resource_type '${t}': must be one of ${FILE_LINK_RESOURCE_TYPES.join(", ")}`,
+    );
   }
-  return { resource_type: t as (typeof allowed)[number], resource_id: id };
+  return { resource_type: t as FileLinkResourceType, resource_id: id };
 }
 
 interface UploadProgressOpts {
