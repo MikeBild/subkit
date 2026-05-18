@@ -49,8 +49,13 @@ function humanBytes(n: number): string {
 
 /** Parse `<resource_type>:<uuid>` — used by --link-to and --linked-to.
  *  Validates the resource_type against the engine's enum so a typo
- *  fails locally instead of at the wire boundary. */
-function parseResourceRef(s: string): {
+ *  fails locally instead of at the wire boundary.
+ *
+ *  Exported so the command-layer guard can be exercised directly from
+ *  unit tests without spinning up the engine — the unknown-resource-
+ *  type rejection path is a public contract surface even though the
+ *  helper itself is local to this module. */
+export function parseResourceRef(s: string): {
   resource_type:
     | "conversation"
     | "knowledge_source"

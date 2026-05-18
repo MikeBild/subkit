@@ -283,28 +283,19 @@ describe("sk files link", () => {
   });
 
   test("link to unknown resource type is a client-side error", async () => {
-    // parseResourceRef is not exported; test via bad string format:
-    // the command validates before calling the API, so we verify the
-    // API was never reached on a clearly invalid ref.
-    // Instead verify the format guard works via a misformed ref string.
-    let apiCalled = false;
-    const client = new EngineClient({
-      engine_url: "http://engine.local",
-      api_key: "wf_live_test",
-      tenant: "t-test",
-      fetchImpl: async () => {
-        apiCalled = true;
-        return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
-      },
-    });
-    // link itself will work; the guard lives in the command layer which
-    // calls parseResourceRef before invoking client.linkFile. We verify
-    // the client-level call works fine on valid input.
-    await client.linkFile("fid_00000000-0000-0000-0000-000000000001", {
-      resource_type: "conversation",
-      resource_id: "some-id",
-    });
-    expect(apiCalled).toBe(true);
+    // The command-layer guard `parseResourceRef` rejects unknown
+    // resource_type values locally so a typo fails before any HTTP
+    // call. The guard is the public contract that keeps a typo like
+    // `--to conversaton:<uuid>` from being sent to the engine just to
+    // bounce back as 400 — verify it throws with a message that names
+    // the offending type.
+    const { parseResourceRef } = await import("../../commands/files.ts");
+    expect(() => parseResourceRef("bogus_type:00000000-0000-0000-0000-000000000001")).toThrow(
+      /bad resource_type 'bogus_type'/,
+    );
+    // Missing colon is also rejected with a distinct message so the
+    // operator can tell shape errors from enum errors.
+    expect(() => parseResourceRef("no-colon-here")).toThrow(/bad resource ref 'no-colon-here'/);
   });
 });
 
