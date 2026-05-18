@@ -177,18 +177,27 @@ export const FinalizeRequestSchema = z
 // Link (POST /v1/files/:id/links)
 // ---------------------------------------------------------------------------
 
+/** Shared between `LinkRequestSchema.resource_type` and
+ *  `ListFilesQuerySchema.linked_to`. Centralised so a future enum
+ *  addition (or rename) flows through both surfaces without drift. */
+export const FILE_LINK_RESOURCE_TYPES = [
+  "conversation",
+  "knowledge_source",
+  "skill",
+  "connector",
+  "workflow_run",
+  "discovery_run",
+] as const;
+
+export const FileLinkResourceTypeSchema = z
+  .enum(FILE_LINK_RESOURCE_TYPES)
+  .openapi("FileLinkResourceType");
+
 /** `resource_type` mirrors the `file_link_resource` enum exactly so the
  *  DB INSERT never has to translate. */
 export const LinkRequestSchema = z
   .object({
-    resource_type: z.enum([
-      "conversation",
-      "knowledge_source",
-      "skill",
-      "connector",
-      "workflow_run",
-      "discovery_run",
-    ]),
+    resource_type: FileLinkResourceTypeSchema,
     resource_id: z.string().uuid(),
     slug: z.string().min(1).max(128).optional(),
     role: z.string().min(1).max(64).optional(),
@@ -226,14 +235,23 @@ export const FileStatsSchema = z
 // ---------------------------------------------------------------------------
 
 /** Query parameters for the list endpoint. `linked_to` accepts the
- *  `resource_type:resource_id` syntax shared with the CLI. */
+ *  `resource_type:resource_id` syntax shared with the CLI.
+ *
+ *  The regex anchors `resource_type` to the exact union accepted by
+ *  `LinkRequestSchema` and `resource_id` to a strict canonical UUID.
+ *  A typo like `?linked_to=conversaton:<uuid>` returns 400 instead of
+ *  silently no-matching every row. The list handler relies on this
+ *  guarantee — it casts `rtype` straight to the drizzle enum without
+ *  re-validating. Keep this enum in sync with `LinkRequestSchema`. */
+const LINKED_TO_RESOURCE_TYPES_PATTERN = FILE_LINK_RESOURCE_TYPES.join("|");
+const LINKED_TO_PATTERN = new RegExp(
+  `^(?:${LINKED_TO_RESOURCE_TYPES_PATTERN}):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
+);
+
 export const ListFilesQuerySchema = z
   .object({
     status: FileStatusSchema.optional(),
-    linked_to: z
-      .string()
-      .regex(/^[a-z_]+:[0-9a-f-]{36}$/)
-      .optional(),
+    linked_to: z.string().regex(LINKED_TO_PATTERN).optional(),
     cursor: z.string().optional(),
     limit: z.coerce.number().int().positive().max(100).optional(),
   })

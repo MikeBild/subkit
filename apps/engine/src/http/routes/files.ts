@@ -1276,13 +1276,12 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       }
     }
 
-    // We load the full object then slice — sufficient for the 5 MB
-    // inline cap. The streaming-Range upgrade lands with Wave C's
-    // large-file path. `Buffer` → `Uint8Array` view so the fetch-api
-    // `Response` constructor (which types `BodyInit` against the DOM
-    // lib) accepts it without an `as unknown` cast.
-    const buf = await getObjectStore().get(key);
-    const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+    // Stream the bytes through the object store's range-aware reader
+    // so a Range request on a multi-GB object does not buffer the full
+    // payload in process memory. Local backend uses fs.createReadStream
+    // with `{ start, end }` (kernel-side pread); S3 backend issues a
+    // Range header through `getPartialObject` and forwards the 206
+    // body to the caller.
     audit({
       tenant_id: principal.tenant_id,
       actor_type: actorType(principal),
@@ -1299,18 +1298,48 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       }),
     });
 
+    // Wrap the async iterable in a ReadableStream so Hono's `c.body`
+    // accepts it directly (fetch-api `BodyInit` allows ReadableStream).
+    const iterable = range
+      ? await getObjectStore().openReadRange(key, { start: range.start, end: range.end })
+      : await getObjectStore().openRead(key);
+    const iterator = iterable[Symbol.asyncIterator]();
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const { value, done } = await iterator.next();
+          if (done) {
+            controller.close();
+            return;
+          }
+          if (value) controller.enqueue(value);
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+      async cancel(reason) {
+        if (typeof iterator.return === "function") {
+          try {
+            await iterator.return(reason);
+          } catch {
+            /* best-effort */
+          }
+        }
+      },
+    });
+
     if (range) {
-      const slice = bytes.subarray(range.start, range.end + 1);
-      return c.body(slice as unknown as ArrayBuffer, 206, {
+      const sliceLen = range.end - range.start + 1;
+      return c.body(stream, 206, {
         "content-type": ct,
-        "content-length": String(slice.byteLength),
+        "content-length": String(sliceLen),
         "content-range": `bytes ${range.start}-${range.end}/${total}`,
         "accept-ranges": "bytes",
       });
     }
-    return c.body(bytes as unknown as ArrayBuffer, 200, {
+    return c.body(stream, 200, {
       "content-type": ct,
-      "content-length": String(bytes.byteLength),
+      "content-length": String(total),
       "accept-ranges": "bytes",
     });
   });

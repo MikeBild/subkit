@@ -19,7 +19,11 @@
 
 import { and, asc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction, ConversationForkedMetadataSchema } from "../../audit/types.ts";
+import {
+  AuditAction,
+  ConversationForkedMetadataSchema,
+  FileLinkAddedMetadataSchema,
+} from "../../audit/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations, fileLinks } from "../../db/schema/index.ts";
@@ -216,13 +220,18 @@ export async function forkConversation(
           resource_type: "file",
           resource_id: l.file_id,
           result: "success",
-          metadata: {
+          // `.parse(...)` matches every other FILE_LINK_ADDED emitter in
+          // the codebase; without it the missing `file_id` field would
+          // silently land in the audit row and SIEM queries on
+          // `metadata->>'file_id'` would miss every fork-cascaded link.
+          metadata: FileLinkAddedMetadataSchema.parse({
+            file_id: l.file_id,
             resource_type: "conversation",
             resource_id: row.id,
             slug: l.slug,
             role: l.role,
             source: "fork",
-          },
+          }),
         },
         exec,
       );

@@ -51,8 +51,22 @@ export interface ObjectStore {
   /** Stream the bytes at `key`. Throws if not found. Backends must
    *  return an `AsyncIterable` that yields without buffering the whole
    *  object — large-file paths (LLM `text_extract`, multipart upload,
-   *  Range download) depend on this. */
+   *  Range download) depend on this. Delegates to `openReadRange` with
+   *  no bounds; backends do not need to override. */
   openRead(key: string): Promise<AsyncIterable<Uint8Array>>;
+
+  /** Stream a byte range at `key`. Both bounds are inclusive (HTTP
+   *  Range semantics: `bytes=0-999` yields 1000 bytes). Omitting
+   *  `start` reads from offset 0; omitting `end` reads to EOF. Throws
+   *  if the key is missing.
+   *
+   *  Backends implement this so the HTTP content route can serve
+   *  partial responses for multi-GB objects without buffering the full
+   *  object in memory. */
+  openReadRange(
+    key: string,
+    range: { start?: number; end?: number },
+  ): Promise<AsyncIterable<Uint8Array>>;
 
   /** Server-side copy from `src` to `dst`. On local disk this is a
    *  file copy; on S3 it is `CopyObject`. */
@@ -241,10 +255,21 @@ export class LocalDiskObjectStore implements ObjectStore {
   }
 
   async openRead(key: string): Promise<AsyncIterable<Uint8Array>> {
+    return this.openReadRange(key, {});
+  }
+
+  async openReadRange(
+    key: string,
+    range: { start?: number; end?: number },
+  ): Promise<AsyncIterable<Uint8Array>> {
     const target = this.resolveKey(key);
-    // `fs.createReadStream` is a Node readable; it is already
-    // async-iterable (chunks are `Buffer`, which extends `Uint8Array`).
-    return createReadStream(target) as unknown as AsyncIterable<Uint8Array>;
+    // `fs.createReadStream` natively supports inclusive `{ start, end }`
+    // bounds — kernel-side `pread64` skips the unread head/tail without
+    // ever paging it into the process.
+    const opts: { start?: number; end?: number } = {};
+    if (range.start !== undefined) opts.start = range.start;
+    if (range.end !== undefined) opts.end = range.end;
+    return createReadStream(target, opts) as unknown as AsyncIterable<Uint8Array>;
   }
 
   async copy(src: string, dst: string): Promise<void> {
@@ -380,9 +405,29 @@ export class S3ObjectStore implements ObjectStore {
   }
 
   async openRead(key: string): Promise<AsyncIterable<Uint8Array>> {
-    const res = await this.client.getObject(key);
+    return this.openReadRange(key, {});
+  }
+
+  async openReadRange(
+    key: string,
+    range: { start?: number; end?: number },
+  ): Promise<AsyncIterable<Uint8Array>> {
+    // s3-lite-client exposes `getPartialObject({ offset, length })` which
+    // emits the standard `Range: bytes=offset-(offset+length-1)` header
+    // and forwards the 206 Partial Content body straight to the caller.
+    // S3 + every S3-compatible vendor honour the same syntax.
+    const hasRange = range.start !== undefined || range.end !== undefined;
+    let res: Response;
+    if (hasRange) {
+      const offset = range.start ?? 0;
+      // Inclusive end → length conversion. `length = 0` means "rest of
+      // object from offset" per the client contract.
+      const length = range.end !== undefined ? range.end - offset + 1 : 0;
+      res = await this.client.getPartialObject(key, { offset, length });
+    } else {
+      res = await this.client.getObject(key);
+    }
     if (!res.body) {
-      // Empty object — yield nothing. Callers iterate to completion.
       return (async function* () {})();
     }
     return res.body as unknown as AsyncIterable<Uint8Array>;

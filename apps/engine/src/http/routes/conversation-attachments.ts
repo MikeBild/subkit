@@ -46,6 +46,7 @@ import {
   FileCreatedMetadataSchema,
   FileLinkAddedMetadataSchema,
   FileLinkRemovedMetadataSchema,
+  FileScanCompletedMetadataSchema,
 } from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
@@ -145,9 +146,21 @@ async function conversationExists(db: Db, tenant_id: string, id: string): Promis
   return Boolean(row);
 }
 
+/** Scanner output exposed to the caller so it can emit a
+ *  `FILE_SCAN_COMPLETED` audit row symmetric with the canonical
+ *  `/v1/files/inline` route. `null` is returned on the dedup branch —
+ *  no fresh scan ran, no audit row to emit. */
+interface PersistedScan {
+  verdict: string;
+  engine: string;
+  signature: string | null;
+}
+
 /** Find or create a `files` row for the given bytes. Returns the row
  *  along with a flag indicating whether dedup short-circuited the
- *  upload. Mirrors the dedup logic in `POST /v1/files/inline`. */
+ *  upload and (for fresh inserts) the scanner verdict so the caller
+ *  can emit the symmetric `FILE_SCAN_COMPLETED` audit row. Mirrors the
+ *  dedup logic in `POST /v1/files/inline`. */
 async function persistFileBytes(
   db: Db,
   params: {
@@ -157,14 +170,14 @@ async function persistFileBytes(
     content_type: string | null;
     bytes: Uint8Array;
   },
-): Promise<{ row: typeof files.$inferSelect; dedup: boolean }> {
+): Promise<{ row: typeof files.$inferSelect; dedup: boolean; scan: PersistedScan | null }> {
   const sha256 = createHash("sha256").update(params.bytes).digest("hex");
   const existing = await db
     .select()
     .from(files)
     .where(and(eq(files.tenant_id, params.tenant_id), eq(files.sha256, sha256)))
     .limit(1);
-  if (existing[0]) return { row: existing[0], dedup: true };
+  if (existing[0]) return { row: existing[0], dedup: true, scan: null };
 
   const file_uuid = randomUUID();
   const key = buildObjectKey(params.tenant_id, file_uuid);
@@ -175,6 +188,11 @@ async function persistFileBytes(
     filename: params.filename,
   });
   const status = scan.verdict === "clean" ? "ready" : "failed";
+  const scanInfo: PersistedScan = {
+    verdict: scan.verdict,
+    engine: scan.engine,
+    signature: scan.signature ?? null,
+  };
   try {
     const inserted = await db
       .insert(files)
@@ -192,7 +210,7 @@ async function persistFileBytes(
       })
       .returning();
     const row = inserted[0];
-    if (row) return { row, dedup: false };
+    if (row) return { row, dedup: false, scan: scanInfo };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("files_tenant_sha256_uq") || msg.includes("duplicate key")) {
@@ -207,7 +225,7 @@ async function persistFileBytes(
         } catch {
           /* best-effort */
         }
-        return { row: again[0], dedup: true };
+        return { row: again[0], dedup: true, scan: null };
       }
     }
     throw err;
@@ -328,7 +346,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
         413,
       );
     }
-    const { row, dedup } = await persistFileBytes(db, {
+    const { row, dedup, scan } = await persistFileBytes(db, {
       tenant_id,
       actor_id:
         principal.kind === "user" || principal.kind === "system_account" ? principal.id : null,
@@ -349,10 +367,14 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       })
       .onConflictDoNothing();
 
-    // Audit the create + the link as two separate rows — mirrors the
-    // canonical `/v1/files/*` surface so a downstream query on
-    // `FILE_CREATED` / `FILE_LINK_ADDED` returns a consistent shape no
-    // matter which entry point landed the file.
+    // Audit the create + scan + link as three separate rows — mirrors
+    // the canonical `/v1/files/inline` route. `FILE_SCAN_COMPLETED`
+    // fires only on fresh inserts (dedup hits short-circuited before
+    // the scanner ran); skipping it on dedup matches the canonical
+    // route which never re-scans an existing row. A downstream SIEM
+    // query on `FILE_CREATED` + `FILE_SCAN_COMPLETED` therefore returns
+    // a consistent shape regardless of which entry point landed the
+    // bytes.
     await auditAwait(
       {
         tenant_id,
@@ -373,6 +395,30 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       },
       db,
     );
+    if (scan) {
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: principal.kind === "user" ? "user" : "system_account",
+          actor_id: principal.id,
+          action: AuditAction.FILE_SCAN_COMPLETED,
+          resource_type: "file",
+          resource_id: row.id,
+          // `timeout` is an operational failure (scanner backend slow / wedged),
+          // not a security verdict — log it as `error`. Mirrors the
+          // canonical files.ts inline handler.
+          result:
+            scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
+          metadata: FileScanCompletedMetadataSchema.parse({
+            file_id: row.id,
+            verdict: scan.verdict,
+            engine: scan.engine,
+            signature: scan.signature,
+          }),
+        },
+        db,
+      );
+    }
     await auditAwait(
       {
         tenant_id,
