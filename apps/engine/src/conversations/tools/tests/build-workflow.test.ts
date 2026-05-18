@@ -424,3 +424,67 @@ describe("build_workflow — reserved auth headers", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("build_workflow — trigger field (root A)", () => {
+  test("accepts a schedule trigger and persists it in the draft", async () => {
+    const toolCtx = makeCtx();
+    const result = await buildWorkflowTool.execute(toolCtx, {
+      name: "Daily nightly report",
+      slug: "nightly-report-trig",
+      description: "Email a summary every day at 7pm",
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+      trigger: { kind: "schedule", cron: "0 19 * * *", tz: "Europe/Berlin" },
+      environment: "dev",
+    });
+    expect(result.ok).toBe(true);
+    expect(toolCtx.draft!.workflow.trigger).toEqual({
+      kind: "schedule",
+      cron: "0 19 * * *",
+      tz: "Europe/Berlin",
+    });
+  });
+
+  test("accepts a webhook trigger and persists it in the draft", async () => {
+    const toolCtx = makeCtx();
+    const result = await buildWorkflowTool.execute(toolCtx, {
+      name: "Stripe charge.failed",
+      slug: "stripe-charge-failed-trig",
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+      trigger: {
+        kind: "webhook",
+        source: "stripe",
+        events: ["charge.failed"],
+        verify: "stripe-signature",
+      },
+      environment: "dev",
+    });
+    expect(result.ok).toBe(true);
+    expect((toolCtx.draft!.workflow.trigger as { kind: string }).kind).toBe("webhook");
+  });
+
+  test("rejects an invalid cron expression (empty string)", async () => {
+    const toolCtx = makeCtx();
+    const result = await buildWorkflowTool.execute(toolCtx, {
+      name: "Bad cron",
+      slug: "bad-cron-trig",
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+      trigger: { kind: "schedule", cron: "", tz: "UTC" },
+      environment: "dev",
+    });
+    expect(result.ok).toBe(false);
+    const data = result.data as { error: { code: string } };
+    expect(data.error.code).toBe("invalid_input");
+  });
+
+  test("absent trigger leaves draft.trigger undefined (back-compat)", async () => {
+    const toolCtx = makeCtx();
+    const result = await buildWorkflowTool.execute(toolCtx, {
+      name: "No trigger",
+      slug: "no-trig",
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+      environment: "dev",
+    });
+    expect(result.ok).toBe(true);
+    expect(toolCtx.draft!.workflow.trigger).toBeUndefined();
+  });
+});
