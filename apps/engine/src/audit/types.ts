@@ -611,6 +611,13 @@ export const FileCreatedMetadataSchema = z.object({
     .optional(),
   dedup: z.boolean().optional(),
   request_source: RequestSourceSchema.optional(),
+  /** Free-form route-level discriminator distinguishing equivalent
+   *  emissions from different entry points (e.g.
+   *  `conversation_attachments` for the portal-wrapper route vs. the
+   *  canonical `/v1/files/inline` route). Lets SIEM queries split
+   *  audit rows by emission path without joining back to the request
+   *  log. Mirrors `FileLinkAddedMetadataSchema.source`. */
+  source: z.string().optional(),
 });
 export type FileCreatedMetadata = z.infer<typeof FileCreatedMetadataSchema>;
 
