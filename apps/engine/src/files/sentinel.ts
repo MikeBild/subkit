@@ -24,11 +24,6 @@
  *  the loop. */
 export const FILE_SENTINEL_RE = /\[file:(fid_[A-Za-z0-9_-]+)\]/g;
 
-/** Inverse of the regex: wrap a file id in the canonical sentinel form. */
-export function formatFileSentinel(fid: string): string {
-  return `[file:${fid}]`;
-}
-
 /** Return every fid embedded in `text`, in order, deduplicated.
  *  Empty array if none. */
 export function extractFileSentinels(text: string): string[] {

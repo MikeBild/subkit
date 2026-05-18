@@ -112,7 +112,8 @@ Storage backends
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `storage.files.backend` | enum("local" \| "s3") | `"local"` | global | no | no |  |
-| `storage.files.dir` | string | `""` | global | no | no |  |
+| `storage.files.bucket` | string | `""` | global | no | no | S3 bucket name when backend=s3. Ignored when backend=local. |
+| `storage.files.dir` | string | `""` | global | no | no | Local-disk root when backend=local. Ignored when backend=s3. |
 | `storage.offload.access_key` | string | `""` | global | yes | no |  |
 | `storage.offload.bucket` | string | `""` | global | no | no | S3 bucket for execution-payload offload; empty disables offload |
 | `storage.offload.endpoint` | string | `""` | global | no | no | Optional S3 endpoint override (MinIO, R2, etc.) |
@@ -205,3 +206,24 @@ sk REPL notification preferences
 | `notifications.push.quietHoursEnd` | string | `""` | tenant | no | no | Quiet-hours window end (HH:MM, local TZ). Empty disables the window. |
 | `notifications.push.quietHoursStart` | string | `""` | tenant | no | no | Quiet-hours window start (HH:MM, local TZ). Empty disables the window. |
 | `notifications.push.thresholdSec` | number | `30` | tenant | no | no | Minimum elapsed turn seconds before a notification fires. |
+
+## connectors
+Per-connector tunables. Each sub-section is owned by one connector template.
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `connectors.web_scraper.authoring.extract_too_large_yellow_pct` | number | `30` | tenant | no | no | Past-run extract_too_large ratio (over last 20 runs) above which the gate Yellows. |
+| `connectors.web_scraper.authoring.red_sitemap_threshold` | number | `100000` | tenant | no | no | Sitemap entry count above which analyze_scrape_target refuses (Red). |
+| `connectors.web_scraper.authoring.yellow_sitemap_threshold` | number | `10000` | tenant | no | no | Sitemap entry count above which analyze_scrape_target returns Yellow. |
+| `connectors.web_scraper.optimization.min_runs_before_proposing` | number | `3` | tenant | no | no | Minimum recent runs before any candidate is emitted. |
+| `connectors.web_scraper.optimization.sample_size` | number | `10` | tenant | no | no | Number of recent runs the analyzer reads per recipe. |
+| `connectors.web_scraper.optimization.scan_cron` | string | `"0 3 * * *"` | global | no | no | Crontab for the per-tenant optimization scan (default daily 03:00). |
+| `connectors.web_scraper.optimization.trivial_markdown_bytes` | number | `512` | tenant | no | no | Pages whose MarkdownOutput.bytes is below this count as trivial. |
+| `connectors.web_scraper.robots_cache.max_entries` | number | `2000` | global | no | no | LRU ceiling shared across tenants (keyed by tenant_id + origin). |
+| `connectors.web_scraper.robots_cache.ttl_ms` | number | `3600000` | global | no | no | TTL for the per-tenant robots.txt LRU. |
+| `connectors.web_scraper.runtime.default_wait_ms` | number | `0` | tenant | no | no | Floor for between-page wait inside the crawl loop. Raised if robots.txt declares a higher Crawl-delay. |
+| `connectors.web_scraper.runtime.max_chars_markdown` | number | `100000` | tenant | no | no | Per-page markdown output cap (extract_too_large). |
+| `connectors.web_scraper.runtime.max_chars_readability` | number | `100000` | tenant | no | no | Per-page input cap into Readability (extract_too_large). |
+| `connectors.web_scraper.runtime.max_pages` | number | `1000` | tenant | no | no | Per-run crawl cap. Hard ceiling 10 000 (crawl_max_pages_exceeded). |
+| `connectors.web_scraper.runtime.respect_robots` | boolean | `true` | tenant | no | no | Skip URLs that robots.txt disallows for the configured User-Agent. |
+| `connectors.web_scraper.runtime.user_agent` | string | `"sk-web-scraper/1.0 (+https://subkit.io/bot)"` | tenant | no | no | User-Agent header on every fetch; passed to robots-parser matching. |

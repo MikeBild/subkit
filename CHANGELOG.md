@@ -27,7 +27,7 @@
 ### Observability
 
 * **observability:** 7 new Prometheus metrics under the `subkit_files_*` namespace.
-* **audit:** 7 new audit actions: `file.created`, `file.batch_created`, `file.finalized`, `file.downloaded`, `file.deleted`, `file.link_added`, `file.scan_completed`.
+* **audit:** 8 new audit actions: `file.created`, `file.batch_created`, `file.finalized`, `file.downloaded`, `file.deleted`, `file.link_added`, `file.link_removed`, `file.scan_completed`.
 * **audit:** presigned-URL query params (`X-Amz-Signature`, `X-Goog-Signature`, `signature=`) automatically redacted in both audit entries and structured logs.
 
 
