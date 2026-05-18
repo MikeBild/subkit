@@ -492,9 +492,42 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           `  ∙ tool_call ${ev.tool}${ev.input_partial !== undefined ? ` ${JSON.stringify(ev.input_partial).slice(0, 120)}` : ""}`,
         );
         break;
-      case "tool_result":
+      case "tool_result": {
         line(`  ∙ tool_result ${ev.tool} ok`);
+        // Bubble structured warnings the engine attached to the tool
+        // result so authors can see operational hints (e.g.
+        // `schedule_not_bound` from the Root A safety net) without
+        // having to read raw JSON. Both shapes are tolerated:
+        //   - top-level `warnings: [{ code, message? }]`
+        //   - nested `output.data.warnings: [...]`
+        const output =
+          ev.output && typeof ev.output === "object"
+            ? (ev.output as Record<string, unknown>)
+            : null;
+        const collected: Array<{ code?: unknown; message?: unknown }> = [];
+        if (output && Array.isArray(output.warnings)) {
+          for (const w of output.warnings) {
+            if (w && typeof w === "object") collected.push(w as { code?: unknown });
+          }
+        }
+        const data =
+          output && output.data && typeof output.data === "object"
+            ? (output.data as Record<string, unknown>)
+            : null;
+        if (data && Array.isArray(data.warnings)) {
+          for (const w of data.warnings) {
+            if (w && typeof w === "object") collected.push(w as { code?: unknown });
+          }
+        }
+        for (const w of collected) {
+          const code = typeof w.code === "string" ? w.code : "warning";
+          const msg = typeof w.message === "string" ? `: ${w.message}` : "";
+          // Cap to ~80 chars so the warning stays on one terminal line.
+          const text = `    ! ${code}${msg}`;
+          line(text.length > 80 ? `${text.slice(0, 77)}...` : text);
+        }
         break;
+      }
       case "elicit_request":
         line(`  ! input needed: ${ev.tool_name} — ${ev.summary}`);
         line(`    run '/respond ${ev.elicitation_id} <value>'`);
