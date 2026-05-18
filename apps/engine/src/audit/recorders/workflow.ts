@@ -169,3 +169,40 @@ export async function recordWorkflowCommitted(
     p.executor,
   );
 }
+
+/**
+ * Defence-in-depth row for Root A: a workflow whose name+description
+ * carries cadence phrasing was committed with `trigger.kind = "request"`.
+ * The row is `result: "success"` because the commit itself was valid
+ * (the check constraint on `audit_log.result` only permits
+ * success / denied / error); the warning semantics live in
+ * `metadata.kind = "warning"` and the matched phrase set.
+ */
+export interface RecordWorkflowScheduleNotBoundParams extends RecorderBase {
+  workflow_id: string;
+  slug: string;
+  /** Phrases that matched the temporal regex — for operator triage. */
+  matched_phrases: string[];
+}
+
+export async function recordWorkflowScheduleNotBound(
+  p: RecordWorkflowScheduleNotBoundParams,
+): Promise<RecordedEntry> {
+  return auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: resolveActorType(p),
+      actor_id: p.actor_id,
+      action: AuditAction.WORKFLOW_SCHEDULE_NOT_BOUND,
+      resource_type: "workflow",
+      resource_id: p.workflow_id,
+      result: "success",
+      metadata: {
+        kind: "warning",
+        slug: p.slug,
+        matched_phrases: p.matched_phrases,
+      },
+    },
+    p.executor,
+  );
+}

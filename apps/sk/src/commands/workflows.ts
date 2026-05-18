@@ -78,7 +78,30 @@ const getCommand = defineCommand({
   async run({ args }) {
     const client = makeClient();
     try {
-      printJson(await client.getWorkflow(args.id));
+      const workflow = await client.getWorkflow(args.id);
+      printJson(workflow);
+      // First-class summary of the workflow-level trigger so operators
+      // don't have to grep the JSON. Default `request` trigger is the
+      // common case and adds no information — suppress.
+      const definition = (workflow as { definition?: Record<string, unknown> }).definition ?? {};
+      const trigger = (definition as { trigger?: Record<string, unknown> }).trigger;
+      if (trigger && typeof trigger === "object") {
+        const kind = typeof trigger.kind === "string" ? trigger.kind : null;
+        if (kind === "schedule") {
+          const cron = typeof trigger.cron === "string" ? trigger.cron : "?";
+          const tz = typeof trigger.tz === "string" ? trigger.tz : "UTC";
+          process.stderr.write(
+            `\n${pc.dim("trigger:")} ${pc.cyan("schedule")}  cron=${cron}  tz=${tz}\n`,
+          );
+        } else if (kind === "webhook") {
+          const source = typeof trigger.source === "string" ? trigger.source : "?";
+          const events = Array.isArray(trigger.events) ? trigger.events.join(",") : "?";
+          process.stderr.write(
+            `\n${pc.dim("trigger:")} ${pc.cyan("webhook")}  source=${source}  events=${events}\n`,
+          );
+        }
+        // `request` is the default; emit nothing.
+      }
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));

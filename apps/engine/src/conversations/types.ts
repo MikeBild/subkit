@@ -254,6 +254,12 @@ export interface WorkflowDraftDocument {
    *  (typically via `start_workflow_from_recipe`). Read by the
    *  workflow validator's skill-schema gate at save time. */
   derived_from_skill_id?: string | null;
+  /** Workflow-level trigger. Authored alongside steps via `build_workflow`
+   *  and persisted into `WorkflowDef.trigger` at commit time. A schedule
+   *  trigger then binds a `workflows_schedules` row via
+   *  `applyTriggerBindings` so cron firing is part of the workflow
+   *  definition, not a separate `create_schedule` call. */
+  trigger?: import("../workflows/types.ts").WorkflowTrigger;
 }
 
 export interface ConnectorDraftProbeSummary {

@@ -126,6 +126,10 @@ export const saveWorkflowDraftTool: ConversationTool = {
       ...(draftSnapshot.description ? { description: draftSnapshot.description } : {}),
       ...(draftSnapshot.input_schema ? { input_schema: draftSnapshot.input_schema } : {}),
       ...(draftSnapshot.output_schema ? { output_schema: draftSnapshot.output_schema } : {}),
+      // Trigger participates in the idempotency hash: re-issuing the
+      // same draft with a different cron / tz / kind must commit a new
+      // version, not short-circuit to `already_persisted`.
+      ...(draftSnapshot.trigger ? { trigger: draftSnapshot.trigger } : {}),
       steps: draftSnapshot.steps,
     };
     const draftHash = hashWorkflowDef(draftDef);
@@ -153,6 +157,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
           ...(existingDef.description ? { description: existingDef.description } : {}),
           ...(existingDef.input_schema ? { input_schema: existingDef.input_schema } : {}),
           ...(existingDef.output_schema ? { output_schema: existingDef.output_schema } : {}),
+          ...(existingDef.trigger ? { trigger: existingDef.trigger } : {}),
           steps: existingDef.steps,
         });
         if (existingHash === draftHash) {

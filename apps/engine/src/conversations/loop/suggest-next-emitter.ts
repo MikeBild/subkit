@@ -258,12 +258,34 @@ function extractTextRaw(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     const parts: string[] = [];
+    const toolNames: string[] = [];
     for (const part of content) {
       if (!part || typeof part !== "object") continue;
-      const p = part as { type?: unknown; text?: unknown };
-      if (p.type === "text" && typeof p.text === "string") parts.push(p.text);
+      const p = part as { type?: unknown; text?: unknown; toolName?: unknown; name?: unknown };
+      if (p.type === "text" && typeof p.text === "string") {
+        parts.push(p.text);
+        continue;
+      }
+      // AI SDK 6 tool-use parts surface either `toolName` (input-streaming
+      // shape) or `name` (call shape). Capture both — they're equivalent
+      // for the synthetic-summary use case.
+      if (p.type === "tool-call" || p.type === "tool_use" || p.type === "tool-input") {
+        const name =
+          typeof p.toolName === "string" ? p.toolName : typeof p.name === "string" ? p.name : null;
+        if (name) toolNames.push(name);
+      }
     }
-    return parts.join("");
+    if (parts.length > 0) return parts.join("");
+    // Tool-only assistant turn: surface a synthetic summary so the
+    // offer-parser / suggest-next has something to read AND the
+    // `content_shape_unrecognized` warn does not fire for what is
+    // structurally a valid turn. Production traffic showed 348× this
+    // warn over a 7-day window — every one was a tool-only turn.
+    if (toolNames.length > 0) {
+      const unique = Array.from(new Set(toolNames)).slice(0, 3);
+      return `(called ${unique.join(", ")})`;
+    }
+    return "";
   }
   if (content && typeof content === "object" && "text" in content) {
     const t = (content as { text?: unknown }).text;

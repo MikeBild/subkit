@@ -68,7 +68,7 @@ describe("normalizeSchema", () => {
     expect(xs).not.toHaveProperty("maxItems");
   });
 
-  it("recurses into oneOf/anyOf/allOf", () => {
+  it("renames oneOf to anyOf and recurses into both", () => {
     const { schema } = normalizeSchema({
       type: "object",
       properties: {
@@ -81,10 +81,74 @@ describe("normalizeSchema", () => {
       },
     });
     const v = (schema.properties as Record<string, Record<string, unknown>>).v!;
-    const oneOf = v.oneOf as Array<Record<string, unknown>>;
-    expect(oneOf[0]).not.toHaveProperty("patternProperties");
-    expect(oneOf[0]!.additionalProperties).toBe(false);
-    expect(oneOf[1]!.additionalProperties).toBe(false);
+    // Anthropic rejects `oneOf` as an unsupported schema keyword; we
+    // rename to `anyOf` because the wire-format constraint is what
+    // gets validated, and the discriminator is re-checked downstream
+    // when the LLM's repaired args parse through the original Zod
+    // schema.
+    expect(v).not.toHaveProperty("oneOf");
+    const anyOf = v.anyOf as Array<Record<string, unknown>>;
+    expect(anyOf[0]).not.toHaveProperty("patternProperties");
+    expect(anyOf[0]!.additionalProperties).toBe(false);
+    expect(anyOf[1]!.additionalProperties).toBe(false);
+  });
+
+  it("backfills empty-object sub-schemas (z.unknown() emits {})", () => {
+    const { schema } = normalizeSchema({
+      type: "object",
+      properties: {
+        anything: {},
+      },
+    });
+    const anything = (schema.properties as Record<string, Record<string, unknown>>).anything!;
+    // Anthropic rejects `Empty schema ({})` with `not supported`; we
+    // backfill with a typed placeholder so the structured-output call
+    // does not stall the entire repair loop.
+    expect(anything.type).toBe("string");
+  });
+
+  it("backfills shape-less sub-schemas that only carry description", () => {
+    const { schema } = normalizeSchema({
+      type: "object",
+      properties: {
+        anything: { description: "free-form" },
+      },
+    });
+    const anything = (schema.properties as Record<string, Record<string, unknown>>).anything!;
+    expect(anything.type).toBe("string");
+  });
+
+  it("keeps non-shapeless sub-schemas (enum / const / $ref) intact", () => {
+    const { schema } = normalizeSchema({
+      type: "object",
+      properties: {
+        choice: { enum: ["a", "b", "c"] },
+        literal: { const: "x" },
+        ref: { $ref: "#/$defs/Foo" },
+      },
+    });
+    const props = schema.properties as Record<string, Record<string, unknown>>;
+    expect(props.choice).toEqual({ enum: ["a", "b", "c"] });
+    expect(props.literal).toEqual({ const: "x" });
+    expect(props.ref).toEqual({ $ref: "#/$defs/Foo" });
+  });
+
+  it("renames oneOf to anyOf inside arrays' items", () => {
+    const { schema } = normalizeSchema({
+      type: "object",
+      properties: {
+        rows: {
+          type: "array",
+          items: {
+            oneOf: [{ type: "string" }, { type: "number" }],
+          },
+        },
+      },
+    });
+    const rows = (schema.properties as Record<string, Record<string, unknown>>).rows!;
+    const items = rows.items as Record<string, unknown>;
+    expect(items).not.toHaveProperty("oneOf");
+    expect(items.anyOf).toBeDefined();
   });
 });
 

@@ -5,16 +5,22 @@
 
 import { and, asc, desc, eq, isNull, like, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
+import { recordWorkflowScheduleNotBound as recordWorkflowScheduleNotBoundAudit } from "../audit/recorders/index.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { skills as skillsTable, workflows, workflowVersions } from "../db/schema/index.ts";
-import { log } from "../logging/logger.ts";
+import { log, logger } from "../logging/logger.ts";
+import {
+  recordWorkflowScheduleNotBound,
+  recordWorkflowTriggerKind,
+} from "../observability/instrumentation.ts";
 import { type WorkflowLifecyclePayload, WorkflowLifecyclePayloadSchema } from "../pubsub/types.ts";
 import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
+import { detectSchedulePhrases } from "./schedule-phrase-detector.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
 
@@ -114,6 +120,7 @@ async function applyTriggerBindings(
   actor_id: string | null,
 ): Promise<void> {
   const trigger = def.trigger ?? { kind: "request" as const };
+  recordWorkflowTriggerKind({ kind: trigger.kind });
   if (trigger.kind === "webhook") {
     await inboundService.bindFromWorkflow(
       {
@@ -141,6 +148,37 @@ async function applyTriggerBindings(
   // "request" — make sure neither binding lingers.
   await inboundService.unbindFromWorkflow(tenant_id, workflow_id, actor_id, exec);
   await scheduleRepo.unbindFromWorkflow(exec, tenant_id, workflow_id, actor_id);
+  // Defence-in-depth (Root A): the LLM authored cadence phrasing into
+  // the workflow's name or description but committed with
+  // `trigger.kind = "request"`. Emit a warn + audit + counter so the
+  // operator sees the regression. The regex output is OBSERVABILITY
+  // ONLY — it never feeds back into cron construction. The fix path
+  // is in the seed skill (Phase 2): the LLM carries the schedule
+  // trigger inline with `build_workflow`.
+  const phrase = detectSchedulePhrases({
+    name: def.name,
+    description: def.description ?? null,
+  });
+  if (phrase.matched) {
+    logger.warn({
+      module: "workflows",
+      action: "workflow.schedule_not_bound",
+      msg: "committed workflow has cadence phrasing but no schedule trigger",
+      tenant_id,
+      workflow_id,
+      slug: workflow_slug,
+      matched_phrases: phrase.matched_phrases,
+    });
+    recordWorkflowScheduleNotBound({ tenant_id });
+    await recordWorkflowScheduleNotBoundAudit({
+      tenant_id,
+      actor_id,
+      executor: exec,
+      workflow_id,
+      slug: workflow_slug,
+      matched_phrases: phrase.matched_phrases,
+    });
+  }
 }
 
 async function loadWorkflowView(

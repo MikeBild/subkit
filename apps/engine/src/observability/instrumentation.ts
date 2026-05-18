@@ -376,6 +376,50 @@ export function recordToolCircuitOpen(args: { tool: string; reason: string }): v
 }
 
 /**
+ * Counter for LLM hallucinated tool-absence claims (Root D defence-
+ * in-depth). Fired by the conversation loop when the assistant's
+ * text denies a tool that IS in the resolved palette. `tool` is the
+ * specific tool name the model named; high counts on the same tool
+ * indicate the seed-skill palette teaching is failing for that tool.
+ */
+export function recordToolHallucinatedAbsence(args: { tool: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.CONVERSATION_TOOL_HALLUCINATED_ABSENCE_TOTAL, {
+      tool: args.tool,
+    });
+  });
+}
+
+const TRIGGER_KINDS = new Set<string>(["request", "webhook", "schedule"]);
+
+/**
+ * Counter for cadence-phrased workflows that committed with a
+ * `request` trigger (Root A defence-in-depth). The matched-phrase
+ * names also land in the audit row metadata so operators have
+ * forensic context, but the counter is the per-tenant trend signal.
+ */
+export function recordWorkflowScheduleNotBound(args: { tenant_id: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL, {
+      tenant_id: args.tenant_id,
+    });
+  });
+}
+
+/**
+ * Per-kind workflow-commit counter. Allow-listed against the three
+ * trigger variants; unknown values collapse to "other" so a producer
+ * regression never blows up label cardinality.
+ */
+export function recordWorkflowTriggerKind(args: { kind: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.WORKFLOW_TRIGGER_KIND_TOTAL, {
+      kind: TRIGGER_KINDS.has(args.kind) ? args.kind : "other",
+    });
+  });
+}
+
+/**
  * Counter for authoring-time gate refusals (reference / cycle / loop-
  * inspect / repair-loop). High counts per (code, tool) indicate the
  * skill or prompt isn't teaching the rule effectively. Both labels

@@ -85,6 +85,14 @@ export const AuditAction = {
   // preview attempt (if any) so operators can audit why the override was
   // taken.
   WORKFLOW_COMMITTED_OVERRIDE: "workflow.committed_override",
+  // Defence-in-depth (Root A safety net): a workflow whose
+  // name+description carries cadence phrasing ("every day at 7pm",
+  // "täglich um 18 Uhr") was committed with `trigger.kind = "request"`
+  // — i.e. the LLM forgot to bind a schedule. The row records the
+  // matched phrases in metadata so operators can audit whether the
+  // miss was reasonable (e.g. "send every error to email" — not
+  // cadence) or a regression.
+  WORKFLOW_SCHEDULE_NOT_BOUND: "workflow.schedule_not_bound",
 
   EXECUTION_STARTED: "execution.started",
   EXECUTION_COMPLETED: "execution.completed",

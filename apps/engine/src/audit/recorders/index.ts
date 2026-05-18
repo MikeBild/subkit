@@ -61,9 +61,11 @@ export {
   type RecordWorkflowCommittedParams,
   type RecordWorkflowCreatedParams,
   type RecordWorkflowDeletedParams,
+  type RecordWorkflowScheduleNotBoundParams,
   type RecordWorkflowUpdatedParams,
   recordWorkflowCommitted,
   recordWorkflowCreated,
   recordWorkflowDeleted,
+  recordWorkflowScheduleNotBound,
   recordWorkflowUpdated,
 } from "./workflow.ts";

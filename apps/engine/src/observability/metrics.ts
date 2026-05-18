@@ -335,6 +335,25 @@ export const METRIC_NAMES = {
   // dashboard show flapping tools the same way the connector
   // circuit metric shows flapping connectors.
   TOOL_CIRCUIT_OPEN_TOTAL: "subkit_tool_circuit_open_total",
+  // Detected hallucinated tool-absence claims. Fires when the LLM's
+  // assistant text denies the availability of a tool that IS in the
+  // resolved palette this turn. Operators chart by `tool` to see
+  // which tools the model is most likely to forget — usually a
+  // signal that the schema-normaliser regressed or the cleanup
+  // palette diverged from the seed-skill teaching.
+  CONVERSATION_TOOL_HALLUCINATED_ABSENCE_TOTAL:
+    "subkit_conversation_tool_hallucinated_absence_total",
+  // Defence-in-depth for Root A: counts workflow commits where the
+  // name+description carries cadence phrasing but `trigger.kind`
+  // remained `request`. Any non-zero count is a regression signal —
+  // the seed skill (Phase 2 fix) instructs the LLM to carry the
+  // schedule trigger inline with `build_workflow`.
+  WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL: "subkit_workflow_schedule_not_bound_total",
+  // Per-kind workflow trigger counter. Recorded at every successful
+  // commit so operators can chart the mix of request / webhook /
+  // schedule over time. A sudden drop in `schedule` kind is the
+  // canary for the chat-authoring flow regressing.
+  WORKFLOW_TRIGGER_KIND_TOTAL: "subkit_workflow_trigger_kind_total",
   // Authoring-time LLM critic runs. `result` is one of
   // passed / rejected / fail_open. Operators chart passed:rejected
   // to estimate signal quality, and (passed+rejected):fail_open to
@@ -649,6 +668,21 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.TOOL_CIRCUIT_OPEN_TOTAL,
     help: "Per-tool circuit-breaker opens. `reason` is `tool_loop_detected` (3× identical args) or `consecutive_failures_cap` (5 consecutive fails). High counts on a specific tool point at flapping behaviour or a brittle skill prompt.",
     labels: ["tool", "reason"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.CONVERSATION_TOOL_HALLUCINATED_ABSENCE_TOTAL,
+    help: "LLM denied availability of a tool that IS in the resolved palette this turn (root D defence-in-depth). Triaged by `tool` — non-zero counts are a regression signal because the seed skill instructs the model to call `cannot_help` instead.",
+    labels: ["tool"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL,
+    help: "Workflow commits whose name+description carry cadence phrasing but `trigger.kind` remained `request` (root A defence-in-depth). Non-zero counts are a regression signal — the seed skill teaches the LLM to bind the schedule trigger inline with `build_workflow`.",
+    labels: ["tenant_id"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.WORKFLOW_TRIGGER_KIND_TOTAL,
+    help: "Workflow commits per trigger kind (request / webhook / schedule). A sudden drop in `schedule` is the canary for chat-authoring regressing back to manual create_schedule calls.",
+    labels: ["kind"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.CRITIC_RUNS_TOTAL,

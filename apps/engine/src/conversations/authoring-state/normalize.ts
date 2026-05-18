@@ -5,6 +5,7 @@
 // `authoring-state.ts` barrel.
 
 import { isRecord } from "../../utils/type-guards.ts";
+import type { WorkflowTrigger } from "../../workflows/types.ts";
 import type {
   AuthoringCheckpointKey,
   AuthoringCheckpointRecord,
@@ -98,6 +99,9 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
             )
             .map((edge) => ({ from: edge.from, to: edge.to })),
         }
+      : {}),
+    ...(isRecord(base.trigger) && typeof base.trigger.kind === "string"
+      ? { trigger: base.trigger as WorkflowTrigger }
       : {}),
   };
 }
