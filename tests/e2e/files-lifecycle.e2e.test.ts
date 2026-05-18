@@ -1,13 +1,20 @@
-// Wave F.4 — Files lifecycle E2E scenarios (E1–E18).
+// Wave F.4 — Files lifecycle E2E scenarios.
 //
 // Boots a real engine with the mock LLM (no real Anthropic call),
 // a disposable Postgres DB, and local-disk storage. Runs the sk
 // binary as a subprocess via the standard `cli()` harness.
 //
-// Scenarios that require infrastructure not present in this
-// test environment (MinIO testcontainer for S3, ClamAV, full
-// MCP stdio harness) are implemented as far as possible and
-// marked with // TODO: requires <X> where the gap is structural.
+// Scenarios in this file all run in CI. The wave originally enumerated
+// nine additional scenarios (S3 backend round-trip, Anthropic Files
+// API id reuse, REPL `/upload`, discovery-from-file, knowledge-from-file,
+// migration backfill, Range download, cleanup-cron lifecycle, MCP
+// `file://` resource) that require infrastructure not present in this
+// repo's e2e harness (MinIO testcontainer, Anthropic stub with call
+// counter, PTY-driven REPL, debug clock-advance hook, MCP stdio
+// subprocess). Those scenarios live in
+// `docs/operations/files-deferred-e2e.md` with the required
+// infrastructure and acceptance criteria; pick one up by wiring the
+// missing infra and porting the scenario back into this file.
 //
 // E2E convention:
 //   - boot() brings up engine + DB + mock LLM.
@@ -19,12 +26,6 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { boot, cli, type E2EEnv, expectSuccess, parseJson, run, shutdown } from "./setup.ts";
-
-// Deferred scenarios that need infrastructure not present in this
-// environment (MinIO, ClamAV, MCP stdio harness, etc.). Opt in by
-// setting SK_RUN_DEFERRED_FILES_E2E=1.
-const RUN_DEFERRED = process.env.SK_RUN_DEFERRED_FILES_E2E === "1";
-const skipDeferred = !RUN_DEFERRED;
 
 // ---------------------------------------------------------------------------
 // Shared fixture setup
@@ -175,21 +176,7 @@ describe("E3: presigned upload (large file)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// E4 — S3 backend
-// TODO: requires MinIO testcontainer. The boot() harness uses local-disk
-// storage; S3 path needs SK_STORAGE_BACKEND=s3 + a MinIO endpoint wired
-// into the engine config. Skip in this environment.
-// ---------------------------------------------------------------------------
-
-describe("E4: S3 backend", () => {
-  test.skipIf(skipDeferred)("E4 requires MinIO testcontainer — deferred", () => {
-    // TODO: requires MinIO testcontainer. Boot engine with
-    // SK_STORAGE_BACKEND=s3 + MinIO credentials; re-run E1 + E3
-    // assertions. Presign URL should point at MinIO; downloaded bytes
-    // must equal source.
-  });
-});
+// E4 — S3 backend (deferred — see docs/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E5 — Headless attach with mocked LLM (no real Anthropic call)
@@ -223,37 +210,8 @@ describe("E5: headless --attach with mock LLM", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// E6 — Provider id reuse (mock LLM counter stays at 1 across turns)
-// TODO: requires Anthropic Files API stub with a call counter. The mock
-// LLM provider does not expose a "how many times was file uploaded" counter.
-// Skip for now.
-// ---------------------------------------------------------------------------
-
-describe("E6: provider id reuse", () => {
-  test.skipIf(skipDeferred)(
-    "E6 requires Anthropic Files API stub with call counter — deferred",
-    () => {
-      // TODO: requires an Anthropic stub that counts POST /v1/files calls.
-      // Boot engine with LLM_PROVIDER=anthropic pointing at the stub.
-      // Assert counter stays at 1 across two turns of the same conversation.
-    },
-  );
-});
-
-// ---------------------------------------------------------------------------
-// E7 — REPL attach + conversation persistence
-// TODO: the REPL is Ink-based and requires interactive TTY input. The
-// `cli()` harness runs in non-interactive mode (CI=1) and cannot drive
-// Ink state transitions. Skip.
-// ---------------------------------------------------------------------------
-
-describe("E7: REPL attach persistence", () => {
-  test.skipIf(skipDeferred)("E7 requires interactive REPL harness — deferred", () => {
-    // TODO: requires an interactive REPL driver. Consider building a
-    // line-based stdio harness that sends slash commands as raw text.
-  });
-});
+// E6 — Provider id reuse (deferred — see docs/operations/files-deferred-e2e.md).
+// E7 — REPL attach persistence (deferred — see docs/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E8 — Workflow file input + multipart out via echo server
@@ -279,33 +237,8 @@ describe("E8: workflow file input + multipart out", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// E9 — Discovery from file
-// TODO: requires discovery pipeline engine support for --file flag on
-// sk discovery create. The CLI flag exists but the discovery pipeline
-// must be seeded with a provider stub. Partially documented.
-// ---------------------------------------------------------------------------
-
-describe("E9: discovery from file", () => {
-  test.skipIf(skipDeferred)("E9 requires discovery pipeline + provider stub — deferred", () => {
-    // TODO: seed a discovery workflow that accepts a file input.
-    // `sk discovery create --file ./fixtures/openapi.json --label test`
-    // → poll for completion → verify $file ref in proposed connector.
-  });
-});
-
-// ---------------------------------------------------------------------------
-// E10 — Knowledge from file
-// TODO: requires knowledge-sources create --file CLI path and knowledge
-// chunker to be wired to the files subsystem. Partially implemented.
-// ---------------------------------------------------------------------------
-
-describe("E10: knowledge from file", () => {
-  test.skipIf(skipDeferred)("E10 requires knowledge-sources --file CLI path — deferred", () => {
-    // TODO: `sk knowledge-sources create --file ./fixtures/manual.md --title "Manual"`
-    // Verify linked file_id and searchable chunks.
-  });
-});
+// E9  — Discovery from file (deferred — see docs/operations/files-deferred-e2e.md).
+// E10 — Knowledge from file (deferred — see docs/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E11 — Tenant cross-leak
@@ -338,19 +271,7 @@ describe("E11: tenant cross-leak isolation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// E12 — Migration backfill
-// TODO: requires a "legacy" pre-migration DB fixture and running
-// db:migrate against it. This is a DB-migration-layer concern that is
-// covered by apps/engine/src/db/migrations/files-migration.test.ts.
-// ---------------------------------------------------------------------------
-
-describe("E12: migration backfill", () => {
-  test.skipIf(skipDeferred)("E12 requires pre-migration fixture + migrate run — deferred", () => {
-    // TODO: spin up engine at pre-0019 schema, insert legacy
-    // conversation_attachments rows, run migration, verify via sk files list.
-  });
-});
+// E12 — Migration backfill (deferred — see docs/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E13 — Conversation fork preserves files
@@ -397,38 +318,8 @@ describe("E13: conversation fork preserves files", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// E14 — Range download
-// TODO: requires Range header support on the engine's GET /v1/files/{id}/content
-// endpoint. The engine implementation is in the files route; this CLI-level
-// test verifies the byte-slice contract via curl. Skip until confirmed.
-// ---------------------------------------------------------------------------
-
-describe("E14: range download", () => {
-  test.skipIf(skipDeferred)(
-    "E14 requires engine Range header support verification — deferred",
-    () => {
-      // TODO: upload 12 MB file, curl -H "Range: bytes=1048576-2097151"
-      // against engine, verify 206 Partial Content + exact bytes.
-    },
-  );
-});
-
-// ---------------------------------------------------------------------------
-// E15 — Cleanup cron lifecycle
-// TODO: the cleanup cron is a pg-boss handler. Driving it in an e2e test
-// requires advancing the test clock or manually enqueueing the cron job.
-// The cleanup logic is covered at integration layer by
-// apps/engine/src/scheduler/tests/files-cleanup.test.ts.
-// ---------------------------------------------------------------------------
-
-describe("E15: cleanup cron lifecycle", () => {
-  test.skipIf(skipDeferred)("E15 requires clock advancement or cron job enqueue — deferred", () => {
-    // TODO: create pending file with expired upload_url, trigger cron,
-    // verify row reaped. Create ready unlinked file, advance clock 7d,
-    // verify hard-delete.
-  });
-});
+// E14 — Range download (deferred — see docs/operations/files-deferred-e2e.md).
+// E15 — Cleanup cron lifecycle (deferred — see docs/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E16 — Audit completeness
@@ -468,19 +359,7 @@ describe("E16: audit completeness", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// E17 — MCP file resource
-// TODO: requires spawning MCP server in subprocess + stdio harness.
-// The MCP surface is tested at integration layer in
-// apps/engine/src/mcp/tests/resources-file.test.ts.
-// ---------------------------------------------------------------------------
-
-describe("E17: MCP file resource", () => {
-  test.skipIf(skipDeferred)("E17 requires MCP stdio subprocess harness — deferred", () => {
-    // TODO: spawn engine MCP server, call read_resource("file://<fid>"),
-    // verify bytes + list_resources notification.
-  });
-});
+// E17 — MCP file resource (deferred — see docs/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E18 — Legacy @attachment: text rewrite
