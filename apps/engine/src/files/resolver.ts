@@ -2,7 +2,8 @@
 //
 // SPOOL_THRESHOLD_BYTES: files larger than this are buffered to a tmpfile
 // before dispatch so the driver receives a seekable file-backed stream
-// instead of an in-memory iterable. 50 MB matches the plan D5 threshold.
+// instead of an in-memory iterable. 50 MB is the size at which the spool
+// cost is cheaper than re-buffering the iterable per consumer.
 export const SPOOL_THRESHOLD_BYTES = 50 * 1024 * 1024;
 
 //
@@ -54,7 +55,7 @@ export class FileNotFoundError extends Error {
  * fid) match; throws `FileNotFoundError` otherwise. Soft-deleted rows
  * (`deleted_at IS NOT NULL`) are still returned on the read path so a
  * workflow run holding a `$file` ref mid-deletion can still see the
- * bytes (per the cleanup-cron grace, C15).
+ * bytes during the cleanup-cron 7-day soft-delete grace window.
  */
 export async function requireFileForTenant(
   db: Db,

@@ -438,7 +438,7 @@ export const METRIC_NAMES = {
   FILES_UPLOAD_DURATION_SECONDS: "subkit_files_upload_duration_seconds",
   /**
    * Per-tenant counter of bytes shipped inline to the LLM via the
-   * `file_part` strategy. R3: a runaway inline channel can blow the
+   * `file_part` strategy. A runaway inline channel can blow the
    * per-turn token budget — chart this against
    * `subkit_files_llm_cap_downgrades_total` to see how often the
    * 250 KiB per-turn cap is biting.

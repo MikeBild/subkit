@@ -1,4 +1,4 @@
-// LLM file-context assembly (D6).
+// LLM file-context assembly.
 //
 // Given a list of `$file` refs surfacing in a conversation turn, this
 // module routes each file through the canonical `chooseFileStrategy`
@@ -21,7 +21,10 @@
 //                      media, or per-turn inline budget exhausted).
 //
 // Reuses the exact decision tree exposed by `capabilities.ts`. No
-// parallel strategy ladder lives here (C4 hard rule). Tenant isolation
+// parallel strategy ladder lives here — any new file routing rule
+// belongs in `chooseFileStrategy` so every consumer (this module, the
+// HTTP /v1/files/inline path, the connector preview) agrees on the
+// answer. Tenant isolation
 // is preserved at two seams:
 //   1. The resolver — every fid we touch routes through
 //      `walkAndResolve` / `requireFileForTenant`.
@@ -236,7 +239,7 @@ export async function buildFileContentBlocks(
         }
         // Upload path failed — degrade to file_part (or text_extract
         // if the inline budget can't fit the bytes). This realises the
-        // D6 fallback chain described in R8.
+        // documented fallback chain: file_api → file_part → text_extract.
         if (inline_bytes + resolved.size_bytes <= FILE_PART_PER_TURN_CAP_BYTES) {
           strategy = "file_part";
         } else {
@@ -351,9 +354,9 @@ async function assembleFileApiBlock(a: AssembleFileApiArgs): Promise<FileContent
     return null;
   }
 
-  // Persist back to the row — tenant-scoped UPDATE. Per layered
-  // design (D6): the uploader stays pure, the file-context module
-  // (the caller) owns the DB write.
+  // Persist back to the row — tenant-scoped UPDATE. Per the layered
+  // design the uploader stays pure (no DB binding); the file-context
+  // module (this caller) owns the persistence side effect.
   await persistProviderUpload(a.db, a.tenant_id, a.resolved.id, a.provider, uploaded);
 
   return makeFileApiBlock({

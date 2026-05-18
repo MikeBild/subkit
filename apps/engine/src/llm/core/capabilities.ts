@@ -117,7 +117,7 @@ export function pickPdfStrategy(
 }
 
 // Generic per-file strategy used by the conversation LLM-context
-// assembler (D6). Shares the same matrix as `pickPdfStrategy` — there
+// assembler. Shares the same matrix as `pickPdfStrategy` — there
 // is no parallel decision ladder. Three outcomes:
 //
 //   - `file_api`     — upload the bytes via the provider Files API and

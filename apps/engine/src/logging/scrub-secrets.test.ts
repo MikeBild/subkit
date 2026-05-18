@@ -87,7 +87,7 @@ describe("scrub-secrets", () => {
     });
   });
 
-  describe("presigned-URL query-string redaction (R4)", () => {
+  describe("presigned-URL query-string redaction", () => {
     test("redacts an S3 sigv4 presigned PUT URL", () => {
       const url =
         "https://my-bucket.s3.amazonaws.com/tenants/abc/2026/05/file?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20260514%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260514T120000Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=abc123def456";

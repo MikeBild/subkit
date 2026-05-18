@@ -145,8 +145,9 @@ export async function buildUserContentParts(
     fids: allowedFids,
   });
 
-  // R3 instrumentation — surface the per-turn inline bytes + cap
-  // downgrades. The assembler already enforces the 250 KiB hard cap;
+  // Surface the per-turn inline bytes + cap downgrades so the operator
+  // can chart how often the cap is biting per tenant. The assembler
+  // already enforces the 250 KiB hard cap;
   // these counters give the operator a per-tenant view of how often
   // the cap is biting (rising downgrades = the model is increasingly
   // seeing parser-extracted text instead of raw bytes for image / PDF

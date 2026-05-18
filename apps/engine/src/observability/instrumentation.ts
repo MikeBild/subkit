@@ -602,8 +602,8 @@ export function observeFileUploadDuration(args: { outcome: string; duration_ms: 
 
 /** Increment `subkit_files_llm_inline_bytes_total{tenant_id}` by the
  *  bytes the file-context assembler shipped via the `file_part`
- *  strategy. R3: this is the runtime backstop on the per-turn token
- *  blowup risk. */
+ *  strategy. This is the runtime backstop on the per-turn token
+ *  blowup risk — operators chart it against the 250 KiB hard cap. */
 export function recordFileLlmInlineBytes(args: { tenant_id: string; bytes: number }): void {
   safe(() => {
     if (!Number.isFinite(args.bytes) || args.bytes <= 0) return;
