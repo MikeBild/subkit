@@ -7,7 +7,7 @@
 
 * **files:** `storage.knowledge.*` config keys renamed to `storage.files.*`. Operators must `sk settings configure` (or set `SK_OVERRIDE_STORAGE__FILES__*` env vars). Was: `storage.knowledge.backend`, `storage.knowledge.dir`. Now: `storage.files.backend`, `storage.files.dir`, **new** `storage.files.bucket` (required when `backend=s3`).
 * **files:** `conversation_attachments` table dropped. Migration `0019` backfills existing rows into the unified `files` + `file_links` tables. Production engines migrate automatically on boot — no operator action required.
-* **audit:** Audit actions `conversation.attachment_created` and `conversation.attachment_deleted` removed. Replaced by `file.created` + `file.link_added` + `file.deleted`. Compliance dashboards filtering on the old action names must be updated.
+* **audit:** Audit actions `conversation.attachment_created` and `conversation.attachment_deleted` removed. Replaced by `file.created` + `file.link_added` + `file.deleted`. Compliance dashboards filtering on the old action names must be updated. SIEM migration: existing rows keep their historical `conversation.attachment_*` action strings (audit_log is append-only); only the TypeScript constants are gone. Update SIEM filters to also accept the new `file.*` vocabulary (`file.created`, `file.batch_created`, `file.finalized`, `file.downloaded`, `file.deleted`, `file.link_added`, `file.link_removed`, `file.scan_completed`, `file.upload_received`). Every `FILE_*` metadata schema now carries an optional `request_source` field (`api` / `cli` / `scheduler` / `mcp` / `webhook` / `tool-chain` / `ui`) so dispatch-channel splits work without joining on `trace_id`.
 
 
 ### Features
@@ -27,7 +27,7 @@
 ### Observability
 
 * **observability:** 7 new Prometheus metrics under the `subkit_files_*` namespace.
-* **audit:** 8 new audit actions: `file.created`, `file.batch_created`, `file.finalized`, `file.downloaded`, `file.deleted`, `file.link_added`, `file.link_removed`, `file.scan_completed`.
+* **audit:** 9 new audit actions: `file.created`, `file.batch_created`, `file.finalized`, `file.downloaded`, `file.deleted`, `file.link_added`, `file.link_removed`, `file.scan_completed`, `file.upload_received`.
 * **audit:** presigned-URL query params (`X-Amz-Signature`, `X-Goog-Signature`, `signature=`) automatically redacted in both audit entries and structured logs.
 
 
