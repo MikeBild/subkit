@@ -10,7 +10,6 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type ResolvedFile, SPOOL_THRESHOLD_BYTES, walkAndResolve } from "../files/resolver.ts";
 import { log, logger } from "../logging/logger.ts";
-import { getObjectStore } from "../storage/object-store.ts";
 import { readWorkflowState, writeWorkflowState } from "../workflow-state/service.ts";
 import type { StepDef } from "../workflows/types.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
@@ -205,8 +204,13 @@ export async function runStep(
             // Spool large files to tmpfile so drivers get a seekable stream.
             if (rf.size_bytes > SPOOL_THRESHOLD_BYTES) {
               const tmpPath = join(tmpdir(), `sk-spool-${rf.id}-${Date.now()}`);
-              const store = getObjectStore();
-              const stream = await store.openRead(rf.id);
+              // Use the ResolvedFile's bound `openRead` rather than calling
+              // the object store with `rf.id` directly. The row UUID is not
+              // the storage key — keys are
+              // `<tenant>/<yyyy>/<mm>/<dd>/<uuid>` per `buildObjectKey`,
+              // and `resolvedFromRow` already wires `openRead` to call
+              // `storageKey(row.storage_uri)`.
+              const stream = await rf.openRead();
               const chunks: Uint8Array[] = [];
               for await (const chunk of stream) chunks.push(chunk);
               await Bun.write(tmpPath, new Blob(chunks as BlobPart[]));
