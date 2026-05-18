@@ -74,12 +74,12 @@ export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
  * query with a fixed sentinel so the signature, expiry, and any other
  * parameters never land in audit / log storage.
  *
- * Closes R4 (Wave E): a presigned PUT URL surfaces in audit metadata
- * (e.g. `audit_log.metadata.presign_url` from `FILE_BATCH_CREATED`),
- * and audit rows are append-only — a leaked HMAC survives forever and
- * the URL itself confers write access to the underlying object until
- * the signature expires (typically 1h, but cloud providers allow up to
- * 7 days).
+ * Defense-in-depth: no current emitter persists presign URLs in audit
+ * metadata, but the redactor keeps incidental leakage out of audit and
+ * structured-log storage. Audit rows are append-only — a leaked HMAC
+ * would survive forever and the URL itself confers write access to the
+ * underlying object until the signature expires (typically 1h, but
+ * cloud providers allow up to 7 days).
  *
  * Covered URL flavours:
  *   - S3 sigv4: `?X-Amz-Algorithm=...&X-Amz-Signature=...`

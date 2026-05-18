@@ -1,5 +1,5 @@
 // Conversation attachments HTTP surface — thin wrapper over the
-// unified `files` + `file_links` resource (Wave C Step 6).
+// unified `files` + `file_links` resource.
 //
 //   POST   /v1/conversations/:id/attachments              — upload (inline JSON body)
 //   GET    /v1/conversations/:id/attachments              — list linked files
@@ -12,13 +12,22 @@
 //   - POST decodes the JSON body, dedups + inserts a `files` row
 //     (sha256-scoped to the tenant), then attaches a `file_links` row
 //     pointing the file at the conversation under the derived slug.
-//     Audit emission lives on the canonical `/v1/files/*` surface
-//     (`FILE_CREATED` + `FILE_LINK_ADDED`); the legacy
-//     `conversation.attachment_*` actions are gone in this wave.
+//     Emits `FILE_CREATED` + `FILE_SCAN_COMPLETED` + `FILE_LINK_ADDED`
+//     symmetric with the canonical `/v1/files/inline` route. The legacy
+//     `conversation.attachment_*` audit actions are removed; SIEM
+//     consumers filter on the new `file.*` vocabulary.
 //   - GET joins `file_links` with `files` filtered by the conversation.
 //   - DELETE removes the `file_links` row only — the `files` row stays
 //     for any other conversation / resource that still references it,
 //     and the cleanup cron eventually GCs orphans.
+//
+// Permission asymmetry vs the canonical /v1/files/* surface: this
+// wrapper gates on `conversation:write`/`conversation:read`, while
+// the canonical surface requires `file:write`/`file:read`. A portal-
+// scoped user that holds only conversation permissions can still
+// upload through this route. This is intentional — the wrapper exists
+// so portal-only personas keep their attachment ergonomics without
+// having to grant the broader file vocabulary.
 //
 // Body schema: either an `InlineUpload` ({ filename, content_base64 })
 // or a `{ $file: "fid_..." }` ref pointing at an existing file the

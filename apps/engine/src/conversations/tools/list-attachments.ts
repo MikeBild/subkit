@@ -1,9 +1,9 @@
 // list_attachments — read-only listing of files attached to this
-// conversation. Wave-C Step 6 routes through the unified
-// `files` + `file_links` resource: `file_links WHERE
-// resource_type='conversation' AND resource_id=<conv>` joined with
-// `files`. The output schema is unchanged so the LLM and the MCP tool
-// surface keep the same shape.
+// conversation. Routes through the unified `files` + `file_links`
+// resource: `file_links WHERE resource_type='conversation' AND
+// resource_id=<conv>` joined with `files`. The output schema mirrors
+// the legacy per-conversation table shape so the LLM and the MCP tool
+// surface keep the same projection.
 
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";

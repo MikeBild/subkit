@@ -355,9 +355,10 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     }
 
     // Files (ready + not soft-deleted, tenant-scoped). Soft-deleted
-    // files are filtered at the SQL layer (R10/C15): once `deleted_at`
-    // is set the cleanup cron will reap the row + bytes, and the
-    // resource must not advertise an id that's about to vanish.
+    // files are filtered at the SQL layer: once `deleted_at` is set
+    // the cleanup cron will reap the row + bytes within the 7-day
+    // grace, and the resource must not advertise an id that's about
+    // to vanish.
     // `pending` / `uploading` / `scanning` / `failed` / `expired` rows
     // are also filtered — `list_resources` is the MCP surface for
     // *readable* files only.
@@ -391,9 +392,9 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const uri = req.params.uri;
 
-    // Files. Streams content from the object store after a tenant-isolated
-    // lookup. `requireFileForTenant` is the single chokepoint (Wave B
-    // tenant-isolation contract) — a cross-tenant fid throws
+    // Files. Streams content from the object store after a
+    // tenant-isolated lookup. `requireFileForTenant` is the single
+    // tenant-isolation chokepoint — a cross-tenant fid throws
     // `FileNotFoundError`, which we surface as `not_found` so existence
     // of another tenant's file never leaks via timing or error text.
     //

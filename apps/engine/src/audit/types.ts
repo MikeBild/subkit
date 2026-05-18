@@ -202,9 +202,9 @@ export const AuditAction = {
   // engine removes a `files` row (hard delete) — covering the cleanup
   // cron's pending-orphan sweep (`reason: 'pending_expired'`) and the
   // unlinked-TTL hard-delete (`reason: 'unlinked_ttl'`) — as well as
-  // any future explicit DELETE surface. Wave-C consolidated the legacy
-  // `CONVERSATION_ATTACHMENT_*` actions into the canonical `FILE_*`
-  // vocabulary; new file deletions land here.
+  // any future explicit DELETE surface. The legacy
+  // `CONVERSATION_ATTACHMENT_*` actions were consolidated into the
+  // canonical `FILE_*` vocabulary; new file deletions land here.
   FILE_DELETED: "file.deleted",
   // `FILE_CREATED` — inline-upload sink (`POST /v1/files/inline`)
   // persisted a new `files` row. Metadata carries `filename`,

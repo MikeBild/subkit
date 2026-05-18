@@ -1,4 +1,4 @@
-// Integration tests for LLM file-context assembly (D6 / Wave E).
+// Integration tests for LLM file-context assembly.
 //
 // Tests:
 //   - file_api strategy: mocked uploader called, block has correct shape

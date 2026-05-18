@@ -142,7 +142,7 @@ const runCommand = defineCommand({
     // user supplied them; we normalise to an array of `K=<path>`
     // strings and split each. The substituted ref is the standard
     // `{ "$file": "fid_..." }` leaf — the workflow input_schema's
-    // `file` typed leaf resolves it at step boundary (per Wave C).
+    // `file` typed leaf resolves it at the step boundary.
     const rawInputFile = (args as Record<string, unknown>)["input-file"];
     const inputFilePairs: string[] = Array.isArray(rawInputFile)
       ? rawInputFile.map((s) => String(s))

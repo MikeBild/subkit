@@ -28,8 +28,9 @@
 //   2. The provider-id persist UPDATE — scoped by
 //      `(id=fid AND tenant_id=tenant_id)`.
 //
-// Wave E will wire the `subkit_files_llm_inline_bytes_total` metric to
-// the counter this module exposes.
+// The `subkit_files_llm_inline_bytes_total` metric is fed from the
+// `inline_bytes` counter this module exposes — see the observability
+// ladder under `apps/engine/src/observability/`.
 
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
@@ -142,7 +143,7 @@ export interface BuildFileContentBlocksResult {
   blocks: FileContentBlock[];
   /** Total inline bytes consumed by the assembled `file_part` blocks
    *  in this turn — observability hook for the
-   *  `subkit_files_llm_inline_bytes_total` counter (Wave E). */
+   *  `subkit_files_llm_inline_bytes_total` counter. */
   inline_bytes: number;
   /** Number of files force-downgraded to `text_extract` because the
    *  cumulative inline budget exceeded `FILE_PART_PER_TURN_CAP_BYTES`. */

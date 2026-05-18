@@ -69,7 +69,15 @@ fi
 # `issue #66` because that GitHub issue IS the audit-loop pause
 # command (`/audit pause` on issue #66). Real operating procedure,
 # not stale ticket coupling.
-ticket_pattern='(PR #[0-9]+|issue #[0-9]+|bug-[0-9]+|W[0-9]+ of (PR|round)|[SWPGR][0-9]+ of PR #[0-9]+|round [0-9]+ review|P0-[0-9]+|TODO\([^)]*[0-9]+\)|[A-Z]+[0-9]* closure of #[0-9]+|[A-Z][0-9]+ of #[0-9]+|of #[0-9]+ [A-Z][0-9]+|closure of #[0-9]+|(retired|landed|fixed|added) in #[0-9]+|as of #[0-9]+|(pre|post)-#[0-9]+|in PR #[0-9]+)'
+#
+# `Wave [A-Z]` catches review-wave letters from large-PR phasing (e.g.
+# `Wave B Step 4`); the gate widening below complements the historic
+# `W[0-9]+ of round` pattern. Letter+digit shorthand codes like `C20`,
+# `R10`, `D8` from PR-review tables are NOT in this pattern — they
+# collide with widely-used pre-existing review identifiers
+# (`R5-S5`, `R6-W2`, …) in identity / RBAC source — adding them would
+# break the gate retroactively without a tree-wide sweep.
+ticket_pattern='(PR #[0-9]+|issue #[0-9]+|bug-[0-9]+|W[0-9]+ of (PR|round)|[SWPGR][0-9]+ of PR #[0-9]+|round [0-9]+ review|P0-[0-9]+|TODO\([^)]*[0-9]+\)|[A-Z]+[0-9]* closure of #[0-9]+|[A-Z][0-9]+ of #[0-9]+|of #[0-9]+ [A-Z][0-9]+|closure of #[0-9]+|(retired|landed|fixed|added) in #[0-9]+|as of #[0-9]+|(pre|post)-#[0-9]+|in PR #[0-9]+|Wave [A-Z]\b)'
 ticket_hits=$(grep -REn "$ticket_pattern" apps/ docs/ packages/ README.md \
     --include='*.ts' --include='*.tsx' --include='*.md' \
     --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=tests \

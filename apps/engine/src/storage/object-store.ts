@@ -133,7 +133,8 @@ function signLocalPresign(claims: LocalPresignClaims, secret: string): string {
 }
 
 /** Mint a token authorising a single PUT against the local-disk
- *  presign sink. Verifier path lives on the HTTP route (Wave B). */
+ *  presign sink. The verifier lives in `verifyLocalPresignToken` below
+ *  and is called from the `/v1/files/{id}/upload` route handler. */
 export function mintLocalPresignToken(claims: LocalPresignClaims): string {
   return signLocalPresign(claims, localPresignSecret());
 }

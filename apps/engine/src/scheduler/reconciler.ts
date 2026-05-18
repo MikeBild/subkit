@@ -36,12 +36,12 @@ import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts
  *  LLM repair calls when drift signals are emitted. */
 const PROACTIVE_DRIFT_SCAN_CADENCE_MS = 60 * 60 * 1000;
 
-/** Fixed cadence for the unified-files cleanup cron (Wave B Step 9 of
- *  the unified-files PR). The sweeps are idempotent and bounded by a
- *  7-day soft-delete grace, so an hour balances reaping latency against
- *  cron cost. Multi-instance deployments may run the sweep twice per
- *  cadence on rare clock-overlaps; that's safe — DELETE / UPDATE are
- *  filtered by `now() - interval ...` so the second instance is a no-op. */
+/** Fixed cadence for the unified-files cleanup cron. The sweeps are
+ *  idempotent and bounded by a 7-day soft-delete grace, so an hour
+ *  balances reaping latency against cron cost. Multi-instance
+ *  deployments may run the sweep twice per cadence on rare
+ *  clock-overlaps; that's safe — DELETE / UPDATE are filtered by
+ *  `now() - interval ...` so the second instance is a no-op. */
 const FILES_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
 export interface ReconcilerOptions {
@@ -364,8 +364,8 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Unified-files cleanup cron (Wave B Step 9). Hour-throttled
-    // in-process; multi-instance overlap is safe — see the cadence
+    // Unified-files cleanup cron. Hour-throttled in-process;
+    // multi-instance overlap is safe — see the cadence
     // constant comment. The runner walks three sweeps (pending
     // orphans, unlinked TTL, LLM provider expiry); errors inside the
     // sweeps are caught per-sweep so a failure does not abort the rest

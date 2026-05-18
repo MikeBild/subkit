@@ -1,5 +1,5 @@
 // Conversation attachment helpers — thin facade over the unified
-// `files` + `file_links` resource (Wave C Step 6).
+// `files` + `file_links` resource.
 //
 // Two responsibilities live here, one for each surface:
 //

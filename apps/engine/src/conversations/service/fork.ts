@@ -167,10 +167,10 @@ export async function forkConversation(
     copiedCount = messagesToCopy.length;
   }
 
-  // R10 / C11: duplicate every `file_links` row that points at the
-  // source conversation so the fork holds independent references to
-  // the same `files.id`s. Without this, the cleanup cron could orphan
-  // a file the moment the source conversation is deleted — even
+  // Duplicate every `file_links` row that points at the source
+  // conversation so the fork holds independent references to the same
+  // `files.id`s. Without this, the cleanup cron's orphan sweep could
+  // reap a file the moment the source conversation is deleted — even
   // though the fork still uses it. The new rows reuse the same
   // (slug, role) so the chat-text rewriter resolves identically in
   // the fork; `onConflictDoNothing` keeps the operation idempotent

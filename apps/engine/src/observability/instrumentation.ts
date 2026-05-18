@@ -531,7 +531,7 @@ export function recordLlmContextAssembled(args: {
 }
 
 // ---------------------------------------------------------------------------
-// Unified files resource (Wave E)
+// Unified files resource
 // ---------------------------------------------------------------------------
 
 /** Allow-list for `status` label on FILES_TOTAL — keeps cardinality

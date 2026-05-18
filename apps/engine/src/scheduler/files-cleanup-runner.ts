@@ -1,7 +1,7 @@
 // Global runner for the unified-files cleanup cron.
 //
-// Wave B Step 9 of the unified-files PR. Fires every hour from the
-// scheduler reconciler and walks three sweeps in order:
+// Fires every hour from the scheduler reconciler and walks three
+// sweeps in order:
 //
 //   1) Pending / stuck-scanning orphans. Two row categories:
 //      a. `status='pending'` rows whose presign URL has been expired for
@@ -23,9 +23,10 @@
 //      days are then hard-deleted together with the storage object;
 //      `FILE_DELETED { reason:'unlinked_ttl' }` is emitted per row.
 //
-//      The in-flight guard is the R10 safety net: a workflow run holding
-//      a `$file` ref mid-execution must NOT have its bytes reaped. We
-//      implement it as a two-pass check rather than a brittle
+//      The in-flight guard is the safety net for the
+//      workflow-holding-a-fid-while-cron-runs race: a workflow run that
+//      grabs a `$file` ref mid-execution must NOT have its bytes
+//      reaped. Implemented as a two-pass check rather than a brittle
 //      jsonb_path_query subquery — first SELECT candidate fids, then
 //      filter out fids that appear in the union of FIVE in-flight
 //      haystacks:
@@ -64,8 +65,9 @@ import { setFilesBytesTotal, setFilesTotal } from "../observability/instrumentat
 import { EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
 import { getObjectStore } from "../storage/object-store.ts";
 
-/** Hard-delete window for `deleted_at` rows. Matches the 7-day grace
- *  documented in the unified-files plan (R10 / C15). */
+/** Hard-delete window for `deleted_at` rows. 7-day grace lets any
+ *  in-flight workflow run that already resolved a soft-deleted fid
+ *  complete before the bytes are reaped. */
 const UNLINKED_HARD_DELETE_AFTER = sql`interval '7 days'`;
 
 /** Pending presigned uploads get reaped one hour after their URL
@@ -198,7 +200,8 @@ async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_sca
  *      in-flight run (saved, draft, step). Each step's resolved input
  *      is stamped here at dispatch time, so a fid that the workflow
  *      pulled in via a `$file` placeholder shows up before the bytes
- *      are read. This is the saved-run safety net for R10.
+ *      are read. This is the saved-run safety net for the
+ *      workflow-holding-a-fid-while-cron-runs race.
  *
  *   3. `pgboss.job.data` (queue=`execution.run`, state in created /
  *      active / retry) — catches the queued-but-not-yet-running
@@ -207,9 +210,9 @@ async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_sca
  *      have its fid reaped before the worker even picks the job up.
  *
  * Conservative by design: a fid mentioned in audit metadata or
- * unrelated jsonb would also protect the row, but R10 prefers a false
- * positive (keep the file) over a false negative (reap a file the
- * workflow is reading).
+ * unrelated jsonb would also protect the row; the cleanup contract
+ * prefers a false positive (keep the file) over a false negative
+ * (reap a file the workflow is reading).
  */
 async function loadInFlightFidStrings(db: Db): Promise<string> {
   const parts: string[] = [];
@@ -341,7 +344,7 @@ async function loadInFlightFidStrings(db: Db): Promise<string> {
  *
  * First soft-deletes ready rows with no `file_links` referers and no
  * in-flight execution reference, then hard-deletes any row whose
- * `deleted_at` is older than the 7-day grace. The grace covers the R10
+ * `deleted_at` is older than the 7-day grace. The grace covers the
  * "workflow run picks up a fid mid-cron" race — the read path through
  * `requireFileForTenant` ignores `deleted_at`, so the workflow finishes
  * before the bytes go away.

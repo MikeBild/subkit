@@ -3,11 +3,10 @@
 //
 // The MCP `file://<fid>` resource handler picks between the `text` and
 // `blob` shapes of the resource-contents envelope based on this
-// predicate. The legacy conversation-attachments route carried its own
-// copy at `http/routes/conversation-attachments.ts`; that file will be
-// migrated to this helper as part of the Wave-B conversation rewrite
-// (Step 6). Keep the predicate identical so the routes wave is a
-// straight `import` swap with no behavioural drift.
+// predicate. The conversation-attachments route imports the same
+// helper so the predicate is identical across every surface that
+// renders a file's bytes — keep new branches additive so the routes
+// stay in lock-step.
 
 /** Returns true when the MIME type is safely representable as a UTF-8
  *  text body. The heuristic is intentionally lenient: empty / unknown

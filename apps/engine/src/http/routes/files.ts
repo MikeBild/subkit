@@ -1,4 +1,4 @@
-// Unified files HTTP surface (Wave B Step 4).
+// Unified files HTTP surface.
 //
 //   POST   /v1/files/inline              — inline base64 upload (≤5 MB)
 //   POST   /v1/files/batch-create        — presigned-PUT issuance
@@ -11,11 +11,11 @@
 //   POST   /v1/files/{id}/links          — attach to owning resource
 //   GET    /v1/files/stats               — aggregate counters
 //
-// Path syntax: AIP-style verbs (`:finalize`, `:batch-create`) are NOT
-// used. Hono's createRoute path is a literal template; using a colon in
-// the segment name carries no benefit and risks ambiguity with the
-// param syntax used elsewhere. We standardise on `/finalize` and
-// `/batch-create` (no colon) per consistency item C28.
+// Path syntax: AIP-style ':verb' segments (`:finalize`, `:batch-create`)
+// are intentionally not used. Hono's createRoute path is a literal
+// template; a colon in the segment name carries no benefit and risks
+// ambiguity with the param syntax used elsewhere. The convention here
+// is `/finalize` and `/batch-create` (plain slash, no colon).
 //
 // The local-disk presign sink (`PUT /v1/files/{id}/upload`) bypasses
 // bearer auth by design — it verifies an HMAC token from the
@@ -103,8 +103,10 @@ function composeStorageUri(key: string): string {
   return `local://${key}`;
 }
 
-/** Per-D8 key shape: `<tenant>/<yyyy>/<mm>/<dd>/<uuid>`. The filename
- *  lives in the DB row, never in the path. */
+/** Object-store key shape: `<tenant>/<yyyy>/<mm>/<dd>/<uuid>`. Tenant
+ *  prefix bounds the tenant-isolation blast radius at the storage
+ *  layer; date partitioning keeps cold-storage lifecycle rules cheap;
+ *  the filename lives in the DB row, never in the path. */
 function buildObjectKey(tenant_id: string, file_uuid: string, now: Date = new Date()): string {
   const yyyy = now.getUTCFullYear().toString();
   const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
@@ -1012,7 +1014,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     // MCP notification — only on the ready transition. A failed scan
     // moves status to `failed`; a timed-out scan parks the row in
     // `scanning`. In both non-ready cases MCP subscribers see no update
-    // (R10: they couldn't read the bytes anyway). The forwarder in
+    // (subscribers couldn't read the bytes anyway). The forwarder in
     // `apps/engine/src/mcp/capabilities/resources.ts` re-checks
     // `file:read` before forwarding, so a portal-scoped principal
     // that learned the fid out-of-band cannot piggy-back.
@@ -1394,9 +1396,9 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     // MCP notification — subscribers on `file://<fid>` get a ping
     // so they can react to the file disappearing. The forwarder
     // re-checks `file:read`; a row that has just been soft-deleted
-    // still resolves (the resolver ignores `deleted_at` per R10's
-    // grace window) so the RBAC re-check passes during the
-    // notification window.
+    // still resolves (the resolver ignores `deleted_at` for the
+    // cleanup cron's 7-day soft-delete grace) so the RBAC re-check
+    // passes during the notification window.
     await writeEvent(db, {
       tenant_id: principal.tenant_id,
       channel: "notification.emitted",

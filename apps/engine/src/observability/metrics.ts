@@ -402,7 +402,7 @@ export const METRIC_NAMES = {
    */
   PROACTIVE_DRIFT_UNANCHORED_TOTAL: "proactive_drift_unanchored_total",
 
-  // ----- Unified files resource (Wave E) ---------------------------------
+  // ----- Unified files resource ---------------------------------
   // The files surface owns its own metric ladder so an operator can see at
   // a glance how the storage substrate is behaving without grepping the
   // execution / LLM ladders.
@@ -696,7 +696,7 @@ function buildRegistry(): MetricsRegistry {
     labels: ["key"],
   });
 
-  // ----- Unified files resource (Wave E) ---------------------------------
+  // ----- Unified files resource ---------------------------------
   reg.registerGauge({
     name: METRIC_NAMES.FILES_TOTAL,
     help: "Live `files` rows per tenant, partitioned by status (pending / uploading / ready / failed / expired). Refreshed on transitions and reconciled by the cleanup cron.",
