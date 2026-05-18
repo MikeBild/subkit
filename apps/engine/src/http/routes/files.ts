@@ -180,10 +180,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     method: "put",
     path: "/v1/files/{id}/upload",
     tags: [TAG],
-    // `security: []` is the explicit "no bearer required" marker
-    // (S13). Without it, OpenAPI tooling inherits the document's
-    // top-level security entry; an empty array overrides that, making
-    // the HMAC-token-as-auth surface visible in the generated spec.
+    // `security: []` is the explicit "no bearer required" marker that
+    // mirrors documented intent. Without it, OpenAPI tooling inherits
+    // the document's top-level security entry; an empty array overrides
+    // that, making the HMAC-token-as-auth surface visible in the
+    // generated spec.
     security: [],
     request: {
       params: FileIdParam,
@@ -272,8 +273,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     // is a `ReadableStream<Uint8Array>` per the fetch API; we wrap it in
     // an async generator that tracks cumulative bytes against `boundSize`
     // and throws on overflow. The generator is consumed by
-    // `objectStore.putStream`, which pipes to disk (local) or to the S3
-    // PUT body (S3) without buffering the full payload in memory.
+    // `objectStore.putStream`, which pipes to disk (local) or to the
+    // S3 PUT body without buffering the full payload in memory.
     const raw = c.req.raw.body;
     if (!raw) {
       return c.json({ code: "bad_input", message: "missing body" }, 400);
@@ -478,8 +479,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         if (revived) canonical = revived;
       }
       recordFileDedupHit();
-      // Per-tenant persisted counter (W6) — decouples the stats
-      // endpoint from audit retention. Paired with `recordFileDedupHit`
+      // Per-tenant persisted counter — decouples the stats endpoint
+      // from audit retention. Paired with `recordFileDedupHit`
       // (process-global Prometheus counter).
       await recordFilesDedupSeen(db, tenant_id);
       await auditAwait(
@@ -588,7 +589,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
             if (revived) canonical = revived;
           }
           recordFileDedupHit();
-          // Persisted per-tenant counter (W6).
+          // Persisted per-tenant counter — keeps the stats endpoint
+          // accurate independent of audit retention.
           await recordFilesDedupSeen(db, tenant_id);
           observeFileUploadDuration({
             outcome: "success",
@@ -736,7 +738,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           }
           dedup_hits++;
           recordFileDedupHit();
-          // Persisted per-tenant counter (W6).
+          // Persisted per-tenant counter — keeps the stats endpoint
+          // accurate independent of audit retention.
           await recordFilesDedupSeen(db, tenant_id);
           results.push({
             id: toFileId(canonical.id),
@@ -990,7 +993,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       }
       await db.delete(files).where(eq(files.id, row.id));
       recordFileDedupHit();
-      // Persisted per-tenant counter (W6).
+      // Persisted per-tenant counter — keeps the stats endpoint
+      // accurate independent of audit retention.
       await recordFilesDedupSeen(db, tenant_id);
       await auditAwait(
         {
@@ -1259,9 +1263,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
 
     // Dedup hits — single indexed lookup on the per-tenant counter
     // (`files_dedup_seen`) that the inline / batch-create / finalize
-    // dedup paths UPSERT-bump. W6: decoupled from `audit_log` so the
-    // stat stays accurate independent of audit retention. Missing row
-    // (tenant has never recorded a dedup hit) collapses to zero.
+    // dedup paths UPSERT-bump. The counter is decoupled from
+    // `audit_log` so the stat stays accurate independent of audit
+    // retention. Missing row (tenant has never recorded a dedup hit)
+    // collapses to zero.
     const [dedupRow] = await db
       .select({ n: filesDedupSeen.count })
       .from(filesDedupSeen)

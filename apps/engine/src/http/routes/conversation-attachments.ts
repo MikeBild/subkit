@@ -239,10 +239,10 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       bytes,
     });
     if (dedup) {
-      // Persisted per-tenant counter (W6) — the canonical
-      // /v1/files/inline path bumps on every dedup short-circuit;
-      // this wrapper does too so the `dedup_hits` stat is symmetric
-      // regardless of which entry point landed the bytes.
+      // Persisted per-tenant counter — the canonical /v1/files/inline
+      // path bumps on every dedup short-circuit; this wrapper does too
+      // so the `dedup_hits` stat is symmetric regardless of which
+      // entry point landed the bytes.
       await recordFilesDedupSeen(db, tenant_id);
     }
     const slug = slugify(filename);
