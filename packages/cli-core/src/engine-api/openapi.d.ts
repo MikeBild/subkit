@@ -10144,15 +10144,6 @@ export interface components {
             filename: string;
             content_type?: string;
             content_base64: string;
-        } | {
-            filename: string;
-            content_type?: string;
-            content: string;
-            /**
-             * @default utf8
-             * @enum {string}
-             */
-            content_encoding: "utf8" | "base64";
         };
         FileRef: {
             $file: components["schemas"]["FileId"];

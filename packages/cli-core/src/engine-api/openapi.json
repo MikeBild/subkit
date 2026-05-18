@@ -7852,35 +7852,6 @@
               "filename",
               "content_base64"
             ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "filename": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 255
-              },
-              "content_type": {
-                "type": "string",
-                "maxLength": 200
-              },
-              "content": {
-                "type": "string"
-              },
-              "content_encoding": {
-                "type": "string",
-                "enum": [
-                  "utf8",
-                  "base64"
-                ],
-                "default": "utf8"
-              }
-            },
-            "required": [
-              "filename",
-              "content"
-            ]
           }
         ]
       },
