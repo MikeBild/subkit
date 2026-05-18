@@ -48,15 +48,24 @@ describe("FILE_* audit actions", () => {
       .filter(([, v]) => String(v).startsWith("file."))
       .map(([, v]) => v);
 
-    expect(fileActions).toContain("file.created");
-    expect(fileActions).toContain("file.batch_created");
-    expect(fileActions).toContain("file.finalized");
-    expect(fileActions).toContain("file.downloaded");
-    expect(fileActions).toContain("file.deleted");
-    expect(fileActions).toContain("file.link_added");
-    expect(fileActions).toContain("file.link_removed");
-    expect(fileActions).toContain("file.scan_completed");
-    expect(fileActions).toContain("file.upload_received");
+    // Set equality (not `toContain`) so the test fails when a NEW
+    // FILE_* action lands without being declared here. Catches
+    // vocabulary drift: a future `FILE_RESTORED` / `FILE_REHASHED`
+    // addition forces the dev to extend this list, which forces a
+    // review-pass on SIEM filters that scan on the FILE_* prefix.
+    expect(new Set(fileActions)).toEqual(
+      new Set([
+        "file.created",
+        "file.batch_created",
+        "file.finalized",
+        "file.downloaded",
+        "file.deleted",
+        "file.link_added",
+        "file.link_removed",
+        "file.scan_completed",
+        "file.upload_received",
+      ]),
+    );
   });
 
   test("AuditAction values are all strings (no accidental undefined)", () => {
