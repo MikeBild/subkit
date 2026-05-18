@@ -58,7 +58,12 @@ interface DesiredState {
 }
 
 function scheduleKeyForRow(row: { id: string }): string {
-  return `wf-schedule:${row.id}`;
+  // pg-boss `Attorney.assertQueueName` rejects `:` (and other non
+  // [a-zA-Z0-9_\-./]). The previous separator made every `boss.schedule`
+  // succeed but every `boss.createQueue` reject — so the FK from
+  // `pgboss.schedule.name` into `pgboss.queue.name` could never be
+  // satisfied and the recurring cron never landed.
+  return `wf-schedule.${row.id}`;
 }
 
 /**
