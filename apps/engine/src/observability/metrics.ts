@@ -335,6 +335,14 @@ export const METRIC_NAMES = {
   // dashboard show flapping tools the same way the connector
   // circuit metric shows flapping connectors.
   TOOL_CIRCUIT_OPEN_TOTAL: "subkit_tool_circuit_open_total",
+  // Detected hallucinated tool-absence claims. Fires when the LLM's
+  // assistant text denies the availability of a tool that IS in the
+  // resolved palette this turn. Operators chart by `tool` to see
+  // which tools the model is most likely to forget — usually a
+  // signal that the schema-normaliser regressed or the cleanup
+  // palette diverged from the seed-skill teaching.
+  CONVERSATION_TOOL_HALLUCINATED_ABSENCE_TOTAL:
+    "subkit_conversation_tool_hallucinated_absence_total",
   // Authoring-time LLM critic runs. `result` is one of
   // passed / rejected / fail_open. Operators chart passed:rejected
   // to estimate signal quality, and (passed+rejected):fail_open to
@@ -649,6 +657,11 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.TOOL_CIRCUIT_OPEN_TOTAL,
     help: "Per-tool circuit-breaker opens. `reason` is `tool_loop_detected` (3× identical args) or `consecutive_failures_cap` (5 consecutive fails). High counts on a specific tool point at flapping behaviour or a brittle skill prompt.",
     labels: ["tool", "reason"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.CONVERSATION_TOOL_HALLUCINATED_ABSENCE_TOTAL,
+    help: "LLM denied availability of a tool that IS in the resolved palette this turn (root D defence-in-depth). Triaged by `tool` — non-zero counts are a regression signal because the seed skill instructs the model to call `cannot_help` instead.",
+    labels: ["tool"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.CRITIC_RUNS_TOTAL,

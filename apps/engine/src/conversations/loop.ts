@@ -53,7 +53,11 @@ import {
   toLlmProviderError,
 } from "../llm/provider-errors.ts";
 import { log, logger } from "../logging/logger.ts";
-import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
+import {
+  recordLlmQuotaExhausted,
+  recordLlmTokens,
+  recordToolHallucinatedAbsence,
+} from "../observability/instrumentation.ts";
 import { now } from "../utils/clock.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
@@ -75,6 +79,7 @@ import {
 } from "./loop/model-resolver.ts";
 import { committedStopCondition, pausedStopCondition } from "./loop/stop-conditions.ts";
 import { buildNextSuggestionFrame } from "./loop/suggest-next-emitter.ts";
+import { detectToolHallucinatedAbsence } from "./loop/tool-not-available-guard.ts";
 import { readStepUsage } from "./loop/usage.ts";
 import {
   appendMessage,
@@ -1433,6 +1438,34 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         conversation_id: p.conversation_id,
         loop_warnings: signals.totalLoopWarnings,
         synthesis_reason: classified.reason,
+      });
+    }
+  }
+
+  // Root D defence-in-depth: detect hallucinated tool-absence
+  // claims. When the LLM's assistant text denies the availability of
+  // a tool that IS in the resolved palette this turn (a regression
+  // observed in conversation fe9c4ec7 on 2026-05-16), emit a counter
+  // and a warn so the operator sees the regression. The seed skill's
+  // palette-is-fixed clause is the primary defence; this guard is
+  // the observability signal that proves whether the teaching is
+  // working in production.
+  if (signals.lastAssistantText) {
+    const palette = new Set(Object.keys(tools));
+    const verdict = detectToolHallucinatedAbsence({
+      assistantText: signals.lastAssistantText,
+      palette,
+    });
+    if (verdict.hallucinated && verdict.toolName) {
+      recordToolHallucinatedAbsence({ tool: verdict.toolName });
+      logger.warn({
+        module: "conversation",
+        action: "loop.tool_hallucinated_absence",
+        msg: "assistant denied a tool that IS in the resolved palette this turn",
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        tool: verdict.toolName,
+        pattern: verdict.pattern,
       });
     }
   }
