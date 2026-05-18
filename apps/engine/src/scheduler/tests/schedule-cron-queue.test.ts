@@ -39,13 +39,13 @@ describe("scheduleCron", () => {
     const { boss, calls } = createStubBoss({});
     await scheduleCron({
       boss,
-      name: "wf-schedule:test-1",
+      name: "wf-schedule.test-1",
       cron: "0 19 * * *",
       tz: "Europe/Berlin",
     });
     expect(calls).toEqual([
-      { kind: "createQueue", name: "wf-schedule:test-1" },
-      { kind: "schedule", name: "wf-schedule:test-1", cron: "0 19 * * *" },
+      { kind: "createQueue", name: "wf-schedule.test-1" },
+      { kind: "schedule", name: "wf-schedule.test-1", cron: "0 19 * * *" },
     ]);
   });
 
@@ -61,12 +61,12 @@ describe("scheduleCron", () => {
     // the dup-swallow branch trips this test, not production.
     await scheduleCron({
       boss,
-      name: "wf-schedule:test-2",
+      name: "wf-schedule.test-2",
       cron: "0 19 * * *",
     });
     expect(calls).toEqual([
-      { kind: "createQueue", name: "wf-schedule:test-2" },
-      { kind: "schedule", name: "wf-schedule:test-2", cron: "0 19 * * *" },
+      { kind: "createQueue", name: "wf-schedule.test-2" },
+      { kind: "schedule", name: "wf-schedule.test-2", cron: "0 19 * * *" },
     ]);
   });
 
@@ -79,7 +79,7 @@ describe("scheduleCron", () => {
     await expect(
       scheduleCron({
         boss,
-        name: "wf-schedule:test-3",
+        name: "wf-schedule.test-3",
         cron: "0 19 * * *",
       }),
     ).rejects.toThrow(/connection terminated/);
@@ -89,7 +89,7 @@ describe("scheduleCron", () => {
     const { boss, calls } = createStubBoss({});
     await scheduleCron({
       boss,
-      name: "wf-schedule:test-4",
+      name: "wf-schedule.test-4",
       cron: "every:5",
     });
     // every:N is handled by the reconciler's setInterval — pg-boss
