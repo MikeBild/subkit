@@ -64,7 +64,12 @@
 // orphan blob in the bucket is preferable to wedging the cron.
 
 import { and, count, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
-import { AuditAction, auditAwait, FileDeletedMetadataSchema } from "../audit/index.ts";
+import {
+  AuditAction,
+  auditAwait,
+  FileDeletedMetadataSchema,
+  FileScanCompletedMetadataSchema,
+} from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, fileLinks, files } from "../db/schema/index.ts";
 import { storageKey } from "../files/resolver.ts";
@@ -185,6 +190,29 @@ async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_sca
       file_id: row.id,
       tenant_id: row.tenant_id,
     });
+    // Durable per-row audit so the file-header comment claim
+    // ("emits `FILE_SCAN_COMPLETED { verdict:'timeout' }`") matches
+    // the code. Mirrors the upload-handler timeout path so audit
+    // consumers see the same action whether the timeout fired in the
+    // route or got reaped here.
+    await auditAwait(
+      {
+        tenant_id: row.tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.FILE_SCAN_COMPLETED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: "error",
+        metadata: FileScanCompletedMetadataSchema.parse({
+          file_id: row.id,
+          verdict: "timeout",
+          engine: "scheduler.stuck_scan_timeout",
+          request_source: "scheduler",
+        }),
+      },
+      db,
+    );
   }
 
   return { pending: deleted.length, stuck_scanning: stuckScanning.length };
