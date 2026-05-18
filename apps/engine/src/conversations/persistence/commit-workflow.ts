@@ -25,12 +25,13 @@ import type { ToolContext, ToolResult } from "../tools/index.ts";
 
 /**
  * Build the `WorkflowDef`-shaped object the workflows service accepts,
- * from the conversation's working draft. The mapping is the single
- * source of truth for which draft fields survive commit — every
- * field listed here is persisted into `workflow_versions.dag`,
- * anything missing is silently dropped. Mirror the hash inputs in
- * `save-workflow-draft.ts:123-134` so idempotency and persistence
- * agree on the contract.
+ * from the conversation's working draft. Every persisted field on
+ * `WorkflowDraftDocument` must be projected here; anything missing is
+ * silently dropped on commit (the regression class that broke chat-
+ * authored schedules end-to-end). The corresponding contract test in
+ * `tests/commit-workflow-def-from-draft.test.ts` pins each field, so
+ * a new draft field added in `conversations/types.ts` without a
+ * matching entry here fails the test before it can ship.
  */
 export interface WorkflowDefFromDraft {
   name: string;
@@ -38,6 +39,9 @@ export interface WorkflowDefFromDraft {
   description?: string;
   input_schema?: Record<string, unknown>;
   output_schema?: Record<string, unknown>;
+  output_transform?: string;
+  edges?: Array<{ from: string; to: string }>;
+  derived_from_skill_id?: string | null;
   trigger?: import("../../workflows/types.ts").WorkflowTrigger;
   steps: Array<Record<string, unknown>>;
 }
@@ -49,6 +53,11 @@ export function workflowDefFromDraft(draft: WorkflowDefFromDraft): WorkflowDefFr
     ...(draft.description ? { description: draft.description } : {}),
     ...(draft.input_schema ? { input_schema: draft.input_schema } : {}),
     ...(draft.output_schema ? { output_schema: draft.output_schema } : {}),
+    ...(draft.output_transform ? { output_transform: draft.output_transform } : {}),
+    ...(draft.edges ? { edges: draft.edges } : {}),
+    ...(draft.derived_from_skill_id !== undefined
+      ? { derived_from_skill_id: draft.derived_from_skill_id }
+      : {}),
     ...(draft.trigger ? { trigger: draft.trigger } : {}),
     steps: draft.steps,
   };

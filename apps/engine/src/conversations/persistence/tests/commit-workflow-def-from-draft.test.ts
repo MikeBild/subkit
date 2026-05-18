@@ -72,4 +72,45 @@ describe("workflowDefFromDraft", () => {
       ],
     });
   });
+
+  it("preserves output_transform", () => {
+    const def = workflowDefFromDraft({
+      name: "X",
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+      output_transform: "{ result: $scope.a.duration_ms }",
+    });
+    expect((def as { output_transform: string }).output_transform).toBe(
+      "{ result: $scope.a.duration_ms }",
+    );
+  });
+
+  it("preserves edges", () => {
+    const def = workflowDefFromDraft({
+      name: "X",
+      steps: [
+        { id: "a", kind: "wait", duration_ms: 100 },
+        { id: "b", kind: "wait", duration_ms: 100 },
+      ],
+      edges: [{ from: "a", to: "b" }],
+    });
+    expect((def as { edges: unknown }).edges).toEqual([{ from: "a", to: "b" }]);
+  });
+
+  it("preserves derived_from_skill_id (including null)", () => {
+    const withSkill = workflowDefFromDraft({
+      name: "X",
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+      derived_from_skill_id: "destructive-skill",
+    });
+    expect((withSkill as { derived_from_skill_id: unknown }).derived_from_skill_id).toBe(
+      "destructive-skill",
+    );
+
+    const explicitNull = workflowDefFromDraft({
+      name: "X",
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+      derived_from_skill_id: null,
+    });
+    expect((explicitNull as { derived_from_skill_id: unknown }).derived_from_skill_id).toBeNull();
+  });
 });

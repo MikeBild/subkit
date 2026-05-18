@@ -149,21 +149,31 @@ export async function repairToolCall<TOOLS extends ToolSet>(
   }
 }
 
+const SCHEMA_REJECTION_MARKERS = [
+  "output_config.format.schema",
+  "Empty schema",
+  "Schema type",
+] as const;
+
 /**
  * Heuristic detector for provider-side structured-output schema
- * rejections. When the provider rejects the schema itself (Anthropic
- * returns `AI_APICallError` with `output_config.format.schema` in the
- * message), the warn-level emitter attaches the normalised schema
- * fragment as a load-bearing diagnostic. Exported so the heuristic
- * has unit coverage independent of the AI SDK mock surface.
+ * rejections. The warn-level emitter attaches the normalised schema
+ * fragment (~up to 4KB) only when this fires, so the detector has to
+ * be *narrow* — the AI SDK's generic `AI_APICallError` also covers
+ * quota/auth/connection failures, where the schema payload would
+ * inflate logs without diagnostic value. The dual-key rule:
+ *
+ *   - `AI_APICallError` + a schema-marker substring → schema rejection
+ *   - any other error name + a schema-marker substring → schema rejection
+ *     (covers providers that wrap the upstream error differently)
+ *   - `AI_APICallError` alone (quota, 429, ECONNRESET, etc.) → NOT a
+ *     schema rejection
+ *
+ * Exported so the heuristic has unit coverage independent of the AI
+ * SDK mock surface.
  */
 export function isSchemaRejectionError(input: { errName: string; errMsg: string }): boolean {
-  return (
-    input.errName === "AI_APICallError" ||
-    input.errMsg.includes("output_config.format.schema") ||
-    input.errMsg.includes("Empty schema") ||
-    input.errMsg.includes("Schema type")
-  );
+  return SCHEMA_REJECTION_MARKERS.some((marker) => input.errMsg.includes(marker));
 }
 
 /**
