@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { RequestSourceSchema } from "../observability/service-metadata.ts";
 
 /**
  * Sentinel UUID used as `tenant_id` for audit rows that are emitted before
@@ -490,8 +491,8 @@ export const ConversationForkedMetadataSchema = z.object({
   /** The cap in effect when the fork ran; recorded so audit-only
    *  readers can detect a future cap change without reading source. */
   copy_cap: z.number().int().positive(),
-  /** AGENTS.md request_source enum: api | cli | scheduler | mcp | webhook | tool-chain | ui */
-  request_source: z.enum(["api", "cli", "scheduler", "mcp", "webhook", "tool-chain", "ui"]),
+  /** Canonical request_source — see `RequestSourceSchema` for the full list. */
+  request_source: RequestSourceSchema,
 });
 export type ConversationForkedMetadata = z.infer<typeof ConversationForkedMetadataSchema>;
 
@@ -516,8 +517,8 @@ export const ToolPolicyChangedMetadataSchema = z.object({
       z.literal("confirm_after_execution"),
     ])
     .nullable(),
-  /** AGENTS.md request_source enum: api | cli | scheduler | mcp | webhook | tool-chain | ui */
-  request_source: z.enum(["api", "cli", "scheduler", "mcp", "webhook", "tool-chain", "ui"]),
+  /** Canonical request_source — see `RequestSourceSchema` for the full list. */
+  request_source: RequestSourceSchema,
 });
 export type ToolPolicyChangedMetadata = z.infer<typeof ToolPolicyChangedMetadataSchema>;
 
@@ -585,21 +586,13 @@ export type DiagnosticsVersionReadMetadata = z.infer<typeof DiagnosticsVersionRe
  *  with `audit/buckets.ts:SizeBucket`. */
 const SizeBucketSchema = z.enum(["<1KB", "<1MB", "<10MB", "<100MB", ">=100MB"]);
 
-/** AGENTS.md request_source enum, reused by every `FILE_*` audit
- *  metadata schema so SIEM consumers can split file-event volume by
- *  dispatch channel without joining back to trace_ids. Optional on
- *  every schema because the cron sweeps and self-update path emit
- *  with a synthetic actor that has no HTTP context (those emitters
- *  pass `"scheduler"` explicitly when relevant). */
-const RequestSourceSchema = z.enum([
-  "api",
-  "cli",
-  "scheduler",
-  "mcp",
-  "webhook",
-  "tool-chain",
-  "ui",
-]);
+// `RequestSourceSchema` is re-imported from
+// `observability/service-metadata.ts` (top of file) so the audit
+// metadata schemas and the per-request Hono context variable share
+// exactly one source of truth. Optional on every schema below
+// because the cron sweeps and self-update path emit with a synthetic
+// actor that has no HTTP context (those emitters pass `"scheduler"`
+// explicitly when relevant).
 
 /** `file.created` metadata. Filename + content_type are the user-supplied
  *  shape captured at upload; sha256_prefix is the first 16 hex chars of

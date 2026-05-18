@@ -27,14 +27,19 @@ import type { Context } from "hono";
 import type { AppEnv } from "../http/openapi.ts";
 
 /** Canonical entry-point label. The same enum drives RBAC softening,
- *  notification routing, and rate-limit selection. */
+ *  notification routing, rate-limit selection, audit metadata
+ *  (`apps/engine/src/audit/types.ts` re-imports this schema), and the
+ *  `request_source` Hono context variable that the trace middleware
+ *  sets per request. Single source of truth — adding a new channel
+ *  here surfaces it to every downstream consumer at typecheck time. */
 export const RequestSourceSchema = z.enum([
   "api",
   "cli",
+  "scheduler",
   "mcp",
   "webhook",
   "tool-chain",
-  "scheduler",
+  "ui",
   "chat",
 ]);
 export type RequestSource = z.infer<typeof RequestSourceSchema>;

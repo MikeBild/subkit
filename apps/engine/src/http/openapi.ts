@@ -5,12 +5,18 @@ import { VERSION } from "@cli-core/version.ts";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
-import type { ServiceMetadata } from "../observability/service-metadata.ts";
+import type { RequestSource, ServiceMetadata } from "../observability/service-metadata.ts";
 
 export type AppEnv = {
   Variables: {
     trace_id: string;
-    request_source: "api" | "mcp" | "webhook" | "chat";
+    /** Canonical request-source label. The trace middleware sets this
+     *  for every request (api / mcp / webhook / chat by default); the
+     *  type widens to the full canonical enum so non-HTTP entry points
+     *  (CLI direct invocation, scheduler ticks) that share the same
+     *  context shape stay assignable. Single source of truth lives at
+     *  `observability/service-metadata.ts:RequestSourceSchema`. */
+    request_source: RequestSource;
     request_started_at: number;
     db: Db;
     principal?: ResolvedPrincipal;

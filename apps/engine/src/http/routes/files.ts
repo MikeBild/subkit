@@ -62,6 +62,7 @@ import {
   FileLinkAddedMetadataSchema,
   FileScanCompletedMetadataSchema,
   FileUploadReceivedMetadataSchema,
+  readRequestSource,
 } from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { writeEvent } from "../../db/events.ts";
@@ -135,29 +136,6 @@ function toFileWire(row: typeof files.$inferSelect): FileWire {
 /** Map principal → audit actor_type. */
 function actorType(p: { kind: "user" | "system_account" }): "user" | "system_account" {
   return p.kind === "user" ? "user" : "system_account";
-}
-
-/** Project the per-request `request_source` from the Hono context onto
- *  audit metadata. The trace middleware sets the variable on every
- *  request (api / mcp / webhook / chat). Returns undefined when the
- *  middleware did not run (e.g. raw test invocations) so `.optional()`
- *  on the schema accepts it. */
-function readRequestSource(c: {
-  get: (k: "request_source") => string | undefined;
-}): import("../../audit/types.ts").FileCreatedMetadata["request_source"] | undefined {
-  const v = c.get("request_source");
-  if (
-    v === "api" ||
-    v === "cli" ||
-    v === "scheduler" ||
-    v === "mcp" ||
-    v === "webhook" ||
-    v === "tool-chain" ||
-    v === "ui"
-  ) {
-    return v;
-  }
-  return undefined;
 }
 
 /** Open an iterator over a fixed byte buffer for the synchronous scan
