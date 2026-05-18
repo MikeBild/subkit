@@ -366,21 +366,27 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     // Audit byte-receipt so a client that uploads and then abandons
     // the session before finalize still has a paper trail. Without
     // this row the only evidence is the cleanup cron's pending-orphan
-    // sweep (≥1h later). Fire-and-forget — not on the hot path.
-    audit({
-      tenant_id: row.tenant_id,
-      actor_type: "system",
-      actor_id: null,
-      action: AuditAction.FILE_UPLOAD_RECEIVED,
-      resource_type: "file",
-      resource_id: row.id,
-      result: "success",
-      metadata: FileUploadReceivedMetadataSchema.parse({
-        file_id: row.id,
-        size_bytes_bucket: bucketSize(boundSize),
-        source: "local_presign",
-      }),
-    });
+    // sweep (≥1h later). `auditAwait` so the row is durable before the
+    // 200 response — a process crash between `putStream` returning and
+    // the audit row landing would otherwise leave bytes on disk with
+    // no audit trace until the cleanup cron sweep.
+    await auditAwait(
+      {
+        tenant_id: row.tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.FILE_UPLOAD_RECEIVED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: "success",
+        metadata: FileUploadReceivedMetadataSchema.parse({
+          file_id: row.id,
+          size_bytes_bucket: bucketSize(boundSize),
+          source: "local_presign",
+        }),
+      },
+      db,
+    );
     return c.body(null, 200);
   });
 
