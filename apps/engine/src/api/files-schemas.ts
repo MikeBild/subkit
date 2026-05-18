@@ -27,12 +27,26 @@ export const FileIdSchema = z
   .regex(/^fid_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
   .openapi("FileId");
 
-/** Strip the `fid_` prefix to obtain the underlying UUID for DB lookups. */
-export function parseFileId(wire: string): string {
-  if (!wire.startsWith("fid_")) {
+/** Strip the `fid_` prefix to obtain the underlying UUID for DB lookups.
+ *  Returns `null` when the input is missing the `fid_` prefix so callers
+ *  can branch on a typed result instead of catching a generic `Error`.
+ *  Most route handlers validate the path/body shape via `FileIdSchema`
+ *  (Zod) before calling this — in that path use `parseFileIdOrThrow` to
+ *  assert the contract (a `null` here would indicate a Zod regression). */
+export function parseFileId(wire: string): string | null {
+  if (!wire.startsWith("fid_")) return null;
+  return wire.slice("fid_".length);
+}
+
+/** Thin throwing wrapper around `parseFileId` for call sites that have
+ *  already validated the wire shape via Zod (`FileIdSchema`) and want a
+ *  loud failure if the invariant ever breaks. */
+export function parseFileIdOrThrow(wire: string): string {
+  const uuid = parseFileId(wire);
+  if (uuid === null) {
     throw new Error(`invalid file id (missing fid_ prefix): ${wire}`);
   }
-  return wire.slice("fid_".length);
+  return uuid;
 }
 
 /** Compose the wire-format file id from a raw UUID. */

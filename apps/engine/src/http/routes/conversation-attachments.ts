@@ -29,14 +29,14 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   FileRefSchema,
   FileSchema,
   type FileWire,
   MAX_INLINE_BYTES,
-  parseFileId,
+  parseFileIdOrThrow,
   toFileId,
 } from "../../api/files-schemas.ts";
 import {
@@ -257,7 +257,9 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     // Branch 1: `$file` ref — caller already uploaded via /v1/files/*.
     // We just link it into the conversation.
     if ("$file" in body) {
-      const fid_uuid = parseFileId(body.$file);
+      // body.$file already validated by Zod (`FileIdSchema` via `FileRefSchema`);
+      // `OrThrow` asserts the invariant — a null here indicates a Zod regression.
+      const fid_uuid = parseFileIdOrThrow(body.$file);
       let fileRow: typeof files.$inferSelect;
       try {
         fileRow = await requireFileForTenant(db, tenant_id, fid_uuid);
@@ -489,8 +491,4 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     );
     return c.body(null, 204);
   });
-
-  // Suppress `asc` import unused — kept available for future sort
-  // variants the operator UI may request.
-  void asc;
 }

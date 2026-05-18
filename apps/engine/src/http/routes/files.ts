@@ -45,7 +45,7 @@ import {
   ListFilesQuerySchema,
   MAX_FINALIZE_VERIFY_BYTES,
   MAX_INLINE_BYTES,
-  parseFileId,
+  parseFileIdOrThrow,
   toFileId,
 } from "../../api/files-schemas.ts";
 import {
@@ -193,7 +193,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(localUploadRoute, async (c) => {
     const { id } = c.req.valid("param");
     const { token } = c.req.valid("query");
-    const fid_uuid = parseFileId(id);
+    const fid_uuid = parseFileIdOrThrow(id);
     const db = c.get("db");
     // We need the tenant_id + storage key to verify the HMAC. The row
     // exists in `pending` state from `batch-create`; we look it up
@@ -720,7 +720,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const tenant_id = principal.tenant_id;
-    const fid_uuid = parseFileId(id);
+    const fid_uuid = parseFileIdOrThrow(id);
     // Wall-clock for FILES_UPLOAD_DURATION_SECONDS — covers the
     // server-side finalize pass (digest + sibling-dedup + scan + row
     // update). The presigned-PUT itself is client-side and not
@@ -1141,7 +1141,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     try {
-      const row = await requireFileForTenant(db, principal.tenant_id, parseFileId(id));
+      const row = await requireFileForTenant(db, principal.tenant_id, parseFileIdOrThrow(id));
       return c.json(toFileWire(row), 200);
     } catch {
       return c.json({ code: "not_found", message: "file not found" }, 404);
@@ -1175,7 +1175,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     let row: typeof files.$inferSelect;
     try {
-      row = await requireFileForTenant(db, principal.tenant_id, parseFileId(id));
+      row = await requireFileForTenant(db, principal.tenant_id, parseFileIdOrThrow(id));
     } catch {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
@@ -1264,7 +1264,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     let row: typeof files.$inferSelect;
     try {
-      row = await requireFileForTenant(db, principal.tenant_id, parseFileId(id));
+      row = await requireFileForTenant(db, principal.tenant_id, parseFileIdOrThrow(id));
     } catch {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
@@ -1331,7 +1331,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     let row: typeof files.$inferSelect;
     try {
-      row = await requireFileForTenant(db, principal.tenant_id, parseFileId(id));
+      row = await requireFileForTenant(db, principal.tenant_id, parseFileIdOrThrow(id));
     } catch {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }

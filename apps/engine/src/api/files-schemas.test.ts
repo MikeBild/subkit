@@ -10,6 +10,7 @@ import {
   FileRefSchema,
   FinalizeRequestSchema,
   parseFileId,
+  parseFileIdOrThrow,
   toFileId,
 } from "./files-schemas.ts";
 
@@ -53,8 +54,16 @@ describe("parseFileId / toFileId", () => {
     expect(parseFileId(VALID_FID)).toBe(VALID_UUID);
   });
 
-  test("parseFileId throws on missing prefix", () => {
-    expect(() => parseFileId(VALID_UUID)).toThrow(/invalid file id/);
+  test("parseFileId returns null on missing prefix (typed result, not throw)", () => {
+    expect(parseFileId(VALID_UUID)).toBeNull();
+  });
+
+  test("parseFileIdOrThrow throws on missing prefix", () => {
+    expect(() => parseFileIdOrThrow(VALID_UUID)).toThrow(/invalid file id/);
+  });
+
+  test("parseFileIdOrThrow strips fid_ prefix on valid input", () => {
+    expect(parseFileIdOrThrow(VALID_FID)).toBe(VALID_UUID);
   });
 
   test("toFileId always prepends fid_", () => {
