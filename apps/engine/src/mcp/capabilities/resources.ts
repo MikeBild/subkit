@@ -56,6 +56,7 @@ import {
   UnsubscribeRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq, isNull } from "drizzle-orm";
+import { AuditAction, audit, bucketSize, FileDownloadedMetadataSchema } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as connectorSvc from "../../connectors/service.ts";
 import type { Db } from "../../db/client.ts";
@@ -426,6 +427,28 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         err.code = -32001;
         throw err;
       }
+      // Audit byte-egress so MCP reads match the HTTP `GET
+      // /v1/files/:id/content` paper trail. Same fire-and-forget shape
+      // as the HTTP route (downloads are high-frequency; awaiting the
+      // row would put audit-log latency on every read). `range` is
+      // always `false` here — the MCP envelope returns the full
+      // payload; there is no `Range` semantics at this layer.
+      audit({
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_id: principal.id,
+        action: AuditAction.FILE_DOWNLOADED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: "success",
+        metadata: FileDownloadedMetadataSchema.parse({
+          file_id: row.id,
+          content_type: row.content_type,
+          size_bytes_bucket: bucketSize(row.size_bytes),
+          range: false,
+          request_source: "mcp",
+        }),
+      });
       const stream = await getObjectStore().openRead(storageKey(row.storage_uri));
       const chunks: Uint8Array[] = [];
       for await (const chunk of stream) chunks.push(chunk);
