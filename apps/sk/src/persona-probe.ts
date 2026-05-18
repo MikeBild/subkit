@@ -46,6 +46,9 @@ const TIER_PERMISSIONS: Record<number, readonly UxGatingPermission[]> = {
     "notification:read",
     "notification:write",
     "discovery:read",
+    "file:read",
+    "file:write",
+    "file:delete",
   ],
   4: [
     "audit:read",

@@ -30,7 +30,7 @@ import {
   recordToolCircuitOpen,
 } from "../../../observability/instrumentation.ts";
 import { startToolSpan } from "../../../observability/langfuse-spans.ts";
-import { resolveAttachments } from "../../attachments.ts";
+import { FileNotFoundError, type ResolvedFile, walkAndResolve } from "../../attachments.ts";
 import { recordTransition } from "../../confirmation.ts";
 import { isDangerousTool } from "../../dangerous-tools.ts";
 import { createDraftSnapshot } from "../../draft-checkpoints.ts";
@@ -834,37 +834,44 @@ export function wrapOne(
           };
         }
 
-        // Resolve @attachment:<slug> references inside rawArgs before
-        // handing them to the tool. Any unresolved slug short-circuits
-        // the execution with a typed error — the tool never sees the
-        // marker, the audit row reflects the failure mode clearly.
-        const attachmentResolved = await resolveAttachments(rawArgs, {
-          tenant_id: ctx.tenant_id,
-          conversation_id: ctx.conversation_id,
-          db,
-        });
-        if (attachmentResolved.unresolved.length > 0) {
-          const output: Record<string, unknown> = {
-            ok: false,
-            persistence: "none",
-            error: {
-              code: "attachment_not_found",
-              message: "one or more @attachment:<slug> references could not be resolved",
-              details: { unresolved: attachmentResolved.unresolved },
-            },
-          };
-          await updateToolCallOutput(db, toolCallId, output);
-          events.push({
-            type: "tool_result",
-            call_id: toolCallId,
-            tool: inner.name,
-            output,
-            parent_message_id: assistantMessageId,
-          });
-          release();
-          return { ok: false, data: output };
+        // Resolve `{ "$file": "fid_..." }` refs inside rawArgs before
+        // handing them to the tool. The canonical resolver lives at
+        // `files/resolver.ts` — `walkAndResolve` replaces every ref
+        // leaf with a `ResolvedFile` whose `openRead()` returns the
+        // bytes stream. Unknown / cross-tenant fids throw
+        // `FileNotFoundError`; we surface that as a typed error
+        // exactly like the legacy attachment-slug failure mode.
+        const resolveCache = new Map<string, ResolvedFile>();
+        let resolvedArgs: Record<string, unknown>;
+        try {
+          resolvedArgs = await walkAndResolve(
+            rawArgs,
+            { db, tenant_id: ctx.tenant_id },
+            resolveCache,
+          );
+        } catch (err) {
+          if (err instanceof FileNotFoundError) {
+            const output: Record<string, unknown> = {
+              ok: false,
+              persistence: "none",
+              error: {
+                code: "file_not_found",
+                message: err.message,
+              },
+            };
+            await updateToolCallOutput(db, toolCallId, output);
+            events.push({
+              type: "tool_result",
+              call_id: toolCallId,
+              tool: inner.name,
+              output,
+              parent_message_id: assistantMessageId,
+            });
+            release();
+            return { ok: false, data: output };
+          }
+          throw err;
         }
-        const resolvedArgs = attachmentResolved.value as Record<string, unknown>;
 
         // Tool-driven skill autoload. Before dispatch, ask the
         // data-driven matcher (skill-autoload.ts) which active skills'

@@ -669,12 +669,67 @@ function mergeSignals(signals: AbortSignal[]): AbortSignal {
   return controller.signal;
 }
 
+export interface ResolvedFilePart {
+  name: string;
+  file?: {
+    openRead(): Promise<AsyncIterable<Uint8Array>>;
+    filename: string;
+    content_type: string | null;
+    size_bytes: number;
+  };
+  value?: string;
+  filename?: string;
+  content_type?: string;
+}
+
+/**
+ * Build a `FormData` body from resolved multipart parts. Parts that carry a
+ * `file` reference are attached as `Blob`s; parts with `value` become plain
+ * text fields. Large files (>50 MB) are spooled to tmpfile by the step-runner
+ * before `buildMultipartBody` is called, so by the time we get here the
+ * payload is bounded and we buffer all chunks into a single `Blob`.
+ */
+export async function buildMultipartBody(parts: ResolvedFilePart[]): Promise<FormData> {
+  const form = new FormData();
+  for (const part of parts) {
+    if (part.file !== undefined) {
+      const f = part.file;
+      const effectiveFilename = part.filename ?? f.filename;
+      const effectiveContentType =
+        part.content_type ?? f.content_type ?? "application/octet-stream";
+      let blob: Blob;
+      // Collect chunks from the file stream; use Uint8Array<ArrayBuffer>
+      // to satisfy the BlobPart constraint under strict TS lib.
+      {
+        const chunks: ArrayBuffer[] = [];
+        for await (const raw of await f.openRead()) {
+          // Copy into a plain ArrayBuffer so BlobPart is satisfied.
+          const ab = raw.buffer.slice(
+            raw.byteOffset,
+            raw.byteOffset + raw.byteLength,
+          ) as ArrayBuffer;
+          chunks.push(ab);
+        }
+        blob = new Blob(chunks, { type: effectiveContentType });
+      }
+      form.append(part.name, blob, effectiveFilename);
+    } else if (part.value !== undefined) {
+      form.append(part.name, part.value);
+    }
+  }
+  return form;
+}
+
 export async function executePlannedHttpRequest(params: {
   tenant_id: string;
   method: string;
   url: URL;
   headers: Record<string, string>;
   body?: unknown;
+  /** Pre-built multipart body. When present, overrides `body` and sets the
+   *  request body to multipart/form-data (Content-Type is set by FormData
+   *  automatically, so the caller MUST NOT set it manually). */
+  multipartBody?: FormData;
   signal: AbortSignal;
   /** When set, the dispatch path runs SigV4 signing right before
    *  `fetch` — sigv4 needs the URL + method + body to compute the
@@ -701,7 +756,13 @@ export async function executePlannedHttpRequest(params: {
     headers,
     signal: params.signal,
   };
-  if (
+  if (params.multipartBody !== undefined && params.method !== "GET" && params.method !== "HEAD") {
+    // FormData sets the Content-Type boundary automatically; removing any
+    // caller-supplied content-type header avoids a boundary mismatch.
+    delete headers["content-type"];
+    delete headers["Content-Type"];
+    init.body = params.multipartBody;
+  } else if (
     params.body !== undefined &&
     params.body !== null &&
     params.method !== "GET" &&

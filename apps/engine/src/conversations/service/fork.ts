@@ -19,10 +19,15 @@
 
 import { and, asc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction, ConversationForkedMetadataSchema } from "../../audit/types.ts";
+import type { AuditActorType } from "../../audit/types.ts";
+import {
+  AuditAction,
+  ConversationForkedMetadataSchema,
+  FileLinkAddedMetadataSchema,
+} from "../../audit/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
-import { conversationMessages, conversations } from "../../db/schema/index.ts";
+import { conversationMessages, conversations, fileLinks } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
 import type { ConversationRecord } from "../types.ts";
 import { rowToRecord } from "./shared.ts";
@@ -32,15 +37,22 @@ export interface ForkConversationParams {
   source_conversation_id: string;
   anchor_message_id: string;
   actor_id: string | null;
+  /** Audit `actor_type`. Routes derive this from the resolved
+   *  `principal.kind` via the canonical `actorType()` helper in
+   *  `audit/actor.ts`; cron / engine callers pass `"system"` with
+   *  `actor_id: null`. Required (no default) so a `system_account`
+   *  principal can never be silently mis-tagged as `"user"` by an
+   *  `actor_id`-truthiness heuristic. */
+  actor_type: AuditActorType;
   /** Optional title override; defaults to "fork — <source>". */
   title?: string | null;
   /**
-   * AGENTS.md request_source enum value identifying the calling channel
+   * Canonical request_source value identifying the calling channel
    * (`api`, `cli`, `scheduler`, etc.). Recorded on the audit row so
    * SIEM/BI consumers can split forks by source without correlating
    * trace_ids.
    */
-  request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui";
+  request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat";
 }
 
 export interface ForkConversationResult {
@@ -163,6 +175,78 @@ export async function forkConversation(
     copiedCount = messagesToCopy.length;
   }
 
+  // Duplicate every `file_links` row that points at the source
+  // conversation so the fork holds independent references to the same
+  // `files.id`s. Without this, the cleanup cron's orphan sweep could
+  // reap a file the moment the source conversation is deleted — even
+  // though the fork still uses it. The new rows reuse the same
+  // (slug, role) so the chat-text rewriter resolves identically in
+  // the fork; `onConflictDoNothing` keeps the operation idempotent
+  // if the same fork is replayed.
+  const sourceLinks = await exec
+    .select({
+      file_id: fileLinks.file_id,
+      slug: fileLinks.slug,
+      role: fileLinks.role,
+    })
+    .from(fileLinks)
+    .where(
+      and(
+        eq(fileLinks.tenant_id, p.tenant_id),
+        eq(fileLinks.resource_type, "conversation"),
+        eq(fileLinks.resource_id, p.source_conversation_id),
+      ),
+    );
+  if (sourceLinks.length > 0) {
+    await exec
+      .insert(fileLinks)
+      .values(
+        sourceLinks.map((l) => ({
+          tenant_id: p.tenant_id,
+          file_id: l.file_id,
+          resource_type: "conversation" as const,
+          resource_id: row.id,
+          slug: l.slug,
+          role: l.role,
+        })),
+      )
+      .onConflictDoNothing();
+
+    // Per-row audit emission — one `FILE_LINK_ADDED` per duplicated
+    // link with `source: "fork"` so compliance can distinguish
+    // user-initiated links (HTTP `/v1/files/...`, REPL attach) from
+    // fork-cascaded ones. Per-row matches the rest of the audit
+    // surface (each `FILE_LINK_ADDED` upstream is one row); the noise
+    // is bounded by typical conversation size (≤10 attachments).
+    for (const l of sourceLinks) {
+      await auditAwait(
+        {
+          tenant_id: p.tenant_id,
+          actor_type: p.actor_type,
+          actor_id: p.actor_id,
+          action: AuditAction.FILE_LINK_ADDED,
+          resource_type: "file",
+          resource_id: l.file_id,
+          result: "success",
+          // `.parse(...)` matches every other FILE_LINK_ADDED emitter in
+          // the codebase; without it the missing `file_id` field would
+          // silently land in the audit row and SIEM queries on
+          // `metadata->>'file_id'` would miss every fork-cascaded link.
+          metadata: FileLinkAddedMetadataSchema.parse({
+            file_id: l.file_id,
+            resource_type: "conversation",
+            resource_id: row.id,
+            slug: l.slug,
+            role: l.role,
+            source: "fork",
+            request_source: p.request_source,
+          }),
+        },
+        exec,
+      );
+    }
+  }
+
   // Log under `conversation.forked` (not `created`) so structured-log
   // readers can split forks from greenfield creates the same way the
   // audit row does.
@@ -183,7 +267,7 @@ export async function forkConversation(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: p.actor_id ? "user" : "system",
+      actor_type: p.actor_type,
       actor_id: p.actor_id,
       // Distinct fork action for audit-log incident readers. Metadata
       // still records source + anchor + count so a CREATED-style

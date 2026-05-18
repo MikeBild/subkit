@@ -17,18 +17,15 @@ describe("connector-template catalog — structural", () => {
     expect(templates.length).toBeGreaterThanOrEqual(10);
   });
 
-  test("ships 102 templates", () => {
-    // Bump this counter when adding/removing built-in templates. Pre-fix
-    // we shipped four AppSync/AWS/GCP entries that the runtime
-    // ConnectorTemplateSchema rejected at first-tool-invocation
-    // (`templates.json validation failed: 90.base_url …`); the schema
-    // and JSON were drifting — startup `loadBuiltinTemplates()` is the
-    // canonical guard for that drift, exercised by this suite.
+  test("ships 103 templates", () => {
+    // Bump this counter when adding/removing built-in templates. The
+    // canonical drift guard is `loadBuiltinTemplates()` at startup —
+    // every entry must pass `ConnectorTemplateSchema`. This test pins
+    // the catalog size so a stray add/remove surfaces explicitly.
     //
-    // F6 (recipe sweep) added six net-new templates: aws-cloudwatch-logs,
-    // aws-cloudwatch-metrics, aws-cloudwatch-alarms, aws-sts,
-    // aws-eventbridge, oauth2-generic. 95 → 101. #144 adds web-scraper → 102.
-    expect(templates.length).toBe(102);
+    // History: 95 → 101 (six AWS/oauth2 entries in F6) → 102
+    // (web-scraper from #144) → 103 (generic-multipart-upload).
+    expect(templates.length).toBe(103);
   });
 
   test("every slug matches the lowercase-kebab regex", () => {

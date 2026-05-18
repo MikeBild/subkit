@@ -9,6 +9,7 @@ import { type DriftReport, detectDrift, runMigrations } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
+import { getScanner, NoopScanner } from "./files/scanner.ts";
 import { setHealthState } from "./http/health-state.ts";
 import { engineServeOptions } from "./http/listen-hostname.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
@@ -85,6 +86,32 @@ async function runServer(): Promise<void> {
   const cfg = getConfig();
   reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
   recordBootConsumer("logger");
+
+  // Storage sanity: when the local-disk backend is selected without an
+  // explicit `storage.files.dir`, `LocalDiskObjectStore` falls back to
+  // `os.tmpdir()/sk-files`. That works for tests + smoke runs but
+  // silently disappears on a host reboot, taking every customer-uploaded
+  // file with it. One log line at boot — escalation is the operator's
+  // call, not ours.
+  if (cfg.storage.files.backend === "local" && cfg.storage.files.dir === "") {
+    logger.warn({
+      module: "storage",
+      action: "ephemeral_dir_warning",
+      msg: "storage.files.dir unset — using ephemeral tmpdir; customer files lost on reboot. Set storage.files.dir to a persistent path.",
+    });
+  }
+
+  // Scanner sanity: the default `getScanner()` returns `NoopScanner`,
+  // which reports every upload as clean. Acceptable in dev/test, a
+  // compliance hole in production — surface it loudly at boot so the
+  // operator wires a real scanner before accepting tenant content.
+  if (getScanner() === NoopScanner && process.env.NODE_ENV === "production") {
+    logger.warn({
+      module: "files",
+      action: "scanner.noop_in_production",
+      msg: "FileScanner is NoopScanner in production. Every upload is reported as clean until a real scanner is wired. Replace getScanner() with a clamd-backed implementation before accepting tenant content.",
+    });
+  }
 
   // Surfaces a bad MASTER_KEY in the boot log, before any request can
   // reach an encrypt/decrypt path. Pre-fix this lived as a top-level

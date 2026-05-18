@@ -5,6 +5,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
+import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { now } from "../../utils/clock.ts";
 import { cancelConversationAbort } from "../abort.ts";
 import type { ConversationRecord, ConversationStatus } from "../types.ts";
@@ -53,25 +54,31 @@ export interface ConversationListItem extends ConversationRecord {
 }
 
 function stringifyConversationExcerpt(content: unknown): string | null {
+  // Human-facing excerpt — strip every `[file:fid_<uuid>]` sentinel to
+  // a `[file]` placeholder so the raw fid never lands in a UI list or
+  // notification body. The conversation list is rendered to operators;
+  // a leaked sentinel is both unreadable and a low-grade information
+  // disclosure (the fid is tenant-scoped but still an internal id).
+  const stripped = (raw: string): string => stripFileSentinelsForDisplay(raw);
   if (typeof content === "string") {
     const trimmed = content.trim();
-    return trimmed.length > 0 ? trimmed : null;
+    return trimmed.length > 0 ? stripped(trimmed) : null;
   }
   if (content === null || content === undefined) return null;
   if (typeof content === "object" && content !== null) {
     const obj = content as Record<string, unknown>;
     if (typeof obj.text === "string" && obj.text.trim().length > 0) {
-      return obj.text.trim();
+      return stripped(obj.text.trim());
     }
     if (typeof obj.summary === "string" && obj.summary.trim().length > 0) {
-      return obj.summary.trim();
+      return stripped(obj.summary.trim());
     }
   }
   try {
     const raw = JSON.stringify(content);
-    return raw.length > 2 ? raw : null;
+    return raw.length > 2 ? stripped(raw) : null;
   } catch {
-    return String(content);
+    return stripped(String(content));
   }
 }
 

@@ -8,6 +8,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { actorType } from "../../../audit/index.ts";
 import * as svc from "../../../conversations/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -179,6 +180,12 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
         source_conversation_id: id,
         anchor_message_id: message_id,
         actor_id: principal.id,
+        // Thread the principal kind through so the audit row uses
+        // the same `actor_type` taxonomy as every other emit site —
+        // `system_account` callers no longer get collapsed to
+        // `user`. `actorType()` is the canonical projector hoisted
+        // out into `audit/actor.ts`.
+        actor_type: actorType(principal),
         // Every HTTP entry into the fork service tags the audit row
         // as `api`. Other channels (CLI direct invocation, scheduler)
         // pass their own value when they invoke `forkConversation`

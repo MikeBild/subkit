@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { RequestSourceSchema } from "../observability/service-metadata.ts";
 
 /**
  * Sentinel UUID used as `tenant_id` for audit rows that are emitted before
@@ -197,8 +198,65 @@ export const AuditAction = {
   // metadata never includes the raw expression (PII risk) — only a
   // 16-char sha256 prefix.
   CONVERSATION_DRY_RUN_TRANSFORM: "conversation.dry_run_transform",
-  CONVERSATION_ATTACHMENT_CREATED: "conversation.attachment_created",
-  CONVERSATION_ATTACHMENT_DELETED: "conversation.attachment_deleted",
+
+  // Unified files resource. `FILE_DELETED` is emitted whenever the
+  // engine removes a `files` row (hard delete) — covering the cleanup
+  // cron's pending-orphan sweep (`reason: 'pending_expired'`) and the
+  // unlinked-TTL hard-delete (`reason: 'unlinked_ttl'`) — as well as
+  // any future explicit DELETE surface. The legacy
+  // `CONVERSATION_ATTACHMENT_*` actions were consolidated into the
+  // canonical `FILE_*` vocabulary; new file deletions land here.
+  FILE_DELETED: "file.deleted",
+  // `FILE_CREATED` — inline-upload sink (`POST /v1/files/inline`)
+  // persisted a new `files` row. Metadata carries `filename`,
+  // `content_type`, and `size_bytes_bucket` (never raw `size_bytes` —
+  // cardinality). Filename is permitted here only; downstream events
+  // (download, finalize, link) elide it to keep audit volume low.
+  FILE_CREATED: "file.created",
+  // `FILE_BATCH_CREATED` — one row per batch-create request (not per
+  // entry). Metadata records the batch shape (`count`, `dedup_hits`)
+  // so operators can chart presign throughput without joining back to
+  // the per-file `FILE_CREATED` rows that fire on finalize.
+  FILE_BATCH_CREATED: "file.batch_created",
+  // `FILE_FINALIZED` — presigned-upload path completed
+  // (`POST /v1/files/:id/finalize`). Metadata records the
+  // post-finalize status (`ready` / `failed`) and the verified
+  // sha256-match outcome. Paired with `FILE_SCAN_COMPLETED` when the
+  // synchronous scanner ran.
+  FILE_FINALIZED: "file.finalized",
+  // `FILE_UPLOAD_RECEIVED` — emitted from the local-disk presign sink
+  // (`PUT /v1/files/{id}/upload`) after `putStream` writes bytes but
+  // before the client calls finalize. Closes the audit gap where a
+  // client uploads and then abandons the session — without this row
+  // the audit ledger only sees the bytes when the cleanup cron
+  // eventually reaps the pending row (≥1h later). Tagged with
+  // `source: "local_presign"` so SIEM can distinguish from a future
+  // S3-side notification path.
+  FILE_UPLOAD_RECEIVED: "file.upload_received",
+  // `FILE_DOWNLOADED` — `GET /v1/files/:id/content` served bytes to a
+  // caller. Metadata carries `size_bytes_bucket` and `range` (true /
+  // false) so compliance can chart exfil patterns without per-byte
+  // cardinality.
+  FILE_DOWNLOADED: "file.downloaded",
+  // `FILE_LINK_ADDED` — a polymorphic `file_links` row was attached
+  // pointing the file at an owning resource. Metadata carries
+  // `resource_type` + `resource_id`; the `file_id` is the audit row's
+  // primary resource.
+  FILE_LINK_ADDED: "file.link_added",
+  // `FILE_LINK_REMOVED` — a `file_links` row was deleted. Emitted
+  // whenever a caller unlinks a file from an owning resource (today:
+  // `DELETE /v1/conversations/:id/attachments/:slug`). The file row
+  // itself stays in place — the cleanup cron GCs orphans after the
+  // unlinked-TTL grace. Symmetric to `FILE_LINK_ADDED`, same metadata
+  // shape, so audit-readers can chart attach/detach pairs by joining on
+  // `(file_id, resource_id)`.
+  FILE_LINK_REMOVED: "file.link_removed",
+  // `FILE_SCAN_COMPLETED` — the scanner (clamd / Noop) returned a
+  // verdict for an upload. Metadata: `verdict` (clean / infected),
+  // `engine` (scanner identifier), optional `signature`. Audited
+  // separately from `FILE_CREATED` / `FILE_FINALIZED` because a future
+  // async-scan path will decouple the two.
+  FILE_SCAN_COMPLETED: "file.scan_completed",
 
   SK_CLI_LOGIN: "sk_cli.login",
   SK_CLI_LOGOUT: "sk_cli.logout",
@@ -394,6 +452,24 @@ export const AuditAction = {
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];
 
+/** Set of every `file.*` audit action — declarative so downstream
+ *  filters (SIEM exporters, MCP capability surfaces, the
+ *  `files-actions.test.ts` set-equality assertion) can match without
+ *  re-deriving the prefix grammar inline. Extend this whenever a new
+ *  `FILE_*` action lands; the cardinality test will fail if the action
+ *  is declared on `AuditAction` but not here. */
+export const FILE_AUDIT_ACTIONS: ReadonlySet<AuditActionValue> = new Set([
+  AuditAction.FILE_CREATED,
+  AuditAction.FILE_BATCH_CREATED,
+  AuditAction.FILE_FINALIZED,
+  AuditAction.FILE_UPLOAD_RECEIVED,
+  AuditAction.FILE_DOWNLOADED,
+  AuditAction.FILE_DELETED,
+  AuditAction.FILE_LINK_ADDED,
+  AuditAction.FILE_LINK_REMOVED,
+  AuditAction.FILE_SCAN_COMPLETED,
+]);
+
 export type AuditActorType = "user" | "system_account" | "system";
 export type AuditResult = "success" | "denied" | "error";
 
@@ -433,8 +509,8 @@ export const ConversationForkedMetadataSchema = z.object({
   /** The cap in effect when the fork ran; recorded so audit-only
    *  readers can detect a future cap change without reading source. */
   copy_cap: z.number().int().positive(),
-  /** AGENTS.md request_source enum: api | cli | scheduler | mcp | webhook | tool-chain | ui */
-  request_source: z.enum(["api", "cli", "scheduler", "mcp", "webhook", "tool-chain", "ui"]),
+  /** Canonical request_source — see `RequestSourceSchema` for the full list. */
+  request_source: RequestSourceSchema,
 });
 export type ConversationForkedMetadata = z.infer<typeof ConversationForkedMetadataSchema>;
 
@@ -459,8 +535,8 @@ export const ToolPolicyChangedMetadataSchema = z.object({
       z.literal("confirm_after_execution"),
     ])
     .nullable(),
-  /** AGENTS.md request_source enum: api | cli | scheduler | mcp | webhook | tool-chain | ui */
-  request_source: z.enum(["api", "cli", "scheduler", "mcp", "webhook", "tool-chain", "ui"]),
+  /** Canonical request_source — see `RequestSourceSchema` for the full list. */
+  request_source: RequestSourceSchema,
 });
 export type ToolPolicyChangedMetadata = z.infer<typeof ToolPolicyChangedMetadataSchema>;
 
@@ -513,6 +589,181 @@ export const DiagnosticsVersionReadMetadataSchema = z.object({
   schema_drift: z.boolean(),
 });
 export type DiagnosticsVersionReadMetadata = z.infer<typeof DiagnosticsVersionReadMetadataSchema>;
+
+// ---------------------------------------------------------------------------
+// `FILE_*` metadata schemas — pinned so SIEM/BI consumers have a stable
+// contract per action. Filename is allowed only on `FILE_CREATED`
+// (cardinality call: download is high-frequency, finalize / link can be
+// joined back to the create row via `file_id`). `size_bytes_bucket` uses
+// the same coarse enum as the existing `bucketSize` helper.
+
+/** Coarse size buckets emitted by `bucketSize` — pinned here so the
+ *  per-action schemas can reuse the same enum without importing the
+ *  helper (which lives in `audit/buckets.ts` and would cause a cycle if
+ *  we imported it into `audit/types.ts`). The values must stay in sync
+ *  with `audit/buckets.ts:SizeBucket`. */
+const SizeBucketSchema = z.enum(["<1KB", "<1MB", "<10MB", "<100MB", ">=100MB"]);
+
+// `RequestSourceSchema` is re-imported from
+// `observability/service-metadata.ts` (top of file) so the audit
+// metadata schemas and the per-request Hono context variable share
+// exactly one source of truth. Optional on every schema below
+// because the cron sweeps and self-update path emit with a synthetic
+// actor that has no HTTP context (those emitters pass `"scheduler"`
+// explicitly when relevant).
+
+/** `file.created` metadata. Filename + content_type are the user-supplied
+ *  shape captured at upload; sha256_prefix is the first 16 hex chars of
+ *  the asserted sha256 (truncated so a SIEM-side index is small but a
+ *  forensic JOIN against an external sha256 is still tractable). The
+ *  `dedup` flag distinguishes inline dedup hits (an existing row was
+ *  reused, no new bytes written) from cold creates. */
+export const FileCreatedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  size_bytes_bucket: SizeBucketSchema,
+  content_type: z.string().nullable(),
+  // Capped at 255 to mirror `InlineUploadSchema.filename` and
+  // `BatchCreateEntrySchema.filename` (api/files-schemas.ts). Without
+  // this cap a future emitter passing an unbounded filename would
+  // inflate `audit_log.metadata` row size + index width.
+  filename: z.string().max(255),
+  sha256_prefix: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/)
+    .optional(),
+  dedup: z.boolean().optional(),
+  request_source: RequestSourceSchema.optional(),
+  /** Free-form route-level discriminator distinguishing equivalent
+   *  emissions from different entry points (e.g.
+   *  `conversation_attachments` for the portal-wrapper route vs. the
+   *  canonical `/v1/files/inline` route). Lets SIEM queries split
+   *  audit rows by emission path without joining back to the request
+   *  log. Mirrors `FileLinkAddedMetadataSchema.source`. */
+  source: z.string().optional(),
+});
+export type FileCreatedMetadata = z.infer<typeof FileCreatedMetadataSchema>;
+
+/** `file.link_added` metadata. */
+export const FileLinkAddedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  resource_type: z.string(),
+  resource_id: z.string().uuid(),
+  slug: z.string().nullable().optional(),
+  role: z.string().nullable().optional(),
+  source: z.string().optional(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type FileLinkAddedMetadata = z.infer<typeof FileLinkAddedMetadataSchema>;
+
+/** `file.link_removed` metadata. Same shape as `FileLinkAddedMetadata`. */
+export const FileLinkRemovedMetadataSchema = FileLinkAddedMetadataSchema;
+export type FileLinkRemovedMetadata = z.infer<typeof FileLinkRemovedMetadataSchema>;
+
+/** `file.finalized` metadata. `status` is the post-finalize row status
+ *  (ready / failed / denied). `outcome` describes the verifier branch
+ *  taken (e.g. `sha256_mismatch`, `size_cap`); `dedup` is set on the
+ *  sibling-collapse path. */
+export const FileFinalizedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  status: z.enum(["ready", "failed", "denied"]).optional(),
+  size_bytes_bucket: SizeBucketSchema,
+  sha256_prefix: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/)
+    .optional(),
+  outcome: z.string().optional(),
+  dedup: z.boolean().optional(),
+  content_type: z.string().nullable().optional(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type FileFinalizedMetadata = z.infer<typeof FileFinalizedMetadataSchema>;
+
+/** `file.downloaded` metadata. Deliberately no filename — download is
+ *  high-frequency and the audit volume would inflate. `range` is true
+ *  when the request carried an HTTP Range header. `content_type` is
+ *  preserved (it's already a low-cardinality column on the file row). */
+export const FileDownloadedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  size_bytes_bucket: SizeBucketSchema,
+  range: z.boolean().optional(),
+  content_type: z.string().nullable().optional(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type FileDownloadedMetadata = z.infer<typeof FileDownloadedMetadataSchema>;
+
+/** `file.deleted` metadata. `reason` is a free-form short string —
+ *  current emitters use `user_request`, `pending_expired`,
+ *  `unlinked_ttl`. */
+export const FileDeletedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  reason: z.string(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type FileDeletedMetadata = z.infer<typeof FileDeletedMetadataSchema>;
+
+/** `file.scan_completed` metadata. Optional `signature` carries the
+ *  scanner's match identifier when the verdict is `infected`. */
+export const FileScanCompletedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  verdict: z.string(),
+  engine: z.string(),
+  signature: z.string().nullable().optional(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type FileScanCompletedMetadata = z.infer<typeof FileScanCompletedMetadataSchema>;
+
+/** `file.batch_created` metadata. `total_size_bytes_bucket` is the
+ *  bucket for the SUM of `size_bytes` across every entry — operators
+ *  read this to chart batch shape without joining back to per-file
+ *  rows. `dedup_hits` mirrors the response field. */
+export const FileBatchCreatedMetadataSchema = z.object({
+  count: z.number().int().nonnegative(),
+  total_size_bytes_bucket: SizeBucketSchema.optional(),
+  dedup_hits: z.number().int().nonnegative(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type FileBatchCreatedMetadata = z.infer<typeof FileBatchCreatedMetadataSchema>;
+
+/** `file.upload_received` metadata. Emitted from the local-disk
+ *  presign sink AFTER the streaming put completes — closes the audit
+ *  gap where a client uploads bytes and abandons the session before
+ *  finalize. `source` distinguishes future emission paths (today only
+ *  `local_presign`). */
+export const FileUploadReceivedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  size_bytes_bucket: SizeBucketSchema,
+  source: z.enum(["local_presign"]),
+  request_source: RequestSourceSchema.optional(),
+});
+export type FileUploadReceivedMetadata = z.infer<typeof FileUploadReceivedMetadataSchema>;
+
+/** `content_part.sent` metadata — emitted from the LLM file-context
+ *  assembler immediately after a fresh upload to a provider Files API
+ *  (Anthropic / OpenAI / Gemini). Closes the per-file byte-egress audit
+ *  gap: prior to this row the only persisted evidence of an outbound
+ *  file shipment was the `<provider>_file_id` column on the `files`
+ *  row, which a SIEM consumer can't chart at per-tenant byte
+ *  granularity. The wrapping `LLM_INVOCATION` row still fires from the
+ *  invocation side; this audit isolates the upload as a discrete event.
+ *  Cached-fid reuse (no new upload) does NOT emit — only the fresh
+ *  upload that consumes bandwidth lands a row. */
+export const ContentPartSentMetadataSchema = z.object({
+  /** Provider the bytes were shipped to. */
+  provider: z.enum(["anthropic", "openai", "gemini"]),
+  /** Local `files.id` whose bytes were uploaded — primary correlation
+   *  key for joining back to the canonical row. */
+  file_id: z.string().uuid(),
+  /** MIME type the uploader sent to the provider (defaults to
+   *  `application/octet-stream` upstream when the row column is null). */
+  content_type: z.string(),
+  /** Coarse size bucket — never a raw byte count (cardinality). */
+  size_bytes_bucket: SizeBucketSchema,
+  /** Canonical request_source — see `RequestSourceSchema` for the full
+   *  list. Optional because file-context assembly can happen on a
+   *  scheduler-driven turn that doesn't carry an HTTP context. */
+  request_source: RequestSourceSchema.optional(),
+});
+export type ContentPartSentMetadata = z.infer<typeof ContentPartSentMetadataSchema>;
 
 /** `engine.update.*` metadata. Shared by initiated/completed/failed/
  *  rolled_back. The binary swap is the prototypical privileged action:

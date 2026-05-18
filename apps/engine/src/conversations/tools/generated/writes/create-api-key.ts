@@ -138,7 +138,8 @@ export const createApiKeyTool: ConversationTool = {
       data: {
         // Surface the full plaintext key EXACTLY ONCE under a stable
         // field name the assistant can quote verbatim. The caller's
-        // chat surface should render it inside a CopyableBlock (D18).
+        // chat surface should render it inside a CopyableBlock so the
+        // operator can copy it without it landing in transcript history.
         plaintext_key: issued.plaintext,
         api_key: {
           id: issued.view.id,

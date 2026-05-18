@@ -16,6 +16,7 @@ import { AuditAction } from "../../../audit/types.ts";
 import { evaluateHook } from "../../../auth/hooks.ts";
 import { query as graphqlQuery } from "../../../connectors/drivers/graphql.ts";
 import {
+  buildMultipartBody,
   buildRequestPlan,
   executePlannedHttpRequest,
   HttpRequestInvalidError,
@@ -31,6 +32,7 @@ import { withEgressAudit } from "../../../connectors/egress.ts";
 import { EgressBlockedError, RobotsDisallowedError } from "../../../connectors/egress-guard.ts";
 import { getConnectorForEnvironment } from "../../../connectors/service.ts";
 import { connectorEndpointSchemas, connectors } from "../../../db/schema/index.ts";
+import type { ResolvedFile } from "../../../files/resolver.ts";
 import {
   estimateLlmCallTokens,
   isLlmProviderUrl,
@@ -93,6 +95,7 @@ async function fetchOnce(
   body: unknown,
   signal: AbortSignal,
   tenant_id: string,
+  multipartBody?: FormData,
 ): Promise<FetchAttemptResult> {
   // Pagination cursors and `${item.…}` resolution sometimes produce a
   // URL the placeholder validator missed. Without a typed guard,
@@ -116,6 +119,7 @@ async function fetchOnce(
     headers,
     body,
     signal,
+    ...(multipartBody !== undefined ? { multipartBody } : {}),
   });
   return {
     status: execution.status,
@@ -149,6 +153,8 @@ interface DoOnePageParams {
   method: string;
   headers: Record<string, string>;
   body: unknown;
+  /** Pre-built multipart FormData. When set, overrides `body`. */
+  multipartBody?: FormData;
   max_attempts: number;
   signal: AbortSignal;
   retry_total_ms: { value: number };
@@ -184,7 +190,15 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       if (p.last_idempotency_key) p.last_idempotency_key.value = key;
     }
     try {
-      const res = await fetchOnce(p.url, p.method, attemptHeaders, p.body, p.signal, p.tenant_id);
+      const res = await fetchOnce(
+        p.url,
+        p.method,
+        attemptHeaders,
+        p.body,
+        p.signal,
+        p.tenant_id,
+        p.multipartBody,
+      );
       if (res.status >= 200 && res.status < 400) return res;
       const is_additional_retry_status = p.retry_policy.additional_retry_statuses.has(res.status);
       // Reference-aligned retry telemetry: every retry emits the
@@ -316,10 +330,26 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
   throw lastErr instanceof Error ? lastErr : new Error("request failed");
 }
 
+export interface ResolvedMultipartPart {
+  name: string;
+  file?: ResolvedFile;
+  value?: string;
+  filename?: string;
+  content_type?: string;
+}
+
 export interface RunRequestStepParams {
   ctx: StepRunContext;
   step: RequestStep;
   scope: Record<string, unknown>;
+  /** Pre-resolved multipart parts from the step-runner's walkAndResolve pass.
+   *  When present the HTTP driver builds a FormData body from these instead
+   *  of the JSON body path. */
+  resolved_multipart?: ResolvedMultipartPart[];
+  /** Pre-resolved body from the step-runner when step.body contained a
+   *  $file reference. When present, the driver streams this file as the
+   *  request body instead of JSON-encoding the body field. */
+  resolved_body_file?: ResolvedFile;
 }
 
 export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
@@ -1287,12 +1317,20 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           throw err;
         }
       }
+      // Build multipart body if the step carries pre-resolved parts.
+      // `buildMultipartBody` is awaited once per non-paginated page call;
+      // for the paginated path the same FormData is reused per page.
+      let multipartFormData: FormData | undefined;
+      if (p.resolved_multipart && p.resolved_multipart.length > 0) {
+        multipartFormData = await buildMultipartBody(p.resolved_multipart);
+      }
       const callDoOnePage = () =>
         doOnePage({
           url: baseUrl.toString(),
           method: p.step.method,
           headers,
           body: resolvedStepBody ?? null,
+          ...(multipartFormData !== undefined ? { multipartBody: multipartFormData } : {}),
           max_attempts,
           signal,
           retry_total_ms: retryTotal,

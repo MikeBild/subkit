@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TurnEvent } from "@cli-core/index.ts";
 import { cleanup, render } from "ink-testing-library";
+import { EngineClient } from "../engine-client.ts";
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import { appendHistory } from "../repl/history-store.ts";
 import type { PersonaProbe } from "../slash.ts";
@@ -560,48 +561,115 @@ describe("features: inline reverse-i-search", () => {
 
 // ---------- 8. /paste + /attach built-ins ----------
 
+// Wave-D rewired /attach from the local PasteStore to engine upload +
+// `$file` insert. The tests below provide a mocked EngineClient so
+// the slash handler exercises the upload path; assertions cover the
+// new behaviour (uploaded info line, fid inserted at the cursor) and
+// the unchanged guard rails (missing path, no args).
+
+const NOW = "2026-01-01T00:00:00.000Z";
+
+interface FakeUpload {
+  fid: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+}
+
+function makeFakeEngine(uploads: FakeUpload[]): EngineClient {
+  let i = 0;
+  return new EngineClient({
+    engine_url: "http://engine.local",
+    api_key: "wf_live_test",
+    tenant: "acme",
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/v1/files/inline")) {
+        const u = uploads[i++] ?? uploads[uploads.length - 1];
+        if (!u) throw new Error("no upload fixture");
+        return new Response(
+          JSON.stringify({
+            id: u.fid,
+            status: "ready",
+            filename: u.filename,
+            content_type: u.content_type,
+            size_bytes: u.size_bytes,
+            sha256: "deadbeef",
+            scan_result: null,
+            created_at: NOW,
+            updated_at: NOW,
+            deleted_at: null,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/links")) {
+        return new Response(JSON.stringify({ id: "link-1" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+}
+
 describe("features: /attach built-in slash", () => {
-  test("/attach <image> inserts a [Image #N] ref", async () => {
+  test("/attach <image> uploads and inserts a $file leaf at the cursor", async () => {
     const dir = tmpDir();
-    // Minimal valid PNG header (not a real image — just a fixture
-    // the classifier recognizes by extension).
     const imgPath = join(dir, "pic.png");
     writeFileSync(imgPath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-    const instance = renderApp({ cwd: dir });
+    const fid = "fid_00000000-0000-0000-0000-000000000001";
+    const engineClient = makeFakeEngine([
+      { fid, filename: "pic.png", content_type: "image/png", size_bytes: 8 },
+    ]);
+    const instance = renderApp({ cwd: dir, engineClient });
     await tick();
     await type(instance, `/attach ${imgPath}`);
     await pressEnter(instance);
-    await tick(60);
-    const frame = instance.lastFrame() ?? "";
-    expect(frame).toMatch(/\[Image #\d+\]/);
-    expect(frame).toContain("image/png");
-    expect(frame).toContain("attachments · 1 pending");
+    await tick(80);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    // Info notice carries the fid + filename + byte count.
+    expect(frame).toContain(`uploaded ${fid}`);
+    expect(frame).toContain("pic.png");
+    // The composer carries the $file JSON leaf (rendered may wrap at
+    // box width; assert on the fid substring rather than the full
+    // JSON to keep the test robust to wrapping).
+    expect(frame).toContain(fid);
     instance.unmount();
   });
 
-  test("/attach <pdf> inserts a [File filename.pdf #N] ref", async () => {
+  test("/attach <pdf> uploads and inserts a $file leaf", async () => {
     const dir = tmpDir();
     const pdfPath = join(dir, "invoice.pdf");
     writeFileSync(pdfPath, Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]));
-    const instance = renderApp({ cwd: dir });
+    const fid = "fid_00000000-0000-0000-0000-000000000002";
+    const engineClient = makeFakeEngine([
+      { fid, filename: "invoice.pdf", content_type: "application/pdf", size_bytes: 5 },
+    ]);
+    const instance = renderApp({ cwd: dir, engineClient });
     await tick();
     await type(instance, `/attach ${pdfPath}`);
     await pressEnter(instance);
-    await tick(60);
-    const frame = instance.lastFrame() ?? "";
-    expect(frame).toMatch(/\[File invoice\.pdf #\d+\]/);
-    expect(frame).toContain("application/pdf");
-    expect(frame).toContain("attachments · 1 pending");
+    await tick(80);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain(`uploaded ${fid}`);
+    expect(frame).toContain("invoice.pdf");
+    expect(frame).toContain(fid);
     instance.unmount();
   });
 
   test("/attach <missing> reports a helpful message", async () => {
-    const instance = renderApp();
+    const engineClient = makeFakeEngine([]);
+    const instance = renderApp({ engineClient });
     await tick();
     await type(instance, "/attach ./does-not-exist.pdf");
     await pressEnter(instance);
     await tick(40);
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("/attach: not found");
     instance.unmount();
   });
@@ -618,25 +686,20 @@ describe("features: /attach built-in slash", () => {
     instance.unmount();
   });
 
-  test("/attach remove <id> removes a pending attachment from the shelf", async () => {
-    const dir = tmpDir();
-    const pdfPath = join(dir, "remove-me.pdf");
-    writeFileSync(pdfPath, Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]));
-    const instance = renderApp({ cwd: dir });
+  // The legacy `/attach remove <id>` sub-form mutated the local
+  // PasteStore. Since Wave-D, /attach uploads to the engine and the
+  // PasteStore stays empty for engine-uploaded files; `remove` on an
+  // empty store reports a "no pending item" error. The assertion
+  // below pins that current contract — engine-backed file removal
+  // happens via `sk files delete <fid>`, not the in-REPL shelf.
+  test("/attach remove <id> with no pending paste-store item errors clearly", async () => {
+    const instance = renderApp();
     await tick();
-    await type(instance, `/attach ${pdfPath}`);
-    await pressEnter(instance);
-    await tick(60);
-    let frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("attachments · 1 pending");
-    instance.stdin.write("\x15");
-    await tick(40);
     await type(instance, "/attach remove 1");
     await pressEnter(instance);
-    await tick(60);
-    frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("/attach: removed #1");
-    expect(frame).not.toContain("attachments · 1 pending");
+    await tick(40);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain("/attach: no pending item #1");
     instance.unmount();
   });
 });

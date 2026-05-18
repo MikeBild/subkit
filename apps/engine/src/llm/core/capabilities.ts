@@ -115,3 +115,23 @@ export function pickPdfStrategy(
     `AI_UnsupportedFunctionalityError: provider supports neither file nor image parts`,
   );
 }
+
+// Generic per-file strategy used by the conversation LLM-context
+// assembler. Shares the same matrix as `pickPdfStrategy` — there
+// is no parallel decision ladder. Three outcomes:
+//
+//   - `file_api`     — upload the bytes via the provider Files API and
+//                      reference by id (no per-turn token cost).
+//   - `file_part`    — inline the bytes (base64) as a content block.
+//   - `text_extract` — parse the bytes into text and emit a text block;
+//                      the fallback when neither file path is viable
+//                      (oversized, provider doesn't accept the media
+//                      type, or per-turn inline budget exhausted).
+export type FileStrategy = "file_api" | "file_part" | "text_extract";
+
+export function chooseFileStrategy(caps: ModelCapabilities, fileSizeBytes: number): FileStrategy {
+  const mb = fileSizeBytes / (1024 * 1024);
+  if (caps.filesApiSupport && mb > 5) return "file_api";
+  if (caps.supportsFile && mb <= caps.maxFileSizeMB) return "file_part";
+  return "text_extract";
+}

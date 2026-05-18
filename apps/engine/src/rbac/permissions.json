@@ -292,5 +292,21 @@
     "name": "settings:write",
     "description": "Update engine-global or tenant-scoped settings",
     "resource_type": "settings"
+  },
+
+  {
+    "name": "file:read",
+    "description": "Read file metadata and download file content",
+    "resource_type": "file"
+  },
+  {
+    "name": "file:write",
+    "description": "Upload, finalize, or link files",
+    "resource_type": "file"
+  },
+  {
+    "name": "file:delete",
+    "description": "Delete files (soft-delete via `deleted_at`)",
+    "resource_type": "file"
   }
 ]

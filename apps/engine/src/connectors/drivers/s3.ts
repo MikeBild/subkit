@@ -150,7 +150,7 @@ export async function executeS3Request(p: {
   connector: ConnectorView;
   method: S3Method;
   path: string;
-  body?: string | Uint8Array | Buffer | null;
+  body?: string | Uint8Array | Buffer | AsyncIterable<Uint8Array> | null;
   /** Content-Type for PUT. Forwarded to the s3-lite-client putObject. */
   contentType?: string;
   /** Object metadata for PUT. Each entry rides as `x-amz-meta-<key>`. */
@@ -264,12 +264,55 @@ export async function executeS3Request(p: {
           credential_id,
         };
       }
-      const data =
-        typeof p.body === "string"
-          ? p.body
-          : p.body instanceof Uint8Array
-            ? p.body
-            : new Uint8Array(p.body as Buffer);
+      // Stream AsyncIterable bodies (typically `ResolvedFile.openRead`)
+      // directly to S3. s3-lite-client's `putObject` accepts a
+      // `ReadableStream<Uint8Array>` (see node_modules/@bradenmacdonald/
+      // s3-lite-client/client.ts streamOrData branch); wrapping the
+      // async iterable into a stream lets the client drive its multipart
+      // machinery without buffering the whole body in process memory.
+      // Sync bodies (string / Uint8Array / Buffer) take the legacy
+      // single-shot path.
+      let data: string | Uint8Array | ReadableStream<Uint8Array>;
+      let streamedBody = false;
+      if (
+        p.body !== null &&
+        typeof p.body === "object" &&
+        Symbol.asyncIterator in (p.body as object)
+      ) {
+        const iterator = (p.body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
+        data = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const { value, done } = await iterator.next();
+              if (done) {
+                controller.close();
+                return;
+              }
+              if (value) controller.enqueue(value);
+            } catch (err) {
+              controller.error(err);
+            }
+          },
+          async cancel(reason) {
+            if (typeof iterator.return === "function") {
+              try {
+                await iterator.return(reason);
+              } catch {
+                /* best-effort */
+              }
+            }
+          },
+        });
+        streamedBody = true;
+      } else {
+        const syncBody = p.body as string | Uint8Array | Buffer;
+        data =
+          typeof syncBody === "string"
+            ? syncBody
+            : syncBody instanceof Uint8Array
+              ? syncBody
+              : new Uint8Array(syncBody);
+      }
       const putOpts: Record<string, unknown> = {};
       if (p.contentType) putOpts.metadata = { "Content-Type": p.contentType };
       if (p.metadata) {
@@ -288,13 +331,29 @@ export async function executeS3Request(p: {
       // default; explicit `multipart: false` forces a single PUT by
       // raising the threshold above the body size, and an explicit
       // threshold MiB overrides the default 8 MiB.
-      const dataSize =
+      //
+      // For streamed bodies we have no `dataSize` until the iterator
+      // completes — log a warning so operators can chart unbounded
+      // uploads from a connector call without a workflow-side size
+      // hint. The client still streams correctly; the warning is an
+      // observability signal, not a hard cap.
+      const dataSize: number | null =
         typeof data === "string"
           ? Buffer.byteLength(data, "utf8")
-          : (data as Uint8Array).byteLength;
+          : data instanceof Uint8Array
+            ? data.byteLength
+            : null;
+      if (streamedBody && p.multipartThresholdMb === undefined) {
+        logger.warn({
+          module: "connector",
+          action: "s3.put.unbounded_stream",
+          msg: "s3 PUT streaming AsyncIterable without multipartThresholdMb hint — using client default part size",
+          key,
+        });
+      }
       const thresholdMb = p.multipartThresholdMb ?? 0;
       const partSize =
-        p.multipart === false
+        p.multipart === false && dataSize !== null
           ? Math.max(dataSize + 1, 8 * 1024 * 1024)
           : thresholdMb > 0
             ? thresholdMb * 1024 * 1024
@@ -316,7 +375,12 @@ export async function executeS3Request(p: {
           etag: info.etag,
           version_id: info.versionId,
           key,
-          multipart: typeof partSize === "number" && partSize <= dataSize,
+          // For a stream we cannot cheaply know whether the client
+          // ultimately multipart-uploaded; report `null` rather than
+          // a misleading `false`. Sync bodies still get the precise
+          // boolean.
+          multipart:
+            dataSize === null ? null : typeof partSize === "number" && partSize <= dataSize,
         },
         credential_id,
       };

@@ -15,7 +15,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   connectors,
-  conversationAttachments,
   conversations,
   discoveryArtifacts,
   discoveryRuns,
@@ -25,6 +24,7 @@ import {
   workflowVersions,
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { attachInlineForTest } from "../../../files/test-helpers.ts";
 import {
   buildAllPseudoMessages,
   buildAttachmentsMessage,
@@ -144,16 +144,16 @@ describe("buildAttachmentsMessage", () => {
   });
 
   test("with seeded attachments → block shows slug + filename + size", async () => {
-    await ctx.db.insert(conversationAttachments).values({
+    // Pad the content so the bucket lands in KB territory (82.2 KB).
+    const padded = `openapi: 3.0.3\ninfo:\n  title: Stripe${" ".repeat(84_200 - 30)}`;
+    await attachInlineForTest({
+      db: ctx.db,
       tenant_id,
       conversation_id,
-      slug: "stripe-spec",
-      original_filename: "stripe-openapi.yaml",
+      filename: "stripe-openapi.yaml",
       content_type: "application/yaml",
-      size_bytes: 84200,
-      storage_uri: "s3://test/stripe-openapi.yaml",
-      sha256: "abc",
-      preview: "openapi: 3.0.3\ninfo:\n  title: Stripe",
+      content: padded,
+      slug: "stripe-spec",
     });
     const msg = await buildAttachmentsMessage({
       tenant_id,
@@ -165,7 +165,6 @@ describe("buildAttachmentsMessage", () => {
     expect(msg).toContain("stripe-spec");
     expect(msg).toContain("stripe-openapi.yaml");
     expect(msg).toContain("82.2 KB");
-    expect(msg).toContain("preview: openapi: 3.0.3");
     expect(msg).toContain("@attachment:<slug>");
   });
 });

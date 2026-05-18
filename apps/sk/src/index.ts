@@ -27,6 +27,7 @@ import { doctorCommand } from "./commands/doctor.ts";
 import { eventsCommand } from "./commands/events.ts";
 import { executionsCommand } from "./commands/executions.ts";
 import { extractCommand } from "./commands/extract.ts";
+import { attachCommand, filesCommand } from "./commands/files.ts";
 import { healthCommand } from "./commands/health.ts";
 import { hooksCommand } from "./commands/hooks.ts";
 import { initCommand } from "./commands/init.ts";
@@ -458,6 +459,16 @@ const mainCommand = defineCommand({
     },
     connector: { type: "string", description: "Bind the new conversation to a connector slug" },
     workflow: { type: "string", description: "Bind the new conversation to a workflow id" },
+    attach: {
+      // Repeatable `--attach <path>` flag for `-p` headless mode.
+      // Each path is uploaded via `uploadPath` and linked to the
+      // (possibly resumed) ephemeral conversation BEFORE the prompt
+      // runs. Citty surfaces repeated string flags as
+      // `string | string[]`; the dispatcher below normalises.
+      type: "string",
+      description:
+        "Upload a file and attach it to the conversation before the prompt runs (repeatable, headless -p only)",
+    },
   },
   subCommands: {
     login: loginCommand,
@@ -477,6 +488,8 @@ const mainCommand = defineCommand({
     logs: logsCommand,
     settings: settingsCommand,
     extract: extractCommand,
+    files: filesCommand,
+    attach: attachCommand,
     auth: authCommand,
     // operator commands
     workflows: workflowsCommand,
@@ -547,6 +560,20 @@ const mainCommand = defineCommand({
     }
 
     if (headlessPrompt) {
+      // Citty surfaces a repeated `--attach <path>` flag as either
+      // `string` (single occurrence) or `string[]` (≥2). Normalise so
+      // `runHeadless` always sees a `readonly string[]`. Empty strings
+      // are dropped so a stray `--attach=` doesn't fan into a phantom
+      // upload attempt.
+      const attachRaw = args.attach as string | string[] | undefined;
+      const attach: readonly string[] =
+        attachRaw === undefined
+          ? []
+          : Array.isArray(attachRaw)
+            ? attachRaw.filter((p): p is string => typeof p === "string" && p.length > 0)
+            : attachRaw.length > 0
+              ? [attachRaw]
+              : [];
       const result = await runHeadless({
         profile,
         prompt: headlessPrompt,
@@ -555,6 +582,7 @@ const mainCommand = defineCommand({
         ...(resumeId ? { resume: resumeId } : {}),
         ...(args.connector ? { connector_id: String(args.connector) } : {}),
         ...(args.workflow ? { workflow_id: String(args.workflow) } : {}),
+        ...(attach.length > 0 ? { attach } : {}),
       });
       process.exit(result.exitCode);
     }
@@ -604,6 +632,9 @@ const PERM_TIER: Record<string, number> = {
   "discovery:read": 3,
   "subscription:read": 3,
   "inbound_hook:read": 3,
+  "file:read": 1,
+  "file:write": 1,
+  "file:delete": 1,
   "mcp:read": 2,
   "skill:read": 2,
   "knowledge:read": 2,
@@ -641,6 +672,8 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   logs: { command: logsCommand, requires: "audit:read" },
   settings: { command: settingsCommand, requires: "settings:read" },
   extract: { command: extractCommand, requires: "conversation:write" },
+  files: { command: filesCommand, requires: "file:read" },
+  attach: { command: attachCommand, requires: "file:write" },
   auth: { command: authCommand, requires: "connector:write" },
   // operator
   workflows: { command: workflowsCommand, requires: "workflow:read" },

@@ -5,6 +5,7 @@
 
 import { z } from "@hono/zod-openapi";
 
+import { FileRefSchema } from "../api/files-schemas.ts";
 import { looksLikeJsonObjectOrArray, parseHeaderLines } from "./types-helpers.ts";
 import {
   MarkdownConfigSchema,
@@ -33,11 +34,18 @@ export {
 // `looksLikeJsonObjectOrArray` live in `./types-helpers.ts` so this
 // file stays under the 1000-LOC audit ceiling.
 
-// JSON value
+// JSON value — extended to accept `{ "$file": "fid_..." }` reference leaves.
+// The union is additive: existing workflow JSON (plain objects, arrays, scalars)
+// parses unchanged; the new FileRef variant is simply an additional leaf type.
 const JsonLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 type JsonValue = z.infer<typeof JsonLiteralSchema> | { [k: string]: JsonValue } | JsonValue[];
 export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([JsonLiteralSchema, z.array(JsonValueSchema), z.record(z.string(), JsonValueSchema)]),
+  z.union([
+    JsonLiteralSchema,
+    FileRefSchema as z.ZodType<JsonValue>,
+    z.array(JsonValueSchema),
+    z.record(z.string(), JsonValueSchema),
+  ]),
 );
 
 // Filter spec
@@ -128,6 +136,41 @@ const GraphQLConfigSchema: z.ZodType<GraphQLConfig> = z
   );
 
 // `looksLikeJsonObjectOrArray` moved to `./types-helpers.ts`.
+
+/**
+ * A single part in a multipart/form-data upload. Either `file` (resolved
+ * from a `$file` reference by the step-runner) or `value` (plain text
+ * field) must be present — both may not be absent simultaneously.
+ */
+export const MultipartPartSchema = z
+  .object({
+    name: z.string().min(1),
+    file: FileRefSchema.optional(),
+    value: z.string().optional(),
+    filename: z.string().optional(),
+    content_type: z.string().optional(),
+  })
+  .refine((p) => p.file !== undefined || p.value !== undefined, {
+    message: "multipart part must have either `file` or `value`",
+  })
+  .openapi("MultipartPart");
+
+export type MultipartPart = z.infer<typeof MultipartPartSchema>;
+
+/**
+ * Typed `file` leaf for `input_schema`. Lets operators declare that a
+ * workflow input accepts a file reference (`{ "$file": "fid_..." }`).
+ * The step-runner resolves `$file` refs eagerly at the step boundary.
+ */
+export const InputSchemaFileNodeSchema = z
+  .object({
+    type: z.literal("file"),
+    accept: z.array(z.string()).optional(),
+    max_size_bytes: z.number().int().positive().optional(),
+    multiple: z.boolean().optional(),
+    required: z.boolean().optional(),
+  })
+  .openapi("InputSchemaFileNode");
 
 const baseStep = {
   id: z.string().min(1),
@@ -380,6 +423,11 @@ export const RequestStepSchema = z
         value_path: z.string().min(1),
       })
       .optional(),
+    /** Multipart/form-data upload parts. When present the HTTP driver
+     *  builds a FormData body from the resolved parts instead of sending
+     *  a JSON body. `$file` parts are resolved by the step-runner before
+     *  dispatch; `value` parts become plain text fields. */
+    multipart: z.array(MultipartPartSchema).min(1).optional(),
   })
   .refine((s) => s.url !== undefined || s.connector_id !== undefined || s.sql !== undefined, {
     message:

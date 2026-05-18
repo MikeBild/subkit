@@ -8,19 +8,25 @@
 // parse the `[conv:<id>]` envelope that keys its plan cursor.
 
 import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
+import { fileLinks } from "../db/schema/files.ts";
 import {
-  conversationAttachments,
   conversationElicitations,
   conversationMessages,
   conversationToolCalls,
 } from "../db/schema/index.ts";
+import { extractFileSentinels, replaceFileSentinels } from "../files/sentinel.ts";
 import { countModelMessagesTokens } from "../llm/accounting/index.ts";
-import type { ModelCapabilities } from "../llm/core/capabilities.ts";
 import { getStaticCapabilities } from "../llm/core/capabilities.ts";
+import { buildFileContentBlocks, type FileContentBlock } from "../llm/core/file-context.ts";
 import type { ProviderKind } from "../llm/core/model-init.ts";
+import { logger } from "../logging/logger.ts";
+import {
+  recordFileLlmCapDowngrade,
+  recordFileLlmInlineBytes,
+} from "../observability/instrumentation.ts";
 import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
 
 function approxValueSize(value: unknown): number {
@@ -55,13 +61,13 @@ const TOOL_OUTPUT_VERBATIM_TURNS = 3;
 const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
 
 /**
- * Build multimodal UserContent for a conversation turn that may reference
- * file attachments. For image/PDF attachments with a capable provider the
- * content part carries actual binary data; otherwise the file is inlined
- * as text (the existing behaviour).
+ * Build multimodal UserContent for a conversation turn that may
+ * reference file attachments. Routes every `[file:fid_...]` sentinel
+ * through the canonical `buildFileContentBlocks` strategy router
+ * (file_api / file_part / text_extract — see `llm/core/file-context.ts`).
  *
- * Returns `string` when no attachments are relevant (fast path, preserves
- * existing behaviour for all-text turns).
+ * Returns a plain string when the turn has no file refs (fast path,
+ * preserves existing behaviour for all-text turns).
  */
 export async function buildUserContentParts(
   db: Db,
@@ -70,69 +76,145 @@ export async function buildUserContentParts(
   text: string,
   provider: ProviderKind = "anthropic",
 ): Promise<string | Array<TextPart | ImagePart | FilePart>> {
-  const caps: ModelCapabilities = getStaticCapabilities(provider);
+  // Quick exit: no file sentinels → plain string (unchanged behaviour).
+  const fids = extractFileSentinels(text);
 
-  // Quick exit: no attachment references → plain string (unchanged behaviour)
-  const ATTACHMENT_RE = /@attachment:([a-z0-9][a-z0-9_-]{0,62})\b/g;
-  const slugs: string[] = [];
-  for (let m = ATTACHMENT_RE.exec(text); m !== null; m = ATTACHMENT_RE.exec(text)) {
-    const slug = m[1];
-    if (slug) slugs.push(slug);
+  if (fids.length === 0) return text;
+
+  // Privilege-boundary check: every fid extracted from raw user prose
+  // MUST be linked to THIS conversation via `file_links`. The
+  // `@attachment:<slug>` rewriter only produces sentinels for slugs that
+  // ARE in `file_links`, so the legitimate authoring path is unchanged.
+  // The attack we close: a user types `[file:fid_<real-uuid>]` into the
+  // prompt directly, naming a fid that exists in their tenant but is
+  // attached to a different conversation. Without this check the
+  // resolver would pull bytes from that file into the current turn.
+  // Strip un-linked sentinels to a `[file]` placeholder so the model
+  // sees a neutral artefact instead of confusing missing-file errors.
+  const fidUuids = fids
+    .map((fid) => (fid.startsWith("fid_") ? fid.slice("fid_".length) : null))
+    .filter((u): u is string => u !== null);
+  const linkedRows =
+    fidUuids.length > 0
+      ? await db
+          .select({ file_id: fileLinks.file_id })
+          .from(fileLinks)
+          .where(
+            and(
+              eq(fileLinks.tenant_id, tenant_id),
+              eq(fileLinks.resource_type, "conversation"),
+              eq(fileLinks.resource_id, conversation_id),
+              inArray(fileLinks.file_id, fidUuids),
+            ),
+          )
+      : [];
+  const linkedSet = new Set(linkedRows.map((r) => r.file_id));
+  const allowedFids: string[] = [];
+  const deniedFids: string[] = [];
+  for (const fid of fids) {
+    const uuid = fid.startsWith("fid_") ? fid.slice("fid_".length) : null;
+    if (uuid && linkedSet.has(uuid)) allowedFids.push(fid);
+    else deniedFids.push(fid);
   }
-  ATTACHMENT_RE.lastIndex = 0;
+  if (deniedFids.length > 0) {
+    logger.warn({
+      module: "conversations.persist",
+      action: "user_content.unlinked_sentinel_stripped",
+      tenant_id,
+      conversation_id,
+      denied_count: deniedFids.length,
+      // Truncated to keep the log compact; the count alone is the
+      // operator signal — repeated stripping would surface in the
+      // metric, not the log line.
+      sample: deniedFids.slice(0, 3),
+    });
+  }
 
-  if (slugs.length === 0) return text;
+  if (allowedFids.length === 0) {
+    // Every sentinel was un-linked; collapse them all to placeholders.
+    const stripped = (await replaceFileSentinels(text, () => "[file]")) as string;
+    return stripped.replace(/\s+/g, " ").trim();
+  }
 
-  const rows = await db
-    .select()
-    .from(conversationAttachments)
-    .where(
-      and(
-        eq(conversationAttachments.tenant_id, tenant_id),
-        eq(conversationAttachments.conversation_id, conversation_id),
-      ),
-    );
+  const caps = getStaticCapabilities(provider);
+  const assembled = await buildFileContentBlocks({
+    db,
+    tenant_id,
+    provider,
+    capabilities: caps,
+    fids: allowedFids,
+  });
 
-  const rowMap = new Map(rows.map((r) => [r.slug, r]));
+  // Surface the per-turn inline bytes + cap downgrades so the operator
+  // can chart how often the cap is biting per tenant. The assembler
+  // already enforces the 250 KiB hard cap;
+  // these counters give the operator a per-tenant view of how often
+  // the cap is biting (rising downgrades = the model is increasingly
+  // seeing parser-extracted text instead of raw bytes for image / PDF
+  // input). Both helpers are no-throw.
+  if (assembled.inline_bytes > 0) {
+    recordFileLlmInlineBytes({ tenant_id, bytes: assembled.inline_bytes });
+  }
+  if (assembled.inline_cap_downgrades > 0) {
+    recordFileLlmCapDowngrade({ tenant_id, count: assembled.inline_cap_downgrades });
+  }
+
+  // Strip the sentinels from the surrounding prose so the LLM sees the
+  // human-readable text plus the assembled content blocks separately.
+  // Un-linked sentinels become a literal `[file]` placeholder so the
+  // model never sees the raw fid the user typed.
+  const replaced = (await replaceFileSentinels(text, (fid) =>
+    allowedFids.includes(fid) ? "" : "[file]",
+  )) as string;
+  const textWithoutRefs = replaced.replace(/\s+/g, " ").trim();
+
   const parts: Array<TextPart | ImagePart | FilePart> = [];
-
-  // Build a text part for non-attachment text surrounding the refs
-  const textWithoutRefs = text.replace(/@attachment:[a-z0-9][a-z0-9_-]{0,62}\b/g, "").trim();
   if (textWithoutRefs) parts.push({ type: "text", text: textWithoutRefs });
-
-  for (const slug of slugs) {
-    const row = rowMap.get(slug);
-    if (!row) continue;
-
-    const mime = row.content_type ?? "application/octet-stream";
-    const isImage = mime.startsWith("image/");
-    const isPdf = mime === "application/pdf" || row.original_filename.endsWith(".pdf");
-
-    if (isImage && caps.supportsImage && row.storage_uri.startsWith("file://")) {
-      try {
-        const imgData = await Bun.file(row.storage_uri.slice("file://".length)).bytes();
-        parts.push({ type: "image", image: imgData, mediaType: mime });
-        continue;
-      } catch {
-        // fallback to text preview
-      }
-    }
-
-    if (isPdf && caps.supportsFile && row.storage_uri.startsWith("file://")) {
-      try {
-        const pdfData = await Bun.file(row.storage_uri.slice("file://".length)).bytes();
-        parts.push({ type: "file", data: pdfData, mediaType: "application/pdf" });
-        continue;
-      } catch {
-        // fallback to text preview
-      }
-    }
-
-    // Fallback: include preview text
-    if (row.preview) parts.push({ type: "text", text: `[${slug}]:\n${row.preview}` });
+  for (const block of assembled.blocks) {
+    parts.push(...toAiSdkParts(block));
   }
-
+  if (parts.length === 0) return text;
   return parts.length === 1 && parts[0]?.type === "text" ? (parts[0] as TextPart).text : parts;
+}
+
+/** Translate one assembler block into AI SDK content parts. `file_api`
+ *  carries the provider-native id through `providerOptions` so the
+ *  upstream provider adapter can splice the native reference shape into
+ *  the request without re-uploading. `file_part` becomes a FilePart for
+ *  PDFs / generic binaries or an ImagePart for image media types
+ *  (depending on capabilities). `text_extract` becomes a TextPart. */
+function toAiSdkParts(block: FileContentBlock): Array<TextPart | ImagePart | FilePart> {
+  if (block.strategy === "file_api") {
+    // Round-trip the provider-native shape through JSON so it satisfies
+    // the AI SDK's `JSONValue` constraint on `providerOptions` (typed
+    // unions don't widen automatically).
+    const native = JSON.parse(JSON.stringify(block.native));
+    return [
+      {
+        type: "file",
+        data: new Uint8Array(0),
+        mediaType: block.content_type,
+        filename: block.filename,
+        providerOptions: {
+          [block.provider]: { file_id: block.file_id, native },
+        },
+      },
+    ];
+  }
+  if (block.strategy === "file_part") {
+    if (block.mediaType.startsWith("image/")) {
+      return [{ type: "image", image: block.data, mediaType: block.mediaType }];
+    }
+    return [
+      {
+        type: "file",
+        data: block.data,
+        mediaType: block.mediaType,
+        filename: block.filename,
+      },
+    ];
+  }
+  return [{ type: "text", text: block.text }];
 }
 
 export async function appendMessage(
@@ -232,6 +314,15 @@ interface BuildModelMessagesOpts {
   conversationEnvelope?: boolean;
   /** Conversation id — required when `conversationEnvelope` is true. */
   conversation_id?: string;
+  /**
+   * Provider routing for the per-turn file-strategy assembler. Every
+   * replayed user-role message that carries a `[file:fid_...]` sentinel
+   * is routed through `buildUserContentParts(provider)` so prior turns
+   * reuse the same file_api / file_part / text_extract decision as the
+   * current turn — and reuse the cached provider-native file id where
+   * applicable. Defaults to `"anthropic"` to match the production loop.
+   */
+  provider?: ProviderKind;
 }
 
 function messageText(content: unknown): string {
@@ -471,7 +562,44 @@ export async function buildModelMessages(
       const content = item.msg.content;
       if (role === "system") continue;
       if (role === "user") {
-        out.push({ role: "user", content: messageText(content) });
+        // Route every replayed user-role message through the same
+        // strategy assembler the current turn uses. Without this, prior
+        // turns that referenced a file would ship the literal sentinel
+        // `[file:fid_<uuid>]` to the LLM as raw text — no file_api /
+        // file_part / text_extract assembly, no provider-id reuse on
+        // prior turns. See FIX block 1 in checkpoint C: turn 2 must
+        // see turn 1's user message ALSO as a content block, not as
+        // raw sentinel text. The strategy router's per-turn 250 KiB
+        // cap continues to apply per-message — a multi-turn
+        // conversation with several files degrades to text_extract
+        // faster, which is correct.
+        const text = messageText(content);
+        const userPartsProvider = opts.provider ?? "anthropic";
+        if (db && tenant_id && extractFileSentinels(text).length > 0) {
+          // We need a Db (not just Executor) for the strategy router;
+          // the production loop always passes one. Fall through to the
+          // plain string when only an Executor is available — the only
+          // call site without a Db is direct-tx replay, which doesn't
+          // ship file refs.
+          const dbForRouter = db as unknown as Db;
+          const parts = await buildUserContentParts(
+            dbForRouter,
+            tenant_id,
+            conversation_id,
+            text,
+            userPartsProvider,
+          );
+          // `buildUserContentParts` returns `string | Array<TextPart |
+          // ImagePart | FilePart>`, which is exactly the AI SDK
+          // `UserContent` shape — push as a typed user message.
+          if (typeof parts === "string") {
+            out.push({ role: "user", content: parts });
+          } else {
+            out.push({ role: "user", content: parts });
+          }
+        } else {
+          out.push({ role: "user", content: text });
+        }
       } else if (role === "assistant") {
         const text = messageText(content);
         if (text.length > 0) out.push({ role: "assistant", content: text });

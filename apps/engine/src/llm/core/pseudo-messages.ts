@@ -18,11 +18,12 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import {
   connectors,
-  conversationAttachments,
   conversations,
   discoveryArtifacts,
   discoveryRuns,
   executions,
+  fileLinks,
+  files,
   skills as skillsTable,
   workflows,
 } from "../../db/schema/index.ts";
@@ -89,38 +90,28 @@ interface AttachmentsOpts {
 
 export async function buildAttachmentsMessage(opts: AttachmentsOpts): Promise<string | null> {
   const rows = await opts.db
-    .select({
-      slug: conversationAttachments.slug,
-      original_filename: conversationAttachments.original_filename,
-      content_type: conversationAttachments.content_type,
-      size_bytes: conversationAttachments.size_bytes,
-      preview: conversationAttachments.preview,
-    })
-    .from(conversationAttachments)
+    .select({ link: fileLinks, file: files })
+    .from(fileLinks)
+    .innerJoin(files, eq(files.id, fileLinks.file_id))
     .where(
       and(
-        eq(conversationAttachments.tenant_id, opts.tenant_id),
-        eq(conversationAttachments.conversation_id, opts.conversation_id),
+        eq(fileLinks.tenant_id, opts.tenant_id),
+        eq(fileLinks.resource_type, "conversation"),
+        eq(fileLinks.resource_id, opts.conversation_id),
       ),
     )
-    .orderBy(desc(conversationAttachments.created_at))
+    .orderBy(desc(fileLinks.created_at))
     .limit(25);
   if (rows.length === 0) return null;
   const lines = [`[ATTACHMENTS] (n=${rows.length})`];
   for (const r of rows) {
-    const sizeKb =
-      r.size_bytes > 1024 ? `${(r.size_bytes / 1024).toFixed(1)} KB` : `${r.size_bytes} B`;
-    lines.push(`- ${r.slug}  (${r.original_filename}, ${r.content_type ?? "unknown"}, ${sizeKb})`);
-    if (r.preview && r.preview.length > 0) {
-      // Truncate preview to a single visible line in the prompt.
-      // split("\n") on a non-empty string always yields at least one element,
-      // so [0] is safe — but guard for noUncheckedIndexedAccess.
-      const firstLine = (r.preview.split("\n")[0] ?? "").slice(0, 160);
-      lines.push(`  preview: ${firstLine}${r.preview.length > 160 ? "…" : ""}`);
-    }
+    const size = r.file.size_bytes;
+    const sizeKb = size > 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
+    const slug = r.link.slug ?? r.file.filename;
+    lines.push(`- ${slug}  (${r.file.filename}, ${r.file.content_type ?? "unknown"}, ${sizeKb})`);
   }
   lines.push(
-    "Reference any slug in tool args via @attachment:<slug>. The engine resolves full content before the tool runs.",
+    'Reference any slug in tool args via @attachment:<slug> (chat text) or { "$file": "fid_..." } (JSON). The engine resolves full content before the tool runs.',
   );
   return lines.join("\n");
 }

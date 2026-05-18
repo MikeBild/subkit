@@ -1,29 +1,13 @@
 import { readFileSync } from "node:fs";
-import { basename, extname } from "node:path";
+import { basename } from "node:path";
 import { exitCodeFor } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
-
-const MIME_MAP: Record<string, string> = {
-  ".pdf": "application/pdf",
-  ".txt": "text/plain",
-  ".md": "text/markdown",
-  ".html": "text/html",
-  ".htm": "text/html",
-  ".json": "application/json",
-  ".csv": "text/csv",
-  ".xml": "application/xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-};
-
-function detectMime(filePath: string): string {
-  return MIME_MAP[extname(filePath).toLowerCase()] ?? "application/octet-stream";
-}
+import { detectMime } from "../utils/mime.ts";
+import { uploadPath } from "./files.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List discovery runs" },
@@ -148,12 +132,32 @@ const createCommand = defineCommand({
         .split(",")
         .map((p: string) => p.trim())
         .filter(Boolean);
+      // First register each file in the unified `files` table so the
+      // discovery run carries a dedup-able audit trail. The legacy
+      // multipart route is still the persistence path until the
+      // engine accepts file_ids directly — the file rows + links
+      // ensure every CLI surface funnels through `uploadInline` /
+      // `batchCreateFiles` (the upload-paths-parity guarantee).
+      const fileRows = await Promise.all(paths.map((p) => uploadPath(client, p, { quiet: true })));
       const files = paths.map((p: string) => ({
         name: basename(p),
         content: readFileSync(p),
         mime_type: detectMime(p),
       }));
-      const run = await client.createDiscoveryRun(files, args.label);
+      const run = (await client.createDiscoveryRun(files, args.label)) as Record<string, unknown>;
+      const runId = typeof run.id === "string" ? run.id : null;
+      if (runId) {
+        for (const f of fileRows) {
+          try {
+            await client.linkFile(f.id, {
+              resource_type: "discovery_run",
+              resource_id: runId,
+            });
+          } catch {
+            /* best-effort — the run already owns its bytes */
+          }
+        }
+      }
       printJson(run);
     } catch (err) {
       process.stderr.write(

@@ -1,11 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq, sql } from "drizzle-orm";
 import {
-  conversationAttachments,
   conversationElicitations,
   conversationMessages,
   conversations,
   conversationToolCalls,
+  fileLinks,
 } from "../../db/schema/index.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -49,11 +49,12 @@ export const inspectAuthoringContextTool: ConversationTool = {
         ),
       ctx.db
         .select({ count: sql<number>`count(*)::int` })
-        .from(conversationAttachments)
+        .from(fileLinks)
         .where(
           and(
-            eq(conversationAttachments.tenant_id, ctx.tenant_id),
-            eq(conversationAttachments.conversation_id, ctx.conversation_id),
+            eq(fileLinks.tenant_id, ctx.tenant_id),
+            eq(fileLinks.resource_type, "conversation"),
+            eq(fileLinks.resource_id, ctx.conversation_id),
           ),
         ),
       ctx.db

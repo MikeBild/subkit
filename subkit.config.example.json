@@ -107,9 +107,10 @@
       "access_key": "",
       "secret_key": ""
     },
-    "knowledge": {
+    "files": {
       "backend": "local",
-      "dir": ""
+      "dir": "",
+      "bucket": ""
     },
     "offload": {
       "bucket": "",

@@ -3,8 +3,12 @@
 // debug log. Drivers (request, transform, ...) own the actual work and
 // the retry loops; this file owns the surrounding ceremony.
 
+import { unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { type ResolvedFile, SPOOL_THRESHOLD_BYTES, walkAndResolve } from "../files/resolver.ts";
 import { log, logger } from "../logging/logger.ts";
 import { readWorkflowState, writeWorkflowState } from "../workflow-state/service.ts";
 import type { StepDef } from "../workflows/types.ts";
@@ -175,10 +179,92 @@ export async function runStep(
     }
   }
 
+  // Resolve $file references in request step inputs before dispatch.
+  // The per-step cache ensures the same fid only hits the DB once.
+  // Tmpfiles are tracked for cleanup after the step completes.
+  const spooledTmpfiles: string[] = [];
+
   switch (step.kind) {
-    case "request":
-      result = await runRequestStep({ ctx, step, scope });
+    case "request": {
+      const fileCache = new Map<string, ResolvedFile>();
+      const resolverCtx = { db: ctx.db, tenant_id: ctx.tenant_id };
+      let resolvedMultipart:
+        | import("./steps/request/dispatch.ts").ResolvedMultipartPart[]
+        | undefined;
+      let resolvedBodyFile: ResolvedFile | undefined;
+
+      if (step.multipart && step.multipart.length > 0) {
+        resolvedMultipart = [];
+        for (const part of step.multipart) {
+          if (part.file !== undefined) {
+            const resolved = await walkAndResolve(part.file, resolverCtx, fileCache);
+            // resolved is a ResolvedFile when the $file ref was valid
+            const rf = resolved as unknown as ResolvedFile;
+            let effectiveRf = rf;
+            // Spool large files to tmpfile so drivers get a seekable stream.
+            if (rf.size_bytes > SPOOL_THRESHOLD_BYTES) {
+              const tmpPath = join(tmpdir(), `sk-spool-${rf.id}-${Date.now()}`);
+              // Use the ResolvedFile's bound `openRead` rather than calling
+              // the object store with `rf.id` directly. The row UUID is not
+              // the storage key — keys are
+              // `<tenant>/<yyyy>/<mm>/<dd>/<uuid>` per `buildObjectKey`,
+              // and `resolvedFromRow` already wires `openRead` to call
+              // `storageKey(row.storage_uri)`.
+              const stream = await rf.openRead();
+              const chunks: Uint8Array[] = [];
+              for await (const chunk of stream) chunks.push(chunk);
+              await Bun.write(tmpPath, new Blob(chunks as BlobPart[]));
+              spooledTmpfiles.push(tmpPath);
+              effectiveRf = {
+                ...rf,
+                openRead: async () => {
+                  const { createReadStream } = await import("node:fs");
+                  const nodeStream = createReadStream(tmpPath);
+                  async function* gen(): AsyncIterable<Uint8Array> {
+                    for await (const chunk of nodeStream) yield chunk as Uint8Array;
+                  }
+                  return gen();
+                },
+              };
+            }
+            // Build ResolvedMultipartPart avoiding undefined property spread
+            // (exactOptionalPropertyTypes requires omitting undefined properties).
+            type RMP = import("./steps/request/dispatch.ts").ResolvedMultipartPart;
+            const entry: RMP = { name: part.name, file: effectiveRf };
+            if (part.value !== undefined) entry.value = part.value;
+            if (part.filename !== undefined) entry.filename = part.filename;
+            if (part.content_type !== undefined) entry.content_type = part.content_type;
+            resolvedMultipart.push(entry);
+          } else {
+            type RMP = import("./steps/request/dispatch.ts").ResolvedMultipartPart;
+            const entry: RMP = { name: part.name };
+            if (part.value !== undefined) entry.value = part.value;
+            if (part.filename !== undefined) entry.filename = part.filename;
+            if (part.content_type !== undefined) entry.content_type = part.content_type;
+            resolvedMultipart.push(entry);
+          }
+        }
+      }
+
+      if (
+        step.body !== null &&
+        step.body !== undefined &&
+        typeof step.body === "object" &&
+        "$file" in (step.body as object)
+      ) {
+        const resolved = await walkAndResolve(step.body, resolverCtx, fileCache);
+        resolvedBodyFile = resolved as unknown as ResolvedFile;
+      }
+
+      result = await runRequestStep({
+        ctx,
+        step,
+        scope,
+        ...(resolvedMultipart !== undefined ? { resolved_multipart: resolvedMultipart } : {}),
+        ...(resolvedBodyFile !== undefined ? { resolved_body_file: resolvedBodyFile } : {}),
+      });
       break;
+    }
     case "transform":
       result = await runTransformStep({ ctx, step, scope, input: workflowInput });
       break;
@@ -368,6 +454,16 @@ export async function runStep(
     retry_count: result.retry_count,
     bytes_out: offload.size_bytes,
   });
+
+  // Clean up any tmpfiles that were spooled for large $file parts.
+  // Best-effort: a failure here does not change the step result.
+  if (spooledTmpfiles.length > 0) {
+    for (const tmpPath of spooledTmpfiles) {
+      unlink(tmpPath).catch(() => {
+        // Tolerated — the OS will GC tmpfiles on reboot.
+      });
+    }
+  }
 
   return {
     result,

@@ -67,7 +67,7 @@ const RETIRED_ENV_KEYS = new Set([
   "VERTEX_PRIVATE_KEY",
   "GOOGLE_APPLICATION_CREDENTIALS",
   "LLM_OUTPUT_GUARD",
-  // Storage — moved to storage.s3.* / storage.knowledge.* / storage.offload.*
+  // Storage — moved to storage.s3.* / storage.files.* / storage.offload.*
   "S3_ENDPOINT",
   "S3_ACCESS_KEY",
   "S3_SECRET_KEY",

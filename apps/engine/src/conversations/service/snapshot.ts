@@ -164,27 +164,25 @@ export async function getContextSnapshot(
 
   const lastMessage = detail.messages[detail.messages.length - 1];
 
-  // Attachments live on a per-conversation table; surface a count +
-  // first few so the user sees what the LLM can reference inline.
-  const { conversationAttachments } = await import("../../db/schema/index.ts");
+  // Attachments live on the unified `file_links` join; surface a count
+  // + first few so the user sees what the LLM can reference inline.
+  const { fileLinks, files } = await import("../../db/schema/index.ts");
   const attachmentRows = await exec
-    .select({
-      slug: conversationAttachments.slug,
-      original_filename: conversationAttachments.original_filename,
-      size_bytes: conversationAttachments.size_bytes,
-    })
-    .from(conversationAttachments)
+    .select({ link: fileLinks, file: files })
+    .from(fileLinks)
+    .innerJoin(files, eq(files.id, fileLinks.file_id))
     .where(
       and(
-        eq(conversationAttachments.tenant_id, tenant_id),
-        eq(conversationAttachments.conversation_id, conversation_id),
+        eq(fileLinks.tenant_id, tenant_id),
+        eq(fileLinks.resource_type, "conversation"),
+        eq(fileLinks.resource_id, conversation_id),
       ),
     )
-    .orderBy(asc(conversationAttachments.created_at));
+    .orderBy(asc(fileLinks.created_at));
   const attachmentItems = attachmentRows.slice(0, 10).map((a) => ({
-    slug: a.slug,
-    filename: a.original_filename ?? null,
-    bytes: typeof a.size_bytes === "number" ? a.size_bytes : null,
+    slug: a.link.slug ?? a.file.filename,
+    filename: a.file.filename ?? null,
+    bytes: typeof a.file.size_bytes === "number" ? a.file.size_bytes : null,
   }));
 
   // Latest probe + preview live on the draft; mirror into the snapshot

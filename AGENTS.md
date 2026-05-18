@@ -139,7 +139,7 @@ layer, stop and move it.
 - **`packages/shared/`** — shared domain types & helpers. Pure, deterministic, no
   `apps/*` imports. See `packages/shared/AGENTS.md` for stricter rules.
 
-Subsystem map inside `apps/engine/src/` (40 directories + 5 loose root files):
+Subsystem map inside `apps/engine/src/` (41 directories + 5 loose root files):
 
 | Concern | Directory | Key docs |
 |---|---|---|
@@ -152,6 +152,7 @@ Subsystem map inside `apps/engine/src/` (40 directories + 5 loose root files):
 | Encrypted secret storage + OAuth2 refresh + credential rotation | `credentials/` (incl. `credentials/oauth2/`) | `docs/07-security-governance.md` |
 | AES-256-GCM + redaction | `crypto/` | `docs/07-security-governance.md` |
 | Drizzle schema + migrations + seed + transactional outbox events | `db/` | `docs/07-security-governance.md` |
+| Unified file resource (chat attachments, workflow inputs/outputs, LLM context, MCP); `{$file: fid_uuid}` wire shape; `requireFileForTenant` chokepoint, `files` table + `file_links` polymorphic join, inline (≤5MB) vs presigned upload, scanner interface, soft-delete + cleanup cron with in-flight grace | `files/` | `docs/06-execution.md` |
 | File → connector/skill proposals | `discovery/` | `docs/04-authoring.md` |
 | OpenAPI / GraphQL / HTML → searchable context | `docs-ingestion/` | `docs/04-authoring.md` |
 | Core domain types | `domain/` | `docs/02-concepts.md` |

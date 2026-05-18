@@ -150,6 +150,19 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
 
 const LEAVES = listConfigLeaves();
 
+// Cross-leaf invariants the generic walker can't satisfy on its own.
+// `storage.files.backend = "s3"` requires storage.s3.access_key,
+// storage.s3.secret_key, and storage.files.bucket all non-empty
+// (schema refine in `storage`). The prime hook runs before the write
+// so the refinement passes; force=true alone doesn't bypass it.
+const PRIME_BEFORE_WRITE: Record<string, () => Promise<void>> = {
+  "storage.files.backend": async () => {
+    await setConfigKey(["storage", "s3", "access_key"], "ak", { force: true });
+    await setConfigKey(["storage", "s3", "secret_key"], "sk", { force: true });
+    await setConfigKey(["storage", "files", "bucket"], "test-bucket", { force: true });
+  },
+};
+
 describe("per-leaf application sweep — every leaf in ConfigSchema", () => {
   test(`every leaf round-trips through PUT + getConfig + on-disk file (${LEAVES.length} leaves)`, async () => {
     let salt = 0;
@@ -157,6 +170,9 @@ describe("per-leaf application sweep — every leaf in ConfigSchema", () => {
       const written = valueFor(leaf, salt++);
       // Skip enum leaves with no values (defensive) — none today.
       if (leaf.kind === "enum" && (leaf.enumValues?.length ?? 0) === 0) continue;
+
+      const prime = PRIME_BEFORE_WRITE[dottedPath(leaf)];
+      if (prime) await prime();
 
       // 1) setConfigKey returns the dotted path.
       const result = await setConfigKey(leaf.path, written, { force: true });
@@ -188,6 +204,8 @@ describe("per-leaf application sweep — every leaf in ConfigSchema", () => {
       // any leaf write that might have flipped it.
       reconfigureLogger({ level: "info", format: "ndjson" });
       const written = valueFor(leaf, salt++);
+      const prime = PRIME_BEFORE_WRITE[dottedPath(leaf)];
+      if (prime) await prime();
       captured.length = 0;
       await setConfigKey(leaf.path, written, { force: true });
       const applied = captured.filter(

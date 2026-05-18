@@ -83,6 +83,17 @@ subsystem directory that owns them. For a full subsystem table, see `AGENTS.md`.
 | Run search / execution history query | `docs/06-execution.md` | `apps/engine/src/execution/`, `http/routes/` |
 | Extract content from uploaded PDF | `docs/04-authoring.md` | `apps/engine/src/docs-ingestion/` |
 
+### Files (unified resource)
+
+| Task | Read | Edit |
+|---|---|---|
+| Add or change a file upload / download / link route | `docs/06-execution.md`, `docs/03-input-surfaces.md` | `apps/engine/src/files/`, `http/routes/files.ts`, `api/files-schemas.ts` |
+| Wire a workflow step to consume a file input (`{$file: fid_…}`) | `docs/06-execution.md` | `apps/engine/src/files/resolver.ts`, `workflows/`, `execution/` |
+| Attach a file in a conversation (`@file:fid_…` or `/upload`) | `docs/04-authoring.md`, `docs/03-input-surfaces.md` | `apps/engine/src/files/`, `conversations/`, `llm/core/file-context.ts` |
+| Change LLM file-context strategy (Files API / inline base64 / text extract) | `docs/04-authoring.md` | `apps/engine/src/llm/core/file-context.ts`, `llm/core/capabilities.ts` |
+| Storage driver (local FS vs S3) for files | `docs/06-execution.md`, `docs/08-operations.md` | `apps/engine/src/storage/object-store.ts` |
+| Expose a file over MCP (`file://<fid>` resource) | `docs/03-input-surfaces.md` | `apps/engine/src/mcp/`, `files/` |
+
 ## Rule of thumb
 
 1. Find your task above. If it's not listed, fall back to the full subsystem table

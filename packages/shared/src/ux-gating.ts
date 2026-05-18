@@ -33,6 +33,9 @@ export const UX_GATING_PERMISSIONS = [
   "notification:read",
   "notification:write",
   "discovery:read",
+  "file:read",
+  "file:write",
+  "file:delete",
   // Tier 4 — admin
   "audit:read",
   "identity:read",

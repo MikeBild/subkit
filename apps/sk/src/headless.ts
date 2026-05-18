@@ -17,6 +17,7 @@ import {
   type SkSessionState,
   type TurnEvent,
 } from "@cli-core/index.ts";
+import { uploadPath } from "./commands/files.ts";
 import type { ResolvedProfile } from "./config.ts";
 import {
   type DebugCorrelationFields,
@@ -46,6 +47,16 @@ export interface HeadlessRunOptions {
   /** Optional initial connector / workflow binding for a new conversation. */
   connector_id?: string;
   workflow_id?: string;
+  /**
+   * Paths to upload + link as attachments BEFORE the prompt runs.
+   * Each path is uploaded through `uploadPath`, linked to the
+   * (possibly freshly minted) conversation with `role: "attachment"`,
+   * and (under `--output stream-json`) a `{"file_attached": ...}`
+   * line is emitted per file. A read / upload / link failure
+   * short-circuits the whole turn — the prompt does not run with
+   * partial attachments.
+   */
+  attach?: readonly string[];
   /** Optional writable sink — tests pass a memory buffer. */
   stdout?: { write: (s: string) => void };
   stderr?: { write: (s: string) => void };
@@ -171,32 +182,43 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     };
   }
   const session = initialSessionState(conversationId);
+  const attachPaths = opts.attach ?? [];
+  const hasAttach = attachPaths.length > 0;
 
   // Handle --resume: append a user message to an existing conversation.
   // Otherwise create a new one with the prompt as `initial_message`.
+  // When `--attach` is set we always create-then-append so file
+  // links can be inserted between the two calls.
   try {
     if (conversationId) {
-      const appended = await client.appendConversationMessage(
-        conversationId,
-        {
-          message: resolved.prompt,
-          ...(memory.content ? { memory: memory.content } : {}),
-        },
-        traceContext(),
-      );
-      debugLog(
-        "conversation.turn_events",
-        {
-          operation: "append_message",
-          response_status: appended.status,
-          events: appended.events,
-        },
-        traceContext(),
-      );
+      if (hasAttach) {
+        // Defer the append until after attachments are uploaded + linked.
+      } else {
+        const appended = await client.appendConversationMessage(
+          conversationId,
+          {
+            message: resolved.prompt,
+            ...(memory.content ? { memory: memory.content } : {}),
+          },
+          traceContext(),
+        );
+        debugLog(
+          "conversation.turn_events",
+          {
+            operation: "append_message",
+            response_status: appended.status,
+            events: appended.events,
+          },
+          traceContext(),
+        );
+      }
     } else {
       const created = await client.createConversation(
         {
-          initial_message: resolved.prompt,
+          // With `--attach`, we skip the initial_message so the engine
+          // doesn't start a turn before file links exist. The prompt
+          // is appended after `attachFiles()` succeeds.
+          ...(hasAttach ? {} : { initial_message: resolved.prompt }),
           ...(memory.content ? { memory: memory.content } : {}),
           ...(opts.connector_id ? { connector_id: opts.connector_id } : {}),
           ...(opts.workflow_id ? { workflow_id: opts.workflow_id } : {}),
@@ -266,6 +288,80 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     );
     stderr.write(`sk: ${e.message}\n`);
     return { exitCode: e.exit, session, conversation_id: conversationId };
+  }
+
+  // Upload + link every `--attach` before the prompt runs.
+  // Stream-json emits `{"file_attached": fid, "filename": ...}` per
+  // file; text/json modes report on stderr. Any upload/link error
+  // short-circuits with ATTACH_FAILED so the prompt never runs
+  // against a partial attachment set.
+  if (hasAttach && conversationId) {
+    try {
+      for (const p of attachPaths) {
+        const row = await uploadPath(client, p, { quiet: true });
+        await client.linkFile(row.id, {
+          resource_type: "conversation",
+          resource_id: conversationId,
+          role: "attachment",
+        });
+        debugLog(
+          "conversation.turn_events",
+          {
+            operation: "attachment_linked",
+            file_id: row.id,
+            filename: row.filename,
+            size_bytes: row.size_bytes,
+          },
+          traceContext(),
+        );
+        if (opts.output === "stream-json") {
+          writeLine(stdout, JSON.stringify({ file_attached: row.id, filename: row.filename }));
+        } else {
+          stderr.write(`sk: attached ${row.id} (${row.filename})\n`);
+        }
+      }
+      // Now that every file is linked, send the user prompt as the
+      // first message of the turn. The SSE stream below picks it up.
+      const appended = await client.appendConversationMessage(
+        conversationId,
+        {
+          message: resolved.prompt,
+          ...(memory.content ? { memory: memory.content } : {}),
+        },
+        traceContext(),
+      );
+      debugLog(
+        "conversation.turn_events",
+        {
+          operation: "append_message_after_attach",
+          response_status: appended.status,
+          events: appended.events,
+        },
+        traceContext(),
+      );
+    } catch (err) {
+      debugLog(
+        "dialog.error",
+        {
+          input_kind: "prompt",
+          stage: "attach",
+          error: serializeDebugError(err),
+        },
+        traceContext(),
+      );
+      const msg = err instanceof Error ? err.message : String(err);
+      if (opts.output === "stream-json") {
+        writeLine(stdout, JSON.stringify({ error: "ATTACH_FAILED", message: msg }));
+      } else {
+        stderr.write(`sk: attach failed: ${msg}\n`);
+      }
+      debugLog(
+        "dialog.turn_end",
+        { input_kind: "prompt", status: "error", exit_code: 1 },
+        traceContext(),
+      );
+      return { exitCode: 1, session, conversation_id: conversationId };
+    }
   }
 
   // Now open the SSE stream and fold its frames into the session.

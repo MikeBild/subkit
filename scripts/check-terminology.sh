@@ -69,7 +69,32 @@ fi
 # `issue #66` because that GitHub issue IS the audit-loop pause
 # command (`/audit pause` on issue #66). Real operating procedure,
 # not stale ticket coupling.
-ticket_pattern='(PR #[0-9]+|issue #[0-9]+|bug-[0-9]+|W[0-9]+ of (PR|round)|[SWPGR][0-9]+ of PR #[0-9]+|round [0-9]+ review|P0-[0-9]+|TODO\([^)]*[0-9]+\)|[A-Z]+[0-9]* closure of #[0-9]+|[A-Z][0-9]+ of #[0-9]+|of #[0-9]+ [A-Z][0-9]+|closure of #[0-9]+|(retired|landed|fixed|added) in #[0-9]+|as of #[0-9]+|(pre|post)-#[0-9]+|in PR #[0-9]+)'
+#
+# `Wave[ -][A-Z]` catches review-wave letters from large-PR phasing in
+# both the space-separated form (`Wave B Step 4`) and the hyphenated
+# form (`Wave-D Step-6`). `Step[ -][0-9]+` catches the companion
+# step-N markers used inside the same wave callouts. `Cross-cutting
+# decision [A-Z][0-9]+` catches the plan-section decision IDs (e.g.
+# `Cross-cutting decision D2`) that leak from review-plan docs into
+# inline comments.
+#
+# Letter+digit shorthand codes (`C20`, `R10`, `D8`, `W6`, `S13`) from
+# PR-review tables collide with widely-used pre-existing review
+# identifiers (`R5-S5`, `R6-W2`, …) in identity / RBAC source if matched
+# as bare `\b[CDRWS][0-9]+\b`. We instead ban them only when they appear
+# in clearly review-coupled phrasings: parenthesized solo / parenthesized
+# with descriptor / preceded by a connector word (`plan`, `described
+# in`, `per`, `design`) / comma-then-space-then-code at a clause end.
+# That hits the residual shapes the user keeps catching in review
+# (`(D6)`, `(W6)`, `(S13)`, `(C4 hard rule)`, `, C15`, `plan D5`,
+# `described in R8`) without flagging `R6-C1`, `Pass-2 C6`, `R2 etc.`
+# (AWS S3, R2 storage), `R5-S5`, `H1`/`H2`/`H3` headers, and other
+# legitimate identifiers. `W`/`S` are restricted to the parenthesized
+# solo form because the descriptor / connector-word / comma-clause
+# shapes collide with too many pre-existing legitimate comments
+# (`(S5 round-2 review)`, AWS `S3.`/`S3,` etc.) — the parenthesized
+# solo form is the residual shape that keeps slipping past review.
+ticket_pattern='(PR #[0-9]+|issue #[0-9]+|bug-[0-9]+|W[0-9]+ of (PR|round)|[SWPGR][0-9]+ of PR #[0-9]+|round [0-9]+ review|P0-[0-9]+|TODO\([^)]*[0-9]+\)|[A-Z]+[0-9]* closure of #[0-9]+|[A-Z][0-9]+ of #[0-9]+|of #[0-9]+ [A-Z][0-9]+|closure of #[0-9]+|(retired|landed|fixed|added) in #[0-9]+|as of #[0-9]+|(pre|post)-#[0-9]+|in PR #[0-9]+|Wave[ -][A-Z]\b|Step-[0-9]+\b|decision [A-Z][0-9]+\b|\([CDR][0-9]+\)|\([CDR][0-9]+ [a-z][^)]*\)|\([WS][0-9]+\)|(plan|design|per the.*|described in|fallback chain.*in) [CDR][0-9]+\b|, [CDR][0-9]+(\)|\.))'
 ticket_hits=$(grep -REn "$ticket_pattern" apps/ docs/ packages/ README.md \
     --include='*.ts' --include='*.tsx' --include='*.md' \
     --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=tests \

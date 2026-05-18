@@ -5,6 +5,51 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { collectFileRefs } from "../utils/file-ref.ts";
+
+/** Compact human-readable byte formatter (matches files.ts / audit). */
+function humanBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n < 1024) return `${Math.round(n)} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
+}
+
+/** Walk an execution payload's step outputs, collect every `$file`
+ *  reference, and print a one-line summary per fid with a hint at how
+ *  to download. Silent when no refs are present. Stays out of the JSON
+ *  surface — only the text rendering changes. */
+async function maybePrintOutputFiles(
+  client: EngineClient,
+  execution: Record<string, unknown>,
+): Promise<void> {
+  // The full execution payload may carry `result`, `output`,
+  // `steps[*].output`, or `step_outputs` — collect from the whole
+  // object to stay resilient to engine-side renames.
+  const fids = new Set<string>();
+  for (const ref of collectFileRefs(execution)) fids.add(ref);
+  if (fids.size === 0) return;
+  process.stdout.write(`\n${pc.bold("Output files:")}\n`);
+  for (const fid of fids) {
+    try {
+      const row = await client.getFile(fid);
+      process.stdout.write(
+        `  ${fid} (${row.filename}, ${humanBytes(row.size_bytes)}) — sk files download ${fid}\n`,
+      );
+    } catch {
+      // The file may have been soft-deleted or the principal lacks
+      // file:read; print the fid plus a hint so the operator still
+      // sees the reference exists.
+      process.stdout.write(`  ${fid} — sk files download ${fid}\n`);
+    }
+  }
+}
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List executions" },
@@ -38,6 +83,7 @@ const getCommand = defineCommand({
   meta: { name: "get", description: "Get an execution by id" },
   args: {
     id: { type: "positional", required: true, description: "Execution id" },
+    json: { type: "boolean", description: "JSON-only (skip Output files line)", default: false },
   },
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
@@ -45,6 +91,12 @@ const getCommand = defineCommand({
     try {
       const execution = await client.getExecution(args.id);
       printJson(execution);
+      // Text-output surfaces an extra `Output files:` block per
+      // `$file` ref found anywhere in the execution payload. JSON
+      // output stays unchanged so script consumers see no drift.
+      if (!args.json) {
+        await maybePrintOutputFiles(client, execution as Record<string, unknown>);
+      }
     } catch (err) {
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,

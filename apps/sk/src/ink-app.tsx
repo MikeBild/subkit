@@ -42,6 +42,7 @@ import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { uploadPath } from "./commands/files.ts";
 import { debugLog, serializeDebugError } from "./debug.ts";
 import { looksLikeAssistantConfirmRequest } from "./elicitation-intent.ts";
 import type { EngineClient, SetupValidationResponse, StatusSummary } from "./engine-client.ts";
@@ -55,7 +56,7 @@ import { AlternateScreen } from "./repl/alt-screen.tsx";
 import { describeConfirmationPayload } from "./repl/approval/describe-confirmation.ts";
 import { ResumeSummaryCard, renderAuthoringCard } from "./repl/authoring-cards.tsx";
 import { BackgroundToolGroup, isBackgroundTool } from "./repl/background-tools.tsx";
-import { classifyAttachment, readClipboard } from "./repl/clipboard-read.ts";
+import { readClipboard } from "./repl/clipboard-read.ts";
 import { DiffCard } from "./repl/diff-cell.tsx";
 import {
   classifyEngineError,
@@ -133,6 +134,8 @@ import { ResizeBoundary } from "./shell/ResizeBoundary.tsx";
 import { type ToastInput, ToastQueue, useToast } from "./shell/ToastQueue.tsx";
 import { type PagerEntry, TranscriptPager } from "./shell/TranscriptPager.tsx";
 import { findSlashCommand, type PersonaProbe, renderHelp, searchSlashCommands } from "./slash.ts";
+import { formatFileRef as formatFileLeaf } from "./utils/file-ref.ts";
+import { renderProgressLine, type UploadProgressEvent } from "./utils/upload-progress.ts";
 
 export interface InkAppProps {
   persona: {
@@ -1510,6 +1513,21 @@ export const InkApp: React.FC<InkAppProps> = ({
   const queueRef = useRef(createQueue());
   const [queuedCount, setQueuedCount] = useState(0);
   const [pendingAttachments, setPendingAttachments] = useState<StoredPaste[]>([]);
+  // Transient status-line message channel. Upload progress writes
+  // here on every chunk; the next status-line tick (≤500 ms) folds
+  // it into `status_message`. The string is cleared synchronously
+  // when the upload completes or fails. Held as a ref — the
+  // status-line tick reads from `current` each interval, so we
+  // don't need a state update per chunk.
+  const transientStatusRef = useRef<string | null>(null);
+  const setTransientStatus = useCallback((msg: string | null) => {
+    transientStatusRef.current = msg;
+  }, []);
+  // Cache of the most recent numbered listings rendered into a text
+  // pane (today: `/files`). The slash dispatch keeps a tiny
+  // Map<cacheKey, rows[]> so `/files <n>` can resolve the n-th row
+  // without re-listing.
+  const recentListsRef = useRef<Map<string, unknown[]>>(new Map());
   const syncPendingAttachments = useCallback(() => {
     setPendingAttachments([...pasteStoreRef.current.all()]);
   }, []);
@@ -1746,7 +1764,12 @@ export const InkApp: React.FC<InkAppProps> = ({
           null,
         tokens_today: statusSnapshot?.tokens_today ?? null,
         connectors_count: statusSnapshot?.connectors_count ?? null,
-        status_message: null,
+        // Surface transient upload progress (and any other short-lived
+        // status messages) here. The ref is set by `/upload` /
+        // `/attach` while a presigned PUT is in flight and cleared on
+        // completion or failure — matches the upload-progress callback
+        // cadence (per-chunk).
+        status_message: transientStatusRef.current,
         permission_mode: activeMode,
         cwd: cwdValue,
         git_branch: null,
@@ -1851,51 +1874,132 @@ export const InkApp: React.FC<InkAppProps> = ({
         showInfo(`/paste: inserted ${img.ref} (${clip.bytes} bytes)`);
         return true;
       }
-      if (name === "attach" || name === "file") {
+      if (name === "attach" || name === "file" || name === "upload") {
         if (mutatePending("attach")) return true;
         const raw = rest.join(" ").trim();
         if (raw.length === 0) {
-          showError("/attach: needs a path — e.g. `/attach ./invoice.pdf`");
+          showError(`/${name}: needs a path — e.g. \`/${name} ./invoice.pdf\``);
+          return true;
+        }
+        if (!engineClient) {
+          showError(`/${name}: no engine client — restart sk to wire the upload path`);
           return true;
         }
         const { statSync, existsSync: exists } = await import("node:fs");
-        const { resolve: res, basename: base } = await import("node:path");
+        const { resolve: res } = await import("node:path");
         const abs = res(cwd ?? process.cwd(), raw);
         if (!exists(abs)) {
-          showError(`/attach: not found: ${raw}`);
+          showError(`/${name}: not found: ${raw}`);
           return true;
         }
         const st = statSync(abs);
         if (!st.isFile()) {
-          showError(`/attach: not a file: ${raw}`);
+          showError(`/${name}: not a file: ${raw}`);
           return true;
         }
-        const cls = classifyAttachment(abs);
-        if (cls.kind === "image") {
-          const added = pasteStoreRef.current.addImage({
-            path: abs,
-            mediaType: cls.mediaType,
-            bytes: st.size,
+        // Upload to the engine's unified Files resource and splice a
+        // `{"$file":"fid_..."}` leaf at the cursor. The status-line
+        // ticker reads `transientStatusRef.current` every 500 ms and
+        // surfaces the rendered progress line. Errors are surfaced
+        // via `showError` and leave the composer untouched.
+        const onProgress = (ev: UploadProgressEvent): void => {
+          setTransientStatus(renderProgressLine(ev));
+        };
+        try {
+          const row = await uploadPath(engineClient, abs, {
+            quiet: true,
+            onProgress,
           });
-          syncPendingAttachments();
-          setInput((prev) => applyInput(prev, { type: "insert", text: added.ref }));
-          showInfo(`/attach: inserted ${added.ref} (${cls.mediaType}, ${st.size} bytes)`);
-          return true;
+          // Best-effort link to the active conversation so the file
+          // shows up in `/files` and the snapshot for this turn.
+          if (session.conversationId) {
+            try {
+              await engineClient.linkFile(row.id, {
+                resource_type: "conversation",
+                resource_id: session.conversationId,
+                role: "attachment",
+              });
+            } catch {
+              /* link is best-effort — the upload itself succeeded */
+            }
+          }
+          const leaf = JSON.stringify(formatFileLeaf(row.id));
+          setInput((prev) => applyInput(prev, { type: "insert", text: leaf }));
+          showInfo(`/${name}: uploaded ${row.id} (${row.filename}, ${st.size} bytes)`);
+        } catch (err) {
+          showError(`/${name}: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+          setTransientStatus(null);
         }
-        const added = pasteStoreRef.current.addFile({
-          path: abs,
-          filename: base(abs),
-          bytes: st.size,
-        });
-        syncPendingAttachments();
-        setInput((prev) => applyInput(prev, { type: "insert", text: added.ref }));
-        showInfo(`/attach: inserted ${added.ref} (${cls.mediaType}, ${st.size} bytes)`);
         return true;
       }
       if (name === "queue") {
         const items = [...queueRef.current.items];
         if (items.length === 0) showInfo("/queue: empty");
         else showInfo(`/queue: ${items.length} pending — ${items.slice(0, 3).join(" ; ")}`);
+        return true;
+      }
+      if (name === "files") {
+        // Numbered-list picker over files linked to the active
+        // conversation. `/files` lists; `/files <n>` inserts the
+        // n-th row's `@file:fid_...` mention at the cursor. The
+        // mention is rewritten to `{"$file":"..."}` at submit time by
+        // `expandRefs` in `repl/paste-store.ts`.
+        if (!engineClient) {
+          showError("/files: no engine client — restart sk to enable file browsing");
+          return true;
+        }
+        if (!session.conversationId) {
+          showError("/files: no active conversation yet — type a prompt first");
+          return true;
+        }
+        const cacheKey = `files:${session.conversationId}`;
+        type FileRow = { id: string; filename: string; size_bytes: number; status: string };
+        const cached = recentListsRef.current.get(cacheKey) as FileRow[] | undefined;
+        const pickArg = rest[0];
+        if (pickArg && cached && /^\d+$/.test(pickArg)) {
+          const idx = Number.parseInt(pickArg, 10) - 1;
+          const row = cached[idx];
+          if (!row) {
+            showError(`/files: no row #${pickArg} in the last listing`);
+            return true;
+          }
+          const mention = `@file:${row.id}`;
+          setInput((prev) => applyInput(prev, { type: "insert", text: mention }));
+          showInfo(`/files: inserted ${mention} (${row.filename})`);
+          return true;
+        }
+        try {
+          const res = await engineClient.listFiles({
+            linked_to: `conversation:${session.conversationId}`,
+            limit: 50,
+          });
+          if (res.items.length === 0) {
+            showInfo("/files: no files linked to this conversation yet — try /upload");
+            return true;
+          }
+          const rows: FileRow[] = res.items.map((f) => ({
+            id: f.id,
+            filename: f.filename,
+            size_bytes: f.size_bytes,
+            status: f.status,
+          }));
+          recentListsRef.current.set(cacheKey, rows);
+          const lines = rows.map(
+            (r, i) =>
+              `${(i + 1).toString().padStart(2)}.  ${r.id}  ${r.filename}  (${r.size_bytes} B, ${r.status})`,
+          );
+          lines.push("");
+          lines.push("type `/files <n>` to insert an @file:fid_... mention at the cursor");
+          setPane({
+            kind: "text",
+            title: "files",
+            subtitle: `${rows.length} linked to this conversation`,
+            lines,
+          });
+        } catch (err) {
+          showError(`/files: ${err instanceof Error ? err.message : String(err)}`);
+        }
         return true;
       }
       if (name === "history") {
@@ -1933,7 +2037,17 @@ export const InkApp: React.FC<InkAppProps> = ({
       }
       return false;
     },
-    [cwd, effectiveHistoryPath, showError, showInfo, syncPendingAttachments, transcriptMode],
+    [
+      cwd,
+      effectiveHistoryPath,
+      showError,
+      showInfo,
+      syncPendingAttachments,
+      transcriptMode,
+      engineClient,
+      session.conversationId,
+      setTransientStatus,
+    ],
   );
 
   const applyEventStream = useCallback(

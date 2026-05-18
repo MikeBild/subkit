@@ -4,6 +4,8 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient, type RunExecutionResponse } from "../engine-client.ts";
+import { formatFileRef } from "../utils/file-ref.ts";
+import { uploadPath } from "./files.ts";
 
 /** Print the workflow run JSON, then — when connector_resolutions or
  *  warnings are present — a compact summary to stderr so humans can
@@ -96,6 +98,11 @@ const runCommand = defineCommand({
       description: "Workflow id (omit when using --draft or --step)",
     },
     input: { type: "string", description: "Input JSON string" },
+    "input-file": {
+      type: "string",
+      description:
+        "Upload a file and substitute its ref into --input at key K. Format: K=<path>. Repeatable.",
+    },
     draft: {
       type: "string",
       description: "Path to a draft WorkflowDef JSON file (no commit)",
@@ -129,6 +136,48 @@ const runCommand = defineCommand({
     }
 
     const { readFileSync } = await import("node:fs");
+
+    // Parse repeatable --input-file flags. Citty surfaces a repeated
+    // string-typed arg as `string | string[]` depending on how the
+    // user supplied them; we normalise to an array of `K=<path>`
+    // strings and split each. The substituted ref is the standard
+    // `{ "$file": "fid_..." }` leaf — the workflow input_schema's
+    // `file` typed leaf resolves it at the step boundary.
+    const rawInputFile = (args as Record<string, unknown>)["input-file"];
+    const inputFilePairs: string[] = Array.isArray(rawInputFile)
+      ? rawInputFile.map((s) => String(s))
+      : rawInputFile
+        ? [String(rawInputFile)]
+        : [];
+    if (inputFilePairs.length > 0) {
+      if (input === null || typeof input !== "object" || Array.isArray(input)) {
+        // `--input-file` only makes sense alongside a JSON-object input
+        // (or no --input at all, in which case we synthesize one). A
+        // scalar / array input has no key to set.
+        input = {};
+      }
+      const inputObj = input as Record<string, unknown>;
+      const client = makeClient();
+      for (const pair of inputFilePairs) {
+        const eq = pair.indexOf("=");
+        if (eq <= 0) {
+          process.stderr.write(`--input-file: expected 'K=<path>', got '${pair}'\n`);
+          process.exit(1);
+        }
+        const key = pair.slice(0, eq);
+        const filePath = pair.slice(eq + 1);
+        try {
+          const file = await uploadPath(client, filePath, { quiet: true });
+          inputObj[key] = formatFileRef(file.id);
+        } catch (err) {
+          process.stderr.write(
+            `--input-file ${key}: upload failed: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+          process.exit(exitCodeFor(err));
+        }
+      }
+      input = inputObj;
+    }
 
     try {
       // --step: run a single step definition directly.
