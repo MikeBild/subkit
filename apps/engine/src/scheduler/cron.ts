@@ -3,9 +3,19 @@
 // resolution). For tests we also accept an `every:N` shorthand that
 // means "fire every N seconds" and is implemented process-locally via
 // `setInterval` instead of via pg-boss' cron.
+//
+// pg-boss FK contract: `pgboss.schedule.name` has a foreign-key
+// constraint into `pgboss.queue.name`. A `boss.schedule(name, ...)`
+// call therefore requires the named queue to already exist; without it
+// the insert into `pgboss.schedule` fails with
+// `insert or update on table "schedule" violates foreign key constraint
+// "schedule_name_fkey"` and the reconciler's pass aborts (observed
+// post-deploy 2026-05-18 on `wf-schedule:7d8eccfe-...`). `scheduleCron`
+// upserts the queue first so the FK is always satisfiable.
 
 import { CronExpressionParser } from "cron-parser";
 import type { PgBoss } from "pg-boss";
+import { logger } from "../logging/logger.ts";
 
 export interface CronValidationResult {
   ok: boolean;
@@ -55,6 +65,27 @@ export async function scheduleCron(opts: ScheduleCronOptions): Promise<void> {
   if (parsed.mode === "every") {
     // Handled locally — no-op here; reconciler runs an interval instead.
     return;
+  }
+  // Ensure the pg-boss queue exists before scheduling — see the
+  // module-level comment for why this is FK-load-bearing. Duplicate
+  // creates throw; we swallow that case (and only that case) because
+  // the reconciler runs every minute and most calls hit an existing
+  // queue. Any other error propagates to the reconciler's catch so
+  // operators see a clear "queue.create_failed" trail.
+  try {
+    await opts.boss.createQueue(opts.name);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/already exists|duplicate key value/i.test(msg)) {
+      logger.warn({
+        module: "scheduler",
+        action: "queue.create_failed",
+        msg: "could not ensure pg-boss queue for scheduled binding",
+        queue: opts.name,
+        error: msg,
+      });
+      throw err;
+    }
   }
   await opts.boss.schedule(opts.name, opts.cron, opts.payload ?? null, {
     ...(opts.tz ? { tz: opts.tz } : {}),
