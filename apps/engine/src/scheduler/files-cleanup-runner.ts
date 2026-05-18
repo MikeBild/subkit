@@ -3,11 +3,19 @@
 // Wave B Step 9 of the unified-files PR. Fires every hour from the
 // scheduler reconciler and walks three sweeps in order:
 //
-//   1) Pending orphans. A presigned-upload row that never got finalized
-//      (status='pending') and whose presign URL has been expired for at
-//      least an hour is hard-deleted along with any partial object the
-//      client may have written. `FILE_DELETED { reason:'pending_expired' }`
-//      is emitted per row.
+//   1) Pending / stuck-scanning orphans. Two row categories:
+//      a. `status='pending'` rows whose presign URL has been expired for
+//         at least an hour — the client minted a token but never
+//         finalized. Hard-deleted along with any partial object the
+//         client may have written; emits
+//         `FILE_DELETED { reason:'pending_expired' }`.
+//      b. `status='scanning'` rows older than an hour — the upload
+//         handler called the scanner and the scanner exceeded
+//         `SCANNER_TIMEOUT_SECONDS`, parking the row. We flip the row to
+//         `status='failed'` (not hard-delete) so the audit ledger keeps
+//         the FILE_CREATED row's resource_id resolvable; emits
+//         `FILE_SCAN_COMPLETED { verdict:'timeout' }` via the same audit
+//         path the upload handler uses on a normal timeout.
 //
 //   2) Unlinked TTL. A `status='ready'` row with no `file_links` referers
 //      AND no in-flight workflow run referencing the fid is soft-deleted
@@ -19,13 +27,22 @@
 //      a `$file` ref mid-execution must NOT have its bytes reaped. We
 //      implement it as a two-pass check rather than a brittle
 //      jsonb_path_query subquery — first SELECT candidate fids, then
-//      filter out fids that appear in the union of three in-flight
-//      haystacks: `executions.source_ref` (draft + step runs),
-//      `execution_steps.input_preview` joined to running executions
-//      (saved runs' runtime trail), and `pgboss.job.data` for queued
-//      `execution.run` jobs (catches the dispatch-but-not-yet-running
-//      window). The soft-delete + 7-day grace bounds the cost of a
-//      missed-link.
+//      filter out fids that appear in the union of FIVE in-flight
+//      haystacks:
+//        - `executions.source_ref` (draft + step runs)
+//        - `execution_steps.input_preview` joined to running executions
+//          (saved runs' runtime trail)
+//        - `pgboss.job.data` for `execution.run` jobs in states
+//          (created, active, retry, scheduled) — covers the
+//          dispatch-but-not-yet-running window AND long-horizon
+//          scheduled jobs
+//        - `pgboss.schedule.data` — recurring schedule definitions that
+//          embed a `$file` ref in their input template
+//        - `pgboss.archive.data` for jobs in states (active, retry)
+//          at the archive boundary — pg-boss archives jobs to keep the
+//          live `job` table small; an in-flight job that just got
+//          archived shouldn't have its fid reaped before it resumes.
+//      The soft-delete + 7-day grace bounds the cost of a missed-link.
 //
 //   3) LLM provider expiry. Provider-side Files API ids (Anthropic /
 //      OpenAI / Gemini) come with a finite TTL. When `llm_file_expires_at`
@@ -56,6 +73,11 @@ const UNLINKED_HARD_DELETE_AFTER = sql`interval '7 days'`;
  *  S3 / the local presign minter. */
 const PENDING_EXPIRY_GRACE = sql`interval '1 hour'`;
 
+/** Stuck `scanning` rows: the scanner exceeded its per-call budget and
+ *  the row never flipped to `ready`/`failed`. One-hour cutoff matches
+ *  the pending grace — well above any plausible legitimate scan budget. */
+const STUCK_SCAN_GRACE = sql`interval '1 hour'`;
+
 /**
  * Best-effort `objectStore.delete`. Logs and swallows on failure —
  * leaving an orphan blob is preferable to aborting the sweep.
@@ -76,14 +98,25 @@ async function bestEffortDeleteObject(storage_uri: string): Promise<void> {
 }
 
 /**
- * Sweep 1 — pending orphans.
+ * Sweep 1 — pending orphans + stuck scanning rows.
  *
- * Hard-delete `status='pending'` rows whose presign URL expired more
- * than an hour ago. For each row emit `FILE_DELETED` with
- * `reason='pending_expired'` and best-effort remove any partial object
- * the client may have written before abandoning the upload.
+ * Two passes share this sweep because both are "row never finished its
+ * upload pipeline" cases:
+ *
+ *  a. Hard-delete `status='pending'` rows whose presign URL expired more
+ *     than an hour ago. For each row emit `FILE_DELETED` with
+ *     `reason='pending_expired'` and best-effort remove any partial
+ *     object the client may have written before abandoning the upload.
+ *
+ *  b. Flip `status='scanning'` rows older than the stuck-scan grace
+ *     (the route handler timed out the scanner but the row never
+ *     transitioned to `ready`/`failed`). We move them to `status='failed'`
+ *     with `scan_result='timeout'` so the row remains discoverable in
+ *     audit + by id; the unlinked-TTL sweep eventually reclaims the
+ *     bytes via the normal grace path.
  */
-async function sweepPendingOrphans(db: Db): Promise<number> {
+async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_scanning: number }> {
+  // ---- Pass a — pending orphans (hard-delete) -----------------------------
   // tenant-filter:exempt — global cron sweep; per-row audit carries tenant_id
   const deleted = await db
     .delete(files)
@@ -118,7 +151,28 @@ async function sweepPendingOrphans(db: Db): Promise<number> {
       db,
     );
   }
-  return deleted.length;
+
+  // ---- Pass b — stuck scanning rows (flip to failed) ----------------------
+  // tenant-filter:exempt — global cron sweep
+  const stuckScanning = await db
+    .update(files)
+    .set({ status: "failed", scan_result: "timeout" })
+    .where(
+      and(eq(files.status, "scanning"), lt(files.created_at, sql`now() - ${STUCK_SCAN_GRACE}`)),
+    )
+    .returning({ id: files.id, tenant_id: files.tenant_id });
+
+  for (const row of stuckScanning) {
+    logger.warn({
+      module: "scheduler",
+      action: "files_cleanup.stuck_scanning_flipped",
+      msg: "row stuck in scanning state past grace — flipped to failed",
+      file_id: row.id,
+      tenant_id: row.tenant_id,
+    });
+  }
+
+  return { pending: deleted.length, stuck_scanning: stuckScanning.length };
 }
 
 /**
@@ -189,17 +243,23 @@ async function loadInFlightFidStrings(db: Db): Promise<string> {
   }
 
   // Source 3 — pg-boss job envelope for execution.run jobs that are
-  // queued but not yet running (`created`, `active`, `retry`). The
-  // `pgboss` schema is the pg-boss canonical schema; `job.data` holds
-  // the `ExecutionRunJob` payload (input lives there for saved runs).
-  // Failed jobs (`failed`, `expired`, `cancelled`, `completed`) are
-  // excluded — those file refs are no longer in-flight.
+  // queued but not yet running. The `pgboss` schema is the canonical
+  // pg-boss schema; `job.data` holds the `ExecutionRunJob` payload
+  // (input lives there for saved runs).
+  // States included:
+  //   - `created`, `active`, `retry`  → live job envelope
+  //   - `scheduled`                   → long-horizon scheduled job
+  //     (a workflow run dispatched with `startAfter` to fire hours/days
+  //     later). Without this the file ref could be reaped before the
+  //     job fires.
+  // Excluded: `failed`, `expired`, `cancelled`, `completed` — no longer
+  // in-flight.
   try {
     const jobRows = await db.execute<{ data: string | null }>(sql`
       SELECT data::text AS data
       FROM pgboss.job
       WHERE name = ${EXECUTION_RUN_QUEUE}
-        AND state IN ('created', 'active', 'retry')
+        AND state IN ('created', 'active', 'retry', 'scheduled')
     `);
     // drizzle's `execute()` return shape varies by driver; normalise.
     const rows: Array<{ data: string | null }> = Array.isArray(jobRows)
@@ -216,6 +276,59 @@ async function loadInFlightFidStrings(db: Db): Promise<string> {
       module: "scheduler",
       action: "files_cleanup.pgboss_scan_failed",
       msg: "pg-boss job scan failed — relying on executions + execution_steps for in-flight grace",
+      ...errorFields(err),
+    });
+  }
+
+  // Source 4 — pg-boss recurring schedule definitions. `pgboss.schedule`
+  // stores `(name, cron, data, options)` rows that pg-boss replays into
+  // `pgboss.job` on each cron tick. A schedule whose `data` carries a
+  // `$file` ref would lose its file between ticks without this scan.
+  try {
+    const scheduleRows = await db.execute<{ data: string | null }>(sql`
+      SELECT data::text AS data
+      FROM pgboss.schedule
+    `);
+    const rows: Array<{ data: string | null }> = Array.isArray(scheduleRows)
+      ? (scheduleRows as unknown as Array<{ data: string | null }>)
+      : ((scheduleRows as unknown as { rows?: Array<{ data: string | null }> }).rows ?? []);
+    for (const r of rows) {
+      if (r.data != null) parts.push(r.data);
+    }
+  } catch (err) {
+    logger.warn({
+      module: "scheduler",
+      action: "files_cleanup.pgboss_schedule_scan_failed",
+      msg: "pg-boss schedule scan failed — relying on job + executions scans for in-flight grace",
+      ...errorFields(err),
+    });
+  }
+
+  // Source 5 — pg-boss archive for jobs that were in-flight at the
+  // archive boundary. pg-boss periodically moves rows from `pgboss.job`
+  // to `pgboss.archive` to keep the live table small; rows archived
+  // while in `active`/`retry` state still reference a fid that the
+  // engine might resume (after a redeploy / replay). Excluded states
+  // (`completed`, `failed`, `expired`, `cancelled`) genuinely cannot
+  // resume so their fids are fair game.
+  try {
+    const archiveRows = await db.execute<{ data: string | null }>(sql`
+      SELECT data::text AS data
+      FROM pgboss.archive
+      WHERE name = ${EXECUTION_RUN_QUEUE}
+        AND state IN ('active', 'retry')
+    `);
+    const rows: Array<{ data: string | null }> = Array.isArray(archiveRows)
+      ? (archiveRows as unknown as Array<{ data: string | null }>)
+      : ((archiveRows as unknown as { rows?: Array<{ data: string | null }> }).rows ?? []);
+    for (const r of rows) {
+      if (r.data != null) parts.push(r.data);
+    }
+  } catch (err) {
+    logger.warn({
+      module: "scheduler",
+      action: "files_cleanup.pgboss_archive_scan_failed",
+      msg: "pg-boss archive scan failed — relying on job + schedule scans for in-flight grace",
       ...errorFields(err),
     });
   }
@@ -367,12 +480,15 @@ async function refreshFilesGauges(db: Db): Promise<void> {
 export async function runFilesCleanup(started: Date, db: Db): Promise<void> {
   const tickId = started.toISOString();
   let pending_deleted = 0;
+  let stuck_scanning_flipped = 0;
   let unlinked_soft = 0;
   let unlinked_hard = 0;
   let llm_expired = 0;
 
   try {
-    pending_deleted = await sweepPendingOrphans(db);
+    const r = await sweepPendingOrphans(db);
+    pending_deleted = r.pending;
+    stuck_scanning_flipped = r.stuck_scanning;
   } catch (err) {
     logger.error({
       module: "scheduler",
@@ -431,6 +547,7 @@ export async function runFilesCleanup(started: Date, db: Db): Promise<void> {
     msg: "files cleanup cron pass completed",
     tick_id: tickId,
     pending_deleted,
+    stuck_scanning_flipped,
     unlinked_soft,
     unlinked_hard,
     llm_expired,

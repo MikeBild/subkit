@@ -12,8 +12,12 @@
 export interface ScanResult {
   /** "clean" gates the row to `status='ready'`; "infected" flips the
    *  row to `status='failed'` and emits a `FILE_SCAN_COMPLETED` audit
-   *  event with the verdict + signature. */
-  verdict: "clean" | "infected";
+   *  event with the verdict + signature. "timeout" is only ever produced
+   *  by the route-layer `scanWithTimeout` wrapper (never by a scanner
+   *  backend itself) when the scan exceeds `SCANNER_TIMEOUT_SECONDS`;
+   *  the route parks the row in `status='scanning'` and the cleanup
+   *  cron reaps stuck rows after the documented grace. */
+  verdict: "clean" | "infected" | "timeout";
   /** Free-form engine identifier — "noop" for the default; "clamav"
    *  + a version string for a real backend. Surfaces in audit metadata
    *  so the operator can tell which engine produced a verdict. */
@@ -30,6 +34,18 @@ export interface ScanMeta {
 export interface FileScanner {
   scan(stream: AsyncIterable<Uint8Array>, meta: ScanMeta): Promise<ScanResult>;
 }
+
+/** Single source of truth for the scanner-call timeout. The default
+ *  `NoopScanner` returns instantly; a real ClamAV-backed implementation
+ *  can take several seconds on cold-cache fixtures or large files. Route
+ *  handlers wrap the `scanner.scan(...)` call with `Promise.race` against
+ *  this budget — when it fires the row is left in `status='scanning'` and
+ *  the cleanup cron reaps stuck rows after the documented grace.
+ *
+ *  Kept in this module (not in `getConfig().storage.scanner.*`) because
+ *  the budget is part of the scanner contract — every scanner backend
+ *  pays the same per-call ceiling regardless of operator config. */
+export const SCANNER_TIMEOUT_SECONDS = 10;
 
 /** Always-clean scanner. The fallback when no scanner backend is
  *  configured. */

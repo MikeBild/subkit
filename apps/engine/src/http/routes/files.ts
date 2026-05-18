@@ -65,7 +65,8 @@ import { getConfig } from "../../config/loader.ts";
 import { writeEvent } from "../../db/events.ts";
 import { fileLinks, files } from "../../db/schema/index.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
-import { getScanner } from "../../files/scanner.ts";
+import type { ScanResult } from "../../files/scanner.ts";
+import { getScanner, SCANNER_TIMEOUT_SECONDS } from "../../files/scanner.ts";
 import { logger } from "../../logging/index.ts";
 import {
   observeFileUploadDuration,
@@ -139,6 +140,39 @@ function streamFromBytes(bytes: Uint8Array): AsyncIterable<Uint8Array> {
   return (async function* () {
     yield bytes;
   })();
+}
+
+/** Sentinel `ScanResult` used when the scan exceeds
+ *  `SCANNER_TIMEOUT_SECONDS`. The caller flips the row to
+ *  `status='scanning'` (NOT `ready`) so the cleanup cron can reap rows
+ *  whose scan never completed. The engine identifier surfaces in audit
+ *  metadata so an operator chasing a stuck row can tell the scan timed
+ *  out vs. an `infected` verdict. */
+const SCAN_TIMEOUT_RESULT: ScanResult = {
+  verdict: "timeout",
+  engine: "timeout",
+};
+
+/** Wrap `scanner.scan(...)` with a hard timeout. The default
+ *  `NoopScanner` returns instantly so the race never fires; a real
+ *  ClamAV-backed scanner may take seconds, so we cap the call to avoid
+ *  cascading into Hono's request timeout. On timeout we resolve with
+ *  `SCAN_TIMEOUT_RESULT` — the caller is responsible for leaving the row
+ *  in `status='scanning'` and surfacing the state to the client. */
+async function scanWithTimeout(
+  stream: AsyncIterable<Uint8Array>,
+  meta: { content_type: string | null; filename: string },
+): Promise<ScanResult> {
+  const timeoutMs = SCANNER_TIMEOUT_SECONDS * 1000;
+  let timerId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<ScanResult>((resolve) => {
+    timerId = setTimeout(() => resolve(SCAN_TIMEOUT_RESULT), timeoutMs);
+  });
+  try {
+    return await Promise.race([getScanner().scan(stream, meta), timeoutPromise]);
+  } finally {
+    if (timerId) clearTimeout(timerId);
+  }
 }
 
 /** Stream-read the object store, computing sha256 and total length.
@@ -429,15 +463,20 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     // Write bytes first; the row commit makes the file discoverable.
     await getObjectStore().put(key, bytes);
 
-    // Scan synchronously — for the inline path the bytes are already
-    // resident, so a stream-shape scanner runs at memcpy speed.
-    const scan = await getScanner().scan(streamFromBytes(bytes), {
+    // Scan synchronously with a hard timeout. The default NoopScanner
+    // returns instantly; a real ClamAV-backed scanner caps at
+    // SCANNER_TIMEOUT_SECONDS so a slow / wedged backend cannot cascade
+    // into Hono's request timeout. On timeout we leave the row in
+    // `status='scanning'`, mark `scan_result='timeout'`, and rely on the
+    // cleanup cron to reap stuck rows after the documented grace.
+    const scan = await scanWithTimeout(streamFromBytes(bytes), {
       content_type: body.content_type ?? null,
       filename: body.filename,
     });
     recordFileScanResult({ verdict: scan.verdict });
 
-    const status = scan.verdict === "clean" ? "ready" : "failed";
+    const status =
+      scan.verdict === "clean" ? "ready" : scan.verdict === "timeout" ? "scanning" : "failed";
 
     let row: typeof files.$inferSelect | undefined;
     try {
@@ -540,7 +579,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         action: AuditAction.FILE_SCAN_COMPLETED,
         resource_type: "file",
         resource_id: row.id,
-        result: scan.verdict === "clean" ? "success" : "denied",
+        // `timeout` is an operational failure (scanner backend slow / wedged),
+        // not a security verdict — log it as `error` so audit consumers
+        // can distinguish it from an `infected` denial.
+        result:
+          scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
         metadata: FileScanCompletedMetadataSchema.parse({
           file_id: row.id,
           verdict: scan.verdict,
@@ -552,9 +595,21 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     );
 
     observeFileUploadDuration({
-      outcome: scan.verdict === "clean" ? "success" : "scan_infected",
+      outcome:
+        scan.verdict === "clean"
+          ? "success"
+          : scan.verdict === "timeout"
+            ? "scan_timeout"
+            : "scan_infected",
       duration_ms: Date.now() - uploadStartedAt,
     });
+    // On scan timeout the row is in `status='scanning'` and the
+    // cleanup cron will reap it after the grace window. Surface the
+    // state via the wire envelope + `Retry-After` so clients can poll
+    // GET /v1/files/{id} instead of treating the scan as complete.
+    if (scan.verdict === "timeout") {
+      c.header("Retry-After", String(SCANNER_TIMEOUT_SECONDS));
+    }
     return c.json(toFileWire(row), 201);
   });
 
@@ -884,14 +939,18 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json(toFileWire(sibling[0]), 200);
     }
 
-    // Scan + flip status.
+    // Scan + flip status. Hard timeout via scanWithTimeout — a stuck
+    // ClamAV backend on the finalize stream cannot wedge the request.
+    // On timeout the row stays in `status='scanning'` and the cleanup
+    // cron reaps stuck rows after the documented grace.
     const it = await getObjectStore().openRead(key);
-    const scan = await getScanner().scan(it, {
+    const scan = await scanWithTimeout(it, {
       content_type: row.content_type ?? null,
       filename: row.filename,
     });
     recordFileScanResult({ verdict: scan.verdict });
-    const status = scan.verdict === "clean" ? "ready" : "failed";
+    const status =
+      scan.verdict === "clean" ? "ready" : scan.verdict === "timeout" ? "scanning" : "failed";
     const [updated] = await db
       .update(files)
       .set({
@@ -936,7 +995,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         action: AuditAction.FILE_SCAN_COMPLETED,
         resource_type: "file",
         resource_id: updated.id,
-        result: scan.verdict === "clean" ? "success" : "denied",
+        // See inline-handler comment: `timeout` is an operational failure,
+        // not a security verdict.
+        result:
+          scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
         metadata: FileScanCompletedMetadataSchema.parse({
           file_id: updated.id,
           verdict: scan.verdict,
@@ -948,8 +1010,9 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     );
 
     // MCP notification — only on the ready transition. A failed scan
-    // moves status to `failed`; MCP subscribers see no update (R10:
-    // they couldn't read the bytes anyway). The forwarder in
+    // moves status to `failed`; a timed-out scan parks the row in
+    // `scanning`. In both non-ready cases MCP subscribers see no update
+    // (R10: they couldn't read the bytes anyway). The forwarder in
     // `apps/engine/src/mcp/capabilities/resources.ts` re-checks
     // `file:read` before forwarding, so a portal-scoped principal
     // that learned the fid out-of-band cannot piggy-back.
@@ -963,9 +1026,19 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     observeFileUploadDuration({
-      outcome: status === "ready" ? "success" : "scan_infected",
+      outcome:
+        status === "ready"
+          ? "success"
+          : scan.verdict === "timeout"
+            ? "scan_timeout"
+            : "scan_infected",
       duration_ms: Date.now() - finalizeStartedAt,
     });
+    // Surface `scanning` rows with a Retry-After hint — client polls
+    // GET /v1/files/{id} until status flips.
+    if (scan.verdict === "timeout") {
+      c.header("Retry-After", String(SCANNER_TIMEOUT_SECONDS));
+    }
     return c.json(toFileWire(updated), 200);
   });
 

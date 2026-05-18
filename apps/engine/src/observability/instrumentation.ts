@@ -538,16 +538,21 @@ export function recordLlmContextAssembled(args: {
  *  bounded if a future status string sneaks in. */
 const FILES_STATUS_VALUES = new Set<string>(["pending", "uploading", "ready", "failed", "expired"]);
 
-/** Allow-list for `outcome` label on FILES_UPLOAD_DURATION_SECONDS. */
+/** Allow-list for `outcome` label on FILES_UPLOAD_DURATION_SECONDS.
+ *  `scan_timeout` covers the case where `scanner.scan(...)` exceeded
+ *  `SCANNER_TIMEOUT_SECONDS` — the row lands in `status='scanning'` and
+ *  the cleanup cron eventually reaps it. */
 const FILES_UPLOAD_OUTCOMES = new Set<string>([
   "success",
   "scan_infected",
+  "scan_timeout",
   "sha_mismatch",
   "error",
 ]);
 
-/** Allow-list for `verdict` label on FILES_SCAN_RESULTS_TOTAL. */
-const FILES_SCAN_VERDICTS = new Set<string>(["clean", "infected"]);
+/** Allow-list for `verdict` label on FILES_SCAN_RESULTS_TOTAL.
+ *  `timeout` is recorded when the scanner exceeded its per-call budget. */
+const FILES_SCAN_VERDICTS = new Set<string>(["clean", "infected", "timeout"]);
 
 /**
  * Set the live `subkit_files_total{tenant_id,status}` gauge to an
