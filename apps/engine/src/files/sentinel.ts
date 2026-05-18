@@ -21,8 +21,18 @@
 
 /** Canonical regex matching every `[file:fid_<uuid>]` sentinel.
  *  `g` flag — callers using `RegExp.exec` must reset `lastIndex` after
- *  the loop. */
-export const FILE_SENTINEL_RE = /\[file:(fid_[A-Za-z0-9_-]+)\]/g;
+ *  the loop.
+ *
+ *  Grammar is locked to the strict `fid_<uuid>` shape (lowercase hex
+ *  with the 8-4-4-4-12 dash layout) — mirrors `FileIdSchema` in
+ *  `api/files-schemas.ts:27`. A loose match (uppercase, dash-stripped,
+ *  alphanumeric) would survive to `conversations/persist.ts:94-110`,
+ *  where `inArray(fileLinks.file_id, fidUuids)` would either no-row-
+ *  match (still safe — the privilege guard holds) or fault at runtime
+ *  when the PG driver coerces the malformed UUID. Tightening here
+ *  fails the parse early and keeps the downstream chokepoint clean. */
+export const FILE_SENTINEL_RE =
+  /\[file:(fid_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]/g;
 
 /** Return every fid embedded in `text`, in order, deduplicated.
  *  Empty array if none. */

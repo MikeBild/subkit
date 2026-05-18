@@ -228,3 +228,40 @@ finalize/delete, RBAC denial (`file:read` revoked) returns a 403-style
 JSON-RPC error.
 
 Follow-up issue: TBD.
+
+---
+
+## Migration audit boundary (0019 backfill)
+
+Migration `0019_files_unify.sql` backfilled legacy
+`conversation_attachments` rows and file-typed `knowledge_sources` rows
+into the unified `files` + `file_links` tables (see migration header
+for the row-count assertions that gate the backfill). The backfill
+DOES NOT emit per-row `FILE_CREATED` / `FILE_LINK_ADDED` audit entries
+— consistent with prior migrations in the repo, but worth calling out
+for compliance consumers reconstructing per-file history from
+`audit_log`:
+
+- Every pre-migration attachment lands as a `files` row + a
+  `file_links` row with no corresponding `file.created` /
+  `file.link_added` audit entry.
+- The `files.created_at` column carries the migration-time `now()`
+  for backfilled rows (not the original attachment-time stamp the
+  source table carried), so a SIEM consumer joining on `(tenant_id,
+  resource_id)` may see a `file.created`-shaped gap at the migration
+  boundary.
+
+SIEM queries that walk `audit_log` for file lifecycle should join on
+`audit_log.created_at < <migration_timestamp>` to identify the
+pre-migration data and treat the absence of a `file.created` row for
+those resource_ids as expected. The migration boundary is the embed
+timestamp in `apps/engine/src/db/migrations/meta/_journal.json` for
+the `0019_files_unify` entry (preserved in the DB at
+`drizzle.__drizzle_migrations.created_at`).
+
+Audit emission for the backfill is out of scope here — the
+no-backwards-compat rule in `AGENTS.md` lets us cut clean rather than
+ship synthetic system-actor audit rows from a one-shot migration. If
+a compliance consumer needs the audit rows, run the upstream
+backfill-replay tool (TBD) against `audit_log` rather than mutating
+the migration.
