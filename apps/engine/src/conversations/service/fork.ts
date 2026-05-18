@@ -19,6 +19,7 @@
 
 import { and, asc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
+import type { AuditActorType } from "../../audit/types.ts";
 import {
   AuditAction,
   ConversationForkedMetadataSchema,
@@ -36,14 +37,13 @@ export interface ForkConversationParams {
   source_conversation_id: string;
   anchor_message_id: string;
   actor_id: string | null;
-  /** Audit `actor_type`. Routes pass the resolved principal kind
-   *  (`"user"` for human callers, `"system_account"` for service
-   *  accounts) so the fork audit row matches every other emit site's
-   *  taxonomy. `"system"` is reserved for actor-less cron sweeps;
-   *  fork always has a caller. Defaults to `"user"` only when
-   *  `actor_id` is set and the caller didn't bother to specify, so
-   *  the legacy call shape keeps working. */
-  actor_type?: "user" | "system_account";
+  /** Audit `actor_type`. Routes derive this from the resolved
+   *  `principal.kind` via the canonical `actorType()` helper in
+   *  `audit/actor.ts`; cron / engine callers pass `"system"` with
+   *  `actor_id: null`. Required (no default) so a `system_account`
+   *  principal can never be silently mis-tagged as `"user"` by an
+   *  `actor_id`-truthiness heuristic. */
+  actor_type: AuditActorType;
   /** Optional title override; defaults to "fork — <source>". */
   title?: string | null;
   /**
@@ -222,7 +222,7 @@ export async function forkConversation(
       await auditAwait(
         {
           tenant_id: p.tenant_id,
-          actor_type: p.actor_type ?? (p.actor_id ? "user" : "system"),
+          actor_type: p.actor_type,
           actor_id: p.actor_id,
           action: AuditAction.FILE_LINK_ADDED,
           resource_type: "file",
@@ -267,7 +267,7 @@ export async function forkConversation(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: p.actor_id ? "user" : "system",
+      actor_type: p.actor_type,
       actor_id: p.actor_id,
       // Distinct fork action for audit-log incident readers. Metadata
       // still records source + anchor + count so a CREATED-style

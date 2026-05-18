@@ -49,6 +49,7 @@ import {
 } from "../../api/files-schemas.ts";
 import {
   AuditAction,
+  actorType,
   auditAwait,
   bucketSize,
   FileCreatedMetadataSchema,
@@ -190,7 +191,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       await auditAwait(
         {
           tenant_id,
-          actor_type: principal.kind === "user" ? "user" : "system_account",
+          actor_type: actorType(principal),
           actor_id: principal.id,
           action: AuditAction.FILE_LINK_ADDED,
           resource_type: "file",
@@ -260,7 +261,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     await auditAwait(
       {
         tenant_id,
-        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_type: actorType(principal),
         actor_id: principal.id,
         action: AuditAction.FILE_CREATED,
         resource_type: "file",
@@ -283,7 +284,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       await auditAwait(
         {
           tenant_id,
-          actor_type: principal.kind === "user" ? "user" : "system_account",
+          actor_type: actorType(principal),
           actor_id: principal.id,
           action: AuditAction.FILE_SCAN_COMPLETED,
           resource_type: "file",
@@ -307,7 +308,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     await auditAwait(
       {
         tenant_id,
-        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_type: actorType(principal),
         actor_id: principal.id,
         action: AuditAction.FILE_LINK_ADDED,
         resource_type: "file",
@@ -407,7 +408,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
-        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_type: actorType(principal),
         actor_id: principal.id,
         action: AuditAction.FILE_LINK_REMOVED,
         resource_type: "file",
