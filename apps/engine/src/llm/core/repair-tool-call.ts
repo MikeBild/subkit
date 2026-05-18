@@ -134,18 +134,6 @@ export async function repairToolCall<TOOLS extends ToolSet>(
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     const errName = err instanceof Error ? err.name : "unknown";
-    // When the provider rejects the structured-output schema itself
-    // (Anthropic returns AI_APICallError with `output_config.format.schema`
-    // in the message), the original schema fragment is the load-bearing
-    // diagnostic. Without it the warn message names the tool but not
-    // the offending shape — which is exactly the trail we burned in the
-    // 2026-05-16 forensics. Surface the normalised schema at warn so
-    // future regressions are diagnosable from a single log line.
-    const isSchemaRejection =
-      errName === "AI_APICallError" ||
-      errMsg.includes("output_config.format.schema") ||
-      errMsg.includes("Empty schema") ||
-      errMsg.includes("Schema type");
     logger.warn({
       module: "llm",
       action: "repair_tool_call.failed",
@@ -153,12 +141,29 @@ export async function repairToolCall<TOOLS extends ToolSet>(
       tool: toolCall.toolName,
       error: errMsg,
       error_name: errName,
-      ...(isSchemaRejection
+      ...(isSchemaRejectionError({ errName, errMsg })
         ? { normalized_schema: JSON.stringify(normalizedSchema).slice(0, 4000) }
         : {}),
     });
     return null;
   }
+}
+
+/**
+ * Heuristic detector for provider-side structured-output schema
+ * rejections. When the provider rejects the schema itself (Anthropic
+ * returns `AI_APICallError` with `output_config.format.schema` in the
+ * message), the warn-level emitter attaches the normalised schema
+ * fragment as a load-bearing diagnostic. Exported so the heuristic
+ * has unit coverage independent of the AI SDK mock surface.
+ */
+export function isSchemaRejectionError(input: { errName: string; errMsg: string }): boolean {
+  return (
+    input.errName === "AI_APICallError" ||
+    input.errMsg.includes("output_config.format.schema") ||
+    input.errMsg.includes("Empty schema") ||
+    input.errMsg.includes("Schema type")
+  );
 }
 
 /**

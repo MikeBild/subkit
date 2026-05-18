@@ -23,6 +23,37 @@ import {
 } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 
+/**
+ * Build the `WorkflowDef`-shaped object the workflows service accepts,
+ * from the conversation's working draft. The mapping is the single
+ * source of truth for which draft fields survive commit — every
+ * field listed here is persisted into `workflow_versions.dag`,
+ * anything missing is silently dropped. Mirror the hash inputs in
+ * `save-workflow-draft.ts:123-134` so idempotency and persistence
+ * agree on the contract.
+ */
+export interface WorkflowDefFromDraft {
+  name: string;
+  slug?: string;
+  description?: string;
+  input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+  trigger?: import("../../workflows/types.ts").WorkflowTrigger;
+  steps: Array<Record<string, unknown>>;
+}
+
+export function workflowDefFromDraft(draft: WorkflowDefFromDraft): WorkflowDefFromDraft {
+  return {
+    name: draft.name,
+    ...(draft.slug ? { slug: draft.slug } : {}),
+    ...(draft.description ? { description: draft.description } : {}),
+    ...(draft.input_schema ? { input_schema: draft.input_schema } : {}),
+    ...(draft.output_schema ? { output_schema: draft.output_schema } : {}),
+    ...(draft.trigger ? { trigger: draft.trigger } : {}),
+    steps: draft.steps,
+  };
+}
+
 export interface CommitWorkflowAtomicParams {
   ctx: ToolContext;
   /** Optional explicit target — set after the user confirmed slug-overwrite. */
@@ -307,14 +338,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   }
 
   const draft = getWorkflowDraft(fullDraft);
-  const def = {
-    name: draft.name,
-    ...(draft.slug ? { slug: draft.slug } : {}),
-    ...(draft.description ? { description: draft.description } : {}),
-    ...(draft.input_schema ? { input_schema: draft.input_schema } : {}),
-    ...(draft.output_schema ? { output_schema: draft.output_schema } : {}),
-    steps: draft.steps,
-  };
+  const def = workflowDefFromDraft(draft);
 
   const convRows = await ctx.db
     .select({ target_workflow_id: conversations.target_workflow_id })

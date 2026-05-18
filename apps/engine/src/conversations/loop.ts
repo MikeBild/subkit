@@ -1450,6 +1450,13 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // palette-is-fixed clause is the primary defence; this guard is
   // the observability signal that proves whether the teaching is
   // working in production.
+  //
+  // CONTRACT (load-bearing): the verdict here MUST only feed metrics
+  // and audit. The matcher is keyword-regex over LLM prose, which is
+  // explicitly forbidden as a behavior input by
+  // `feedback_no_hacks_only_root_cause.md`. Wiring this verdict into
+  // any retry / abort / palette-mutation path turns observability
+  // into control-flow and violates the contract — don't.
   if (signals.lastAssistantText) {
     const palette = new Set(Object.keys(tools));
     const verdict = detectToolHallucinatedAbsence({

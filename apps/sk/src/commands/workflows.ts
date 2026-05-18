@@ -81,26 +81,29 @@ const getCommand = defineCommand({
       const workflow = await client.getWorkflow(args.id);
       printJson(workflow);
       // First-class summary of the workflow-level trigger so operators
-      // don't have to grep the JSON. Default `request` trigger is the
-      // common case and adds no information — suppress.
+      // don't have to grep the JSON. Always print a line so absence
+      // (which would be the bug signature if the trigger field stops
+      // round-tripping through commit) is *visible*, not silent.
       const definition = (workflow as { definition?: Record<string, unknown> }).definition ?? {};
       const trigger = (definition as { trigger?: Record<string, unknown> }).trigger;
-      if (trigger && typeof trigger === "object") {
-        const kind = typeof trigger.kind === "string" ? trigger.kind : null;
-        if (kind === "schedule") {
-          const cron = typeof trigger.cron === "string" ? trigger.cron : "?";
-          const tz = typeof trigger.tz === "string" ? trigger.tz : "UTC";
-          process.stderr.write(
-            `\n${pc.dim("trigger:")} ${pc.cyan("schedule")}  cron=${cron}  tz=${tz}\n`,
-          );
-        } else if (kind === "webhook") {
-          const source = typeof trigger.source === "string" ? trigger.source : "?";
-          const events = Array.isArray(trigger.events) ? trigger.events.join(",") : "?";
-          process.stderr.write(
-            `\n${pc.dim("trigger:")} ${pc.cyan("webhook")}  source=${source}  events=${events}\n`,
-          );
-        }
-        // `request` is the default; emit nothing.
+      const kindRaw =
+        trigger && typeof trigger === "object" && typeof trigger.kind === "string"
+          ? trigger.kind
+          : "request";
+      if (kindRaw === "schedule" && trigger) {
+        const cron = typeof trigger.cron === "string" ? trigger.cron : "?";
+        const tz = typeof trigger.tz === "string" ? trigger.tz : "UTC";
+        process.stderr.write(
+          `\n${pc.dim("trigger:")} ${pc.cyan("schedule")}  cron=${cron}  tz=${tz}\n`,
+        );
+      } else if (kindRaw === "webhook" && trigger) {
+        const source = typeof trigger.source === "string" ? trigger.source : "?";
+        const events = Array.isArray(trigger.events) ? trigger.events.join(",") : "?";
+        process.stderr.write(
+          `\n${pc.dim("trigger:")} ${pc.cyan("webhook")}  source=${source}  events=${events}\n`,
+        );
+      } else {
+        process.stderr.write(`\n${pc.dim("trigger:")} request\n`);
       }
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);

@@ -120,7 +120,7 @@ async function applyTriggerBindings(
   actor_id: string | null,
 ): Promise<void> {
   const trigger = def.trigger ?? { kind: "request" as const };
-  recordWorkflowTriggerKind({ kind: trigger.kind });
+  recordWorkflowTriggerKind({ tenant_id, kind: trigger.kind });
   if (trigger.kind === "webhook") {
     await inboundService.bindFromWorkflow(
       {

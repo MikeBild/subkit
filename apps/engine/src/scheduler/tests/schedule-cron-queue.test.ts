@@ -1,9 +1,5 @@
-// Unit test for `scheduleCron`'s pg-boss FK invariant: the queue must
-// exist before the schedule row is upserted. Production deploy of
-// v4.12.3 surfaced this gap — the reconciler logged `Queue
-// wf-schedule:... not found` plus `schedule_name_fkey` violations
-// every minute because `boss.schedule()` was called against a
-// queue that had never been created.
+// Guards the pg-boss FK invariant: `schedule.name` references
+// `queue.name`, so the queue must be upserted before `boss.schedule()`.
 
 import { describe, expect, test } from "bun:test";
 import type { PgBoss } from "pg-boss";
@@ -60,14 +56,18 @@ describe("scheduleCron", () => {
       },
     });
     // Must not throw — the duplicate is the steady-state on the
-    // reconciler's per-minute loop.
+    // reconciler's per-minute loop. The full call shape is asserted
+    // so a regression that accidentally skips `boss.schedule()` in
+    // the dup-swallow branch trips this test, not production.
     await scheduleCron({
       boss,
       name: "wf-schedule:test-2",
       cron: "0 19 * * *",
     });
-    expect(calls[0]?.kind).toBe("createQueue");
-    expect(calls[1]?.kind).toBe("schedule");
+    expect(calls).toEqual([
+      { kind: "createQueue", name: "wf-schedule:test-2" },
+      { kind: "schedule", name: "wf-schedule:test-2", cron: "0 19 * * *" },
+    ]);
   });
 
   test("rethrows non-duplicate createQueue errors", async () => {

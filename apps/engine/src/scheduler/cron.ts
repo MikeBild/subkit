@@ -1,17 +1,10 @@
 // Thin wrapper over pg-boss schedule / unschedule plus cron expression
-// validation. pg-boss only supports 5-field cron expressions (minute
-// resolution). For tests we also accept an `every:N` shorthand that
-// means "fire every N seconds" and is implemented process-locally via
-// `setInterval` instead of via pg-boss' cron.
-//
-// pg-boss FK contract: `pgboss.schedule.name` has a foreign-key
-// constraint into `pgboss.queue.name`. A `boss.schedule(name, ...)`
-// call therefore requires the named queue to already exist; without it
-// the insert into `pgboss.schedule` fails with
-// `insert or update on table "schedule" violates foreign key constraint
-// "schedule_name_fkey"` and the reconciler's pass aborts (observed
-// post-deploy 2026-05-18 on `wf-schedule:7d8eccfe-...`). `scheduleCron`
-// upserts the queue first so the FK is always satisfiable.
+// validation. pg-boss FK: `pgboss.schedule.name` references
+// `pgboss.queue.name`, so `boss.schedule(name, ...)` requires the
+// queue to exist first. `scheduleCron` upserts the queue before
+// scheduling so the FK is always satisfiable. `every:N` shorthand
+// fires every N seconds and is handled process-locally via
+// `setInterval` instead of via pg-boss' (minute-resolution) cron.
 
 import { CronExpressionParser } from "cron-parser";
 import type { PgBoss } from "pg-boss";
