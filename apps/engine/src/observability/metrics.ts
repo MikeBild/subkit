@@ -681,8 +681,8 @@ function buildRegistry(): MetricsRegistry {
   });
   reg.registerCounter({
     name: METRIC_NAMES.WORKFLOW_TRIGGER_KIND_TOTAL,
-    help: "Workflow commits per trigger kind (request / webhook / schedule). A sudden drop in `schedule` is the canary for chat-authoring regressing back to manual create_schedule calls.",
-    labels: ["kind"],
+    help: "Workflow commits per trigger kind (request / webhook / schedule). A sudden drop in `schedule` is the canary for chat-authoring regressing back to manual create_schedule calls. Labelled by `tenant_id` for parity with WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL so cohorts can be sliced per tenant.",
+    labels: ["tenant_id", "kind"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.CRITIC_RUNS_TOTAL,

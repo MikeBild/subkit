@@ -23,6 +23,46 @@ import {
 } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 
+/**
+ * Build the `WorkflowDef`-shaped object the workflows service accepts,
+ * from the conversation's working draft. Every persisted field on
+ * `WorkflowDraftDocument` must be projected here; anything missing is
+ * silently dropped on commit (the regression class that broke chat-
+ * authored schedules end-to-end). The corresponding contract test in
+ * `tests/commit-workflow-def-from-draft.test.ts` pins each field, so
+ * a new draft field added in `conversations/types.ts` without a
+ * matching entry here fails the test before it can ship.
+ */
+export interface WorkflowDefFromDraft {
+  name: string;
+  slug?: string;
+  description?: string;
+  input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+  output_transform?: string;
+  edges?: Array<{ from: string; to: string }>;
+  derived_from_skill_id?: string | null;
+  trigger?: import("../../workflows/types.ts").WorkflowTrigger;
+  steps: Array<Record<string, unknown>>;
+}
+
+export function workflowDefFromDraft(draft: WorkflowDefFromDraft): WorkflowDefFromDraft {
+  return {
+    name: draft.name,
+    ...(draft.slug ? { slug: draft.slug } : {}),
+    ...(draft.description ? { description: draft.description } : {}),
+    ...(draft.input_schema ? { input_schema: draft.input_schema } : {}),
+    ...(draft.output_schema ? { output_schema: draft.output_schema } : {}),
+    ...(draft.output_transform ? { output_transform: draft.output_transform } : {}),
+    ...(draft.edges ? { edges: draft.edges } : {}),
+    ...(draft.derived_from_skill_id !== undefined
+      ? { derived_from_skill_id: draft.derived_from_skill_id }
+      : {}),
+    ...(draft.trigger ? { trigger: draft.trigger } : {}),
+    steps: draft.steps,
+  };
+}
+
 export interface CommitWorkflowAtomicParams {
   ctx: ToolContext;
   /** Optional explicit target — set after the user confirmed slug-overwrite. */
@@ -307,14 +347,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   }
 
   const draft = getWorkflowDraft(fullDraft);
-  const def = {
-    name: draft.name,
-    ...(draft.slug ? { slug: draft.slug } : {}),
-    ...(draft.description ? { description: draft.description } : {}),
-    ...(draft.input_schema ? { input_schema: draft.input_schema } : {}),
-    ...(draft.output_schema ? { output_schema: draft.output_schema } : {}),
-    steps: draft.steps,
-  };
+  const def = workflowDefFromDraft(draft);
 
   const convRows = await ctx.db
     .select({ target_workflow_id: conversations.target_workflow_id })

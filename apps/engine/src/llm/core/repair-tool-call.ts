@@ -134,18 +134,6 @@ export async function repairToolCall<TOOLS extends ToolSet>(
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     const errName = err instanceof Error ? err.name : "unknown";
-    // When the provider rejects the structured-output schema itself
-    // (Anthropic returns AI_APICallError with `output_config.format.schema`
-    // in the message), the original schema fragment is the load-bearing
-    // diagnostic. Without it the warn message names the tool but not
-    // the offending shape — which is exactly the trail we burned in the
-    // 2026-05-16 forensics. Surface the normalised schema at warn so
-    // future regressions are diagnosable from a single log line.
-    const isSchemaRejection =
-      errName === "AI_APICallError" ||
-      errMsg.includes("output_config.format.schema") ||
-      errMsg.includes("Empty schema") ||
-      errMsg.includes("Schema type");
     logger.warn({
       module: "llm",
       action: "repair_tool_call.failed",
@@ -153,12 +141,39 @@ export async function repairToolCall<TOOLS extends ToolSet>(
       tool: toolCall.toolName,
       error: errMsg,
       error_name: errName,
-      ...(isSchemaRejection
+      ...(isSchemaRejectionError({ errName, errMsg })
         ? { normalized_schema: JSON.stringify(normalizedSchema).slice(0, 4000) }
         : {}),
     });
     return null;
   }
+}
+
+const SCHEMA_REJECTION_MARKERS = [
+  "output_config.format.schema",
+  "Empty schema",
+  "Schema type",
+] as const;
+
+/**
+ * Heuristic detector for provider-side structured-output schema
+ * rejections. The warn-level emitter attaches the normalised schema
+ * fragment (~up to 4KB) only when this fires, so the detector has to
+ * be *narrow* — the AI SDK's generic `AI_APICallError` also covers
+ * quota/auth/connection failures, where the schema payload would
+ * inflate logs without diagnostic value. The dual-key rule:
+ *
+ *   - `AI_APICallError` + a schema-marker substring → schema rejection
+ *   - any other error name + a schema-marker substring → schema rejection
+ *     (covers providers that wrap the upstream error differently)
+ *   - `AI_APICallError` alone (quota, 429, ECONNRESET, etc.) → NOT a
+ *     schema rejection
+ *
+ * Exported so the heuristic has unit coverage independent of the AI
+ * SDK mock surface.
+ */
+export function isSchemaRejectionError(input: { errName: string; errMsg: string }): boolean {
+  return SCHEMA_REJECTION_MARKERS.some((marker) => input.errMsg.includes(marker));
 }
 
 /**

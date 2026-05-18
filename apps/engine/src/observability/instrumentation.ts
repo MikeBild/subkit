@@ -409,11 +409,14 @@ export function recordWorkflowScheduleNotBound(args: { tenant_id: string }): voi
 /**
  * Per-kind workflow-commit counter. Allow-listed against the three
  * trigger variants; unknown values collapse to "other" so a producer
- * regression never blows up label cardinality.
+ * regression never blows up label cardinality. Labelled by `tenant_id`
+ * for parity with WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL so operators can
+ * slice cohort behaviour per tenant.
  */
-export function recordWorkflowTriggerKind(args: { kind: string }): void {
+export function recordWorkflowTriggerKind(args: { tenant_id: string; kind: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.WORKFLOW_TRIGGER_KIND_TOTAL, {
+      tenant_id: args.tenant_id,
       kind: TRIGGER_KINDS.has(args.kind) ? args.kind : "other",
     });
   });

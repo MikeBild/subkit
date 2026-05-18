@@ -13,7 +13,16 @@
 //   - rename `oneOf` → `anyOf` (Anthropic rejects `Schema type 'oneOf' is
 //     not supported`; the semantics of `anyOf` are compatible for our use
 //     of discriminated unions because the runtime parses tool calls back
-//     through Zod, which still enforces discriminator constraints)
+//     through Zod, which still enforces discriminator constraints).
+//
+//     Trade-off: the rename is unconditional, applied to every provider's
+//     payload. For providers that DO accept `oneOf` (OpenAI / Bedrock /
+//     Gemini) we lose the tighter wire-level discriminator semantics in
+//     exchange for a single normalisation path. Correctness is preserved
+//     because Zod re-parses the tool args on the runtime side, but
+//     provider-side schema validation is now weaker on non-Anthropic
+//     paths. If a future provider rejects `anyOf` discriminators, gate
+//     the rename on the resolved `model.provider` instead.
 //
 // Keep this pure — no imports from `ai` or provider packages. The only
 // purpose is to shape a schema so downstream `generateObject` calls do not

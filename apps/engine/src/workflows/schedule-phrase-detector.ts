@@ -30,7 +30,13 @@ const CADENCE_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
     name: "every-weekday-at-HH",
     re: /\bevery\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+morning|\s+evening|\s+at\s+\d{1,2}(?::\d{2})?)?\b/i,
   },
-  { name: "at-HH-utc", re: /\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+(?:utc|gmt)\b/i },
+  // "at HH UTC" only counts as cadence when paired with a cadence keyword
+  // (daily / hourly / every / each). Without the prefix, phrases like
+  // "the alert fired at 14:00 UTC" would false-trip the safety net.
+  {
+    name: "at-HH-utc",
+    re: /\b(?:daily|hourly|weekly|monthly|every|each)\b[^.]*?\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+(?:utc|gmt)\b/i,
+  },
   // German
   { name: "täglich", re: /\btäglich(?:\s+um\s+\d{1,2}(?::\d{2})?)?\b/i },
   { name: "stündlich", re: /\bstündlich\b/i },

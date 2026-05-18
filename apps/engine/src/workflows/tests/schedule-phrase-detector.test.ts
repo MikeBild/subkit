@@ -69,6 +69,19 @@ describe("detectSchedulePhrases", () => {
     expect(v.matched).toBe(false);
   });
 
+  it("does NOT match incident-context 'fired at 14:00 UTC' without cadence keyword", () => {
+    const v = detectSchedulePhrases({
+      description: "the alert fired at 14:00 UTC and was acknowledged 2 minutes later",
+    });
+    expect(v.matched).toBe(false);
+  });
+
+  it("DOES match cadence-context 'daily at 09:00 UTC'", () => {
+    const v = detectSchedulePhrases({ description: "run the export daily at 09:00 UTC" });
+    expect(v.matched).toBe(true);
+    expect(v.matched_phrases).toContain("at-HH-utc");
+  });
+
   it("does NOT match empty input", () => {
     expect(detectSchedulePhrases({ name: "", description: "" }).matched).toBe(false);
     expect(detectSchedulePhrases({}).matched).toBe(false);
