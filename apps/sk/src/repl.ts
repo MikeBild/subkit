@@ -511,7 +511,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           }
         }
         const data =
-          output && output.data && typeof output.data === "object"
+          output?.data && typeof output.data === "object"
             ? (output.data as Record<string, unknown>)
             : null;
         if (data && Array.isArray(data.warnings)) {
