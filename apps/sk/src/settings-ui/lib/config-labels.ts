@@ -106,6 +106,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "storage.s3.secret_key": "S3 secret key",
   "storage.files.backend": "Files storage backend",
   "storage.files.dir": "Files local directory",
+  "storage.files.bucket": "Files S3 bucket",
   "storage.offload.bucket": "Offload bucket",
   "storage.offload.region": "Offload region",
   "storage.offload.access_key": "Offload access key",
