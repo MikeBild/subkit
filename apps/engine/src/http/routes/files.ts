@@ -25,7 +25,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, count, desc, eq, isNull, lt } from "drizzle-orm";
+import { and, count, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
@@ -51,7 +51,6 @@ import {
 } from "../../api/files-schemas.ts";
 import {
   AuditAction,
-  audit,
   auditAwait,
   bucketSize,
   FileBatchCreatedMetadataSchema,
@@ -66,7 +65,7 @@ import {
 } from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { writeEvent } from "../../db/events.ts";
-import { fileLinks, files } from "../../db/schema/index.ts";
+import { auditLog, fileLinks, files } from "../../db/schema/index.ts";
 import { buildObjectKey, composeStorageUri, streamFromBytes } from "../../files/object-key.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import type { ScanResult } from "../../files/scanner.ts";
@@ -456,6 +455,22 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     if (existing[0]) {
       // Don't re-write the object; existing row is the canonical home.
+      // If the prior row was soft-deleted (cleanup-cron grace window),
+      // resurrect it by clearing `deleted_at` so callers see a live row
+      // and the row participates in list/link queries that filter
+      // `deleted_at IS NULL`. The unique index doesn't carry
+      // `deleted_at`, so a duplicate upload of the same content after
+      // soft-delete would otherwise hit the dedup branch and hand back a
+      // tombstone that lists/links silently ignore.
+      let canonical = existing[0];
+      if (canonical.deleted_at) {
+        const [revived] = await db
+          .update(files)
+          .set({ deleted_at: null, updated_at: new Date() })
+          .where(eq(files.id, canonical.id))
+          .returning();
+        if (revived) canonical = revived;
+      }
       recordFileDedupHit();
       await auditAwait(
         {
@@ -464,10 +479,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           actor_id: principal.id,
           action: AuditAction.FILE_CREATED,
           resource_type: "file",
-          resource_id: existing[0].id,
+          resource_id: canonical.id,
           result: "success",
           metadata: FileCreatedMetadataSchema.parse({
-            file_id: existing[0].id,
+            file_id: canonical.id,
             filename: body.filename,
             content_type: body.content_type ?? null,
             size_bytes_bucket: bucketSize(bytes.byteLength),
@@ -482,7 +497,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         outcome: "success",
         duration_ms: Date.now() - uploadStartedAt,
       });
-      return c.json(toFileWire(existing[0]), 200);
+      return c.json(toFileWire(canonical), 200);
     }
 
     const file_uuid = randomUUID();
@@ -553,12 +568,21 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           } catch {
             /* best-effort */
           }
+          let canonical = again[0];
+          if (canonical.deleted_at) {
+            const [revived] = await db
+              .update(files)
+              .set({ deleted_at: null, updated_at: new Date() })
+              .where(eq(files.id, canonical.id))
+              .returning();
+            if (revived) canonical = revived;
+          }
           recordFileDedupHit();
           observeFileUploadDuration({
             outcome: "success",
             duration_ms: Date.now() - uploadStartedAt,
           });
-          return c.json(toFileWire(again[0]), 200);
+          return c.json(toFileWire(canonical), 200);
         }
       }
       observeFileUploadDuration({
@@ -686,10 +710,22 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           .where(and(eq(files.tenant_id, tenant_id), eq(files.sha256, entry.sha256)))
           .limit(1);
         if (existing[0]) {
+          // Same soft-delete resurrection as the inline path: a prior
+          // tombstone with matching content is brought back instead of
+          // being handed to the caller as a phantom dedup hit.
+          let canonical = existing[0];
+          if (canonical.deleted_at) {
+            const [revived] = await db
+              .update(files)
+              .set({ deleted_at: null, updated_at: new Date() })
+              .where(eq(files.id, canonical.id))
+              .returning();
+            if (revived) canonical = revived;
+          }
           dedup_hits++;
           recordFileDedupHit();
           results.push({
-            id: toFileId(existing[0].id),
+            id: toFileId(canonical.id),
             upload_url: "",
             headers: {},
             expires_in: 0,
@@ -1205,19 +1241,25 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       by_size_bucket[b] = (by_size_bucket[b] ?? 0) + 1;
     }
 
-    // Dedup hits = number of files that have >1 link rows. The
-    // unlinked / single-link case is the dominant one so we sum over
-    // grouped counts.
-    const linkCountRows = await db
-      .select({ file_id: fileLinks.file_id, n: count() })
-      .from(fileLinks)
-      .where(eq(fileLinks.tenant_id, tenant_id))
-      .groupBy(fileLinks.file_id);
-    let dedup_hits = 0;
-    for (const r of linkCountRows) {
-      const n = Number(r.n);
-      if (n > 1) dedup_hits += n - 1;
-    }
+    // Dedup hits = number of `file.created` audit rows whose metadata
+    // recorded `dedup: true`. The inline + batch-create + finalize
+    // sibling-resolution paths all set this flag, and the audit row is
+    // the only tenant-scoped, persisted signal that captures the event
+    // (the Prometheus counter is process-global, not tenant-scoped).
+    // Link-row counts are NOT a dedup signal — a single file can have
+    // many legitimate links (fork cascade, knowledge-source attach)
+    // without any uploader ever submitting the same bytes twice.
+    const [dedupRow] = await db
+      .select({ n: count() })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.action, "file.created"),
+          sql`${auditLog.metadata} ->> 'dedup' = 'true'`,
+        ),
+      );
+    const dedup_hits = dedupRow ? Number(dedupRow.n) : 0;
 
     const by_status: Record<string, number> = {};
     for (const r of byStatusRows) by_status[r.status] = Number(r.n);
@@ -1321,22 +1363,33 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     // with `{ start, end }` (kernel-side pread); S3 backend issues a
     // Range header through `getPartialObject` and forwards the 206
     // body to the caller.
-    audit({
-      tenant_id: principal.tenant_id,
-      actor_type: actorType(principal),
-      actor_id: principal.id,
-      action: AuditAction.FILE_DOWNLOADED,
-      resource_type: "file",
-      resource_id: row.id,
-      result: "success",
-      metadata: FileDownloadedMetadataSchema.parse({
-        file_id: row.id,
-        content_type: row.content_type,
-        size_bytes_bucket: bucketSize(total),
-        range: Boolean(range),
-        request_source: readRequestSource(c),
-      }),
-    });
+    //
+    // `auditAwait` (not fire-and-forget `audit`): the prior
+    // fire-and-forget implementation lost FILE_DOWNLOADED rows under
+    // shutdown (DB pool closes before the deferred write commits),
+    // which broke audit completeness for short-lived e2e workers and
+    // any operator-initiated `pg_terminate_backend` mid-stream. The
+    // single extra round-trip is paid before the bytes start
+    // streaming, well under the network cost of the response body.
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: actorType(principal),
+        actor_id: principal.id,
+        action: AuditAction.FILE_DOWNLOADED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: "success",
+        metadata: FileDownloadedMetadataSchema.parse({
+          file_id: row.id,
+          content_type: row.content_type,
+          size_bytes_bucket: bucketSize(total),
+          range: Boolean(range),
+          request_source: readRequestSource(c),
+        }),
+      },
+      db,
+    );
 
     // Wrap the async iterable in a ReadableStream so Hono's `c.body`
     // accepts it directly (fetch-api `BodyInit` allows ReadableStream).

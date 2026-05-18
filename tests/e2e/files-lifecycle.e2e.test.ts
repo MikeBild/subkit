@@ -278,7 +278,7 @@ describe("E11: tenant cross-leak isolation", () => {
 // ---------------------------------------------------------------------------
 
 describe("E13: conversation fork preserves files", () => {
-  test("fork conversation — file still linked to fork", async () => {
+  test("fork conversation — file_links cascade to the fork", async () => {
     // Upload a file and attach it to a conversation.
     const uploadResult = await cli(["files", "upload", tinyPath, "--json"], {
       env,
@@ -287,7 +287,7 @@ describe("E13: conversation fork preserves files", () => {
     expectSuccess(uploadResult, "E13 upload");
     const fid = parseJson<{ id: string }>(uploadResult).id;
 
-    // Create conversation via headless.
+    // Create source conversation via headless.
     const convResult = await cli(["--p", "hello", "--output", "json"], {
       env,
       persona: "admin",
@@ -295,23 +295,66 @@ describe("E13: conversation fork preserves files", () => {
     });
     expectSuccess(convResult, "E13 create conversation");
     const convData = parseJson<{ session_id: string }>(convResult);
-    const convId = convData.session_id;
+    const sourceConvId = convData.session_id;
 
-    // Link file to conversation.
-    const linkResult = await cli(["files", "link", fid, "--to", `conversation:${convId}`], {
+    // Link file to source conversation.
+    const linkResult = await cli(["files", "link", fid, "--to", `conversation:${sourceConvId}`], {
       env,
       persona: "admin",
     });
     expectSuccess(linkResult, "E13 link");
 
-    // Verify file is listed under the conversation.
-    const listResult = await cli(
-      ["files", "list", "--linked-to", `conversation:${convId}`, "--json"],
+    // Sanity check: the source conversation lists the file.
+    const sourceListResult = await cli(
+      ["files", "list", "--linked-to", `conversation:${sourceConvId}`, "--json"],
       { env, persona: "admin" },
     );
-    expectSuccess(listResult, "E13 list linked");
-    const linked = parseJson<{ items: Array<{ id: string }> }>(listResult);
-    expect(linked.items.some((r) => r.id === fid)).toBe(true);
+    expectSuccess(sourceListResult, "E13 list source");
+    const sourceLinked = parseJson<{ items: Array<{ id: string }> }>(sourceListResult);
+    expect(sourceLinked.items.some((r) => r.id === fid)).toBe(true);
+
+    // Fetch the source conversation to pick an anchor message id —
+    // the fork-from-message route copies the head of the source chain
+    // up to and including the anchor.
+    const adminKey = env.personas.admin.apiKey;
+    const detailRes = await fetch(`${env.baseUrl}/v1/conversations/${sourceConvId}`, {
+      headers: { authorization: `Bearer ${adminKey}` },
+    });
+    expect(detailRes.status).toBe(200);
+    const detail = (await detailRes.json()) as {
+      messages: Array<{ id: string; role: string }>;
+    };
+    const anchorMessageId = detail.messages.at(-1)?.id;
+    if (!anchorMessageId) throw new Error("E13: source conversation has no messages");
+
+    // Fork the conversation. There is no `sk` CLI verb for fork — the
+    // engine endpoint is the operator-facing surface (the REPL slash
+    // action and the portal both call it directly).
+    const forkRes = await fetch(
+      `${env.baseUrl}/v1/conversations/${sourceConvId}/fork-from-message/${anchorMessageId}`,
+      { method: "POST", headers: { authorization: `Bearer ${adminKey}` } },
+    );
+    expect(forkRes.status).toBe(200);
+    const forkBody = (await forkRes.json()) as {
+      conversation: { id: string };
+      source_conversation_id: string;
+    };
+    expect(forkBody.source_conversation_id).toBe(sourceConvId);
+    const forkConvId = forkBody.conversation.id;
+    expect(forkConvId).not.toBe(sourceConvId);
+
+    // The fork-cascade in `apps/engine/src/conversations/service/fork.ts`
+    // duplicates every `file_links` row that targeted the source
+    // conversation. List the fork's linked files and assert our fid
+    // appears — this is the contract that prevents the cleanup cron's
+    // orphan sweep from collecting a file the fork still depends on.
+    const forkListResult = await cli(
+      ["files", "list", "--linked-to", `conversation:${forkConvId}`, "--json"],
+      { env, persona: "admin" },
+    );
+    expectSuccess(forkListResult, "E13 list fork");
+    const forkLinked = parseJson<{ items: Array<{ id: string }> }>(forkListResult);
+    expect(forkLinked.items.some((r) => r.id === fid)).toBe(true);
 
     // Cleanup.
     await cli(["files", "delete", fid, "--force"], { env, persona: "admin" });
@@ -337,23 +380,37 @@ describe("E16: audit completeness", () => {
 
     await run(["files", "delete", fid, "--force"], { env, persona: "admin" });
 
-    // Query audit log for file.* events. The admin persona has audit:read.
+    // Query the audit log by resource_id. The wire `fid_<uuid>` carries
+    // a `fid_` prefix the persisted `resource_id` column does NOT — the
+    // route stores the raw UUID so SIEM queries cleanly join against
+    // `files.id`. The audit query filter does an exact action match
+    // (no wildcards) so we pass each comma-separated action explicitly
+    // and assert that every lifecycle event landed before the read.
+    const rawUuid = fid.startsWith("fid_") ? fid.slice("fid_".length) : fid;
     const auditResult = await cli(
-      ["audit", "query", "--action", "file.*", "--since", "10m", "--json"],
+      [
+        "audit",
+        "query",
+        "--action",
+        "file.created,file.downloaded,file.deleted",
+        "--resource-id",
+        rawUuid,
+        "--since",
+        "10m",
+        "--limit",
+        "100",
+        "--json",
+      ],
       { env, persona: "admin" },
     );
-    // Audit query may not be implemented in this version; if the command
-    // returns non-zero, mark the structured audit as TODO.
-    if (auditResult.exitCode === 0) {
-      const auditRows = parseJson<{ items: Array<{ action: string; resource_id: string }> }>(
-        auditResult,
-      );
-      const fidEvents = auditRows.items.filter((r) => r.resource_id === fid);
-      // At minimum a created event should exist.
-      expect(fidEvents.length).toBeGreaterThan(0);
-    } else {
-      // TODO: audit query CLI command not yet wired for file.* — deferred.
-    }
+    expectSuccess(auditResult, "E16 audit query");
+    const auditRows = parseJson<{ items: Array<{ action: string; resource_id: string }> }>(
+      auditResult,
+    );
+    const actions = new Set(auditRows.items.map((r) => r.action));
+    expect(actions.has("file.created")).toBe(true);
+    expect(actions.has("file.downloaded")).toBe(true);
+    expect(actions.has("file.deleted")).toBe(true);
 
     rmSync(dlDir, { recursive: true, force: true });
   });

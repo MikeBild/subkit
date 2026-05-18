@@ -18,7 +18,6 @@ import { EngineClient, type FileWire, MAX_INLINE_BYTES } from "../engine-client.
 import { detectMime } from "../utils/mime.ts";
 import {
   readableFromBytes,
-  renderProgressJson,
   renderProgressLine,
   type UploadProgressEvent,
 } from "../utils/upload-progress.ts";
@@ -90,14 +89,18 @@ interface UploadProgressOpts {
   json: boolean;
 }
 
-/** Render an `UploadProgressEvent` to the right surface — silent on
- *  --quiet, JSON line on --json, overwrite-in-place on TTY. */
+/** Render an `UploadProgressEvent` to the right surface.
+ *
+ *  - `--quiet` or `--json`: silent. `--json` on `sk files upload` is a
+ *    single-row output contract (the final `FileWire` printed by
+ *    `printJson(row)`); interleaving progress events with the row
+ *    breaks every downstream `JSON.parse` consumer including the e2e
+ *    `parseJson` harness. Scripted streaming callers that want
+ *    per-chunk events should consume the engine's SSE notifications,
+ *    not the CLI's stdout.
+ *  - Otherwise overwrite-in-place on TTY stderr. */
 function renderProgress(ev: UploadProgressEvent, opts: UploadProgressOpts): void {
-  if (opts.quiet) return;
-  if (opts.json) {
-    process.stdout.write(`${renderProgressJson(ev)}\n`);
-    return;
-  }
+  if (opts.quiet || opts.json) return;
   if (process.stderr.isTTY) {
     process.stderr.write(`\r${renderProgressLine(ev)}`);
   }
