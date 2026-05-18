@@ -135,9 +135,26 @@ function collectOverrides(env: Record<string, string | undefined>): {
   return { overrides, keys };
 }
 
+// Exported for unit tests that need to assert path resolution without
+// triggering the full loadConfig() (which would also try to write the
+// auto-generated session secret to disk — fine for tmpdirs, fatal for
+// /etc/subkit on a dev workstation).
+export function _defaultConfigPathForTests(env: Record<string, string | undefined>): string {
+  return defaultConfigPath(env);
+}
+
 function defaultConfigPath(env: Record<string, string | undefined>): string {
   const envOverride = env.SUBKIT_CONFIG;
   if (envOverride) return path.resolve(envOverride);
+  // Systemd convention: when `ConfigurationDirectory=subkit` is set on
+  // the unit, systemd exports `CONFIGURATION_DIRECTORY=/etc/subkit` to
+  // the service. Honor that explicit operator signal before falling
+  // back to `NODE_ENV=production` heuristics — the unit (or any other
+  // launcher) is the source of truth for where canonical config lives,
+  // and CWD-relative defaults silently drift when the unit's
+  // WorkingDirectory differs from /etc/subkit.
+  const cfgDir = env.CONFIGURATION_DIRECTORY;
+  if (cfgDir) return path.resolve(cfgDir, "subkit.config.json");
   if (env.NODE_ENV === "production") return "/etc/subkit/subkit.config.json";
   return path.resolve(process.cwd(), "subkit.config.json");
 }

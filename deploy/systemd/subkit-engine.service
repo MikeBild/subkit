@@ -49,6 +49,23 @@ EnvironmentFile=/etc/subkit/.env
 ; change it moves here AND in deploy/caddy/Caddyfile in lockstep.
 Environment=PORT=3000
 
+; Belt-and-suspenders for the config-loader path resolution. systemd
+; auto-exports CONFIGURATION_DIRECTORY=/etc/subkit (from
+; `ConfigurationDirectory=subkit` below), which the loader honors as
+; the primary signal. NODE_ENV=production is the fallback the loader
+; falls through to if CONFIGURATION_DIRECTORY ever isn't set
+; (manual `systemd-run`, downgraded systemd, etc.) so the engine
+; never picks up /var/lib/subkit/subkit.config.json by accident from
+; the WorkingDirectory below.
+Environment=NODE_ENV=production
+
+; Production default for local file storage. The schema default is
+; "" (empty → /tmp/sk-files fallback, which is ephemeral and wipes
+; on reboot). Seeding via SK_OVERRIDE_ keeps the schema honest
+; (tests + dev still get the empty default) while the production
+; binary gets the persistent path created by do-bootstrap.sh.
+Environment=SK_OVERRIDE_STORAGE_FILES_DIR=/var/lib/subkit/files
+
 ; Working dir + state. systemd auto-creates these with mode 0750
 ; under the unit's User/Group when the *Directory= keys are set.
 WorkingDirectory=/var/lib/subkit

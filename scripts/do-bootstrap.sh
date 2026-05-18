@@ -222,6 +222,13 @@ if ! id subkit >/dev/null 2>&1; then
   useradd --system --shell /usr/sbin/nologin --home-dir /var/lib/subkit subkit
 fi
 install -d -o subkit -g subkit -m 0755 /var/lib/subkit /var/lib/subkit/blobs
+# Local file-storage root (storage.files.dir). 0700 because files
+# include tenant-uploaded content (chat attachments, knowledge
+# sources, workflow inputs/outputs, discovery archives) — keep
+# them invisible to other unix users on the host. The systemd unit
+# seeds SK_OVERRIDE_STORAGE_FILES_DIR=/var/lib/subkit/files so
+# the engine reads from here instead of the ephemeral /tmp fallback.
+install -d -o subkit -g subkit -m 0700 /var/lib/subkit/files
 install -d -o subkit -g subkit -m 0750 /etc/subkit /var/log/subkit
 REMOTE
 
