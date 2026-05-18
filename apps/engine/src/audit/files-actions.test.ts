@@ -31,11 +31,19 @@ describe("FILE_* audit actions", () => {
     expect(AuditAction.FILE_LINK_ADDED).toBe("file.link_added");
   });
 
+  test("FILE_LINK_REMOVED serialises to 'file.link_removed'", () => {
+    expect(AuditAction.FILE_LINK_REMOVED).toBe("file.link_removed");
+  });
+
   test("FILE_SCAN_COMPLETED serialises to 'file.scan_completed'", () => {
     expect(AuditAction.FILE_SCAN_COMPLETED).toBe("file.scan_completed");
   });
 
-  test("all seven FILE_* actions are present in AuditAction", () => {
+  test("FILE_UPLOAD_RECEIVED serialises to 'file.upload_received'", () => {
+    expect(AuditAction.FILE_UPLOAD_RECEIVED).toBe("file.upload_received");
+  });
+
+  test("all nine FILE_* actions are present in AuditAction", () => {
     const fileActions = Object.entries(AuditAction)
       .filter(([, v]) => String(v).startsWith("file."))
       .map(([, v]) => v);
@@ -46,7 +54,9 @@ describe("FILE_* audit actions", () => {
     expect(fileActions).toContain("file.downloaded");
     expect(fileActions).toContain("file.deleted");
     expect(fileActions).toContain("file.link_added");
+    expect(fileActions).toContain("file.link_removed");
     expect(fileActions).toContain("file.scan_completed");
+    expect(fileActions).toContain("file.upload_received");
   });
 
   test("AuditAction values are all strings (no accidental undefined)", () => {

@@ -10218,13 +10218,14 @@ export interface components {
             created_at: string;
         };
         LinkRequest: {
-            /** @enum {string} */
-            resource_type: "conversation" | "knowledge_source" | "skill" | "connector" | "workflow_run" | "discovery_run";
+            resource_type: components["schemas"]["FileLinkResourceType"];
             /** Format: uuid */
             resource_id: string;
             slug?: string;
             role?: string;
         };
+        /** @enum {string} */
+        FileLinkResourceType: "conversation" | "knowledge_source" | "skill" | "connector" | "workflow_run" | "discovery_run";
         McpPromptsResponse: {
             items: components["schemas"]["McpPrompt"][];
             next_cursor?: string | null;

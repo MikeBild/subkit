@@ -134,6 +134,33 @@ function isFileRef(value: unknown): value is FileRefLeaf {
 }
 
 /**
+ * Resolve a single `fid` (wire format or bare UUID) to a `ResolvedFile`
+ * leaf. Tenant-scoped via `requireFileForTenant`; cross-tenant fids
+ * throw `FileNotFoundError`. The optional `cache` lets the LLM
+ * file-context assembler share lookups across multiple sibling resolves
+ * within the same turn without paying for repeated row reads.
+ *
+ * Prefer this helper over hand-crafting a `{ $file: fid }` ref and
+ * routing it through `walkAndResolve` — the cast that pattern requires
+ * is unsafe and obscures the call shape.
+ */
+export async function resolveSingleFid(
+  db: Db,
+  tenant_id: string,
+  fid: string,
+  cache?: Map<string, ResolvedFile>,
+): Promise<ResolvedFile> {
+  if (cache) {
+    const cached = cache.get(fid);
+    if (cached) return cached;
+  }
+  const row = await requireFileForTenant(db, tenant_id, fid);
+  const resolved = resolvedFromRow(row);
+  if (cache) cache.set(fid, resolved);
+  return resolved;
+}
+
+/**
  * Recursively walk `value`, replacing every `{ "$file": "fid_..." }`
  * leaf with the corresponding `ResolvedFile`. Non-ref leaves pass
  * through. `cache` is a per-call `Map` so the same fid mentioned

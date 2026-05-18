@@ -231,6 +231,7 @@ export async function forkConversation(
             slug: l.slug,
             role: l.role,
             source: "fork",
+            request_source: p.request_source,
           }),
         },
         exec,

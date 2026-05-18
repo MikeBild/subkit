@@ -35,7 +35,7 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { files } from "../../db/schema/files.ts";
-import { type ResolvedFile, walkAndResolve } from "../../files/resolver.ts";
+import { type ResolvedFile, resolveSingleFid } from "../../files/resolver.ts";
 import { detectFormat, parseFileToChunks } from "../../knowledge/parsers.ts";
 import { logger } from "../../logging/logger.ts";
 import { chooseFileStrategy, type ModelCapabilities } from "./capabilities.ts";
@@ -174,19 +174,16 @@ export async function buildFileContentBlocks(
 
   // Resolve each fid through the tenant-isolation chokepoint. The
   // resolver returns a ResolvedFile leaf; we still need the raw row
-  // for provider-id columns + expiry, so do one direct row read per
-  // fid using the same `walkAndResolve` cache pattern.
+  // for provider-id columns + expiry, so a direct row read per fid
+  // sits inside `resolveSingleFid` (with a shared cache so repeated
+  // refs in the same turn pay one DB hit).
   const resolveCache = new Map<string, ResolvedFile>();
   for (const fid of p.fids) {
     let resolved: ResolvedFile;
     try {
-      // walkAndResolve handles the `not_found` (cross-tenant or
-      // unknown) case — let it propagate so the loop can fail fast.
-      resolved = await walkAndResolve<ResolvedFile>(
-        { $file: fid } as unknown as ResolvedFile,
-        { db: p.db, tenant_id: p.tenant_id },
-        resolveCache,
-      );
+      // `resolveSingleFid` raises `FileNotFoundError` for cross-tenant
+      // or unknown ids — let it propagate so the loop fails fast.
+      resolved = await resolveSingleFid(p.db, p.tenant_id, fid, resolveCache);
     } catch (err) {
       logger.warn({
         module: "llm.file_context",

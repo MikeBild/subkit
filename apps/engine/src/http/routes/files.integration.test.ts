@@ -7,8 +7,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
-import { apiKeys, auditLog, tenants, users } from "../../db/schema/index.ts";
+import { and, eq, isNull } from "drizzle-orm";
+import { apiKeys, auditLog, roles, tenants, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 
@@ -28,6 +28,10 @@ function genKey() {
 let srv: HttpTestServer;
 let tenantBId: string;
 let tenantBKey: string;
+/** API key bound to a user whose role is `portal_token_user` — that
+ *  built-in role lacks `file:read`, `file:write`, and `file:delete`.
+ *  Every `/v1/files/*` route should respond 403 for this principal. */
+let portalKey: string;
 
 beforeAll(async () => {
   srv = await createHttpTestServer("files-http");
@@ -54,6 +58,38 @@ beforeAll(async () => {
     scopes: ["*"],
   });
   tenantBKey = k.pt;
+
+  // Seed a portal-tier user in tenant A bound to the built-in
+  // `portal_token_user` role. That role grants conversation:*
+  // permissions but not the file vocabulary; the API key inherits the
+  // user's role and the RBAC evaluator returns deny → HTTP 403.
+  const [portalRole] = await srv.db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(and(isNull(roles.tenant_id), eq(roles.name, "portal_token_user")))
+    .limit(1);
+  if (!portalRole) throw new Error("portal_token_user role not seeded");
+
+  const [portalUser] = await srv.db
+    .insert(users)
+    .values({
+      tenant_id: srv.tenantId,
+      email: "portal@fhttp-a.local",
+      role: "enduser", // legacy enum; the evaluator reads role_id
+      role_id: portalRole.id,
+    })
+    .returning();
+  if (!portalUser) throw new Error("seed portal user");
+
+  const pk = genKey();
+  await srv.db.insert(apiKeys).values({
+    tenant_id: srv.tenantId,
+    user_id: portalUser.id,
+    prefix: pk.prefix,
+    token_sha256: pk.hash,
+    scopes: ["*"],
+  });
+  portalKey = pk.pt;
 }, 60_000);
 
 afterAll(async () => {
@@ -272,6 +308,38 @@ describe("files HTTP integration", () => {
 
     const fr = await post(`/v1/files/${entry.id}/finalize`, srv.apiKey, { sha256: wrongSha });
     expect(fr.status).toBe(422);
+  });
+
+  test("403 on /v1/files surfaces for principal lacking file:* permissions", async () => {
+    // GET /v1/files — needs file:read; portal_token_user lacks it.
+    const list = await fetch(`${srv.baseUrl}/v1/files`, {
+      headers: { authorization: `Bearer ${portalKey}`, connection: "close" },
+    });
+    expect(list.status).toBe(403);
+
+    // POST /v1/files/inline — needs file:write; same role lacks it.
+    const inline = await fetch(`${srv.baseUrl}/v1/files/inline`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${portalKey}`,
+        "content-type": "application/json",
+        connection: "close",
+      },
+      body: JSON.stringify({
+        filename: "denied.txt",
+        content_base64: Buffer.from("nope").toString("base64"),
+      }),
+    });
+    expect(inline.status).toBe(403);
+
+    // DELETE /v1/files/<some-fid> — needs file:delete. Use a synthetic
+    // fid; the permission gate fires before the row lookup, so the
+    // existence (or not) of the row is moot.
+    const del = await fetch(`${srv.baseUrl}/v1/files/fid_00000000-0000-0000-0000-000000000123`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${portalKey}`, connection: "close" },
+    });
+    expect(del.status).toBe(403);
   });
 
   test("audit log entry written on FILE_CREATED without raw size_bytes", async () => {

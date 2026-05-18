@@ -148,6 +148,71 @@ export interface FileStatsWire {
  *  + `finalizeFile`. */
 export const MAX_INLINE_BYTES = 5 * 1024 * 1024;
 
+// ---------- Files Zod schemas ----------
+// Mirror `apps/engine/src/api/files-schemas.ts` so a server that breaks
+// the wire shape (or a future engine that adds an unknown field
+// interpreted by the wrong path) is rejected at the CLI boundary
+// instead of smuggled through as a TS-shape-only crash inside the
+// command handler. Pattern matches `ForkResponseSchema` below — plain
+// `zod`, no `@hono/zod-openapi` (CLI's tsc graph stays small).
+
+const FileStatusWireSchema = z.enum([
+  "pending",
+  "uploading",
+  "scanning",
+  "ready",
+  "failed",
+  "expired",
+]);
+
+const FileWireSchema = z.object({
+  id: z.string(),
+  status: FileStatusWireSchema,
+  filename: z.string(),
+  content_type: z.string().nullable(),
+  size_bytes: z.number(),
+  sha256: z.string().nullable(),
+  scan_result: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  deleted_at: z.string().nullable(),
+});
+
+const BatchCreateResponseEntrySchema = z.object({
+  id: z.string(),
+  upload_url: z.string(),
+  headers: z.record(z.string(), z.string()),
+  expires_in: z.number(),
+  dedup: z.boolean(),
+});
+
+const BatchCreateResponseSchema = z.object({
+  files: z.array(BatchCreateResponseEntrySchema),
+});
+
+const FileLinkWireSchema = z.object({
+  id: z.string(),
+  file_id: z.string(),
+  resource_type: z.string(),
+  resource_id: z.string(),
+  slug: z.string().nullable(),
+  role: z.string().nullable(),
+  created_at: z.string(),
+});
+
+const FileStatsWireSchema = z.object({
+  total: z.number(),
+  by_status: z.record(z.string(), z.number()),
+  by_size_bucket: z.record(z.string(), z.number()),
+  dedup_hits: z.number(),
+  scan_verdicts: z.record(z.string(), z.number()),
+});
+
+const FileListResponseSchema = z.object({
+  items: z.array(FileWireSchema),
+  next_cursor: z.string().nullable().optional(),
+});
+
 /**
  * Zod schema for the fork-from-message response so a server that
  * breaks the shape (or a future engine that adds an unknown field
@@ -1420,17 +1485,19 @@ export class EngineClient {
   // boundary.
 
   /** Inline upload — wire shape of `POST /v1/files/inline`. */
-  uploadInline(file: {
+  async uploadInline(file: {
     filename: string;
     content_type?: string;
     content_base64: string;
   }): Promise<FileWire> {
-    return this.request<FileWire>("POST", "/v1/files/inline", file);
+    const raw = await this.request<unknown>("POST", "/v1/files/inline", file);
+    return FileWireSchema.parse(raw);
   }
 
   /** Batch-create — issue presigned PUT URLs for files >5 MB. */
-  batchCreateFiles(req: BatchCreateRequest): Promise<BatchCreateResponse> {
-    return this.request<BatchCreateResponse>("POST", "/v1/files/batch-create", req);
+  async batchCreateFiles(req: BatchCreateRequest): Promise<BatchCreateResponse> {
+    const raw = await this.request<unknown>("POST", "/v1/files/batch-create", req);
+    return BatchCreateResponseSchema.parse(raw);
   }
 
   /** PUT bytes to a presigned URL with progress callback. The URL is
@@ -1471,10 +1538,15 @@ export class EngineClient {
 
   /** Finalize a presigned upload — server recomputes sha256 and
    *  rejects 422 on mismatch. */
-  finalizeFile(id: string, sha256: string): Promise<FileWire> {
-    return this.request<FileWire>("POST", `/v1/files/${encodeURIComponent(id)}/finalize`, {
-      sha256,
-    });
+  async finalizeFile(id: string, sha256: string): Promise<FileWire> {
+    const raw = await this.request<unknown>(
+      "POST",
+      `/v1/files/${encodeURIComponent(id)}/finalize`,
+      {
+        sha256,
+      },
+    );
+    return FileWireSchema.parse(raw);
   }
 
   /** Stream a file's bytes back from the engine. `range.start/end` are
@@ -1521,22 +1593,27 @@ export class EngineClient {
   }
 
   /** Paginated list. Cursor is opaque ISO timestamp issued by the engine. */
-  listFiles(
+  async listFiles(
     query: { status?: string; linked_to?: string; cursor?: string; limit?: number } = {},
   ): Promise<{ items: FileWire[]; next_cursor?: string | null }> {
-    return this.request<{ items: FileWire[]; next_cursor?: string | null }>(
+    const raw = await this.request<unknown>(
       "GET",
       "/v1/files",
       undefined,
       query as Record<string, string | number | undefined>,
     );
+    const parsed = FileListResponseSchema.parse(raw);
+    // `exactOptionalPropertyTypes`: project `next_cursor` to a value
+    // that matches the declared `string | null` (not `| undefined`).
+    return { items: parsed.items, next_cursor: parsed.next_cursor ?? null };
   }
 
-  /** Get the file row. Returns soft-deleted rows during the grace
-   *  window (per R10) so `sk files download` works briefly after
-   *  `delete`. The list endpoint hides them. */
-  getFile(id: string): Promise<FileWire> {
-    return this.request<FileWire>("GET", `/v1/files/${encodeURIComponent(id)}`);
+  /** Get the file row. Returns soft-deleted rows during the cleanup
+   *  cron's 7-day soft-delete grace so `sk files download` works
+   *  briefly after `delete`. The list endpoint hides them. */
+  async getFile(id: string): Promise<FileWire> {
+    const raw = await this.request<unknown>("GET", `/v1/files/${encodeURIComponent(id)}`);
+    return FileWireSchema.parse(raw);
   }
 
   /** Soft-delete. Subsequent `getFile` may still return during the
@@ -1547,7 +1624,7 @@ export class EngineClient {
 
   /** Attach a file to an owning resource. Idempotent on
    *  `(resource_type, resource_id, slug)`. */
-  linkFile(
+  async linkFile(
     file_id: string,
     link: {
       resource_type:
@@ -1562,16 +1639,18 @@ export class EngineClient {
       role?: string;
     },
   ): Promise<FileLinkWire> {
-    return this.request<FileLinkWire>(
+    const raw = await this.request<unknown>(
       "POST",
       `/v1/files/${encodeURIComponent(file_id)}/links`,
       link,
     );
+    return FileLinkWireSchema.parse(raw);
   }
 
   /** Aggregate counters. Cheap — bounded by tenant's row count. */
-  getFileStats(): Promise<FileStatsWire> {
-    return this.request<FileStatsWire>("GET", "/v1/files/stats");
+  async getFileStats(): Promise<FileStatsWire> {
+    const raw = await this.request<unknown>("GET", "/v1/files/stats");
+    return FileStatsWireSchema.parse(raw);
   }
 
   // -------------------- Workflows --------------------

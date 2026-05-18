@@ -8133,15 +8133,7 @@
         "type": "object",
         "properties": {
           "resource_type": {
-            "type": "string",
-            "enum": [
-              "conversation",
-              "knowledge_source",
-              "skill",
-              "connector",
-              "workflow_run",
-              "discovery_run"
-            ]
+            "$ref": "#/components/schemas/FileLinkResourceType"
           },
           "resource_id": {
             "type": "string",
@@ -8161,6 +8153,17 @@
         "required": [
           "resource_type",
           "resource_id"
+        ]
+      },
+      "FileLinkResourceType": {
+        "type": "string",
+        "enum": [
+          "conversation",
+          "knowledge_source",
+          "skill",
+          "connector",
+          "workflow_run",
+          "discovery_run"
         ]
       },
       "McpPromptsResponse": {
@@ -16623,7 +16626,7 @@
           {
             "schema": {
               "type": "string",
-              "pattern": "^[a-z_]+:[0-9a-f-]{36}$"
+              "pattern": "^(?:conversation|knowledge_source|skill|connector|workflow_run|discovery_run):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
             },
             "required": false,
             "name": "linked_to",

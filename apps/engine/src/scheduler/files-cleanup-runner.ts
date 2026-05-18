@@ -148,6 +148,7 @@ async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_sca
         metadata: FileDeletedMetadataSchema.parse({
           file_id: row.id,
           reason: "pending_expired",
+          request_source: "scheduler",
         }),
       },
       db,
@@ -404,6 +405,7 @@ async function sweepUnlinkedTtl(db: Db): Promise<{ soft: number; hard: number }>
         metadata: FileDeletedMetadataSchema.parse({
           file_id: row.id,
           reason: "unlinked_ttl",
+          request_source: "scheduler",
         }),
       },
       db,

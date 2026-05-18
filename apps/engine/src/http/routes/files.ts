@@ -26,6 +26,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, count, desc, eq, isNull, lt } from "drizzle-orm";
+import type { MiddlewareHandler } from "hono";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   BatchCreateRequestSchema,
@@ -60,6 +61,7 @@ import {
   FileFinalizedMetadataSchema,
   FileLinkAddedMetadataSchema,
   FileScanCompletedMetadataSchema,
+  FileUploadReceivedMetadataSchema,
 } from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { writeEvent } from "../../db/events.ts";
@@ -133,6 +135,29 @@ function toFileWire(row: typeof files.$inferSelect): FileWire {
 /** Map principal → audit actor_type. */
 function actorType(p: { kind: "user" | "system_account" }): "user" | "system_account" {
   return p.kind === "user" ? "user" : "system_account";
+}
+
+/** Project the per-request `request_source` from the Hono context onto
+ *  audit metadata. The trace middleware sets the variable on every
+ *  request (api / mcp / webhook / chat). Returns undefined when the
+ *  middleware did not run (e.g. raw test invocations) so `.optional()`
+ *  on the schema accepts it. */
+function readRequestSource(c: {
+  get: (k: "request_source") => string | undefined;
+}): import("../../audit/types.ts").FileCreatedMetadata["request_source"] | undefined {
+  const v = c.get("request_source");
+  if (
+    v === "api" ||
+    v === "cli" ||
+    v === "scheduler" ||
+    v === "mcp" ||
+    v === "webhook" ||
+    v === "tool-chain" ||
+    v === "ui"
+  ) {
+    return v;
+  }
+  return undefined;
 }
 
 /** Open an iterator over a fixed byte buffer for the synchronous scan
@@ -343,6 +368,24 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       }
       throw err;
     }
+    // Audit byte-receipt so a client that uploads and then abandons
+    // the session before finalize still has a paper trail. Without
+    // this row the only evidence is the cleanup cron's pending-orphan
+    // sweep (≥1h later). Fire-and-forget — not on the hot path.
+    audit({
+      tenant_id: row.tenant_id,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.FILE_UPLOAD_RECEIVED,
+      resource_type: "file",
+      resource_id: row.id,
+      result: "success",
+      metadata: FileUploadReceivedMetadataSchema.parse({
+        file_id: row.id,
+        size_bytes_bucket: bucketSize(boundSize),
+        source: "local_presign",
+      }),
+    });
     return c.body(null, 200);
   });
 
@@ -356,7 +399,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
   // mTLS-only deployments should pin a network policy in front.
   // ---------------------------------------------------------------------
 
-  app.use("/v1/files*", async (c, next) => {
+  // Hono path matching: `*` requires at least one trailing char, so
+  // `/v1/files*` matches `/v1/files/inline` but NOT bare `/v1/files`.
+  // Register both patterns so the gate also fires on the list and
+  // stats endpoints. Matches the pattern used by audit-log routes.
+  const filesPermissionGate: MiddlewareHandler<AppEnv> = async (c, next) => {
     // Skip the gate for the local presign sink — it has its own auth.
     if (c.req.method === "PUT" && /\/v1\/files\/[^/]+\/upload$/.test(c.req.path)) {
       return next();
@@ -365,7 +412,9 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     if (method === "GET") return requireAnyPermission(["file:read"])(c, next);
     if (method === "DELETE") return requireAnyPermission(["file:delete"])(c, next);
     return requireAnyPermission(["file:write"])(c, next);
-  });
+  };
+  app.use("/v1/files", filesPermissionGate);
+  app.use("/v1/files/*", filesPermissionGate);
 
   // ---------------------------------------------------------------------
   // POST /v1/files/inline
@@ -447,6 +496,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
             size_bytes_bucket: bucketSize(bytes.byteLength),
             sha256_prefix: sha256.slice(0, 16),
             dedup: true,
+            request_source: readRequestSource(c),
           }),
         },
         db,
@@ -564,6 +614,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           size_bytes_bucket: bucketSize(bytes.byteLength),
           sha256_prefix: sha256.slice(0, 16),
           dedup: false,
+          request_source: readRequestSource(c),
         }),
       },
       db,
@@ -591,6 +642,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           verdict: scan.verdict,
           engine: scan.engine,
           signature: scan.signature ?? null,
+          request_source: readRequestSource(c),
         }),
       },
       db,
@@ -738,6 +790,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           count: body.files.length,
           total_size_bytes_bucket: bucketSize(totalSize),
           dedup_hits,
+          request_source: readRequestSource(c),
         }),
       },
       db,
@@ -816,6 +869,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
             outcome: "size_cap",
             content_type: row.content_type,
             size_bytes_bucket: bucketSize(row.size_bytes),
+            request_source: readRequestSource(c),
           }),
         },
         db,
@@ -875,6 +929,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
             content_type: row.content_type,
             size_bytes_bucket: bucketSize(digest.size),
             sha256_prefix: digest.sha256.slice(0, 16),
+            request_source: readRequestSource(c),
           }),
         },
         db,
@@ -921,6 +976,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
             dedup: true,
             size_bytes_bucket: bucketSize(digest.size),
             sha256_prefix: digest.sha256.slice(0, 16),
+            request_source: readRequestSource(c),
           }),
         },
         db,
@@ -982,6 +1038,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           content_type: updated.content_type,
           size_bytes_bucket: bucketSize(digest.size),
           sha256_prefix: digest.sha256.slice(0, 16),
+          request_source: readRequestSource(c),
         }),
       },
       db,
@@ -1006,6 +1063,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           verdict: scan.verdict,
           engine: scan.engine,
           signature: scan.signature ?? null,
+          request_source: readRequestSource(c),
         }),
       },
       db,
@@ -1297,6 +1355,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         content_type: row.content_type,
         size_bytes_bucket: bucketSize(total),
         range: Boolean(range),
+        request_source: readRequestSource(c),
       }),
     });
 
@@ -1389,6 +1448,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         metadata: FileDeletedMetadataSchema.parse({
           file_id: row.id,
           reason: "user_request",
+          request_source: readRequestSource(c),
         }),
       },
       db,
@@ -1438,6 +1498,22 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       row = await requireFileForTenant(db, principal.tenant_id, parseFileIdOrThrow(id));
     } catch {
       return c.json({ code: "not_found", message: "file not found" }, 404);
+    }
+    // Refuse to link a row that's not in `ready`. The read path
+    // already gates on it (GET /v1/files/:id/content returns 404 for a
+    // non-ready row), but fast-fail at the link step is friendlier —
+    // a caller that pre-links a `pending` row at batch-create time
+    // would otherwise see a working link that silently 404s on every
+    // download attempt until the row flips to `ready`.
+    if (row.status !== "ready") {
+      return c.json(
+        {
+          code: "file_not_ready",
+          message: `cannot link file in status=${row.status}; wait for finalize`,
+          status: row.status,
+        },
+        409,
+      );
     }
     // ON CONFLICT DO NOTHING via the (tenant_id, resource_type,
     // resource_id, slug) unique index. The returning() result is empty
@@ -1491,6 +1567,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           resource_id: body.resource_id,
           slug: body.slug ?? null,
           role: body.role ?? null,
+          request_source: readRequestSource(c),
         }),
       },
       db,

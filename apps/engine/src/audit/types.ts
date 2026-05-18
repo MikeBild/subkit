@@ -223,6 +223,15 @@ export const AuditAction = {
   // sha256-match outcome. Paired with `FILE_SCAN_COMPLETED` when the
   // synchronous scanner ran.
   FILE_FINALIZED: "file.finalized",
+  // `FILE_UPLOAD_RECEIVED` — emitted from the local-disk presign sink
+  // (`PUT /v1/files/{id}/upload`) after `putStream` writes bytes but
+  // before the client calls finalize. Closes the audit gap where a
+  // client uploads and then abandons the session — without this row
+  // the audit ledger only sees the bytes when the cleanup cron
+  // eventually reaps the pending row (≥1h later). Tagged with
+  // `source: "local_presign"` so SIEM can distinguish from a future
+  // S3-side notification path.
+  FILE_UPLOAD_RECEIVED: "file.upload_received",
   // `FILE_DOWNLOADED` — `GET /v1/files/:id/content` served bytes to a
   // caller. Metadata carries `size_bytes_bucket` and `range` (true /
   // false) so compliance can chart exfil patterns without per-byte
@@ -576,6 +585,22 @@ export type DiagnosticsVersionReadMetadata = z.infer<typeof DiagnosticsVersionRe
  *  with `audit/buckets.ts:SizeBucket`. */
 const SizeBucketSchema = z.enum(["<1KB", "<1MB", "<10MB", "<100MB", ">=100MB"]);
 
+/** AGENTS.md request_source enum, reused by every `FILE_*` audit
+ *  metadata schema so SIEM consumers can split file-event volume by
+ *  dispatch channel without joining back to trace_ids. Optional on
+ *  every schema because the cron sweeps and self-update path emit
+ *  with a synthetic actor that has no HTTP context (those emitters
+ *  pass `"scheduler"` explicitly when relevant). */
+const RequestSourceSchema = z.enum([
+  "api",
+  "cli",
+  "scheduler",
+  "mcp",
+  "webhook",
+  "tool-chain",
+  "ui",
+]);
+
 /** `file.created` metadata. Filename + content_type are the user-supplied
  *  shape captured at upload; sha256_prefix is the first 16 hex chars of
  *  the asserted sha256 (truncated so a SIEM-side index is small but a
@@ -592,6 +617,7 @@ export const FileCreatedMetadataSchema = z.object({
     .regex(/^[0-9a-f]{16}$/)
     .optional(),
   dedup: z.boolean().optional(),
+  request_source: RequestSourceSchema.optional(),
 });
 export type FileCreatedMetadata = z.infer<typeof FileCreatedMetadataSchema>;
 
@@ -603,6 +629,7 @@ export const FileLinkAddedMetadataSchema = z.object({
   slug: z.string().nullable().optional(),
   role: z.string().nullable().optional(),
   source: z.string().optional(),
+  request_source: RequestSourceSchema.optional(),
 });
 export type FileLinkAddedMetadata = z.infer<typeof FileLinkAddedMetadataSchema>;
 
@@ -625,6 +652,7 @@ export const FileFinalizedMetadataSchema = z.object({
   outcome: z.string().optional(),
   dedup: z.boolean().optional(),
   content_type: z.string().nullable().optional(),
+  request_source: RequestSourceSchema.optional(),
 });
 export type FileFinalizedMetadata = z.infer<typeof FileFinalizedMetadataSchema>;
 
@@ -637,6 +665,7 @@ export const FileDownloadedMetadataSchema = z.object({
   size_bytes_bucket: SizeBucketSchema,
   range: z.boolean().optional(),
   content_type: z.string().nullable().optional(),
+  request_source: RequestSourceSchema.optional(),
 });
 export type FileDownloadedMetadata = z.infer<typeof FileDownloadedMetadataSchema>;
 
@@ -646,6 +675,7 @@ export type FileDownloadedMetadata = z.infer<typeof FileDownloadedMetadataSchema
 export const FileDeletedMetadataSchema = z.object({
   file_id: z.string().uuid(),
   reason: z.string(),
+  request_source: RequestSourceSchema.optional(),
 });
 export type FileDeletedMetadata = z.infer<typeof FileDeletedMetadataSchema>;
 
@@ -656,6 +686,7 @@ export const FileScanCompletedMetadataSchema = z.object({
   verdict: z.string(),
   engine: z.string(),
   signature: z.string().nullable().optional(),
+  request_source: RequestSourceSchema.optional(),
 });
 export type FileScanCompletedMetadata = z.infer<typeof FileScanCompletedMetadataSchema>;
 
@@ -667,8 +698,22 @@ export const FileBatchCreatedMetadataSchema = z.object({
   count: z.number().int().nonnegative(),
   total_size_bytes_bucket: SizeBucketSchema.optional(),
   dedup_hits: z.number().int().nonnegative(),
+  request_source: RequestSourceSchema.optional(),
 });
 export type FileBatchCreatedMetadata = z.infer<typeof FileBatchCreatedMetadataSchema>;
+
+/** `file.upload_received` metadata. Emitted from the local-disk
+ *  presign sink AFTER the streaming put completes — closes the audit
+ *  gap where a client uploads bytes and abandons the session before
+ *  finalize. `source` distinguishes future emission paths (today only
+ *  `local_presign`). */
+export const FileUploadReceivedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  size_bytes_bucket: SizeBucketSchema,
+  source: z.enum(["local_presign"]),
+  request_source: RequestSourceSchema.optional(),
+});
+export type FileUploadReceivedMetadata = z.infer<typeof FileUploadReceivedMetadataSchema>;
 
 /** `engine.update.*` metadata. Shared by initiated/completed/failed/
  *  rolled_back. The binary swap is the prototypical privileged action:
