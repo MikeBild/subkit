@@ -25,7 +25,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, count, desc, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNull, lt } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   BatchCreateRequestSchema,
@@ -65,7 +65,8 @@ import {
 } from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { writeEvent } from "../../db/events.ts";
-import { auditLog, fileLinks, files } from "../../db/schema/index.ts";
+import { fileLinks, files, filesDedupSeen } from "../../db/schema/index.ts";
+import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { buildObjectKey, composeStorageUri, streamFromBytes } from "../../files/object-key.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import type { ScanResult } from "../../files/scanner.ts";
@@ -477,6 +478,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         if (revived) canonical = revived;
       }
       recordFileDedupHit();
+      // Per-tenant persisted counter (W6) — decouples the stats
+      // endpoint from audit retention. Paired with `recordFileDedupHit`
+      // (process-global Prometheus counter).
+      await recordFilesDedupSeen(db, tenant_id);
       await auditAwait(
         {
           tenant_id,
@@ -583,6 +588,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
             if (revived) canonical = revived;
           }
           recordFileDedupHit();
+          // Persisted per-tenant counter (W6).
+          await recordFilesDedupSeen(db, tenant_id);
           observeFileUploadDuration({
             outcome: "success",
             duration_ms: Date.now() - uploadStartedAt,
@@ -729,6 +736,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           }
           dedup_hits++;
           recordFileDedupHit();
+          // Persisted per-tenant counter (W6).
+          await recordFilesDedupSeen(db, tenant_id);
           results.push({
             id: toFileId(canonical.id),
             upload_url: "",
@@ -981,6 +990,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       }
       await db.delete(files).where(eq(files.id, row.id));
       recordFileDedupHit();
+      // Persisted per-tenant counter (W6).
+      await recordFilesDedupSeen(db, tenant_id);
       await auditAwait(
         {
           tenant_id,
@@ -1246,24 +1257,16 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       by_size_bucket[b] = (by_size_bucket[b] ?? 0) + 1;
     }
 
-    // Dedup hits = number of `file.created` audit rows whose metadata
-    // recorded `dedup: true`. The inline + batch-create + finalize
-    // sibling-resolution paths all set this flag, and the audit row is
-    // the only tenant-scoped, persisted signal that captures the event
-    // (the Prometheus counter is process-global, not tenant-scoped).
-    // Link-row counts are NOT a dedup signal — a single file can have
-    // many legitimate links (fork cascade, knowledge-source attach)
-    // without any uploader ever submitting the same bytes twice.
+    // Dedup hits — single indexed lookup on the per-tenant counter
+    // (`files_dedup_seen`) that the inline / batch-create / finalize
+    // dedup paths UPSERT-bump. W6: decoupled from `audit_log` so the
+    // stat stays accurate independent of audit retention. Missing row
+    // (tenant has never recorded a dedup hit) collapses to zero.
     const [dedupRow] = await db
-      .select({ n: count() })
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.tenant_id, tenant_id),
-          eq(auditLog.action, "file.created"),
-          sql`${auditLog.metadata} ->> 'dedup' = 'true'`,
-        ),
-      );
+      .select({ n: filesDedupSeen.count })
+      .from(filesDedupSeen)
+      .where(eq(filesDedupSeen.tenant_id, tenant_id))
+      .limit(1);
     const dedup_hits = dedupRow ? Number(dedupRow.n) : 0;
 
     const by_status: Record<string, number> = {};

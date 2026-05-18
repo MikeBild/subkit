@@ -107,3 +107,19 @@ export const fileLinks = pgTable(
     uniqueIndex("file_links_conv_slug_uq").on(t.tenant_id, t.resource_type, t.resource_id, t.slug),
   ],
 );
+
+// ----- files_dedup_seen ------------------------------------------------------
+//
+// Per-tenant dedup-hit counter. UPSERT-bumped on every dedup short-circuit
+// (inline path, batch-create, finalize sibling-dedup). One row per tenant
+// — storage cost is constant. Powers the `dedup_hits` field on
+// `GET /v1/files/stats` without reading `audit_log`, so the dashboard
+// stat is independent of audit retention.
+
+export const filesDedupSeen = pgTable("files_dedup_seen", {
+  tenant_id: uuid("tenant_id")
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  count: bigint("count", { mode: "number" }).notNull().default(0),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});

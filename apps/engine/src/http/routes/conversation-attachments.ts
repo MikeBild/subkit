@@ -60,6 +60,7 @@ import {
 } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, fileLinks, files } from "../../db/schema/index.ts";
+import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
 import { requireFileForTenant } from "../../files/resolver.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -237,6 +238,13 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       content_type,
       bytes,
     });
+    if (dedup) {
+      // Persisted per-tenant counter (W6) — the canonical
+      // /v1/files/inline path bumps on every dedup short-circuit;
+      // this wrapper does too so the `dedup_hits` stat is symmetric
+      // regardless of which entry point landed the bytes.
+      await recordFilesDedupSeen(db, tenant_id);
+    }
     const slug = slugify(filename);
     await db
       .insert(fileLinks)
