@@ -31,6 +31,9 @@ export const tenants = pgTable(
     llm_fallback: text("llm_fallback"),
     llm_monthly_token_budget: bigint("llm_monthly_token_budget", { mode: "number" }),
     egress_guard_mode: egressGuardModeEnum("egress_guard_mode"),
+    // Default timezone for cron triggers authored from natural language.
+    // Resolution chain: conversation prompt → this column → 'UTC'.
+    timezone: text("timezone").default("UTC").notNull(),
     // Stamp set by the scheduler when a proactive self-healing drift scan
     // last fired for this tenant. The reconciler uses a compare-and-set on
     // this column to ensure exactly-once firing per cadence across multi-

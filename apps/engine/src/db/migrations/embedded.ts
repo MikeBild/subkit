@@ -38,6 +38,7 @@ import sql0017DropConnectorOauthRedirectUri from "./0017_drop_connector_oauth_re
 import sql0018ProactiveDriftScans from "./0018_proactive_drift_scans.sql" with { type: "text" };
 import sql0019FilesUnify from "./0019_files_unify.sql" with { type: "text" };
 import sql0020FilesDedupCounter from "./0020_files_dedup_counter.sql" with { type: "text" };
+import sql0021TenantTimezone from "./0021_tenant_timezone.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -83,6 +84,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0018_proactive_drift_scans": sql0018ProactiveDriftScans,
   "0019_files_unify": sql0019FilesUnify,
   "0020_files_dedup_counter": sql0020FilesDedupCounter,
+  "0021_tenant_timezone": sql0021TenantTimezone,
 };
 
 const journal = journalMeta as unknown as Journal;
