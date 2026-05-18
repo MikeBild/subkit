@@ -79,7 +79,7 @@ import {
 import {
   getObjectStore,
   mintLocalPresignToken,
-  verifyLocalPresignToken,
+  parseLocalPresignClaims,
 } from "../../storage/object-store.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
@@ -234,25 +234,42 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const { token } = c.req.valid("query");
     const fid_uuid = parseFileIdOrThrow(id);
     const db = c.get("db");
-    // We need the tenant_id + storage key to verify the HMAC. The row
-    // exists in `pending` state from `batch-create`; we look it up
-    // without a tenant scope (the token IS the auth claim — it embeds
-    // the tenant), then assert the claim matches the row.
-    // tenant-filter:exempt — HMAC presign token embeds tenant_id; row verified against claims.tenant_id below.
-    const rows = await db.select().from(files).where(eq(files.id, fid_uuid)).limit(1);
+    // Parse + MAC-verify the token FIRST so we can use the embedded
+    // `claims.tenant_id` as the SCOPE for the row lookup instead of
+    // querying without a tenant filter and asserting after the fact.
+    // Defense-in-depth: a cross-tenant query is never issued —
+    // `audit-invariants.ts` naturally passes here without a
+    // `tenant-filter:exempt` annotation.
+    const parsed = parseLocalPresignClaims(token);
+    if (!parsed.ok) {
+      return c.json(
+        { code: "unauthorized", message: `presign token rejected: ${parsed.reason}` },
+        401,
+      );
+    }
+    const claims = parsed.claims;
+    const rows = await db
+      .select()
+      .from(files)
+      .where(and(eq(files.id, fid_uuid), eq(files.tenant_id, claims.tenant_id)))
+      .limit(1);
     const row = rows[0];
     if (!row) {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
     const key = storageKey(row.storage_uri);
-    const verdict = verifyLocalPresignToken(token, { tenant_id: row.tenant_id, key });
-    if (!verdict.ok) {
+    // Final bind: the claim's `key` must match the row's storage key.
+    // The MAC has already proved the claim was issued by us; this
+    // assertion proves the caller is uploading to the slot the token
+    // was minted for. Tenant_id is already enforced by the scoped
+    // SELECT above.
+    if (claims.key !== key) {
       return c.json(
-        { code: "unauthorized", message: `presign token rejected: ${verdict.reason}` },
+        { code: "unauthorized", message: "presign token rejected: signature_mismatch" },
         401,
       );
     }
-    const boundSize = verdict.claims.size_bytes;
+    const boundSize = claims.size_bytes;
 
     // Pre-flight Content-Length check. When the client sends a
     // Content-Length header we cheaply reject 413 before reading bytes.

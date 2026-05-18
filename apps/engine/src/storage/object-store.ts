@@ -143,17 +143,23 @@ export type VerifyLocalPresignResult =
   | { ok: true; claims: LocalPresignClaims }
   | { ok: false; reason: "malformed" | "signature_mismatch" | "expired" };
 
-/** Verify a local-presign token. Fails closed on any mismatch.
+export type ParseLocalPresignClaimsResult =
+  | { ok: true; claims: LocalPresignClaims }
+  | { ok: false; reason: "malformed" | "signature_mismatch" | "expired" };
+
+/** MAC-verify a local-presign token, decode the embedded claims, and
+ *  check the expiry. Does NOT bind the claims to a `(tenant_id, key)`
+ *  expectation — callers that need that match call
+ *  `verifyLocalPresignToken` (which threads through here and then
+ *  enforces the bind) or compare `claims.tenant_id` / `claims.key`
+ *  themselves.
  *
- *  The HMAC binds `size_bytes` (per `LocalPresignClaims`); the caller
- *  is responsible for enforcing the size cap against the streamed body
- *  using `claims.size_bytes` from the success case. We do not take
- *  `size_bytes` as an `expected` field here because the body length
- *  is only known after the stream completes. */
-export function verifyLocalPresignToken(
-  token: string,
-  expected: { tenant_id: string; key: string },
-): VerifyLocalPresignResult {
+ *  Use this variant when the caller wants to use `claims.tenant_id`
+ *  as the SCOPE for a downstream DB read instead of comparing
+ *  it post-hoc. Defense-in-depth: a cross-tenant query is never
+ *  issued in the first place, so the tenant-filter audit gate
+ *  passes without an exemption annotation. */
+export function parseLocalPresignClaims(token: string): ParseLocalPresignClaimsResult {
   const dot = token.lastIndexOf(".");
   if (dot <= 0) return { ok: false, reason: "malformed" };
   const payload = token.slice(0, dot);
@@ -172,25 +178,46 @@ export function verifyLocalPresignToken(
   } catch {
     return { ok: false, reason: "malformed" };
   }
-  if (claims.tenant_id !== expected.tenant_id || claims.key !== expected.key) {
-    return { ok: false, reason: "signature_mismatch" };
-  }
   if (
     typeof claims.size_bytes !== "number" ||
     !Number.isFinite(claims.size_bytes) ||
-    claims.size_bytes < 0
+    claims.size_bytes < 0 ||
+    typeof claims.tenant_id !== "string" ||
+    claims.tenant_id.length === 0 ||
+    typeof claims.key !== "string" ||
+    claims.key.length === 0
   ) {
-    // A token minted before the size-bound rollout, or one whose
-    // payload was tampered with. Fail closed — the HMAC over the
-    // payload also covers the missing field, so a stripped claim
-    // would have failed the mac check above; this branch defends
-    // against an old token still in flight at deploy time.
+    // A token minted before the size-bound rollout, a token whose
+    // payload was tampered with, or one whose required fields are
+    // missing. Fail closed — the HMAC over the payload also covers
+    // these fields, so a stripped claim would have failed the mac
+    // check above; this branch defends against an old token still
+    // in flight at deploy time.
     return { ok: false, reason: "malformed" };
   }
   if (claims.expires_at < Date.now()) {
     return { ok: false, reason: "expired" };
   }
   return { ok: true, claims };
+}
+
+/** Verify a local-presign token. Fails closed on any mismatch.
+ *
+ *  The HMAC binds `size_bytes` (per `LocalPresignClaims`); the caller
+ *  is responsible for enforcing the size cap against the streamed body
+ *  using `claims.size_bytes` from the success case. We do not take
+ *  `size_bytes` as an `expected` field here because the body length
+ *  is only known after the stream completes. */
+export function verifyLocalPresignToken(
+  token: string,
+  expected: { tenant_id: string; key: string },
+): VerifyLocalPresignResult {
+  const parsed = parseLocalPresignClaims(token);
+  if (!parsed.ok) return parsed;
+  if (parsed.claims.tenant_id !== expected.tenant_id || parsed.claims.key !== expected.key) {
+    return { ok: false, reason: "signature_mismatch" };
+  }
+  return parsed;
 }
 
 // ----- LocalDiskObjectStore ---------------------------------------------------
