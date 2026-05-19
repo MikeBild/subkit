@@ -92,26 +92,22 @@ function readSlides(buffer: Buffer): Promise<PptxSlide[]> {
         return;
       }
       const slides: PptxSlide[] = [];
-      let capReached = false;
       zipfile.on("error", reject);
       zipfile.on("end", () => resolve(slides));
       zipfile.on("entry", (entry: yauzl.Entry) => {
-        if (capReached) {
-          zipfile.readEntry();
-          return;
-        }
         const match = SLIDE_PATH_RE.exec(entry.fileName);
         if (!match) {
           zipfile.readEntry();
           return;
         }
         if (slides.length >= PPTX_SLIDE_CAP) {
-          // Short-circuit: stop reading entries entirely. We can't
-          // `zipfile.close()` here because the open stream callback
-          // may still fire; setting the flag avoids buffering more
-          // slides and `readEntry()` drains to `end`.
-          capReached = true;
-          zipfile.readEntry();
+          // Hard reject. Silently truncating a presentation produces
+          // a misleading audit / metrics trail (the operator sees a
+          // 200 response with N slides when the source had N + M),
+          // so we fail the whole parse instead. The 30s parser
+          // timeout still bounds the wider walk if the archive is
+          // pathological in some other way.
+          reject(new BinaryParseError("pptx", `pptx: slide count exceeds ${PPTX_SLIDE_CAP} cap`));
           return;
         }
         const index = Number.parseInt(match[1] ?? "0", 10);

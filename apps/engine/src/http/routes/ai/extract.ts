@@ -32,7 +32,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, Next } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { AuditAction, audit } from "../../../audit/index.ts";
+import { AuditAction, audit, auditAwait, readRequestSource } from "../../../audit/index.ts";
 import type { Db } from "../../../db/client.ts";
 import {
   BinaryParseError,
@@ -44,7 +44,6 @@ import {
   UnsupportedFileUploadError,
 } from "../../../docs-ingestion/index.ts";
 import { runExtractFlow } from "../../../llm/index.ts";
-import { getContext } from "../../../logging/index.ts";
 import { BadRequestError, PayloadTooLargeError, UnsupportedMediaTypeError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -79,6 +78,25 @@ const AUDITED_BINARY_FORMATS: ReadonlySet<SupportedFileFormat> = new Set([
   "xls",
   "pptx",
 ]);
+
+/** Max length stored in `audit_log.metadata.error` per parser failure.
+ *  Parser library messages can echo small chunks of the input on the
+ *  malformed-XML path; bounding the length plus stripping control
+ *  characters keeps SIEM consumers safe even if a future library
+ *  regression starts copying more user-controlled bytes verbatim. */
+const AUDIT_ERROR_MAX_LEN = 200;
+
+function sanitizeAuditError(detail: string): string {
+  // Strip ASCII control chars (NUL / TAB / CR / LF / DEL). Iterate by
+  // char code instead of a literal-control-char regex so biome's
+  // `noControlCharactersInRegex` rule stays happy.
+  let out = "";
+  for (const ch of detail) {
+    const code = ch.charCodeAt(0);
+    out += code < 32 || code === 127 ? " " : ch;
+  }
+  return out.length > AUDIT_ERROR_MAX_LEN ? `${out.slice(0, AUDIT_ERROR_MAX_LEN)}…` : out;
+}
 
 /** Validation for the `x-filename` request header used by `POST /v1/extract`.
  *  The header is operator-supplied (the `sk` CLI sends it, custom clients
@@ -487,8 +505,11 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
       // metrics (`subkit_docs_binary_parse_total{result="error"}`)
       // and never in `audit_log`, making forensic queries blind.
       // Text formats skip the audit row to keep volume reasonable.
+      // `auditAwait` so the row persists before the 400 returns —
+      // `data.exported` is a governance event and operators expect
+      // it visible by the time the client sees the response.
       if (AUDITED_BINARY_FORMATS.has(format)) {
-        audit(
+        await auditAwait(
           {
             tenant_id: principal.tenant_id,
             actor_type: principal.kind,
@@ -501,8 +522,8 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
             metadata: {
               format,
               bytes,
-              error: detail,
-              request_source: getContext().request_source ?? "api",
+              error: sanitizeAuditError(detail),
+              request_source: readRequestSource(c),
               ...(filenameHeader ? { filename: filenameHeader } : {}),
             },
           },
@@ -520,15 +541,13 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    const payload = ExtractFileResponse.parse(
-      pages !== undefined ? { format, bytes, pages, data } : { format, bytes, data },
-    );
-    // Audit successful binary parses as data exports. Text formats are
-    // omitted to keep the audit-log row volume reasonable — a JSON
-    // upload is shape-only and doesn't carry the same governance
-    // weight as a PDF / Office doc whose contents land in tenant logs.
+    // Audit successful binary parses BEFORE the response Zod parse so
+    // a future schema-shape regression can't silently drop the
+    // governance row. Text formats are omitted (shape-only, no
+    // tenant-content egress). `auditAwait` keeps `data.exported`
+    // durable before the 200 acks.
     if (AUDITED_BINARY_FORMATS.has(format)) {
-      audit(
+      await auditAwait(
         {
           tenant_id: principal.tenant_id,
           actor_type: principal.kind,
@@ -540,7 +559,7 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
           metadata: {
             format,
             bytes,
-            request_source: getContext().request_source ?? "api",
+            request_source: readRequestSource(c),
             ...(pages !== undefined ? { pages } : {}),
             ...(filenameHeader ? { filename: filenameHeader } : {}),
           },
@@ -548,6 +567,9 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
         db,
       );
     }
+    const payload = ExtractFileResponse.parse(
+      pages !== undefined ? { format, bytes, pages, data } : { format, bytes, data },
+    );
     return c.json(payload, 200);
   });
 }

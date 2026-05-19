@@ -21,7 +21,6 @@ import {
 import { hasZipEntryPrefix } from "./zip-sniff.ts";
 
 const XLS_OLE_SIG = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
-export const XLSX_PARSE_TIMEOUT_MS = PARSER_TIMEOUT_MS.xlsx;
 export const XLSX_ROW_CAP_PER_SHEET = 200;
 
 export type XlsxFormat = "xlsx" | "xls";
@@ -59,10 +58,31 @@ function buildStrategy(format: XlsxFormat): FileParsingStrategy<XlsxParseOutput>
           for (const name of wb.SheetNames) {
             const sheet = wb.Sheets[name];
             if (!sheet) continue;
-            const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+            // Bound the row read at parse time. A 10M-row sheet would
+            // otherwise allocate the full row array via sheet_to_json
+            // BEFORE the slice() caps it — enough to OOM the worker
+            // inside the 60s timeout window. We clamp the worksheet's
+            // existing data range (`!ref`) to header + N rows and
+            // pass the bounded Range object to sheet_to_json. The
+            // trailing slice() guard remains as defence-in-depth in
+            // case `!ref` is missing.
+            const opts: XLSX.Sheet2JSONOpts = {
               defval: null,
               raw: true,
-            });
+            };
+            const ref = sheet["!ref"];
+            if (ref) {
+              const full = XLSX.utils.decode_range(ref);
+              const clamped: XLSX.Range = {
+                s: full.s,
+                // +1 because the first row is typically the header and
+                // doesn't count against XLSX_ROW_CAP_PER_SHEET — keeps
+                // the parser's per-sheet output shape stable.
+                e: { c: full.e.c, r: Math.min(full.e.r, full.s.r + XLSX_ROW_CAP_PER_SHEET) },
+              };
+              opts.range = clamped;
+            }
+            const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, opts);
             sheets[name] = rows.slice(0, XLSX_ROW_CAP_PER_SHEET);
           }
           return { format, sheets };

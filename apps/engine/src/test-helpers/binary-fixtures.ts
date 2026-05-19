@@ -1,9 +1,17 @@
-// In-memory fixture builders for the binary parser tests.
+// @internal — tests only.
+//
+// In-memory fixture builders for the binary parser tests. Imported by
+// `parsers.test.ts`, `file-upload.test.ts`, `extract-formats.test.ts`,
+// `text-extract-binary.test.ts`, and `knowledge/tests/parsers.test.ts`.
 //
 // We deliberately avoid checking binary blobs into the repo: each
 // fixture is generated from primitives so the tests stay portable
 // (cross-platform, deterministic, easy to inspect). Each helper
 // generates a minimal valid Office Open XML package (or PDF) on demand.
+//
+// Do NOT import from runtime code paths; the hand-rolled PDF / DOCX /
+// XLSX / PPTX builders are only valid as test fixtures and not full
+// implementations of their respective specs.
 
 import { Buffer } from "node:buffer";
 import { deflateRawSync } from "node:zlib";
