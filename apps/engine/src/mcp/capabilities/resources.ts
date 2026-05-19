@@ -7,6 +7,12 @@
 //   - `skill-candidate://<id>` — proposed skill improvement
 //   - `workflow://<id>`        — committed workflow definition
 //   - `file://<fid>`           — file metadata + content (text or base64)
+//   - `fixture://<fid>`        — offloaded execution payload (read-only;
+//                                emitted by `wf.*` tool results when the
+//                                serialized body exceeds MCP_OFFLOAD_CHAR_CAP).
+//                                Not enumerated in `ListResources` — the
+//                                URI is handed to the client inside the
+//                                tool envelope and read back on demand.
 //
 // `resources/subscribe` is wired to outbox pub/sub: events for
 // subscribed resources push `notifications/resources/updated`.
@@ -65,7 +71,7 @@ import {
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as connectorSvc from "../../connectors/service.ts";
 import type { Db } from "../../db/client.ts";
-import { files } from "../../db/schema/index.ts";
+import { executionFixtures, files } from "../../db/schema/index.ts";
 import { isTextLike } from "../../files/content-type.ts";
 import { FileNotFoundError, requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import * as knowledgeSvc from "../../knowledge/service.ts";
@@ -581,6 +587,75 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
               null,
               2,
             ),
+          },
+        ],
+      };
+    }
+
+    // Execution Fixtures (offloaded `wf.*` tool payloads).
+    //
+    // When a workflow tool result exceeds MCP_OFFLOAD_CHAR_CAP the engine
+    // writes the body to `execution_fixtures` and returns an envelope
+    // with `uri: fixture://<id>` (apps/engine/src/mcp/capabilities/tools.ts
+    // and apps/engine/src/execution/offload.ts). That URI MUST be readable
+    // by the same MCP client — anything less is a protocol-level
+    // inconsistency where the engine advertises a URI it can't honour.
+    //
+    // Tenant isolation: the `execution_fixtures.tenant_id` column is the
+    // chokepoint; cross-tenant ids return `fixture not found` so
+    // existence of another tenant's offload never leaks via timing or
+    // error text. RBAC: gated on `execution:read` for the parent
+    // execution, mirroring the HTTP `/v1/executions/:id` surface.
+    if (uri.startsWith("fixture://")) {
+      const id = uri.slice("fixture://".length);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        throw new Error(`invalid fixture id: ${id}`);
+      }
+      const rows = await db
+        .select({
+          id: executionFixtures.id,
+          execution_id: executionFixtures.execution_id,
+          body: executionFixtures.body,
+          kind: executionFixtures.kind,
+          byte_size: executionFixtures.byte_size,
+        })
+        .from(executionFixtures)
+        .where(
+          and(eq(executionFixtures.tenant_id, principal.tenant_id), eq(executionFixtures.id, id)),
+        )
+        .limit(1);
+      const row = rows[0];
+      if (!row) throw new Error(`fixture not found: ${id}`);
+      if (row.execution_id) {
+        const decision = await can(db, {
+          tenant_id: principal.tenant_id,
+          principal,
+          permission: "execution:read",
+          resource: { type: "execution", id: row.execution_id },
+        });
+        if (!decision.allow) {
+          const err = new Error(decision.reason ?? "permission_denied") as Error & {
+            code?: number;
+          };
+          err.code = -32001;
+          throw err;
+        }
+      }
+      logger.debug({
+        module: "mcp",
+        action: "mcp.resource.read",
+        msg: "mcp read fixture",
+        fixture_id: row.id,
+        execution_id: row.execution_id ?? null,
+        kind: row.kind,
+        bytes: row.byte_size ?? null,
+      });
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(row.body ?? null),
           },
         ],
       };
