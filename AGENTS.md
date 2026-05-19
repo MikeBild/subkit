@@ -139,7 +139,7 @@ layer, stop and move it.
 - **`packages/shared/`** — shared domain types & helpers. Pure, deterministic, no
   `apps/*` imports. See `packages/shared/AGENTS.md` for stricter rules.
 
-Subsystem map inside `apps/engine/src/` (41 directories + 5 loose root files):
+Subsystem map inside `apps/engine/src/` (42 directories + 5 loose root files):
 
 | Concern | Directory | Key docs |
 |---|---|---|
