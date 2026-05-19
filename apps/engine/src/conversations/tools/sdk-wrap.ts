@@ -11,6 +11,16 @@
 // External callers continue to import `wrapTools`, `TurnSignals`,
 // `MAX_CONSECUTIVE_FAILURES`, and `computeValidationFingerprint` from
 // this file; nothing else escapes the module boundary.
+//
+// Relationship to apps/engine/src/tools/ (unified palette):
+//   The chat surface is the canonical home of the conversation tool
+//   registry — `listTools()` here is the source of truth that the
+//   unified `ConversationToolProvider` wraps for MCP. The chat loop
+//   continues to wrap each tool inline (rate-limiting, abort signals,
+//   live-log forwarding, draft-state diff emission, structured event
+//   stream) because those concerns are loop-scoped, not surface-scoped.
+//   See docs/10-tool-palette.md ("Why this exists" + "Layout") for the
+//   end-to-end picture.
 
 import type { Tool } from "ai";
 import type { Db } from "../../db/client.ts";
