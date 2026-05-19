@@ -2,6 +2,32 @@
 // union so callers (routes, workers, drivers) can pick the right wrapper
 // without knowing openid-client v6 internals.
 
+import { z } from "zod";
+
+export const RFC7591ClientMetadataSchema = z.object({
+  redirect_uris: z.array(z.string().url()).min(1),
+  token_endpoint_auth_method: z.string().optional(),
+  grant_types: z.array(z.string()).optional(),
+  response_types: z.array(z.string()).optional(),
+  scope: z.string().optional(),
+  client_name: z.string().optional(),
+  software_id: z.string().optional(),
+  software_version: z.string().optional(),
+});
+export type RFC7591ClientMetadata = z.infer<typeof RFC7591ClientMetadataSchema>;
+
+export const RFC7591ClientRegistrationResponseSchema = z.object({
+  client_id: z.string(),
+  client_secret: z.string().optional(),
+  client_id_issued_at: z.number().optional(),
+  client_secret_expires_at: z.number().optional(),
+  registration_access_token: z.string().optional(),
+  registration_client_uri: z.string().optional(),
+});
+export type RFC7591ClientRegistrationResponse = z.infer<
+  typeof RFC7591ClientRegistrationResponseSchema
+>;
+
 export type OAuth2GrantKind =
   | "authorization_code"
   | "client_credentials"

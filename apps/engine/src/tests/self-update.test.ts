@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UpdaterConfig } from "@cli-core/updater.ts";
 import { desc, eq, like } from "drizzle-orm";
+import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { closeDb } from "../db/client.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -142,7 +143,13 @@ describe("engine runSelfUpdate", () => {
       .from(auditLog)
       .where(eq(auditLog.action, "engine.update.initiated"))
       .orderBy(desc(auditLog.ts));
-    expect(rows.find((r) => r.ts >= before)).toBeDefined();
+    const initiated = rows.find((r) => r.ts >= before);
+    expect(initiated).toBeDefined();
+    // Tenant must resolve to SYSTEM_TENANT_ID for every engine.update.*
+    // row — the binary swap is a process-level mutation, not
+    // tenant-scoped. Audit_log has no FK to tenants (compliance),
+    // so the zero-UUID lands cleanly.
+    expect(initiated?.tenant_id).toBe(SYSTEM_TENANT_ID);
 
     const failedRows = await testDb.db
       .select()
@@ -154,6 +161,7 @@ describe("engine runSelfUpdate", () => {
     expect(recent?.result).toBe("error");
     expect(recent?.actor_type).toBe("system");
     expect(recent?.actor_id).toBeNull();
+    expect(recent?.tenant_id).toBe(SYSTEM_TENANT_ID);
   });
 
   test("force=true: a fresh check still hits the network", async () => {

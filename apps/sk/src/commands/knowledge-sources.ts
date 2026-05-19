@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import { exitCodeFor } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -8,6 +7,13 @@ import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { detectMime } from "../utils/mime.ts";
 import { uploadPath } from "./files.ts";
+
+// Subcommand handlers never call `process.exit`; they throw the error
+// and rely on the top-level `sk` dispatcher (apps/sk/src/index.ts) to
+// translate it to an exit code via `exitCodeFor`. This keeps Citty's
+// runCommand composable from test harnesses and preserves the original
+// error for the catch chain instead of swallowing it behind a synthetic
+// "process.exit(N)" Error.
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List knowledge sources" },
@@ -25,7 +31,7 @@ const listCommand = defineCommand({
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
-      process.exit(exitCodeFor(err));
+      throw err;
     }
   },
 });
@@ -45,7 +51,7 @@ const getCommand = defineCommand({
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
-      process.exit(exitCodeFor(err));
+      throw err;
     }
   },
 });
@@ -67,7 +73,7 @@ const searchCommand = defineCommand({
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
-      process.exit(exitCodeFor(err));
+      throw err;
     }
   },
 });
@@ -117,7 +123,7 @@ const createCommand = defineCommand({
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
-      process.exit(exitCodeFor(err));
+      throw err;
     }
   },
 });
@@ -138,7 +144,7 @@ const patchCommand = defineCommand({
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
-      process.exit(exitCodeFor(err));
+      throw err;
     }
   },
 });
@@ -158,7 +164,7 @@ const deleteCommand = defineCommand({
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
-      process.exit(exitCodeFor(err));
+      throw err;
     }
   },
 });

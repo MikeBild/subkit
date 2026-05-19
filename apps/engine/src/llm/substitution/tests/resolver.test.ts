@@ -466,6 +466,15 @@ describe("flattenCredential — shape mapping for each mode", () => {
   test("none → empty", () => {
     expect(flattenCredential("none", { mode: "none" })).toEqual({});
   });
+  test("oauth2_client → client_id only; client_secret never surfaces", () => {
+    const flat = flattenCredential("oauth2_client", {
+      mode: "oauth2_client",
+      client_id: "dyn-client-abc",
+      client_secret: "dyn-secret-xyz",
+    });
+    expect(flat).toEqual({ client_id: "dyn-client-abc" });
+    expect(JSON.stringify(flat)).not.toContain("dyn-secret-xyz");
+  });
 });
 
 describe("resolvePlaceholders — walks nested structures", () => {

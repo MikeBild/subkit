@@ -215,7 +215,21 @@ export function applyAuthMaterial(
       headers.Authorization = tpl.replaceAll("${token}", credential.access_token);
       return;
     }
+    case "oauth2_client":
+      // RFC 7591 registered client identity. Not callable auth material —
+      // it drives the OAuth2 authorize / refresh dance via the token
+      // endpoint, not outgoing HTTP requests. Reaching this arm means a
+      // caller resolved an `oauth2_client` credential where a primary
+      // mode (oauth2/bearer/etc.) was expected — fail loudly so the
+      // upstream lookup can be corrected rather than silently emitting
+      // an unauthenticated request.
+      throw new Error(
+        "oauth2_client credentials are not directly applied to HTTP requests — they identify the registered OAuth2 client and are consumed by the token endpoint flow.",
+      );
   }
+  // Exhaustiveness guard: every CredentialMode must be handled above.
+  const _exhaustive: never = credential;
+  void _exhaustive;
 }
 
 export interface ResolveConnectorRequestParams {
@@ -338,6 +352,8 @@ export function deriveAppliedAuthMethod(
       // token_mint as well, since both modes share the
       // `refreshIfStale()` plumbing in the HTTP driver.
       return oauth2Refreshed ? "token_mint_refreshed" : "token_mint_static";
+    case "oauth2_client":
+      return "none";
   }
 }
 

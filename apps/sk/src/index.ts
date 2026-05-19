@@ -11,6 +11,7 @@
 // to enter the REPL.
 
 import * as prompts from "@clack/prompts";
+import { exitCodeFor } from "@cli-core/errors";
 import { runBrowserLogin, runDeviceFlow } from "@cli-core/index.ts";
 import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 import { VERSION } from "@cli-core/version.ts";
@@ -742,6 +743,11 @@ async function dispatch(): Promise<void> {
 }
 
 dispatch().catch((err: unknown) => {
+  // Subcommand handlers throw rather than calling `process.exit`. The
+  // typed exit code comes from `exitCodeFor`, which maps EngineError
+  // status codes (400/409/422 → 1, others → 2) and TransportError → 2.
+  // Setting `process.exitCode` lets the process drain stdout/stderr
+  // naturally; we still print a top-line message for the operator.
   process.stderr.write(`sk: ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(2);
+  process.exitCode = exitCodeFor(err);
 });

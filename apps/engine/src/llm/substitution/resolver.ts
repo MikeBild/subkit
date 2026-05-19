@@ -651,6 +651,11 @@ export function flattenCredential(
       const d = decrypted as { access_token: string };
       return { access_token: d.access_token };
     }
+    case "oauth2_client": {
+      // Only client_id is substitution-visible; client_secret never surfaces.
+      const d = decrypted as { client_id: string };
+      return { client_id: d.client_id };
+    }
     case "none":
       return {};
   }

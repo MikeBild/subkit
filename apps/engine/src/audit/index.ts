@@ -10,6 +10,7 @@ export * from "./audit.ts";
 export * from "./audit-source.ts";
 export * from "./buckets.ts";
 export * from "./query.ts";
+export * from "./recorders/index.ts";
 // `readRequestSource` is the single helper every route uses to
 // project the trace-middleware-set `request_source` onto audit
 // metadata. Re-exported from the audit barrel so the route boundary
