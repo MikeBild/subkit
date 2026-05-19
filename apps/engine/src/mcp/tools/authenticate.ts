@@ -15,6 +15,8 @@
 // subsequent `/v1/oauth/callback` roundtrip can complete.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { auditAwait } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as connectorSvc from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
@@ -142,6 +144,28 @@ export async function handleAuthenticate(
       tenant_id: principal.tenant_id,
       scope,
     });
+    // State-write closure: the PKCE state row above is durable tenant
+    // state. AGENTS non-negotiable "Audit everything that changes
+    // state" requires a row for this — the legacy code skipped it.
+    // The actual credential write happens later at /v1/oauth/callback
+    // (CREDENTIAL_CREATED / CREDENTIAL_ROTATED).
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_id: principal.id,
+        action: AuditAction.CONNECTOR_REAUTH_REQUESTED,
+        resource_type: "connector",
+        resource_id: args.connector_id,
+        result: "success",
+        metadata: {
+          request_source: "mcp",
+          scope,
+          expires_at: expires.toISOString(),
+        },
+      },
+      db,
+    );
     return {
       ok: true,
       data: {

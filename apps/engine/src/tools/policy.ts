@@ -1,0 +1,118 @@
+// Unified policy gate — pure function that decides whether a tool call
+// should proceed, pause for confirmation, or be rejected as unavailable
+// on this surface. Replaces both:
+//
+//   conversations/tool-policies.ts::resolveToolMode()  (chat side)
+//   mcp/capabilities/policy-gate.ts::gateTenantToolCall() (MCP side)
+//
+// Audit emission (APPROVAL_REQUESTED / APPROVAL_APPROVED) lives in the
+// dispatcher, NOT here — `policyDecide()` is sync, deterministic, and
+// has no I/O.
+
+import {
+  type PermissionMode,
+  resolveToolMode,
+  type ToolPolicies,
+} from "../conversations/tool-policies.ts";
+import type { ConfirmEnvelope, ToolCategory, ToolSurface } from "./types.ts";
+
+export type PolicyDecision =
+  | { kind: "proceed" }
+  | { kind: "needs_confirm"; envelope: ConfirmEnvelope }
+  | { kind: "not_available_on_surface"; reason: string };
+
+/** Confirmation marker the client sets when re-issuing a previously
+ *  paused call. Two aliases for symmetry with the legacy sdk-wrap /
+ *  policy-gate code: `_meta.sk_confirm` on MCP, `__policy_confirmed`
+ *  inside args on chat. The corresponding ID keys carry the original
+ *  APPROVAL_REQUESTED tool_call_id back so APPROVAL_APPROVED can join
+ *  the lifecycle. */
+const SK_CONFIRM_META_KEY = "sk_confirm";
+const ARGS_CONFIRM_KEY = "__policy_confirmed";
+const SK_CONFIRM_ID_META_KEY = "sk_confirm_id";
+const ARGS_CONFIRM_ID_KEY = "__policy_confirm_id";
+
+function isConfirmed(
+  args: Record<string, unknown>,
+  meta: Record<string, unknown> | undefined,
+): boolean {
+  if (meta && meta[SK_CONFIRM_META_KEY] === true) return true;
+  if (args[ARGS_CONFIRM_KEY] === true) return true;
+  return false;
+}
+
+/** Public re-export of the confirm-marker check so the dispatcher can
+ *  reuse the same predicate without re-declaring the constants. */
+export function isConfirmedRequest(
+  args: Record<string, unknown>,
+  meta: Record<string, unknown> | undefined,
+): boolean {
+  return isConfirmed(args, meta);
+}
+
+export interface PolicyDecideInput {
+  readonly tool: string;
+  readonly category: ToolCategory;
+  readonly surface: ToolSurface;
+  readonly args: Record<string, unknown>;
+  readonly meta?: Record<string, unknown>;
+  readonly permission_mode?: PermissionMode | null;
+  readonly overrides?: ToolPolicies;
+}
+
+export function policyDecide(input: PolicyDecideInput): PolicyDecision {
+  // draft_write on MCP — surface this honestly with a structured error
+  // rather than silently omitting or running the conversation-shaped
+  // ask_user_confirm gate against a non-conversation surface.
+  if (input.category === "draft_write" && input.surface === "mcp") {
+    return {
+      kind: "not_available_on_surface",
+      reason: "requires_conversation_surface",
+    };
+  }
+
+  // Note: we DO NOT shortcut on `category === "tenant_read"` here.
+  // The legacy MCP gate (mcp/capabilities/policy-gate.ts:84) did, which
+  // meant a tenant_read tool with a computeModeFromInput predicate
+  // (e.g. probe_connector POST against prod) silently bypassed the
+  // confirmation on MCP while gating correctly on chat. The unified
+  // policy lets resolveToolMode decide for every category — tenant_read
+  // tools without dynamic predicates still resolve to no_confirm, so
+  // the common case is unchanged; the dangerous tenant_read+escalation
+  // case is now consistent.
+  const mode = resolveToolMode({
+    tool: input.tool,
+    category: input.category,
+    input: input.args,
+    overrides: input.overrides ?? {},
+    permission_mode: input.permission_mode ?? null,
+  });
+
+  if (mode !== "confirm_before_execution") return { kind: "proceed" };
+
+  // The caller already confirmed (or yolo'd around) the gate.
+  if (isConfirmed(input.args, input.meta)) return { kind: "proceed" };
+
+  // Strip the args-side confirmation marker before echoing the target
+  // back — the client should re-submit the original payload, not the
+  // (already-rejected) confirmation form.
+  const echoArgs: Record<string, unknown> = { ...input.args };
+  delete echoArgs[ARGS_CONFIRM_KEY];
+
+  return {
+    kind: "needs_confirm",
+    envelope: {
+      tool: input.tool,
+      args: echoArgs,
+      policy_mode: "confirm_before_execution",
+      reason: "destructive_action",
+      tool_call_id: crypto.randomUUID(),
+      resume:
+        input.surface === "mcp"
+          ? "Re-issue the same call with _meta.sk_confirm=true after the operator approves."
+          : "Resume via ask_user_confirm reply with confirmed=true.",
+    },
+  };
+}
+
+export { ARGS_CONFIRM_ID_KEY, ARGS_CONFIRM_KEY, SK_CONFIRM_ID_META_KEY, SK_CONFIRM_META_KEY };

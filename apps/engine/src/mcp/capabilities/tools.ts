@@ -40,49 +40,14 @@ import { runExecution } from "../../execution/engine.ts";
 import { maybeOffload } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
+import { getUnifiedRegistry } from "../../tools/index.ts";
+import type { ToolInvocation } from "../../tools/types.ts";
 import { synthesizeInputSchema } from "../../workflows/input-schema-synth.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
+import { callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { modeFlags, resolveMcpMode } from "../mode-resolver.ts";
-import {
-  AUTHENTICATE_TOOL_NAME,
-  authenticateTool,
-  handleAuthenticate,
-} from "../tools/authenticate.ts";
-import {
-  handleImportConnectorFromSpec,
-  IMPORT_CONNECTOR_FROM_SPEC_TOOL_NAME,
-  type ImportConnectorFromSpecArgs,
-  importConnectorFromSpecMcpTool,
-} from "../tools/import-connector-from-spec.ts";
-import {
-  handleMatchConnectorTemplateByUrl,
-  MATCH_CONNECTOR_TEMPLATE_BY_URL_TOOL_NAME,
-  type MatchConnectorTemplateByUrlArgs,
-  matchConnectorTemplateByUrlMcpTool,
-} from "../tools/match-connector-template-by-url.ts";
-import {
-  handleInspectRecipe,
-  handleListRecipes,
-  INSPECT_RECIPE_TOOL_NAME,
-  type InspectRecipeArgs,
-  inspectRecipeMcpTool,
-  LIST_RECIPES_TOOL_NAME,
-  type ListRecipesArgs,
-  listRecipesMcpTool,
-} from "../tools/recipes.ts";
-import {
-  handleSelfHealingScan,
-  SELF_HEALING_SCAN_TOOL_NAME,
-  type SelfHealingScanArgs,
-  selfHealingScanMcpTool,
-} from "../tools/self-healing-scan.ts";
-import {
-  handleTestConnector,
-  TEST_CONNECTOR_TOOL_NAME,
-  type TestConnectorArgs,
-  testConnectorMcpTool,
-} from "../tools/test-connector.ts";
+
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import {
   CONVERSATION_TOOL_PREFIX,
@@ -302,29 +267,33 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     //   • product   — saved workflows + authenticate (default)
     //   • authoring — adds conversation.* + tenant reads
     //   • admin     — adds tenant.* writes
-    // Default product surface: client sees saved tools + authenticate,
-    // nothing else.
+    //
+    // Sources, in priority order:
+    //   - listWorkflowTools         — wf.<slug> per-workflow tools.
+    //   - listToolsViaRegistry      — unified registry: static
+    //                                 (authenticate, list_recipes,
+    //                                 self_healing.scan in admin) plus
+    //                                 every visible conversation tool
+    //                                 surfaced under its bare name.
+    //   - listConversationTools     — MCP-only session-management tools
+    //                                 under the conversation.* prefix.
+    //   - listTenantTools           — backward-compat `tenant.*` prefix
+    //                                 aliases for conversation tools;
+    //                                 retained for existing MCP clients.
     const mode = resolveMcpMode(principal);
     const flags = modeFlags(mode, readOnly);
     const tools: Tool[] = [];
     tools.push(...(await listWorkflowTools({ db, principal })));
-    tools.push(authenticateTool);
-    tools.push(matchConnectorTemplateByUrlMcpTool);
-    tools.push(importConnectorFromSpecMcpTool);
-    tools.push(testConnectorMcpTool);
-    tools.push(listRecipesMcpTool);
-    tools.push(inspectRecipeMcpTool);
+    tools.push(
+      ...listToolsViaRegistry({
+        principal,
+        mcpMode: mode,
+        readOnly: !flags.showTenantWrites,
+      }),
+    );
     if (flags.showConversationTools) tools.push(...listConversationTools());
     if (flags.showTenantReads || flags.showTenantWrites) {
       tools.push(...listTenantTools({ allowWrites: flags.showTenantWrites }));
-    }
-    // Self-healing scan is a privileged admin operation: it triggers
-    // LLM repair calls and writes Patch Candidate rows. We only
-    // surface it in admin MCP mode AND when the principal can write
-    // tenant state. The handler additionally enforces the `admin`
-    // role on the principal.
-    if (mode === "admin" && flags.showTenantWrites) {
-      tools.push(selfHealingScanMcpTool);
     }
     return { tools };
   });
@@ -354,138 +323,44 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         progress_token: progressToken ?? null,
       });
 
-      // Product-surface tool: authenticate. Always handled here, regardless
-      // of mcp mode. Returns a connector-reauth OAuth2 authorize URL.
-      if (name === AUTHENTICATE_TOOL_NAME) {
-        const result = await handleAuthenticate(
-          { db, principal },
-          args as Record<string, unknown> as Parameters<typeof handleAuthenticate>[1],
-        );
+      // Every named MCP tool (authenticate, list_recipes,
+      // self_healing.scan + the four conversation duplicates) and every
+      // bare-name conversation tool routes through the unified dispatcher
+      // in apps/engine/src/tools/. wf.<slug> and the conversation.* /
+      // tenant.* prefix proxies remain on the legacy path below because
+      // they are surface-specific operational concerns, not LLM tool
+      // palette items.
+      const mcpModeForCall = resolveMcpMode(principal);
+      const readOnlyForCall = !modeFlags(mcpModeForCall, readOnly).showTenantWrites;
+      const probeEntry = getUnifiedRegistry().get(name, {
+        surface: "mcp",
+        mcpMode: mcpModeForCall,
+        readOnly: readOnlyForCall,
+      });
+      if (probeEntry) {
+        const callMeta = request.params._meta as Record<string, unknown> | undefined;
+        const invocation: ToolInvocation = {
+          surface: "mcp",
+          name,
+          args: args as Record<string, unknown>,
+          ...(callMeta ? { meta: callMeta } : {}),
+        };
+        const response = await callToolViaDispatcher({
+          db,
+          principal,
+          mcpMode: mcpModeForCall,
+          readOnly: readOnlyForCall,
+          invocation,
+        });
         logger.info({
           module: "mcp",
           action: "mcp.tool.result",
-          msg: "mcp authenticate tool call completed",
+          msg: "mcp tool call completed via unified dispatcher",
           tool: name,
           duration_ms: Date.now() - started,
-          is_error: !result.ok,
+          is_error: response.isError,
         });
-        return {
-          isError: !result.ok,
-          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
-        };
-      }
-
-      if (name === MATCH_CONNECTOR_TEMPLATE_BY_URL_TOOL_NAME) {
-        const result = await handleMatchConnectorTemplateByUrl(
-          { db, principal },
-          args as unknown as MatchConnectorTemplateByUrlArgs,
-        );
-        logger.info({
-          module: "mcp",
-          action: "mcp.tool.result",
-          msg: "mcp match_connector_template_by_url completed",
-          tool: name,
-          duration_ms: Date.now() - started,
-          is_error: !result.ok,
-        });
-        return {
-          isError: !result.ok,
-          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
-        };
-      }
-
-      if (name === LIST_RECIPES_TOOL_NAME) {
-        const result = await handleListRecipes(
-          { db, principal },
-          args as unknown as ListRecipesArgs,
-        );
-        logger.info({
-          module: "mcp",
-          action: "mcp.tool.result",
-          msg: "mcp list_recipes completed",
-          tool: name,
-          duration_ms: Date.now() - started,
-          is_error: !result.ok,
-        });
-        return {
-          isError: !result.ok,
-          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
-        };
-      }
-
-      if (name === INSPECT_RECIPE_TOOL_NAME) {
-        const result = await handleInspectRecipe(
-          { db, principal },
-          args as unknown as InspectRecipeArgs,
-        );
-        logger.info({
-          module: "mcp",
-          action: "mcp.tool.result",
-          msg: "mcp inspect_recipe completed",
-          tool: name,
-          duration_ms: Date.now() - started,
-          is_error: !result.ok,
-        });
-        return {
-          isError: !result.ok,
-          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
-        };
-      }
-
-      if (name === IMPORT_CONNECTOR_FROM_SPEC_TOOL_NAME) {
-        const result = await handleImportConnectorFromSpec(
-          args as unknown as ImportConnectorFromSpecArgs,
-        );
-        logger.info({
-          module: "mcp",
-          action: "mcp.tool.result",
-          msg: "mcp import_connector_from_spec completed",
-          tool: name,
-          duration_ms: Date.now() - started,
-          is_error: !result.ok,
-        });
-        return {
-          isError: !result.ok,
-          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
-        };
-      }
-
-      if (name === TEST_CONNECTOR_TOOL_NAME) {
-        const result = await handleTestConnector(
-          { db, principal },
-          args as unknown as TestConnectorArgs,
-        );
-        logger.info({
-          module: "mcp",
-          action: "mcp.tool.result",
-          msg: "mcp test_connector completed",
-          tool: name,
-          duration_ms: Date.now() - started,
-          is_error: !result.ok,
-        });
-        return {
-          isError: !result.ok,
-          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
-        };
-      }
-
-      if (name === SELF_HEALING_SCAN_TOOL_NAME) {
-        const result = await handleSelfHealingScan(
-          { db, principal },
-          args as unknown as SelfHealingScanArgs,
-        );
-        logger.info({
-          module: "mcp",
-          action: "mcp.tool.result",
-          msg: "mcp self_healing.scan completed",
-          tool: name,
-          duration_ms: Date.now() - started,
-          is_error: !result.ok,
-        });
-        return {
-          isError: !result.ok,
-          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
-        };
+        return response;
       }
 
       if (name.startsWith(CONVERSATION_TOOL_PREFIX)) {

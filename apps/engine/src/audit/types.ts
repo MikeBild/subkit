@@ -75,6 +75,13 @@ export const AuditAction = {
   // succeeded") — without this the operator only sees a binary
   // "discovered / not discovered" without context.
   CONNECTOR_DISCOVERED: "connector.discovered",
+  // OAuth2 reauthorization handshake initiated for a saved connector.
+  // Fires from the MCP `authenticate` tool when it issues a fresh
+  // PKCE state row + portal URL. The actual credential write happens
+  // later at /v1/oauth/callback (CREDENTIAL_CREATED / CREDENTIAL_ROTATED);
+  // this row records "the LLM asked the operator to reauth" so the
+  // audit trail closes on the conversation side too.
+  CONNECTOR_REAUTH_REQUESTED: "connector.reauth_requested",
 
   WORKFLOW_CREATED: "workflow.created",
   WORKFLOW_UPDATED: "workflow.updated",

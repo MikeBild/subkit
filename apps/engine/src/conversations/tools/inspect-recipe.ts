@@ -19,7 +19,7 @@
 // then calls `start_workflow_from_recipe`.
 
 import { z } from "@hono/zod-openapi";
-import { getBuiltinTemplate } from "../../connectors/templates.ts";
+import { resolveConnectorTemplate } from "../../connectors/template-resolver.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -76,17 +76,27 @@ export const inspectRecipeTool: ConversationTool = {
   ],
   inputSchema,
   category: "tenant_read" as const,
-  async execute(_ctx, rawArgs): Promise<ToolResult> {
+  async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    const template = getBuiltinTemplate(args.template_slug);
-    if (!template) {
+    // Consult the tenant-aware resolver so tenant-scoped template
+    // overrides (rows in connector_templates) win over built-ins —
+    // matches the deleted mcp/tools/recipes.ts behavior. Built-ins
+    // alone would skip operators who've shadowed a built-in template
+    // with a tenant-customized version.
+    const resolved = await resolveConnectorTemplate({
+      db: ctx.db,
+      tenant_id: ctx.tenant_id,
+      slug: args.template_slug,
+    });
+    if (!resolved) {
       return {
         ok: false,
         error_code: "connector_template_unknown",
-        message: `no built-in template with slug \`${args.template_slug}\``,
+        message: `no template with slug \`${args.template_slug}\``,
         next_best_actions: ["match_connector_template_by_url", "suggest_connector_templates"],
       };
     }
+    const template = resolved.template;
     const recipe = template.recipes.find((r) => r.slug === args.recipe_slug);
     if (!recipe) {
       const available = template.recipes.map((r) => r.slug);

@@ -21,6 +21,9 @@
  * the cap surfaces only the generic "ask the user" hint.
  */
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  // Surface-restriction signals from the unified tool dispatcher.
+  not_available_on_surface:
+    "this tool exists in the catalog but cannot be invoked from the current surface — for draft_write tools (save_workflow_draft, dry_run_workflow), the operator must drive the call from a chat conversation, not a headless MCP session",
   // Authoring guardrails — the model called the wrong tool first.
   transform_authoring_requires_inspect:
     "call inspect_execution_step(execution_id, step_key, include_full_payload: true) to read the upstream step's actual shape before authoring the transform",
