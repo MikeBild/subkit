@@ -493,7 +493,7 @@ export const METRIC_NAMES = {
    * Counter of binary parse attempts in the docs-ingestion subsystem
    * (`pdf` / `docx` / `xlsx` / `xls` / `pptx`), partitioned by terminal
    * result (`success` / `error`). Chart against
-   * `subkit_docs_binary_parse_bytes_total` to see input volume per
+   * `subkit_docs_binary_parse_input_bytes_total` to see input volume per
    * format; a sudden spike in `error` for one format usually points at
    * a library regression or a malformed-file upload campaign.
    */

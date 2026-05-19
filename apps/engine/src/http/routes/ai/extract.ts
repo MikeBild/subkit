@@ -32,6 +32,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, Next } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { ExtractFileResponseSchema } from "../../../api/extract-schemas.ts";
 import {
   AuditAction,
   audit,
@@ -102,51 +103,13 @@ const FILENAME_HEADER_SCHEMA = z
     message: "filename header must not contain path separators or NULs",
   });
 
-/** Discriminated union for the `POST /v1/extract` response body. The
- *  route is hand-registered via `app.post(...)` (not `app.openapi(...)`)
- *  because the *request* is polymorphic (content-type dispatch), but
- *  the *response* is well-typed per format. We parse the body through
- *  this schema before `c.json()` so future contributors can't introduce
- *  a silent shape regression. */
-const ExtractFileResponse = z.discriminatedUnion("format", [
-  z.object({ format: z.literal("json"), bytes: z.number(), data: z.unknown() }),
-  z.object({ format: z.literal("yaml"), bytes: z.number(), data: z.unknown() }),
-  z.object({
-    format: z.literal("csv"),
-    bytes: z.number(),
-    data: z.array(z.record(z.string(), z.string())),
-  }),
-  z.object({ format: z.literal("xml"), bytes: z.number(), data: z.unknown() }),
-  z.object({ format: z.literal("plaintext"), bytes: z.number(), data: z.string() }),
-  z.object({
-    format: z.literal("pdf"),
-    bytes: z.number(),
-    pages: z.number(),
-    data: z.object({ text: z.string() }),
-  }),
-  z.object({
-    format: z.literal("docx"),
-    bytes: z.number(),
-    data: z.object({ markdown: z.string() }),
-  }),
-  z.object({
-    format: z.literal("xlsx"),
-    bytes: z.number(),
-    data: z.object({ sheets: z.record(z.string(), z.array(z.record(z.string(), z.unknown()))) }),
-  }),
-  z.object({
-    format: z.literal("xls"),
-    bytes: z.number(),
-    data: z.object({ sheets: z.record(z.string(), z.array(z.record(z.string(), z.unknown()))) }),
-  }),
-  z.object({
-    format: z.literal("pptx"),
-    bytes: z.number(),
-    data: z.object({
-      slides: z.array(z.object({ index: z.number(), text: z.string() })),
-    }),
-  }),
-]);
+// `ExtractFileResponseSchema` lives in `apps/engine/src/api/` so other
+// surfaces (engine-client, MCP probes, external typed clients) can
+// import the response shape directly. This route still validates the
+// body before `c.json(...)` so a future contributor can't introduce a
+// silent shape regression even though the request is polymorphic and
+// out-of-spec by design.
+const ExtractFileResponse = ExtractFileResponseSchema;
 
 const ExtractBody = z
   .object({
@@ -414,8 +377,22 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
       if (mimeHead) detectInput.mime = mimeHead;
       if (filenameHeader) detectInput.filename = filenameHeader;
       const detected = detectFormat(detectInput);
+      // `detectFormat` returns the broader `FileUploadFormat` union
+      // (includes `markdown`, `html`) — those are accepted by the
+      // docs ingester but NOT by `/v1/extract`. Without this guard a
+      // .md / .html upload would fall through the switch with
+      // `data === undefined` and then `ExtractFileResponse.parse(…)`
+      // would throw → unhandled 500. Reject explicitly with a typed
+      // 415 instead so the contract matches `SUPPORTED_FILE_FORMATS`.
+      if (!(SUPPORTED_FILE_FORMATS as readonly string[]).includes(detected)) {
+        throw new UnsupportedMediaTypeError("unsupported_file_format", {
+          supported: [...SUPPORTED_FILE_FORMATS],
+          detail: detected,
+        });
+      }
       format = detected as SupportedFileFormat;
     } catch (err) {
+      if (err instanceof UnsupportedMediaTypeError) throw err;
       if (err instanceof UnsupportedFileUploadError) {
         throw new UnsupportedMediaTypeError("unsupported_file_format", {
           supported: [...SUPPORTED_FILE_FORMATS],
