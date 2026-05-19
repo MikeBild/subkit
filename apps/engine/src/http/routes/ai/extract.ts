@@ -32,7 +32,13 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, Next } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { AuditAction, audit, auditAwait, readRequestSource } from "../../../audit/index.ts";
+import {
+  AuditAction,
+  audit,
+  auditAwait,
+  readRequestSource,
+  sanitizeForAudit,
+} from "../../../audit/index.ts";
 import type { Db } from "../../../db/client.ts";
 import {
   BinaryParseError,
@@ -79,24 +85,9 @@ const AUDITED_BINARY_FORMATS: ReadonlySet<SupportedFileFormat> = new Set([
   "pptx",
 ]);
 
-/** Max length stored in `audit_log.metadata.error` per parser failure.
- *  Parser library messages can echo small chunks of the input on the
- *  malformed-XML path; bounding the length plus stripping control
- *  characters keeps SIEM consumers safe even if a future library
- *  regression starts copying more user-controlled bytes verbatim. */
-const AUDIT_ERROR_MAX_LEN = 200;
-
-function sanitizeAuditError(detail: string): string {
-  // Strip ASCII control chars (NUL / TAB / CR / LF / DEL). Iterate by
-  // char code instead of a literal-control-char regex so biome's
-  // `noControlCharactersInRegex` rule stays happy.
-  let out = "";
-  for (const ch of detail) {
-    const code = ch.charCodeAt(0);
-    out += code < 32 || code === 127 ? " " : ch;
-  }
-  return out.length > AUDIT_ERROR_MAX_LEN ? `${out.slice(0, AUDIT_ERROR_MAX_LEN)}…` : out;
-}
+// `sanitizeForAudit` lives in `audit/sanitize.ts` so this route, the
+// LLM context placeholder, and the docs-ingestion failure audit all
+// share one bounded length + control-char strip.
 
 /** Validation for the `x-filename` request header used by `POST /v1/extract`.
  *  The header is operator-supplied (the `sk` CLI sends it, custom clients
@@ -522,7 +513,7 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
             metadata: {
               format,
               bytes,
-              error: sanitizeAuditError(detail),
+              error: sanitizeForAudit(detail),
               request_source: readRequestSource(c),
               ...(filenameHeader ? { filename: filenameHeader } : {}),
             },

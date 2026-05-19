@@ -139,6 +139,13 @@ The binary office-document parsers (PDF / DOCX / XLSX / PPTX) are guarded by per
 
 When a parser trips its timeout, the request fails with a typed `BinaryParseError` mapped to HTTP 400 and the structured logger records a `docs_ingestion.binary_parsers.parse_failed` row. The `subkit_docs_binary_parse_total{format,result="error"}` counter increments so operators can chart per-format failure rates.
 
+**Audit-log surface for binary extracts.** Successful and failed binary `POST /v1/extract` calls emit `audit_log` rows under `action = "data.exported"`. Each row carries up to ~455 bytes of operator-controlled input inside `metadata`:
+
+- `metadata.filename` — the validated `x-filename` header (≤ 255 chars, no path separators or NULs; rejected at the Zod boundary before parse).
+- `metadata.error` — the parser's diagnostic (≤ 200 chars, ASCII control characters stripped via `audit/sanitize.ts`).
+
+SIEM consumers should expect both fields to be free-form text from the caller's side. Both are passed through `sanitizeForAudit` in `apps/engine/src/audit/sanitize.ts` so a malformed PDF whose parser message embeds a few bytes of the input can't smuggle TAB / NUL / CR into the audit row.
+
 When a circuit breaker trips, the audit log records it and the event stream delivers a notification. Operators see the failure before users do.
 
 ---

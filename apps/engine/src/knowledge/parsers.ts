@@ -10,7 +10,11 @@
 // returns no chunks for a binary format — callers must dispatch on
 // `detectFormat` and call the right helper.
 
-import { PDF_PAGE_SEPARATOR, parseBinaryFile } from "../docs-ingestion/parsers/index.ts";
+import {
+  type BinaryFormat,
+  PDF_PAGE_SEPARATOR,
+  parseBinaryFile,
+} from "../docs-ingestion/parsers/index.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
 
 export type ParsedFormat =
@@ -37,16 +41,16 @@ export class UnsupportedFileFormatError extends Error {
   }
 }
 
-const BINARY_FORMATS: ReadonlySet<ParsedFormat> = new Set<ParsedFormat>([
-  "pdf",
-  "docx",
-  "xlsx",
-  "xls",
-  "pptx",
-]);
+const BINARY_FORMATS = new Set<BinaryFormat>(["pdf", "docx", "xlsx", "xls", "pptx"]);
 
-export function isBinaryFormat(format: ParsedFormat): boolean {
-  return BINARY_FORMATS.has(format);
+/** Type predicate so a `ParsedFormat` narrows to `BinaryFormat` inside
+ *  the `if` block — drops the `format as "pdf" | "docx" | …` cast
+ *  every binary caller used to need. If a new format gets added to
+ *  `ParsedFormat` but not to `BinaryFormat`, the cast would have
+ *  compiled cleanly and blown up at runtime; the predicate forces a
+ *  compile error instead. */
+export function isBinaryFormat(format: ParsedFormat): format is BinaryFormat {
+  return BINARY_FORMATS.has(format as BinaryFormat);
 }
 
 /**
@@ -165,7 +169,7 @@ export async function parseBinaryFileToChunks(
   format: ParsedFormat,
 ): Promise<RawChunk[]> {
   if (!isBinaryFormat(format)) return [];
-  const parsed = await parseBinaryFile(buffer, format as "pdf" | "docx" | "xlsx" | "xls" | "pptx");
+  const parsed = await parseBinaryFile(buffer, format);
   switch (parsed.format) {
     case "pdf": {
       const pages = parsed.text.split(PDF_PAGE_SEPARATOR);

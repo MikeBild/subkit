@@ -41,10 +41,15 @@ import {
   auditAwait,
   bucketSize,
   ContentPartSentMetadataSchema,
+  sanitizeForAudit,
 } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import { files } from "../../db/schema/files.ts";
-import { BinaryParseError, parseBinaryFile } from "../../docs-ingestion/parsers/index.ts";
+import {
+  type BinaryFormat,
+  BinaryParseError,
+  parseBinaryFile,
+} from "../../docs-ingestion/parsers/index.ts";
 import { type ResolvedFile, resolveSingleFid } from "../../files/resolver.ts";
 import { detectFormat, isBinaryFormat, parseFileToChunks } from "../../knowledge/parsers.ts";
 import { logger } from "../../logging/logger.ts";
@@ -666,11 +671,27 @@ async function assembleTextExtractBlock(
  *  parser failure so the turn never crashes. */
 async function assembleBinaryTextExtractBlock(
   resolved: ResolvedFile,
-  format: ReturnType<typeof detectFormat>,
+  format: BinaryFormat,
   budget: { perTurnBudgetRemaining: number },
 ): Promise<{ block: FileContentBlock; bytes_read: number }> {
   const contentType = resolved.content_type ?? "application/octet-stream";
   const placeholderText = `[file: ${resolved.filename}]`;
+  // Short-circuit if the per-turn text budget is already exhausted —
+  // the parser would do up to 25 MB of work whose output we'd clamp
+  // to zero anyway. Emit the same placeholder the text branch uses
+  // when it hits the same condition.
+  if (budget.perTurnBudgetRemaining <= 0) {
+    return {
+      block: {
+        strategy: "text_extract",
+        filename: resolved.filename,
+        content_type: contentType,
+        text: `[file ${resolved.filename}: skipped, per-turn cap reached]`,
+        placeholder: true,
+      },
+      bytes_read: 0,
+    };
+  }
   if (resolved.size_bytes > TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES) {
     return {
       block: {
@@ -711,13 +732,14 @@ async function assembleBinaryTextExtractBlock(
   let parsedText: string;
   try {
     const buffer = Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength);
-    const parsed = await parseBinaryFile(
-      buffer,
-      format as "pdf" | "docx" | "xlsx" | "xls" | "pptx",
-    );
+    // `format` is already narrowed to `BinaryFormat` by the
+    // `isBinaryFormat(detectedFormat)` predicate at the call site
+    // (`assembleTextExtractBlock`), so no cast is needed.
+    const parsed = await parseBinaryFile(buffer, format);
     parsedText = renderBinaryAsText(parsed);
   } catch (err) {
-    const cause = err instanceof BinaryParseError ? err.message : String(err);
+    const rawCause = err instanceof BinaryParseError ? err.message : String(err);
+    const cause = sanitizeForAudit(rawCause);
     logger.warn({
       module: "llm.file_context",
       action: "text_extract.binary_parse_failed",
@@ -730,6 +752,10 @@ async function assembleBinaryTextExtractBlock(
         strategy: "text_extract",
         filename: resolved.filename,
         content_type: contentType,
+        // `cause` is sanitized (length-capped, control chars stripped)
+        // because the parser library's verbatim message can echo a
+        // small slice of user-controlled input that would otherwise
+        // land directly in the model's prompt.
         text: `${placeholderText} (parse failed: ${cause})`,
         placeholder: true,
       },
