@@ -44,8 +44,9 @@ import {
 } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import { files } from "../../db/schema/files.ts";
+import { BinaryParseError, parseBinaryFile } from "../../docs-ingestion/parsers/index.ts";
 import { type ResolvedFile, resolveSingleFid } from "../../files/resolver.ts";
-import { detectFormat, parseFileToChunks } from "../../knowledge/parsers.ts";
+import { detectFormat, isBinaryFormat, parseFileToChunks } from "../../knowledge/parsers.ts";
 import { logger } from "../../logging/logger.ts";
 import { chooseFileStrategy, type ModelCapabilities } from "./capabilities.ts";
 import { type FilesApiError, type UploadedFile, uploadFileViaApi } from "./files-api.ts";
@@ -63,6 +64,16 @@ export const FILE_PART_PER_TURN_CAP_BYTES = 250 * 1024;
  *  fewer characters than bytes, but the upstream byte read is the only
  *  surface that can blow past the model's token budget. */
 export const TEXT_EXTRACT_PER_FILE_MAX_BYTES = 1024 * 1024;
+
+/** Per-file ceiling on RAW bytes read for the `text_extract` binary
+ *  branch (pdf/docx/xlsx/pptx). Binary parsers need the full file —
+ *  parsing a truncated PDF yields zero text — so the per-file cap is
+ *  raised to 25 MB. The 1 MB `TEXT_EXTRACT_PER_FILE_MAX_BYTES` ceiling
+ *  is then applied to the *parsed* text before it enters the context
+ *  window, so the token budget is unchanged. Binaries larger than this
+ *  ceiling get a `[file: <name>] (too large to parse)` placeholder
+ *  instead of being read. */
+export const TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES = 25 * 1024 * 1024;
 
 /** Per-turn ceiling on cumulative `text_extract` bytes. Three medium
  *  CSVs at the per-file cap would still bury the model. Once the
@@ -532,6 +543,15 @@ async function assembleTextExtractBlock(
     };
   }
 
+  // Detect the format up front — binary files (pdf/docx/xlsx/pptx) need
+  // the whole buffer for the parser to work, so we take a separate
+  // branch that reads up to TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES and
+  // applies the per-file/per-turn text cap to the *parsed* output.
+  const detectedFormat = detectFormat(resolved.filename, resolved.content_type ?? undefined);
+  if (isBinaryFormat(detectedFormat)) {
+    return assembleBinaryTextExtractBlock(resolved, detectedFormat, budget);
+  }
+
   // Per-file cap: never read more than the per-file ceiling and never
   // more than the remaining per-turn budget.
   const perFileLimit = Math.min(
@@ -636,6 +656,123 @@ async function assembleTextExtractBlock(
       },
       bytes_read: bytes.byteLength,
     };
+  }
+}
+
+/** Binary `text_extract` branch — reads the whole file (subject to the
+ *  binary per-file ceiling), runs the matching parser, then truncates
+ *  the extracted text to the same per-file/per-turn budget the text
+ *  branch applies. Falls back to the standard placeholder on any
+ *  parser failure so the turn never crashes. */
+async function assembleBinaryTextExtractBlock(
+  resolved: ResolvedFile,
+  format: ReturnType<typeof detectFormat>,
+  budget: { perTurnBudgetRemaining: number },
+): Promise<{ block: FileContentBlock; bytes_read: number }> {
+  const contentType = resolved.content_type ?? "application/octet-stream";
+  const placeholderText = `[file: ${resolved.filename}]`;
+  if (resolved.size_bytes > TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES) {
+    return {
+      block: {
+        strategy: "text_extract",
+        filename: resolved.filename,
+        content_type: contentType,
+        text: `${placeholderText} (too large to parse: ${resolved.size_bytes} bytes)`,
+        placeholder: true,
+      },
+      bytes_read: 0,
+    };
+  }
+
+  let raw: Uint8Array;
+  try {
+    const stream = await resolved.openRead();
+    raw = await collectStream(stream);
+  } catch (err) {
+    logger.warn({
+      module: "llm.file_context",
+      action: "text_extract.binary_read_failed",
+      file_id: resolved.id,
+      format,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      block: {
+        strategy: "text_extract",
+        filename: resolved.filename,
+        content_type: contentType,
+        text: placeholderText,
+        placeholder: true,
+      },
+      bytes_read: 0,
+    };
+  }
+
+  let parsedText: string;
+  try {
+    const buffer = Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength);
+    const parsed = await parseBinaryFile(
+      buffer,
+      format as "pdf" | "docx" | "xlsx" | "xls" | "pptx",
+    );
+    parsedText = renderBinaryAsText(parsed);
+  } catch (err) {
+    const cause = err instanceof BinaryParseError ? err.message : String(err);
+    logger.warn({
+      module: "llm.file_context",
+      action: "text_extract.binary_parse_failed",
+      file_id: resolved.id,
+      format,
+      error: cause,
+    });
+    return {
+      block: {
+        strategy: "text_extract",
+        filename: resolved.filename,
+        content_type: contentType,
+        text: `${placeholderText} (parse failed: ${cause})`,
+        placeholder: true,
+      },
+      bytes_read: raw.byteLength,
+    };
+  }
+
+  const textCap = Math.min(
+    TEXT_EXTRACT_PER_FILE_MAX_BYTES,
+    Math.max(1, budget.perTurnBudgetRemaining),
+  );
+  let body = parsedText;
+  let truncationMarker = "";
+  const parsedByteLen = Buffer.byteLength(parsedText, "utf8");
+  if (parsedByteLen > textCap) {
+    body = parsedText.slice(0, textCap);
+    truncationMarker = `\n\n[file truncated at ${textCap} bytes of extracted text; original ${resolved.size_bytes} bytes]`;
+  }
+  return {
+    block: {
+      strategy: "text_extract",
+      filename: resolved.filename,
+      content_type: contentType,
+      text: `[${resolved.filename}]\n${body}${truncationMarker}`,
+      placeholder: false,
+    },
+    bytes_read: parsedByteLen,
+  };
+}
+
+function renderBinaryAsText(parsed: Awaited<ReturnType<typeof parseBinaryFile>>): string {
+  switch (parsed.format) {
+    case "pdf":
+      return parsed.text;
+    case "docx":
+      return parsed.markdown;
+    case "xlsx":
+    case "xls":
+      return Object.entries(parsed.sheets)
+        .map(([name, rows]) => `## ${name}\n\n${JSON.stringify(rows, null, 2)}`)
+        .join("\n\n");
+    case "pptx":
+      return parsed.slides.map((slide) => `## Slide ${slide.index}\n\n${slide.text}`).join("\n\n");
   }
 }
 

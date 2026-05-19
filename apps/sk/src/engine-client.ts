@@ -2178,6 +2178,38 @@ export class EngineClient {
     return this.request("POST", "/v1/ai/extract", body);
   }
 
+  /** Upload a raw file body to `POST /v1/extract` — used by `sk extract`
+   *  when the input is a binary office document (PDF/DOCX/XLSX/PPTX).
+   *  Bypasses the JSON `request()` helper because the body is bytes, not
+   *  a JSON-serialisable object. */
+  async extractFile(args: {
+    buffer: Uint8Array;
+    contentType: string;
+    filename?: string;
+  }): Promise<Record<string, unknown>> {
+    const traceId = this.newClientTraceId();
+    const headers = this.headers(undefined, { traceId });
+    headers["content-type"] = args.contentType;
+    if (args.filename) headers["x-filename"] = args.filename;
+    // fetch's typed BodyInit doesn't include Uint8Array on this
+    // TypeScript target; widen via the underlying ArrayBuffer slice so
+    // Bun and undici both accept the body without runtime conversion.
+    const ab = args.buffer.buffer.slice(
+      args.buffer.byteOffset,
+      args.buffer.byteOffset + args.buffer.byteLength,
+    ) as ArrayBuffer;
+    const init: RequestInit = {
+      method: "POST",
+      headers,
+      body: ab,
+    };
+    const res = await this.fetchImpl(`${this.base}/v1/extract`, init);
+    const text = await res.text();
+    const parsed = parseResponseBody(text);
+    if (!res.ok) throw new SkEngineError(res.status, parsed);
+    return (parsed ?? {}) as Record<string, unknown>;
+  }
+
   // -------------------- Notifications --------------------
   listNotificationChannels(): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", "/v1/notifications/channels");

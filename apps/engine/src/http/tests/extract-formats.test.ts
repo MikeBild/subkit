@@ -2,10 +2,17 @@
 //
 // The endpoint accepts a raw body and detects the format from the
 // content-type header. This suite covers the happy path for each
-// supported format and the 415 path for an unsupported one
-// (application/pdf).
+// supported format — including the binary office formats (PDF / DOCX /
+// XLSX / PPTX) — and the 415 path for a genuinely unsupported one
+// (application/octet-stream).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  buildDocxFixture,
+  buildPdfFixture,
+  buildPptxFixture,
+  buildXlsxFixture,
+} from "../../docs-ingestion/parsers/fixtures.test-helper.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -86,18 +93,93 @@ describe("/v1/extract file-format matrix", () => {
     expect(body.data.children[0]?.name).toBe("root");
   });
 
-  test("PDF body → 415 + unsupported_file_format", async () => {
-    // A minimal PDF magic-byte prefix is enough — the detector only
-    // looks at the mime type here.
+  test("PDF body → 200 + extracted text", async () => {
+    const pdf = buildPdfFixture("Hello extract endpoint.");
     const res = await fetch(`${srv.baseUrl}/v1/extract`, {
       method: "POST",
       headers: authHeaders("application/pdf"),
-      body: "%PDF-1.4\n%fake\n",
+      body: new Uint8Array(pdf),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      format: string;
+      pages?: number;
+      data: { text: string };
+    };
+    expect(body.format).toBe("pdf");
+    expect(body.pages).toBeGreaterThanOrEqual(1);
+    expect(body.data.text).toContain("Hello extract endpoint");
+  });
+
+  test("DOCX body → 200 + markdown", async () => {
+    const docx = await buildDocxFixture("Doc Heading", "Paragraph text.");
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: authHeaders(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ),
+      body: new Uint8Array(docx),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { format: string; data: { markdown: string } };
+    expect(body.format).toBe("docx");
+    expect(body.data.markdown).toMatch(/Doc Heading/);
+  });
+
+  test("XLSX body → 200 + sheets-as-rows", async () => {
+    const xlsx = buildXlsxFixture({
+      Demo: [
+        { id: 1, name: "alice" },
+        { id: 2, name: "bob" },
+      ],
+    });
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: authHeaders("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+      body: new Uint8Array(xlsx),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      format: string;
+      data: { sheets: Record<string, Array<Record<string, unknown>>> };
+    };
+    expect(body.format).toBe("xlsx");
+    expect(body.data.sheets.Demo?.length).toBe(2);
+    expect(body.data.sheets.Demo?.[0]?.name).toBe("alice");
+  });
+
+  test("PPTX body → 200 + slides", async () => {
+    const pptx = await buildPptxFixture(["First slide", "Second slide"]);
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: authHeaders(
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ),
+      body: new Uint8Array(pptx),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      format: string;
+      data: { slides: Array<{ index: number; text: string }> };
+    };
+    expect(body.format).toBe("pptx");
+    expect(body.data.slides.length).toBe(2);
+    expect(body.data.slides[0]?.text).toContain("First slide");
+  });
+
+  test("octet-stream body → 415 + unsupported_file_format", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: {
+        ...(authHeaders("application/octet-stream") as Record<string, string>),
+        "x-filename": "blob.bin",
+      },
+      body: new Uint8Array([1, 2, 3, 4]),
     });
     expect(res.status).toBe(415);
     const body = (await res.json()) as { code: string; details?: { supported?: string[] } };
     expect(body.code).toBe("unsupported_file_format");
-    expect(body.details?.supported).toContain("json");
-    expect(body.details?.supported).toContain("csv");
+    expect(body.details?.supported).toContain("pdf");
+    expect(body.details?.supported).toContain("docx");
   });
 });

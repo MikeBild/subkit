@@ -12,8 +12,10 @@
 //   POST /v1/extract
 //     The file-upload surface documented in docs/04-authoring.md. Accepts
 //     a raw request body whose format is detected from the `content-type`
-//     header. Formats: json, csv, yaml, xml, plaintext. Anything else
-//     (pdf, docx, xlsx, …) is rejected with HTTP 415 + a typed
+//     header. Formats: json, csv, yaml, xml, plaintext, pdf, docx,
+//     xlsx/xls, pptx. Binary formats are handled by the docs-ingestion
+//     parser registry (`docs-ingestion/parsers/`); anything still
+//     unknown is rejected with HTTP 415 + a typed
 //     `unsupported_file_format` envelope listing the supported set. No
 //     LLM is called.
 //
@@ -33,7 +35,9 @@ import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, audit } from "../../../audit/index.ts";
 import type { Db } from "../../../db/client.ts";
 import {
+  BinaryParseError,
   detectFormat,
+  parseBinaryFile,
   parseCsv,
   parseSimpleXml,
   parseSimpleYaml,
@@ -49,7 +53,18 @@ import type { AppEnv } from "../../openapi.ts";
 export const EXTRACT_BODY_CAP_BYTES = 100 * 1024 * 1024;
 
 /** Formats the file-upload extractor knows how to parse. */
-export const SUPPORTED_FILE_FORMATS = ["json", "csv", "yaml", "xml", "plaintext"] as const;
+export const SUPPORTED_FILE_FORMATS = [
+  "json",
+  "csv",
+  "yaml",
+  "xml",
+  "plaintext",
+  "pdf",
+  "docx",
+  "xlsx",
+  "xls",
+  "pptx",
+] as const;
 export type SupportedFileFormat = (typeof SUPPORTED_FILE_FORMATS)[number];
 
 const ExtractBody = z
@@ -319,18 +334,18 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
     // Dispatch to the matching parser. We don't route through
     // `ingestFileUpload` because it emits RawChunks suitable for the
     // doc retrieval store; this endpoint wants the parsed data tree.
-    const text = buffer.toString("utf8");
     let data: unknown;
+    let pages: number | undefined;
     try {
       switch (format) {
         case "json":
-          data = JSON.parse(text);
+          data = JSON.parse(buffer.toString("utf8"));
           break;
         case "yaml":
-          data = parseSimpleYaml(text);
+          data = parseSimpleYaml(buffer.toString("utf8"));
           break;
         case "csv": {
-          const parsed = parseCsv(text);
+          const parsed = parseCsv(buffer.toString("utf8"));
           data = parsed.rows.map((row) => {
             const obj: Record<string, string> = {};
             for (let i = 0; i < parsed.headers.length; i += 1) {
@@ -341,24 +356,61 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
           break;
         }
         case "xml":
-          data = parseSimpleXml(text);
+          data = parseSimpleXml(buffer.toString("utf8"));
           break;
         case "plaintext":
-          data = text;
+          data = buffer.toString("utf8");
           break;
+        case "pdf": {
+          const parsed = await parseBinaryFile(buffer, "pdf");
+          if (parsed.format !== "pdf") throw new Error("parser returned wrong format");
+          data = { text: parsed.text };
+          pages = parsed.pages;
+          break;
+        }
+        case "docx": {
+          const parsed = await parseBinaryFile(buffer, "docx");
+          if (parsed.format !== "docx") throw new Error("parser returned wrong format");
+          data = { markdown: parsed.markdown };
+          break;
+        }
+        case "xlsx":
+        case "xls": {
+          const parsed = await parseBinaryFile(buffer, format);
+          if (parsed.format !== "xlsx" && parsed.format !== "xls") {
+            throw new Error("parser returned wrong format");
+          }
+          data = { sheets: parsed.sheets };
+          break;
+        }
+        case "pptx": {
+          const parsed = await parseBinaryFile(buffer, "pptx");
+          if (parsed.format !== "pptx") throw new Error("parser returned wrong format");
+          data = { slides: parsed.slides };
+          break;
+        }
       }
     } catch (err) {
+      const detail =
+        err instanceof BinaryParseError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : String(err);
       return c.json(
         {
           code: "bad_request",
           message: `extract: failed to parse ${format} body`,
           trace_id: c.get("trace_id"),
-          details: { error: err instanceof Error ? err.message : String(err) },
+          details: { error: detail },
         },
         400,
       );
     }
 
-    return c.json({ format, bytes, data }, 200);
+    return c.json(
+      pages !== undefined ? { format, bytes, pages, data } : { format, bytes, data },
+      200,
+    );
   });
 }

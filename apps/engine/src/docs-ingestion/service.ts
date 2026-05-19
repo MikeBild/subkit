@@ -167,7 +167,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
         const fileInput: FileUploadInput = { buffer: p.input.upload.buffer };
         if (p.input.upload.filename) fileInput.filename = p.input.upload.filename;
         if (p.input.upload.mime) fileInput.mime = p.input.upload.mime;
-        const got = ingestFileUpload(fileInput);
+        const got = await ingestFileUpload(fileInput);
         uri = got.uri;
         rawChunks = got.chunks;
         break;

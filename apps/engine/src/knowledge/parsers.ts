@@ -4,9 +4,13 @@
 // Markdown) and returns RawChunk[] — the same type the fingerprinting
 // pipeline expects.
 //
-// Binary formats (PDF, DOCX, XLSX) are planned but not yet supported.
-// Callers should validate MIME/extension before calling.
+// Binary formats (PDF, DOCX, XLSX/XLS, PPTX) are routed through the
+// binary parser registry in `../docs-ingestion/parsers/` via the
+// `parseBinaryFileToChunks` helper below. The text `parseFileToChunks`
+// returns no chunks for a binary format — callers must dispatch on
+// `detectFormat` and call the right helper.
 
+import { PDF_PAGE_SEPARATOR, parseBinaryFile } from "../docs-ingestion/parsers/index.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
 
 export type ParsedFormat =
@@ -17,6 +21,11 @@ export type ParsedFormat =
   | "markdown"
   | "plaintext"
   | "openapi"
+  | "pdf"
+  | "docx"
+  | "xlsx"
+  | "xls"
+  | "pptx"
   | "unknown";
 
 export class UnsupportedFileFormatError extends Error {
@@ -26,6 +35,18 @@ export class UnsupportedFileFormatError extends Error {
     this.name = "UnsupportedFileFormatError";
     this.format = format;
   }
+}
+
+const BINARY_FORMATS: ReadonlySet<ParsedFormat> = new Set<ParsedFormat>([
+  "pdf",
+  "docx",
+  "xlsx",
+  "xls",
+  "pptx",
+]);
+
+export function isBinaryFormat(format: ParsedFormat): boolean {
+  return BINARY_FORMATS.has(format);
 }
 
 /**
@@ -53,10 +74,34 @@ export function detectFormat(filename: string, mime?: string): ParsedFormat {
     case "text":
     case "log":
       return "plaintext";
+    case "pdf":
+      return "pdf";
+    case "docx":
+      return "docx";
+    case "xlsx":
+      return "xlsx";
+    case "xls":
+      return "xls";
+    case "pptx":
+      return "pptx";
   }
 
-  // Fall back to MIME type
+  // Fall back to MIME type. Binary office MIMEs (which carry
+  // "openxmlformats-officedocument" / "ms-excel") are checked BEFORE
+  // the generic xml branch — otherwise their `vnd.openxmlformats-…`
+  // substring trips `xml` and DOCX/XLSX/PPTX uploads are misclassified.
   if (mime) {
+    if (mime.includes("pdf")) return "pdf";
+    if (mime.includes("wordprocessingml") || mime.includes("officedocument.wordprocessing")) {
+      return "docx";
+    }
+    if (mime.includes("spreadsheetml") || mime.includes("officedocument.spreadsheet")) {
+      return "xlsx";
+    }
+    if (mime.includes("ms-excel")) return "xls";
+    if (mime.includes("presentationml") || mime.includes("officedocument.presentation")) {
+      return "pptx";
+    }
     if (mime.includes("json")) return "json";
     if (mime.includes("yaml") || mime.includes("yml")) return "yaml";
     if (mime.includes("csv") || mime.includes("tab-separated")) return "csv";
@@ -98,13 +143,78 @@ export function parseFileToChunks(
     case "unknown":
       // Treat unknown as plaintext
       return parsePlaintextChunks(content, filename);
+    case "pdf":
+    case "docx":
+    case "xlsx":
+    case "xls":
+    case "pptx":
+      // Binary formats are dispatched via `parseBinaryFileToChunks` —
+      // callers must branch on `isBinaryFormat(format)`.
+      return [];
   }
 }
 
 /**
- * Split markdown on heading boundaries (H1 or H2).
+ * Parse a binary file (PDF/DOCX/XLSX/PPTX) buffer into RawChunks. Throws
+ * `BinaryParseError` from the underlying parser on failure; callers
+ * decide whether to surface the error or degrade to a placeholder.
  */
-function parseMarkdownChunks(content: string, filename: string): RawChunk[] {
+export async function parseBinaryFileToChunks(
+  buffer: Buffer,
+  filename: string,
+  format: ParsedFormat,
+): Promise<RawChunk[]> {
+  if (!isBinaryFormat(format)) return [];
+  const parsed = await parseBinaryFile(buffer, format as "pdf" | "docx" | "xlsx" | "xls" | "pptx");
+  switch (parsed.format) {
+    case "pdf": {
+      const pages = parsed.text.split(PDF_PAGE_SEPARATOR);
+      const chunks: RawChunk[] = [];
+      for (let i = 0; i < pages.length; i += 1) {
+        const body = (pages[i] ?? "").trim();
+        if (!body) continue;
+        chunks.push({
+          title: `${filename} p.${i + 1}`,
+          path: `${filename}#page=${i + 1}`,
+          content: body,
+        });
+      }
+      if (chunks.length === 0) {
+        return [{ title: filename, path: filename, content: parsed.text }];
+      }
+      return chunks;
+    }
+    case "docx": {
+      const chunks = parseMarkdownChunks(parsed.markdown, filename);
+      if (chunks.length === 0) {
+        return [{ title: filename, path: filename, content: parsed.markdown }];
+      }
+      return chunks;
+    }
+    case "xlsx":
+    case "xls": {
+      return Object.entries(parsed.sheets).map(([name, rows]) => ({
+        title: `${filename} — ${name}`,
+        path: `${filename}#sheet=${name}`,
+        content: JSON.stringify(rows, null, 2),
+      }));
+    }
+    case "pptx": {
+      return parsed.slides.map((slide) => ({
+        title: `${filename} slide ${slide.index}`,
+        path: `${filename}#slide=${slide.index}`,
+        content: slide.text || "(empty slide)",
+      }));
+    }
+  }
+}
+
+/**
+ * Split markdown on heading boundaries (H1 or H2). Exported so the
+ * file-upload source and the DOCX binary path can share the same
+ * chunking strategy without duplicating the heading walk.
+ */
+export function parseMarkdownChunks(content: string, filename: string): RawChunk[] {
   // Split on lines starting with # or ##
   const lines = content.split("\n");
   const chunks: RawChunk[] = [];
