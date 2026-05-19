@@ -44,6 +44,7 @@ import {
   UnsupportedFileUploadError,
 } from "../../../docs-ingestion/index.ts";
 import { runExtractFlow } from "../../../llm/index.ts";
+import { getContext } from "../../../logging/index.ts";
 import { BadRequestError, PayloadTooLargeError, UnsupportedMediaTypeError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -365,9 +366,13 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
     if (rawFilenameHeader !== undefined) {
       const parsed = FILENAME_HEADER_SCHEMA.safeParse(rawFilenameHeader);
       if (!parsed.success) {
-        throw new BadRequestError("invalid_x_filename_header", {
-          detail: parsed.error.issues[0]?.message ?? "x-filename header is invalid",
-        });
+        // Convention across `apps/engine/src/http/routes/`: BadRequestError
+        // takes a human-readable message first; machine-readable codes
+        // live in `details`. Keeps the OpenAPI error envelope uniform.
+        throw new BadRequestError(
+          parsed.error.issues[0]?.message ?? "x-filename header is invalid",
+          { code: "invalid_x_filename_header" },
+        );
       }
       filenameHeader = parsed.data;
     }
@@ -477,6 +482,33 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
           : err instanceof Error
             ? err.message
             : String(err);
+      // Audit binary parse failures as well as successes. Without
+      // this, a pathological-upload campaign would only show up in
+      // metrics (`subkit_docs_binary_parse_total{result="error"}`)
+      // and never in `audit_log`, making forensic queries blind.
+      // Text formats skip the audit row to keep volume reasonable.
+      if (AUDITED_BINARY_FORMATS.has(format)) {
+        audit(
+          {
+            tenant_id: principal.tenant_id,
+            actor_type: principal.kind,
+            actor_id: principal.kind === "user" ? principal.id : null,
+            action: AuditAction.DATA_EXPORTED,
+            resource_type: "extract",
+            resource_id: null,
+            result: "error",
+            reason: "parse_failed",
+            metadata: {
+              format,
+              bytes,
+              error: detail,
+              request_source: getContext().request_source ?? "api",
+              ...(filenameHeader ? { filename: filenameHeader } : {}),
+            },
+          },
+          db,
+        );
+      }
       return c.json(
         {
           code: "bad_request",
@@ -508,6 +540,7 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
           metadata: {
             format,
             bytes,
+            request_source: getContext().request_source ?? "api",
             ...(pages !== undefined ? { pages } : {}),
             ...(filenameHeader ? { filename: filenameHeader } : {}),
           },

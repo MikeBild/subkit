@@ -7,6 +7,8 @@
 // (application/octet-stream).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, desc, eq } from "drizzle-orm";
+import { auditLog } from "../../db/schema/index.ts";
 import {
   buildDocxFixture,
   buildPdfFixture,
@@ -214,5 +216,69 @@ describe("/v1/extract file-format matrix", () => {
       body: new Uint8Array(pdf),
     });
     expect(res.status).toBe(401);
+  });
+
+  // Audit-trail coverage. The success branch writes an immutable
+  // `data.exported` row for binary formats; without a test asserting
+  // the row exists, a future refactor that drops the audit call would
+  // pass metrics-level tests but break governance queries.
+  test("PDF success writes an audit_log row scoped to the bearer's tenant", async () => {
+    const pdf = buildPdfFixture("Audit trail probe.");
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: {
+        ...(authHeaders("application/pdf") as Record<string, string>),
+        "x-filename": "audit-probe.pdf",
+      },
+      body: new Uint8Array(pdf),
+    });
+    expect(res.status).toBe(200);
+
+    const rows = await srv.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, srv.tenantId), eq(auditLog.action, "data.exported")))
+      .orderBy(desc(auditLog.ts))
+      .limit(1);
+    expect(rows.length).toBe(1);
+    const row = rows[0]!;
+    expect(row.tenant_id).toBe(srv.tenantId);
+    expect(row.result).toBe("success");
+    expect(row.resource_type).toBe("extract");
+    const metadata = row.metadata as Record<string, unknown>;
+    expect(metadata.format).toBe("pdf");
+    expect(metadata.filename).toBe("audit-probe.pdf");
+    expect(metadata.request_source).toBeDefined();
+  });
+
+  test("PDF parse failure writes an audit_log row with result=failure", async () => {
+    // Send the PDF magic byte sequence then garbage so format detection
+    // succeeds (matches `%PDF`) but pdf-parse rejects the document.
+    const truncated = Buffer.concat([
+      Buffer.from([0x25, 0x50, 0x44, 0x46]),
+      Buffer.from("--garbage--"),
+    ]);
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: {
+        ...(authHeaders("application/pdf") as Record<string, string>),
+        "x-filename": "broken.pdf",
+      },
+      body: new Uint8Array(truncated),
+    });
+    expect(res.status).toBe(400);
+
+    const rows = await srv.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, srv.tenantId), eq(auditLog.action, "data.exported")))
+      .orderBy(desc(auditLog.ts))
+      .limit(1);
+    expect(rows.length).toBe(1);
+    const row = rows[0]!;
+    expect(row.result).toBe("error");
+    expect(row.reason).toBe("parse_failed");
+    const metadata = row.metadata as Record<string, unknown>;
+    expect(metadata.format).toBe("pdf");
   });
 });

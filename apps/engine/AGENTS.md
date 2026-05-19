@@ -124,6 +124,37 @@ into a `vendor/` dir, or switch to `exceljs` with a wider API rewrite.
 The decision is recorded here, not env-flag-gated — operators should not
 choose between two parser libraries at runtime.
 
+### Binary file parsers — `pdf-parse@2.4.5` supply-chain stance
+
+`pdf-parse@2.4.5` is the chosen PDF text-extraction surface. Dropping
+`pdfjs-dist` as a *direct* dependency in favour of `pdf-parse` does
+NOT shrink the install tree — pdf-parse transitively re-pulls
+`pdfjs-dist@^5` and `@napi-rs/canvas` (a 50–100 MB native binary set
+across optional platform deps). The win is a smaller direct-dep
+surface plus one canonical Node-friendly extraction API; build-image
+size is essentially unchanged.
+
+`pdfjs-dist` has a history of RCE-class issues
+(e.g. CVE-2024-4367 — fixed in pdfjs ≥ 4.2). Our mitigation stack:
+
+1. **Hard timeout** — `withParserTimeout("pdf", 30_000)` in
+   `apps/engine/src/docs-ingestion/parsers/strategy.ts` kills the
+   worker after 30 s regardless of progress.
+2. **No JS execution** — we call `PDFParse#getText()` only;
+   `pdf-parse` does not enable PDF JavaScript actions in the
+   Node target, and we never render PDFs to canvas (which is the
+   path RCE classes have historically exploited).
+3. **No untrusted browser context** — pdf-parse runs Node-only;
+   the `@napi-rs/canvas` native binary is loaded for image
+   rendering paths we never call.
+4. **Per-file ceiling** — `TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES = 25 MB`
+   in `file-context.ts` caps the per-file raw read, bounding the
+   memory pressure any single PDF can create.
+
+If the threat model changes (e.g. tenant-supplied PDFs become a
+revenue surface), revisit: vendor `unpdf` instead, or move PDF
+extraction into a separate process with seccomp/seatbelt sandboxing.
+
 ### Why subkit splits engine vs sk vs agent vs chat-ui
 
 The reference impl ships as a single monolithic core package. Subkit splits
