@@ -1,9 +1,9 @@
 // Registry contract tests.
 //
-// Active assertions land in commit 2 when StaticToolProvider +
-// ConversationToolProvider become real. The remaining .todo entries
-// fill in as the dispatcher (commit 4) and adapters (commit 5) come
-// online — registry tests cover catalog shape, not execution.
+// Active assertions exercise StaticToolProvider + ConversationToolProvider
+// catalog shape. Execution (dispatcher, adapters) is covered by
+// `dispatcher.test.ts` and the cross-surface parity tests — this file
+// stays narrowly focused on catalog visibility + provider contracts.
 
 import { describe, expect, test } from "bun:test";
 import { listTools } from "../../conversations/tools/index.ts";
@@ -17,8 +17,9 @@ describe("tools/registry — providers (active)", () => {
     expect(names).toContain("list_recipes");
     expect(names).toContain("self_healing.scan");
     // The following names exist on the conversation registry — the
-    // conversation version wins, the mcp/tools/* duplicates get
-    // deleted in commit 9.
+    // conversation version wins; the deleted mcp/tools/* duplicates
+    // are replaced by the conversation-side tool routed through the
+    // unified dispatcher.
     expect(names).not.toContain("test_connector");
     expect(names).not.toContain("match_connector_template_by_url");
     expect(names).not.toContain("inspect_recipe");

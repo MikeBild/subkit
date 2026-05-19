@@ -270,8 +270,146 @@ describe("tools/dispatcher (active)", () => {
   });
 });
 
-describe("tools/dispatcher — pending (todo)", () => {
-  test.todo("RBAC denial emits POLICY_DENIED audit (descriptor-level rbac coming later)", () => {});
-  test.todo("Static MCP executor invoked via mcp/adapter.ts in commit 5", () => {});
-  test.todo("tool.dispatch.invoke log carries duration_ms and decision label", () => {});
+describe("tools/dispatcher — RBAC denial path", () => {
+  test("descriptor.rbac deny → status:'error' error_code:'policy_denied' AND POLICY_DENIED audit row", async () => {
+    // Track audit-insert calls so we can assert one POLICY_DENIED row
+    // was emitted before execute() was skipped. The stub also has to
+    // satisfy `can()`'s permission catalog walk — returning an empty
+    // permissions row makes the check decline cleanly (no permission
+    // by that name → no grant → deny).
+    const captured: Array<{ action?: string; resource_type?: string; resource_id?: string }> = [];
+    // biome-ignore lint/suspicious/noExplicitAny: stub for tests
+    const emptySelectChain: any = {
+      from: () => emptySelectChain,
+      where: () => emptySelectChain,
+      leftJoin: () => emptySelectChain,
+      innerJoin: () => emptySelectChain,
+      limit: () => Promise.resolve([]),
+      orderBy: () => Promise.resolve([]),
+    };
+    // biome-ignore lint/suspicious/noExplicitAny: stub for tests
+    const captureDb: any = {
+      transaction: async (fn: any) => fn(captureDb),
+      select: () => emptySelectChain,
+      insert: () => ({
+        values: (row: any) => {
+          captured.push({
+            action: row?.action,
+            resource_type: row?.resource_type,
+            resource_id: row?.resource_id,
+          });
+          return { onConflictDoNothing: async () => undefined };
+        },
+      }),
+    };
+
+    let executed = false;
+    const watched: ToolDescriptor = {
+      name: "_test_rbac_gated",
+      description: "watched",
+      category: "tenant_read",
+      inputSchema: { type: "object" },
+      rbac: {
+        permission: "test:perm",
+        resource: (args) => ({ type: "test", id: String(args.id ?? "x") }),
+      },
+    };
+    const provider: ToolProvider = {
+      name: "GatedProvider",
+      list: () => [watched],
+      resolve: (n) =>
+        n === "_test_rbac_gated"
+          ? {
+              descriptor: watched,
+              executor: {
+                kind: "conversation",
+                tool: undefined as never,
+                execute: async () => {
+                  executed = true;
+                  return { ok: true, data: {} };
+                },
+              },
+            }
+          : undefined,
+    };
+    const registry = buildRegistry([provider]);
+    const envelope = await dispatchTool(
+      { registry, db: captureDb, principal: PRINCIPAL, conversationCtx: {} as never },
+      { surface: "chat", name: "_test_rbac_gated", args: { id: "abc" } },
+    );
+
+    expect(envelope.status).toBe("error");
+    if (envelope.status === "error") {
+      expect(envelope.error_code).toBe("policy_denied");
+    }
+    // Execute was skipped.
+    expect(executed).toBe(false);
+    // Exactly one POLICY_DENIED audit row was written, with the
+    // resource details from the descriptor's resource() callback.
+    const policyDenied = captured.filter((r) => r.action === "policy.denied");
+    expect(policyDenied.length).toBe(1);
+    expect(policyDenied[0]?.resource_type).toBe("test");
+    expect(policyDenied[0]?.resource_id).toBe("abc");
+  });
+
+  test("RBAC runs BEFORE policy gate — denied tenant_write does NOT emit APPROVAL_REQUESTED", async () => {
+    // The reordering of the pipeline puts RBAC before the policy gate.
+    // A tenant_write tool with descriptor.rbac denied must not produce
+    // an APPROVAL_REQUESTED audit row — only POLICY_DENIED.
+    const captured: Array<{ action?: string }> = [];
+    // biome-ignore lint/suspicious/noExplicitAny: stub for tests
+    const emptySelectChain: any = {
+      from: () => emptySelectChain,
+      where: () => emptySelectChain,
+      leftJoin: () => emptySelectChain,
+      innerJoin: () => emptySelectChain,
+      limit: () => Promise.resolve([]),
+      orderBy: () => Promise.resolve([]),
+    };
+    // biome-ignore lint/suspicious/noExplicitAny: stub for tests
+    const captureDb: any = {
+      transaction: async (fn: any) => fn(captureDb),
+      select: () => emptySelectChain,
+      insert: () => ({
+        values: (row: any) => {
+          captured.push({ action: row?.action });
+          return { onConflictDoNothing: async () => undefined };
+        },
+      }),
+    };
+
+    const watched: ToolDescriptor = {
+      name: "_test_writes_rbac",
+      description: "watched",
+      category: "tenant_write",
+      inputSchema: { type: "object" },
+      rbac: { permission: "test:perm" },
+    };
+    const provider: ToolProvider = {
+      name: "WatchedWritesProvider",
+      list: () => [watched],
+      resolve: (n) =>
+        n === "_test_writes_rbac"
+          ? {
+              descriptor: watched,
+              executor: {
+                kind: "conversation",
+                tool: undefined as never,
+                execute: async () => ({ ok: true, data: {} }),
+              },
+            }
+          : undefined,
+    };
+    const registry = buildRegistry([provider]);
+    const envelope = await dispatchTool(
+      { registry, db: captureDb, principal: PRINCIPAL, conversationCtx: {} as never },
+      { surface: "mcp", name: "_test_writes_rbac", args: {} },
+    );
+
+    expect(envelope.status).toBe("error");
+    // No APPROVAL_REQUESTED — the deny short-circuits before the
+    // policy gate would emit it. Exactly one POLICY_DENIED.
+    expect(captured.filter((r) => r.action === "approval.requested").length).toBe(0);
+    expect(captured.filter((r) => r.action === "policy.denied").length).toBe(1);
+  });
 });

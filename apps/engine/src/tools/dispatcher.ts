@@ -3,10 +3,12 @@
 // Pipeline (in order):
 //   1. resolve     — registry.get(name) → ToolEntry or null
 //   2. visibility  — disabled descriptor → not_available_on_surface
-//   3. policy      — policyDecide() → proceed | needs_confirm | not_available
-//   4. audit       — APPROVAL_REQUESTED on gate, APPROVAL_APPROVED on
+//   3. rbac        — descriptor.rbac → can() → POLICY_DENIED on deny
+//                    (runs BEFORE policy so an unauthorized caller does
+//                    not pollute the audit log with APPROVAL_REQUESTED)
+//   4. policy      — policyDecide() → proceed | needs_confirm | not_available
+//   5. audit       — APPROVAL_REQUESTED on gate, APPROVAL_APPROVED on
 //                    confirmed re-issue (correlated by tool_call_id)
-//   5. rbac        — descriptor.rbac → can() → POLICY_DENIED on deny
 //   6. execute     — call the resolved executor with the right context
 //   7. normalize   — wrap the executor's output in a ToolEnvelope
 //   8. log         — single tool.dispatch.invoke event per call
@@ -173,8 +175,15 @@ export async function dispatchTool(
     ...(deps.readOnly !== undefined ? { readOnly: deps.readOnly } : {}),
   });
 
-  let envelope: ToolEnvelope;
-  let decisionLabel: string;
+  // Initialized with an unreachable placeholder so TS narrowing through
+  // the nested rbacDenied / policy / execute branches stays happy.
+  // Every branch below overwrites both before the final log emit.
+  let envelope: ToolEnvelope = {
+    status: "error",
+    error_code: "dispatcher_unreachable",
+    message: "dispatcher reached end without setting envelope",
+  };
+  let decisionLabel = "unreachable";
 
   if (!entry) {
     envelope = {
@@ -190,115 +199,114 @@ export async function dispatchTool(
     };
     decisionLabel = "not_available_on_surface";
   } else {
-    // 3. Policy.
-    const policy = policyDecide({
-      tool: entry.descriptor.name,
-      category: entry.descriptor.category,
-      surface: invocation.surface,
-      args: invocation.args,
-      ...(invocation.meta !== undefined ? { meta: invocation.meta } : {}),
-      ...(deps.permissionMode !== undefined && deps.permissionMode !== null
-        ? { permission_mode: deps.permissionMode }
-        : {}),
-    });
-
-    if (policy.kind === "not_available_on_surface") {
-      envelope = { status: "not_available_on_surface", reason: policy.reason };
-      decisionLabel = "not_available_on_surface";
-    } else if (policy.kind === "needs_confirm") {
-      await emitApprovalRequested(
-        deps,
-        entry.descriptor.name,
-        invocation.surface,
-        policy.envelope.tool_call_id,
-      );
-      envelope = { status: "needs_confirm", confirm: policy.envelope };
-      decisionLabel = "needs_confirm";
-    } else {
-      // 4. Emit APPROVAL_APPROVED when the caller re-issued a previously
-      //    paused call. Use the original tool_call_id so it joins
-      //    APPROVAL_REQUESTED for the same lifecycle.
-      if (isConfirmedRequest(invocation.args, invocation.meta)) {
-        await emitApprovalApproved(
+    // 3. RBAC — descriptor-declared permission, evaluated BEFORE the
+    //    policy gate so an unauthorized caller never sees a confirm
+    //    prompt and never pollutes the audit log with
+    //    APPROVAL_REQUESTED. Authorization is logically prior to
+    //    "should this need confirmation".
+    let rbacDenied = false;
+    if (entry.descriptor.rbac) {
+      const resource = entry.descriptor.rbac.resource
+        ? entry.descriptor.rbac.resource(invocation.args)
+        : undefined;
+      const decision = await can(deps.db, {
+        tenant_id: deps.principal.tenant_id,
+        principal: deps.principal,
+        permission: entry.descriptor.rbac.permission,
+        ...(resource ? { resource } : {}),
+      });
+      if (!decision.allow) {
+        const reason = decision.reason ?? "permission_denied";
+        await emitPolicyDenied(
           deps,
           entry.descriptor.name,
           invocation.surface,
-          confirmIdFromInvocation(invocation),
+          entry.descriptor.rbac.permission,
+          reason,
+          resource ?? null,
         );
+        envelope = {
+          status: "error",
+          error_code: "policy_denied",
+          message: reason,
+        };
+        decisionLabel = "policy_denied";
+        rbacDenied = true;
       }
+    }
 
-      // 5. RBAC — descriptor-declared permission, evaluated centrally.
-      if (entry.descriptor.rbac) {
-        const resource = entry.descriptor.rbac.resource
-          ? entry.descriptor.rbac.resource(invocation.args)
-          : undefined;
-        const decision = await can(deps.db, {
-          tenant_id: deps.principal.tenant_id,
-          principal: deps.principal,
-          permission: entry.descriptor.rbac.permission,
-          ...(resource ? { resource } : {}),
-        });
-        if (!decision.allow) {
-          const reason = decision.reason ?? "permission_denied";
-          await emitPolicyDenied(
+    if (rbacDenied) {
+      // Skip remainder of the pipeline; the final log emit below still
+      // fires so observability sees the denial.
+      // biome-ignore lint/style/noUselessElse: explicit fall-through marker
+    } else {
+      // 4. Policy.
+      const policy = policyDecide({
+        tool: entry.descriptor.name,
+        category: entry.descriptor.category,
+        surface: invocation.surface,
+        args: invocation.args,
+        ...(invocation.meta !== undefined ? { meta: invocation.meta } : {}),
+        ...(deps.permissionMode !== undefined && deps.permissionMode !== null
+          ? { permission_mode: deps.permissionMode }
+          : {}),
+      });
+
+      if (policy.kind === "not_available_on_surface") {
+        envelope = { status: "not_available_on_surface", reason: policy.reason };
+        decisionLabel = "not_available_on_surface";
+      } else if (policy.kind === "needs_confirm") {
+        await emitApprovalRequested(
+          deps,
+          entry.descriptor.name,
+          invocation.surface,
+          policy.envelope.tool_call_id,
+        );
+        envelope = { status: "needs_confirm", confirm: policy.envelope };
+        decisionLabel = "needs_confirm";
+      } else {
+        // 5. Emit APPROVAL_APPROVED when the caller re-issued a previously
+        //    paused call. Use the original tool_call_id so it joins
+        //    APPROVAL_REQUESTED for the same lifecycle.
+        if (isConfirmedRequest(invocation.args, invocation.meta)) {
+          await emitApprovalApproved(
             deps,
             entry.descriptor.name,
             invocation.surface,
-            entry.descriptor.rbac.permission,
-            reason,
-            resource ?? null,
+            confirmIdFromInvocation(invocation),
           );
+        }
+
+        // 6. Execute.
+        try {
+          const executor = entry.executor;
+          if (isConversationExecutor(executor)) {
+            const ctx =
+              invocation.surface === "chat"
+                ? deps.conversationCtx
+                : (deps.buildMcpStubCtx?.(entry.descriptor.name) ?? deps.conversationCtx);
+            if (!ctx) {
+              throw new Error("dispatcher missing conversation ctx for tool execution");
+            }
+            const result = await executor.execute(ctx, invocation.args);
+            envelope = normalizeConversationResult(result);
+          } else if (isStaticExecutor(executor)) {
+            envelope = await executor.invoke(
+              { db: deps.db, principal: deps.principal },
+              invocation.args,
+            );
+          } else {
+            throw new Error("unknown executor kind in registry entry");
+          }
+          decisionLabel = envelope.status === "ok" ? "ok" : "error";
+        } catch (err) {
           envelope = {
             status: "error",
-            error_code: "policy_denied",
-            message: reason,
+            error_code: "tool_execute_failed",
+            message: err instanceof Error ? err.message : String(err),
           };
-          decisionLabel = "policy_denied";
-          // Skip execute.
-          logger.info({
-            module: "tools",
-            action: "tool.dispatch.invoke",
-            msg: "tool dispatched",
-            tool: invocation.name,
-            surface: invocation.surface,
-            principal_id: deps.principal.id,
-            tenant_id: deps.principal.tenant_id,
-            decision: decisionLabel,
-            duration_ms: Date.now() - t0,
-          });
-          return envelope;
+          decisionLabel = "execute_failed";
         }
-      }
-
-      // 6. Execute.
-      try {
-        const executor = entry.executor;
-        if (isConversationExecutor(executor)) {
-          const ctx =
-            invocation.surface === "chat"
-              ? deps.conversationCtx
-              : (deps.buildMcpStubCtx?.(entry.descriptor.name) ?? deps.conversationCtx);
-          if (!ctx) {
-            throw new Error("dispatcher missing conversation ctx for tool execution");
-          }
-          const result = await executor.execute(ctx, invocation.args);
-          envelope = normalizeConversationResult(result);
-        } else if (isStaticExecutor(executor)) {
-          envelope = await executor.invoke(
-            { db: deps.db, principal: deps.principal },
-            invocation.args,
-          );
-        } else {
-          throw new Error("unknown executor kind in registry entry");
-        }
-        decisionLabel = envelope.status === "ok" ? "ok" : "error";
-      } catch (err) {
-        envelope = {
-          status: "error",
-          error_code: "tool_execute_failed",
-          message: err instanceof Error ? err.message : String(err),
-        };
-        decisionLabel = "execute_failed";
       }
     }
   }

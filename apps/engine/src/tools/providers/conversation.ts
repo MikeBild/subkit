@@ -40,15 +40,22 @@ export interface ConversationProviderEntry {
 /** Conversation tools that the legacy MCP `tools/list` exposed in
  *  PRODUCT mode (via the manual `tools.push(matchConnectorTemplateByUrlMcpTool)`
  *  etc.). Anything not in this set is gated behind authoring/admin
- *  mode. Matches the pre-cutover catalog exactly. */
+ *  mode. Matches the pre-cutover catalog exactly.
+ *
+ *  Note: this allow-list intentionally excludes `tenant_write` tools.
+ *  Even if a tool was historically pushed into product mode by the
+ *  legacy code, exposing a write to product callers is a category
+ *  violation — write gating now applies uniformly to the bare names
+ *  and the `tenant.*` aliases, hidden under `readOnly: true` and
+ *  hidden from product mode regardless of `readOnly`.
+ *  `import_connector_from_spec` is `tenant_write`; it is reachable on
+ *  MCP authoring+admin modes only. */
 const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
   "match_connector_template_by_url",
-  "import_connector_from_spec",
   "test_connector",
   "inspect_recipe",
   // probe_connector_draft is reachable in product mode too — useful for
-  // headless connector bootstrap; legacy code surfaced it via the
-  // `tools.push(...)` enumeration too.
+  // headless connector bootstrap.
   "probe_connector_draft",
 ]);
 

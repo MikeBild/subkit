@@ -8,19 +8,10 @@
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { dispatchTool } from "../../tools/dispatcher.ts";
-import { conversationToolProvider, staticToolProvider } from "../../tools/index.ts";
-import { buildRegistry, type ToolRegistry } from "../../tools/registry.ts";
+import { getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolEnvelope, ToolInvocation } from "../../tools/types.ts";
 import type { PermissionMode } from "../tool-policies.ts";
 import type { ToolContext, ToolResult } from "./index.ts";
-
-let REGISTRY: ToolRegistry | null = null;
-function unifiedRegistry(): ToolRegistry {
-  if (!REGISTRY) {
-    REGISTRY = buildRegistry([staticToolProvider, conversationToolProvider]);
-  }
-  return REGISTRY;
-}
 
 /** Convert a unified ToolEnvelope back to the legacy ToolResult shape
  *  the sdk-wrap invoke tail expects. The cutover replaces the inline
@@ -88,7 +79,7 @@ export async function invokeForSdk(opts: {
 }): Promise<ToolResult> {
   const envelope = await dispatchTool(
     {
-      registry: unifiedRegistry(),
+      registry: getUnifiedRegistry(),
       db: opts.db,
       principal: opts.principal,
       conversationCtx: opts.conversationCtx,

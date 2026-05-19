@@ -40,22 +40,13 @@ import { runExecution } from "../../execution/engine.ts";
 import { maybeOffload } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
-import { conversationToolProvider, staticToolProvider } from "../../tools/index.ts";
-import { buildRegistry, type ToolRegistry } from "../../tools/registry.ts";
+import { getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
 import { synthesizeInputSchema } from "../../workflows/input-schema-synth.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { modeFlags, resolveMcpMode } from "../mode-resolver.ts";
-
-let UNIFIED_REGISTRY: ToolRegistry | null = null;
-function buildUnifiedRegistry(): ToolRegistry {
-  if (!UNIFIED_REGISTRY) {
-    UNIFIED_REGISTRY = buildRegistry([staticToolProvider, conversationToolProvider]);
-  }
-  return UNIFIED_REGISTRY;
-}
 
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import {
@@ -341,8 +332,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       // palette items.
       const mcpModeForCall = resolveMcpMode(principal);
       const readOnlyForCall = !modeFlags(mcpModeForCall, readOnly).showTenantWrites;
-      const probeRegistry = buildUnifiedRegistry();
-      const probeEntry = probeRegistry.get(name, {
+      const probeEntry = getUnifiedRegistry().get(name, {
         surface: "mcp",
         mcpMode: mcpModeForCall,
         readOnly: readOnlyForCall,

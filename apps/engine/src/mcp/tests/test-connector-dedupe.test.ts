@@ -1,9 +1,8 @@
 // test_connector dedupe — the most direct duplication eliminated by
-// the unified tool palette. Before commit 9, both
-// `apps/engine/src/conversations/tools/test-connector.ts` AND
-// `apps/engine/src/mcp/tools/test-connector.ts` re-implemented the
-// same driver-level probe + audit. After commit 9 only the conversation
-// tool survives; the MCP path routes through the unified dispatcher.
+// the unified tool palette. The conversation-side `test_connector`
+// is the single canonical implementation; the MCP path routes through
+// the unified dispatcher and writes exactly one connector.invoked
+// audit row per call.
 //
 // This file replaces the deleted mcp/tests/test-connector.test.ts —
 // same coverage, asserted against the post-cutover envelope shape

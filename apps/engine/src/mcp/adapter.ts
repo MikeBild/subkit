@@ -22,21 +22,9 @@ import type { ToolContext } from "../conversations/tools/index.ts";
 import type { Db } from "../db/client.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import { dispatchTool } from "../tools/dispatcher.ts";
-import { conversationToolProvider, staticToolProvider } from "../tools/index.ts";
-import { buildRegistry, type ToolRegistry } from "../tools/registry.ts";
+import { getUnifiedRegistry } from "../tools/index.ts";
 import type { ToolDescriptor, ToolEnvelope, ToolInvocation } from "../tools/types.ts";
 import { buildConversationToolMeta } from "./capabilities/tool-meta.ts";
-
-// Module-level singleton — the registry is pure functions over the
-// providers; rebuilding it per request burns the collision sweep on
-// every call.
-let REGISTRY: ToolRegistry | null = null;
-function unifiedRegistry(): ToolRegistry {
-  if (!REGISTRY) {
-    REGISTRY = buildRegistry([staticToolProvider, conversationToolProvider]);
-  }
-  return REGISTRY;
-}
 
 // Zod schema → MCP JSON schema. Matches the helper in tenant-tools.ts;
 // kept local to the adapter so the dispatcher stays agnostic of MCP.
@@ -89,7 +77,7 @@ export function listToolsViaRegistry(opts: {
   mcpMode: "product" | "authoring" | "admin";
   readOnly: boolean;
 }): Tool[] {
-  const descriptors = unifiedRegistry().list({
+  const descriptors = getUnifiedRegistry().list({
     surface: "mcp",
     mcpMode: opts.mcpMode,
     readOnly: opts.readOnly,
@@ -104,9 +92,15 @@ export function envelopeToMcpResponse(envelope: ToolEnvelope): {
   _meta?: Record<string, unknown>;
 } {
   if (envelope.status === "ok") {
+    // status:'ok' may carry a pause if the underlying tool emitted an
+    // elicitation. Mirror the chat-side back-conversion so the same
+    // signal reaches both surfaces. Surfacing pause only on
+    // status:'paused' would silently drop it on the ok+pause shape that
+    // conversation tools like save_workflow_draft return.
     return {
       isError: false,
       content: [{ type: "text", text: JSON.stringify(envelope.data) }],
+      ...(envelope.pause ? { _meta: { subkit: { paused: envelope.pause } } } : {}),
     };
   }
   if (envelope.status === "error") {
@@ -164,10 +158,17 @@ export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }):
     actor_type: opts.principal.kind === "user" ? "user" : "system_account",
     db: opts.db,
   });
+  // conversation_id MUST be a valid UUID — several conversation tools
+  // do FK joins against conversations(id) (e.g. inspect_authoring_context,
+  // load_skill, save_connector_draft). The legacy `mcp-<uuid>` string
+  // broke those joins silently. We mint a real UUID and log it with
+  // the `mcp_stub` source so analytics can join from audit metadata
+  // back to this synthetic session if needed.
+  const stubConversationId = crypto.randomUUID();
   return {
     db: opts.db,
     tenant_id: opts.principal.tenant_id,
-    conversation_id: `mcp-${crypto.randomUUID()}`,
+    conversation_id: stubConversationId,
     actor_id: opts.principal.id,
     connector_id: null,
     workflow_id: null,
@@ -190,7 +191,7 @@ export async function callToolViaDispatcher(opts: {
 }): Promise<ReturnType<typeof envelopeToMcpResponse>> {
   const envelope = await dispatchTool(
     {
-      registry: unifiedRegistry(),
+      registry: getUnifiedRegistry(),
       db: opts.db,
       principal: opts.principal,
       buildMcpStubCtx: () => buildMcpStubCtx({ db: opts.db, principal: opts.principal }),

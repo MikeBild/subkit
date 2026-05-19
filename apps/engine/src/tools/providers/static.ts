@@ -2,15 +2,27 @@
 // ConversationTool counterpart. Three entries today:
 //
 //   authenticate       — OAuth2 reauth-URL provider; MCP-specific
-//                        envelope (no conversation analog).
+//                        envelope (no conversation analog). Now audits
+//                        via CONNECTOR_REAUTH_REQUESTED.
 //   list_recipes       — recipe-catalog browse; conversation registry
 //                        has inspect_recipe but not list_recipes.
 //   self_healing.scan  — admin-only LLM repair trigger; MCP-only.
 //
-// All other "MCP-native" handlers (match_connector_template_by_url,
-// inspect_recipe, import_connector_from_spec, test_connector) are
-// duplicates of conversation tools with the same name. The conversation
-// versions win; the mcp/tools/* duplicates are deleted in commit 9.
+// All other "MCP-native" handlers are duplicates of conversation tools
+// with the same name; the conversation versions win and serve both
+// surfaces through the unified dispatcher.
+//
+// RBAC for static tools:
+//   - authenticate / list_recipes have no per-tool permission gate
+//     today (they are product-tier read-shaped operations). Tenant
+//     isolation is enforced via `principal.tenant_id` inside each
+//     handler.
+//   - self_healing.scan is gated by TWO defenses: visibility limited
+//     to `mcpMode: ["admin"]` here (so it's absent from product and
+//     authoring catalogs), AND a `principal.roles.includes("admin")`
+//     check inside the handler (defense-in-depth). A future
+//     `self_healing:run` permission would let it flow through the
+//     dispatcher's descriptor.rbac path uniformly.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";

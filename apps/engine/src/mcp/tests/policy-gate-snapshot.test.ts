@@ -2,7 +2,7 @@
 //
 // Pins the EXACT ExecutionMode that `resolveToolMode()` (the chat-side
 // gate at conversations/tool-policies.ts:489) returns for a representative
-// set of tools today. After commit 3 (policyDecide() extraction) the new
+// set of tools today. The unified `policyDecide()` is verified to
 // unified function must reproduce the same answers for the same inputs;
 // any drift fails this snapshot, which is what we want.
 //

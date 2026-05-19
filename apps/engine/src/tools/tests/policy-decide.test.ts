@@ -5,7 +5,7 @@
 //   gateTenantToolCall() (MCP surface, current capabilities/policy-gate)
 //
 // We test the pure decision here. Audit emission happens in the
-// dispatcher (commit 4) — those assertions live in dispatcher.test.ts.
+// dispatcher — those assertions live in dispatcher.test.ts.
 
 import { describe, expect, test } from "bun:test";
 import { resolveToolMode, type ToolPolicies } from "../../conversations/tool-policies.ts";

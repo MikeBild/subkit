@@ -1,7 +1,7 @@
 // Characterization parity test — MCP tools/list + tools/call shape.
 //
 // Pins the current MCP catalog and envelope shape so the cutover in
-// commit 6 can be verified non-destructively. Two halves:
+// MCP cutover can be verified non-destructively. Two halves:
 //
 //   1. tools/list catalog — every name we expect to find today must be
 //      reachable; this is the "we did not drop a tool" oracle.
@@ -9,7 +9,7 @@
 //      (named MCP tool, tenant.<name> proxy, conversation.<name> proxy,
 //      wf.<slug> dynamic) — pins the response shape contract.
 //
-// After commit 6 the prefix-proxied names (tenant.preview_attachment,
+// The prefix-proxied names (tenant.preview_attachment,
 // conversation.<name>) intentionally disappear and are replaced by
 // bare names — those assertions belong to the new-behavior tests
 // (preview-attachment-flat-name.test.ts). This file's job is to lock
