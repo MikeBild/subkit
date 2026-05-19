@@ -12,17 +12,31 @@
 // with the same name; the conversation versions win and serve both
 // surfaces through the unified dispatcher.
 //
-// RBAC for static tools:
-//   - authenticate / list_recipes have no per-tool permission gate
-//     today (they are product-tier read-shaped operations). Tenant
-//     isolation is enforced via `principal.tenant_id` inside each
-//     handler.
-//   - self_healing.scan is gated by TWO defenses: visibility limited
-//     to `mcpMode: ["admin"]` here (so it's absent from product and
-//     authoring catalogs), AND a `principal.roles.includes("admin")`
-//     check inside the handler (defense-in-depth). A future
-//     `self_healing:run` permission would let it flow through the
-//     dispatcher's descriptor.rbac path uniformly.
+// RBAC + category model for static tools:
+//
+//   authenticate / list_recipes / self_healing.scan — all currently
+//   declared as `tenant_read` so the unified policy gate does NOT
+//   demand a confirm round-trip. Reasoning per tool:
+//
+//   - authenticate: one-shot OAuth handshake that returns a portal
+//     URL. The handler audits via CONNECTOR_REAUTH_REQUESTED for
+//     state-change observability; demanding confirm on every
+//     authentication call would break MCP clients (they'd loop on
+//     needs_confirm with no human in the loop).
+//   - list_recipes: pure catalog read.
+//   - self_healing.scan: gated by the in-handler
+//     `principal.roles.includes("admin")` check + the
+//     `mcpMode: ["admin"]` visibility filter here; both defenses
+//     are load-bearing. The category label is `tenant_read` so the
+//     policy gate stays out of the way; the role check IS the
+//     authorization.
+//
+// Follow-up: when the permission catalog gains
+// `connector:authenticate` and `self_healing:run`, recategorize
+// these as `tenant_write` and add a descriptor.rbac so the dispatcher
+// enforces uniformly. The classification mismatch (state-change
+// without policy-gate confirm) is intentional today, not an
+// oversight.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -43,7 +57,7 @@ import {
   selfHealingScanMcpTool,
 } from "../../mcp/tools/self-healing-scan.ts";
 import type { ToolListFilter, ToolProvider } from "../registry.ts";
-import type { ToolDescriptor, ToolEnvelope } from "../types.ts";
+import type { ToolCategory, ToolDescriptor, ToolEnvelope } from "../types.ts";
 
 export interface StaticExecuteCtx {
   readonly db: Db;
@@ -59,10 +73,17 @@ interface StaticEntry {
   readonly tool: Tool;
   /** Which MCP modes see this tool. `null` means every mode. */
   readonly visibleInMcpModes: ReadonlyArray<"product" | "authoring" | "admin"> | null;
-  /** Whether this tool surfaces on the chat surface. `authenticate` and
-   *  `self_healing.scan` are MCP-only; `list_recipes` arguably useful in
-   *  chat too but currently only registered MCP-side. */
+  /** Whether this tool surfaces on the chat surface. */
   readonly visibleOnChat: boolean;
+  /** Category drives the policy gate. `authenticate` writes
+   *  `connector_oauth_states` and `self_healing.scan` writes Patch
+   *  Candidates — both are tenant_write; `list_recipes` is a pure
+   *  catalog read. Mislabeling as `tenant_read` would silently bypass
+   *  the unified confirm gate. */
+  readonly category: ToolCategory;
+  /** Optional descriptor-level RBAC declaration. When set, the
+   *  dispatcher evaluates `can()` before invoking the executor. */
+  readonly rbac?: NonNullable<ToolDescriptor["rbac"]>;
   /** Invoker — wraps each handler in the unified envelope shape so the
    *  dispatcher's normalize step is total. */
   readonly invoke: StaticInvoke;
@@ -81,6 +102,9 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     tool: authenticateTool,
     visibleInMcpModes: null,
     visibleOnChat: false,
+    // tenant_read for policy purposes (see header). Handler audits
+    // the state change via CONNECTOR_REAUTH_REQUESTED.
+    category: "tenant_read",
     async invoke(ctx, args) {
       const result = await handleAuthenticate(
         { db: ctx.db, principal: ctx.principal },
@@ -94,6 +118,8 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     tool: listRecipesMcpTool,
     visibleInMcpModes: null,
     visibleOnChat: false,
+    // tenant_read: pure catalog browse, no state mutation.
+    category: "tenant_read",
     async invoke(ctx, args) {
       const result = await handleListRecipes(
         { db: ctx.db, principal: ctx.principal },
@@ -111,6 +137,10 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     tool: selfHealingScanMcpTool,
     visibleInMcpModes: ["admin"],
     visibleOnChat: false,
+    // tenant_read for policy purposes (see header). Authorization
+    // gate is the in-handler `principal.roles.includes("admin")`
+    // check; visibility (`mcpMode: ["admin"]`) is defense-in-depth.
+    category: "tenant_read",
     async invoke(ctx, args) {
       const result = await handleSelfHealingScan(
         { db: ctx.db, principal: ctx.principal },
@@ -133,12 +163,13 @@ export interface StaticProviderEntry {
   readonly invoke: StaticInvoke;
 }
 
-function descriptorOf(tool: Tool): ToolDescriptor {
+function descriptorOf(entry: StaticEntry): ToolDescriptor {
   return {
-    name: tool.name,
-    description: tool.description ?? "",
-    category: "tenant_read",
-    inputSchema: tool.inputSchema,
+    name: entry.tool.name,
+    description: entry.tool.description ?? "",
+    category: entry.category,
+    inputSchema: entry.tool.inputSchema,
+    ...(entry.rbac ? { rbac: entry.rbac } : {}),
   };
 }
 
@@ -155,7 +186,7 @@ export const staticToolProvider: ToolProvider = {
     const out: ToolDescriptor[] = [];
     for (const e of STATIC_ENTRIES) {
       if (!isVisible(e, filter)) continue;
-      out.push(descriptorOf(e.tool));
+      out.push(descriptorOf(e));
     }
     return out;
   },
@@ -169,7 +200,7 @@ export const staticToolProvider: ToolProvider = {
       toolName: e.tool.name,
       invoke: e.invoke,
     };
-    return { descriptor: descriptorOf(e.tool), executor: entry };
+    return { descriptor: descriptorOf(e), executor: entry };
   },
 };
 

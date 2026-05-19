@@ -196,10 +196,8 @@ audit semantics. Per-tool audits (e.g., `recordConnectorInvoked` inside
 
 ## Reference implementation comparison
 
-A peer integration platform was audited. Subkit wins on every axis;
-the comparison table is preserved in the plan file at
-`/Users/mikebild/.claude/plans/review-codebase-using-snug-anchor.md`
-(section: *Reference implementation comparison*). Headline differences:
+A peer integration platform was audited during the design phase.
+Subkit wins on every axis; headline differences:
 
 - Subkit is **Zod-first end-to-end**; ref-impl converts JSON Schema →
   Zod at MCP registration.

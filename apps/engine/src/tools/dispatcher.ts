@@ -79,7 +79,7 @@ async function emitApprovalRequested(
   await auditAwait(
     {
       tenant_id: deps.principal.tenant_id,
-      actor_type: "system",
+      actor_type: "system_account",
       actor_id: deps.principal.id,
       action: AuditAction.APPROVAL_REQUESTED,
       resource_type: surface === "mcp" ? "mcp_tool_call" : "conversation_tool_call",
@@ -87,7 +87,7 @@ async function emitApprovalRequested(
       result: "success",
       metadata: {
         tool: toolName,
-        via: surface,
+        request_source: surface,
         policy_mode: "confirm_before_execution",
       },
     },
@@ -104,18 +104,20 @@ async function emitApprovalApproved(
   await auditAwait(
     {
       tenant_id: deps.principal.tenant_id,
-      actor_type: deps.principal.kind === "user" ? "user" : "system",
+      actor_type: deps.principal.kind === "user" ? "user" : "system_account",
       actor_id: deps.principal.id,
       action: AuditAction.APPROVAL_APPROVED,
       resource_type: surface === "mcp" ? "mcp_tool_call" : "conversation_tool_call",
       // Same resource_id as the APPROVAL_REQUESTED row — lets compliance
       // tooling join the two rows into a single approval lifecycle.
       // Callers pass the original tool_call_id back via `_meta.sk_confirm_id`
-      // (MCP) or `__policy_confirm_id` (chat args). Falls back to a fresh
-      // UUID if the caller didn't carry one (legacy clients).
+      // (MCP) or `__policy_confirm_id` (chat args). The dispatcher
+      // SKIPS this emit when neither marker is present (see
+      // confirmIdFromInvocation), so a missing id never produces an
+      // orphan join row.
       resource_id: tool_call_id,
       result: "success",
-      metadata: { tool: toolName, via: surface },
+      metadata: { tool: toolName, request_source: surface },
     },
     deps.db,
   );
@@ -124,13 +126,15 @@ async function emitApprovalApproved(
 /** Pull the original APPROVAL_REQUESTED tool_call_id out of the
  *  confirmed re-issue. Two conventions for symmetry with sdk-wrap /
  *  policy-gate: `_meta.sk_confirm_id` on MCP, `__policy_confirm_id`
- *  inside args on chat. */
-function confirmIdFromInvocation(invocation: ToolInvocation): string {
+ *  inside args on chat. Returns `null` when neither is present —
+ *  the dispatcher then SKIPS writing APPROVAL_APPROVED rather than
+ *  producing an orphan row that can't join APPROVAL_REQUESTED. */
+function confirmIdFromInvocation(invocation: ToolInvocation): string | null {
   const fromMeta = invocation.meta?.sk_confirm_id;
   if (typeof fromMeta === "string" && fromMeta.length > 0) return fromMeta;
   const fromArgs = (invocation.args as { __policy_confirm_id?: unknown }).__policy_confirm_id;
   if (typeof fromArgs === "string" && fromArgs.length > 0) return fromArgs;
-  return crypto.randomUUID();
+  return null;
 }
 
 async function emitPolicyDenied(
@@ -144,7 +148,7 @@ async function emitPolicyDenied(
   await auditAwait(
     {
       tenant_id: deps.principal.tenant_id,
-      actor_type: deps.principal.kind === "user" ? "user" : "system",
+      actor_type: deps.principal.kind === "user" ? "user" : "system_account",
       actor_id: deps.principal.id,
       action: AuditAction.POLICY_DENIED,
       resource_type: resource?.type ?? "tool",
@@ -153,7 +157,7 @@ async function emitPolicyDenied(
       reason,
       metadata: {
         tool: toolName,
-        via: surface,
+        request_source: surface,
         permission,
       },
     },
@@ -266,15 +270,27 @@ export async function dispatchTool(
         decisionLabel = "needs_confirm";
       } else {
         // 5. Emit APPROVAL_APPROVED when the caller re-issued a previously
-        //    paused call. Use the original tool_call_id so it joins
-        //    APPROVAL_REQUESTED for the same lifecycle.
+        //    paused call. Use the original tool_call_id so the audit
+        //    row joins APPROVAL_REQUESTED for the same lifecycle.
+        //    If the caller forgot to carry the id back (legacy client),
+        //    SKIP the row and log a warning — better an audit gap that
+        //    the operator can spot than an orphan row that compliance
+        //    queries silently include in lifecycle joins.
         if (isConfirmedRequest(invocation.args, invocation.meta)) {
-          await emitApprovalApproved(
-            deps,
-            entry.descriptor.name,
-            invocation.surface,
-            confirmIdFromInvocation(invocation),
-          );
+          const approvalId = confirmIdFromInvocation(invocation);
+          if (approvalId !== null) {
+            await emitApprovalApproved(deps, entry.descriptor.name, invocation.surface, approvalId);
+          } else {
+            logger.warn({
+              module: "tools",
+              action: "tool.dispatch.confirm_id_missing",
+              msg: "sk_confirm without sk_confirm_id — APPROVAL_APPROVED skipped to avoid orphan row",
+              tool: invocation.name,
+              surface: invocation.surface,
+              principal_id: deps.principal.id,
+              tenant_id: deps.principal.tenant_id,
+            });
+          }
         }
 
         // 6. Execute.
@@ -311,7 +327,17 @@ export async function dispatchTool(
     }
   }
 
-  // 8. Log one envelope per dispatch.
+  // 8. Log one envelope per dispatch. Include `reason` when the
+  //    envelope carries it (error_code, disabled reason,
+  //    not_available_on_surface reason) so operators reading
+  //    `sk logs` don't need to cross-reference the audit table to
+  //    learn WHY a dispatch failed or short-circuited.
+  const logReason =
+    envelope.status === "error"
+      ? envelope.error_code
+      : envelope.status === "not_available_on_surface"
+        ? envelope.reason
+        : undefined;
   logger.info({
     module: "tools",
     action: "tool.dispatch.invoke",
@@ -322,6 +348,7 @@ export async function dispatchTool(
     tenant_id: deps.principal.tenant_id,
     decision: decisionLabel,
     duration_ms: Date.now() - t0,
+    ...(logReason !== undefined ? { reason: logReason } : {}),
   });
 
   return envelope;

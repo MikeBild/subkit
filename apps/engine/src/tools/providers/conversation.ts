@@ -79,15 +79,43 @@ function describeDisabled(category: ToolCategory): { reason: string } | undefine
 }
 
 /** Per-tool RBAC overrides. Conversation tools are pure (no inline
- *  `can()` calls); the dispatcher enforces RBAC declared here. Keep
- *  this table small — most authoring tools defer to the conversation
- *  loop's harness-level authorization. */
+ *  `can()` calls); the dispatcher enforces RBAC declared here.
+ *
+ *  Coverage rule: every `tenant_write` tool reachable from MCP needs
+ *  a permission entry. Tools reachable only from chat can defer to
+ *  the conversation harness's session-scoped authorization (the chat
+ *  surface gates at the loop layer, not per-tool). Keep this table
+ *  in sync with `rbac/permissions.json`. */
 const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]>>> = {
   test_connector: {
     permission: "connector:test",
     resource: (args) => {
       const id = (args as { connector_id?: unknown }).connector_id;
       return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
+    },
+  },
+  import_connector_from_spec: {
+    permission: "connector:write",
+  },
+  save_connector_draft: {
+    permission: "connector:write",
+    resource: (args) => {
+      const id = (args as { connector_id?: unknown }).connector_id;
+      return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
+    },
+  },
+  authenticate_oauth: {
+    permission: "connector:oauth",
+    resource: (args) => {
+      const id = (args as { connector_id?: unknown }).connector_id;
+      return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
+    },
+  },
+  edit_role: {
+    permission: "rbac:write",
+    resource: (args) => {
+      const id = (args as { role_id?: unknown }).role_id;
+      return typeof id === "string" && id.length > 0 ? { type: "role", id } : null;
     },
   },
 };

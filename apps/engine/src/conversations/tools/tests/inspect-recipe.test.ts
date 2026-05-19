@@ -5,10 +5,17 @@
 // is the same payload the LLM sees on the tool_result message.
 
 import { describe, expect, test } from "bun:test";
-import type { ToolContext } from "../index.ts";
+import { makeStubCtx, makeStubDb, makeTestPrincipal } from "../../../tools/tests/_helpers.ts";
 import { inspectRecipeTool } from "../inspect-recipe.ts";
 
-const STUB_CTX = {} as ToolContext;
+// The tool now consults `resolveConnectorTemplate({db, tenant_id, slug})`
+// so tenant overrides of a built-in template are honored. We pass a
+// stub Db that returns empty result sets — built-ins still resolve
+// (the resolver falls through to the built-in catalog) and tenant
+// overrides return no rows.
+const { db: STUB_DB } = makeStubDb();
+const STUB_PRINCIPAL = makeTestPrincipal();
+const STUB_CTX = makeStubCtx({ db: STUB_DB, principal: STUB_PRINCIPAL });
 
 describe("inspect_recipe — tool metadata contract", () => {
   test("is read-only (tenant_read) so it cannot trigger a confirmation dialog", () => {

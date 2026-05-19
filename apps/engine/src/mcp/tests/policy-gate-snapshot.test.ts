@@ -1,10 +1,10 @@
 // Characterization snapshot — policy decision matrix.
 //
 // Pins the EXACT ExecutionMode that `resolveToolMode()` (the chat-side
-// gate at conversations/tool-policies.ts:489) returns for a representative
-// set of tools today. The unified `policyDecide()` is verified to
-// unified function must reproduce the same answers for the same inputs;
-// any drift fails this snapshot, which is what we want.
+// gate at conversations/tool-policies.ts:489) returns for a
+// representative set of tools today. The unified `policyDecide()` must
+// reproduce the same answers for the same inputs; any drift fails this
+// snapshot, which is what we want.
 //
 // The MCP-side gate (gateTenantToolCall) is a thin wrapper that consults
 // resolveToolMode + isConfirmed; locking the chat resolver locks both

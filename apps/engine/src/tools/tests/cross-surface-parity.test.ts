@@ -14,42 +14,14 @@
 //   - same not_available_on_surface short-circuit for draft_write
 
 import { describe, expect, test } from "bun:test";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { invokeForSdk } from "../../conversations/tools/dispatch-adapter.ts";
-import type { ToolContext } from "../../conversations/tools/index.ts";
 import { callToolViaDispatcher } from "../../mcp/adapter.ts";
+import { makeStubCtx, makeStubDb, makeTestPrincipal } from "./_helpers.ts";
 
-const PRINCIPAL: ResolvedPrincipal = {
-  kind: "user",
-  id: "00000000-0000-0000-0000-000000000001",
-  tenant_id: "00000000-0000-0000-0000-000000000002",
-  authoring_role_id: null,
-  scopes: new Set(),
-  permission_grants: [],
-  role_ids: [],
-  api_key_id: null,
-  // biome-ignore lint/suspicious/noExplicitAny: test stub
-} as any;
-
-// biome-ignore lint/suspicious/noExplicitAny: test stub
-const DB_STUB: any = {
-  transaction: async (fn: any) => fn(DB_STUB),
-  insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
-};
-
-function stubCtx(): ToolContext {
-  return {
-    db: DB_STUB,
-    tenant_id: PRINCIPAL.tenant_id,
-    conversation_id: "test-conv",
-    actor_id: PRINCIPAL.id,
-    connector_id: null,
-    workflow_id: null,
-    // biome-ignore lint/suspicious/noExplicitAny: engine client stub
-    engineClient: {} as any,
-    getDraft: () => ({ workflow: { name: "", steps: [] } }),
-    setDraft: async () => {},
-  } as ToolContext;
+const PRINCIPAL = makeTestPrincipal();
+const { db: DB_STUB } = makeStubDb();
+function stubCtx() {
+  return makeStubCtx({ db: DB_STUB, principal: PRINCIPAL });
 }
 
 describe("tools/cross-surface-parity", () => {
@@ -124,14 +96,19 @@ describe("tools/cross-surface-parity", () => {
     expect(meta?.subkit?.not_available_on_surface?.reason).toBe("requires_conversation_surface");
   });
 
-  test("tenant_write on MCP without confirm — adapter emits needs_confirm envelope", async () => {
+  test("tenant_write on MCP without permission — RBAC denies BEFORE policy gate", async () => {
+    // The test stub principal has no permissions, so `can()` denies
+    // import_connector_from_spec's declared `connector:write`. The
+    // dispatcher's RBAC step runs before the policy gate, so the
+    // caller sees status:'error' error_code:'policy_denied' rather
+    // than a confirm prompt. This locks the architect-HIGH fix (RBAC
+    // runs first; unauthorized callers don't pollute the audit log
+    // with APPROVAL_REQUESTED).
     const mcpResult = await callToolViaDispatcher({
       db: DB_STUB,
       principal: PRINCIPAL,
       mcpMode: "admin",
       readOnly: false,
-      // import_connector_from_spec is the canonical tenant_write tool
-      // available on MCP admin mode.
       invocation: {
         surface: "mcp",
         name: "import_connector_from_spec",
@@ -141,18 +118,49 @@ describe("tools/cross-surface-parity", () => {
         },
       },
     });
-    expect(mcpResult.isError).toBe(false);
+    expect(mcpResult.isError).toBe(true);
     const parsed = JSON.parse(mcpResult.content[0]!.text) as {
-      policy_mode?: string;
-      tool_call_id?: string;
+      error_code?: string;
     };
-    expect(parsed.policy_mode).toBe("confirm_before_execution");
-    expect(parsed.tool_call_id).toMatch(/^[0-9a-f-]{36}$/);
-    // _meta.subkit.confirm carries the structured envelope for clients
-    // that prefer meta to content.
-    const meta = mcpResult._meta as
-      | { subkit?: { confirm?: { tool_call_id?: string } } }
-      | undefined;
-    expect(meta?.subkit?.confirm?.tool_call_id).toBe(parsed.tool_call_id);
+    expect(parsed.error_code).toBe("policy_denied");
+  });
+
+  test("tenant isolation — principal of tenant A cannot dispatch against tenant B's resource id", async () => {
+    // Architectural invariant: every audit row and every can() call
+    // carries `principal.tenant_id`. A caller for tenant A passing a
+    // connector_id that belongs to tenant B must NOT receive a
+    // success envelope — RBAC denies on the principal's permission set
+    // (which is empty in this stub) AND any downstream `getConnector`
+    // would scope to tenant A and find nothing. This dispatcher-level
+    // assertion guards against a future provider that forgets to thread
+    // principal.tenant_id into its executor context.
+    const principalA = makeTestPrincipal({
+      tenant_id: "00000000-0000-0000-0000-aaaaaaaaaaaa",
+    });
+    const { db, capture } = makeStubDb();
+    const foreignConnectorId = "00000000-0000-0000-0000-bbbbbbbbbbbb";
+    const mcpResult = await callToolViaDispatcher({
+      db,
+      principal: principalA,
+      mcpMode: "admin",
+      readOnly: false,
+      invocation: {
+        surface: "mcp",
+        name: "test_connector",
+        args: { connector_id: foreignConnectorId },
+      },
+    });
+    expect(mcpResult.isError).toBe(true);
+    const data = JSON.parse(mcpResult.content[0]!.text) as {
+      error_code?: string;
+    };
+    // RBAC denial fires first (no permission); the connector lookup
+    // never runs. The audit row carries principal A's tenant_id and
+    // the foreign resource id, recording the attempt.
+    expect(data.error_code).toBe("policy_denied");
+    const denied = capture.inserts.filter((r) => r.action === "policy.denied");
+    expect(denied.length).toBe(1);
+    expect(denied[0]?.tenant_id).toBe(principalA.tenant_id);
+    expect(denied[0]?.resource_id).toBe(foreignConnectorId);
   });
 });
