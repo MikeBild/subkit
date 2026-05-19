@@ -500,11 +500,13 @@ export const METRIC_NAMES = {
   DOCS_BINARY_PARSE_TOTAL: "subkit_docs_binary_parse_total",
   /**
    * Counter of input bytes attempted by the docs-ingestion binary
-   * parsers, partitioned by format. Increments before the parser runs
-   * (so the bytes are counted whether the parse succeeds or fails),
-   * giving operators per-format throughput.
+   * parsers, partitioned by format. Increments BEFORE the parser runs
+   * — name carries `_input_bytes_` (not `_parsed_bytes_`) so an
+   * operator reading the metric knows it includes failures. To chart
+   * successfully-parsed volume divide by the success rate from
+   * `subkit_docs_binary_parse_total{result="success"}`.
    */
-  DOCS_BINARY_PARSE_BYTES_TOTAL: "subkit_docs_binary_parse_bytes_total",
+  DOCS_BINARY_PARSE_INPUT_BYTES_TOTAL: "subkit_docs_binary_parse_input_bytes_total",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -806,8 +808,8 @@ function buildRegistry(): MetricsRegistry {
     labels: ["format", "result"],
   });
   reg.registerCounter({
-    name: METRIC_NAMES.DOCS_BINARY_PARSE_BYTES_TOTAL,
-    help: "Input bytes attempted by the docs-ingestion binary parsers, partitioned by format.",
+    name: METRIC_NAMES.DOCS_BINARY_PARSE_INPUT_BYTES_TOTAL,
+    help: "Input bytes attempted (success + error) by the docs-ingestion binary parsers, partitioned by format.",
     labels: ["format"],
   });
 

@@ -12,7 +12,7 @@ import {
   buildPdfFixture,
   buildPptxFixture,
   buildXlsxFixture,
-} from "../parsers/fixtures.test-helper.ts";
+} from "../../test-helpers/binary-fixtures.ts";
 import { ingestDocs } from "../service.ts";
 import {
   ingestFileUpload,

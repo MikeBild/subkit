@@ -3,7 +3,7 @@ import {
   buildDocxFixture,
   buildPdfFixture,
   buildXlsxFixture,
-} from "../../docs-ingestion/parsers/fixtures.test-helper.ts";
+} from "../../test-helpers/binary-fixtures.ts";
 import {
   detectFormat,
   isBinaryFormat,

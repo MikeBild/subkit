@@ -11,7 +11,13 @@
 
 import mammoth from "mammoth";
 import { NodeHtmlMarkdown } from "node-html-markdown";
-import { BinaryParseError, DetectionPriority, type FileParsingStrategy } from "./strategy.ts";
+import {
+  BinaryParseError,
+  DetectionPriority,
+  type FileParsingStrategy,
+  PARSER_TIMEOUT_MS,
+  withParserTimeout,
+} from "./strategy.ts";
 import { hasZipEntryPrefix } from "./zip-sniff.ts";
 
 export interface DocxParseOutput {
@@ -30,17 +36,19 @@ export const docxStrategy: FileParsingStrategy<DocxParseOutput> = {
   },
 
   async parse(buffer: Buffer): Promise<DocxParseOutput> {
-    try {
-      const result = await mammoth.convertToHtml(
-        { buffer },
-        {
-          convertImage: mammoth.images.imgElement(async () => ({ src: "" })),
-        },
-      );
-      const markdown = htmlToMarkdown.translate(result.value);
-      return { format: "docx", markdown };
-    } catch (err) {
-      throw new BinaryParseError("docx", "docx: failed to convert document", { cause: err });
-    }
+    return withParserTimeout("docx", PARSER_TIMEOUT_MS.docx, async () => {
+      try {
+        const result = await mammoth.convertToHtml(
+          { buffer },
+          {
+            convertImage: mammoth.images.imgElement(async () => ({ src: "" })),
+          },
+        );
+        const markdown = htmlToMarkdown.translate(result.value);
+        return { format: "docx", markdown };
+      } catch (err) {
+        throw new BinaryParseError("docx", "docx: failed to convert document", { cause: err });
+      }
+    });
   },
 };

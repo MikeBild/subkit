@@ -7,10 +7,19 @@
 // adding `sax`/`htmlparser2` would be overkill for text-only output.
 
 import yauzl from "yauzl";
-import { BinaryParseError, DetectionPriority, type FileParsingStrategy } from "./strategy.ts";
+import {
+  BinaryParseError,
+  DetectionPriority,
+  type FileParsingStrategy,
+  PARSER_TIMEOUT_MS,
+  withParserTimeout,
+} from "./strategy.ts";
 import { hasZipEntryPrefix } from "./zip-sniff.ts";
 
 const SLIDE_PATH_RE = /^ppt\/slides\/slide(\d+)\.xml$/;
+// Lazy quantifier (`*?`) — no catastrophic backtracking. Switch to
+// `sax` / `htmlparser2` only if PPTX shapes need attribute-aware
+// parsing; today we only care about text-run bodies.
 const TEXT_RUN_RE = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g;
 const XML_ENTITY_MAP: Record<string, string> = {
   "&amp;": "&",
@@ -19,6 +28,12 @@ const XML_ENTITY_MAP: Record<string, string> = {
   "&quot;": '"',
   "&apos;": "'",
 };
+
+/** Per-archive ceiling on the number of slides we will collect. A
+ *  pathological PPTX (or a zip-bomb-shaped slide list) would otherwise
+ *  buffer every slide's XML before resolve(). Mirrors the
+ *  `XLSX_ROW_CAP_PER_SHEET` pattern in the sibling parser. */
+export const PPTX_SLIDE_CAP = 2_000;
 
 export interface PptxSlide {
   index: number;
@@ -56,14 +71,16 @@ export const pptxStrategy: FileParsingStrategy<PptxParseOutput> = {
   },
 
   async parse(buffer: Buffer): Promise<PptxParseOutput> {
-    try {
-      const slides = await readSlides(buffer);
-      slides.sort((a, b) => a.index - b.index);
-      return { format: "pptx", slides };
-    } catch (err) {
-      if (err instanceof BinaryParseError) throw err;
-      throw new BinaryParseError("pptx", "pptx: failed to read slides", { cause: err });
-    }
+    return withParserTimeout("pptx", PARSER_TIMEOUT_MS.pptx, async () => {
+      try {
+        const slides = await readSlides(buffer);
+        slides.sort((a, b) => a.index - b.index);
+        return { format: "pptx", slides };
+      } catch (err) {
+        if (err instanceof BinaryParseError) throw err;
+        throw new BinaryParseError("pptx", "pptx: failed to read slides", { cause: err });
+      }
+    });
   },
 };
 
@@ -75,11 +92,25 @@ function readSlides(buffer: Buffer): Promise<PptxSlide[]> {
         return;
       }
       const slides: PptxSlide[] = [];
+      let capReached = false;
       zipfile.on("error", reject);
       zipfile.on("end", () => resolve(slides));
       zipfile.on("entry", (entry: yauzl.Entry) => {
+        if (capReached) {
+          zipfile.readEntry();
+          return;
+        }
         const match = SLIDE_PATH_RE.exec(entry.fileName);
         if (!match) {
+          zipfile.readEntry();
+          return;
+        }
+        if (slides.length >= PPTX_SLIDE_CAP) {
+          // Short-circuit: stop reading entries entirely. We can't
+          // `zipfile.close()` here because the open stream callback
+          // may still fire; setting the flag avoids buffering more
+          // slides and `readEntry()` drains to `end`.
+          capReached = true;
           zipfile.readEntry();
           return;
         }

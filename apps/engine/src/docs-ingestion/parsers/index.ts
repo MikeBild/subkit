@@ -64,7 +64,7 @@ export async function parseBinaryFile(
     throw new BinaryParseError(format, `no strategy registered for ${format}`);
   }
   const metrics = getMetrics();
-  metrics.inc(METRIC_NAMES.DOCS_BINARY_PARSE_BYTES_TOTAL, { format }, buffer.byteLength);
+  metrics.inc(METRIC_NAMES.DOCS_BINARY_PARSE_INPUT_BYTES_TOTAL, { format }, buffer.byteLength);
   try {
     const result = (await strategy.parse(buffer)) as BinaryParseResult;
     metrics.inc(METRIC_NAMES.DOCS_BINARY_PARSE_TOTAL, { format, result: "success" });

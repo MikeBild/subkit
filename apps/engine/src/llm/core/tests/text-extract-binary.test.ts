@@ -10,13 +10,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { conversations, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { attachInlineForTest } from "../../../files/test-helpers.ts";
 import {
   buildDocxFixture,
   buildPdfFixture,
   buildPptxFixture,
   buildXlsxFixture,
-} from "../../../docs-ingestion/parsers/fixtures.test-helper.ts";
-import { attachInlineForTest } from "../../../files/test-helpers.ts";
+} from "../../../test-helpers/binary-fixtures.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { getStaticCapabilities } from "../capabilities.ts";
 import { buildFileContentBlocks } from "../file-context.ts";

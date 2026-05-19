@@ -11,7 +11,7 @@ import {
   buildPdfFixture,
   buildPptxFixture,
   buildXlsxFixture,
-} from "./fixtures.test-helper.ts";
+} from "../../test-helpers/binary-fixtures.ts";
 import { BinaryParseError, detectBinaryFormat, parseBinaryFile } from "./index.ts";
 
 describe("binary parsers: detection", () => {

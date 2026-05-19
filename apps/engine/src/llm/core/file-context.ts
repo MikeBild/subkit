@@ -760,6 +760,13 @@ async function assembleBinaryTextExtractBlock(
   };
 }
 
+/** Flatten the parser's structured output into a single text body the
+ *  LLM context window can consume. The xlsx branch JSON-stringifies all
+ *  sheets in full — bounded by `XLSX_ROW_CAP_PER_SHEET = 200` inside
+ *  the parser, NOT by anything here. The pptx branch is bounded by
+ *  `PPTX_SLIDE_CAP = 2000`. The per-turn `TEXT_EXTRACT_PER_TURN_CAP_BYTES`
+ *  further upstream is the only guard against an oversized join — keep
+ *  the parser-level caps in sync if you raise the per-turn budget. */
 function renderBinaryAsText(parsed: Awaited<ReturnType<typeof parseBinaryFile>>): string {
   switch (parsed.format) {
     case "pdf":

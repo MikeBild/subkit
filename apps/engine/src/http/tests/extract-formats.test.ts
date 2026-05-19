@@ -12,7 +12,7 @@ import {
   buildPdfFixture,
   buildPptxFixture,
   buildXlsxFixture,
-} from "../../docs-ingestion/parsers/fixtures.test-helper.ts";
+} from "../../test-helpers/binary-fixtures.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -181,5 +181,38 @@ describe("/v1/extract file-format matrix", () => {
     expect(body.code).toBe("unsupported_file_format");
     expect(body.details?.supported).toContain("pdf");
     expect(body.details?.supported).toContain("docx");
+  });
+
+  // Lock middleware order: the route is registered as
+  //   requirePermission("workflow:read") → extractBodyCap() → handler
+  // (see `extract.ts`). A future refactor could accidentally reorder
+  // these and let an unauthenticated request reach the parser. The two
+  // 401 tests below cover the binary-MIME surface so a regression is
+  // caught at the test layer instead of in production logs.
+  test("PDF body without Authorization → 401", async () => {
+    const pdf = buildPdfFixture("hidden");
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/pdf",
+        "x-filename": "leak.pdf",
+      },
+      body: new Uint8Array(pdf),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test("PDF body with invalid bearer → 401", async () => {
+    const pdf = buildPdfFixture("hidden");
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer not-a-real-token",
+        "content-type": "application/pdf",
+        "x-filename": "leak.pdf",
+      },
+      body: new Uint8Array(pdf),
+    });
+    expect(res.status).toBe(401);
   });
 });

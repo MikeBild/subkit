@@ -44,7 +44,7 @@ import {
   UnsupportedFileUploadError,
 } from "../../../docs-ingestion/index.ts";
 import { runExtractFlow } from "../../../llm/index.ts";
-import { PayloadTooLargeError, UnsupportedMediaTypeError } from "../../errors.ts";
+import { BadRequestError, PayloadTooLargeError, UnsupportedMediaTypeError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -66,6 +66,77 @@ export const SUPPORTED_FILE_FORMATS = [
   "pptx",
 ] as const;
 export type SupportedFileFormat = (typeof SUPPORTED_FILE_FORMATS)[number];
+
+/** Set of binary formats that participate in the data-export audit
+ *  trail. Text formats (json/csv/yaml/xml/plaintext) skip the audit
+ *  to keep the row volume reasonable — they're shape-only and don't
+ *  carry the same governance weight as PDFs / Office docs. */
+const AUDITED_BINARY_FORMATS: ReadonlySet<SupportedFileFormat> = new Set([
+  "pdf",
+  "docx",
+  "xlsx",
+  "xls",
+  "pptx",
+]);
+
+/** Validation for the `x-filename` request header used by `POST /v1/extract`.
+ *  The header is operator-supplied (the `sk` CLI sends it, custom clients
+ *  may too), so we treat it as untrusted input: bounded length, no path
+ *  separators, no control chars. The parsed value is logged inside the
+ *  parser failure audit row, so an unbounded or shell-meta value would
+ *  reach SIEM consumers. Zod-at-the-boundary keeps that surface clean. */
+const FILENAME_HEADER_SCHEMA = z
+  .string()
+  .max(255)
+  .refine((s) => !s.includes("/") && !s.includes("\\") && !s.includes("\0"), {
+    message: "filename header must not contain path separators or NULs",
+  });
+
+/** Discriminated union for the `POST /v1/extract` response body. The
+ *  route is hand-registered via `app.post(...)` (not `app.openapi(...)`)
+ *  because the *request* is polymorphic (content-type dispatch), but
+ *  the *response* is well-typed per format. We parse the body through
+ *  this schema before `c.json()` so future contributors can't introduce
+ *  a silent shape regression. */
+const ExtractFileResponse = z.discriminatedUnion("format", [
+  z.object({ format: z.literal("json"), bytes: z.number(), data: z.unknown() }),
+  z.object({ format: z.literal("yaml"), bytes: z.number(), data: z.unknown() }),
+  z.object({
+    format: z.literal("csv"),
+    bytes: z.number(),
+    data: z.array(z.record(z.string(), z.string())),
+  }),
+  z.object({ format: z.literal("xml"), bytes: z.number(), data: z.unknown() }),
+  z.object({ format: z.literal("plaintext"), bytes: z.number(), data: z.string() }),
+  z.object({
+    format: z.literal("pdf"),
+    bytes: z.number(),
+    pages: z.number(),
+    data: z.object({ text: z.string() }),
+  }),
+  z.object({
+    format: z.literal("docx"),
+    bytes: z.number(),
+    data: z.object({ markdown: z.string() }),
+  }),
+  z.object({
+    format: z.literal("xlsx"),
+    bytes: z.number(),
+    data: z.object({ sheets: z.record(z.string(), z.array(z.record(z.string(), z.unknown()))) }),
+  }),
+  z.object({
+    format: z.literal("xls"),
+    bytes: z.number(),
+    data: z.object({ sheets: z.record(z.string(), z.array(z.record(z.string(), z.unknown()))) }),
+  }),
+  z.object({
+    format: z.literal("pptx"),
+    bytes: z.number(),
+    data: z.object({
+      slides: z.array(z.object({ index: z.number(), text: z.string() })),
+    }),
+  }),
+]);
 
 const ExtractBody = z
   .object({
@@ -286,9 +357,20 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
   // validator would second-guess the content-type routing.
   // -----------------------------------------------------------------
   app.post("/v1/extract", async (c) => {
-    requireAuth(c);
+    const principal = requireAuth(c);
+    const db = c.get("db");
     const contentType = (c.req.header("content-type") ?? "").toLowerCase();
-    const filenameHeader = c.req.header("x-filename") ?? undefined;
+    const rawFilenameHeader = c.req.header("x-filename");
+    let filenameHeader: string | undefined;
+    if (rawFilenameHeader !== undefined) {
+      const parsed = FILENAME_HEADER_SCHEMA.safeParse(rawFilenameHeader);
+      if (!parsed.success) {
+        throw new BadRequestError("invalid_x_filename_header", {
+          detail: parsed.error.issues[0]?.message ?? "x-filename header is invalid",
+        });
+      }
+      filenameHeader = parsed.data;
+    }
 
     const raw = await c.req.raw.arrayBuffer();
     const bytes = raw.byteLength;
@@ -300,14 +382,12 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
     const isPlainText =
       contentType.startsWith("text/plain") || filenameHeader?.toLowerCase().endsWith(".txt");
     if (isPlainText) {
-      return c.json(
-        {
-          format: "plaintext" as SupportedFileFormat,
-          bytes,
-          data: buffer.toString("utf8"),
-        },
-        200,
-      );
+      const payload = ExtractFileResponse.parse({
+        format: "plaintext",
+        bytes,
+        data: buffer.toString("utf8"),
+      });
+      return c.json(payload, 200);
     }
 
     // Resolve format through the same detector the docs ingester uses,
@@ -408,9 +488,33 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    return c.json(
+    const payload = ExtractFileResponse.parse(
       pages !== undefined ? { format, bytes, pages, data } : { format, bytes, data },
-      200,
     );
+    // Audit successful binary parses as data exports. Text formats are
+    // omitted to keep the audit-log row volume reasonable — a JSON
+    // upload is shape-only and doesn't carry the same governance
+    // weight as a PDF / Office doc whose contents land in tenant logs.
+    if (AUDITED_BINARY_FORMATS.has(format)) {
+      audit(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: principal.kind,
+          actor_id: principal.kind === "user" ? principal.id : null,
+          action: AuditAction.DATA_EXPORTED,
+          resource_type: "extract",
+          resource_id: null,
+          result: "success",
+          metadata: {
+            format,
+            bytes,
+            ...(pages !== undefined ? { pages } : {}),
+            ...(filenameHeader ? { filename: filenameHeader } : {}),
+          },
+        },
+        db,
+      );
+    }
+    return c.json(payload, 200);
   });
 }
