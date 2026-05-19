@@ -34,6 +34,8 @@ import {
   recordEngineUpdateRolledBack,
   recordKnowledgeSourceCreated,
   recordKnowledgeSourceRefreshed,
+  recordOAuthClientRegistered,
+  recordOAuthClientRegistrationFailed,
   recordToolPolicyConfirmationRequired,
   recordWorkflowCommitted,
   recordWorkflowCreated,
@@ -511,6 +513,63 @@ describe("recorder catalog — engine_update", () => {
   });
 });
 
+describe("recorder catalog — oauth_client (RFC 7591)", () => {
+  // The dynamic-registration audit row is the only paper trail for a
+  // client_id+client_secret that the engine minted on behalf of an
+  // operator. The metadata shape is cardinality-bound:
+  //   - `issuer_url_host` is host-only (never full URL, never path)
+  //   - `registration_endpoint_host` is host-only or null when the
+  //     failure happened before discovery resolved an endpoint
+  //   - `error_code` is REQUIRED on failure rows so a forensic SELECT
+  //     can pivot on it without re-parsing free-form reasons.
+
+  test("recordOAuthClientRegistered persists host-only metadata under the tenant", async () => {
+    const entry = await recordOAuthClientRegistered({
+      tenant_id: tenantId,
+      actor_id: null,
+      executor: testDb.db,
+      connector_id: "33333333-3333-3333-3333-333333333333",
+      issuer_url_host: "auth.example.com",
+      registration_endpoint_host: "auth.example.com",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.action).toBe(AuditAction.OAUTH_CLIENT_REGISTERED);
+    expect(row?.result).toBe("success");
+    expect(row?.tenant_id).toBe(tenantId);
+    expect(row?.resource_type).toBe("connector");
+    expect(row?.resource_id).toBe("33333333-3333-3333-3333-333333333333");
+    const meta = row?.metadata as Record<string, unknown>;
+    expect(meta.issuer_url_host).toBe("auth.example.com");
+    expect(meta.registration_endpoint_host).toBe("auth.example.com");
+    // No path / scheme / query smuggled in. Anything that smells like
+    // a full URL leaked through the validator and we want to know.
+    expect(String(meta.issuer_url_host)).not.toContain("/");
+    expect(String(meta.issuer_url_host)).not.toContain("://");
+  });
+
+  test("recordOAuthClientRegistrationFailed carries error_code and tolerates a null endpoint", async () => {
+    const entry = await recordOAuthClientRegistrationFailed({
+      tenant_id: tenantId,
+      actor_id: null,
+      executor: testDb.db,
+      connector_id: "44444444-4444-4444-4444-444444444444",
+      issuer_url_host: "auth.example.com",
+      registration_endpoint_host: null,
+      error_code: "registration_http_401",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.action).toBe(AuditAction.OAUTH_CLIENT_REGISTRATION_FAILED);
+    expect(row?.result).toBe("error");
+    expect(row?.resource_type).toBe("connector");
+    const meta = row?.metadata as Record<string, unknown>;
+    expect(meta.error_code).toBe("registration_http_401");
+    expect(meta.issuer_url_host).toBe("auth.example.com");
+    // Null endpoint means discovery never resolved one — the row must
+    // still land, with the field explicitly null (not absent / empty).
+    expect(meta.registration_endpoint_host).toBeNull();
+  });
+});
+
 describe("recorder catalog — coverage matrix", () => {
   test("every recorder write lands a row with non-null reason and the canonical action", async () => {
     // Aggregate sanity: enumerate every action this PR's recorders
@@ -553,13 +612,27 @@ describe("recorder catalog — coverage matrix", () => {
       AuditAction.ENGINE_UPDATE_COMPLETED,
       AuditAction.ENGINE_UPDATE_FAILED,
       AuditAction.ENGINE_UPDATE_ROLLED_BACK,
+      // OAuth client registration (RFC 7591) recorders deliberately
+      // emit rows with `reason: null` — the structured `error_code`
+      // field in metadata is the canonical pivot for forensic SELECTs.
+      // The coverage matrix below requires non-null reasons, so these
+      // actions are intentionally absent from this set and are
+      // exercised by their own describe block above.
     ]);
     const seen = new Set(list.map((r) => r.action));
     for (const expected of expectedActions) {
       expect(seen.has(expected)).toBe(true);
     }
     // Every row must carry a non-null reason — that is the contract.
-    const blankReason = list.filter((r) => r.reason === null || r.reason === "");
+    // RFC 7591 oauth_client.* rows are intentional exceptions: they
+    // pivot on the structured `error_code` field in metadata rather
+    // than a free-form reason, so they are filtered out here.
+    const blankReason = list.filter(
+      (r) =>
+        (r.reason === null || r.reason === "") &&
+        r.action !== AuditAction.OAUTH_CLIENT_REGISTERED &&
+        r.action !== AuditAction.OAUTH_CLIENT_REGISTRATION_FAILED,
+    );
     expect(blankReason.length).toBe(0);
   });
 });

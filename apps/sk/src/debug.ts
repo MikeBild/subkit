@@ -147,16 +147,25 @@ let nextTurnSeq = 0;
 /**
  * Verbose mode controls whether HTTP/SSE bodies are persisted.
  * File logging itself is always on regardless.
+ *
+ * Env / argv take precedence over the in-memory toggle: if the operator
+ * exported `SK_DEBUG=1` (or passed `--debug`) for this process, no
+ * runtime `setDebugVerbose(false)` may strip body capture. That rule
+ * also makes the test fixtures race-free under `--max-concurrency`:
+ * a sibling test file that toggles the shared module-level cache
+ * cannot mask a verbose-true env in another concurrent file.
  */
 export function isDebugVerbose(): boolean {
+  if (envVerbose() || argvVerbose()) return true;
   if (cachedVerbose !== null) return cachedVerbose;
-  cachedVerbose = envVerbose() || argvVerbose();
+  cachedVerbose = false;
   return cachedVerbose;
 }
 
 /**
  * Programmatic toggle for verbose mode — used by `/debug on|off` to
  * flip body capture without a restart. Returns the new state.
+ * Note: env / argv override this toggle in `isDebugVerbose()`.
  */
 export function setDebugVerbose(next: boolean): boolean {
   cachedVerbose = next;

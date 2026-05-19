@@ -16,17 +16,28 @@ let _db: NodePgDatabase<typeof schema> | null = null;
  * Lazy pool factory — creates a connection pool the first time the db is
  * touched. Tests may call `createDbFromUrl()` directly to get an isolated
  * instance against a disposable database.
+ *
+ * URL resolution order:
+ *   1. `process.env.DATABASE_URL` if set — wins over the loaded config.
+ *      Tests set this explicitly (e.g. `self-update.test.ts` boots its
+ *      own per-suite Postgres and pins env DB_URL to it); a sibling
+ *      test that called `loadConfig({env:{DATABASE_URL:"placeholder/x"}})`
+ *      to satisfy `getConfig().storage` would otherwise force this pool
+ *      to dial `placeholder/x` and fail DNS under concurrency.
+ *   2. `getConfig().database.url` — the production path. The engine
+ *      boots with `loadConfig()` reading `process.env.DATABASE_URL`,
+ *      so in production both paths agree.
+ *   3. Empty → throw a helpful error.
  */
 export function getPool(): pg.Pool {
   if (_pool) return _pool;
-  // Prefer the runtime config; fall back to process.env.DATABASE_URL
-  // when the loader isn't initialised (journey tests + standalone
-  // db scripts boot the app without going through loadConfig).
-  let url = "";
-  try {
-    url = getConfig().database.url;
-  } catch {
-    url = process.env.DATABASE_URL ?? "";
+  let url = process.env.DATABASE_URL ?? "";
+  if (!url) {
+    try {
+      url = getConfig().database.url;
+    } catch {
+      url = "";
+    }
   }
   if (!url) {
     throw new Error(

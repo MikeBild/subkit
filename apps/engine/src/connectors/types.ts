@@ -114,7 +114,7 @@ export const OAuth2AuthConfigSchema = z
     issuer_url: z.string().url(),
     authorization_endpoint: z.string().url().optional(),
     token_endpoint: z.string().url().optional(),
-    client_id: z.string(),
+    client_id: z.string().nullable(),
     client_secret: z.string().optional(),
     grant_type: z.enum([
       "authorization_code",

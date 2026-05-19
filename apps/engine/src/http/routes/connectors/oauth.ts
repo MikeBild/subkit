@@ -28,15 +28,22 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import {
+  recordOAuthClientRegistered,
+  recordOAuthClientRegistrationFailed,
+} from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
+import { getConnectorTemplateSnapshot } from "../../../connectors/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
 import {
   buildOAuthRedirectUri,
   completeAuthorizationCode,
+  DynamicRegistrationError,
+  dynamicallyRegisterClient,
   startAuthorizationCode,
 } from "../../../credentials/index.ts";
 import { writeEvent } from "../../../db/events.ts";
-import { connectorOauthStates } from "../../../db/schema/index.ts";
+import { connectorOauthStates, connectors } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { ConnectorOauthCallbackPayloadSchema } from "../../../pubsub/index.ts";
 import { now } from "../../../utils/clock.ts";
@@ -80,15 +87,103 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const connector = await connectorSvc.getConnector(principal.tenant_id, id, db);
+    let connector = await connectorSvc.getConnector(principal.tenant_id, id, db);
     if (!connector) throw new NotFoundError("connector");
-    const cfg = await connectorOauthCfg(db, principal.tenant_id, connector);
+
     const redirect_uri = buildOAuthRedirectUri({ req: c.req.raw });
     if (!redirect_uri) {
       throw new BadRequestError(
         "engine has no resolvable public origin — set server.public_base_url or SUBKIT_PUBLIC_BASE_URL",
       );
     }
+
+    const snapshot = getConnectorTemplateSnapshot(connector);
+    const templateOauth = snapshot?.oauth ?? null;
+    const oauthBlock = (connector.config?.oauth ?? {}) as Record<string, unknown>;
+    const needsDynamicReg =
+      templateOauth?.dynamic_registration === true &&
+      (oauthBlock.client_id === null || oauthBlock.client_id === undefined);
+
+    if (needsDynamicReg) {
+      const connectorForReg = connector;
+      const issuerUrl =
+        (oauthBlock.issuer_url as string | undefined) ?? templateOauth?.issuer_url ?? "";
+      const issuerHost = issuerUrl ? new URL(issuerUrl).host : "";
+      let registrationEndpointHost: string | null = null;
+      try {
+        const result = await dynamicallyRegisterClient({
+          issuerUrl,
+          clientMetadata: { redirect_uris: [redirect_uri] },
+          allowInsecureRequests: new URL(issuerUrl).protocol === "http:",
+        });
+        const resolvedRegistrationHost = new URL(result.registrationEndpoint).host;
+        registrationEndpointHost = resolvedRegistrationHost;
+
+        // Single transaction: credential insert + connector config update +
+        // audit row must all land or all roll back. A crash between the
+        // credential write and the connector patch would otherwise leave a
+        // confidential client_secret encrypted-at-rest with no client_id
+        // in config to reference it; between the patch and the audit row,
+        // an unaudited secret persisted under an operator's tenant.
+        const updatedOauthBlock = { ...oauthBlock, client_id: result.clientId };
+        const updatedConfig = { ...connectorForReg.config, oauth: updatedOauthBlock };
+        await db.transaction(async (tx) => {
+          await credsvc.upsertCredential(
+            {
+              tenant_id: principal.tenant_id,
+              connector_id: id,
+              environment: connectorForReg.environment,
+              mode: "oauth2_client",
+              value: {
+                mode: "oauth2_client",
+                client_id: result.clientId,
+                ...(result.clientSecret ? { client_secret: result.clientSecret } : {}),
+              },
+              actor_id: principal.id,
+              source: "http_route",
+            },
+            tx,
+          );
+          await tx
+            .update(connectors)
+            .set({ config: updatedConfig, updated_at: new Date() })
+            .where(and(eq(connectors.tenant_id, principal.tenant_id), eq(connectors.id, id)));
+          await recordOAuthClientRegistered({
+            tenant_id: principal.tenant_id,
+            actor_id: principal.id,
+            connector_id: id,
+            issuer_url_host: issuerHost,
+            registration_endpoint_host: resolvedRegistrationHost,
+            executor: tx,
+          });
+        });
+        connector = { ...connectorForReg, config: updatedConfig };
+
+        logger.info({
+          module: "oauth",
+          action: "oauth.dynamic_registration.completed",
+          msg: "dynamic client registered and credential persisted",
+          tenant_id: principal.tenant_id,
+          connector_id: id,
+          issuer_url_host: issuerHost,
+          registration_endpoint_host: registrationEndpointHost,
+        });
+      } catch (err) {
+        const errorCode = err instanceof DynamicRegistrationError ? err.error_code : "unknown";
+        await recordOAuthClientRegistrationFailed({
+          tenant_id: principal.tenant_id,
+          actor_id: principal.id,
+          connector_id: id,
+          issuer_url_host: issuerHost,
+          registration_endpoint_host: registrationEndpointHost,
+          error_code: errorCode,
+          executor: db,
+        });
+        throw err;
+      }
+    }
+
+    const cfg = await connectorOauthCfg(db, principal.tenant_id, connector);
     const cfgWithRedirect = { ...cfg, redirect_uri };
     const started = await startAuthorizationCode(cfgWithRedirect);
     await db.insert(connectorOauthStates).values({
