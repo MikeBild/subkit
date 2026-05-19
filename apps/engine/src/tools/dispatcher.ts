@@ -21,7 +21,12 @@ import type { ToolContext, ToolResult } from "../conversations/tools/index.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { can } from "../rbac/evaluator.ts";
-import { isConfirmedRequest, policyDecide } from "./policy.ts";
+import {
+  ARGS_CONFIRM_ID_KEY,
+  isConfirmedRequest,
+  policyDecide,
+  SK_CONFIRM_ID_META_KEY,
+} from "./policy.ts";
 import type { ConversationProviderEntry } from "./providers/conversation.ts";
 import type { StaticProviderEntry } from "./providers/static.ts";
 import type { ToolRegistry } from "./registry.ts";
@@ -134,9 +139,9 @@ async function emitApprovalApproved(
  *  the dispatcher then SKIPS writing APPROVAL_APPROVED rather than
  *  producing an orphan row that can't join APPROVAL_REQUESTED. */
 function confirmIdFromInvocation(invocation: ToolInvocation): string | null {
-  const fromMeta = invocation.meta?.sk_confirm_id;
+  const fromMeta = invocation.meta?.[SK_CONFIRM_ID_META_KEY];
   if (typeof fromMeta === "string" && fromMeta.length > 0) return fromMeta;
-  const fromArgs = (invocation.args as { __policy_confirm_id?: unknown }).__policy_confirm_id;
+  const fromArgs = (invocation.args as Record<string, unknown>)[ARGS_CONFIRM_ID_KEY];
   if (typeof fromArgs === "string" && fromArgs.length > 0) return fromArgs;
   return null;
 }

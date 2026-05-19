@@ -106,8 +106,16 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     visibleInMcpModes: null,
     visibleOnChat: false,
     // tenant_read for policy purposes (see header). Handler audits
-    // the state change via CONNECTOR_REAUTH_REQUESTED.
+    // the state change via CONNECTOR_REAUTH_REQUESTED. RBAC is
+    // enforced centrally: connector:oauth on the target connector id.
     category: "tenant_read",
+    rbac: {
+      permission: "connector:oauth",
+      resource: (args) => {
+        const id = (args as { connector_id?: unknown }).connector_id;
+        return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
+      },
+    },
     async invoke(ctx, args) {
       const result = await handleAuthenticate(
         { db: ctx.db, principal: ctx.principal },

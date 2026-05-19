@@ -68,7 +68,16 @@ export function envelopeToToolResult(envelope: ToolEnvelope): ToolResult {
 }
 
 /** Top-level chat invoke — sdk-wrap.ts cuts over to calling this in
- *  place of its inline policy-resolve + execute dance. */
+ *  place of its inline policy-resolve + execute dance.
+ *
+ *  NOT WIRED TO PRODUCTION CHAT YET. The chat loop still owns
+ *  rate-limiting, abort signals, live-log forwarding, and draft-state
+ *  diff emission via `sdk-wrap.ts` — those concerns are loop-scoped,
+ *  not surface-scoped, and are not present in this adapter. Do not
+ *  call from production paths until the cutover lands and the loop
+ *  features are either preserved here or proven unnecessary. Today
+ *  this function is exercised only by unit + cross-surface parity
+ *  tests to prove the wire-in is ready when the cutover happens. */
 export async function invokeForSdk(opts: {
   db: Db;
   principal: ResolvedPrincipal;

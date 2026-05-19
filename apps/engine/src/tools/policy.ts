@@ -24,9 +24,13 @@ export type PolicyDecision =
 /** Confirmation marker the client sets when re-issuing a previously
  *  paused call. Two aliases for symmetry with the legacy sdk-wrap /
  *  policy-gate code: `_meta.sk_confirm` on MCP, `__policy_confirmed`
- *  inside args on chat. */
+ *  inside args on chat. The corresponding ID keys carry the original
+ *  APPROVAL_REQUESTED tool_call_id back so APPROVAL_APPROVED can join
+ *  the lifecycle. */
 const SK_CONFIRM_META_KEY = "sk_confirm";
 const ARGS_CONFIRM_KEY = "__policy_confirmed";
+const SK_CONFIRM_ID_META_KEY = "sk_confirm_id";
+const ARGS_CONFIRM_ID_KEY = "__policy_confirm_id";
 
 function isConfirmed(
   args: Record<string, unknown>,
@@ -111,4 +115,4 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
   };
 }
 
-export { ARGS_CONFIRM_KEY, SK_CONFIRM_META_KEY };
+export { ARGS_CONFIRM_ID_KEY, ARGS_CONFIRM_KEY, SK_CONFIRM_ID_META_KEY, SK_CONFIRM_META_KEY };

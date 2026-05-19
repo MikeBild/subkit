@@ -21,6 +21,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { ToolContext } from "../conversations/tools/index.ts";
 import type { Db } from "../db/client.ts";
 import { EngineClient } from "../engine-client/index.ts";
+import { logger as mcpStubLogger } from "../logging/logger.ts";
 import { dispatchTool } from "../tools/dispatcher.ts";
 import { getUnifiedRegistry } from "../tools/index.ts";
 import type { ToolDescriptor, ToolEnvelope, ToolInvocation } from "../tools/types.ts";
@@ -161,10 +162,20 @@ export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }):
   // conversation_id MUST be a valid UUID — several conversation tools
   // do FK joins against conversations(id) (e.g. inspect_authoring_context,
   // load_skill, save_connector_draft). The legacy `mcp-<uuid>` string
-  // broke those joins silently. We mint a real UUID and log it with
-  // the `mcp_stub` source so analytics can join from audit metadata
-  // back to this synthetic session if needed.
+  // broke those joins silently. Mint a real UUID and emit a structured
+  // log line tagged `mcp_stub_ctx_built` so analytics can join from
+  // audit metadata (which records conversation_id) back to the
+  // synthetic session this stub represents.
   const stubConversationId = crypto.randomUUID();
+  mcpStubLogger.info({
+    module: "mcp",
+    action: "mcp.stub_ctx.built",
+    msg: "synthetic ToolContext minted for MCP-only dispatch",
+    source: "mcp_stub",
+    conversation_id: stubConversationId,
+    tenant_id: opts.principal.tenant_id,
+    principal_id: opts.principal.id,
+  });
   return {
     db: opts.db,
     tenant_id: opts.principal.tenant_id,

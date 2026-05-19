@@ -175,4 +175,37 @@ describe("tools/policy.policyDecide (active parity)", () => {
       }
     }
   });
+
+  // Regression unit test for the legacy MCP `tenant_read` shortcut
+  // bug: the old gateTenantToolCall in mcp/capabilities/policy-gate.ts
+  // short-circuited every `tenant_read` past `computeModeFromInput`,
+  // so probe_connector POST against prod silently executed without
+  // confirmation on MCP while chat correctly gated. The unified
+  // policyDecide() removes the shortcut. probe-connector-prod-confirm
+  // covers this end-to-end via the live MCP transport; this unit test
+  // pins the same regression at the policy-decision layer so a future
+  // resolveToolMode refactor can't regress without a unit signal.
+  test("regression — probe_connector POST against prod gates on BOTH surfaces", () => {
+    const args = {
+      connector_slug: "demo",
+      method: "POST" as const,
+      path: "/orders",
+      environment: "prod" as const,
+      body: { foo: "bar" },
+    };
+    const chat = policyDecide({
+      tool: "probe_connector",
+      category: "tenant_read",
+      surface: "chat",
+      args,
+    });
+    const mcp = policyDecide({
+      tool: "probe_connector",
+      category: "tenant_read",
+      surface: "mcp",
+      args,
+    });
+    expect(chat.kind).toBe("needs_confirm");
+    expect(mcp.kind).toBe("needs_confirm");
+  });
 });

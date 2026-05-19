@@ -152,16 +152,15 @@ export async function handleAuthenticate(
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
-        actor_type: principal.kind === "user" ? "user" : "system",
+        actor_type: principal.kind === "user" ? "user" : "system_account",
         actor_id: principal.id,
         action: AuditAction.CONNECTOR_REAUTH_REQUESTED,
         resource_type: "connector",
         resource_id: args.connector_id,
         result: "success",
         metadata: {
-          via: "mcp",
+          request_source: "mcp",
           scope,
-          state: started.state,
           expires_at: expires.toISOString(),
         },
       },

@@ -125,15 +125,21 @@ describe("tools/cross-surface-parity", () => {
     expect(parsed.error_code).toBe("policy_denied");
   });
 
-  test("tenant isolation — principal of tenant A cannot dispatch against tenant B's resource id", async () => {
-    // Architectural invariant: every audit row and every can() call
-    // carries `principal.tenant_id`. A caller for tenant A passing a
-    // connector_id that belongs to tenant B must NOT receive a
-    // success envelope — RBAC denies on the principal's permission set
-    // (which is empty in this stub) AND any downstream `getConnector`
-    // would scope to tenant A and find nothing. This dispatcher-level
-    // assertion guards against a future provider that forgets to thread
-    // principal.tenant_id into its executor context.
+  test("tenant isolation (dispatcher layer) — RBAC deny carries principal's tenant_id + foreign resource_id", async () => {
+    // Dispatcher-layer tenant-isolation invariant: every audit row and
+    // every can() call carries `principal.tenant_id`. A tenant-A
+    // principal passing a tenant-B connector_id receives policy_denied
+    // (no permission for the stub principal) and the POLICY_DENIED
+    // audit row records principal A's tenant_id with B's resource_id.
+    //
+    // Scope NOTE: This covers the dispatcher layer only. Executor-level
+    // tenant scoping (the WHERE clause in `getConnector(tenant_id, id)`)
+    // is the second defense; it's covered by
+    // `connectors/service.ts:getConnector` tests and exercised
+    // end-to-end by `mcp/tests/test-connector-dedupe.test.ts:75-90`
+    // (unknown connector_id → connector_not_found). A true multi-tenant
+    // integration test requires multi-tenant scaffolding in
+    // `startMcpTestSuite`; deferred until that lands.
     const principalA = makeTestPrincipal({
       tenant_id: "00000000-0000-0000-0000-aaaaaaaaaaaa",
     });
@@ -162,5 +168,72 @@ describe("tools/cross-surface-parity", () => {
     expect(denied.length).toBe(1);
     expect(denied[0]?.tenant_id).toBe(principalA.tenant_id);
     expect(denied[0]?.resource_id).toBe(foreignConnectorId);
+  });
+
+  test("tenant isolation (executor layer) — principal.tenant_id (not args) is threaded into the executor context", async () => {
+    // Architectural guard: the dispatcher must build the executor ctx
+    // from `principal.tenant_id`, NOT from args. A future provider
+    // that derives ctx.tenant_id from args (e.g., trusts a client-
+    // supplied tenant_id parameter) would break tenant isolation
+    // at the executor layer — `getConnector(ctx.tenant_id, args.id)`
+    // would query against the caller-controlled tenant_id.
+    const principalA = makeTestPrincipal({
+      tenant_id: "00000000-0000-0000-0000-cccccccccccc",
+    });
+    const { db } = makeStubDb();
+    let observedTenantId: string | undefined;
+    // Synthesize a tool whose executor captures the ctx it receives.
+    const captureProvider = {
+      name: "TenantCaptureProvider",
+      list: () => [
+        {
+          name: "_capture_ctx",
+          description: "captures ctx for test",
+          category: "tenant_read" as const,
+          inputSchema: { type: "object" as const },
+        },
+      ],
+      resolve: (n: string) =>
+        n === "_capture_ctx"
+          ? {
+              descriptor: {
+                name: "_capture_ctx",
+                description: "captures ctx for test",
+                category: "tenant_read" as const,
+                inputSchema: { type: "object" as const },
+              },
+              executor: {
+                kind: "conversation" as const,
+                tool: undefined as never,
+                execute: async (ctx: { tenant_id: string }) => {
+                  observedTenantId = ctx.tenant_id;
+                  return { ok: true as const, data: {} };
+                },
+              },
+            }
+          : undefined,
+    };
+    // Build a one-off registry with our capture provider.
+    const { buildRegistry } = await import("../registry.ts");
+    const { dispatchTool } = await import("../dispatcher.ts");
+    const { buildMcpStubCtx } = await import("../../mcp/adapter.ts");
+    const registry = buildRegistry([captureProvider]);
+    const envelope = await dispatchTool(
+      {
+        registry,
+        db,
+        principal: principalA,
+        buildMcpStubCtx: () => buildMcpStubCtx({ db, principal: principalA }),
+      },
+      {
+        surface: "mcp",
+        name: "_capture_ctx",
+        // Caller-controlled tenant_id-shaped fields are IGNORED by the
+        // dispatcher's ctx construction — only principal.tenant_id wins.
+        args: { tenant_id: "00000000-0000-0000-0000-ddddddddDEAD" },
+      },
+    );
+    expect(envelope.status).toBe("ok");
+    expect(observedTenantId).toBe(principalA.tenant_id);
   });
 });

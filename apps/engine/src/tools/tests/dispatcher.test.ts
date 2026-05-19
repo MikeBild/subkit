@@ -1,10 +1,12 @@
 // Dispatcher pipeline tests.
 //
-// The dispatcher orchestrates: resolve → visibility → policy → execute
-// → normalize. RBAC is currently delegated to individual tool handlers
-// (the descriptor-level {permission, resource(args)} declaration is a
-// future enhancement). Tests below exercise the orchestration; per-tool
-// RBAC tests live next to each tool.
+// The dispatcher orchestrates: resolve → visibility → rbac → policy →
+// audit → execute → normalize → log. Descriptor-level RBAC runs
+// BEFORE the policy gate so an unauthorized caller never produces an
+// APPROVAL_REQUESTED audit row; the "RBAC denial path" describe-block
+// below pins this ordering. Per-tool RBAC declarations live on each
+// provider's descriptor (see providers/conversation.ts:RBAC_OVERRIDES
+// and providers/static.ts entries).
 
 import { describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
