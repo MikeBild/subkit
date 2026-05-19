@@ -94,22 +94,31 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
     },
   },
+  // import_connector_from_spec: no resource — the tool creates a NEW
+  // connector (no pre-existing id to scope to). Tenant-scoped
+  // permission check is the authorization boundary.
   import_connector_from_spec: {
     permission: "connector:write",
   },
+  // save_connector_draft: no resource — the tool operates on the
+  // conversation's draft via `ctx.connector_id`, which the dispatcher
+  // doesn't see (it lives in ToolContext, not args). The conversation
+  // tool's own execute() enforces tenant isolation via `ctx.tenant_id`;
+  // declaring a resource extractor that always returns `null` would
+  // be misleading. Tenant-scoped permission check is the gate.
   save_connector_draft: {
     permission: "connector:write",
-    resource: (args) => {
-      const id = (args as { connector_id?: unknown }).connector_id;
-      return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
-    },
   },
+  // authenticate_oauth: connector_id is OPTIONAL — when absent, the
+  // tool falls back to `ctx.connector_id`. We declare no resource
+  // here because the dispatcher cannot inspect ctx; a resource-scoped
+  // grant for connector X would NOT match when the args use the ctx
+  // fallback, leading to silently inconsistent authorization
+  // (resource-scoped grants work for explicit `connector_id` args
+  // but not for the ctx-fallback path). Tenant-scoped permission
+  // check applies uniformly.
   authenticate_oauth: {
     permission: "connector:oauth",
-    resource: (args) => {
-      const id = (args as { connector_id?: unknown }).connector_id;
-      return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
-    },
   },
   edit_role: {
     permission: "rbac:write",

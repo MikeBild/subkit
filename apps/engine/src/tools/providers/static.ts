@@ -75,11 +75,14 @@ interface StaticEntry {
   readonly visibleInMcpModes: ReadonlyArray<"product" | "authoring" | "admin"> | null;
   /** Whether this tool surfaces on the chat surface. */
   readonly visibleOnChat: boolean;
-  /** Category drives the policy gate. `authenticate` writes
-   *  `connector_oauth_states` and `self_healing.scan` writes Patch
-   *  Candidates — both are tenant_write; `list_recipes` is a pure
-   *  catalog read. Mislabeling as `tenant_read` would silently bypass
-   *  the unified confirm gate. */
+  /** Category drives the policy gate. See the file header for the
+   *  deliberate `tenant_read` labeling on state-changing entries
+   *  (authenticate, self_healing.scan): those tools have in-handler
+   *  audit + RBAC defenses, and changing the category would demand
+   *  a confirm round-trip MCP callers don't expect today. The field
+   *  exists so any FUTURE static tool with proper write semantics
+   *  can be labeled `tenant_write` and pick up the policy gate
+   *  uniformly. */
   readonly category: ToolCategory;
   /** Optional descriptor-level RBAC declaration. When set, the
    *  dispatcher evaluates `can()` before invoking the executor. */

@@ -413,3 +413,144 @@ describe("tools/dispatcher — RBAC denial path", () => {
     expect(captured.filter((r) => r.action === "policy.denied").length).toBe(1);
   });
 });
+
+describe("tools/dispatcher — APPROVAL_APPROVED orphan-row prevention", () => {
+  test("sk_confirm:true WITHOUT sk_confirm_id → ok + NO APPROVAL_APPROVED row", async () => {
+    // Locks the W3 fix from the round-2 review: a legacy MCP client
+    // that re-issues a previously paused call WITHOUT carrying the
+    // original tool_call_id back must not produce an orphan
+    // APPROVAL_APPROVED row that no APPROVAL_REQUESTED could ever
+    // join. The dispatcher proceeds to execute (the client did
+    // ack the confirm via sk_confirm:true) but skips the audit
+    // emit and logs a structured warning.
+    const captured: Array<{ action?: string }> = [];
+    // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape stub
+    const emptySelectChain: any = {
+      from: () => emptySelectChain,
+      where: () => emptySelectChain,
+      leftJoin: () => emptySelectChain,
+      innerJoin: () => emptySelectChain,
+      limit: () => Promise.resolve([]),
+      orderBy: () => Promise.resolve([]),
+    };
+    // biome-ignore lint/suspicious/noExplicitAny: drizzle Db stub
+    const captureDb: any = {
+      transaction: async (fn: any) => fn(captureDb),
+      select: () => emptySelectChain,
+      insert: () => ({
+        values: (row: any) => {
+          captured.push({ action: row?.action });
+          return { onConflictDoNothing: async () => undefined };
+        },
+      }),
+    };
+
+    const watched: ToolDescriptor = {
+      name: "_test_confirm_no_id",
+      description: "tenant_write, no rbac",
+      category: "tenant_write",
+      inputSchema: { type: "object" },
+    };
+    const provider: ToolProvider = {
+      name: "ConfirmNoIdProvider",
+      list: () => [watched],
+      resolve: (n) =>
+        n === "_test_confirm_no_id"
+          ? {
+              descriptor: watched,
+              executor: {
+                kind: "conversation",
+                tool: undefined as never,
+                execute: async () => ({ ok: true, data: { ran: true } }),
+              },
+            }
+          : undefined,
+    };
+    const registry = buildRegistry([provider]);
+    const envelope = await dispatchTool(
+      { registry, db: captureDb, principal: PRINCIPAL, conversationCtx: {} as never },
+      {
+        surface: "mcp",
+        name: "_test_confirm_no_id",
+        args: {},
+        // sk_confirm marker present, sk_confirm_id deliberately absent
+        meta: { sk_confirm: true },
+      },
+    );
+
+    // Execute still runs (the client did ack the confirm); envelope
+    // is ok.
+    expect(envelope.status).toBe("ok");
+    if (envelope.status === "ok") {
+      expect(envelope.data).toEqual({ ran: true });
+    }
+    // Critical: NO APPROVAL_APPROVED row written — no orphan that
+    // can't join APPROVAL_REQUESTED via tool_call_id.
+    expect(captured.filter((r) => r.action === "approval.approved").length).toBe(0);
+  });
+
+  test("sk_confirm:true WITH sk_confirm_id → ok + exactly one APPROVAL_APPROVED row using that id", async () => {
+    const captured: Array<{ action?: string; resource_id?: string }> = [];
+    // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape stub
+    const emptySelectChain: any = {
+      from: () => emptySelectChain,
+      where: () => emptySelectChain,
+      leftJoin: () => emptySelectChain,
+      innerJoin: () => emptySelectChain,
+      limit: () => Promise.resolve([]),
+      orderBy: () => Promise.resolve([]),
+    };
+    // biome-ignore lint/suspicious/noExplicitAny: drizzle Db stub
+    const captureDb: any = {
+      transaction: async (fn: any) => fn(captureDb),
+      select: () => emptySelectChain,
+      insert: () => ({
+        values: (row: any) => {
+          captured.push({ action: row?.action, resource_id: row?.resource_id });
+          return { onConflictDoNothing: async () => undefined };
+        },
+      }),
+    };
+
+    const watched: ToolDescriptor = {
+      name: "_test_confirm_with_id",
+      description: "tenant_write, no rbac",
+      category: "tenant_write",
+      inputSchema: { type: "object" },
+    };
+    const provider: ToolProvider = {
+      name: "ConfirmWithIdProvider",
+      list: () => [watched],
+      resolve: (n) =>
+        n === "_test_confirm_with_id"
+          ? {
+              descriptor: watched,
+              executor: {
+                kind: "conversation",
+                tool: undefined as never,
+                execute: async () => ({ ok: true, data: {} }),
+              },
+            }
+          : undefined,
+    };
+    const registry = buildRegistry([provider]);
+    const carriedId = "11111111-2222-3333-4444-555555555555";
+    const envelope = await dispatchTool(
+      { registry, db: captureDb, principal: PRINCIPAL, conversationCtx: {} as never },
+      {
+        surface: "mcp",
+        name: "_test_confirm_with_id",
+        args: {},
+        meta: { sk_confirm: true, sk_confirm_id: carriedId },
+      },
+    );
+
+    expect(envelope.status).toBe("ok");
+    const approved = captured.filter((r) => r.action === "approval.approved");
+    expect(approved.length).toBe(1);
+    // The audit row's resource_id IS the carried tool_call_id, so a
+    // compliance query joining APPROVAL_REQUESTED ↔ APPROVAL_APPROVED
+    // on resource_id closes the lifecycle.
+    expect(approved[0]?.resource_id).toBe(carriedId);
+  });
+});

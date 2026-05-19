@@ -79,7 +79,11 @@ async function emitApprovalRequested(
   await auditAwait(
     {
       tenant_id: deps.principal.tenant_id,
-      actor_type: "system_account",
+      // Branch on principal.kind so a user-triggered confirm produces
+      // actor_type="user" — matches APPROVAL_APPROVED + POLICY_DENIED
+      // below and lets compliance joins on actor_type stay consistent
+      // across the full APPROVAL_REQUESTED → APPROVAL_APPROVED lifecycle.
+      actor_type: deps.principal.kind === "user" ? "user" : "system_account",
       actor_id: deps.principal.id,
       action: AuditAction.APPROVAL_REQUESTED,
       resource_type: surface === "mcp" ? "mcp_tool_call" : "conversation_tool_call",
