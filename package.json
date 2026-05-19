@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "4.12.5",
+  "version": "5.0.0",
   "private": true,
   "type": "module",
   "workspaces": [
