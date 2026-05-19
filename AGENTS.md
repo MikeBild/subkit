@@ -164,6 +164,7 @@ Subsystem map inside `apps/engine/src/` (41 directories + 5 loose root files):
 | Prompt assembly, token budgets, repairs | `llm/` | `docs/04-authoring.md` |
 | Structured logger + context | `logging/` | `docs/08-operations.md` |
 | MCP server (streamable HTTP + stdio) | `mcp/` | `docs/03-input-surfaces.md` |
+| Unified tool palette + dispatcher (registry, providers, policy, adapters) | `tools/` | `docs/10-tool-palette.md` |
 | Rule-based fan-out (Slack, webhook) | `notifications/` | `docs/03-input-surfaces.md` |
 | Prometheus metrics + tracing | `observability/` | `docs/08-operations.md` |
 | First-run bootstrap + demo seed | `onboarding/` | `docs/08-operations.md` |
