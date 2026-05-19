@@ -1,0 +1,97 @@
+// Registry contract tests.
+//
+// Active assertions land in commit 2 when StaticToolProvider +
+// ConversationToolProvider become real. The remaining .todo entries
+// fill in as the dispatcher (commit 4) and adapters (commit 5) come
+// online — registry tests cover catalog shape, not execution.
+
+import { describe, expect, test } from "bun:test";
+import { listTools } from "../../conversations/tools/index.ts";
+import { conversationToolProvider, staticToolProvider } from "../index.ts";
+import { buildRegistry, type ToolProvider } from "../registry.ts";
+
+describe("tools/registry — providers (active)", () => {
+  test("StaticToolProvider lists only the truly MCP-unique handlers", () => {
+    const names = staticToolProvider.list({ surface: "mcp", mcpMode: "admin" }).map((d) => d.name);
+    expect(names).toContain("authenticate");
+    expect(names).toContain("list_recipes");
+    expect(names).toContain("self_healing.scan");
+    // The following names exist on the conversation registry — the
+    // conversation version wins, the mcp/tools/* duplicates get
+    // deleted in commit 9.
+    expect(names).not.toContain("test_connector");
+    expect(names).not.toContain("match_connector_template_by_url");
+    expect(names).not.toContain("inspect_recipe");
+    expect(names).not.toContain("import_connector_from_spec");
+  });
+
+  test("StaticToolProvider hides self_healing_scan outside admin mode", () => {
+    const productNames = staticToolProvider
+      .list({ surface: "mcp", mcpMode: "product" })
+      .map((d) => d.name);
+    expect(productNames).not.toContain("self_healing.scan");
+    expect(productNames).toContain("authenticate");
+  });
+
+  test("ConversationToolProvider mirrors listTools() on chat surface", () => {
+    const expected = listTools().map((t) => t.name);
+    const got = conversationToolProvider.list({ surface: "chat" }).map((d) => d.name);
+    // Every chat-visible conversation tool surfaces in the provider.
+    for (const name of expected) {
+      expect(got).toContain(name);
+    }
+  });
+
+  test("ConversationToolProvider exposes draft_write tools on MCP with disabled descriptor", () => {
+    const descriptors = conversationToolProvider.list({
+      surface: "mcp",
+      mcpMode: "authoring",
+    });
+    const saveDraft = descriptors.find((d) => d.name === "save_workflow_draft");
+    expect(saveDraft).toBeDefined();
+    expect(saveDraft?.disabled?.reason).toBe("requires_conversation_surface");
+
+    const dryRun = descriptors.find((d) => d.name === "dry_run_workflow");
+    expect(dryRun).toBeDefined();
+    expect(dryRun?.disabled?.reason).toBe("requires_conversation_surface");
+  });
+
+  test("ConversationToolProvider hides tenant_write tools on MCP read-only mode", () => {
+    const writes = conversationToolProvider
+      .list({ surface: "mcp", mcpMode: "admin", readOnly: true })
+      .filter((d) => d.category === "tenant_write");
+    expect(writes.length).toBe(0);
+  });
+
+  test("buildRegistry throws when two providers register the same name", () => {
+    const dup: ToolProvider = {
+      name: "DupProvider",
+      list: () => [
+        {
+          name: "authenticate",
+          description: "duplicate",
+          category: "tenant_read",
+          inputSchema: { type: "object" },
+        },
+      ],
+      resolve: () => undefined,
+    };
+    expect(() => buildRegistry([staticToolProvider, dup])).toThrow(/registry collision/);
+  });
+
+  test("buildRegistry from real providers resolves a known tool name", () => {
+    const registry = buildRegistry([staticToolProvider, conversationToolProvider]);
+    const auth = registry.get("authenticate", { surface: "mcp", mcpMode: "product" });
+    expect(auth).toBeDefined();
+    expect(auth?.descriptor.name).toBe("authenticate");
+    const probe = registry.get("probe_connector", { surface: "chat" });
+    expect(probe).toBeDefined();
+    expect(probe?.descriptor.name).toBe("probe_connector");
+  });
+});
+
+describe("tools/registry — pending (todo)", () => {
+  test.todo("get(name) returns the same descriptor regardless of which surface asked", () => {});
+  test.todo("list({surface:'mcp', mcpMode:'authoring'}) is a strict superset of product (modulo disabled descriptors)", () => {});
+  test.todo("list({surface:'mcp', mcpMode:'admin'}) is a strict superset of authoring", () => {});
+});

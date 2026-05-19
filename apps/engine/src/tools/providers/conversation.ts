@@ -1,0 +1,158 @@
+// ConversationToolProvider — wraps the existing
+// `apps/engine/src/conversations/tools/index.ts` registry and exposes
+// every tool to both surfaces, with category-based + mode-based
+// visibility filtering.
+//
+// MCP-mode visibility (matches legacy capabilities/tools.ts behavior):
+//   product   — only tools in PRODUCT_MODE_ALLOW_LIST surface (matches
+//               the hand-picked set the legacy push exposed in product
+//               mode). All other conversation tools hidden.
+//   authoring — adds every other tenant_read / tenant_write tool, plus
+//               draft_write tools marked `disabled`.
+//   admin     — same as authoring; the per-tool RBAC and the
+//               read-only flag continue to gate writes.
+//
+// readOnly hides every tenant_write tool regardless of mode.
+//
+// The chat surface ignores mcpMode entirely (it has its own
+// authoring-palette + skill-gate filters in sdk-wrap).
+
+import type {
+  ConversationTool,
+  ToolCategory,
+  ToolContext,
+  ToolResult,
+} from "../../conversations/tools/index.ts";
+import { listTools } from "../../conversations/tools/index.ts";
+import type { ToolListFilter, ToolProvider } from "../registry.ts";
+import type { ToolDescriptor, ToolSurface } from "../types.ts";
+
+export type { ToolDescriptor } from "../types.ts";
+
+export type ConversationToolExecutor = (ctx: ToolContext, args: unknown) => Promise<ToolResult>;
+
+export interface ConversationProviderEntry {
+  readonly kind: "conversation";
+  readonly tool: ConversationTool;
+  readonly execute: ConversationToolExecutor;
+}
+
+/** Conversation tools that the legacy MCP `tools/list` exposed in
+ *  PRODUCT mode (via the manual `tools.push(matchConnectorTemplateByUrlMcpTool)`
+ *  etc.). Anything not in this set is gated behind authoring/admin
+ *  mode. Matches the pre-cutover catalog exactly. */
+const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
+  "match_connector_template_by_url",
+  "import_connector_from_spec",
+  "test_connector",
+  "inspect_recipe",
+  // probe_connector_draft is reachable in product mode too — useful for
+  // headless connector bootstrap; legacy code surfaced it via the
+  // `tools.push(...)` enumeration too.
+  "probe_connector_draft",
+]);
+
+function visibilityFor(
+  category: ToolCategory,
+  surface: ToolSurface,
+): "visible" | "disabled" | "hidden" {
+  if (surface === "chat") return "visible";
+  // MCP: hide draft_write from product mode; expose with disabled
+  // badge from authoring/admin so a real client knows the tool exists
+  // but can't call it from a stateless surface.
+  if (category === "draft_write") return "disabled";
+  return "visible";
+}
+
+function describeDisabled(category: ToolCategory): { reason: string } | undefined {
+  if (category === "draft_write") {
+    return { reason: "requires_conversation_surface" };
+  }
+  return undefined;
+}
+
+/** Per-tool RBAC overrides. Conversation tools are pure (no inline
+ *  `can()` calls); the dispatcher enforces RBAC declared here. Keep
+ *  this table small — most authoring tools defer to the conversation
+ *  loop's harness-level authorization. */
+const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]>>> = {
+  test_connector: {
+    permission: "connector:test",
+    resource: (args) => {
+      const id = (args as { connector_id?: unknown }).connector_id;
+      return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
+    },
+  },
+};
+
+function descriptorFor(t: ConversationTool, surface: ToolSurface): ToolDescriptor | null {
+  const visibility = visibilityFor(t.category, surface);
+  if (visibility === "hidden") return null;
+  const disabled = visibility === "disabled" ? describeDisabled(t.category) : undefined;
+  const rbac = RBAC_OVERRIDES[t.name];
+  return {
+    name: t.name,
+    description: t.description,
+    category: t.category,
+    inputSchema: t.inputSchema,
+    ...(disabled ? { disabled } : {}),
+    ...(t.requires_skill ? { requires_skill: t.requires_skill } : {}),
+    ...(rbac ? { rbac } : {}),
+  };
+}
+
+/** Single chokepoint for "should this tool surface for this filter?".
+ *  Used by both `list()` (catalog) and `resolve()` (dispatch). Both must
+ *  agree — otherwise a write tool hidden from the catalog could still be
+ *  dispatched by a confirmed re-issue (audit-review caught this gap). */
+function isVisibleForFilter(t: ConversationTool, filter: ToolListFilter): boolean {
+  // Skill gate.
+  if (t.requires_skill && filter.loadedSkills) {
+    if (!filter.loadedSkills.has(t.requires_skill)) return false;
+  }
+  if (filter.surface !== "mcp") return true;
+
+  // MCP-mode gating. draft_write is always emitted on MCP (as disabled)
+  // for product/authoring/admin so callers see the "not on this surface"
+  // signal — we filter it through descriptorFor() above, not here.
+  // Apply mode visibility for non-draft_write tools.
+  if (t.category !== "draft_write") {
+    if (filter.mcpMode === "product" && !PRODUCT_MODE_ALLOW_LIST.has(t.name)) {
+      return false;
+    }
+  }
+
+  // readOnly hides every tenant_write regardless of mode.
+  if (filter.readOnly && t.category === "tenant_write") return false;
+
+  return true;
+}
+
+export const conversationToolProvider: ToolProvider = {
+  name: "ConversationToolProvider",
+  list(filter: ToolListFilter): readonly ToolDescriptor[] {
+    const out: ToolDescriptor[] = [];
+    for (const t of listTools()) {
+      if (!isVisibleForFilter(t, filter)) continue;
+      const d = descriptorFor(t, filter.surface);
+      if (d) out.push(d);
+    }
+    return out;
+  },
+  resolve(name, filter) {
+    const tool = listTools().find((t) => t.name === name);
+    if (!tool) return undefined;
+    // Apply the same visibility filter the catalog uses, so a write
+    // tool that doesn't appear in tools/list also can't be dispatched
+    // via a guessed call + sk_confirm round-trip.
+    if (!isVisibleForFilter(tool, filter)) return undefined;
+    const descriptor = descriptorFor(tool, filter.surface);
+    if (!descriptor) return undefined;
+    const entry: ConversationProviderEntry = {
+      kind: "conversation",
+      tool,
+      execute: (ctx, args) => tool.execute(ctx, args),
+    };
+    return { descriptor, executor: entry };
+  },
+};
