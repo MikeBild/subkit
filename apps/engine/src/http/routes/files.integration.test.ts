@@ -288,7 +288,7 @@ describe("files HTTP integration", () => {
     const content = "wrong-sha-content";
     const realSha = sha256Hex(Buffer.from(content));
     // Flip one hex char to make it wrong
-    const wrongSha = realSha[0] === "a" ? "b" + realSha.slice(1) : "a" + realSha.slice(1);
+    const wrongSha = realSha[0] === "a" ? `b${realSha.slice(1)}` : `a${realSha.slice(1)}`;
 
     const bcr = await post("/v1/files/batch-create", srv.apiKey, {
       files: [

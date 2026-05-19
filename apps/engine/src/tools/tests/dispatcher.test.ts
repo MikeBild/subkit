@@ -34,7 +34,7 @@ const PRINCIPAL: ResolvedPrincipal = {
 // helper logs on failure rather than throwing.
 // biome-ignore lint/suspicious/noExplicitAny: stub for tests
 const DB_STUB: any = {
-  transaction: async (fn: any) => fn(DB_STUB),
+  transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
 };
 
@@ -279,7 +279,11 @@ describe("tools/dispatcher — RBAC denial path", () => {
     // satisfy `can()`'s permission catalog walk — returning an empty
     // permissions row makes the check decline cleanly (no permission
     // by that name → no grant → deny).
-    const captured: Array<{ action?: string; resource_type?: string; resource_id?: string }> = [];
+    const captured: Array<{
+      action?: string | undefined;
+      resource_type?: string | undefined;
+      resource_id?: string | undefined;
+    }> = [];
     // biome-ignore lint/suspicious/noExplicitAny: stub for tests
     const emptySelectChain: any = {
       from: () => emptySelectChain,
@@ -291,10 +295,14 @@ describe("tools/dispatcher — RBAC denial path", () => {
     };
     // biome-ignore lint/suspicious/noExplicitAny: stub for tests
     const captureDb: any = {
-      transaction: async (fn: any) => fn(captureDb),
+      transaction: async (fn: (db: unknown) => unknown) => fn(captureDb),
       select: () => emptySelectChain,
       insert: () => ({
-        values: (row: any) => {
+        values: (row: {
+          action?: string | undefined;
+          resource_type?: string | undefined;
+          resource_id?: string | undefined;
+        }) => {
           captured.push({
             action: row?.action,
             resource_type: row?.resource_type,
@@ -358,7 +366,7 @@ describe("tools/dispatcher — RBAC denial path", () => {
     // The reordering of the pipeline puts RBAC before the policy gate.
     // A tenant_write tool with descriptor.rbac denied must not produce
     // an APPROVAL_REQUESTED audit row — only POLICY_DENIED.
-    const captured: Array<{ action?: string }> = [];
+    const captured: Array<{ action?: string | undefined }> = [];
     // biome-ignore lint/suspicious/noExplicitAny: stub for tests
     const emptySelectChain: any = {
       from: () => emptySelectChain,
@@ -370,10 +378,14 @@ describe("tools/dispatcher — RBAC denial path", () => {
     };
     // biome-ignore lint/suspicious/noExplicitAny: stub for tests
     const captureDb: any = {
-      transaction: async (fn: any) => fn(captureDb),
+      transaction: async (fn: (db: unknown) => unknown) => fn(captureDb),
       select: () => emptySelectChain,
       insert: () => ({
-        values: (row: any) => {
+        values: (row: {
+          action?: string | undefined;
+          resource_type?: string | undefined;
+          resource_id?: string | undefined;
+        }) => {
           captured.push({ action: row?.action });
           return { onConflictDoNothing: async () => undefined };
         },
@@ -425,7 +437,7 @@ describe("tools/dispatcher — APPROVAL_APPROVED orphan-row prevention", () => {
     // join. The dispatcher proceeds to execute (the client did
     // ack the confirm via sk_confirm:true) but skips the audit
     // emit and logs a structured warning.
-    const captured: Array<{ action?: string }> = [];
+    const captured: Array<{ action?: string | undefined }> = [];
     // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape stub
     const emptySelectChain: any = {
       from: () => emptySelectChain,
@@ -437,10 +449,14 @@ describe("tools/dispatcher — APPROVAL_APPROVED orphan-row prevention", () => {
     };
     // biome-ignore lint/suspicious/noExplicitAny: drizzle Db stub
     const captureDb: any = {
-      transaction: async (fn: any) => fn(captureDb),
+      transaction: async (fn: (db: unknown) => unknown) => fn(captureDb),
       select: () => emptySelectChain,
       insert: () => ({
-        values: (row: any) => {
+        values: (row: {
+          action?: string | undefined;
+          resource_type?: string | undefined;
+          resource_id?: string | undefined;
+        }) => {
           captured.push({ action: row?.action });
           return { onConflictDoNothing: async () => undefined };
         },
@@ -492,7 +508,10 @@ describe("tools/dispatcher — APPROVAL_APPROVED orphan-row prevention", () => {
   });
 
   test("sk_confirm:true WITH sk_confirm_id → ok + exactly one APPROVAL_APPROVED row using that id", async () => {
-    const captured: Array<{ action?: string; resource_id?: string }> = [];
+    const captured: Array<{
+      action?: string | undefined;
+      resource_id?: string | undefined;
+    }> = [];
     // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape stub
     const emptySelectChain: any = {
       from: () => emptySelectChain,
@@ -504,10 +523,14 @@ describe("tools/dispatcher — APPROVAL_APPROVED orphan-row prevention", () => {
     };
     // biome-ignore lint/suspicious/noExplicitAny: drizzle Db stub
     const captureDb: any = {
-      transaction: async (fn: any) => fn(captureDb),
+      transaction: async (fn: (db: unknown) => unknown) => fn(captureDb),
       select: () => emptySelectChain,
       insert: () => ({
-        values: (row: any) => {
+        values: (row: {
+          action?: string | undefined;
+          resource_type?: string | undefined;
+          resource_id?: string | undefined;
+        }) => {
           captured.push({ action: row?.action, resource_id: row?.resource_id });
           return { onConflictDoNothing: async () => undefined };
         },

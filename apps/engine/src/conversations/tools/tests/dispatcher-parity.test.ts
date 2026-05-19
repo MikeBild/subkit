@@ -31,12 +31,11 @@ const PRINCIPAL: ResolvedPrincipal = {
 
 // biome-ignore lint/suspicious/noExplicitAny: test stub
 const DB_STUB: any = {
-  transaction: async (fn: any) => fn(DB_STUB),
+  transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
 };
 
 function stubCtx(): ToolContext {
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub for envelope-shape tests
   return {
     db: DB_STUB,
     tenant_id: PRINCIPAL.tenant_id,
