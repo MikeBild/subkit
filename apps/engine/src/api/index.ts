@@ -26,3 +26,4 @@ export {
   DiscoveryStrategyNameEnum,
   DiscoveryWarningSchema,
 } from "./connector-schemas.ts";
+export { type ExtractFileResponse, ExtractFileResponseSchema } from "./extract-schemas.ts";

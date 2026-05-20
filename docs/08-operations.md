@@ -120,6 +120,34 @@ Documentation ingestion and Knowledge Source budgets are env-configurable so ope
 
 Each value falls back to the default when the env var is unset, empty, zero, or unparseable — there is no half-configured state.
 
+### Binary file parser tunables (compile-time)
+
+The binary office-document parsers (PDF / DOCX / XLSX / PPTX) are guarded by per-format ceilings that are deliberately not env-configurable — the values are workload-defensive defaults, and an operator who needs to change them should do it in code with a code review. Their absence from `subkit.config.json` is intentional (zero-conf principle).
+
+| Constant | Default | Where | Effect |
+|---|---|---|---|
+| `EXTRACT_BODY_CAP_BYTES` | `104857600` (100 MB) | `http/routes/ai/extract.ts` | Hard request-body cap on `POST /v1/extract` and `POST /v1/ai/extract`. Enforced twice: declared `content-length` and streaming fallback. |
+| `TEXT_EXTRACT_PER_FILE_MAX_BYTES` | `1048576` (1 MB) | `llm/core/file-context.ts` | Per-file ceiling on TEXT bytes that reach the LLM context. Applies to the *parsed* output for binary formats. |
+| `TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES` | `26214400` (25 MB) | `llm/core/file-context.ts` | Per-file ceiling on RAW bytes read for the binary `text_extract` branch. Binaries above this size emit a `[file: <name>] (too large to parse)` placeholder. |
+| `TEXT_EXTRACT_PER_TURN_CAP_BYTES` | `4194304` (4 MB) | `llm/core/file-context.ts` | Per-turn cumulative TEXT cap across all files. Subsequent files get a skip placeholder. |
+| `PARSER_TIMEOUT_MS.pdf` | `30000` (30 s) | `docs-ingestion/parsers/strategy.ts` | `withParserTimeout` hard kill for PDF. |
+| `PARSER_TIMEOUT_MS.docx` | `30000` (30 s) | `docs-ingestion/parsers/strategy.ts` | `withParserTimeout` hard kill for DOCX. |
+| `PARSER_TIMEOUT_MS.pptx` | `30000` (30 s) | `docs-ingestion/parsers/strategy.ts` | `withParserTimeout` hard kill for PPTX. |
+| `PARSER_TIMEOUT_MS.xlsx` / `.xls` | `60000` (60 s) | `docs-ingestion/parsers/strategy.ts` | Longer budget; SheetJS can hit O(n²) layouts on pathological workbooks. |
+| `XLSX_ROW_CAP_PER_SHEET` | `200` | `docs-ingestion/parsers/xlsx.ts` | Per-sheet row cap (mirrors the CSV row cap). |
+| `PPTX_SLIDE_CAP` | `2000` | `docs-ingestion/parsers/pptx.ts` | Per-archive slide cap; short-circuits ZIP walk when exceeded. |
+
+When a parser trips its timeout, the request fails with a typed `BinaryParseError` mapped to HTTP 400 and the structured logger records a `docs_ingestion.binary_parsers.parse_failed` row. The `subkit_docs_binary_parse_total{format,result="error"}` counter increments so operators can chart per-format failure rates.
+
+**Audit-log surface for binary extracts.** Successful and failed binary `POST /v1/extract` calls emit `audit_log` rows under `action = "data.exported"`. Each row carries up to ~455 bytes of operator-controlled input inside `metadata`:
+
+- `metadata.filename` — the validated `x-filename` header (≤ 255 chars, no path separators or NULs; rejected at the Zod boundary before parse).
+- `metadata.error` — the parser's diagnostic (≤ 200 chars, ASCII control characters stripped via `audit/sanitize.ts`).
+
+SIEM consumers should expect both fields to be free-form text from the caller's side. Both are passed through `sanitizeForAudit` in `apps/engine/src/audit/sanitize.ts` so a malformed PDF whose parser message embeds a few bytes of the input can't smuggle TAB / NUL / CR into the audit row.
+
+**Metric vs audit denominator gradient.** The `subkit_docs_binary_parse_total{format,result}` counter increments on *every* binary parse dispatch path — the `/v1/extract` HTTP route, the docs-ingestion file-upload source, **and** the LLM `text_extract` context-assembly branch. The `audit_log` `data.exported` rows, by contrast, are written only by the `/v1/extract` route and the docs-ingestion service (not the LLM context path, which is read-only assembly with no egress). An operator charting parse errors should therefore expect `subkit_docs_binary_parse_total{result="error"}` to be a strict superset of `audit_log` `data.exported` rows with `result="error"` — the metric is the broader denominator. Reconcile by parsing surface, not 1:1.
+
 When a circuit breaker trips, the audit log records it and the event stream delivers a notification. Operators see the failure before users do.
 
 ---

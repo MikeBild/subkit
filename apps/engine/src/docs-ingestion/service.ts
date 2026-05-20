@@ -16,6 +16,7 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
+import { sanitizeForAudit } from "../audit/sanitize.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -33,6 +34,7 @@ import {
 import { cascadeIngest } from "./cascade.ts";
 import { byteLen, fingerprintChunks } from "./chunker.ts";
 import { dedupChunks } from "./dedup.ts";
+import { BinaryParseError } from "./parsers/index.ts";
 import { rerankSearchHits, type SearchHitMatchType } from "./search-ranking.ts";
 import { type FileUploadInput, ingestFileUpload } from "./sources/file-upload.ts";
 import { chunkGraphQLSchema, ingestGraphQLIntrospection } from "./sources/graphql.ts";
@@ -167,7 +169,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
         const fileInput: FileUploadInput = { buffer: p.input.upload.buffer };
         if (p.input.upload.filename) fileInput.filename = p.input.upload.filename;
         if (p.input.upload.mime) fileInput.mime = p.input.upload.mime;
-        const got = ingestFileUpload(fileInput);
+        const got = await ingestFileUpload(fileInput);
         uri = got.uri;
         rawChunks = got.chunks;
         break;
@@ -209,6 +211,36 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
       source_type: p.input.source_type,
       error: msg,
     });
+    // Audit binary parse failures on the file-upload source. The HTTP
+    // `/v1/extract` surface already writes `DATA_EXPORTED + error +
+    // parse_failed`; this branch closes the asymmetry for tenants
+    // uploading via the connector_docs path (e.g. queue handlers,
+    // batch ingest). Other failure classes keep their pre-existing
+    // logger.error-only behaviour to avoid audit-log volume blowup
+    // on a single bad URL.
+    if (err instanceof BinaryParseError) {
+      await auditAwait(
+        {
+          tenant_id: p.tenant_id,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.CONNECTOR_DOCS_INGESTED,
+          resource_type: "connector",
+          resource_id: p.connector_id,
+          result: "error",
+          reason: "parse_failed",
+          metadata: {
+            source_type: p.input.source_type,
+            format: err.format,
+            error: sanitizeForAudit(err.message),
+            ...(p.input.upload?.filename
+              ? { filename: sanitizeForAudit(p.input.upload.filename) }
+              : {}),
+          },
+        },
+        db,
+      );
+    }
     if (err instanceof PageTooLargeError) {
       throw err;
     }

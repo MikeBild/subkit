@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { detectFormat, parseFileToChunks } from "../parsers.ts";
+import {
+  buildDocxFixture,
+  buildPdfFixture,
+  buildXlsxFixture,
+} from "../../test-helpers/binary-fixtures.ts";
+import {
+  detectFormat,
+  isBinaryFormat,
+  parseBinaryFileToChunks,
+  parseFileToChunks,
+} from "../parsers.ts";
 
 describe("knowledge/parsers", () => {
   describe("detectFormat", () => {
@@ -33,6 +43,58 @@ describe("knowledge/parsers", () => {
     test("returns unknown for unrecognized", () => {
       expect(detectFormat("file.bin")).toBe("unknown");
       expect(detectFormat("file", "application/octet-stream")).toBe("unknown");
+    });
+    test("detects binary office formats by extension", () => {
+      expect(detectFormat("report.pdf")).toBe("pdf");
+      expect(detectFormat("doc.docx")).toBe("docx");
+      expect(detectFormat("sheet.xlsx")).toBe("xlsx");
+      expect(detectFormat("legacy.xls")).toBe("xls");
+      expect(detectFormat("deck.pptx")).toBe("pptx");
+      expect(isBinaryFormat("pdf")).toBe(true);
+      expect(isBinaryFormat("markdown")).toBe(false);
+    });
+    test("detects binary office formats by MIME", () => {
+      expect(detectFormat("noext", "application/pdf")).toBe("pdf");
+      expect(
+        detectFormat(
+          "noext",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+      ).toBe("docx");
+      expect(
+        detectFormat("noext", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+      ).toBe("xlsx");
+    });
+  });
+
+  describe("parseBinaryFileToChunks", () => {
+    test("pdf produces per-page chunks", async () => {
+      const pdf = buildPdfFixture("Page body text.");
+      const chunks = await parseBinaryFileToChunks(pdf, "sample.pdf", "pdf");
+      expect(chunks.length).toBeGreaterThanOrEqual(1);
+      expect(chunks[0]?.content).toContain("Page body text");
+    });
+    test("docx is markdown-chunked via heading boundaries", async () => {
+      const docx = await buildDocxFixture("Section A", "Body for A.");
+      const chunks = await parseBinaryFileToChunks(docx, "sample.docx", "docx");
+      expect(chunks.length).toBeGreaterThanOrEqual(1);
+      const joined = chunks.map((c) => c.content).join("\n");
+      expect(joined).toMatch(/Section A/);
+    });
+    test("xlsx produces one chunk per sheet", async () => {
+      const xlsx = buildXlsxFixture({
+        Demo: [
+          { id: 1, name: "x" },
+          { id: 2, name: "y" },
+        ],
+      });
+      const chunks = await parseBinaryFileToChunks(xlsx, "sample.xlsx", "xlsx");
+      expect(chunks.length).toBe(1);
+      expect(chunks[0]?.path).toBe("sample.xlsx#sheet=Demo");
+    });
+    test("text-format returns empty when called on binary helper", async () => {
+      const empty = await parseBinaryFileToChunks(Buffer.from("hello"), "x.json", "json");
+      expect(empty).toEqual([]);
     });
   });
 

@@ -16,4 +16,8 @@ export * from "./recorders/index.ts";
 // metadata. Re-exported from the audit barrel so the route boundary
 // has one import path for the audit surface.
 export * from "./request-source.ts";
+// `sanitizeForAudit` bounds operator- / parser-supplied strings before
+// they land in `audit_log.metadata` or LLM context placeholders. Same
+// helper, two consumers.
+export * from "./sanitize.ts";
 export * from "./types.ts";

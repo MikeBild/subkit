@@ -489,6 +489,24 @@ export const METRIC_NAMES = {
    * `source` is one of `job`, `schedule`, `archive`.
    */
   FILES_CLEANUP_PGBOSS_SCAN_MISSING_TOTAL: "subkit_files_cleanup_pgboss_scan_missing_total",
+  /**
+   * Counter of binary parse attempts in the docs-ingestion subsystem
+   * (`pdf` / `docx` / `xlsx` / `xls` / `pptx`), partitioned by terminal
+   * result (`success` / `error`). Chart against
+   * `subkit_docs_binary_parse_input_bytes_total` to see input volume per
+   * format; a sudden spike in `error` for one format usually points at
+   * a library regression or a malformed-file upload campaign.
+   */
+  DOCS_BINARY_PARSE_TOTAL: "subkit_docs_binary_parse_total",
+  /**
+   * Counter of input bytes attempted by the docs-ingestion binary
+   * parsers, partitioned by format. Increments BEFORE the parser runs
+   * — name carries `_input_bytes_` (not `_parsed_bytes_`) so an
+   * operator reading the metric knows it includes failures. To chart
+   * successfully-parsed volume divide by the success rate from
+   * `subkit_docs_binary_parse_total{result="success"}`.
+   */
+  DOCS_BINARY_PARSE_INPUT_BYTES_TOTAL: "subkit_docs_binary_parse_input_bytes_total",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -783,6 +801,16 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.FILES_CLEANUP_PGBOSS_SCAN_MISSING_TOTAL,
     help: "pg-boss in-flight scans that failed because the `pgboss` schema is absent — a serious deploy regression in production. The cleanup cron skips the unlinked-TTL soft-delete pass for the tick when any scan fails. `source` is one of `job`, `schedule`, `archive`.",
     labels: ["source"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.DOCS_BINARY_PARSE_TOTAL,
+    help: "Binary file parse attempts (pdf/docx/xlsx/xls/pptx), partitioned by terminal result.",
+    labels: ["format", "result"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.DOCS_BINARY_PARSE_INPUT_BYTES_TOTAL,
+    help: "Input bytes attempted (success + error) by the docs-ingestion binary parsers, partitioned by format.",
+    labels: ["format"],
   });
 
   return reg;

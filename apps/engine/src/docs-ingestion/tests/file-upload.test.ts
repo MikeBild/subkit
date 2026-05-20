@@ -1,11 +1,18 @@
 // File-upload source ingestion test.
 //
-// Round-trips one fixture per supported format (JSON, CSV, YAML, XML)
-// and asserts the orchestrator persists at least one chunk for each.
-// Also verifies that PDF / DOCX / XLSX surfaces as
+// Round-trips one fixture per supported format (JSON, CSV, YAML, XML,
+// Markdown, plaintext, HTML, and the binary office formats PDF/DOCX/
+// XLSX/PPTX) and asserts the orchestrator persists at least one chunk
+// for each. Genuinely-unknown formats (e.g. `.exe`) still surface as
 // `UnsupportedFileUploadError`.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  buildDocxFixture,
+  buildPdfFixture,
+  buildPptxFixture,
+  buildXlsxFixture,
+} from "../../test-helpers/binary-fixtures.ts";
 import { ingestDocs } from "../service.ts";
 import {
   ingestFileUpload,
@@ -106,16 +113,48 @@ describe("docs-ingestion/file-upload", () => {
     expect(result.ingested_count).toBeGreaterThanOrEqual(1);
   });
 
-  test("rejects pdf / docx / xlsx uploads", () => {
-    expect(() => ingestFileUpload({ buffer: "%PDF-1.4", filename: "doc.pdf" })).toThrow(
-      UnsupportedFileUploadError,
-    );
-    expect(() => ingestFileUpload({ buffer: "PK\u0003\u0004", filename: "report.docx" })).toThrow(
-      UnsupportedFileUploadError,
-    );
-    expect(() => ingestFileUpload({ buffer: "PK\u0003\u0004", filename: "sheet.xlsx" })).toThrow(
-      UnsupportedFileUploadError,
-    );
+  test("rejects genuinely-unknown formats", async () => {
+    await expect(
+      ingestFileUpload({ buffer: Buffer.from([0]), filename: "binary.exe" }),
+    ).rejects.toBeInstanceOf(UnsupportedFileUploadError);
+  });
+
+  test("parses a tiny pdf fixture", async () => {
+    const pdf = buildPdfFixture("Hello PDF.");
+    const result = await ingestFileUpload({ buffer: pdf, filename: "fixture.pdf" });
+    expect(result.format).toBe("pdf");
+    expect(result.chunks.length).toBeGreaterThanOrEqual(1);
+    expect(result.chunks[0]?.content).toContain("Hello PDF");
+  });
+
+  test("parses a tiny docx fixture", async () => {
+    const docx = await buildDocxFixture("Hello DOCX heading", "Body paragraph here.");
+    const result = await ingestFileUpload({ buffer: docx, filename: "fixture.docx" });
+    expect(result.format).toBe("docx");
+    expect(result.chunks.length).toBeGreaterThanOrEqual(1);
+    const joined = result.chunks.map((c) => c.content).join("\n");
+    expect(joined).toMatch(/Hello DOCX heading/);
+  });
+
+  test("parses a tiny xlsx fixture", async () => {
+    const xlsx = buildXlsxFixture({
+      Sheet1: [
+        { id: 1, name: "alice" },
+        { id: 2, name: "bob" },
+      ],
+    });
+    const result = await ingestFileUpload({ buffer: xlsx, filename: "fixture.xlsx" });
+    expect(result.format).toBe("xlsx");
+    expect(result.chunks.length).toBe(1);
+    expect(result.chunks[0]?.content).toContain("alice");
+  });
+
+  test("parses a tiny pptx fixture", async () => {
+    const pptx = await buildPptxFixture(["Slide one body", "Slide two body"]);
+    const result = await ingestFileUpload({ buffer: pptx, filename: "fixture.pptx" });
+    expect(result.format).toBe("pptx");
+    expect(result.chunks.length).toBe(2);
+    expect(result.chunks[0]?.content).toContain("Slide one body");
   });
 
   test("parses a Markdown README into heading-split chunks", async () => {

@@ -6,9 +6,9 @@
 //   - text:       Markdown, HTML, plaintext (delegated to
 //                 `knowledge/parsers.ts` so the connector-docs path and
 //                 the knowledge path stay aligned).
-//
-// PDF, DOCX, and XLSX are explicitly out of scope and surface as
-// `unsupported` errors — no binary parsing libraries are pulled in.
+//   - binary:     PDF, DOCX, XLSX/XLS, PPTX (delegated to the binary
+//                 parser registry in `../parsers/` — see that module
+//                 for the strategy ladder and timeout protection).
 //
 // The structured parsers are deliberately library-free: we ship a small
 // YAML parser (good enough for flat key/value docs) and an XML walker
@@ -18,11 +18,21 @@
 import {
   detectFormat as detectKnowledgeFormat,
   parseFileToChunks,
+  parseMarkdownChunks,
 } from "../../knowledge/parsers.ts";
 import { byteLen } from "../chunker.ts";
+import { type BinaryFormat, PDF_PAGE_SEPARATOR, parseBinaryFile } from "../parsers/index.ts";
 import type { RawChunk } from "../types.ts";
 
-export type FileUploadFormat = "json" | "yaml" | "csv" | "xml" | "markdown" | "html" | "plaintext";
+export type FileUploadFormat =
+  | "json"
+  | "yaml"
+  | "csv"
+  | "xml"
+  | "markdown"
+  | "html"
+  | "plaintext"
+  | BinaryFormat;
 
 export class UnsupportedFileUploadError extends Error {
   constructor(format: string) {
@@ -44,26 +54,37 @@ export interface FileUploadResult {
   chunks: RawChunk[];
 }
 
-const UNSUPPORTED_BINARY: Record<string, string> = {
+const BINARY_EXTENSIONS: Record<string, BinaryFormat> = {
   ".pdf": "pdf",
   ".docx": "docx",
   ".xlsx": "xlsx",
-  ".doc": "doc",
   ".xls": "xls",
-  ".ppt": "ppt",
   ".pptx": "pptx",
 };
 
+function detectBinaryFromMime(mime: string): BinaryFormat | null {
+  if (mime.includes("pdf")) return "pdf";
+  if (mime.includes("wordprocessingml") || mime.includes("officedocument.wordprocessing")) {
+    return "docx";
+  }
+  if (mime.includes("spreadsheetml") || mime.includes("officedocument.spreadsheet")) {
+    return "xlsx";
+  }
+  if (mime.includes("ms-excel")) return "xls";
+  if (mime.includes("presentationml") || mime.includes("officedocument.presentation")) {
+    return "pptx";
+  }
+  return null;
+}
+
 export function detectFormat(input: FileUploadInput): FileUploadFormat {
   const name = (input.filename ?? "").toLowerCase();
-  for (const [ext, label] of Object.entries(UNSUPPORTED_BINARY)) {
-    if (name.endsWith(ext)) throw new UnsupportedFileUploadError(label);
+  for (const [ext, format] of Object.entries(BINARY_EXTENSIONS)) {
+    if (name.endsWith(ext)) return format;
   }
   const mime = (input.mime ?? "").toLowerCase();
-  if (mime.includes("pdf")) throw new UnsupportedFileUploadError("pdf");
-  if (mime.includes("officedocument") || mime.includes("msword") || mime.includes("excel")) {
-    throw new UnsupportedFileUploadError("office-binary");
-  }
+  const binFromMime = detectBinaryFromMime(mime);
+  if (binFromMime) return binFromMime;
   if (name.endsWith(".json") || mime.includes("json")) return "json";
   if (name.endsWith(".yaml") || name.endsWith(".yml") || mime.includes("yaml")) return "yaml";
   if (name.endsWith(".csv") || mime.includes("csv")) return "csv";
@@ -87,6 +108,12 @@ function bufferToString(b: Buffer | Uint8Array | string): string {
   if (typeof b === "string") return b;
   if (b instanceof Buffer) return b.toString("utf8");
   return Buffer.from(b).toString("utf8");
+}
+
+function toBuffer(b: Buffer | Uint8Array | string): Buffer {
+  if (typeof b === "string") return Buffer.from(b, "utf8");
+  if (b instanceof Buffer) return b;
+  return Buffer.from(b.buffer, b.byteOffset, b.byteLength);
 }
 
 /** Tiny line-oriented CSV parser that respects quoted fields. */
@@ -254,12 +281,26 @@ function renderXmlNode(node: XmlNode, depth = 0): string {
 }
 
 /** Parse + chunk one uploaded file. Returns `RawChunk[]`. */
-export function ingestFileUpload(input: FileUploadInput): FileUploadResult {
+export async function ingestFileUpload(input: FileUploadInput): Promise<FileUploadResult> {
   const format = detectFormat(input);
-  const text = bufferToString(input.buffer);
-  const bytes = byteLen(text);
   const uri = input.filename ?? `inline://${format}`;
   const chunks: RawChunk[] = [];
+
+  if (
+    format === "pdf" ||
+    format === "docx" ||
+    format === "xlsx" ||
+    format === "xls" ||
+    format === "pptx"
+  ) {
+    const buffer = toBuffer(input.buffer);
+    const parsed = await parseBinaryFile(buffer, format);
+    chunkBinaryParseResult(parsed, uri, chunks);
+    return { format, uri, raw_bytes: buffer.byteLength, chunks };
+  }
+
+  const text = bufferToString(input.buffer);
+  const bytes = byteLen(text);
   switch (format) {
     case "json": {
       const parsed = JSON.parse(text) as unknown;
@@ -324,4 +365,62 @@ export function ingestFileUpload(input: FileUploadInput): FileUploadResult {
     }
   }
   return { format, uri, raw_bytes: bytes, chunks };
+}
+
+function chunkBinaryParseResult(
+  parsed: Awaited<ReturnType<typeof parseBinaryFile>>,
+  uri: string,
+  chunks: RawChunk[],
+): void {
+  switch (parsed.format) {
+    case "pdf": {
+      const pages = parsed.text.split(PDF_PAGE_SEPARATOR);
+      if (pages.length === 0 || (pages.length === 1 && pages[0]?.trim() === "")) {
+        chunks.push({ title: `pdf: ${uri}`, path: "pdf", content: `# ${uri}\n\n(empty)` });
+        return;
+      }
+      for (let i = 0; i < pages.length; i += 1) {
+        const body = (pages[i] ?? "").trim();
+        if (!body) continue;
+        chunks.push({
+          title: `pdf p.${i + 1}: ${uri}`,
+          path: `pdf.page.${i + 1}`,
+          content: body,
+        });
+      }
+      return;
+    }
+    case "docx": {
+      // Reuse the markdown chunker so DOCX uploads and Markdown
+      // knowledge sources slice on the same heading boundaries.
+      const md = parsed.markdown;
+      const mdChunks = parseMarkdownChunks(md, uri);
+      for (const c of mdChunks) chunks.push(c);
+      if (chunks.length === 0) {
+        chunks.push({ title: `docx: ${uri}`, path: "docx", content: md });
+      }
+      return;
+    }
+    case "xlsx":
+    case "xls": {
+      for (const [sheetName, rows] of Object.entries(parsed.sheets)) {
+        chunks.push({
+          title: `${parsed.format} sheet: ${sheetName}`,
+          path: `${parsed.format}.sheets.${sheetName}`,
+          content: `# ${uri} — ${sheetName}\n\n\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\``,
+        });
+      }
+      return;
+    }
+    case "pptx": {
+      for (const slide of parsed.slides) {
+        chunks.push({
+          title: `pptx slide ${slide.index}: ${uri}`,
+          path: `pptx.slide.${slide.index}`,
+          content: slide.text || "(empty slide)",
+        });
+      }
+      return;
+    }
+  }
 }

@@ -8125,6 +8125,81 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ExtractFileResponse: {
+            /** @enum {string} */
+            format: "json";
+            bytes: number;
+            data?: unknown;
+        } | {
+            /** @enum {string} */
+            format: "yaml";
+            bytes: number;
+            data?: unknown;
+        } | {
+            /** @enum {string} */
+            format: "csv";
+            bytes: number;
+            data: {
+                [key: string]: string;
+            }[];
+        } | {
+            /** @enum {string} */
+            format: "xml";
+            bytes: number;
+            data?: unknown;
+        } | {
+            /** @enum {string} */
+            format: "plaintext";
+            bytes: number;
+            data: string;
+        } | {
+            /** @enum {string} */
+            format: "pdf";
+            bytes: number;
+            pages: number;
+            data: {
+                text: string;
+            };
+        } | {
+            /** @enum {string} */
+            format: "docx";
+            bytes: number;
+            data: {
+                markdown: string;
+            };
+        } | {
+            /** @enum {string} */
+            format: "xlsx";
+            bytes: number;
+            data: {
+                sheets: {
+                    [key: string]: {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        } | {
+            /** @enum {string} */
+            format: "xls";
+            bytes: number;
+            data: {
+                sheets: {
+                    [key: string]: {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        } | {
+            /** @enum {string} */
+            format: "pptx";
+            bytes: number;
+            data: {
+                slides: {
+                    index: number;
+                    text: string;
+                }[];
+            };
+        };
         HealthResponse: {
             /** @enum {string} */
             status: "ok";

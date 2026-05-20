@@ -14,6 +14,310 @@
       }
     },
     "schemas": {
+      "ExtractFileResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json"
+                ]
+              },
+              "bytes": {
+                "type": "number"
+              },
+              "data": {
+                "nullable": true
+              }
+            },
+            "required": [
+              "format",
+              "bytes"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "yaml"
+                ]
+              },
+              "bytes": {
+                "type": "number"
+              },
+              "data": {
+                "nullable": true
+              }
+            },
+            "required": [
+              "format",
+              "bytes"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "csv"
+                ]
+              },
+              "bytes": {
+                "type": "number"
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "required": [
+              "format",
+              "bytes",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "xml"
+                ]
+              },
+              "bytes": {
+                "type": "number"
+              },
+              "data": {
+                "nullable": true
+              }
+            },
+            "required": [
+              "format",
+              "bytes"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "plaintext"
+                ]
+              },
+              "bytes": {
+                "type": "number"
+              },
+              "data": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "format",
+              "bytes",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "pdf"
+                ]
+              },
+              "bytes": {
+                "type": "number"
+              },
+              "pages": {
+                "type": "number"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            },
+            "required": [
+              "format",
+              "bytes",
+              "pages",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "docx"
+                ]
+              },
+              "bytes": {
+                "type": "number"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "markdown": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "markdown"
+                ]
+              }
+            },
+            "required": [
+              "format",
+              "bytes",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "xlsx"
+                ]
+              },
+              "bytes": {
+                "type": "number"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "sheets": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "sheets"
+                ]
+              }
+            },
+            "required": [
+              "format",
+              "bytes",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "xls"
+                ]
+              },
+              "bytes": {
+                "type": "number"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "sheets": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "sheets"
+                ]
+              }
+            },
+            "required": [
+              "format",
+              "bytes",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "pptx"
+                ]
+              },
+              "bytes": {
+                "type": "number"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "slides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "index": {
+                          "type": "number"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "text"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "slides"
+                ]
+              }
+            },
+            "required": [
+              "format",
+              "bytes",
+              "data"
+            ]
+          }
+        ]
+      },
       "HealthResponse": {
         "type": "object",
         "properties": {
