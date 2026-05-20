@@ -23,6 +23,7 @@ import { annotateRuntime } from "./runtime-annotation.ts";
 import { detectSchedulePhrases } from "./schedule-phrase-detector.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
+import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -367,6 +368,21 @@ export async function updateWorkflow(
       .limit(1);
     const wf = wfRows[0];
     if (!wf) return null;
+    // Idempotency: an unchanged def must not rotate the version (that
+    // churns history and unbinds schedules). See `version-dedup.ts`.
+    if (
+      await isUnchangedFromCurrentVersion({
+        tx,
+        tenant_id: input.tenant_id,
+        workflow_id: wf.id,
+        workflow_slug: wf.slug,
+        current_version_id: wf.current_version_id,
+        def,
+        scope_index: input.scope_index,
+      })
+    ) {
+      return wf.id;
+    }
     // determine next version
     const versionRows = (await tx
       .select({

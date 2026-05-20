@@ -16,8 +16,14 @@
 // before asking for confirmation.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { conversationElicitations, conversations } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import {
+  conversationElicitations,
+  conversations,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { withLatestPreview } from "../authoring-state.ts";
+import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";
 import type { DraftDocument } from "../types.ts";
@@ -119,5 +125,81 @@ describe("save_workflow_draft · workflow_previewed subsumes inspect+validate", 
       expect(data.stale_checkpoints ?? []).not.toContain("workflow_inspected");
       expect(data.stale_checkpoints ?? []).not.toContain("workflow_validated");
     }
+  });
+});
+
+describe("commitWorkflowAtomic · hash-dedup on unchanged re-commit", () => {
+  test("re-committing an unchanged draft is a no-op — no extra workflow version", async () => {
+    const [conv] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        draft: { workflow: { name: "dedup-wf", steps: [] } },
+      })
+      .returning();
+    if (!conv) throw new Error("conversation insert failed");
+
+    const slug = `dedup-wf-${conv.id.slice(0, 8)}`;
+    const draftBase: DraftDocument = {
+      workflow: {
+        name: "Dedup WF",
+        slug,
+        steps: [{ id: "s1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+      },
+    };
+    const previewed = withLatestPreview(
+      draftBase,
+      { ok: true, step_id: "s1", summary: "Ran 1 step with no errors.", preview: { n: 42 } },
+      "dry_run_workflow",
+      "workflow_previewed",
+    );
+    // Mutable draft ref: commitWorkflowAtomic calls setDraft after the
+    // write, and the second commit must observe the persisted binding.
+    let live: DraftDocument = previewed;
+    const tc: ToolContext = {
+      ...toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => live),
+      setDraft: async (d) => {
+        live = d as DraftDocument;
+      },
+    };
+
+    // First commit — the green dry-run auto-persist shape.
+    const first = await commitWorkflowAtomic({
+      ctx: tc,
+      skipPriorApprovalCheck: true,
+      emitAutoPersistAudit: true,
+      reason: "auto_persist_on_green_dry_run",
+      commitIntentKind: "save_workflow_draft",
+    });
+    expect(first.ok).toBe(true);
+    const firstData = first.data as { workflow_id: string; version: number };
+    expect(firstData.version).toBe(1);
+
+    // Second commit of the SAME draft — must dedup, not rotate. The
+    // commit still succeeds; it just resolves to the unchanged version.
+    const second = await commitWorkflowAtomic({
+      ctx: tc,
+      skipPriorApprovalCheck: true,
+      emitAutoPersistAudit: true,
+      reason: "auto_persist_on_green_dry_run",
+      commitIntentKind: "save_workflow_draft",
+    });
+    expect(second.ok).toBe(true);
+    const secondData = second.data as { version: number };
+    expect(secondData.version).toBe(1);
+
+    // Exactly one workflow_versions row exists — the second commit
+    // did not append a redundant version.
+    const versionRows = await ctx.testDb.db
+      .select({ version: workflowVersions.version })
+      .from(workflowVersions)
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, ctx.tenant_id),
+          eq(workflowVersions.workflow_id, firstData.workflow_id),
+        ),
+      );
+    expect(versionRows.length).toBe(1);
   });
 });

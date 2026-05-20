@@ -21,13 +21,11 @@
 // workflow, mock provider, plus tests, journey fixtures, and seed
 // skill bodies) and so is sequenced as its own change.
 
-import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { recordWorkflowCommitted, recordWorkflowUpdated } from "../../audit/recorders/index.ts";
-import { conversations, skills as skillsTable } from "../../db/schema/index.ts";
+import { skills as skillsTable } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
-import { getWorkflow } from "../../workflows/service.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -82,13 +80,12 @@ export const saveWorkflowDraftTool: ConversationTool = {
       force_commit: args.force_commit === true,
     });
 
-    // Idempotency: if the conversation's target workflow already
-    // exists and its current_version dag hashes to the same value as
-    // the draft, the auto-persist (or a prior re-issue) already
-    // applied this exact write. Return `already_persisted: true`
-    // instead of appending a redundant workflow_version. We do this
-    // BEFORE the prior-approval gate so a redundant approve+commit
-    // cycle can also short-circuit cleanly.
+    // Idempotency lives one layer down: `updateWorkflow` compares the
+    // normalised def against the current version's dag and skips the
+    // version rotate when they match. Both the dry-run auto-persist and
+    // this re-issue tool route through it, so an unchanged draft never
+    // appends a redundant workflow_version (which would also unbind the
+    // workflow's schedules).
     const fullDraft = ctx.getDraft();
     const draftSnapshot = getWorkflowDraft(fullDraft);
 
@@ -117,72 +114,6 @@ export const saveWorkflowDraftTool: ConversationTool = {
           next_best_actions: ["save_workflow_draft"],
           data: { derived_from_skill_id: derivedFromSkillId, side_effects: "destructive" },
         };
-      }
-    }
-
-    const draftDef = {
-      name: draftSnapshot.name,
-      ...(draftSnapshot.slug ? { slug: draftSnapshot.slug } : {}),
-      ...(draftSnapshot.description ? { description: draftSnapshot.description } : {}),
-      ...(draftSnapshot.input_schema ? { input_schema: draftSnapshot.input_schema } : {}),
-      ...(draftSnapshot.output_schema ? { output_schema: draftSnapshot.output_schema } : {}),
-      // Trigger participates in the idempotency hash: re-issuing the
-      // same draft with a different cron / tz / kind must commit a new
-      // version, not short-circuit to `already_persisted`.
-      ...(draftSnapshot.trigger ? { trigger: draftSnapshot.trigger } : {}),
-      steps: draftSnapshot.steps,
-    };
-    const draftHash = hashWorkflowDef(draftDef);
-    let targetForIdempotency: string | null = args.target_workflow_id ?? null;
-    if (!targetForIdempotency) {
-      const convRows = await ctx.db
-        .select({ target_workflow_id: conversations.target_workflow_id })
-        .from(conversations)
-        .where(
-          and(
-            eq(conversations.tenant_id, ctx.tenant_id),
-            eq(conversations.id, ctx.conversation_id),
-          ),
-        )
-        .limit(1);
-      targetForIdempotency = convRows[0]?.target_workflow_id ?? null;
-    }
-    if (targetForIdempotency) {
-      const existing = await getWorkflow(ctx.tenant_id, targetForIdempotency, ctx.db);
-      if (existing?.current_version_id) {
-        const existingDef = existing.definition;
-        const existingHash = hashWorkflowDef({
-          name: existingDef.name,
-          ...(existingDef.slug ? { slug: existingDef.slug } : {}),
-          ...(existingDef.description ? { description: existingDef.description } : {}),
-          ...(existingDef.input_schema ? { input_schema: existingDef.input_schema } : {}),
-          ...(existingDef.output_schema ? { output_schema: existingDef.output_schema } : {}),
-          ...(existingDef.trigger ? { trigger: existingDef.trigger } : {}),
-          steps: existingDef.steps,
-        });
-        if (existingHash === draftHash) {
-          logger.info({
-            module: "conversation_tool",
-            action: "save_workflow_draft.already_persisted",
-            tenant_id: ctx.tenant_id,
-            conversation_id: ctx.conversation_id,
-            workflow_id: existing.id,
-            version: existing.current_version,
-          });
-          return {
-            ok: true,
-            data: {
-              already_persisted: true,
-              workflow_id: existing.id,
-              workflow_version_id: existing.current_version_id,
-              version: existing.current_version,
-              slug: existing.slug,
-              name: existing.name,
-              next_best_actions: ["inspect_workflow", "list_workflows"],
-            },
-            committed_workflow_id: existing.id,
-          };
-        }
       }
     }
 
@@ -280,26 +211,3 @@ export const saveWorkflowDraftTool: ConversationTool = {
     };
   },
 };
-
-/**
- * Stable hash of a workflow definition. Used by the idempotency check
- * so a re-issue against an unchanged draft is a no-op.
- *
- * Sorted-key JSON so {"a":1,"b":2} and {"b":2,"a":1} hash equal — the
- * workflow service produces canonical orderings, but a draft authored
- * field-by-field by the LLM may interleave keys differently.
- */
-function hashWorkflowDef(def: unknown): string {
-  return createHash("sha256").update(stableStringify(def)).digest("hex");
-}
-
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) {
-    return `[${value.map((v) => stableStringify(v)).join(",")}]`;
-  }
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  const entries = keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`);
-  return `{${entries.join(",")}}`;
-}
