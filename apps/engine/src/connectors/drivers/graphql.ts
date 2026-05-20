@@ -63,6 +63,23 @@ export interface GraphQLNotImplementedError {
   auth_method: "none";
 }
 
+/**
+ * GraphQL carries logical failures as a top-level `errors` array — even
+ * on HTTP 200 (the AppSync convention: `{ data: null, errors: [...] }`).
+ * A non-empty `errors` array means the operation failed; callers MUST
+ * treat it as a failed step, not a success. Returns the error messages,
+ * or `null` when the response carries no logical errors (the `errors`
+ * key is absent or an empty array).
+ */
+export function graphqlErrorMessages(body: unknown): string[] | null {
+  const errors = (body as { errors?: unknown } | null | undefined)?.errors;
+  if (!Array.isArray(errors) || errors.length === 0) return null;
+  return errors.map((e) => {
+    const message = (e as { message?: unknown } | null | undefined)?.message;
+    return typeof message === "string" && message.length > 0 ? message : "graphql error";
+  });
+}
+
 function parseConfig(connector: ConnectorView): GraphQLConnectorConfig {
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
   // A GraphQL API has exactly one endpoint, so `base_url` IS the full URL
@@ -214,8 +231,8 @@ export async function executeGraphQLRequest(p: {
   res.headers.forEach((v, k) => {
     headerObj[k] = v;
   });
-  const hasErrors = Array.isArray((parsed as { errors?: unknown }).errors);
-  if (hasErrors || res.status >= 400) {
+  const errorMessages = graphqlErrorMessages(parsed);
+  if (errorMessages !== null || res.status >= 400) {
     logger.warn({
       module: "connector",
       action: "graphql.request.error",
@@ -223,7 +240,7 @@ export async function executeGraphQLRequest(p: {
       operation: p.op.operation,
       operation_name: operationName,
       status: res.status,
-      has_graphql_errors: hasErrors,
+      has_graphql_errors: errorMessages !== null,
     });
   }
   return {

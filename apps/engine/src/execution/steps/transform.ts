@@ -77,17 +77,27 @@ function collectLocalBindings(node: AstNode, add: (name: string) => void): void 
 }
 
 function visitRootIdentifiers(node: unknown, emit: (id: string) => void): void {
-  visitWithScope(node, emit, new Set<string>());
+  visitWithScope(node, emit, new Set<string>(), false);
 }
+
+// Path-step keys that hold a filter / index / sort / group sub-expression
+// (`arr[pred]`, `arr^(field)`, `arr{...}`). Inside these, a bare field
+// name resolves against the CURRENT array item (the implicit `$`
+// context), not the data root — so `edges[node.isConnected = true]` is
+// valid even though `node` is in no scope. The walker must NOT flag
+// bare names inside these as unresolved; `$`-prefixed references inside
+// them are still real and stay checked.
+const CONTEXTUAL_AST_KEYS = new Set(["stages", "predicate", "group"]);
 
 function visitWithScope(
   node: unknown,
   emit: (id: string) => void,
   scoped: ReadonlySet<string>,
+  contextual: boolean,
 ): void {
   if (!node || typeof node !== "object") return;
   if (Array.isArray(node)) {
-    for (const child of node) visitWithScope(child, emit, scoped);
+    for (const child of node) visitWithScope(child, emit, scoped, contextual);
     return;
   }
   const ast = node as AstNode;
@@ -96,14 +106,14 @@ function visitWithScope(
   if (ast.type === "lambda" || ast.type === "function_def") {
     const inner = new Set(scoped);
     collectLocalBindings(ast, (n) => inner.add(n));
-    if (ast.body !== undefined) visitWithScope(ast.body, emit, inner);
+    if (ast.body !== undefined) visitWithScope(ast.body, emit, inner, contextual);
     // Default arg values / procedure identifier (if any) still live
     // in the outer scope.
     for (const [k, v] of Object.entries(ast)) {
       if (k === "type" || k === "value" || k === "position" || k === "body" || k === "arguments") {
         continue;
       }
-      visitWithScope(v, emit, scoped);
+      visitWithScope(v, emit, scoped, contextual || CONTEXTUAL_AST_KEYS.has(k));
     }
     return;
   }
@@ -117,7 +127,7 @@ function visitWithScope(
       // Visit RHS first (outer scope) so a `self-referential` bind
       // would still warn. Then the name joins the caller's scope via
       // the `block`/expression list handler below.
-      if (ast.rhs !== undefined) visitWithScope(ast.rhs, emit, scoped);
+      if (ast.rhs !== undefined) visitWithScope(ast.rhs, emit, scoped, contextual);
       // Note: we intentionally do not emit lhs as unresolved; it's
       // being defined here. The block-level walker tracks the bind.
       return;
@@ -135,25 +145,30 @@ function visitWithScope(
       if (e?.type === "bind") {
         const lhs = e.lhs as AstNode | undefined;
         if (lhs?.type === "variable" && typeof lhs.value === "string") {
-          if (e.rhs !== undefined) visitWithScope(e.rhs, emit, inner);
+          if (e.rhs !== undefined) visitWithScope(e.rhs, emit, inner, contextual);
           inner.add(`$${lhs.value}`);
           continue;
         }
       }
-      visitWithScope(e, emit, inner);
+      visitWithScope(e, emit, inner, contextual);
     }
     // Walk any siblings beyond `expressions` (shouldn't exist, but
     // safe).
     for (const [k, v] of Object.entries(ast)) {
       if (k === "type" || k === "value" || k === "position" || k === "expressions") continue;
-      visitWithScope(v, emit, inner);
+      visitWithScope(v, emit, inner, contextual || CONTEXTUAL_AST_KEYS.has(k));
     }
     return;
   }
 
   if (ast.type === "path" && Array.isArray(ast.steps) && ast.steps.length >= 1) {
     const head = ast.steps[0] as AstNode | undefined;
-    if (head?.type === "name" && typeof head.value === "string") emit(head.value);
+    // A bare-name path head inside a filter/sort/group predicate
+    // resolves against the iterated item, not the data root — do not
+    // flag it. `$`-prefixed heads are real references and stay checked.
+    if (head?.type === "name" && typeof head.value === "string" && !contextual) {
+      emit(head.value);
+    }
     if (head?.type === "variable" && typeof head.value === "string") {
       const id = `$${head.value}`;
       if (!scoped.has(id)) emit(id);
@@ -165,7 +180,9 @@ function visitWithScope(
   }
   for (const [k, v] of Object.entries(ast)) {
     if (k === "type" || k === "value" || k === "position") continue;
-    visitWithScope(v, emit, scoped);
+    // Descending into a filter/sort/group sub-expression flips on
+    // contextual mode for the whole sub-tree.
+    visitWithScope(v, emit, scoped, contextual || CONTEXTUAL_AST_KEYS.has(k));
   }
 }
 

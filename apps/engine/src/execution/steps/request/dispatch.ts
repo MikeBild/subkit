@@ -14,7 +14,10 @@ import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { evaluateHook } from "../../../auth/hooks.ts";
-import { query as graphqlQuery } from "../../../connectors/drivers/graphql.ts";
+import {
+  graphqlErrorMessages,
+  query as graphqlQuery,
+} from "../../../connectors/drivers/graphql.ts";
 import {
   buildMultipartBody,
   buildRequestPlan,
@@ -603,7 +606,17 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               step_id: p.step.id,
             },
             () => graphqlQuery(args),
-            (out) => ({ status: out.status, bytes_in: out.bytes_in }),
+            (out) => {
+              const gqlErrors = graphqlErrorMessages(out.body);
+              return {
+                status: out.status,
+                bytes_in: out.bytes_in,
+                ok: out.status >= 200 && out.status < 300 && gqlErrors === null,
+                ...(gqlErrors
+                  ? { reason: `graphql response returned ${gqlErrors.length} error(s)` }
+                  : {}),
+              };
+            },
           );
           // Update connectorResolution with the actually-applied auth method
           // (may be `oauth2_refreshed` if the driver rotated a stale token).
@@ -611,8 +624,16 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             ...connectorResolution,
             auth_method: res.auth_method,
           };
+          // GraphQL fails logically via a `body.errors` array even on
+          // HTTP 200 (the AppSync convention). A non-empty `errors`
+          // array is a failed step — not a success whose output happens
+          // to contain errors. Without this check a broken query
+          // ("green" HTTP 200) flows through as a succeeded step: the
+          // dry-run reports clean and auto-commits a broken workflow.
+          const gqlErrors = graphqlErrorMessages(res.body);
+          const graphqlOk = res.status >= 200 && res.status < 300 && gqlErrors === null;
           return {
-            status: res.status >= 200 && res.status < 300 ? "succeeded" : "failed",
+            status: graphqlOk ? "succeeded" : "failed",
             output: res.body,
             retry_count: 0,
             duration_ms: Date.now() - start,
@@ -622,13 +643,20 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               status: res.status,
               connector: connectorResolution,
             },
-            ...(res.status >= 200 && res.status < 300
+            ...(graphqlOk
               ? {}
               : {
-                  error: {
-                    code: `graphql_${res.status}`,
-                    message: `graphql endpoint returned ${res.status}`,
-                  },
+                  error: gqlErrors
+                    ? {
+                        code: "graphql_error",
+                        message: `graphql response returned errors: ${gqlErrors
+                          .slice(0, 3)
+                          .join("; ")}`,
+                      }
+                    : {
+                        code: `graphql_${res.status}`,
+                        message: `graphql endpoint returned ${res.status}`,
+                      },
                 }),
           };
         } catch (err) {

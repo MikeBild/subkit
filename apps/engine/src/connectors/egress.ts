@@ -124,6 +124,17 @@ export interface EgressInput {
 export interface EgressOutcome {
   status?: number | null;
   bytes_in?: number | null;
+  /**
+   * Logical outcome of the call, independent of transport success.
+   * A GraphQL response can carry `body.errors` on HTTP 200 — the call
+   * reached the wire but the operation failed. When `extract` reports
+   * `ok: false` the `CONNECTOR_INVOKED` audit row records
+   * `result: "error"` so the audit trail's outcome stays honest
+   * (SOC 2 CC9). Omitted / `true` means a normal success.
+   */
+  ok?: boolean;
+  /** Short reason surfaced on the audit row when `ok` is false. */
+  reason?: string;
 }
 
 /**
@@ -179,6 +190,11 @@ export async function withEgressAudit<T>(
     const lateCredentialId = readCredentialId(result);
     if (!input.credential_id && lateCredentialId) emitCredentialAccess(lateCredentialId);
 
+    // A driver can reach the wire and still fail logically — a GraphQL
+    // response with `body.errors` on HTTP 200 is the canonical case.
+    // `extract` reports that via `ok: false`; the audit outcome must
+    // reflect it, not the bare "fn() did not throw".
+    const logicalFailure = outcome.ok === false;
     audit({
       tenant_id: input.tenant_id,
       actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
@@ -186,7 +202,8 @@ export async function withEgressAudit<T>(
       action: AuditAction.CONNECTOR_INVOKED,
       resource_type: "connector",
       resource_id: input.connector_id,
-      result: "success",
+      result: logicalFailure ? "error" : "success",
+      ...(logicalFailure ? { reason: outcome.reason ?? "connector returned a logical error" } : {}),
       metadata: {
         connector_slug: input.connector_slug,
         driver: input.driver,

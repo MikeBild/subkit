@@ -12,7 +12,11 @@ import type { AddressInfo } from "node:net";
 import { upsertCredential } from "../../credentials/service.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { query as gqlQuery, probeGraphQLConnector } from "../drivers/graphql.ts";
+import {
+  query as gqlQuery,
+  graphqlErrorMessages,
+  probeGraphQLConnector,
+} from "../drivers/graphql.ts";
 import { HttpRequestInvalidError } from "../drivers/http.ts";
 import { probeConnector } from "../drivers/index.ts";
 import { createConnector, getConnector } from "../service.ts";
@@ -64,6 +68,12 @@ async function startMockGraphQL(): Promise<MockServer> {
     if (q.includes("createUser")) {
       const name = body.variables?.name ?? "anon";
       send(200, { data: { createUser: { id: "uX", name } } });
+      return;
+    }
+    // AppSync convention: a schema/resolver error arrives as HTTP 200
+    // with a populated top-level `errors` array.
+    if (q.includes("brokenField")) {
+      send(200, { data: null, errors: [{ message: "Cannot query field 'brokenField'" }] });
       return;
     }
     send(400, { errors: [{ message: `unknown op: ${q}` }] });
@@ -182,6 +192,43 @@ describe("graphql driver", () => {
     const body = res.body as { data?: { users?: Array<{ id: string; name: string }> } };
     expect(body.data?.users?.length).toBe(2);
     expect(body.data?.users?.[0]?.name).toBe("alice");
+  });
+
+  test("graphqlErrorMessages surfaces a body.errors response (AppSync HTTP-200-with-errors)", async () => {
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    const res = await gqlQuery({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      query: "query Broken { brokenField }",
+    });
+    // AppSync answers HTTP 200 even though the query logically failed.
+    expect(res.status).toBe(200);
+    // The request step turns a non-null result here into a FAILED step
+    // (see dispatch.ts) so a broken query cannot dry-run "green".
+    expect(graphqlErrorMessages(res.body)).toEqual(["Cannot query field 'brokenField'"]);
+  });
+
+  test("graphqlErrorMessages returns null for a clean response", async () => {
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    const res = await gqlQuery({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      query: "{ users(limit: 1) { id } }",
+    });
+    expect(graphqlErrorMessages(res.body)).toBeNull();
+  });
+
+  test("graphqlErrorMessages — empty / absent / malformed errors", () => {
+    expect(graphqlErrorMessages({ data: {} })).toBeNull();
+    expect(graphqlErrorMessages({ errors: [] })).toBeNull();
+    expect(graphqlErrorMessages(null)).toBeNull();
+    expect(graphqlErrorMessages({ errors: [{}] })).toEqual(["graphql error"]);
+    expect(graphqlErrorMessages({ errors: [{ message: "a" }, { message: "b" }] })).toEqual([
+      "a",
+      "b",
+    ]);
   });
 
   test("response carries bytes_in, duration_ms and named operation", async () => {

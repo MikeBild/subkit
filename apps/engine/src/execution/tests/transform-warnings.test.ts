@@ -193,4 +193,55 @@ describe("runTransformStep warnings", () => {
     expect(result.output).toEqual({ total: 6 });
     expect(result.warnings).toBeUndefined();
   });
+
+  it("does not flag bare identifiers inside a filter predicate (edges[node.x = true])", async () => {
+    // A bare field name inside `[...]` resolves against the iterated
+    // array item, not the data root — `edges[node.isConnected = true]`
+    // is valid jsonata. Pre-fix the static walker flagged `node` as
+    // `unresolved_identifier`, which set `requires_repair` and derailed
+    // workflow authoring. The result here is EMPTY (no item matches),
+    // so the old "suppress when result is a non-empty array" heuristic
+    // does not mask the false positive — the walker itself must be right.
+    const ctx = mkCtx();
+    const step = {
+      kind: "transform" as const,
+      id: "filter_connected",
+      language: "jsonata" as const,
+      expression: "fetch_chargers.edges[node.isConnected = true]",
+    };
+    const result = await runTransformStep({
+      ctx,
+      step,
+      scope: {
+        fetch_chargers: {
+          edges: [{ node: { isConnected: false } }, { node: { isConnected: null } }],
+        },
+      },
+      input: {},
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.warnings).toBeUndefined();
+  });
+
+  it("still flags a genuinely unresolved root identifier alongside a filter predicate", async () => {
+    // Regression guard: the contextual-predicate exemption must not
+    // swallow a real typo in the path ROOT. `fetch_chargerz` is not in
+    // scope and must still surface.
+    const ctx = mkCtx();
+    const step = {
+      kind: "transform" as const,
+      id: "filter_connected",
+      language: "jsonata" as const,
+      expression: "fetch_chargerz.edges[node.isConnected = true]",
+    };
+    const result = await runTransformStep({
+      ctx,
+      step,
+      scope: { fetch_chargers: { edges: [{ node: { isConnected: true } }] } },
+      input: {},
+    });
+    expect(result.status).toBe("succeeded");
+    const unresolved = (result.warnings ?? []).find((w) => w.code === "unresolved_identifier");
+    expect(unresolved?.identifier).toBe("fetch_chargerz");
+  });
 });
