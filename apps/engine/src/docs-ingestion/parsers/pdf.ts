@@ -9,8 +9,15 @@
 // transitively re-pulls `pdfjs-dist` (and on some platforms
 // `@napi-rs/canvas`). The win is a smaller direct-dep surface and one
 // canonical Node-friendly extraction API; build-image size is unchanged.
+//
+// `pdf-parse` is imported *lazily* inside `parse()` — `pdfjs-dist`
+// references browser globals (`DOMMatrix`) at module-evaluation time,
+// so a top-level import would crash engine boot on any build where the
+// `@napi-rs/canvas` polyfill native is absent. Loading it on first PDF
+// parse keeps boot independent of the PDF toolchain. `import type` is
+// erased at compile time and triggers no module evaluation.
 
-import { PDFParse } from "pdf-parse";
+import type { PDFParse } from "pdf-parse";
 import {
   BinaryParseError,
   DetectionPriority,
@@ -39,9 +46,12 @@ export const pdfStrategy: FileParsingStrategy<PdfParseOutput> = {
 
   async parse(buffer: Buffer): Promise<PdfParseOutput> {
     return withParserTimeout("pdf", PARSER_TIMEOUT_MS.pdf, async () => {
+      const pdfModule = await import("pdf-parse").catch((err: unknown) => {
+        throw new BinaryParseError("pdf", "pdf: PDF toolchain failed to load", { cause: err });
+      });
       let parser: PDFParse;
       try {
-        parser = new PDFParse({ data: new Uint8Array(buffer) });
+        parser = new pdfModule.PDFParse({ data: new Uint8Array(buffer) });
       } catch (err) {
         throw new BinaryParseError("pdf", "pdf: failed to load document", { cause: err });
       }
