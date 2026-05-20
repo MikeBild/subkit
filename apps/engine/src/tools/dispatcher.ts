@@ -251,7 +251,6 @@ export async function dispatchTool(
     if (rbacDenied) {
       // Skip remainder of the pipeline; the final log emit below still
       // fires so observability sees the denial.
-      // biome-ignore lint/style/noUselessElse: explicit fall-through marker
     } else {
       // 4. Policy.
       const policy = policyDecide({

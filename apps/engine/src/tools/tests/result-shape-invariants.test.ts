@@ -65,7 +65,7 @@ const PRINCIPAL: ResolvedPrincipal = {
 
 // biome-ignore lint/suspicious/noExplicitAny: test stub
 const DB_STUB: any = {
-  transaction: async (fn: any) => fn(DB_STUB),
+  transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
 };
 

@@ -25,6 +25,10 @@ export const CredentialMode = z.enum([
   // refresh_token + expires_at) but mints via a per-shape JSON / form /
   // AWS-target POST. See `TokenMintCredentialValue`.
   "token_mint",
+  // Dynamically-registered OAuth2 client identity (RFC 7591). Stores
+  // the issued client_id + encrypted client_secret so the oauth start
+  // handler can read them back without touching connectors.config JSONB.
+  "oauth2_client",
 ]);
 export type CredentialMode = z.infer<typeof CredentialMode>;
 
@@ -122,6 +126,12 @@ export const AwsSigV4CredentialValue = z.object({
 });
 export type AwsSigV4CredentialValue = z.infer<typeof AwsSigV4CredentialValue>;
 
+export const OAuth2ClientCredentialValue = z.object({
+  client_id: z.string(),
+  client_secret: z.string().optional(),
+});
+export type OAuth2ClientCredentialValue = z.infer<typeof OAuth2ClientCredentialValue>;
+
 export type DecryptedCredential =
   | { mode: "none" }
   | ({ mode: "header" } & HeaderCredentialValue)
@@ -141,4 +151,5 @@ export type DecryptedCredential =
       access_token: string;
       refresh_token: string | null;
       expires_at: Date | null;
-    } & TokenMintCredentialValue);
+    } & TokenMintCredentialValue)
+  | ({ mode: "oauth2_client" } & OAuth2ClientCredentialValue);

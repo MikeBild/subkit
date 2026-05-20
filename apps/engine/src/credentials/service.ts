@@ -9,7 +9,7 @@
 //
 // Every mutation writes an audit row.
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
@@ -27,6 +27,7 @@ import type {
   CredentialMode,
   DecryptedCredential,
   HeaderCredentialValue,
+  OAuth2ClientCredentialValue,
   OAuth2CredentialValue,
   QueryCredentialValue,
   TokenMintCredentialValue,
@@ -79,7 +80,8 @@ export type CredentialPlaintext =
       expires_in_path?: string;
       expires_at_path?: string;
       header_template?: string;
-    };
+    }
+  | ({ mode: "oauth2_client" } & OAuth2ClientCredentialValue);
 
 function serializePlain(value: CredentialPlaintext): string {
   switch (value.mode) {
@@ -116,6 +118,11 @@ function serializePlain(value: CredentialPlaintext): string {
         ...(value.expires_in_path ? { expires_in_path: value.expires_in_path } : {}),
         ...(value.expires_at_path ? { expires_at_path: value.expires_at_path } : {}),
         ...(value.header_template ? { header_template: value.header_template } : {}),
+      });
+    case "oauth2_client":
+      return JSON.stringify({
+        client_id: value.client_id,
+        ...(value.client_secret ? { client_secret: value.client_secret } : {}),
       });
   }
 }
@@ -180,6 +187,14 @@ function deserializePlain(mode: CredentialMode, raw: string): DecryptedCredentia
           ? { header_template: parsed.header_template }
           : {}),
       };
+    case "oauth2_client":
+      return {
+        mode: "oauth2_client",
+        client_id: String(parsed.client_id ?? ""),
+        ...(typeof parsed.client_secret === "string"
+          ? { client_secret: parsed.client_secret }
+          : {}),
+      };
     default: {
       const exhaustive: never = mode;
       void exhaustive;
@@ -233,7 +248,22 @@ export async function upsertCredential(
   // the AAD = tenant_id + credential_id contract intact. Postgres lets
   // us do this in a single transaction trivially.
   return await db.transaction(async (tx) => {
-    // Delete any existing credential for the same connector+env.
+    // Credentials are bucketed into two slots:
+    //   - the "oauth2_client" slot: RFC 7591 registered OAuth2 client
+    //     identity (client_id + client_secret). At most one row per
+    //     (connector, environment).
+    //   - the "primary" slot: user-facing auth material — bearer, oauth2
+    //     access token, header, query, basic, aws_sigv4, token_mint.
+    //     At most one row per (connector, environment); operators may
+    //     switch modes (e.g. bearer → oauth2) which mutates the row in
+    //     place so call-sites that hold the credential_id stay valid.
+    // The two slots coexist so an OAuth callback writing `mode: "oauth2"`
+    // never clobbers the dynamically-registered client identity that the
+    // refresh-token grant still needs.
+    const isClientSlot = input.mode === "oauth2_client";
+    const slotPredicate = isClientSlot
+      ? eq(credentials.mode, "oauth2_client")
+      : ne(credentials.mode, "oauth2_client");
     const existing = await tx
       .select()
       .from(credentials)
@@ -242,6 +272,7 @@ export async function upsertCredential(
           eq(credentials.tenant_id, input.tenant_id),
           eq(credentials.connector_id, input.connector_id),
           eq(credentials.environment, input.environment),
+          slotPredicate,
         ),
       )
       .limit(1);
@@ -419,6 +450,11 @@ export async function getCredentialForConnector(
         eq(credentials.tenant_id, tenant_id),
         eq(credentials.connector_id, connector_id),
         eq(credentials.environment, environment),
+        // The `oauth2_client` mode is a registration-time identity slot, not
+        // user-facing auth material. Callers asking for "the credential" want
+        // the primary mode (oauth2 access token, bearer, etc.); the RFC 7591
+        // client identity is read via `getOAuth2ClientCredential` below.
+        ne(credentials.mode, "oauth2_client"),
       ),
     )
     .limit(1);
@@ -451,6 +487,48 @@ export async function getCredentialForConnector(
     value.expires_at = row.oauth2_expires_at ?? null;
   }
   return { row, value };
+}
+
+/** Load the `oauth2_client` credential for a connector — i.e. the
+ *  client_id + client_secret issued by an IdP via RFC 7591 dynamic
+ *  registration. Returns null if the connector was registered with a
+ *  pre-provisioned OAuth client (the common case). Kept separate from
+ *  `getCredentialForConnector` because that function returns the
+ *  primary auth material and callers must opt in to the registration
+ *  slot. AAD-bound by `aadFor(tenant_id, credential_id)`. */
+export async function getOAuth2ClientCredential(
+  tenant_id: string,
+  connector_id: string,
+  environment: "dev" | "prod",
+  exec?: Executor,
+): Promise<{ client_id: string; client_secret: string | undefined } | null> {
+  if (!UUID_RE.test(connector_id)) return null;
+  const db = exec ?? getDb();
+  const rows = await db
+    .select()
+    .from(credentials)
+    .where(
+      and(
+        eq(credentials.tenant_id, tenant_id),
+        eq(credentials.connector_id, connector_id),
+        eq(credentials.environment, environment),
+        eq(credentials.mode, "oauth2_client"),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  const plain = decryptSecret(
+    {
+      ciphertext: row.ciphertext,
+      iv: row.iv,
+      auth_tag: row.auth_tag,
+    },
+    aadFor(tenant_id, row.id),
+  );
+  const value = deserializePlain("oauth2_client", plain);
+  if (value.mode !== "oauth2_client") return null;
+  return { client_id: value.client_id, client_secret: value.client_secret };
 }
 
 export async function deleteCredential(

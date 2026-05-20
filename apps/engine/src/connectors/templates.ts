@@ -148,6 +148,7 @@ export const TemplateOAuthSchema = z
     use_pkce: z.boolean(),
     client_id: z.string().nullable(),
     extra_headers: z.record(z.string(), z.string()).default({}),
+    dynamic_registration: z.boolean().default(false),
   })
   .openapi("ConnectorTemplateOAuth");
 

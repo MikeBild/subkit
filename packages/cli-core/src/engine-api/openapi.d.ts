@@ -9038,6 +9038,8 @@ export interface components {
             extra_headers: {
                 [key: string]: string;
             };
+            /** @default false */
+            dynamic_registration: boolean;
         } | null;
         ConnectorTemplateAuthOption: {
             /** @enum {string} */

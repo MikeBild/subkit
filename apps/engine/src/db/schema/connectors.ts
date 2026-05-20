@@ -23,6 +23,7 @@ export const credentialModeEnum = pgEnum("credential_mode", [
   "oauth2",
   "aws_sigv4",
   "token_mint",
+  "oauth2_client",
 ]);
 export const endUserCombineModeEnum = pgEnum("end_user_combine_mode", ["merge", "replace"]);
 export const connectorTemplateSourceEnum = pgEnum("connector_template_source", [
@@ -146,7 +147,9 @@ export const credentials = pgTable(
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [uniqueIndex("credentials_connector_env_key").on(t.connector_id, t.environment)],
+  (t) => [
+    uniqueIndex("credentials_connector_env_mode_key").on(t.connector_id, t.environment, t.mode),
+  ],
 );
 
 // ----- end_user_credentials -------------------------------------------------

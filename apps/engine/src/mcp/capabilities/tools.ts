@@ -687,15 +687,42 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             step_id: null,
             result: result.output,
           });
-          const envelope: Record<string, unknown> = {
-            kind: "offloaded" as const,
-            uri: off.storage_uri,
-            preview: off.preview,
-            execution_id: result.execution_id,
-            status: result.status,
+          // MCP `resource_link` content block (2025-03 spec). The previous
+          // text-encoded JSON envelope forced clients to parse a string
+          // field to discover the fixture URI; LLM agents (e.g. codex)
+          // rarely follow such pointers without explicit instruction.
+          // `resource_link` is the native protocol affordance: compliant
+          // clients can auto-fetch, surface to the user, or expose the
+          // URI as a follow-up call. Pairs with the `fixture://` reader
+          // in apps/engine/src/mcp/capabilities/resources.ts.
+          const summaryLines: string[] = [
+            `Execution ${result.execution_id} ${result.status}; result is ${off.size_bytes} bytes (offloaded — inline cap is ${MCP_OFFLOAD_CHAR_CAP} bytes).`,
+          ];
+          if (off.preview) summaryLines.push(`Preview: ${off.preview}`);
+          if (hasWarnings) {
+            summaryLines.push(`Warnings: ${JSON.stringify(result.warnings)}`);
+          }
+          const storageUri = off.storage_uri;
+          if (!storageUri) {
+            // Shouldn't happen: maybeOffload always returns a uri when
+            // size > STEP_RESULT_DB_BYTES (10 KB), and we are here
+            // because serialized > MCP_OFFLOAD_CHAR_CAP (20 KB). Belt
+            // and braces — if it ever does, fall back to inline text
+            // so the client still gets the payload.
+            return {
+              isError: result.status !== "succeeded",
+              content: [{ type: "text" as const, text: serialized }],
+            };
+          }
+          const resourceLink = {
+            type: "resource_link" as const,
+            uri: storageUri,
+            name: `${name} result`,
+            description: `Full ${off.size_bytes}-byte result of ${name} (execution ${result.execution_id})`,
+            mimeType: "application/json",
+            size: off.size_bytes,
           };
-          if (hasWarnings) envelope.warnings = result.warnings;
-          const bytes = JSON.stringify(envelope).length;
+          const bytes = summaryLines.join("\n\n").length + storageUri.length;
           logger.info({
             module: "mcp",
             action: "mcp.tool.result",
@@ -705,15 +732,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             bytes,
             execution_id: result.execution_id,
             warnings_count: result.warnings?.length ?? 0,
+            storage_uri: storageUri,
+            size_bytes: off.size_bytes,
           });
           return {
             isError: result.status !== "succeeded",
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(envelope),
-              },
-            ],
+            content: [{ type: "text" as const, text: summaryLines.join("\n\n") }, resourceLink],
           };
         }
         const text = serialized;

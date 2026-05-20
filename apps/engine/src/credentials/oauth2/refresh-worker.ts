@@ -62,6 +62,8 @@ export async function refreshIfStale(
   const connector = connRows[0];
   if (!connector) return decrypted;
   const cfg = await resolveConnectorOAuthConfig(db, tenant_id, {
+    id: connector.id,
+    environment: connector.environment,
     config: (connector.config as Record<string, unknown>) ?? {},
     template_slug: connector.template_slug ?? null,
     template_snapshot: (connector.template_snapshot as Record<string, unknown> | null) ?? null,

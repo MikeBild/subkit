@@ -1,4 +1,5 @@
 import type { OAuth2ClientConfig } from "../credentials/oauth2/types.ts";
+import { getOAuth2ClientCredential } from "../credentials/service.ts";
 import type { Db } from "../db/client.ts";
 import { getTemplateOAuthCredentials } from "./template-credentials.ts";
 import { parseTemplateSnapshot } from "./template-resolver.ts";
@@ -45,7 +46,10 @@ function configOAuthBlock(cfg: ConnectorConfig): Record<string, unknown> {
 export async function resolveConnectorOAuthConfig(
   db: Db,
   tenant_id: string,
-  connector: Pick<ConnectorView, "config" | "template_slug" | "template_snapshot">,
+  connector: Pick<
+    ConnectorView,
+    "id" | "config" | "environment" | "template_slug" | "template_snapshot"
+  >,
 ): Promise<OAuth2ClientConfig | null> {
   const cfg = connectorConfig(connector);
   const o = configOAuthBlock(cfg);
@@ -55,8 +59,20 @@ export async function resolveConnectorOAuthConfig(
     ? await getTemplateOAuthCredentials(tenant_id, connector.template_slug, db)
     : null;
 
+  // RFC 7591 dynamic registration: when the template opts in, the engine
+  // issued the client_id + client_secret at oauth/start time and persisted
+  // them in the `oauth2_client` credential slot. Read them here so the
+  // confidential-client refresh path can authenticate against the token
+  // endpoint. The slot is separate from the user-facing `oauth2` row so
+  // the callback's `upsertCredential` does not overwrite the identity.
+  const dynamicCred =
+    templateOauth?.dynamic_registration === true
+      ? await getOAuth2ClientCredential(tenant_id, connector.id, connector.environment, db)
+      : null;
+
   const issuer_url = nonEmptyString(o.issuer_url) ?? nonEmptyString(templateOauth?.issuer_url);
   const client_id =
+    nonEmptyString(dynamicCred?.client_id) ??
     nonEmptyString(o.client_id) ??
     nonEmptyString(templateCreds?.client_id) ??
     nonEmptyString(templateOauth?.client_id);
@@ -67,7 +83,9 @@ export async function resolveConnectorOAuthConfig(
     client_id,
   };
   const client_secret =
-    nonEmptyString(o.client_secret) ?? nonEmptyString(templateCreds?.client_secret);
+    nonEmptyString(dynamicCred?.client_secret) ??
+    nonEmptyString(o.client_secret) ??
+    nonEmptyString(templateCreds?.client_secret);
   if (client_secret) out.client_secret = client_secret;
   const authorization_endpoint =
     nonEmptyString(o.authorization_endpoint) ??

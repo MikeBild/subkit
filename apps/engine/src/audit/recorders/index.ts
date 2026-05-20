@@ -26,9 +26,13 @@ export {
   type RecordCredentialAttachedParams,
   type RecordCredentialDeletedParams,
   type RecordCredentialRotatedParams,
+  type RecordOAuthClientRegisteredParams,
+  type RecordOAuthClientRegistrationFailedParams,
   recordCredentialAttached,
   recordCredentialDeleted,
   recordCredentialRotated,
+  recordOAuthClientRegistered,
+  recordOAuthClientRegistrationFailed,
 } from "./credential.ts";
 export {
   type RecordEngineUpdateCompletedParams,

@@ -463,6 +463,9 @@ export const AuditAction = {
   // ---------------------------------------------------------------------
   EXTERNAL_PROVIDER_CALL_SUCCEEDED: "external_provider.call_succeeded",
   EXTERNAL_PROVIDER_CALL_FAILED: "external_provider.call_failed",
+
+  OAUTH_CLIENT_REGISTERED: "oauth_client.registered",
+  OAUTH_CLIENT_REGISTRATION_FAILED: "oauth_client.registration_failed",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

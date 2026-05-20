@@ -20,8 +20,12 @@
 // (REST, MCP, chat adapters, webhook ingress).
 
 import { createHash, randomBytes } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type ServerType, serve } from "@hono/node-server";
 import type { PgBoss } from "pg-boss";
+import { getConfig, loadConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -51,8 +55,17 @@ import { __resetAll as resetCircuitBreakers } from "../../webhooks/outbound/circ
 /** Per-hook timeout for every journey `beforeAll` / `afterAll`. Set
  *  high enough that a slow pg-boss shutdown or test-db drop names
  *  itself in the structured `journey.teardown.step` log line below
- *  rather than surfacing as a generic Bun hook timeout. */
-export const JOURNEY_HOOK_TIMEOUT = 60_000;
+ *  rather than surfacing as a generic Bun hook timeout.
+ *
+ *  Bumped to 120s after a `verify` gate run showed `DROP DATABASE`
+ *  steps queueing behind concurrent admin operations at
+ *  `--max-concurrency=4` — the 60s budget was being consumed entirely
+ *  by the postgres-side teardown serialisation, not by anything the
+ *  journey itself does. The 120s ceiling preserves the observability
+ *  contract (slow steps still surface in the teardown_step log) while
+ *  giving Postgres headroom to drop a 100-table database under load.
+ */
+export const JOURNEY_HOOK_TIMEOUT = 120_000;
 
 export interface JourneyCtx {
   tenantId: string;
@@ -96,6 +109,31 @@ function generateApiKey(): { plaintext: string; prefix: string; hash: string } {
  * public contracts. Cleanup is fail-safe: a partial setup failure still
  * tears down what was created.
  */
+/** Bootstrap the per-process config loader once. Route handlers that
+ *  call `getConfig()` (e.g. `POST /v1/files/inline` →
+ *  `composeStorageUri` → `getConfig().storage`) would otherwise 500 on
+ *  the first request because no journey ever ran the engine boot path
+ *  that calls `loadConfig()`. Idempotent — a probe via `getConfig()`
+ *  short-circuits subsequent invocations from later journey files.
+ *
+ *  Takes the resolved testcontainer DATABASE_URL so `getPool()`'s
+ *  env-first resolution (see `db/client.ts:getPool`) lands on the real
+ *  disposable db, not a placeholder. Must run AFTER `withTestEnv`
+ *  pins `DATABASE_URL` for the journey. */
+async function ensureConfigLoaded(databaseUrl: string): Promise<void> {
+  try {
+    getConfig();
+    return;
+  } catch {
+    // not yet loaded — fall through.
+  }
+  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-journey-"));
+  await loadConfig({
+    env: { DATABASE_URL: databaseUrl, NODE_ENV: "test" },
+    configPathOverride: join(dir, "subkit.config.json"),
+  });
+}
+
 export async function createJourneyCtx(
   label: string,
   opts: CreateJourneyOpts = {},
@@ -134,6 +172,15 @@ export async function createJourneyCtx(
   try {
     testDb = await createTestDb(`journey-${safeLabel}`);
     failSafe.push({ name: "test-db", fn: () => testDb.cleanup() });
+  } catch (e) {
+    await fail(e);
+    throw e; // unreachable
+  }
+
+  // Bootstrap the config loader against the resolved testcontainer URL —
+  // see ensureConfigLoaded's doc-comment for the ordering contract.
+  try {
+    await ensureConfigLoaded(testDb.url);
   } catch (e) {
     await fail(e);
     throw e; // unreachable

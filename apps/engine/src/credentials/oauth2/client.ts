@@ -11,7 +11,13 @@
 
 import * as oauth from "openid-client";
 import { logger } from "../../logging/logger.ts";
-import type { OAuth2ClientConfig, OAuth2TokenBundle } from "./types.ts";
+import {
+  type OAuth2ClientConfig,
+  type OAuth2TokenBundle,
+  type RFC7591ClientMetadata,
+  RFC7591ClientMetadataSchema,
+  RFC7591ClientRegistrationResponseSchema,
+} from "./types.ts";
 
 const configCache = new Map<string, oauth.Configuration>();
 
@@ -384,6 +390,124 @@ async function computeCognitoSecretHash(
   );
   const sig = await crypto.subtle.sign("HMAC", cryptoKey, data);
   return Buffer.from(sig).toString("base64");
+}
+
+export class DynamicRegistrationError extends Error {
+  constructor(
+    message: string,
+    public readonly error_code: string,
+  ) {
+    super(message);
+    this.name = "DynamicRegistrationError";
+  }
+}
+
+export interface DynamicRegistrationArgs {
+  issuerUrl: string;
+  clientMetadata: RFC7591ClientMetadata;
+  allowInsecureRequests?: boolean;
+}
+
+export interface DynamicRegistrationResult {
+  clientId: string;
+  clientSecret: string | undefined;
+  registrationEndpoint: string;
+}
+
+export async function dynamicallyRegisterClient(
+  args: DynamicRegistrationArgs,
+): Promise<DynamicRegistrationResult> {
+  RFC7591ClientMetadataSchema.parse(args.clientMetadata);
+
+  const server = new URL(args.issuerUrl);
+  const isHttp = server.protocol === "http:";
+  const discoveryOptions: oauth.DiscoveryRequestOptions =
+    isHttp || args.allowInsecureRequests ? { execute: [oauth.allowInsecureRequests] } : {};
+
+  let configuration: oauth.Configuration;
+  try {
+    // The `client_id` argument is a placeholder — discovery only needs it
+    // to construct a Configuration, and we are about to dynamically issue
+    // the real client_id via /register. openid-client v6 has no
+    // "discovery-without-client" mode.
+    configuration = await oauth.discovery(
+      server,
+      "dynamic-registration-probe",
+      undefined,
+      undefined,
+      discoveryOptions,
+    );
+  } catch (err) {
+    throw new DynamicRegistrationError(
+      `OAuth discovery failed for ${args.issuerUrl}: ${err instanceof Error ? err.message : String(err)}`,
+      "discovery_failed",
+    );
+  }
+
+  const serverMeta = configuration.serverMetadata() as Record<string, unknown>;
+  const registrationEndpoint = serverMeta.registration_endpoint as string | undefined;
+  if (!registrationEndpoint) {
+    throw new DynamicRegistrationError(
+      `OAuth server at ${args.issuerUrl} does not advertise a registration_endpoint`,
+      "no_registration_endpoint",
+    );
+  }
+
+  const fetchOpts: RequestInit = {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(args.clientMetadata),
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(registrationEndpoint, fetchOpts);
+  } catch (err) {
+    throw new DynamicRegistrationError(
+      `Registration POST to ${registrationEndpoint} failed: ${err instanceof Error ? err.message : String(err)}`,
+      "registration_request_failed",
+    );
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new DynamicRegistrationError(
+      `Registration endpoint returned ${res.status}: ${body}`,
+      `registration_http_${res.status}`,
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = await res.json();
+  } catch {
+    throw new DynamicRegistrationError(
+      "Registration endpoint returned non-JSON response",
+      "registration_response_invalid",
+    );
+  }
+
+  const registration = RFC7591ClientRegistrationResponseSchema.safeParse(parsed);
+  if (!registration.success) {
+    throw new DynamicRegistrationError(
+      `Registration response failed schema validation: ${registration.error.message}`,
+      "registration_response_invalid",
+    );
+  }
+
+  logger.info({
+    module: "oauth2",
+    action: "oauth2.dynamic_registration.succeeded",
+    msg: "dynamic client registration succeeded",
+    issuer_url_host: server.host,
+    registration_endpoint_host: new URL(registrationEndpoint).host,
+  });
+
+  return {
+    clientId: registration.data.client_id,
+    clientSecret: registration.data.client_secret,
+    registrationEndpoint,
+  };
 }
 
 export async function runRefreshTokenGrant(

@@ -39,6 +39,8 @@ import sql0018ProactiveDriftScans from "./0018_proactive_drift_scans.sql" with {
 import sql0019FilesUnify from "./0019_files_unify.sql" with { type: "text" };
 import sql0020FilesDedupCounter from "./0020_files_dedup_counter.sql" with { type: "text" };
 import sql0021TenantTimezone from "./0021_tenant_timezone.sql" with { type: "text" };
+import sql0022CredentialModeOauth2Client from "./0022_credential_mode_oauth2_client.sql" with { type: "text" };
+import sql0023CredentialsUniquePerMode from "./0023_credentials_unique_per_mode.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -85,6 +87,8 @@ const SQL_BY_TAG: Record<string, string> = {
   "0019_files_unify": sql0019FilesUnify,
   "0020_files_dedup_counter": sql0020FilesDedupCounter,
   "0021_tenant_timezone": sql0021TenantTimezone,
+  "0022_credential_mode_oauth2_client": sql0022CredentialModeOauth2Client,
+  "0023_credentials_unique_per_mode": sql0023CredentialsUniquePerMode,
 };
 
 const journal = journalMeta as unknown as Journal;
