@@ -96,6 +96,20 @@ DROPLET_NAME="${DROPLET_NAME:-subkit-engine}"
 SSH_KEY_PATH="${SSH_KEY_PATH:-${DROPLET_SSH_KEY_PATH:-$HOME/.ssh/id_rsa}}"
 DEPLOY_URL="${DEPLOY_URL:-https://subkit-api.mikebild.dev}"
 
+# Shared ssh/scp options for every Stage 5 transfer. ConnectTimeout
+# fails fast when the host is unreachable; ServerAliveInterval +
+# ServerAliveCountMax tear down a stalled connection after ~60s
+# (4 × 15s) instead of hanging indefinitely — without these a dead
+# TCP connection with no keepalive once stalled a deploy's binary scp
+# for 49 minutes before it was killed by hand.
+SSH_COMMON_OPTS=(
+  -i "$SSH_KEY_PATH"
+  -o StrictHostKeyChecking=accept-new
+  -o ConnectTimeout=15
+  -o ServerAliveInterval=15
+  -o ServerAliveCountMax=4
+)
+
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
@@ -287,19 +301,19 @@ else
   fi
   # Stream the binary up first; deploy-body.sh checks for it before
   # touching the running engine.
-  scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+  scp "${SSH_COMMON_OPTS[@]}" \
     "$_DIST_BIN" \
     "$SSH_TARGET:/usr/local/bin/engine.next"
   # Caddyfile + systemd unit: re-synced every release so the repo
   # stays the source of truth. systemd `daemon-reload` runs only when
   # the unit changed; the deploy body handles that detection.
-  scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+  scp "${SSH_COMMON_OPTS[@]}" \
     "$_CADDYFILE" \
     "$SSH_TARGET:/etc/caddy/Caddyfile"
-  scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+  scp "${SSH_COMMON_OPTS[@]}" \
     "$_SYSTEMD_UNIT" \
     "$SSH_TARGET:/etc/systemd/system/subkit-engine.service"
-  ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+  ssh "${SSH_COMMON_OPTS[@]}" \
     "$SSH_TARGET" "systemctl daemon-reload"
   # Thread bootstrap LLM config + admin API key through to deploy-body
   # so the post-health-check `PUT /v1/settings/*` step can run
@@ -324,7 +338,7 @@ else
     exit 1
   fi
   _SEND_ENV=$(grep -vE '^(\s*#|\s*$)' "$_BOOTSTRAP_ENV_LIST" | tr '\n' ' ' | sed 's/ $//')
-  ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+  ssh "${SSH_COMMON_OPTS[@]}" \
     -o "SendEnv=$_SEND_ENV" \
     "$SSH_TARGET" "bash -s" \
     < "$_SCRIPT_DIR/release/deploy-body.sh"
