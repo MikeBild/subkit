@@ -135,6 +135,18 @@ export interface SaveConnectorAtomicParams {
 }
 
 /**
+ * Returns true when a cached credential's mode is compatible with the
+ * connector's auth_type for the purpose of satisfying the credential gate.
+ * Cognito connectors have auth_type "oauth2" but the cached credential mode
+ * is "cognito_user_password", so this mapping keeps the gate from rejecting
+ * a valid cached credential.
+ */
+function credentialModeMatchesAuthType(mode: string, authType: string): boolean {
+  if (authType === "oauth2") return mode === "oauth2" || mode === "cognito_user_password";
+  return mode === authType;
+}
+
+/**
  * Atomic connector + (optional) credential save. Mirrors the previous
  * tool body line-for-line so behaviour stays identical:
  *
@@ -323,7 +335,8 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   let credential = p.credential;
   if (requiresCredential && !credential) {
     const cached = getDraftCredential(ctx.conversation_id);
-    if (cached && cached.mode === connector.auth_type) credential = cached;
+    if (cached && credentialModeMatchesAuthType(cached.mode, connector.auth_type ?? ""))
+      credential = cached;
   }
   if (requiresCredential && !credential) {
     return {

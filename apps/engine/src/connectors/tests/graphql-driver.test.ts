@@ -316,4 +316,86 @@ describe("graphql driver", () => {
       }),
     ).rejects.toBeInstanceOf(HttpRequestInvalidError);
   });
+
+  // RC-2: probeGraphQLConnector with a credential_override applied to an
+  // auth-required connector that has NO persisted credential row in the DB.
+  // The override must bypass the DB lookup and the probe must succeed. The
+  // mock server must also have received the Authorization header stamped from
+  // the override so we know the token was forwarded, not silently dropped.
+  test("probeGraphQLConnector with credential_override succeeds for auth-required connector with no DB row", async () => {
+    // Create a bearer connector with NO stored credential row.
+    const authRequired = await createConnector(
+      {
+        tenant_id: tenantId,
+        input: {
+          name: "gql-auth-no-cred",
+          driver: "graphql",
+          environment: "dev",
+          auth_type: "bearer",
+          config: { endpoint: mock.baseUrl },
+        },
+        actor_id: null,
+      },
+      testDb.db,
+    );
+    const fresh = await getConnector(tenantId, authRequired.id, testDb.db);
+
+    // Capture the auth header received by the mock server.
+    const captured: { auth: string | null } = { auth: null };
+    const origFetch = globalThis.fetch;
+    const patchedFetch = async (url: RequestInfo | URL, init?: RequestInit) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      captured.auth = headers.Authorization ?? headers.authorization ?? null;
+      return origFetch(url as URL, init);
+    };
+
+    const probe = await probeGraphQLConnector({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      credential_override: { mode: "bearer", token: "override-draft-token" },
+      fetchImpl: patchedFetch as typeof fetch,
+    });
+
+    expect(probe.ok).toBe(true);
+    expect(captured.auth).toBe("Bearer override-draft-token");
+  });
+
+  // RC-2: probeGraphQLConnector with NO credential_override and no DB row
+  // must return { ok: false, detail: "credential_required" } and must NOT
+  // reach the mock server.
+  test("probeGraphQLConnector without credential_override and no DB row returns credential_required", async () => {
+    const authRequired = await createConnector(
+      {
+        tenant_id: tenantId,
+        input: {
+          name: "gql-auth-no-cred-v2",
+          driver: "graphql",
+          environment: "dev",
+          auth_type: "bearer",
+          config: { endpoint: mock.baseUrl },
+        },
+        actor_id: null,
+      },
+      testDb.db,
+    );
+    const fresh = await getConnector(tenantId, authRequired.id, testDb.db);
+
+    let serverHit = false;
+    const guardedFetch = async (url: RequestInfo | URL, init?: RequestInit) => {
+      serverHit = true;
+      return globalThis.fetch(url as URL, init);
+    };
+
+    const probe = await probeGraphQLConnector({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      fetchImpl: guardedFetch as typeof fetch,
+    });
+
+    expect(probe.ok).toBe(false);
+    expect(probe.detail).toBe("credential_required");
+    expect(serverHit).toBe(false);
+  });
 });

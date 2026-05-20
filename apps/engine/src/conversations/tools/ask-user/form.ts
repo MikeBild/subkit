@@ -186,6 +186,29 @@ export const askUserFormTool: ConversationTool = {
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
+    // Gate: if the form collects a sensitive credential (password field or
+    // sensitive: true) AND a connector draft is active BUT its auth_type has
+    // not been set yet, refuse early. The connector's auth shape must be
+    // established via start_connector_from_description or
+    // update_connector_draft before a credential can be collected — without
+    // auth_type the credential cache has no mode to key on and the probe loop
+    // enters credential_required repeatedly.
+    const hasSensitiveField = args.fields.some(
+      (f) => f.type === "password" || f.sensitive === true,
+    );
+    if (hasSensitiveField) {
+      const draftConnector = ctx.getDraft().connector;
+      if (draftConnector != null && draftConnector.auth_type == null) {
+        return {
+          ok: false,
+          error_code: "connector_auth_unset",
+          message:
+            "Set the connector's auth shape before collecting a credential — call start_connector_from_description or update_connector_draft to set auth_type first.",
+          next_best_actions: ["start_connector_from_description", "update_connector_draft"],
+          data: { error_code: "connector_auth_unset" },
+        };
+      }
+    }
     return pauseForUserInput(ctx, {
       tool_name: "ask_user_form",
       summary: args.question,

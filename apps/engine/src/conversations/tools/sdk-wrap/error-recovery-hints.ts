@@ -95,6 +95,9 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the workflow has no recorded preview — call dry_run_workflow to produce one before reading step results",
   preview_empty:
     "the last preview produced no output — call run_workflow with concrete input, or dry_run_workflow with a non-empty input payload",
+  // Connector authoring gates — auth_type must be set before credentials are collected.
+  connector_auth_unset:
+    "the connector draft has no auth_type — call update_connector_draft with the correct auth_type (bearer, basic, api_key, oauth2, or none) before asking for credentials",
   // Loops & repair.
   verifier_rejected:
     "the workflow verifier rejected the change — read the rejection reason and either revise the patch or call ask_user_confirm to confirm an exception",

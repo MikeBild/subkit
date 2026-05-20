@@ -5,6 +5,7 @@ import { probeGraphQLConnector } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
+import type { DecryptedCredential } from "../../credentials/types.ts";
 import { logger } from "../../logging/logger.ts";
 import { withConnectorProbe, withConnectorValidation } from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
@@ -178,71 +179,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     }
 
-    if (connector.driver === "graphql" && args.path === "/") {
-      // No explicit path supplied — run the minimal `{ __typename }` probe.
-      // When the user supplies an explicit path the HTTP path below takes
-      // over so they can exercise real endpoints.
-      const started = Date.now();
-      const res = await probeGraphQLConnector({
-        db: ctx.db,
-        tenant_id: ctx.tenant_id,
-        connector: draftView,
-      });
-      const duration_ms = Date.now() - started;
-      const latest_probe = {
-        ok: res.ok,
-        method: "POST",
-        path: "(introspection)",
-        environment: draftView.environment,
-        ...(typeof res.status === "number" ? { status_code: res.status } : {}),
-        duration_ms,
-        summary: res.ok
-          ? `GraphQL introspection probe succeeded in ${duration_ms}ms.`
-          : `GraphQL probe failed: ${res.detail ?? `HTTP ${res.status ?? 0}`}`,
-        ...(res.ok ? {} : { failure_code: "probe_failed" }),
-        probed_at: new Date().toISOString(),
-      };
-      const nextDraft = withConnectorProbe(
-        currentDraft,
-        { ...connector, validation, latest_probe },
-        res.ok,
-        latest_probe.summary,
-        res.ok ? "connector_probed" : "connector_probe_failed",
-      );
-      await ctx.setDraft(nextDraft);
-      await auditAwait(
-        {
-          tenant_id: ctx.tenant_id,
-          actor_type: ctx.actor_id ? "user" : "system",
-          actor_id: ctx.actor_id,
-          action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
-          resource_type: "conversation",
-          resource_id: ctx.conversation_id,
-          result: res.ok ? "success" : "error",
-          metadata: {
-            connector_name: connector.name ?? null,
-            connector_slug: connector.slug ?? null,
-            environment: draftView.environment,
-            driver: "graphql",
-            duration_ms,
-            draft_only: true,
-          },
-        },
-        ctx.db,
-      );
-      return {
-        ok: res.ok,
-        data: buildLifecyclePayload(nextDraft, {
-          connector: {
-            ...toCreateConnectorInput(connector),
-            environment: draftView.environment,
-          },
-          latest_probe,
-          detail: res.detail ?? null,
-        }),
-      };
-    }
-
     // Single helper for the gate-denial envelopes below. Builds the
     // failing probe payload, persists it to the draft snapshot, and
     // emits a `CONVERSATION_PROBE_CONNECTOR` audit row with
@@ -343,33 +279,31 @@ export const probeConnectorDraftTool: ConversationTool = {
       });
     }
 
-    const started = Date.now();
-    let status = 0;
-    let responseBody: unknown = null;
-    let errorDetail: string | null = null;
-    let requestUrl = "";
-
+    // Resolve the in-memory credential override for the probe. For
+    // `cognito_user_password` the cached credential is the raw username +
+    // password; the async helper mints an IdToken via Cognito InitiateAuth.
+    // Other modes round-trip through the sync converter.
+    //
+    // `aws_region` is accepted on either `config.aws_region` (the canonical
+    // slot the template seeds) OR `config.oauth.aws_region` (the LLM
+    // occasionally nests it there). Both are valid. Same for `client_id`.
+    //
+    // Wrap in its own try/catch so a missing region/client_id on a Cognito
+    // draft returns a structured `credential_required` envelope rather than
+    // crashing the HTTP path's try/catch and losing the typed error message.
+    const draftCfg = (draftView.config ?? {}) as {
+      aws_region?: unknown;
+      oauth?: { client_id?: unknown; aws_region?: unknown };
+    };
+    const oauthCfg = (draftCfg.oauth ?? {}) as { client_id?: unknown; aws_region?: unknown };
+    const region =
+      (typeof draftCfg.aws_region === "string" && draftCfg.aws_region) ||
+      (typeof oauthCfg.aws_region === "string" && oauthCfg.aws_region) ||
+      null;
+    const clientId = typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null;
+    let credentialOverride: DecryptedCredential | null = null;
     try {
-      // For `cognito_user_password` the cached credential is the raw
-      // username + password. We have to mint an IdToken via Cognito
-      // InitiateAuth before the probe — that's what the async helper
-      // does. Other modes round-trip through the sync converter.
-      //
-      // `aws_region` is accepted on either `config.aws_region` (the
-      // canonical slot the template seeds) OR `config.oauth.aws_region`
-      // (the LLM occasionally nests it there). Both are valid. Same
-      // for `client_id`.
-      const draftCfg = (draftView.config ?? {}) as {
-        aws_region?: unknown;
-        oauth?: { client_id?: unknown; aws_region?: unknown };
-      };
-      const oauthCfg = (draftCfg.oauth ?? {}) as { client_id?: unknown; aws_region?: unknown };
-      const region =
-        (typeof draftCfg.aws_region === "string" && draftCfg.aws_region) ||
-        (typeof oauthCfg.aws_region === "string" && oauthCfg.aws_region) ||
-        null;
-      const clientId = typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null;
-      const credentialOverride = draftCredential
+      credentialOverride = draftCredential
         ? draftCredential.mode === "cognito_user_password"
           ? await toDecryptedCredentialAsync(draftCredential, {
               aws_region: region,
@@ -377,6 +311,153 @@ export const probeConnectorDraftTool: ConversationTool = {
             })
           : toDecryptedCredential(draftCredential)
         : null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return buildProbeGateEnvelope({
+        failure_code: "credential_required",
+        summary: msg,
+        error_message: msg,
+        recommended_next: ["update_connector_draft"],
+      });
+    }
+
+    // Local helper: after a green probe, auto-persist the connector + credential
+    // atomically and return the enriched success envelope. Called from both the
+    // graphql branch (on ok: true) and the HTTP path's probe-success tail.
+    const finishWithGreenProbeAutoPersist = async (
+      latest_probe: Record<string, unknown>,
+      probe_duration_ms: number,
+      probe_status_code: number,
+    ): Promise<ToolResult> => {
+      const connectorLabel = connector.name ?? connector.slug ?? "this connector";
+      const saveResult = await saveConnectorAtomic({
+        ctx,
+        environment: draftView.environment,
+        reason: "auto_persist_on_green_probe",
+        emitAutoPersistAudit: true,
+        commitIntentKind: "save_connector",
+      });
+      if (!saveResult.ok) {
+        logger.warn({
+          module: "conversation_tool",
+          action: "probe_connector_draft.auto_save_failed",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          error_code: (saveResult.data as { error_code?: unknown } | undefined)?.error_code ?? null,
+        });
+        return saveResult;
+      }
+      const saved =
+        typeof saveResult.data === "object" && saveResult.data !== null
+          ? (saveResult.data as Record<string, unknown>)
+          : {};
+      const savedConnector =
+        saved.connector && typeof saved.connector === "object"
+          ? (saved.connector as Record<string, unknown>)
+          : null;
+      logger.info({
+        module: "conversation_tool",
+        action: "probe_connector_draft.auto_saved",
+        msg: "green probe auto-persisted connector inline",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        connector_id: typeof savedConnector?.id === "string" ? savedConnector.id : null,
+        connector_slug: typeof savedConnector?.slug === "string" ? savedConnector.slug : null,
+        driver: effectiveDriver,
+        environment: draftView.environment,
+        probe_duration_ms,
+        probe_status_code,
+      });
+      return {
+        ok: true,
+        data: {
+          ...saved,
+          auto_saved: true,
+          auto_save_reason: "auto_persist_on_green_probe",
+          latest_probe,
+          next_best_actions: ["start_workflow_from_goal", "list_workflows"],
+          next_prompt: `${connectorLabel} saved. What workflow should it power?`,
+        },
+      };
+    };
+
+    // GraphQL connectors ALWAYS use the introspection probe, regardless of
+    // the `path` arg. A graphql-driver connector must never fall through to
+    // the raw-HTTP path which sends an empty POST body — that returns a 400
+    // from every real GraphQL endpoint.
+    if (connector.driver === "graphql") {
+      const started = Date.now();
+      const res = await probeGraphQLConnector({
+        db: ctx.db,
+        tenant_id: ctx.tenant_id,
+        connector: draftView,
+        ...(credentialOverride ? { credential_override: credentialOverride } : {}),
+      });
+      const duration_ms = Date.now() - started;
+      const latest_probe = {
+        ok: res.ok,
+        method: "POST",
+        path: "(introspection)",
+        environment: draftView.environment,
+        ...(typeof res.status === "number" ? { status_code: res.status } : {}),
+        duration_ms,
+        summary: res.ok
+          ? `GraphQL introspection probe succeeded in ${duration_ms}ms.`
+          : `GraphQL probe failed: ${res.detail ?? `HTTP ${res.status ?? 0}`}`,
+        ...(res.ok ? {} : { failure_code: "probe_failed" }),
+        probed_at: new Date().toISOString(),
+      };
+      const nextDraft = withConnectorProbe(
+        currentDraft,
+        { ...connector, validation, latest_probe },
+        res.ok,
+        latest_probe.summary,
+        res.ok ? "connector_probed" : "connector_probe_failed",
+      );
+      await ctx.setDraft(nextDraft);
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: ctx.actor_id ? "user" : "system",
+          actor_id: ctx.actor_id,
+          action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
+          resource_type: "conversation",
+          resource_id: ctx.conversation_id,
+          result: res.ok ? "success" : "error",
+          metadata: {
+            connector_name: connector.name ?? null,
+            connector_slug: connector.slug ?? null,
+            environment: draftView.environment,
+            driver: "graphql",
+            duration_ms,
+            draft_only: true,
+          },
+        },
+        ctx.db,
+      );
+      if (!res.ok) {
+        return {
+          ok: false,
+          data: buildLifecyclePayload(nextDraft, {
+            connector: {
+              ...toCreateConnectorInput(connector),
+              environment: draftView.environment,
+            },
+            latest_probe,
+            detail: res.detail ?? null,
+          }),
+        };
+      }
+      return finishWithGreenProbeAutoPersist(latest_probe, duration_ms, res.status ?? 200);
+    }
+
+    const started = Date.now();
+    let status = 0;
+    let responseBody: unknown = null;
+    let errorDetail: string | null = null;
+    let requestUrl = "";
+
+    try {
       const execution = await executeConnectorHttpRequest({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
@@ -480,71 +561,10 @@ export const probeConnectorDraftTool: ConversationTool = {
     }
     // Probe-success envelope. A green probe is consent to persist —
     // the credentials work, the draft is validated, there is no
-    // ambiguity left for the operator to resolve. saveConnectorAtomic
-    // is called inline so the same tool call returns the saved-
-    // connector shape directly. Pre-fix the LLM ended the turn after
-    // probe and the user typed "what's now? nothing happens!" (session
-    // 0ac7593c). The audit row is tagged `auto_persist_on_green_probe`
-    // so operators can distinguish this from the harness auto-persist
-    // path and the manual re-issue path.
-    //
-    // If the atomic save fails (e.g. slug collision detected only at
-    // DB level), the error envelope from saveConnectorAtomic is
-    // returned verbatim so the LLM picks the typed recovery move
-    // (`slug_already_in_use` → list_connectors → update_connector).
-    // If it throws (constraint violation outside the typed surface),
-    // we re-throw — the conversation loop's sdk-wrap translates the
-    // exception consistently.
-    const connectorLabel = connector.name ?? connector.slug ?? "this connector";
-    const saveResult = await saveConnectorAtomic({
-      ctx,
-      environment: draftView.environment,
-      reason: "auto_persist_on_green_probe",
-      emitAutoPersistAudit: true,
-      commitIntentKind: "save_connector",
-    });
-    if (!saveResult.ok) {
-      logger.warn({
-        module: "conversation_tool",
-        action: "probe_connector_draft.auto_save_failed",
-        tenant_id: ctx.tenant_id,
-        conversation_id: ctx.conversation_id,
-        error_code: (saveResult.data as { error_code?: unknown } | undefined)?.error_code ?? null,
-      });
-      return saveResult;
-    }
-    const saved =
-      typeof saveResult.data === "object" && saveResult.data !== null
-        ? (saveResult.data as Record<string, unknown>)
-        : {};
-    const savedConnector =
-      saved.connector && typeof saved.connector === "object"
-        ? (saved.connector as Record<string, unknown>)
-        : null;
-    logger.info({
-      module: "conversation_tool",
-      action: "probe_connector_draft.auto_saved",
-      msg: "green probe auto-persisted connector inline",
-      tenant_id: ctx.tenant_id,
-      conversation_id: ctx.conversation_id,
-      connector_id: typeof savedConnector?.id === "string" ? savedConnector.id : null,
-      connector_slug: typeof savedConnector?.slug === "string" ? savedConnector.slug : null,
-      driver: effectiveDriver,
-      environment: draftView.environment,
-      probe_duration_ms: duration_ms,
-      probe_status_code: status,
-    });
-    return {
-      ok: true,
-      data: {
-        ...saved,
-        auto_saved: true,
-        auto_save_reason: "auto_persist_on_green_probe",
-        latest_probe,
-        next_best_actions: ["start_workflow_from_goal", "list_workflows"],
-        next_prompt: `${connectorLabel} saved. What workflow should it power?`,
-      },
-    };
+    // ambiguity left for the operator to resolve. Delegate to the
+    // shared helper which calls saveConnectorAtomic inline, logs, and
+    // builds the enriched envelope.
+    return finishWithGreenProbeAutoPersist(latest_probe, duration_ms, status);
   },
 };
 

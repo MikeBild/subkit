@@ -368,6 +368,7 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
             ? (draftOauthCfg.grant_type ?? templateOauth?.grant_type ?? null)
             : null,
         template_slug: templateSlug,
+        connector_present: draft.connector != null,
       });
       return;
     }

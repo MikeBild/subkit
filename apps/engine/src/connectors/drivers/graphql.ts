@@ -278,18 +278,22 @@ export async function probeGraphQLConnector(p: {
   tenant_id: string;
   connector: ConnectorView;
   fetchImpl?: typeof fetch;
+  credential_override?: DecryptedCredential | null;
 }): Promise<{ ok: boolean; latency_ms: number; status?: number; detail?: string }> {
   const start = Date.now();
   try {
-    // Guard: auth-required connectors must have a persisted credential row.
+    // Guard: auth-required connectors must have a persisted credential row
+    // (or an in-memory override supplied by the draft probe path).
     // Without one the request would go out unauthenticated and surface a
     // misleading error indistinguishable from a real connectivity failure.
     if (p.connector.auth_type !== "none") {
-      const { credential } = await resolveConnectorCredential({
+      const resolveOpts: Parameters<typeof resolveConnectorCredential>[0] = {
         db: p.db,
         tenant_id: p.tenant_id,
         connector: p.connector,
-      });
+      };
+      if (p.credential_override !== undefined) resolveOpts.override = p.credential_override;
+      const { credential } = await resolveConnectorCredential(resolveOpts);
       if (!credential) {
         return {
           ok: false,
@@ -306,6 +310,7 @@ export async function probeGraphQLConnector(p: {
       op: { operation: "query", query: "{ __typename }" },
     };
     if (p.fetchImpl !== undefined) args.fetchImpl = p.fetchImpl;
+    if (p.credential_override !== undefined) args.credential_override = p.credential_override;
     const res = await executeGraphQLRequest(args);
     if (res.status === 501) {
       return { ok: false, latency_ms: Date.now() - start, status: 501 };
