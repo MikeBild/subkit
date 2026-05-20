@@ -21,6 +21,8 @@ import { createDeterministicUuidFactory } from "../../test-helpers/determinism/i
 const uuid = createDeterministicUuidFactory(0xd4af7_c4ed);
 
 import * as discoveryService from "../../connectors/discovery/service.ts";
+import { createConnector } from "../../connectors/service.ts";
+import { upsertCredential } from "../../credentials/service.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { startLocalTargetServer } from "../../test-helpers/local-http.ts";
 import {
@@ -1109,6 +1111,73 @@ describe("probe_connector_draft + draft credential", () => {
       const data = result.data as { error_code?: string; recommended_next?: string[] };
       expect(data.error_code).toBe("authenticate_oauth_required");
       expect(data.recommended_next).toContain("authenticate_oauth");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("reuses the saved connector's stored credential when the draft is already persisted (empty cache)", async () => {
+    // Regression: a save clears the in-memory draft credential
+    // (`clearDraftCredential`). Re-probing the same draft afterwards
+    // found an empty cache and re-demanded the password — the operator
+    // had to retype it on every probe. Once the draft is bound to a
+    // saved connector, the credential lives in the encrypted vault;
+    // the probe must resolve it from there instead of gating.
+    const captured: { auth: string | null } = { auth: null };
+    const server = await startLocalTargetServer((req) => {
+      captured.auth = req.headers.get("authorization");
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const saved = await createConnector(
+        {
+          tenant_id,
+          input: {
+            name: "saved-bearer",
+            driver: "http",
+            environment: "dev",
+            auth_type: "bearer",
+            base_url: server.url,
+          },
+          actor_id: null,
+        },
+        ctx.db,
+      );
+      await upsertCredential(
+        {
+          tenant_id,
+          connector_id: saved.id,
+          environment: "dev",
+          mode: "bearer",
+          value: { mode: "bearer", token: "VAULT-TOKEN" },
+          actor_id: null,
+        },
+        ctx.db,
+      );
+
+      const conversation_id = await seedConversation();
+      // The post-save draft state: bound to the saved connector, with
+      // the in-memory draft credential already cleared.
+      const draft = buildBearerDraft(server.url);
+      const boundDraft: DraftDocument = {
+        ...draft,
+        connector: { ...draft.connector!, saved_connector_id: saved.id },
+      };
+      const toolCtx = await buildToolCtx(conversation_id, boundDraft);
+      expect(getDraftCredential(conversation_id)).toBeNull();
+
+      const result = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "GET",
+        path: "/v2/projects",
+        timeout_ms: 5_000,
+      });
+
+      // No credential re-collection — the probe resolved the vault row.
+      expect(result.ok).toBe(true);
+      expect(captured.auth).toBe("Bearer VAULT-TOKEN");
     } finally {
       await server.stop();
     }

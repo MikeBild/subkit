@@ -627,10 +627,7 @@
     "url_pattern": "^https:\\/\\/[a-z0-9]+\\.appsync-api\\.[a-z0-9-]+\\.amazonaws\\.com\\/graphql$",
     "keywords": ["cognito", "appsync", "user_password_auth", "id_token"],
     "inline_schema": null,
-    "probe_endpoint": {
-      "method": "POST",
-      "path": "/graphql"
-    },
+    "probe_endpoint": null,
     "credential_hints": [
       {
         "field": "username",
@@ -846,10 +843,7 @@
     "url_pattern": "^https:\\/\\/[a-z0-9]+\\.appsync-api\\.[a-z0-9-]+\\.amazonaws\\.com\\/graphql$",
     "keywords": ["sigv4", "iam", "appsync"],
     "inline_schema": null,
-    "probe_endpoint": {
-      "method": "POST",
-      "path": "/graphql"
-    },
+    "probe_endpoint": null,
     "credential_hints": [
       {
         "field": "access_key_id",

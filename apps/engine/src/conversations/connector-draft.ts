@@ -111,14 +111,42 @@ export function validateConnectorDraft(
       getBuiltinTemplate(connector.template_slug);
     if (!template) {
       pushError(errors, "template_slug", "template_slug must reference a known connector template");
-    } else if (connector.auth_type) {
-      const allowed = allowedTemplateAuthTypes(template);
-      if (!allowed.includes(connector.auth_type)) {
-        pushError(
-          errors,
-          "auth_type",
-          `auth_type must match the selected template (${allowed.join(", ")}; default ${defaultTemplateAuthType(template)})`,
-        );
+    } else {
+      if (connector.auth_type) {
+        const allowed = allowedTemplateAuthTypes(template);
+        if (!allowed.includes(connector.auth_type)) {
+          pushError(
+            errors,
+            "auth_type",
+            `auth_type must match the selected template (${allowed.join(", ")}; default ${defaultTemplateAuthType(template)})`,
+          );
+        }
+      }
+      // For the GraphQL driver `base_url` IS the full endpoint URL — there
+      // is no base_url/path split. A base_url trimmed to the host root
+      // (e.g. dropping `/graphql`) passes `new URL()` but makes every
+      // request 404. The template's `url_pattern` is the canonical
+      // endpoint shape, so enforce it here rather than discovering the
+      // breakage at run time. HTTP connectors legitimately store a
+      // host-root base_url and address many paths per step, so this check
+      // is GraphQL-only.
+      if (connector.driver === "graphql" && template.url_pattern && connector.base_url) {
+        const placeholders = extractTemplatePlaceholders(connector.base_url);
+        if (placeholders.length === 0) {
+          let pattern: RegExp | null = null;
+          try {
+            pattern = new RegExp(template.url_pattern);
+          } catch {
+            pattern = null;
+          }
+          if (pattern && !pattern.test(connector.base_url)) {
+            pushError(
+              errors,
+              "base_url",
+              `base_url must be the full GraphQL endpoint URL matching the ${template.name} pattern (${template.url_pattern}) — include the endpoint path (e.g. /graphql), do not trim it to the host root`,
+            );
+          }
+        }
       }
     }
   }

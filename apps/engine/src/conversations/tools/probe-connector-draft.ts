@@ -86,8 +86,13 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     }
     const effectiveDriver = connector.driver ?? "http";
+    // Once the draft is bound to a saved connector, probe under that
+    // connector's real id so the drivers resolve its credential from the
+    // encrypted vault. A fresh (unsaved) draft keeps the synthetic id —
+    // it has no `connector_credentials` row, so it relies on the
+    // in-memory draft credential instead.
     const draftView = {
-      id: `draft-${ctx.conversation_id}`,
+      id: connector.saved_connector_id ?? `draft-${ctx.conversation_id}`,
       tenant_id: ctx.tenant_id,
       slug: connector.slug ?? "draft-connector",
       display_name: connector.name ?? "Draft connector",
@@ -244,16 +249,21 @@ export const probeConnectorDraftTool: ConversationTool = {
     };
 
     // Auth-required drafts need a credential before the probe can be
-    // meaningful. The connector hasn't been inserted yet, so
-    // `connector_credentials` will not have a row keyed by the
-    // synthetic draft id — we read from the in-memory draft cache
-    // populated when the user filled the `ask_user_form`. Without it,
-    // the request goes out unauthenticated and the symptom (HTTP 401
-    // / "Last used: Never" on the upstream) is indistinguishable from
-    // a real auth failure.
+    // meaningful. We read it from the in-memory draft cache populated
+    // when the user filled the `ask_user_form`. Without it, the request
+    // goes out unauthenticated and the symptom (HTTP 401 / "Last used:
+    // Never" on the upstream) is indistinguishable from a real auth
+    // failure.
+    //
+    // EXCEPTION: once the draft is bound to a saved connector, its
+    // credential already lives in the encrypted vault. A save clears the
+    // in-memory draft credential, so re-probing a saved connector finds
+    // no draft credential — but it must NOT re-demand one. We probe
+    // under the saved connector's id (set on `draftView` above) and let
+    // the driver resolve the stored credential.
     const draftCredential =
       draftView.auth_type !== "none" ? getDraftCredential(ctx.conversation_id) : null;
-    if (draftView.auth_type !== "none" && !draftCredential) {
+    if (draftView.auth_type !== "none" && !draftCredential && !connector.saved_connector_id) {
       return buildProbeGateEnvelope({
         failure_code: "credential_required",
         summary:

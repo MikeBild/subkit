@@ -80,3 +80,55 @@ describe("validateConnectorDraft — placeholder host gate", () => {
     expect(result.errors.some((e) => e.message.includes("placeholder"))).toBe(false);
   });
 });
+
+describe("validateConnectorDraft — GraphQL endpoint url_pattern gate", () => {
+  // For the GraphQL driver `base_url` IS the full endpoint URL. A base_url
+  // trimmed to the host root (dropping `/graphql`) parses fine but 404s
+  // every request — AppSync answers `UnknownOperationException`. The
+  // template's `url_pattern` is the canonical endpoint shape, so the
+  // draft must be refused at save time rather than at run time.
+  const FULL_APPSYNC_URL = "https://abc123def456.appsync-api.eu-central-1.amazonaws.com/graphql";
+  const HOST_ROOT_APPSYNC_URL = "https://abc123def456.appsync-api.eu-central-1.amazonaws.com";
+
+  test("rejects a graphql base_url trimmed to the host root", () => {
+    const result = validateConnectorDraft(
+      draft({
+        driver: "graphql",
+        auth_type: "oauth2",
+        template_slug: "appsync-cognito",
+        base_url: HOST_ROOT_APPSYNC_URL,
+      }),
+    );
+    expect(result.ok).toBe(false);
+    const err = result.errors.find((e) => e.path === "base_url");
+    expect(err).toBeDefined();
+    expect(err!.message).toMatch(/full GraphQL endpoint URL/);
+  });
+
+  test("accepts a graphql base_url that is the full /graphql endpoint", () => {
+    const result = validateConnectorDraft(
+      draft({
+        driver: "graphql",
+        auth_type: "oauth2",
+        template_slug: "appsync-cognito",
+        base_url: FULL_APPSYNC_URL,
+      }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("does NOT enforce url_pattern on HTTP connectors (host-root base_url is valid)", () => {
+    // HTTP connectors legitimately store a host-root base_url and address
+    // many paths per step, so the url_pattern gate is GraphQL-only. A
+    // Stripe HTTP connector pointed at the host root must still validate.
+    const result = validateConnectorDraft(
+      draft({
+        driver: "http",
+        auth_type: "bearer",
+        template_slug: "stripe",
+        base_url: "https://api.stripe.com",
+      }),
+    );
+    expect(result.ok).toBe(true);
+  });
+});

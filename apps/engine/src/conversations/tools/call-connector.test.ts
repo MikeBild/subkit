@@ -134,13 +134,18 @@ async function seedHttpConnector(opts: {
   const cfg =
     opts.config !== undefined
       ? opts.config
-      : driver === "graphql"
-        ? { endpoint: `${baseUrl}/graphql` }
-        : driver === "s3"
-          ? { region: "us-east-1", bucket: "test-bucket" }
-          : {};
+      : driver === "s3"
+        ? { region: "us-east-1", bucket: "test-bucket" }
+        : {};
+  // The GraphQL driver treats `base_url` as the full endpoint URL — there
+  // is no base_url/path split — so a GraphQL connector's base_url carries
+  // the `/graphql` path itself.
   const baseUrlField =
-    driver === "postgres" || driver === "sftp" ? null : (opts.base_url ?? baseUrl);
+    driver === "postgres" || driver === "sftp"
+      ? null
+      : driver === "graphql"
+        ? (opts.base_url ?? `${baseUrl}/graphql`)
+        : (opts.base_url ?? baseUrl);
   const dsnField =
     opts.dsn ?? (driver === "postgres" || driver === "sftp" ? "sftp://u:p@example.test:22/" : null);
   const [conn] = await ctx.testDb.db

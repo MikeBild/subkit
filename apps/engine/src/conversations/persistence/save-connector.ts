@@ -16,8 +16,9 @@ import {
   recordConnectorUpdated,
 } from "../../audit/recorders/index.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
-import { createConnector, getConnector } from "../../connectors/service.ts";
+import { createConnector, getConnector, updateConnector } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
+import type { ConnectorView, UpdateConnectorInput } from "../../connectors/types.ts";
 import { runCognitoUserPasswordGrant } from "../../credentials/oauth2/client.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
@@ -37,7 +38,38 @@ import {
   missingFreshCheckpoints,
 } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import type { ConnectorDraftDocument } from "../types.ts";
 import { clearDraftCredential, getDraftCredential } from "./draft-credential-cache.ts";
+
+/**
+ * Connector-column edits a re-issued draft carries vs. the persisted row.
+ *
+ * Used by both `saveConnectorAtomic` and the `save_connector_draft` tool's
+ * idempotency check so they agree on what counts as "changed". `config`
+ * is deliberately excluded: the persisted config carries template
+ * enrichment the draft never mirrors, so a diff there is unreliable —
+ * explicit config edits go through the `update_connector` tool.
+ */
+export function connectorFieldPatch(
+  connector: ConnectorDraftDocument | null | undefined,
+  existing: ConnectorView,
+): UpdateConnectorInput {
+  const patch: UpdateConnectorInput = {};
+  if (!connector) return patch;
+  if (connector.base_url !== undefined && connector.base_url !== (existing.base_url ?? undefined)) {
+    patch.base_url = connector.base_url;
+  }
+  if (connector.dsn !== undefined && connector.dsn !== (existing.dsn ?? undefined)) {
+    patch.dsn = connector.dsn;
+  }
+  if (connector.name !== undefined && connector.name !== existing.display_name) {
+    patch.name = connector.name;
+  }
+  if (connector.auth_type !== undefined && connector.auth_type !== existing.auth_type) {
+    patch.auth_type = connector.auth_type;
+  }
+  return patch;
+}
 
 /**
  * Cooldown window after a failed probe during which `force_save: true`
@@ -167,13 +199,57 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   const draft = ctx.getDraft();
   const connector = draft.connector;
 
-  // Idempotency: re-issued path returns the existing connector +
-  // optionally refreshes the credential. See save-connector-draft.ts
-  // history for the original 2ee4511c symptom.
+  // Re-issued path: the draft is already bound to a saved connector.
+  // It refreshes the credential AND persists any connector-column edits
+  // the operator made after the first save. Before 5.1.x this path
+  // compared only the credential and silently dropped every field
+  // change, so a `base_url` correction (the AppSync `/graphql` case)
+  // could never land — `save_connector_draft` kept reporting
+  // `already_persisted`. See save-connector-draft.ts history (2ee4511c).
   const existingSavedId = connector?.saved_connector_id ?? null;
   if (existingSavedId) {
     const existing = await getConnector(ctx.tenant_id, existingSavedId, ctx.db);
     if (existing) {
+      // Patch whatever connector columns the draft changed since the
+      // first save (most commonly a `base_url` correction).
+      const fieldPatch = connectorFieldPatch(connector, existing);
+      const updatedFields = Object.keys(fieldPatch);
+      const fieldsChanged = updatedFields.length > 0;
+      if (fieldsChanged) {
+        // A field edit must still clear the draft validation gate. The
+        // re-issue path skips the validation block below, so re-run it
+        // here — this is what refuses a `base_url` patch that no longer
+        // matches the template endpoint pattern (the AppSync host-root
+        // trim), instead of persisting a connector that 404s every call.
+        const templates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
+        const validation = validateConnectorDraft(
+          connector ?? null,
+          templates.map((entry) => entry.template),
+        );
+        if (!validation.ok) {
+          const nextDraft = withConnectorValidation(
+            draft,
+            { ...connector, validation },
+            false,
+            "Connector draft is invalid and cannot be persisted yet.",
+            "connector_save_blocked",
+          );
+          await ctx.setDraft(nextDraft);
+          return {
+            ok: false,
+            data: buildGateError(nextDraft, {
+              error_code: "validation_failed",
+              message: "connector draft is invalid",
+              stale_checkpoints: ["connector_validated"],
+              recommended_mode: "connector",
+            }),
+          };
+        }
+        // `updateConnector` runs the UPDATE in its own transaction and
+        // emits the `connector.updated` audit row with before/after.
+        await updateConnector(ctx.tenant_id, existing.id, fieldPatch, ctx.actor_id, ctx.db);
+      }
+
       let credential_persisted = false;
       if (p.credential) {
         await persistCredential({
@@ -187,9 +263,9 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
         });
         credential_persisted = true;
       }
-      // Idempotent save still graduates the credential to the encrypted
-      // table — drop any leftover in-memory draft credential so a
-      // subsequent probe doesn't keep using the cached value.
+      // Re-save still graduates the credential to the encrypted table —
+      // drop any leftover in-memory draft credential so a subsequent
+      // probe doesn't keep using the cached value.
       clearDraftCredential(ctx.conversation_id);
       if (p.emitAutoPersistAudit) {
         await recordConnectorUpdated({
@@ -197,12 +273,12 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
           actor_id: ctx.actor_id,
           executor: ctx.db,
           connector_id: existing.id,
-          kind: "auto_persist_idempotent",
+          kind: fieldsChanged ? "field_edit" : "auto_persist_idempotent",
           reason: p.reason ?? "auto_persist_on_confirmation",
           source: "harness_auto_persist",
           environment: existing.environment,
           credential_persisted,
-          idempotent: true,
+          idempotent: !fieldsChanged,
           ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
         });
       }
@@ -216,11 +292,12 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
           connector: {
             id: existing.id,
             slug: existing.slug,
-            display_name: existing.display_name,
+            display_name: fieldPatch.name ?? existing.display_name,
             environment: existing.environment,
             driver: existing.driver,
           },
-          idempotent: true,
+          idempotent: !fieldsChanged,
+          ...(fieldsChanged ? { fields_updated: updatedFields } : {}),
           credential_persisted,
         },
       };

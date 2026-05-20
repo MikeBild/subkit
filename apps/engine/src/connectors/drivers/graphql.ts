@@ -65,12 +65,15 @@ export interface GraphQLNotImplementedError {
 
 function parseConfig(connector: ConnectorView): GraphQLConnectorConfig {
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
-  const endpoint =
-    typeof cfg.endpoint === "string" && cfg.endpoint.length > 0
-      ? cfg.endpoint
-      : (connector.base_url ?? "");
+  // A GraphQL API has exactly one endpoint, so `base_url` IS the full URL
+  // (e.g. `https://api.example.com/graphql`). There is deliberately no
+  // base_url/path split and no `probe_endpoint` join — that machinery
+  // exists for the HTTP driver, which addresses many paths under one host.
+  // Splitting a single GraphQL endpoint only invites the host-root/`/graphql`
+  // mismatch that AppSync rejects with `404 UnknownOperationException`.
+  const endpoint = connector.base_url ?? "";
   if (!endpoint) {
-    throw new Error(`graphql connector ${connector.id} missing config.endpoint or base_url`);
+    throw new Error(`graphql connector ${connector.id} missing base_url`);
   }
   const out: GraphQLConnectorConfig = { endpoint };
   if (cfg.default_headers && typeof cfg.default_headers === "object") {

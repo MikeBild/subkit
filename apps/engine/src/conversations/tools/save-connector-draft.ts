@@ -30,7 +30,11 @@ import { conversations } from "../../db/schema/index.ts";
 import { safeParseJson } from "../../llm/core/safe-json.ts";
 import { logger } from "../../logging/logger.ts";
 import { translateAutoPersistError } from "../persistence/auto-persist.ts";
-import { type AtomicCredentialInput, saveConnectorAtomic } from "../persistence/save-connector.ts";
+import {
+  type AtomicCredentialInput,
+  connectorFieldPatch,
+  saveConnectorAtomic,
+} from "../persistence/save-connector.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const bearerCredentialInput = z.object({
@@ -181,11 +185,15 @@ export const saveConnectorDraftTool: ConversationTool = {
     const connector = draft.connector;
     const supplied: Credential | undefined = args.credential;
 
-    // Idempotency: if the auto-persist already applied the same write,
-    // this re-issue must be a no-op. Look up the saved connector (if
-    // any) and compare the supplied credential's identifying shape
-    // against the stored credential. A match short-circuits with
-    // `already_persisted: true` and never touches the DB.
+    // Idempotency: a re-issue is a no-op ONLY when nothing actually
+    // changed — neither the credential NOR any connector column. Compare
+    // the supplied credential's identifying shape against the stored
+    // credential AND diff the draft's columns (`base_url`, `dsn`, `name`,
+    // `auth_type`) against the persisted row. A connector-field edit (the
+    // AppSync `/graphql` base_url case) must fall through to
+    // `saveConnectorAtomic`, which now patches the persisted row — before
+    // the fix this short-circuited on the credential match alone and the
+    // base_url change was silently dropped.
     const existingSavedId = connector?.saved_connector_id ?? null;
     if (existingSavedId) {
       const existing = await getConnector(ctx.tenant_id, existingSavedId, ctx.db);
@@ -197,7 +205,9 @@ export const saveConnectorDraftTool: ConversationTool = {
           supplied,
           db: ctx.db as Db,
         });
-        if (credentialMatches) {
+        const fieldPatch = connectorFieldPatch(connector, existing);
+        const fieldsChanged = Object.keys(fieldPatch).length > 0;
+        if (credentialMatches && !fieldsChanged) {
           logger.info({
             module: "conversation_tool",
             action: "save_connector_draft.already_persisted",
@@ -221,11 +231,13 @@ export const saveConnectorDraftTool: ConversationTool = {
             },
           };
         }
-        // Operator is rotating the credential. Forward the new value
-        // through `saveConnectorAtomic` (which short-circuits on
-        // `saved_connector_id` and runs `upsertCredential` against the
-        // already-saved row), then emit the `manual_re_issue` audit
-        // entry that distinguishes this from auto_persist_on_confirmation.
+        // Something moved: a rotated credential, an edited connector
+        // column, or both. Forward through `saveConnectorAtomic` (its
+        // `saved_connector_id` branch runs `upsertCredential` and
+        // `updateConnector` against the already-saved row), then emit the
+        // `manual_re_issue` audit entry that distinguishes this from
+        // auto_persist_on_confirmation.
+        const reissueKind = !credentialMatches ? "credential_rotated" : "field_edit";
         const result = await saveConnectorAtomic({
           ctx,
           environment: args.environment,
@@ -238,7 +250,7 @@ export const saveConnectorDraftTool: ConversationTool = {
           actor_id: ctx.actor_id,
           executor: ctx.db,
           connector_id: existing.id,
-          kind: "credential_rotated",
+          kind: reissueKind,
           reason: "manual_re_issue",
           source: "tool_call",
           tool: "save_connector_draft",
@@ -251,7 +263,8 @@ export const saveConnectorDraftTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
           connector_id: existing.id,
-          kind: "credential_rotated",
+          kind: reissueKind,
+          ...(fieldsChanged ? { fields_updated: Object.keys(fieldPatch) } : {}),
         });
         if (result.ok) {
           const data =

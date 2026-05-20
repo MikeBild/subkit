@@ -29,6 +29,7 @@ import { inspectConnectorDraftTool } from "../inspect-connector-draft.ts";
 import { probeConnectorDraftTool } from "../probe-connector-draft.ts";
 import { saveConnectorDraftTool } from "../save-connector-draft.ts";
 import { startConnectorFromDescriptionTool } from "../start-connector-from-description.ts";
+import { updateConnectorDraftTool } from "../update-connector-draft.ts";
 import { validateConnectorDraftTool } from "../validate-connector-draft.ts";
 
 let ctx: ConversationTestCtx;
@@ -236,6 +237,59 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       .from(credentials)
       .where(eq(credentials.connector_id, connectorId));
     expect(credentialRowsAfter[0]?.updated_at).toEqual(credentialRowsBefore[0]?.updated_at);
+  });
+
+  test("re-issue after a base_url edit patches the persisted connector instead of reporting already_persisted", async () => {
+    await assertOwnServer(baseUrl);
+    const toolCtx = await createToolCtx();
+    await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "Base URL Edit API",
+      driver: "http",
+      environment: "dev",
+      base_url: baseUrl,
+      auth_type: "bearer",
+    });
+    await inspectConnectorDraftTool.execute(toolCtx.base, {});
+    await validateConnectorDraftTool.execute(toolCtx.base, {});
+    setDraftCredential(toolCtx.conversation_id, { mode: "bearer", token: "tkn-edit" });
+    await probeConnectorDraftTool.execute(toolCtx.base, { method: "GET", path: "/health" });
+    const first = await saveConnectorDraftTool.execute(toolCtx.base, {
+      credential: { mode: "bearer", token: "tkn-edit" },
+    });
+    expect(first.ok).toBe(true);
+    const connectorId = (first.data as { connector: { id: string } }).connector.id;
+
+    // Operator corrects the base_url after the first save — exactly the
+    // AppSync `/graphql` scenario. The re-issue path must patch the
+    // persisted row, not short-circuit on the matching credential.
+    const editedUrl = "http://127.0.0.1:59999/edited";
+    const upd = await updateConnectorDraftTool.execute(toolCtx.base, { base_url: editedUrl });
+    expect(upd.ok).toBe(true);
+
+    const second = await saveConnectorDraftTool.execute(toolCtx.base, {
+      credential: { mode: "bearer", token: "tkn-edit" },
+    });
+    expect(second.ok).toBe(true);
+    const data = second.data as {
+      already_persisted?: boolean;
+      re_issued?: boolean;
+      fields_updated?: string[];
+    };
+    // NOT a no-op: the base_url change is recognised and persisted.
+    expect(data.already_persisted).toBeUndefined();
+    expect(data.re_issued).toBe(true);
+    expect(data.fields_updated).toEqual(["base_url"]);
+
+    // The persisted connector row carries the corrected base_url.
+    const rows = await ctx.testDb.db
+      .select()
+      .from(connectors)
+      .where(eq(connectors.id, connectorId));
+    expect(rows[0]?.base_url).toBe(editedUrl);
+
+    // And the field edit is auditable as a connector.updated row.
+    const audit = await listAuditRows(connectorId);
+    expect(audit.some((r) => r.action === "connector.updated")).toBe(true);
   });
 
   test("re-issue with a rotated credential updates the credential and emits a manual_re_issue audit row", async () => {
