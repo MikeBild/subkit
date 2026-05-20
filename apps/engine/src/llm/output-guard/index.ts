@@ -98,6 +98,19 @@ function rewriteSoft(text: string, violations: Violation[]): string {
       out = `${out.slice(0, start)}${v.repair}${out.slice(end)}`;
       continue;
     }
+    // tool.phantom_reference with no repair: strip just the backticks
+    // around the token rather than deleting the span. A true positive
+    // ("I'll call `create_oauth_app`") then stays grammatical
+    // ("I'll call create_oauth_app") instead of collapsing into
+    // "I'll call ." — the offending bare token is still surfaced on
+    // `GuardResult.violations` and fed back into the next turn.
+    if (v.kind === "tool.phantom_reference") {
+      const token = (v.details as { invented_tool?: unknown } | undefined)?.invented_tool;
+      if (typeof token === "string") {
+        out = `${out.slice(0, start)}${token}${out.slice(end)}`;
+        continue;
+      }
+    }
     const before = out.slice(0, start);
     let after = out.slice(end);
     // Swallow any leading space/tab so "foo `phantom_reference` bar"

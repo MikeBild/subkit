@@ -15,6 +15,7 @@ import { recordWorkflowCreated, recordWorkflowUpdated } from "../../audit/record
 import { conversationElicitations, conversations, workflows } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { createWorkflow, updateWorkflow } from "../../workflows/service.ts";
+import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { getWorkflowDraft, withWorkflowPersisted } from "../authoring-state.ts";
 import {
   buildGateError,
@@ -426,6 +427,35 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       .update(conversations)
       .set({ target_workflow_id: targetWorkflowId, updated_at: new Date() })
       .where(eq(conversations.id, ctx.conversation_id));
+  }
+
+  // Bound-workflow resolution: an edit of a hydrated workflow (slug
+  // unchanged) is an update-in-place — resolve the target from the
+  // bound resource so the slug-conflict check below does not treat it
+  // as a new artifact. A draft slug matching a different workflow has
+  // a non-matching bound slug, so a genuine conflict still fires.
+  if (!targetWorkflowId && def.slug && fullDraft.state) {
+    const bound = persistedWorkflowResource(fullDraft.state);
+    if (bound && bound.slug === def.slug) {
+      const boundRows = await ctx.db
+        .select({ id: workflows.id })
+        .from(workflows)
+        .where(
+          and(
+            eq(workflows.tenant_id, ctx.tenant_id),
+            eq(workflows.id, bound.id),
+            isNull(workflows.deleted_at),
+          ),
+        )
+        .limit(1);
+      if (boundRows[0]) {
+        targetWorkflowId = boundRows[0].id;
+        await ctx.db
+          .update(conversations)
+          .set({ target_workflow_id: targetWorkflowId, updated_at: new Date() })
+          .where(eq(conversations.id, ctx.conversation_id));
+      }
+    }
   }
 
   if (!targetWorkflowId && def.slug) {

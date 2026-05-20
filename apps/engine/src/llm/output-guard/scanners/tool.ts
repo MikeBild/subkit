@@ -45,6 +45,23 @@ function looksLikeToolName(token: string): boolean {
   return false;
 }
 
+// Verbs that put a following backticked token in an *invocation*
+// context — "I'll call `create_oauth_app`", "running `dry_run_step`".
+// A bare backticked identifier with no invocation verb before it is a
+// legitimate reference (a step id, an audit reason, an error code, a
+// field name) and must NOT be flagged. The verb is matched on a word
+// boundary, case-insensitively, within a short window of text
+// immediately before the backtick.
+const INVOCATION_VERB_RE =
+  /\b(call|calls|called|calling|invoke|invokes|invoked|invoking|dispatch|dispatched|dispatching|trigger|triggered|triggering|prompt|prompted|prompting|run|running)\b[\s:,\-—–]*$/i;
+const INVOCATION_WINDOW = 40;
+
+function inInvocationContext(text: string, matchStart: number): boolean {
+  const windowStart = Math.max(0, matchStart - INVOCATION_WINDOW);
+  const before = text.slice(windowStart, matchStart);
+  return INVOCATION_VERB_RE.test(before);
+}
+
 export const toolScanner: Scanner = {
   id: "tool",
   scan(text: string): Violation[] {
@@ -58,6 +75,10 @@ export const toolScanner: Scanner = {
       if (ALLOW_LIST.has(token)) continue;
       if (!looksLikeToolName(token)) continue;
       if (manifest.names.has(token)) continue;
+      // Only flag a token the model presents as an actual invocation —
+      // a backticked identifier with no invocation verb before it is a
+      // legitimate reference (step id, audit reason, error code).
+      if (!inInvocationContext(text, m.index)) continue;
       out.push({
         kind: "tool.phantom_reference",
         message: `Narrated a call to \`${token}\` but no such tool is registered.`,

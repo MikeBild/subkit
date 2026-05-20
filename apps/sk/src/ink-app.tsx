@@ -434,6 +434,32 @@ function summarizeSuccessData(data: unknown): string | null {
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
+/**
+ * Extract the auto-commit envelope from a tool result. A green
+ * `dry_run_workflow` returns `{ ok, data: { auto_committed: true,
+ * version, slug?, workflow_id? } }`; this surfaces the version + a
+ * human label so the CLI can render a one-line committed event.
+ */
+function autoCommitInfo(result: unknown): { version: number; label: string } | null {
+  if (result === null || typeof result !== "object") return null;
+  const obj = result as Record<string, unknown>;
+  const inner =
+    "data" in obj && typeof obj.data === "object" && obj.data !== null
+      ? (obj.data as Record<string, unknown>)
+      : obj;
+  if (inner.auto_committed !== true) return null;
+  if (typeof inner.version !== "number") return null;
+  const label =
+    typeof inner.slug === "string"
+      ? inner.slug
+      : typeof inner.name === "string"
+        ? inner.name
+        : typeof inner.workflow_id === "string"
+          ? inner.workflow_id
+          : "workflow";
+  return { version: inner.version, label };
+}
+
 function latestToolOutcome(calls: ToolCallState[], names: Set<string>): string | null {
   for (let i = calls.length - 1; i >= 0; i--) {
     const call = calls[i];
@@ -506,6 +532,19 @@ const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns, detailed }) => 
     if (summary) {
       const lineBudget = Math.max(20, columns - 6);
       bodyLines.push({ text: truncateEnd(summary, lineBudget), tone: "dim" });
+    }
+  }
+  // Auto-commit surfacing: a green `dry_run_workflow` persists the
+  // workflow inline (`auto_committed: true` with `version` + `slug` /
+  // `workflow_id`). Render a clear one-line committed event so the
+  // operator sees the write landed instead of it being invisible.
+  if (call.status === "done" && call.result !== undefined) {
+    const committed = autoCommitInfo(call.result);
+    if (committed) {
+      bodyLines.push({
+        text: `✓ Committed v${committed.version} · ${committed.label}`,
+        tone: "ok",
+      });
     }
   }
 

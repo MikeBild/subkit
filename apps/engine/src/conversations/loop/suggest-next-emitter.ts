@@ -186,7 +186,13 @@ function collectFromRows(
     if (r.role !== "user" && r.role !== "assistant") continue;
     const text = extractText(r.content);
     if (!text) {
-      if (r.role === "assistant") {
+      // A persisted tool-only assistant turn is stored as an object
+      // with no `text` key (`{}` or `{ _violations: [...] }`) — that
+      // is a structurally valid turn, not an unrecognized shape, so
+      // skip it silently. Only warn for genuinely unexpected content:
+      // a non-string, non-array, non-object value (or null), which the
+      // extractor truly does not know how to read.
+      if (r.role === "assistant" && !isBenignNoTextContent(r.content)) {
         logger.warn({
           module: "conversations",
           action: "suggest_next.content_shape_unrecognized",
@@ -203,6 +209,22 @@ function collectFromRows(
   }
   const recent = collected.slice(-maxTurns);
   return { recent, lastAssistantText };
+}
+
+/**
+ * True when an assistant turn's content yields no text but is still a
+ * structurally valid shape the extractor knows: a string (incl. the
+ * empty string), an array (multi-part content), or a plain object
+ * (`{}` / `{ _violations: [...] }` — a persisted tool-only turn). The
+ * `content_shape_unrecognized` warn is reserved for genuinely
+ * unexpected content — `null`, numbers, booleans, `undefined` — so it
+ * stays meaningful for real regressions instead of firing on every
+ * normal tool-only turn.
+ */
+function isBenignNoTextContent(content: unknown): boolean {
+  if (typeof content === "string") return true;
+  if (Array.isArray(content)) return true;
+  return typeof content === "object" && content !== null;
 }
 
 function extractRecentMessages(
