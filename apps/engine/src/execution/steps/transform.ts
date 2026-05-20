@@ -580,7 +580,12 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
       warnings.push({
         code: "transform_empty_extraction" as const,
         identifier: p.step.id,
-        message: `transform "${p.step.id}" produced an empty result, but upstream scope had non-empty data — the JSONata expression referenced a path that does not resolve.${dymHint}${pathHint} Or run dry_run_transform with the actual scope to inspect.`,
+        // Two distinct causes produce this, and the message must not
+        // assert one over the other: (1) the JSONata path is wrong, or
+        // (2) the path is correct but a filter/predicate matched
+        // nothing (e.g. `edges[isConnected = true]` when none are
+        // connected — a legitimate empty result, not a bug).
+        message: `transform "${p.step.id}" produced an empty result while upstream scope had data — either the JSONata path is wrong, or a filter/predicate matched no rows.${dymHint}${pathHint} Run dry_run_transform with the actual scope to confirm which.`,
         details: {
           step_key: p.step.id,
           available_scope_keys: Object.keys(p.scope),

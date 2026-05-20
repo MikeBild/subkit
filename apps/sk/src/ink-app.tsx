@@ -1550,6 +1550,12 @@ export const InkApp: React.FC<InkAppProps> = ({
   // -------- Paste store + busy-turn command queue --------
   const pasteStoreRef = useRef<PasteStore>(createPasteStore());
   const queueRef = useRef(createQueue());
+  // Live mirror of `session.pendingElicitation`. The post-turn queue
+  // drain runs from a `handleSubmit` closure captured at turn-start, so
+  // its `session` is stale — it cannot see an elicitation that arrived
+  // during the turn. The drain consults this ref instead, so a queued
+  // prompt is never flushed past a freshly-opened dialog.
+  const pendingElicitationRef = useRef(false);
   const [queuedCount, setQueuedCount] = useState(0);
   const [pendingAttachments, setPendingAttachments] = useState<StoredPaste[]>([]);
   // Transient status-line message channel. Upload progress writes
@@ -1660,6 +1666,8 @@ export const InkApp: React.FC<InkAppProps> = ({
   }, []);
 
   useEffect(() => {
+    // Keep the drain-side ref in lockstep with session state.
+    pendingElicitationRef.current = session.pendingElicitation !== null;
     const message = session.pendingElicitation
       ? pendingNoticeMessage(session.pendingElicitation)
       : null;
@@ -2094,8 +2102,8 @@ export const InkApp: React.FC<InkAppProps> = ({
       base: SkSessionState,
       events: AsyncIterable<TurnEvent> | undefined,
       conversationId?: string | null,
-    ): Promise<void> => {
-      if (!events) return;
+    ): Promise<SkSessionState> => {
+      if (!events) return base;
       // Record the turn start so we can decide whether to ring an OS
       // notification when the stream completes. Opt-in via
       // SK_PUSH_NOTIFY=1; threshold via SK_PUSH_NOTIFY_THRESHOLD_MS
@@ -2184,6 +2192,10 @@ export const InkApp: React.FC<InkAppProps> = ({
           isOsDoNotDisturb() ||
           inQuietHoursWindow(prefs?.quietHoursStart ?? "", prefs?.quietHoursEnd ?? "", new Date()),
       });
+      // Return the final state so callers can make a decision on the
+      // turn's *resolved* session (e.g. "did a dialog open?") without
+      // waiting for the post-commit effect that syncs the mirror ref.
+      return next;
     },
     [nextCommandPreviewEnabled],
   );
@@ -2203,6 +2215,9 @@ export const InkApp: React.FC<InkAppProps> = ({
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    // True when resolving this dialog opened another — the `finally`
+    // drain consults it so a queued prompt never races the next dialog.
+    let reopenedElicitation = false;
     try {
       // Synthesize a user-role message capturing what the operator
       // just chose so the transcript doesn't look like the LLM
@@ -2243,22 +2258,30 @@ export const InkApp: React.FC<InkAppProps> = ({
           };
       setSession(withAnswer);
       const outcome = await onElicitResponse(elicitationId, output, reason);
-      await applyEventStream(
+      const finalState = await applyEventStream(
         withAnswer,
         outcome?.events,
         outcome?.conversationId ?? session.conversationId,
       );
+      reopenedElicitation = finalState.pendingElicitation !== null;
     } catch (err) {
       showStructuredError(err);
     } finally {
       busyRef.current = false;
       setBusy(false);
-      const nextQueued = queueRef.current.dequeue();
-      setQueuedCount(queueRef.current.length);
-      if (nextQueued) {
-        setTimeout(() => {
-          void handleSubmit(nextQueued);
-        }, 0);
+      // Resolving one dialog can open the next — don't drain past it.
+      if (reopenedElicitation || pendingElicitationRef.current) {
+        if (queueRef.current.length > 0) {
+          showInfo(`${queueRef.current.length} queued — answer the dialog above, then they run`);
+        }
+      } else {
+        const nextQueued = queueRef.current.dequeue();
+        setQueuedCount(queueRef.current.length);
+        if (nextQueued) {
+          setTimeout(() => {
+            void handleSubmit(nextQueued);
+          }, 0);
+        }
       }
     }
   }
@@ -2616,6 +2639,10 @@ export const InkApp: React.FC<InkAppProps> = ({
       for (const id of consumedIds) pasteStoreRef.current.delete(id);
       syncPendingAttachments();
 
+      // Captured from the resolved turn so the `finally` drain can tell
+      // whether a dialog opened mid-turn — `session` in this closure is
+      // stale by then.
+      let turnOpenedElicitation = false;
       try {
         setNotices((current) => current.filter((item) => item.tone !== "error"));
         // Synthesize the user-role message BEFORE awaiting onPrompt
@@ -2647,21 +2674,37 @@ export const InkApp: React.FC<InkAppProps> = ({
         const { events, conversationId } = await onPrompt(finalPrompt, {
           permission_mode: activeMode,
         });
-        await applyEventStream({ ...optimisticSession, conversationId }, events, conversationId);
+        const finalState = await applyEventStream(
+          { ...optimisticSession, conversationId },
+          events,
+          conversationId,
+        );
+        turnOpenedElicitation = finalState.pendingElicitation !== null;
       } catch (err) {
         showStructuredError(err);
       } finally {
         busyRef.current = false;
         setBusy(false);
-        // Drain the queue — one prompt at a time.
-        const nextQueued = queueRef.current.dequeue();
-        setQueuedCount(queueRef.current.length);
-        if (nextQueued) {
-          // Defer to let React flush the `busy=false` frame before
-          // we start the next turn.
-          setTimeout(() => {
-            void handleSubmit(nextQueued);
-          }, 0);
+        // Drain the queue — one prompt at a time. But NOT past an open
+        // dialog: if this turn ended awaiting an elicitation, hold the
+        // queue. Flushing a queued prompt here would race the engine's
+        // pending elicitation and get rejected (`pending_elicitation_blocked`).
+        // The elicit-response handler drains the queue once the dialog
+        // is answered.
+        if (turnOpenedElicitation || pendingElicitationRef.current) {
+          if (queueRef.current.length > 0) {
+            showInfo(`${queueRef.current.length} queued — answer the dialog above, then they run`);
+          }
+        } else {
+          const nextQueued = queueRef.current.dequeue();
+          setQueuedCount(queueRef.current.length);
+          if (nextQueued) {
+            // Defer to let React flush the `busy=false` frame before
+            // we start the next turn.
+            setTimeout(() => {
+              void handleSubmit(nextQueued);
+            }, 0);
+          }
         }
       }
     },

@@ -752,3 +752,52 @@ export function lastAssistantText(state: SkSessionState): string {
   }
   return "";
 }
+
+/**
+ * Translate an engine `error` SSE frame into the synthetic `TurnEvent`s
+ * the session reducer should apply.
+ *
+ * Every error becomes a `validation_error` so the rejection is visible.
+ * For `pending_elicitation_blocked` the engine also ships the still-open
+ * dialog in `details.pending_elicitation` — we replay it as an
+ * `elicit_request` so the client RESTORES the dialog and routes the next
+ * answer to it. Without this the reducer's fresh per-turn state left
+ * `pendingElicitation` null after a blocked prompt, and the session
+ * deadlocked: the engine kept rejecting every prompt while the client
+ * showed no dialog to resolve.
+ */
+export function errorFrameToEvents(payload: {
+  code: string;
+  message: string;
+  details?: unknown;
+}): TurnEvent[] {
+  const events: TurnEvent[] = [
+    { type: "validation_error", errors: [{ path: payload.code, message: payload.message }] },
+  ];
+  if (payload.code === "pending_elicitation_blocked") {
+    const pe = (payload.details as { pending_elicitation?: unknown } | null | undefined)
+      ?.pending_elicitation;
+    if (pe && typeof pe === "object") {
+      const e = pe as {
+        id?: unknown;
+        tool_name?: unknown;
+        summary?: unknown;
+        tool_call_id?: unknown;
+        input?: unknown;
+      };
+      if (typeof e.id === "string" && typeof e.tool_name === "string") {
+        // Applied AFTER the validation_error so `status` ends
+        // `awaiting_input` (not `error`) and the dialog is live again.
+        events.push({
+          type: "elicit_request",
+          elicitation_id: e.id,
+          tool_name: e.tool_name,
+          summary: typeof e.summary === "string" ? e.summary : "",
+          input: e.input ?? {},
+          ...(typeof e.tool_call_id === "string" ? { tool_call_id: e.tool_call_id } : {}),
+        });
+      }
+    }
+  }
+  return events;
+}

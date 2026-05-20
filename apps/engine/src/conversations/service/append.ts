@@ -81,6 +81,11 @@ export async function appendUserMessage(
         id: pending.id,
         tool_name: pending.tool_name,
         summary: pending.summary,
+        // Carry the full elicitation so a client that raced a prompt
+        // against this dialog can re-render and resolve it instead of
+        // deadlocking.
+        tool_call_id: pending.tool_call_id,
+        input: pending.input,
       });
     }
   }

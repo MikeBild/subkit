@@ -89,6 +89,16 @@ export interface PendingElicitationSummary {
   id: string;
   tool_name: string;
   summary: string;
+  /**
+   * The gated tool-call row id and the full tool input. Carried so a
+   * client that raced a plain prompt against a just-arrived
+   * elicitation can RESTORE the dialog from the rejection alone —
+   * without these the CLI dropped `pending_elicitation` to null and
+   * the session deadlocked (every later prompt blocked, no dialog to
+   * answer). Optional so older callers still type-check.
+   */
+  tool_call_id?: string | null;
+  input?: unknown;
 }
 
 export class PendingElicitationBlockedError extends Error {

@@ -88,6 +88,39 @@ describe("dry_run_workflow card · output rendering (bug C / 86de186b)", () => {
     r.unmount();
   });
 
+  // The run_workflow card must show the ACTUAL warning, never the
+  // hardcoded "Loop body produced no rows" — that text was wrong for
+  // every non-loop workflow (e.g. a request + transform that filtered
+  // to empty).
+  test("a partial_success run renders the real warning, not the loop-body boilerplate", () => {
+    const call: ToolCallState = {
+      id: "tc-run-partial",
+      name: "run_workflow",
+      args: {},
+      status: "done",
+      result: {
+        ok: false,
+        data: {
+          status: "partial_success",
+          diagnosis_available: true,
+          warnings: [
+            {
+              code: "transform_empty_extraction",
+              message:
+                'transform "filter_connected" produced an empty result while upstream scope had data — either the JSONata path is wrong, or a filter/predicate matched no rows.',
+            },
+          ],
+        },
+      },
+    };
+    const r = renderCard(call);
+    const frame = snapshot(r);
+    expect(frame).not.toContain("Loop body produced no rows");
+    expect(frame).toContain("filter_connected");
+    expect(frame).toMatch(/filter\/predicate matched no rows|JSONata path is wrong/);
+    r.unmount();
+  });
+
   // A repair-required preview (an empty transform, an unresolved ref)
   // must NOT read as a clean "Preview complete · ok". Pre-fix the card
   // showed "ok · Ran N steps with no errors" while the workflow

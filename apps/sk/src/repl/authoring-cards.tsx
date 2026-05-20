@@ -567,6 +567,24 @@ const ExecutionDiagnosisCard: React.FC<CardProps> = memo(({ call }) => {
   const warnings = Array.isArray(d?.warnings) ? d.warnings.length : 0;
   const needsDiagnosis = d?.diagnosis_available === true;
   const isPartial = rawStatus === "partial_success";
+  // Surface the ACTUAL warning(s) the run produced — never a hardcoded
+  // cause. A `partial_success` can come from an empty transform, an
+  // unresolved reference, a loop that never iterated, etc. The engine
+  // already ships a human-readable message on every warning; the card
+  // must read it instead of asserting "Loop body produced no rows" for
+  // a workflow that may have no loop at all.
+  const warningEntries = Array.isArray(d?.warnings)
+    ? (d.warnings as Array<{ code?: string; message?: string }>)
+    : [];
+  const warningLine = (() => {
+    const msgs = warningEntries
+      .map((w) => (typeof w.message === "string" && w.message ? w.message : w.code))
+      .filter((m): m is string => typeof m === "string" && m.length > 0)
+      .map((m) => (m.length > 180 ? `${m.slice(0, 179)}…` : m));
+    if (msgs.length > 0) return msgs.join(" · ");
+    if (typeof d?.warning_summary === "string" && d.warning_summary) return d.warning_summary;
+    return null;
+  })();
   const version = typeof d?.workflow_version === "number" ? ` · v${d.workflow_version}` : "";
   const output = d?.output;
   const outputLines =
@@ -595,9 +613,10 @@ const ExecutionDiagnosisCard: React.FC<CardProps> = memo(({ call }) => {
       {needsDiagnosis || isPartial ? (
         <Box marginLeft={2}>
           <Text color="yellow">
-            {isPartial
-              ? "Loop body produced no rows. Repair before relying on this run."
-              : "Open diagnosis before editing the workflow."}
+            {warningLine ??
+              (needsDiagnosis
+                ? "Open diagnosis before editing the workflow."
+                : "This run needs a closer look before you rely on it.")}
           </Text>
         </Box>
       ) : null}

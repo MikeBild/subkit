@@ -14,6 +14,7 @@
 
 import {
   applyTurnEvent,
+  errorFrameToEvents,
   initialSessionState,
   lastAssistantText,
   readSse,
@@ -417,17 +418,14 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
             }
             if (next.kind === "error") {
               surfacedError = true;
-              const synthetic: TurnEvent = {
-                type: "validation_error",
-                errors: [
-                  {
-                    path: next.payload.code,
-                    message: next.payload.message,
-                  },
-                ],
-              };
-              state = applyTurnEvent(state, synthetic);
-              yield synthetic;
+              // `pending_elicitation_blocked` carries the still-open
+              // dialog — errorFrameToEvents replays it as an
+              // elicit_request so the session restores the dialog
+              // instead of deadlocking.
+              for (const synthetic of errorFrameToEvents(next.payload)) {
+                state = applyTurnEvent(state, synthetic);
+                yield synthetic;
+              }
               break;
             }
             const ev = next.ev;
@@ -627,12 +625,10 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
             }
             if (next.kind === "outcome") break;
             if (next.kind === "error") {
-              const synthetic: TurnEvent = {
-                type: "validation_error",
-                errors: [{ path: next.payload.code, message: next.payload.message }],
-              };
-              state = applyTurnEvent(state, synthetic);
-              yield synthetic;
+              for (const synthetic of errorFrameToEvents(next.payload)) {
+                state = applyTurnEvent(state, synthetic);
+                yield synthetic;
+              }
               break;
             }
             const ev = next.ev;

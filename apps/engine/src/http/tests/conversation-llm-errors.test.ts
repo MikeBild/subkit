@@ -121,16 +121,30 @@ describe("POST /v1/conversations provider-limit handling", () => {
       message: string;
       details?: {
         conversation_status?: string;
-        pending_elicitation?: { id?: string; tool_name?: string; summary?: string };
+        pending_elicitation?: {
+          id?: string;
+          tool_name?: string;
+          summary?: string;
+          tool_call_id?: string | null;
+          input?: unknown;
+        };
       };
     };
     expect(body.code).toBe("pending_elicitation_blocked");
     expect(body.message).toContain("resolve the pending dialog");
     expect(body.details?.conversation_status).toBe("awaiting_input");
+    // The blocked error carries the full elicitation (tool_call_id +
+    // input) so a client that raced a prompt against the dialog can
+    // re-render and resolve it instead of deadlocking.
     expect(body.details?.pending_elicitation).toEqual({
       id: elicitation.id,
       tool_name: "ask_user_form",
       summary: "Provide your DigitalOcean API token",
+      tool_call_id: null,
+      input: {
+        title: "DigitalOcean credential",
+        fields: [{ key: "token", label: "Token", type: "password" }],
+      },
     });
   });
 });

@@ -64,6 +64,7 @@ export {
   type ActivityState,
   applyTurnEvent,
   type DataPartState,
+  errorFrameToEvents,
   initialSessionState,
   lastAssistantText,
   type MessageState,
