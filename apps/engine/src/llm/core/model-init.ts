@@ -403,7 +403,7 @@ function resolveVertex(defaultModel: string, modelOverride?: string): ResolvedMo
  */
 export async function initializeModel(options?: ModelInitOptions): Promise<ResolvedModel> {
   const providerEnvVar = options?.providerEnvVar ?? "LLM_PROVIDER";
-  const defaultModel = options?.defaultModel ?? "claude-sonnet-4-5";
+  const defaultModel = options?.defaultModel ?? "claude-sonnet-4-6";
   const modelOverride = options?.modelOverride;
 
   const provider = detectConfiguredProvider({

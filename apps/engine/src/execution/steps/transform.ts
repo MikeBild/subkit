@@ -17,6 +17,7 @@ import {
   SandboxTimeoutError,
 } from "../../sandboxes/quickjs/types.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
+import { enumerateScopePaths } from "../../workflows/scope-shape.ts";
 import type { TransformStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
 import { buildJsonataBindings } from "../jsonata-bindings.ts";
@@ -162,7 +163,8 @@ function visitWithScope(
   }
 
   if (ast.type === "path" && Array.isArray(ast.steps) && ast.steps.length >= 1) {
-    const head = ast.steps[0] as AstNode | undefined;
+    const steps = ast.steps as AstNode[];
+    const head = steps[0];
     // A bare-name path head inside a filter/sort/group predicate
     // resolves against the iterated item, not the data root — do not
     // flag it. `$`-prefixed heads are real references and stay checked.
@@ -173,6 +175,26 @@ function visitWithScope(
       const id = `$${head.value}`;
       if (!scoped.has(id)) emit(id);
     }
+    // The head fixes the context; every later step — a nested field,
+    // an object-constructor projection `.{...}`, an attached predicate
+    // — is evaluated against the previous step's output. Bare names
+    // there resolve against that item, NOT the data root, so they must
+    // be walked contextually. Without this, a valid projection like
+    // `$input.{ 'x': value }` flagged `value` as unresolved, which the
+    // dry-run then promoted to a spurious `requires_repair`.
+    // `$`-prefixed references inside stay checked (visitWithScope still
+    // emits variables regardless of `contextual`).
+    visitWithScope(head, emit, scoped, contextual);
+    for (let i = 1; i < steps.length; i++) {
+      visitWithScope(steps[i], emit, scoped, true);
+    }
+    // Walk any non-`steps` children (e.g. a predicate hung off the
+    // path node itself) under the normal rules.
+    for (const [k, v] of Object.entries(ast)) {
+      if (k === "type" || k === "value" || k === "position" || k === "steps") continue;
+      visitWithScope(v, emit, scoped, contextual || CONTEXTUAL_AST_KEYS.has(k));
+    }
+    return;
   }
   if (ast.type === "variable" && typeof ast.value === "string") {
     const id = `$${ast.value}`;
@@ -519,14 +541,51 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
               .map((d) => `\`${d.to[0]}\` (closest match for \`${d.from}\`)`)
               .join(", ")}? `
           : "";
+      // Real-path enrichment. The step-id `did_you_mean` above only
+      // helps when the step id itself was wrong. The far more common
+      // empty-extraction cause is a correct step id with a wrong NESTED
+      // path — e.g. `$scope.fetch.data.chargers` when the payload is
+      // actually at `$scope.fetch.data.data.chargers.edges`. Pre-fix the
+      // warning just said "likely referenced the wrong path" with no
+      // path to copy, and the authoring agent guessed for a dozen
+      // turns. Here we walk the ACTUAL upstream envelope payload and
+      // surface concrete, copy-paste `$scope.<step>.data.<path>`
+      // candidates — the same data `suggest_jsonata_paths` would
+      // return, delivered inline on the warning.
+      const availablePaths: string[] = [];
+      for (const ref of referenced) {
+        if (!scopeKeys.includes(ref)) continue;
+        const env = p.scope[ref] as { data?: unknown } | null | undefined;
+        if (!env || typeof env !== "object") continue;
+        const payload = env.data;
+        if (payload === null || payload === undefined) continue;
+        // Container paths only — drop concrete array indices (`[0]`) and
+        // the `[*]` documentation marker. The agent should project with
+        // JSONata fanout (`edges.node`), not a literal index.
+        const rels = enumerateScopePaths(payload, { path_budget: 60 }).filter(
+          (rel) => !/\[\d+\]|\[\*\]/.test(rel),
+        );
+        rels.sort((a, b) => a.length - b.length);
+        for (const rel of rels.slice(0, 8)) {
+          availablePaths.push(rel ? `$scope.${ref}.data.${rel}` : `$scope.${ref}.data`);
+        }
+      }
+      const pathHint =
+        availablePaths.length > 0
+          ? ` The referenced upstream step exposes these real paths — copy one verbatim: ${availablePaths
+              .slice(0, 12)
+              .map((pp) => `\`${pp}\``)
+              .join(", ")}.`
+          : "";
       warnings.push({
         code: "transform_empty_extraction" as const,
         identifier: p.step.id,
-        message: `transform "${p.step.id}" produced an empty result, but upstream scope had non-empty data — the JSONata expression likely referenced the wrong path.${dymHint} Run dry_run_transform with the actual scope to inspect.`,
+        message: `transform "${p.step.id}" produced an empty result, but upstream scope had non-empty data — the JSONata expression referenced a path that does not resolve.${dymHint}${pathHint} Or run dry_run_transform with the actual scope to inspect.`,
         details: {
           step_key: p.step.id,
           available_scope_keys: Object.keys(p.scope),
           ...(didYouMean.length > 0 ? { did_you_mean: didYouMean } : {}),
+          ...(availablePaths.length > 0 ? { available_paths: availablePaths } : {}),
         },
       });
     }

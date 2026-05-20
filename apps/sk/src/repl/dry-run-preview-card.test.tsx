@@ -87,4 +87,35 @@ describe("dry_run_workflow card · output rendering (bug C / 86de186b)", () => {
     expect(frame).toContain("Ran 1 step with no errors");
     r.unmount();
   });
+
+  // A repair-required preview (an empty transform, an unresolved ref)
+  // must NOT read as a clean "Preview complete · ok". Pre-fix the card
+  // showed "ok · Ran N steps with no errors" while the workflow
+  // produced broken output, and the authoring agent kept iterating
+  // against a false green.
+  test("a needs_repair preview renders 'Preview needs repair', never a clean 'ok'", () => {
+    const call: ToolCallState = {
+      id: "tc-needs-repair",
+      name: "dry_run_workflow",
+      args: {},
+      status: "done",
+      result: {
+        ok: false,
+        data: {
+          ok: false,
+          classification: "needs_repair",
+          summary:
+            "Ran 2 steps, but the preview needs repair — 1 blocking warning. Fix the flagged step before committing.",
+          warnings: [{ code: "transform_empty_extraction", step_key: "filter_connected" }],
+        },
+      },
+    };
+    const r = renderCard(call);
+    const frame = snapshot(r);
+    expect(frame).toContain("Preview needs repair");
+    expect(frame).not.toContain("Preview complete");
+    expect(frame).not.toContain("with no errors");
+    expect(frame).toContain("needs repair");
+    r.unmount();
+  });
 });

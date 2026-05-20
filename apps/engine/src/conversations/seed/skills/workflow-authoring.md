@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 4
+version: 5
 ---
 
 # Authoring Workflows In A Conversation
@@ -49,6 +49,12 @@ produces drafts that fail at runtime or in review.
    is no longer needed for the happy path. Use it only when the operator
    explicitly opts to commit despite a failed dry-run (force-commit) — see
    "Force-commit override" below.
+
+   There is no separate publish step. A green dry-run is the save: the
+   workflow is immediately live as the new version. If the user asks to
+   "commit", "push", "deploy", or "publish" after a green preview, do not
+   invent an action — tell them it is already live as v<N> and offer a real
+   next step (run it, bind a schedule or trigger, or keep editing).
 
 For request steps, use the current flattened shape: `connector_id`, `method`,
 `path`, `query`, `headers`, `body`, and `graphql` live directly on the step.

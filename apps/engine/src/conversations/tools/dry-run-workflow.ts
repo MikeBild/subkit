@@ -376,13 +376,14 @@ export const dryRunWorkflowTool: ConversationTool = {
     // (or kept) the repair flag. Only the warnings that ALWAYS
     // indicate a real bug contribute — `transform_dropped_fields`
     // alone is informational.
-    const dryRunRequiresRepair = runWarnings.some(
+    const repairWarnings = runWarnings.filter(
       (w) =>
         w.code === "unresolved_identifier" ||
         w.code === "transform_empty_extraction" ||
         w.code === "loop_over_unresolved" ||
         w.code === "loop_body_empty",
     );
+    const dryRunRequiresRepair = repairWarnings.length > 0;
 
     // authoring_scope_changed — compare each step's available_paths
     // against the previous dry-run's recorded scope_at_step. When
@@ -677,18 +678,29 @@ export const dryRunWorkflowTool: ConversationTool = {
       };
     }
 
+    // This return is the NOT-clean path — `cleanPreview` returned early
+    // above. The run either failed outright, or it succeeded on paper
+    // but a step produced broken output (an empty transform, an
+    // unresolved reference). Either way the preview is not `ok`: a green
+    // `run.status` must never read as success while the workflow still
+    // produces broken output. Pre-fix a `transform_empty_extraction`
+    // preview reported `ok:true`, `classification:"ok"`, and "Ran N
+    // steps with no errors" — so the authoring agent iterated for a
+    // dozen turns against a false green.
+    const repairCount = repairWarnings.length;
     return {
-      ok: run.status === "succeeded",
+      ok: cleanPreview,
       data: buildLifecyclePayload(nextDraft, {
         steps_ran: run.steps.length,
         duration_ms: run.steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0),
-        classification:
-          lastStep?.classification ?? (run.status === "succeeded" ? "ok" : "driver_error"),
+        classification: dryRunRequiresRepair
+          ? "needs_repair"
+          : (lastStep?.classification ?? (run.status === "succeeded" ? "ok" : "driver_error")),
         stopped_at_step_id: stoppedId,
         summary:
-          run.status === "succeeded"
-            ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} with no errors.`
-            : `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`,
+          run.status !== "succeeded"
+            ? `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`
+            : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`,
         execution_id: run.execution_id,
         next_best_actions: previewNextActions,
         next_prompt: previewNextPrompt,

@@ -234,6 +234,11 @@ function statusTone(call: ToolCallState): CardTone {
   if (call.status === "running" || call.status === "pending") return "pending";
   const d = unwrapData(call);
   const okFlag = d && typeof d.ok === "boolean" ? d.ok : null;
+  // A `needs_repair` preview is `ok:false` (the workflow produced broken
+  // output — an empty transform, an unresolved ref) but the run itself
+  // did not crash. Render it as a warning, not a hard driver failure,
+  // so the operator reads "fix this" rather than "the engine died".
+  if (d?.classification === "needs_repair") return "warn";
   if (okFlag === false) return "fail";
   // Succeeded run with non-empty `warnings` should look different from
   // a fully clean run — otherwise the operator sees green on a
@@ -340,7 +345,9 @@ const StepPreviewCard: React.FC<CardProps> = memo(({ call }) => {
             ? "Preview failed"
             : tone === "pending"
               ? "Preview running"
-              : "Preview complete",
+              : classification === "needs_repair"
+                ? "Preview needs repair"
+                : "Preview complete",
         )}
         <Text dimColor>
           {" "}

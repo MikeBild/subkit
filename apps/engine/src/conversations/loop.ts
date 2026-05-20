@@ -1082,7 +1082,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
         turnLoopBudgetStopCondition as any,
       ],
-      maxRetries: 0,
+      // Retry transient provider errors (Anthropic `Overloaded`/529, 429,
+      // 5xx) with the SDK's exponential backoff BEFORE the catch below
+      // engages the fallback model. Pre-fix this was 0 — a single
+      // `Overloaded` blip dropped every converse turn straight onto the
+      // weaker fallback, which then authored worse JSONata.
+      maxRetries: 2,
       abortSignal: streamAbortSignal,
       experimental_telemetry: {
         isEnabled: true,

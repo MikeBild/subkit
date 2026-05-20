@@ -10,8 +10,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { upsertCredential } from "../../credentials/service.ts";
-import { tenants } from "../../db/schema/index.ts";
+import { executionSteps, executions, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { runRequestStep } from "../../execution/steps/request.ts";
+import type { StepRunContext } from "../../execution/types.ts";
+import { RunLlmBudget } from "../../llm/accounting/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import type { RequestStep } from "../../workflows/types.ts";
 import {
   query as gqlQuery,
   graphqlErrorMessages,
@@ -444,5 +449,109 @@ describe("graphql driver", () => {
     expect(probe.ok).toBe(false);
     expect(probe.detail).toBe("credential_required");
     expect(serverHit).toBe(false);
+  });
+});
+
+// Regression: the request step unwraps the GraphQL transport envelope so
+// `$scope.<step>.data` is the GraphQL `data` payload — a single `data`,
+// consistent with the REST driver. Before this, the step output was the
+// whole `{ data, errors }` body, forcing transforms to write a confusing
+// double `$scope.<step>.data.data.<field>`.
+describe("graphql request step · envelope unwrap", () => {
+  async function makeGraphqlStepCtx(step: RequestStep): Promise<StepRunContext> {
+    const [exec] = await testDb.db
+      .insert(executions)
+      .values({
+        tenant_id: tenantId,
+        source_kind: "step",
+        status: "running",
+        request_source: "api",
+        execution_mode: "dev",
+      })
+      .returning({ id: executions.id });
+    if (!exec) throw new Error("exec insert failed");
+    const [stepRow] = await testDb.db
+      .insert(executionSteps)
+      .values({
+        tenant_id: tenantId,
+        execution_id: exec.id,
+        step_key: step.id,
+        step_index: 0,
+        kind: "request",
+        status: "running",
+        started_at: new Date(getTestNow()),
+      })
+      .returning({ id: executionSteps.id });
+    if (!stepRow) throw new Error("step row insert failed");
+    return {
+      db: testDb.db,
+      tenant_id: tenantId,
+      execution_id: exec.id,
+      workflow_id: "",
+      workflow_version_id: "",
+      request_source: "api",
+      parent_execution_id: null,
+      depth: 0,
+      signal: new AbortController().signal,
+      scope: {},
+      started_at: new Date(getTestNow()),
+      workflow_slug: "test",
+      trace_id: null,
+      principal: null,
+      execution_mode: "dev",
+      step,
+      step_index: 0,
+      step_row_id: stepRow.id,
+      llm_budget: new RunLlmBudget(null),
+    };
+  }
+
+  test("step output is the GraphQL data payload (single `data`, no double nesting)", async () => {
+    const step: RequestStep = {
+      id: "fetch_users",
+      kind: "request",
+      method: "POST",
+      connector_id: connectorId,
+      graphql: {
+        query: "query U($n: Int!) { users(limit: $n) { id name } }",
+        variables: { n: 2 },
+      },
+      max_retries: 0,
+    };
+    const ctx = await makeGraphqlStepCtx(step);
+    const r = await runRequestStep({ ctx, step, scope: {} });
+
+    expect(r.status).toBe("succeeded");
+    // The payload sits directly under output — `output.users`, NOT
+    // `output.data.users`. A downstream transform reads
+    // `$scope.fetch_users.data.users`.
+    expect(r.output).toEqual({
+      users: [
+        { id: "u1", name: "alice" },
+        { id: "u2", name: "bob" },
+      ],
+    });
+    // The `{ data, errors }` transport wrapper is gone.
+    expect((r.output as Record<string, unknown>).data).toBeUndefined();
+    expect((r.output as Record<string, unknown>).errors).toBeUndefined();
+  });
+
+  test("a GraphQL errors response fails the step with null output", async () => {
+    const step: RequestStep = {
+      id: "fetch_broken",
+      kind: "request",
+      method: "POST",
+      connector_id: connectorId,
+      graphql: { query: "query Broken { brokenField }" },
+      max_retries: 0,
+    };
+    const ctx = await makeGraphqlStepCtx(step);
+    const r = await runRequestStep({ ctx, step, scope: {} });
+
+    expect(r.status).toBe("failed");
+    // `data` was null on the wire → unwrapped output is null, never the
+    // `errors` array. Errors surface on the step error channel.
+    expect(r.output ?? null).toBeNull();
+    expect(r.error?.code).toBe("graphql_error");
   });
 });

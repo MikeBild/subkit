@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, transforms, jsonata]
-version: 3
+version: 4
 ---
 
 # Data Handling Between Steps
@@ -117,6 +117,43 @@ across two upstream steps.
 $scope.fetch.data.items ? $scope.fetch.data.items : []
 $exists($scope.fetch.data.cursor) ? $scope.fetch.data.cursor : null
 ```
+
+### Array slicing & limiting (first N)
+
+JSONata indexes arrays with a **predicate in `[ ]`**. To take a fixed slice
+you put a **range inside a second pair of brackets** — `[[ start..end ]]`.
+The range bounds are zero-based and inclusive.
+
+```
+$scope.fetch.data.items[0]            -> first item
+$scope.fetch.data.items[-1]           -> last item
+$scope.fetch.data.items[[0..4]]       -> first 5 items (indices 0,1,2,3,4)
+$scope.fetch.data.items[[0..2]]       -> first 3 items
+$count($scope.fetch.data.items)       -> how many items
+```
+
+Limit **after a filter** — filter first, wrap, then slice:
+
+```
+($scope.fetch.data.chargers[isConnected = true])[[0..4]]   -> first 5 connected
+```
+
+Project then slice the same way:
+
+```
+($scope.users.data.{ 'id': id, 'email': email })[[0..9]]   -> first 10 reshaped
+```
+
+**Syntax that does NOT exist in JSONata — these are parse errors:**
+
+- `items[0..4]` — a single-bracket range. Wrong. Use `items[[0..4]]`.
+- `items[$i < 5]` — there is no implicit `$i` index variable. Wrong.
+  Bind the position explicitly with `#`: `items#$i[$i < 5]` selects the
+  first 5, or just use `items[[0..4]]`.
+- `$slice(...)`, `items.slice(0,5)` — no such function/method.
+
+When in doubt about a real shape, call `dry_run_transform` to test the
+expression against the actual scope before committing.
 
 ## `data_selector` — trim at the step
 
@@ -290,6 +327,15 @@ and in `data_selector` / `transform` configs inside loop bodies.
 - **Forgetting `${...}` resolves once at step-start.** Placeholders are not
   re-evaluated per iteration inside a `loop` unless the placeholder references
   the loop's `item_var` binding (see "Loop iteration variables" above).
+- **Inventing JSONata array syntax.** No single-bracket range (`items[0..4]`),
+  no implicit index variable (`items[$i < 5]`), no `.slice()`. To take the
+  first N use the double-bracket range `items[[0..N-1]]` — see "Array slicing
+  & limiting" above.
+- **Guessing nested paths instead of reading the preview.** After a
+  `dry_run_workflow`, the authoring context lists the **real**
+  `$scope.<step>.data.<path>` candidates for every previewed step. Copy one of
+  those verbatim. If none is recorded yet, run a dry-run first or call
+  `suggest_jsonata_paths` — never guess `.data.<field>` from documentation.
 
 ## See also
 

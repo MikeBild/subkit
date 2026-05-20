@@ -632,9 +632,16 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           // dry-run reports clean and auto-commits a broken workflow.
           const gqlErrors = graphqlErrorMessages(res.body);
           const graphqlOk = res.status >= 200 && res.status < 300 && gqlErrors === null;
+          // Unwrap the GraphQL envelope so the step output is the `data`
+          // payload, not the `{ data, errors }` transport wrapper. This
+          // makes `$scope.<step>.data` consistent with the REST driver
+          // (single `data`, not a confusing double `data.data`). GraphQL
+          // `errors` are not lost — they are classified above and routed
+          // to the step `error` channel (see `gqlErrors` / `graphql_error`
+          // below); a transform reads them via `$scope.<step>.error`.
           return {
             status: graphqlOk ? "succeeded" : "failed",
-            output: res.body,
+            output: (res.body as { data?: unknown }).data ?? null,
             retry_count: 0,
             duration_ms: Date.now() - start,
             request_meta: {

@@ -206,6 +206,52 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
     expect(out!).toContain("sampled from preview of `list_projects`");
   });
 
+  it("surfaces real $scope.<step>.data.<path> candidates from a non-loop step's scope_at_step", () => {
+    const out = renderAuthoringContextBlock({
+      draft: {
+        mode: "workflow_authoring",
+        workflow: {
+          name: "online-chargers",
+          slug: "online-chargers",
+          steps: [
+            { id: "fetch_chargers", kind: "request", method: "POST", url: "/graphql" },
+            { id: "filter_connected", kind: "transform", expression: "{ ... }" },
+          ],
+        },
+        latest_preview: {
+          ok: true,
+          summary: "ok",
+          step_traces: [
+            {
+              step_id: "fetch_chargers",
+              kind: "request",
+              status: "succeeded",
+              output_preview: { chargers: { edges: [{ node: { id: "c1" } }] } },
+              scope_at_step: {
+                available_paths: [
+                  "chargers",
+                  "chargers.edges",
+                  "chargers.edges[0]",
+                  "chargers.edges[0].node",
+                  "chargers.edges[0].node.id",
+                ],
+                shape_summary: "object",
+                primary_data_path: "chargers.edges",
+              },
+            },
+          ],
+        },
+      } as unknown as Parameters<typeof renderAuthoringContextBlock>[0]["draft"],
+      user_message: "hi",
+    });
+    expect(out).not.toBeNull();
+    // The real container path is offered for copy-paste …
+    expect(out!).toContain("$scope.fetch_chargers.data.chargers.edges");
+    expect(out!).toContain("real paths from last preview");
+    // … but concrete array indices are dropped — fanout, not `[0]`.
+    expect(out!).not.toContain("chargers.edges[0]");
+  });
+
   it("hints to run dry_run_workflow when the loop source has no recorded preview", () => {
     const out = renderAuthoringContextBlock({
       draft: {

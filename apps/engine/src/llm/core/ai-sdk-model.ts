@@ -33,7 +33,7 @@ import {
 } from "./model-init.ts";
 import { normalizeSchema, unwrapResult } from "./schema-normalizer.ts";
 
-const DEFAULT_MODEL_ID = "claude-sonnet-4-5";
+const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
 // Hard cap on the submit/abort tool-use loop in `generateObject()`. Prevents a
 // buggy or adversarial model from looping indefinitely when it keeps calling
@@ -43,6 +43,7 @@ const DEFAULT_MODEL_ID = "claude-sonnet-4-5";
 export const MAX_TOOL_LOOP_ATTEMPTS = 8;
 const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
   "claude-sonnet-4-5": 200_000,
+  "claude-sonnet-4-6": 200_000,
   "claude-haiku-4-5-20251001": 200_000,
   "claude-haiku-4-5": 200_000,
   "claude-opus-4-6": 200_000,

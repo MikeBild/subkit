@@ -50,7 +50,12 @@ function makeCtx(getDraft: () => DraftDocument): ToolContext {
 
 describe("dry_run_workflow · step_trace envelope", () => {
   test("clean run surfaces step_trace with kind, status, duration, output_preview", async () => {
-    const draft: DraftDocument = {
+    // Stateful draft holder so commitWorkflowAtomic's checkpoint
+    // machinery sees the fresh `workflow_previewed` row the dry-run
+    // writes — without it the green dry-run's auto-commit refuses with
+    // `workflow_not_ready` (see the multi-step test below for the same
+    // pattern).
+    let draft: DraftDocument = {
       workflow: {
         name: "trace-clean",
         slug: "trace-clean",
@@ -65,10 +70,14 @@ describe("dry_run_workflow · step_trace envelope", () => {
       },
       // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
     } as any;
-    const result = await dryRunWorkflowTool.execute(
-      makeCtx(() => draft),
-      { input: { value: 21 } },
-    );
+    const toolCtx: ToolContext = {
+      ...makeCtx(() => draft),
+      setDraft: async (next) => {
+        draft = next;
+      },
+    };
+    const result = await dryRunWorkflowTool.execute(toolCtx, { input: { value: 21 } });
+    // A clean dry-run of a valid draft auto-commits and returns ok.
     expect(result.ok).toBe(true);
     const data = result.data as { step_trace?: Array<Record<string, unknown>> };
     expect(Array.isArray(data.step_trace)).toBe(true);

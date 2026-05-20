@@ -809,8 +809,8 @@
     ],
     "operator_quirks": {
       "auth": "Cognito AppSync auth sends a Cognito IdToken in the Authorization header. USER_PASSWORD_AUTH must be enabled on the app client; refresh uses REFRESH_TOKEN_AUTH.",
-      "schema": "AppSync GraphQL responses are body.data plus optional body.errors. Query names and input types are tenant-schema specific; replace the placeholder Entity fields after schema discovery.",
-      "error_handling": "AppSync resolver errors may arrive as GraphQL body.errors with HTTP 200. Treat body.errors as a failed logical call during transforms and previews."
+      "schema": "The step output is the GraphQL data payload — read it directly via $scope.<step>.data.<field>. GraphQL errors fail the step and surface on $scope.<step>.error. Query names and input types are tenant-schema specific; replace the placeholder Entity fields after schema discovery.",
+      "error_handling": "AppSync resolver errors may arrive as a GraphQL errors array with HTTP 200. The driver classifies a non-empty errors array as a failed step; inspect it via $scope.<step>.error."
     },
     "aws_service": null,
     "aws_region": null,
@@ -1032,8 +1032,8 @@
     ],
     "operator_quirks": {
       "auth": "IAM-authenticated AppSync must sign with aws_service=appsync and the endpoint region. Temporary STS credentials need session_token.",
-      "schema": "AppSync GraphQL responses are body.data plus optional body.errors. Query names and input types are tenant-schema specific; replace the placeholder Entity fields after schema discovery.",
-      "error_handling": "AppSync resolver errors may arrive as GraphQL body.errors with HTTP 200. Treat body.errors as a failed logical call during transforms and previews."
+      "schema": "The step output is the GraphQL data payload — read it directly via $scope.<step>.data.<field>. GraphQL errors fail the step and surface on $scope.<step>.error. Query names and input types are tenant-schema specific; replace the placeholder Entity fields after schema discovery.",
+      "error_handling": "AppSync resolver errors may arrive as a GraphQL errors array with HTTP 200. The driver classifies a non-empty errors array as a failed step; inspect it via $scope.<step>.error."
     },
     "aws_service": "appsync",
     "aws_region": null,
@@ -7543,8 +7543,8 @@
     "operator_quirks": {
       "pagination": "GitHub GraphQL uses cursor pagination through pageInfo.hasNextPage and pageInfo.endCursor; pass the returned endCursor as the next after variable.",
       "rate_limit": "GraphQL responses can include rateLimit { cost remaining resetAt }. Also inspect x-ratelimit-* headers; some rate-limit failures arrive with HTTP 200 plus an errors array.",
-      "schema": "GraphQL driver responses are enveloped as body.data and body.errors. Do not read top-level data directly from the step output.",
-      "error_handling": "Treat a non-empty body.errors array as a failed logical call even when HTTP status is 200."
+      "schema": "The step output is the GraphQL data payload — read it directly via $scope.<step>.data.<field>, like the REST driver. GraphQL errors fail the step and surface on $scope.<step>.error.",
+      "error_handling": "The driver classifies a non-empty GraphQL errors array as a failed step even when HTTP status is 200."
     },
     "aws_service": null,
     "aws_region": null,

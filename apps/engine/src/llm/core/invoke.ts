@@ -84,8 +84,11 @@ function zodToJson(schema: ZodType): Record<string, unknown> {
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-const DEFAULT_PRIMARY = "claude-sonnet-4-5";
-const DEFAULT_FALLBACK = "claude-haiku-4-5-20251001";
+const DEFAULT_PRIMARY = "claude-sonnet-4-6";
+// Fallback must itself be authoring-capable: a converse turn that
+// dropped to the fallback still has to write correct JSONata. Haiku is
+// too weak for that, so the fallback is the previous Sonnet, not Haiku.
+const DEFAULT_FALLBACK = "claude-sonnet-4-5";
 
 /**
  * Snapshot of the global LLM-routing configuration for /v1/health.

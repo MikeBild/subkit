@@ -8,17 +8,21 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, graphql]
-version: 3
+version: 4
 ---
 
 # GraphQL Connectors
 
-The `graphql` driver posts to a single GraphQL endpoint and returns the
-raw GraphQL JSON body in the envelope's `data`. What the server sends as
+The `graphql` driver posts to a single GraphQL endpoint and unwraps the
+GraphQL transport envelope. What the server sends as
 `{ "data": { "foo": 42 }, "errors": [...] }` comes out as
-`$scope.<step_id>.data = { "data": { "foo": 42 }, "errors": [...] }`.
-That means downstream transforms typically read
-`$scope.<step_id>.data.data.<field>`.
+`$scope.<step_id>.data = { "foo": 42 }` — the GraphQL `data` payload,
+nothing else. Downstream transforms read `$scope.<step_id>.data.<field>`,
+exactly like the REST driver. There is **no** double `data.data`.
+
+GraphQL `errors` are not on `.data`. A non-empty `errors` array fails the
+step and surfaces on the step error channel — read it via
+`$scope.<step_id>.error`.
 
 ## Step shape
 
@@ -118,8 +122,8 @@ GraphQL's natural batching is putting multiple root fields in one query:
 }
 ```
 
-Envelope `data` is the raw GraphQL body, so the payload sits under `.data`:
-`$scope.dashboard.data.data.orders`, `$scope.dashboard.data.data.customers`, and so on.
+Each root field lands directly under the envelope `data`:
+`$scope.dashboard.data.orders`, `$scope.dashboard.data.customers`, and so on.
 
 This is almost always better than three separate steps hitting the same
 endpoint — fewer round-trips, lower scope pressure, one auth flow. Use separate
@@ -132,13 +136,17 @@ steps only when:
 ## Response errors
 
 GraphQL servers return HTTP 200 with an `errors` array on partial failures.
-The driver lifts that into the envelope:
+The driver classifies that as a failed step and routes errors to the error
+channel — never onto `.data`:
 
-- If `response.data` is non-null and `response.errors` is present, the
-  envelope has both `data` (the partial payload) and `error` (the first
-  error's message plus `details: { all_errors: [...] }`). The step is
-  marked failed; `on_error` decides whether to abort or continue.
-- If `response.data` is null, envelope `data` is null and `error` is set.
+- If the response has both `data` and `errors`, envelope `data` is the
+  partial payload and envelope `error` carries the first error's message
+  plus `details: { all_errors: [...] }`. The step is marked failed;
+  `on_error` decides whether to abort or continue.
+- If the response `data` is null, envelope `data` is null and `error` is set.
+
+Either way, inspect failures via `$scope.<step>.error` — the `errors` array
+is never readable under `$scope.<step>.data`.
 
 If partial data is acceptable, set `on_error: "continue"` directly on the
 step so the run keeps going past the failure. Add `max_retries` /
@@ -215,8 +223,9 @@ it. For now, stand up an API_KEY or Cognito user-pool path.
 
 - **Interpolating into `query`.** Breaks syntax, breaks cache hits, and opens
   injection. Variables always.
-- **Treating `status_code: 200` as success.** GraphQL errors ride on 200. Check
-  `$scope.<step>.data.errors` before trusting `$scope.<step>.data.data`.
+- **Treating `status_code: 200` as success.** GraphQL errors ride on 200. The
+  driver already fails the step on a non-empty `errors` array — inspect it via
+  `$scope.<step>.error`, not `$scope.<step>.data`.
 - **Sending multiple named operations.** The current step contract has no
   `operationName` field. Keep one query or mutation per step.
 - **Retrying mutations without idempotency keys.** You'll create duplicates.

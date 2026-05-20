@@ -118,6 +118,43 @@ describe("request + transform", () => {
     expect(details?.example_path).toBe("$scope.iter.data[0].empty.data");
   });
 
+  test("empty-extraction warning carries the real upstream paths to copy", async () => {
+    // A transform that references a path that does not resolve produces
+    // an empty result. The warning must not just say "wrong path" — it
+    // must hand the author the ACTUAL `$scope.<step>.data.<path>`
+    // candidates walked from the live upstream payload, so the fix is a
+    // copy-paste rather than the dozen-turn guessing spiral.
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "empty-extraction-paths",
+      steps: [
+        {
+          kind: "transform",
+          id: "source",
+          expression: "{ 'chargers': { 'edges': [ { 'node': { 'id': 'c1' } } ] } }",
+        },
+        // `.chargers.items` does not exist — the real path is
+        // `.chargers.edges`.
+        { kind: "transform", id: "filter_bad", expression: "$scope.source.data.chargers.items" },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("succeeded");
+    const warnings = result.warnings ?? [];
+    const empty = warnings.find((w) => w.code === "transform_empty_extraction");
+    expect(empty).toBeDefined();
+    expect(empty?.identifier).toBe("filter_bad");
+    const paths = (empty?.details as { available_paths?: string[] } | undefined)?.available_paths;
+    expect(paths).toBeDefined();
+    expect(paths).toContain("$scope.source.data.chargers.edges");
+    // The real path is also quoted in the human-readable message.
+    expect(empty?.message).toContain("$scope.source.data.chargers.edges");
+  });
+
   test("loop with at least one productive iteration does not emit loop_body_empty", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "productive-loop-body",

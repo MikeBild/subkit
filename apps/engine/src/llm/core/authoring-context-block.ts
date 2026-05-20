@@ -462,6 +462,29 @@ function renderScopeManifestLines(
       lines.push(
         `  - $scope.${id}.data: ${describeStepDataType(kind, step)} (envelope at $scope.${id})`,
       );
+      // Closed authoring loop: when a dry-run recorded this step's real
+      // output, surface the concrete reachable JSONata paths so the LLM
+      // cites them verbatim instead of guessing `.data.<field>` from
+      // documentation. This is the same data `suggest_jsonata_paths`
+      // returns, delivered inline on every turn after a preview — the
+      // fix for the path-guessing spiral. Concrete array indices and
+      // the `[*]` marker are dropped: the LLM should project with
+      // JSONata fanout (`edges.node`), not a literal index.
+      const trace = tracesById.get(id);
+      const rawPaths = trace?.scope_at_step?.available_paths ?? [];
+      const concretePaths = rawPaths.filter((rel) => !/\[\d+\]|\[\*\]/.test(rel));
+      if (concretePaths.length > 0) {
+        const shown = concretePaths
+          .slice(0, 14)
+          .map((rel) => (rel ? `$scope.${id}.data.${rel}` : `$scope.${id}.data`));
+        const more =
+          concretePaths.length > shown.length
+            ? `, … +${concretePaths.length - shown.length} more`
+            : "";
+        lines.push(
+          `    - real paths from last preview — copy verbatim: ${shown.join(", ")}${more}`,
+        );
+      }
     }
   }
   return lines;
