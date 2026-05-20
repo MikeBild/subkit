@@ -95,4 +95,13 @@ describe("binary parsers: parse", () => {
       parseBinaryFile(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0xff]), "docx"),
     ).rejects.toBeInstanceOf(BinaryParseError);
   });
+
+  test("pptx with an oversized single slide throws BinaryParseError", async () => {
+    // One slide whose `<a:t>` body is ~3 MB — over the 2 MB
+    // PPTX_SLIDE_XML_MAX_BYTES per-slide ceiling. The parser must
+    // abort the read instead of allocating the whole string.
+    const hugeSlide = "x".repeat(3 * 1024 * 1024);
+    const pptx = await buildPptxFixture([hugeSlide]);
+    await expect(parseBinaryFile(pptx, "pptx")).rejects.toBeInstanceOf(BinaryParseError);
+  });
 });

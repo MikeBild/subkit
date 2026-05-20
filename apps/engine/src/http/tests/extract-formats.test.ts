@@ -249,6 +249,19 @@ describe("/v1/extract file-format matrix", () => {
     expect(metadata.format).toBe("pdf");
     expect(metadata.filename).toBe("audit-probe.pdf");
     expect(metadata.request_source).toBeDefined();
+
+    // Cross-tenant invisibility: the same audit query scoped to a
+    // different tenant must return nothing. Catches a regression that
+    // drops the `tenant_id` predicate on read OR writes the wrong
+    // `tenant_id` on insert — either would leak this `data.exported`
+    // row (which carries the uploaded filename) across the boundary.
+    const otherTenantId = "00000000-0000-0000-0000-0000000000aa";
+    expect(otherTenantId).not.toBe(srv.tenantId);
+    const crossTenantRows = await srv.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, otherTenantId), eq(auditLog.action, "data.exported")));
+    expect(crossTenantRows.length).toBe(0);
   });
 
   test("PDF parse failure writes an audit_log row with result=failure", async () => {

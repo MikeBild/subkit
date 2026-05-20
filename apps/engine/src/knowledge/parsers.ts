@@ -12,6 +12,7 @@
 
 import {
   type BinaryFormat,
+  isBinaryFormat as isBinaryFormatId,
   PDF_PAGE_SEPARATOR,
   parseBinaryFile,
 } from "../docs-ingestion/parsers/index.ts";
@@ -41,16 +42,13 @@ export class UnsupportedFileFormatError extends Error {
   }
 }
 
-const BINARY_FORMATS = new Set<BinaryFormat>(["pdf", "docx", "xlsx", "xls", "pptx"]);
-
-/** Type predicate so a `ParsedFormat` narrows to `BinaryFormat` inside
- *  the `if` block — drops the `format as "pdf" | "docx" | …` cast
- *  every binary caller used to need. If a new format gets added to
- *  `ParsedFormat` but not to `BinaryFormat`, the cast would have
- *  compiled cleanly and blown up at runtime; the predicate forces a
- *  compile error instead. */
+/** Type predicate narrowing a `ParsedFormat` to `BinaryFormat`. Thin
+ *  wrapper over the canonical `isBinaryFormat` in
+ *  `docs-ingestion/parsers/` — the binary-format membership set has a
+ *  single source of truth there; this keeps the `ParsedFormat`-typed
+ *  call sites in the knowledge subsystem ergonomic. */
 export function isBinaryFormat(format: ParsedFormat): format is BinaryFormat {
-  return BINARY_FORMATS.has(format as BinaryFormat);
+  return isBinaryFormatId(format);
 }
 
 /**

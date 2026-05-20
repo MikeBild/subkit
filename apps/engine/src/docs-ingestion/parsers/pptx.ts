@@ -35,6 +35,14 @@ const XML_ENTITY_MAP: Record<string, string> = {
  *  `XLSX_ROW_CAP_PER_SHEET` pattern in the sibling parser. */
 export const PPTX_SLIDE_CAP = 2_000;
 
+/** Per-slide ceiling on decompressed XML bytes. `PPTX_SLIDE_CAP`
+ *  bounds slide *count*, but a single slide stuffed with one giant
+ *  `<a:t>` run could still allocate a multi-megabyte string in V8.
+ *  We abort the read once a slide's stream crosses this ceiling.
+ *  The outer 30 s `withParserTimeout` and the 25 MB
+ *  `TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES` per-file guard remain. */
+export const PPTX_SLIDE_XML_MAX_BYTES = 2 * 1024 * 1024;
+
 export interface PptxSlide {
   index: number;
   text: string;
@@ -117,13 +125,37 @@ function readSlides(buffer: Buffer): Promise<PptxSlide[]> {
             return;
           }
           const chunks: Buffer[] = [];
-          stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+          let slideBytes = 0;
+          let overflowed = false;
+          stream.on("data", (chunk: Buffer) => {
+            if (overflowed) return;
+            slideBytes += chunk.byteLength;
+            if (slideBytes > PPTX_SLIDE_XML_MAX_BYTES) {
+              // A single slide whose decompressed XML crosses the
+              // per-slide ceiling — fail the whole parse rather than
+              // allocating an unbounded string. `destroy()` stops the
+              // stream; the reject settles the promise.
+              overflowed = true;
+              stream.destroy();
+              reject(
+                new BinaryParseError(
+                  "pptx",
+                  `pptx: slide ${index} XML exceeds ${PPTX_SLIDE_XML_MAX_BYTES}-byte cap`,
+                ),
+              );
+              return;
+            }
+            chunks.push(chunk);
+          });
           stream.on("end", () => {
+            if (overflowed) return;
             const xml = Buffer.concat(chunks).toString("utf8");
             slides.push({ index, text: extractSlideText(xml) });
             zipfile.readEntry();
           });
-          stream.on("error", () => zipfile.readEntry());
+          stream.on("error", () => {
+            if (!overflowed) zipfile.readEntry();
+          });
         });
       });
       zipfile.readEntry();

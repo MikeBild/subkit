@@ -146,7 +146,13 @@ size is essentially unchanged.
    path RCE classes have historically exploited).
 3. **No untrusted browser context** — pdf-parse runs Node-only;
    the `@napi-rs/canvas` native binary is loaded for image
-   rendering paths we never call.
+   rendering paths we never call. `pdf-parse@2.4.5` transitively
+   pins `@napi-rs/canvas@0.1.80` (a *downgrade* from whatever a
+   prior unrelated dep selected — a `bun.lock` diff will show it).
+   This is benign: `@napi-rs/canvas` is unreachable in our call
+   graph because we only ever call `PDFParse#getText()`, never the
+   `toImage` / screenshot APIs. Dependabot reviewers tracking
+   `@napi-rs/canvas` CVEs can treat the engine as not-affected.
 4. **Per-file ceiling** — `TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES = 25 MB`
    in `file-context.ts` caps the per-file raw read, bounding the
    memory pressure any single PDF can create.

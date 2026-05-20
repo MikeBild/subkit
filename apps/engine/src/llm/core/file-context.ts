@@ -676,10 +676,12 @@ async function assembleBinaryTextExtractBlock(
 ): Promise<{ block: FileContentBlock; bytes_read: number }> {
   const contentType = resolved.content_type ?? "application/octet-stream";
   const placeholderText = `[file: ${resolved.filename}]`;
-  // Short-circuit if the per-turn text budget is already exhausted —
-  // the parser would do up to 25 MB of work whose output we'd clamp
-  // to zero anyway. Emit the same placeholder the text branch uses
-  // when it hits the same condition.
+  // Defence-in-depth: `assembleTextExtractBlock` (the only caller)
+  // already returns early on an exhausted per-turn budget *before*
+  // the `isBinaryFormat` branch reaches here. This re-check guards
+  // against a future caller wiring this helper in without that
+  // guard — the parser would otherwise do up to 25 MB of work whose
+  // output we'd clamp to zero anyway.
   if (budget.perTurnBudgetRemaining <= 0) {
     return {
       block: {

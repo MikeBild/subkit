@@ -146,6 +146,8 @@ When a parser trips its timeout, the request fails with a typed `BinaryParseErro
 
 SIEM consumers should expect both fields to be free-form text from the caller's side. Both are passed through `sanitizeForAudit` in `apps/engine/src/audit/sanitize.ts` so a malformed PDF whose parser message embeds a few bytes of the input can't smuggle TAB / NUL / CR into the audit row.
 
+**Metric vs audit denominator gradient.** The `subkit_docs_binary_parse_total{format,result}` counter increments on *every* binary parse dispatch path — the `/v1/extract` HTTP route, the docs-ingestion file-upload source, **and** the LLM `text_extract` context-assembly branch. The `audit_log` `data.exported` rows, by contrast, are written only by the `/v1/extract` route and the docs-ingestion service (not the LLM context path, which is read-only assembly with no egress). An operator charting parse errors should therefore expect `subkit_docs_binary_parse_total{result="error"}` to be a strict superset of `audit_log` `data.exported` rows with `result="error"` — the metric is the broader denominator. Reconcile by parsing surface, not 1:1.
+
 When a circuit breaker trips, the audit log records it and the event stream delivers a notification. Operators see the failure before users do.
 
 ---

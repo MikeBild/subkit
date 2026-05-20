@@ -42,6 +42,7 @@ import {
 } from "../../../audit/index.ts";
 import type { Db } from "../../../db/client.ts";
 import {
+  BINARY_FORMATS,
   BinaryParseError,
   detectFormat,
   parseBinaryFile,
@@ -74,17 +75,12 @@ export const SUPPORTED_FILE_FORMATS = [
 ] as const;
 export type SupportedFileFormat = (typeof SUPPORTED_FILE_FORMATS)[number];
 
-/** Set of binary formats that participate in the data-export audit
- *  trail. Text formats (json/csv/yaml/xml/plaintext) skip the audit
- *  to keep the row volume reasonable — they're shape-only and don't
- *  carry the same governance weight as PDFs / Office docs. */
-const AUDITED_BINARY_FORMATS: ReadonlySet<SupportedFileFormat> = new Set([
-  "pdf",
-  "docx",
-  "xlsx",
-  "xls",
-  "pptx",
-]);
+/** Binary formats that participate in the data-export audit trail —
+ *  the canonical `BINARY_FORMATS` set from `docs-ingestion/parsers/`.
+ *  Text formats (json/csv/yaml/xml/plaintext) skip the audit row to
+ *  keep volume reasonable — they're shape-only and don't carry the
+ *  same governance weight as PDFs / Office docs. */
+const AUDITED_BINARY_FORMATS: ReadonlySet<string> = BINARY_FORMATS;
 
 // `sanitizeForAudit` lives in `audit/sanitize.ts` so this route, the
 // LLM context placeholder, and the docs-ingestion failure audit all
@@ -275,6 +271,14 @@ function extractBodyCap() {
 }
 
 export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
+  // `/v1/extract` is hand-registered via `app.post(...)` because the
+  // request body is polymorphic (content-type dispatch) — see the
+  // module header. The *response* shape is well-typed, so we register
+  // `ExtractFileResponse` as a standalone `components/schemas` entry:
+  // external clients can `$ref` the response from `openapi.json` even
+  // though the route path itself isn't in the document.
+  app.openAPIRegistry.register("ExtractFileResponse", ExtractFileResponseSchema);
+
   // RBAC: extract endpoints are read-only — they surface data that
   // already lives in the tenant's workflow context.
   app.use("/v1/ai/extract", async (c, next) => {
@@ -432,31 +436,29 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
         case "plaintext":
           data = buffer.toString("utf8");
           break;
+        // `parseBinaryFile` returns a discriminated union already
+        // narrowed by the `format` argument, so the result shape is
+        // statically guaranteed — no runtime `parsed.format !== …`
+        // re-check is needed.
         case "pdf": {
           const parsed = await parseBinaryFile(buffer, "pdf");
-          if (parsed.format !== "pdf") throw new Error("parser returned wrong format");
           data = { text: parsed.text };
           pages = parsed.pages;
           break;
         }
         case "docx": {
           const parsed = await parseBinaryFile(buffer, "docx");
-          if (parsed.format !== "docx") throw new Error("parser returned wrong format");
           data = { markdown: parsed.markdown };
           break;
         }
         case "xlsx":
         case "xls": {
           const parsed = await parseBinaryFile(buffer, format);
-          if (parsed.format !== "xlsx" && parsed.format !== "xls") {
-            throw new Error("parser returned wrong format");
-          }
           data = { sheets: parsed.sheets };
           break;
         }
         case "pptx": {
           const parsed = await parseBinaryFile(buffer, "pptx");
-          if (parsed.format !== "pptx") throw new Error("parser returned wrong format");
           data = { slides: parsed.slides };
           break;
         }
@@ -481,7 +483,10 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
           {
             tenant_id: principal.tenant_id,
             actor_type: principal.kind,
-            actor_id: principal.kind === "user" ? principal.id : null,
+            // `principal.id` for both user and system-account
+            // principals — a SIEM "which API key exported this?"
+            // query needs the key id, so we never null it out.
+            actor_id: principal.id,
             action: AuditAction.DATA_EXPORTED,
             resource_type: "extract",
             resource_id: null,
@@ -492,7 +497,11 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
               bytes,
               error: sanitizeForAudit(detail),
               request_source: readRequestSource(c),
-              ...(filenameHeader ? { filename: filenameHeader } : {}),
+              // `filenameHeader` is Zod-validated (no path seps/NULs)
+              // but can still carry TAB/CR/LF — sanitize so the audit
+              // row matches the `docs/07-security-governance.md`
+              // contract that metadata is control-char-free.
+              ...(filenameHeader ? { filename: sanitizeForAudit(filenameHeader) } : {}),
             },
           },
           db,
@@ -519,7 +528,7 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
         {
           tenant_id: principal.tenant_id,
           actor_type: principal.kind,
-          actor_id: principal.kind === "user" ? principal.id : null,
+          actor_id: principal.id,
           action: AuditAction.DATA_EXPORTED,
           resource_type: "extract",
           resource_id: null,
@@ -529,7 +538,7 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
             bytes,
             request_source: readRequestSource(c),
             ...(pages !== undefined ? { pages } : {}),
-            ...(filenameHeader ? { filename: filenameHeader } : {}),
+            ...(filenameHeader ? { filename: sanitizeForAudit(filenameHeader) } : {}),
           },
         },
         db,

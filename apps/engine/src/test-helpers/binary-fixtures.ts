@@ -88,7 +88,14 @@ export function buildXlsxFixture(sheets: Record<string, Array<Record<string, unk
 }
 
 /** Build a minimal valid PPTX containing N slides, each with a single
- *  text body. Same hand-rolled ZIP approach as the DOCX builder. */
+ *  text body. Same hand-rolled ZIP approach as the DOCX builder.
+ *
+ *  NOTE: `slideTexts` is interpolated raw into the `<a:t>` element —
+ *  it is NOT XML-escaped. Callers must pass plain text only; a `<`,
+ *  `>`, or `&` would corrupt the fixture XML. This is fine because
+ *  fixture inputs are test-authored constants, never user-derived
+ *  data. If a test ever needs to assert entity-decoding behaviour,
+ *  escape the input at the call site or add an `escapeXml` helper. */
 export async function buildPptxFixture(slideTexts: string[]): Promise<Buffer> {
   const slideOverrides = slideTexts
     .map(

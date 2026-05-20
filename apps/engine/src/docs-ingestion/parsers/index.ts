@@ -8,9 +8,9 @@
 // Each call records two counters defined in `observability/metrics.ts`:
 //   - `subkit_docs_binary_parse_total{format,result}` — increments per
 //     attempt; `result` is `success` or `error`.
-//   - `subkit_docs_binary_parse_bytes_total{format}` — input byte volume
-//     attempted (success or error), so operators can chart per-format
-//     throughput.
+//   - `subkit_docs_binary_parse_input_bytes_total{format}` — input byte
+//     volume attempted (success or error), so operators can chart
+//     per-format throughput.
 //
 // Failures raise a typed `BinaryParseError` carrying the format id. The
 // caller maps it to its own surface's error envelope (HTTP 400, queue
@@ -40,6 +40,28 @@ export type BinaryParseResult =
   | XlsxParseOutput
   | PptxParseOutput;
 
+/** Maps a `BinaryFormat` literal to the concrete parser output. Lets
+ *  `parseBinaryFile("pdf")` return `PdfParseOutput` directly so callers
+ *  don't need a runtime `if (parsed.format !== "pdf")` re-check. */
+export type BinaryParseResultFor<F extends BinaryFormat> = F extends "pdf"
+  ? PdfParseOutput
+  : F extends "docx"
+    ? DocxParseOutput
+    : F extends "xlsx" | "xls"
+      ? XlsxParseOutput
+      : F extends "pptx"
+        ? PptxParseOutput
+        : never;
+
+/** Runtime membership set + type predicate for the binary formats.
+ *  Single source of truth — other subsystems import these instead of
+ *  re-declaring the five-member list. */
+export const BINARY_FORMATS = new Set<BinaryFormat>(["pdf", "docx", "xlsx", "xls", "pptx"]);
+
+export function isBinaryFormat(format: string): format is BinaryFormat {
+  return BINARY_FORMATS.has(format as BinaryFormat);
+}
+
 const registry = new FileStrategyRegistry();
 registry.register(pdfStrategy);
 registry.register(docxStrategy);
@@ -54,11 +76,12 @@ export async function detectBinaryFormat(buffer: Buffer): Promise<BinaryFormat |
 }
 
 /** Parse a buffer through the named strategy. Throws `BinaryParseError`
- *  on any parser failure. */
-export async function parseBinaryFile(
+ *  on any parser failure. Generic over `F` so the result is narrowed to
+ *  the exact parser output for the requested format. */
+export async function parseBinaryFile<F extends BinaryFormat>(
   buffer: Buffer,
-  format: BinaryFormat,
-): Promise<BinaryParseResult> {
+  format: F,
+): Promise<BinaryParseResultFor<F>> {
   const strategy = registry.get(format);
   if (!strategy) {
     throw new BinaryParseError(format, `no strategy registered for ${format}`);
@@ -66,7 +89,7 @@ export async function parseBinaryFile(
   const metrics = getMetrics();
   metrics.inc(METRIC_NAMES.DOCS_BINARY_PARSE_INPUT_BYTES_TOTAL, { format }, buffer.byteLength);
   try {
-    const result = (await strategy.parse(buffer)) as BinaryParseResult;
+    const result = (await strategy.parse(buffer)) as BinaryParseResultFor<F>;
     metrics.inc(METRIC_NAMES.DOCS_BINARY_PARSE_TOTAL, { format, result: "success" });
     return result;
   } catch (err) {
