@@ -23,30 +23,18 @@ import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts"
 
 let server: HttpTestServer;
 let cfgDir: string;
-// Snapshot of `setting.applied` log count taken in beforeEach. Each
-// test asserts against `appliedSinceBaseline()` so a previous test's
-// entries don't leak into the current count. Replaces the prior
-// process.stdout.write monkey-patch (which leaked nested wrappers
-// across tests and timed out cleanup once the suite grew).
-let appliedBaselineCount = 0;
-
-function countApplied(): number {
-  return logRing.tail({
-    module: "config",
-    action: "setting.applied",
-    limit: 10_000,
-  }).length;
-}
+// `setting.applied` leaves captured for the CURRENT test. A live
+// `logRing.subscribe()` handler (installed in beforeEach) copies each
+// matching entry out the instant it is recorded — so the count is
+// immune to the ring buffer's FIFO eviction. A post-hoc `logRing.tail()`
+// read is NOT: under concurrent CI load other test files flood the
+// shared 10k-entry ring and evict this test's `setting.applied` lines
+// before it reads them, yielding a short count (`Received: 6`).
+let appliedLeaves: string[] = [];
+let unsubscribeAppliedCapture: (() => void) | null = null;
 
 function appliedLeavesSinceBaseline(): string[] {
-  // Newest-first; reverse so insertion order matches the writes loop.
-  // `leaf` lives under `fields` per CapturedLog (module/action/msg
-  // are top-level; everything else after the logger's redact pass
-  // lands in fields).
-  const tail = logRing
-    .tail({ module: "config", action: "setting.applied", limit: 10_000 })
-    .reverse();
-  return tail.slice(appliedBaselineCount).map((e) => String(e.fields?.leaf ?? ""));
+  return appliedLeaves;
 }
 
 beforeAll(async () => {
@@ -62,13 +50,23 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  unsubscribeAppliedCapture?.();
+  unsubscribeAppliedCapture = null;
   await server.cleanup();
   _resetConfigForTests();
   rmSync(cfgDir, { recursive: true, force: true });
 });
 
 beforeEach(async () => {
-  appliedBaselineCount = countApplied();
+  // Capture `setting.applied` lines live (eviction-proof). Drop the
+  // prior test's subscriber before installing this test's.
+  appliedLeaves = [];
+  unsubscribeAppliedCapture?.();
+  unsubscribeAppliedCapture = logRing.subscribe((entry) => {
+    if (entry.module === "config" && entry.action === "setting.applied") {
+      appliedLeaves.push(String(entry.fields?.leaf ?? ""));
+    }
+  });
   await server.db.delete(auditLog);
   // Defense-in-depth: the test that exercises reconfigure-failure
   // wraps the seam in try/finally, but a forgotten `finally` (or a
