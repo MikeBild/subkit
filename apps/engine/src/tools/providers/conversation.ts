@@ -87,6 +87,17 @@ function describeDisabled(category: ToolCategory): { reason: string } | undefine
  *  surface gates at the loop layer, not per-tool). Keep this table
  *  in sync with `rbac/permissions.json`. */
 const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]>>> = {
+  // inspect_execution is a tenant_read reachable on MCP; the dispatcher
+  // enforces execution:read centrally. The resource is scoped to the
+  // execution when an explicit id is supplied; when omitted (latest),
+  // the tenant-scoped permission check is the gate.
+  inspect_execution: {
+    permission: "execution:read",
+    resource: (args) => {
+      const id = (args as { execution_id?: unknown }).execution_id;
+      return typeof id === "string" && id.length > 0 ? { type: "execution", id } : null;
+    },
+  },
   test_connector: {
     permission: "connector:test",
     resource: (args) => {

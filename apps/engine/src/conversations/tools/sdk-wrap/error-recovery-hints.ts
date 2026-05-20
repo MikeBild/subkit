@@ -58,6 +58,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the execution id is stale — call list_executions to get a current id, or run_workflow to produce a fresh execution",
   execution_missing:
     "the execution id is stale — call list_executions to get a current id, or run_workflow to produce a fresh execution",
+  no_executions:
+    "this tenant has not run anything yet — call run_workflow to produce an execution before inspecting one",
   workflow_not_found:
     "the workflow id is unknown on this tenant — call find_workflow or list_workflows to discover the correct id",
   workflow_not_persisted:

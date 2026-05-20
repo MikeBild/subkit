@@ -27,6 +27,7 @@ describe("conversation tools — registration", () => {
     "fetch_connector_docs",
     "inspect_authoring_context",
     "inspect_connector_draft",
+    "inspect_execution",
     "inspect_execution_step",
     "inspect_recipe",
     "inspect_workflow",

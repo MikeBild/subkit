@@ -17,7 +17,14 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { eq } from "drizzle-orm";
-import { connectors, skills, workflows, workflowVersions } from "../../db/schema/index.ts";
+import {
+  connectors,
+  executionSteps,
+  executions,
+  skills,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
 
@@ -28,6 +35,20 @@ export interface McpTestSuite {
   seedWorkflow: (def: WorkflowDef & { slug: string }) => Promise<{ id: string; slug: string }>;
   seedConnector: (overrides?: Partial<ConnectorSeed>) => Promise<{ id: string }>;
   seedSkill: (overrides?: Partial<SkillSeed>) => Promise<{ id: string }>;
+  seedExecution: (opts?: SeedExecutionOpts) => Promise<{ execution_id: string }>;
+}
+
+interface SeedExecutionStep {
+  step_key: string;
+  kind?: string;
+  status?: string;
+  duration_ms?: number;
+  output_preview?: unknown;
+}
+
+interface SeedExecutionOpts {
+  status?: "succeeded" | "failed";
+  steps?: SeedExecutionStep[];
 }
 
 interface ConnectorSeed {
@@ -127,6 +148,37 @@ export async function startMcpTestSuite(label: string): Promise<McpTestSuite> {
     return { id: row.id };
   };
 
+  const seedExecution = async (opts: SeedExecutionOpts = {}): Promise<{ execution_id: string }> => {
+    const [exec] = await http.db
+      .insert(executions)
+      .values({
+        tenant_id: http.tenantId,
+        status: opts.status ?? "succeeded",
+        source_kind: "draft",
+        request_source: "test",
+        execution_mode: "dev",
+      })
+      .returning();
+    if (!exec) throw new Error("seed execution failed");
+    const steps = opts.steps ?? [
+      { step_key: "step_one", kind: "request", status: "succeeded", duration_ms: 12 },
+    ];
+    let idx = 0;
+    for (const s of steps) {
+      await http.db.insert(executionSteps).values({
+        tenant_id: http.tenantId,
+        execution_id: exec.id,
+        step_key: s.step_key,
+        step_index: idx++,
+        kind: s.kind ?? "request",
+        status: s.status ?? "succeeded",
+        duration_ms: s.duration_ms ?? 0,
+        ...(s.output_preview !== undefined ? { output_preview: s.output_preview } : {}),
+      });
+    }
+    return { execution_id: exec.id };
+  };
+
   const cleanup = async (): Promise<void> => {
     for (const c of openClients) {
       try {
@@ -138,5 +190,5 @@ export async function startMcpTestSuite(label: string): Promise<McpTestSuite> {
     await http.cleanup();
   };
 
-  return { http, cleanup, connect, seedWorkflow, seedConnector, seedSkill };
+  return { http, cleanup, connect, seedWorkflow, seedConnector, seedSkill, seedExecution };
 }

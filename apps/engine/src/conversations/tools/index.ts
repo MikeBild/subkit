@@ -339,6 +339,14 @@ import { inspectExecutionStepTool } from "./inspect-execution-step.ts";
 
 register(inspectExecutionStepTool);
 
+// inspect_execution — whole-execution step-level diagnosis. The
+// surface-agnostic tenant_read sibling of inspect_execution_step: runs on
+// chat and MCP alike, where the draft_write diagnose_latest_execution
+// cannot.
+import { inspectExecutionTool } from "./inspect-execution.ts";
+
+register(inspectExecutionTool);
+
 // web_search — Tavily escalation when search_knowledge is empty.
 import { webSearchTool } from "./web-search.ts";
 
