@@ -1,16 +1,21 @@
-// Reconciler dedup test.
+// Reconciler dedup + time-of-day test.
 //
-// Asserts that `reconcileWorkflowSchedules` honours `last_enqueued_at`:
-//   - A `* * * * *` schedule with `last_enqueued_at = now - 30s` does
-//     NOT enqueue (one cron period is 60s).
-//   - The same schedule with `last_enqueued_at = now - 90s` enqueues
-//     EXACTLY ONCE — not twice from the "missed window during 90 s
-//     gap" pattern that motivated this fix.
-//   - Subsequent passes within the same minute do not double-fire.
+// `reconcileWorkflowSchedules` gates cron-mode schedules with
+// `isCronDue(cron, last_enqueued_at, now, tz)` — it enqueues only once
+// the cron's next occurrence after the last enqueue has passed. This
+// file pins:
+//   - a schedule whose last enqueue is inside the current cron interval
+//     does NOT re-fire;
+//   - once a cron tick has elapsed it fires EXACTLY ONCE (the same pass
+//     run twice does not double-fire — the CAS-stamp on
+//     `last_enqueued_at` advances the window);
+//   - a never-fired schedule fires on the first pass;
+//   - a paused schedule never fires;
+//   - a `0 19 * * *` schedule honours the wall-clock time-of-day — it is
+//     not due at 18:00 and is due after 19:00.
 //
 // We bypass pg-boss entirely by stubbing `boss.send` and counting
-// invocations. This isolates the reconciler's enqueue dedup from any
-// queue-side dedup pg-boss might also do.
+// invocations, isolating the reconciler's enqueue dedup.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -21,10 +26,7 @@ import {
   createWorkflowRow,
   type EngineTestCtx,
 } from "../execution/tests/setup.ts";
-import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
-
-const TEST_NOW_MS = getTestNow();
 
 let ctx: EngineTestCtx;
 
@@ -63,6 +65,7 @@ async function insertSchedule(
   workflow_id: string,
   cron: string,
   last_enqueued_at: Date | null,
+  timezone = "UTC",
 ): Promise<string> {
   const [row] = await ctx.testDb.db
     .insert(workflowsSchedules)
@@ -70,7 +73,7 @@ async function insertSchedule(
       tenant_id: ctx.tenantId,
       workflow_id,
       cron,
-      timezone: "UTC",
+      timezone,
       paused: false,
       input: { from: "test" },
       last_enqueued_at,
@@ -80,8 +83,12 @@ async function insertSchedule(
   return row.id;
 }
 
+function callsFor(calls: SendCall[], workflow_id: string): SendCall[] {
+  return calls.filter((c) => (c.payload as { workflow_id?: string })?.workflow_id === workflow_id);
+}
+
 describe("reconciler workflow-schedule dedup", () => {
-  test("skips when last_enqueued_at is within one cron period", async () => {
+  test("skips when the last enqueue is inside the current cron interval", async () => {
     const calls: SendCall[] = [];
     const boss = createStubBoss(calls);
     const { workflow_id } = await createWorkflowRow(ctx, {
@@ -89,22 +96,19 @@ describe("reconciler workflow-schedule dedup", () => {
       slug: "dedup-skip-wf",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
-    const now = new Date(TEST_NOW_MS);
+    // now and last are within the same wall-clock minute, so the next
+    // `* * * * *` occurrence after `last` has not arrived yet.
+    const now = new Date("2026-05-20T12:30:40.000Z");
     const scheduleId = await insertSchedule(
       workflow_id,
       "* * * * *",
-      new Date(now.getTime() - 30_000),
+      new Date("2026-05-20T12:30:05.000Z"),
     );
 
     const reconciler = new SchedulerReconciler({ boss, db: ctx.testDb.db, intervalMs: 60_000 });
-    // Call the dedup method directly — keeps the test deterministic
-    // (no pg-boss ticks, no setInterval drift).
     await reconciler.reconcileWorkflowSchedules(now);
 
-    const callsForWorkflow = calls.filter(
-      (c) => (c.payload as { workflow_id?: string })?.workflow_id === workflow_id,
-    );
-    expect(callsForWorkflow.length).toBe(0);
+    expect(callsFor(calls, workflow_id).length).toBe(0);
 
     const after = (
       await ctx.testDb.db
@@ -113,10 +117,10 @@ describe("reconciler workflow-schedule dedup", () => {
         .where(eq(workflowsSchedules.id, scheduleId))
     )[0];
     // last_enqueued_at must remain unchanged when we skip.
-    expect(after?.last_enqueued_at?.getTime()).toBe(now.getTime() - 30_000);
+    expect(after?.last_enqueued_at?.toISOString()).toBe("2026-05-20T12:30:05.000Z");
   });
 
-  test("fires exactly once when last_enqueued_at is past one cron period", async () => {
+  test("fires exactly once when a cron tick has elapsed since the last enqueue", async () => {
     const calls: SendCall[] = [];
     const boss = createStubBoss(calls);
     const { workflow_id } = await createWorkflowRow(ctx, {
@@ -124,22 +128,18 @@ describe("reconciler workflow-schedule dedup", () => {
       slug: "dedup-fire-wf",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
-    const now = new Date(TEST_NOW_MS);
+    const now = new Date("2026-05-20T12:30:40.000Z");
     const scheduleId = await insertSchedule(
       workflow_id,
       "* * * * *",
-      new Date(now.getTime() - 90_000),
+      // Two minutes behind — at least one `* * * * *` tick has passed.
+      new Date("2026-05-20T12:28:40.000Z"),
     );
 
     const reconciler = new SchedulerReconciler({ boss, db: ctx.testDb.db, intervalMs: 60_000 });
 
-    // First pass at `now` — the 90 s gap should produce ONE enqueue
-    // for THIS workflow (not two from a "missed-window" replay).
     await reconciler.reconcileWorkflowSchedules(now);
-    const callsForWorkflow = calls.filter(
-      (c) => (c.payload as { workflow_id?: string })?.workflow_id === workflow_id,
-    );
-    expect(callsForWorkflow.length).toBe(1);
+    expect(callsFor(calls, workflow_id).length).toBe(1);
 
     const stamped = (
       await ctx.testDb.db
@@ -147,15 +147,12 @@ describe("reconciler workflow-schedule dedup", () => {
         .from(workflowsSchedules)
         .where(eq(workflowsSchedules.id, scheduleId))
     )[0];
-    expect(stamped?.last_enqueued_at?.getTime()).toBe(now.getTime());
+    expect(stamped?.last_enqueued_at?.toISOString()).toBe(now.toISOString());
 
-    // Second pass at `now + 30 s` — still inside the same minute, so
-    // dedup says skip.
-    await reconciler.reconcileWorkflowSchedules(new Date(now.getTime() + 30_000));
-    const callsForWorkflowAfter = calls.filter(
-      (c) => (c.payload as { workflow_id?: string })?.workflow_id === workflow_id,
-    );
-    expect(callsForWorkflowAfter.length).toBe(1);
+    // Same pass again at the same instant — last_enqueued_at is now
+    // `now`, so the next cron tick has not arrived: no second fire.
+    await reconciler.reconcileWorkflowSchedules(now);
+    expect(callsFor(calls, workflow_id).length).toBe(1);
   });
 
   test("first ever fire (last_enqueued_at NULL) enqueues", async () => {
@@ -166,15 +163,11 @@ describe("reconciler workflow-schedule dedup", () => {
       slug: "dedup-null-wf",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
-    const now = new Date(TEST_NOW_MS);
     await insertSchedule(workflow_id, "* * * * *", null);
 
     const reconciler = new SchedulerReconciler({ boss, db: ctx.testDb.db, intervalMs: 60_000 });
-    await reconciler.reconcileWorkflowSchedules(now);
-    const callsForWorkflow = calls.filter(
-      (c) => (c.payload as { workflow_id?: string })?.workflow_id === workflow_id,
-    );
-    expect(callsForWorkflow.length).toBe(1);
+    await reconciler.reconcileWorkflowSchedules(new Date("2026-05-20T12:30:40.000Z"));
+    expect(callsFor(calls, workflow_id).length).toBe(1);
   });
 
   test("paused schedule never fires", async () => {
@@ -185,7 +178,6 @@ describe("reconciler workflow-schedule dedup", () => {
       slug: "dedup-paused-wf",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
-    const now = new Date(TEST_NOW_MS);
     const [row] = await ctx.testDb.db
       .insert(workflowsSchedules)
       .values({
@@ -201,10 +193,29 @@ describe("reconciler workflow-schedule dedup", () => {
     expect(row).toBeDefined();
 
     const reconciler = new SchedulerReconciler({ boss, db: ctx.testDb.db, intervalMs: 60_000 });
-    await reconciler.reconcileWorkflowSchedules(now);
-    const callsForWorkflow = calls.filter(
-      (c) => (c.payload as { workflow_id?: string })?.workflow_id === workflow_id,
-    );
-    expect(callsForWorkflow.length).toBe(0);
+    await reconciler.reconcileWorkflowSchedules(new Date("2026-05-20T12:30:40.000Z"));
+    expect(callsFor(calls, workflow_id).length).toBe(0);
+  });
+
+  test("cron schedule honours wall-clock time-of-day", async () => {
+    const calls: SendCall[] = [];
+    const boss = createStubBoss(calls);
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "dedup-timeofday-wf",
+      slug: "dedup-timeofday-wf",
+      steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+    });
+    // Daily at 19:00 UTC; last fired yesterday at 19:00.
+    await insertSchedule(workflow_id, "0 19 * * *", new Date("2026-05-19T19:00:00.000Z"));
+
+    const reconciler = new SchedulerReconciler({ boss, db: ctx.testDb.db, intervalMs: 60_000 });
+
+    // 18:00 today — the next 19:00 occurrence has not arrived: no fire.
+    await reconciler.reconcileWorkflowSchedules(new Date("2026-05-20T18:00:00.000Z"));
+    expect(callsFor(calls, workflow_id).length).toBe(0);
+
+    // 19:30 today — 19:00 has passed: fires exactly once.
+    await reconciler.reconcileWorkflowSchedules(new Date("2026-05-20T19:30:00.000Z"));
+    expect(callsFor(calls, workflow_id).length).toBe(1);
   });
 });

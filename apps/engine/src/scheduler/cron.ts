@@ -1,14 +1,12 @@
-// Thin wrapper over pg-boss schedule / unschedule plus cron expression
-// validation. pg-boss FK: `pgboss.schedule.name` references
-// `pgboss.queue.name`, so `boss.schedule(name, ...)` requires the
-// queue to exist first. `scheduleCron` upserts the queue before
-// scheduling so the FK is always satisfiable. `every:N` shorthand
-// fires every N seconds and is handled process-locally via
-// `setInterval` instead of via pg-boss' (minute-resolution) cron.
+// Cron expression validation for workflow schedules. Both cron-mode
+// (5-field standard) and the engine's `every:N` shorthand are parsed
+// here. Firing is owned entirely by the `SchedulerReconciler` 60s
+// in-process poll — cron schedules fire via `reconcileWorkflowSchedules`
+// and `every:N` schedules via a local `setInterval`. There is no
+// pg-boss-native cron path: a `wf-schedule.*` queue would have no
+// registered worker, so jobs scheduled into it would pile up unconsumed.
 
 import { CronExpressionParser } from "cron-parser";
-import type { PgBoss } from "pg-boss";
-import { logger } from "../logging/logger.ts";
 
 export interface CronValidationResult {
   ok: boolean;
@@ -39,56 +37,5 @@ export function parseCronExpression(expr: string): CronValidationResult {
       mode: "cron",
       reason: err instanceof Error ? err.message : String(err),
     };
-  }
-}
-
-export interface ScheduleCronOptions {
-  boss: PgBoss;
-  name: string;
-  cron: string;
-  payload?: object;
-  tz?: string;
-}
-
-export async function scheduleCron(opts: ScheduleCronOptions): Promise<void> {
-  const parsed = parseCronExpression(opts.cron);
-  if (!parsed.ok) {
-    throw new Error(`invalid cron expression for ${opts.name}: ${parsed.reason}`);
-  }
-  if (parsed.mode === "every") {
-    // Handled locally — no-op here; reconciler runs an interval instead.
-    return;
-  }
-  // Ensure the pg-boss queue exists before scheduling — see the
-  // module-level comment for why this is FK-load-bearing. Duplicate
-  // creates throw; we swallow that case (and only that case) because
-  // the reconciler runs every minute and most calls hit an existing
-  // queue. Any other error propagates to the reconciler's catch so
-  // operators see a clear "queue.create_failed" trail.
-  try {
-    await opts.boss.createQueue(opts.name);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (!/already exists|duplicate key value/i.test(msg)) {
-      logger.warn({
-        module: "scheduler",
-        action: "queue.create_failed",
-        msg: "could not ensure pg-boss queue for scheduled binding",
-        queue: opts.name,
-        error: msg,
-      });
-      throw err;
-    }
-  }
-  await opts.boss.schedule(opts.name, opts.cron, opts.payload ?? null, {
-    ...(opts.tz ? { tz: opts.tz } : {}),
-  });
-}
-
-export async function unscheduleCron(boss: PgBoss, name: string): Promise<void> {
-  try {
-    await boss.unschedule(name);
-  } catch {
-    /* ignore — schedule may never have existed */
   }
 }

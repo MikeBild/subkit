@@ -157,7 +157,11 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
 
   const scope: Record<string, unknown> = { $input: normalizedInput };
 
-  if (def.input_schema && normalizedInput !== undefined && normalizedInput !== null) {
+  if (def.input_schema) {
+    // Validate even when the input is null/undefined: a workflow with
+    // required input fields run with no input (e.g. a schedule that
+    // carries no `input`) must fail fast and named here, not deep inside
+    // a later step.
     const check = validateAgainstJsonSchema(normalizedInput, def.input_schema, "$input");
     if (!check.valid) {
       throw Object.assign(new Error(check.errors.join("; ")), {
@@ -171,6 +175,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   const stepSummaries: RunResult["steps"] = [];
   let lastOutput: unknown = null;
   let lastError: { code: string; message: string } | null = null;
+  // The step whose failure tripped the run — carried into the
+  // `execution.failed` event so a notification names what broke.
+  let failedStepId: string | null = null;
   // Populated by the workflow-level `validation_expression` check
   // when it returns a falsy verdict or throws. Used to surface a
   // typed `validation_failed` error on the run result so the
@@ -556,6 +563,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       const onError = step.on_error ?? "fail";
       lastError = outcome.result.error ?? { code: "step_failed", message: "step failed" };
       if (onError === "fail") {
+        failedStepId = step.id;
         if (outcome.result.status === "aborted") finalStatus = "aborted";
         else if (outcome.result.status === "timed_out") finalStatus = "timed_out";
         else finalStatus = "failed";
@@ -797,7 +805,16 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   });
   void previewOf; // re-export safety
 
-  await finalizeExecution(db, tenant_id, execution_id, finalStatus, offload.storage_uri);
+  await finalizeExecution(
+    db,
+    tenant_id,
+    execution_id,
+    finalStatus,
+    offload.storage_uri,
+    finalStatus !== "succeeded" && lastError
+      ? { step_id: failedStepId, error_code: lastError.code, error_message: lastError.message }
+      : null,
+  );
   // Closed-loop patch-candidate outcome tracking: every finalised
   // execution updates any open outcome window for this workflow so
   // operators can see whether a recently-applied patch actually

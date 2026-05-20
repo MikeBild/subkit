@@ -12,9 +12,18 @@ export function validateAgainstJsonSchema(
   const errors: string[] = [];
   if (!schema || typeof schema !== "object") return { valid: true, errors: [] };
   const required = schema.required as string[] | undefined;
-  if (required && Array.isArray(required) && typeof value === "object" && value !== null) {
+  if (required && Array.isArray(required) && required.length > 0) {
+    // A null / undefined / non-object value cannot satisfy any required
+    // field. Report them all rather than silently passing — this is the
+    // boundary that turns a misconfigured scheduled run (fired with no
+    // input) into a fast, named failure instead of an opaque downstream
+    // error six steps later.
+    const obj =
+      value && typeof value === "object" && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : null;
     for (const field of required) {
-      if (!(field in (value as Record<string, unknown>))) {
+      if (!obj || !(field in obj)) {
         errors.push(`${location}: required field '${field}' is missing`);
       }
     }

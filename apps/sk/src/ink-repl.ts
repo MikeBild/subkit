@@ -51,6 +51,7 @@ export interface InkReplOptions {
 // full UX-gating allow-set) and fall back to the legacy tier-filtered
 // `whoami + rbac:can` fan-out for older engines. `loadBootstrap` owns
 // the disk cache + 3-tier resolution.
+import { backgroundFailureBanner } from "./lib/background-failures.ts";
 import { loadBootstrap, type SkBootstrapSnapshot } from "./lib/bootstrap.ts";
 
 interface ResolvedPersona {
@@ -931,6 +932,13 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       pushNotifyOverride,
     });
   };
+
+  // Surface unattended background failures the moment the REPL opens —
+  // failed scheduled-workflow runs and self-healing patch candidates
+  // have no other proactive surface in the CLI. Printed inline above
+  // the live UI; best-effort, never blocks startup.
+  const failureBanner = await backgroundFailureBanner(client);
+  if (failureBanner) process.stdout.write(`\n${failureBanner}\n\n`);
 
   // Enable bracketed paste mode before mounting Ink so terminal wraps
   // multi-line pastes with ESC[200~/ESC[201~ markers — the input

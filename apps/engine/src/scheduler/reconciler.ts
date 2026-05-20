@@ -27,7 +27,7 @@ import {
   INGEST_KNOWLEDGE_QUEUE,
 } from "../queue/handlers/ingest-knowledge.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
-import { parseCronExpression, scheduleCron, unscheduleCron } from "./cron.ts";
+import { parseCronExpression } from "./cron.ts";
 import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
 
@@ -51,18 +51,15 @@ export interface ReconcilerOptions {
   intervalMs?: number;
 }
 
-interface DesiredState {
-  // key -> definition
-  cron: Map<string, { cron: string; payload: ExecutionRunJob; tz: string }>;
-  every: Map<string, { seconds: number; payload: ExecutionRunJob }>;
-}
+/** Desired sub-minute (`every:N`) schedules, keyed by schedule key.
+ *  Cron-mode schedules are not part of desired state — they are fired
+ *  directly by `reconcileWorkflowSchedules` on each 60s pass. */
+type EveryDesiredState = Map<string, { seconds: number; payload: ExecutionRunJob }>;
 
 function scheduleKeyForRow(row: { id: string }): string {
-  // pg-boss `Attorney.assertQueueName` rejects `:` (and other non
-  // [a-zA-Z0-9_\-./]). The previous separator made every `boss.schedule`
-  // succeed but every `boss.createQueue` reject — so the FK from
-  // `pgboss.schedule.name` into `pgboss.queue.name` could never be
-  // satisfied and the recurring cron never landed.
+  // Internal, process-local identifier for a schedule — the key of the
+  // every-timer map and the `schedule_key` field on fired-schedule logs.
+  // Not a queue name (the engine no longer schedules into pg-boss).
   return `wf-schedule.${row.id}`;
 }
 
@@ -104,47 +101,6 @@ export function isCronDue(cron: string, lastFiredAt: Date | null, now: Date, tz?
     return now.getTime() >= next.getTime();
   } catch {
     return false;
-  }
-}
-
-/**
- * Estimate the period between successive firings of a cron expression
- * in milliseconds. The reconciler uses this for the dedup gate: a
- * schedule is allowed to enqueue at most once per period regardless of
- * how long the engine was offline. This is intentionally a *lower
- * bound* — for irregular cron patterns (e.g. `0 9 * * MON`) the
- * smallest natural period dominates so the dedup never accidentally
- * over-skips.
- *
- * The implementation walks two consecutive `next()` results from the
- * parser and returns the gap. Returns `null` for invalid expressions
- * so the caller can fall back to "always allow" rather than crash.
- *
- * `every:N` returns N×1000.
- *
- * `tz` is forwarded so DST transitions are accounted for — a daily
- * cron crossing the spring-forward boundary measures slightly less
- * than 24h, but the *next* period (the one that matters for dedup)
- * resumes at exactly 24h.
- */
-export function cronPeriodMs(cron: string, tz?: string): number | null {
-  const trimmed = cron.trim();
-  if (trimmed.startsWith("every:")) {
-    const seconds = Number.parseFloat(trimmed.slice("every:".length));
-    if (!Number.isFinite(seconds) || seconds <= 0) return null;
-    return seconds * 1000;
-  }
-  try {
-    const it = CronExpressionParser.parse(trimmed, {
-      strict: false,
-      ...(tz ? { tz } : {}),
-    });
-    const a = it.next().toDate().getTime();
-    const b = it.next().toDate().getTime();
-    const diff = b - a;
-    return diff > 0 ? diff : null;
-  } catch {
-    return null;
   }
 }
 
@@ -385,29 +341,11 @@ export class SchedulerReconciler {
     });
     const desired = await this.computeDesired();
 
-    // Add/update cron schedules via pg-boss.
-    for (const [key, def] of desired.cron) {
-      const sig = `cron|${def.cron}|${JSON.stringify(def.payload)}|${def.tz}`;
-      if (this.installed.get(key) === sig) continue;
-      await scheduleCron({
-        boss: this.opts.boss,
-        name: key,
-        cron: def.cron,
-        payload: def.payload as unknown as object,
-        tz: def.tz,
-      });
-      this.installed.set(key, sig);
-      logger.info({
-        module: "scheduler",
-        action: "schedule.upserted",
-        msg: "scheduled workflow cron",
-        schedule_key: key,
-        cron: def.cron,
-      });
-    }
-
-    // Add/update every-mode schedules via setInterval.
-    for (const [key, def] of desired.every) {
+    // Install sub-minute (`every:N`) schedules as local interval timers.
+    // Cron-mode schedules are NOT installed here — they fire directly
+    // from `reconcileWorkflowSchedules` on each pass. There is no
+    // pg-boss-native cron path: a `wf-schedule.*` queue has no worker.
+    for (const [key, def] of desired) {
       const sig = `every|${def.seconds}|${JSON.stringify(def.payload)}`;
       if (this.installed.get(key) === sig) continue;
       // Clear prior timer if changed.
@@ -436,8 +374,8 @@ export class SchedulerReconciler {
       });
     }
 
-    // Detect and remove schedules that are no longer desired.
-    const desiredKeys = new Set([...desired.cron.keys(), ...desired.every.keys()]);
+    // Detect and remove every-schedules that are no longer desired.
+    const desiredKeys = new Set(desired.keys());
     for (const key of [...this.installed.keys()]) {
       if (desiredKeys.has(key)) continue;
       const timer = this.everyTimers.get(key);
@@ -445,7 +383,6 @@ export class SchedulerReconciler {
         clearInterval(timer);
         this.everyTimers.delete(key);
       }
-      await unscheduleCron(this.opts.boss, key);
       this.installed.delete(key);
       logger.info({
         module: "scheduler",
@@ -566,20 +503,15 @@ export class SchedulerReconciler {
       // Every-mode is handled by the local interval timer in
       // `reconcileOnce`; skip it here so we don't double-fire.
       if (parsed.mode === "every") continue;
-      // Dedup gate: only enqueue if at least one full cron period has
-      // elapsed since the last enqueue. A 10-minute outage that brings
-      // a `* * * * *` schedule "10 minutes behind" therefore produces
-      // ONE catch-up enqueue, not 10.
+      // Time-of-day-aware dedup gate: enqueue only once the cron's next
+      // occurrence after the last enqueue has actually passed. So
+      // `0 19 * * *` fires at ~19:00 local, not "24h after boot"; and a
+      // multi-minute outage that brings a `* * * * *` schedule behind
+      // still produces exactly ONE catch-up enqueue. The CAS-stamp on
+      // `last_enqueued_at` below keeps it exactly-once across instances.
       const tz = schedule.timezone || "UTC";
-      const period = cronPeriodMs(schedule.cron, tz);
       const last = schedule.last_enqueued_at ?? null;
-      if (last && period !== null) {
-        if (now.getTime() - last.getTime() < period) continue;
-      } else if (last && period === null) {
-        // Invalid period — be conservative and skip rather than fire
-        // an unbounded number of catch-up enqueues.
-        continue;
-      }
+      if (!isCronDue(schedule.cron, last, now, tz)) continue;
       // Calendar gates. The trigger's `business_days_only`
       // and `skip_dates` round-trip through the schedule's `input`
       // jsonb column (see `bindFromWorkflow`). We intentionally do
@@ -815,7 +747,7 @@ export class SchedulerReconciler {
     return versionId;
   }
 
-  private async computeDesired(): Promise<DesiredState> {
+  private async computeDesired(): Promise<EveryDesiredState> {
     // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
     const rows = await this.opts.db
       .select({
@@ -826,8 +758,7 @@ export class SchedulerReconciler {
       .innerJoin(workflows, eq(workflows.id, workflowsSchedules.workflow_id))
       .where(eq(workflowsSchedules.paused, false));
 
-    const cron: DesiredState["cron"] = new Map();
-    const every: DesiredState["every"] = new Map();
+    const every: EveryDesiredState = new Map();
     for (const { schedule, wf } of rows) {
       const parsed = parseCronExpression(schedule.cron);
       if (!parsed.ok) {
@@ -851,13 +782,14 @@ export class SchedulerReconciler {
         input: stripCalendarGates(schedule.input ?? null),
         request_source: "scheduler",
       };
-      if (parsed.mode === "cron") {
-        cron.set(key, { cron: schedule.cron, payload, tz: schedule.timezone });
-      } else if (parsed.mode === "every" && parsed.everySeconds !== undefined) {
+      // Cron-mode schedules are fired directly by
+      // `reconcileWorkflowSchedules`; only `every:N` schedules need a
+      // local interval timer installed.
+      if (parsed.mode === "every" && parsed.everySeconds !== undefined) {
         every.set(key, { seconds: parsed.everySeconds, payload });
       }
     }
-    return { cron, every };
+    return every;
   }
 
   /**

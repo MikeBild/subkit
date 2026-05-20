@@ -20,6 +20,7 @@ import { startTracing } from "./observability/tracing.ts";
 import * as bootstrap from "./onboarding/bootstrap.ts";
 import { startListener, stopListener } from "./pubsub/listener.ts";
 import { startBoss, stopBoss } from "./queue/boss.ts";
+import { EVENT_FANOUT_QUEUE } from "./queue/handlers/event-fanout.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
 import { SchedulerReconciler } from "./scheduler/reconciler.ts";
 import { applySkillSeedsForAllTenants, loadEmbeddedSkillSeeds } from "./skills/seed.ts";
@@ -289,6 +290,32 @@ async function runServer(): Promise<void> {
   // Pub/sub listener — catch-up first, then LISTEN.
   const listener = await startListener({ connectionString: getConfig().database.url, db });
 
+  // Wire the listener into the event-fanout queue. Without this,
+  // `execution.failed` and self-healing `notification.emitted` events are
+  // received by the listener and silently dropped — notification rules and
+  // outbound webhook subscriptions never fire. Each hydrated event row
+  // becomes one `event.fanout` job; the worker is a cheap no-op when no
+  // subscription or rule matches.
+  const fanoutUnsubscribers: Array<() => void> = [];
+  for (const channel of ["execution.status", "notification.emitted"] as const) {
+    fanoutUnsubscribers.push(
+      listener.on(channel, async (event) => {
+        try {
+          await boss.send(EVENT_FANOUT_QUEUE, { event_row_id: event.id });
+        } catch (err) {
+          logger.error({
+            module: "pubsub",
+            action: "fanout.enqueue_failed",
+            msg: "failed to enqueue event.fanout job",
+            channel,
+            event_id: event.id,
+            ...errorFields(err),
+          });
+        }
+      }),
+    );
+  }
+
   // Cron reconciler — sync workflows_schedules -> pg-boss schedules.
   const reconciler = new SchedulerReconciler({ boss, db });
   await reconciler.start();
@@ -445,6 +472,7 @@ async function runServer(): Promise<void> {
     try {
       await reconciler.stop();
       await stopBoss(10_000);
+      for (const off of fanoutUnsubscribers) off();
       await stopListener();
       await new Promise<void>((resolve) => {
         (server as unknown as { close?: (cb: () => void) => void }).close?.(() => resolve()) ??

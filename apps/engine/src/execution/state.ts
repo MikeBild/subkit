@@ -98,12 +98,21 @@ export async function markExecutionRunning(
   });
 }
 
+/** Failure detail carried into the `execution.failed` event payload so a
+ *  notification / webhook names what broke without a follow-up lookup. */
+export interface ExecutionFailureDetail {
+  step_id: string | null;
+  error_code: string;
+  error_message: string;
+}
+
 export async function finalizeExecution(
   db: Db,
   tenant_id: string,
   execution_id: string,
   status: ExecutionStatus,
   result_storage_uri: string | null,
+  failure?: ExecutionFailureDetail | null,
 ): Promise<void> {
   // workflow_id is NULL for draft and step runs; observability code must
   // handle the null case (e.g. report duration without workflow breakdown).
@@ -134,11 +143,20 @@ export async function finalizeExecution(
         duration_ms = row.finished_at.getTime() - row.started_at.getTime();
       }
     }
+    // Enrich the event payload with the workflow + source + failure
+    // reason so a downstream `event.fanout` → notification / webhook can
+    // tell the user *what* failed and *why* without re-querying.
     await writeEvent(tx, {
       tenant_id,
       channel: "execution.status",
       type: `execution.${status}`,
-      payload: { execution_id, status },
+      payload: {
+        execution_id,
+        status,
+        workflow_id,
+        request_source,
+        ...(failure ? { failure } : {}),
+      },
     });
   });
   logger.info({

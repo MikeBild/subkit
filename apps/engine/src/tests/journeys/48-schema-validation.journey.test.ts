@@ -88,4 +88,17 @@ describe("48: Input schema validation — required fields enforced at run start"
     // Both required fields should be mentioned somewhere in the error.
     expect(errBody.message).toMatch(/amount|currency/);
   });
+
+  test("AC4: omitted input (no input field at all) → error, not an opaque later failure", async () => {
+    // A workflow run with required input fields and NO input — the case
+    // a schedule fires when its `input` column is null. Validation must
+    // still trip here; a null/undefined input cannot satisfy `required`.
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
+      method: "POST",
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId }),
+    });
+    expect(runRes.status).toBe(400);
+    const errBody = (await runRes.json()) as { message: string };
+    expect(errBody.message).toMatch(/amount|currency/);
+  });
 });
