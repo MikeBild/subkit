@@ -27,3 +27,26 @@ paths = [
 regexes = [
   '''AKIA(FAKE|TEST)[A-Z0-9]*(LEAK|CANARY)[A-Z0-9]*''',
 ]
+
+# MCP OAuth test-fixture tokens.
+#
+# The OAuth test suites under `apps/engine/src/auth/oauth/` exercise the
+# token parser and the resource-server reject paths with obviously-fake
+# tokens: `wf_mcp_` / `wf_mcr_` literals (subkit's own MCP-OAuth token
+# prefixes) and an `sk_test_` decoy that proves `parseMcpToken` rejects
+# non-MCP prefixes. Every fixture uses the literal sequential alphabet
+# `abcdefghijklmnopqrstuvwxyz` as its random segment — no real
+# credential ever does — so gitleaks's `stripe-access-token` /
+# `generic-api-key` rules flag them on push.
+#
+# Scoped by path AND the sequential-alphabet regex: a real leak in these
+# files (which would not carry the ordered alphabet) is still caught.
+[[allowlists]]
+description = "MCP OAuth test-fixture tokens — sequential-alphabet fakes"
+targetRules = ["stripe-access-token", "generic-api-key"]
+paths = [
+  '''apps/engine/src/auth/oauth/.*\.test\.ts''',
+]
+regexes = [
+  '''[a-z_]+abcdefghijklmnopqrstuvwxyz[0-9]+''',
+]
