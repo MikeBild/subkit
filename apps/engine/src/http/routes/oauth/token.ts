@@ -5,6 +5,7 @@
 // Precedent: the raw /mcp mount in mcp/transports/streamable-http.ts.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import { readRequestSource } from "../../../audit/index.ts";
 import { createMcpOAuthProvider } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { logger } from "../../../logging/index.ts";
@@ -47,6 +48,7 @@ export function registerOAuthTokenRoutes(app: OpenAPIHono<AppEnv>): void {
           codeVerifier,
           redirectUri,
           clientId: client_id,
+          requestSource: readRequestSource(c) ?? "api",
         });
         return c.json(tokens, 200, { "Cache-Control": "no-store" });
       } catch (err) {
@@ -74,6 +76,7 @@ export function registerOAuthTokenRoutes(app: OpenAPIHono<AppEnv>): void {
           refreshToken,
           clientId: client_id,
           scope,
+          requestSource: readRequestSource(c) ?? "api",
         });
         return c.json(tokens, 200, { "Cache-Control": "no-store" });
       } catch (err) {
@@ -105,7 +108,7 @@ export function registerOAuthTokenRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const provider = createMcpOAuthProvider({ db, config: getConfig() });
     // RFC 7009: always return 200 regardless of token validity
-    await provider.revokeToken(token).catch((err: unknown) => {
+    await provider.revokeToken(token, readRequestSource(c) ?? "api").catch((err: unknown) => {
       logger.warn({
         module: "mcp_oauth",
         action: "revoke.failed",

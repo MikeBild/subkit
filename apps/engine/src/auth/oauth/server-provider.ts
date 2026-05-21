@@ -40,6 +40,7 @@ export interface RegisterClientInput {
   token_endpoint_auth_method?: string | undefined;
   scope?: string | undefined;
   software_id?: string | undefined;
+  requestSource?: string | undefined;
 }
 
 export interface RegisterClientResult {
@@ -60,6 +61,7 @@ export interface IssueAuthCodeInput {
   scope: string;
   resource?: string | undefined;
   state?: string | undefined;
+  requestSource?: string | undefined;
 }
 
 export interface ExchangeAuthCodeInput {
@@ -67,6 +69,7 @@ export interface ExchangeAuthCodeInput {
   codeVerifier: string;
   redirectUri: string;
   clientId: string;
+  requestSource?: string | undefined;
 }
 
 export interface TokenPair {
@@ -81,6 +84,7 @@ export interface ExchangeRefreshInput {
   refreshToken: string;
   clientId: string;
   scope?: string | undefined;
+  requestSource?: string | undefined;
 }
 
 export interface McpOAuthServerOptions {
@@ -108,6 +112,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const clientId = randomBytes(16).toString("hex");
     const grantTypes = input.grant_types ?? ["authorization_code", "refresh_token"];
     const scope = input.scope ?? "mcp:read";
+    const requestSource = input.requestSource ?? "api";
 
     await db.insert(mcpOauthClients).values({
       client_id: clientId,
@@ -129,7 +134,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         resource_id: clientId,
         result: "success",
         metadata: {
-          request_source: "api",
+          request_source: requestSource,
           client_id: clientId,
           scope,
           grant_types: grantTypes,
@@ -181,6 +186,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
   async function issueAuthorizationCode(input: IssueAuthCodeInput): Promise<string> {
     const { plaintext, hash } = generateAuthorizationCode();
     const expiresAt = new Date(Date.now() + cfg.authorization_code_ttl_seconds * 1000);
+    const requestSource = input.requestSource ?? "api";
 
     await db.insert(mcpOauthAuthorizationCodes).values({
       tenant_id: input.tenantId,
@@ -206,7 +212,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         resource_id: hash.slice(0, 16),
         result: "success",
         metadata: {
-          request_source: "api",
+          request_source: requestSource,
           client_id: input.clientId,
           scope: input.scope,
         },
@@ -219,6 +225,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
   // ── exchangeAuthorizationCode ───────────────────────────────────────────────
   async function exchangeAuthorizationCode(input: ExchangeAuthCodeInput): Promise<TokenPair> {
+    const requestSource = input.requestSource ?? "api";
     const codeHash = sha256Hex(input.code);
 
     // Atomic single-use claim: UPDATE ... WHERE consumed_at IS NULL RETURNING *
@@ -309,7 +316,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         resource_id: access.prefix,
         result: "success",
         metadata: {
-          request_source: "api",
+          request_source: requestSource,
           client_id: codeRow.client_id,
           scope: codeRow.scope,
         },
@@ -329,6 +336,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
   // ── exchangeRefreshToken ────────────────────────────────────────────────────
   async function exchangeRefreshToken(input: ExchangeRefreshInput): Promise<TokenPair> {
     const { refreshToken: refreshPlaintext, clientId, scope: requestedScope } = input;
+    const requestSource = input.requestSource ?? "api";
     const refreshHash = sha256Hex(refreshPlaintext);
 
     // tenant-filter:exempt — prefix-based credential lookup pre-tenant
@@ -453,7 +461,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         resource_id: newAccessPrefix,
         result: "success",
         metadata: {
-          request_source: "api",
+          request_source: requestSource,
           client_id: refreshRow.client_id,
           scope: grantedScope,
           old_prefix: refreshRow.prefix,
@@ -473,7 +481,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
   }
 
   // ── revokeToken ─────────────────────────────────────────────────────────────
-  async function revokeToken(token: string): Promise<void> {
+  async function revokeToken(token: string, requestSource = "api"): Promise<void> {
     const tokenHash = sha256Hex(token);
     const now = new Date();
 
@@ -504,7 +512,11 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
           resource_type: "mcp_oauth_token",
           resource_id: accessRow.id,
           result: "success",
-          metadata: { request_source: "api", client_id: accessRow.client_id, kind: "access" },
+          metadata: {
+            request_source: requestSource,
+            client_id: accessRow.client_id,
+            kind: "access",
+          },
         },
         db,
       );
@@ -538,7 +550,11 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
           resource_type: "mcp_oauth_token",
           resource_id: refreshRow.id,
           result: "success",
-          metadata: { request_source: "api", client_id: refreshRow.client_id, kind: "refresh" },
+          metadata: {
+            request_source: requestSource,
+            client_id: refreshRow.client_id,
+            kind: "refresh",
+          },
         },
         db,
       );

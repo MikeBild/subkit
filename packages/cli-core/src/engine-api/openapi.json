@@ -1314,6 +1314,65 @@
           "issuer"
         ]
       },
+      "OAuthClientListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OAuthClient"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "OAuthClient": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "client_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "registration_source": {
+            "type": "string",
+            "enum": [
+              "dcr",
+              "manual"
+            ]
+          },
+          "disabled_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "client_id",
+          "client_name",
+          "redirect_uris",
+          "registration_source",
+          "disabled_at",
+          "created_at"
+        ]
+      },
       "Whoami": {
         "type": "object",
         "properties": {
@@ -11916,6 +11975,110 @@
           },
           "401": {
             "description": "Invalid id_token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/oauth/clients": {
+      "get": {
+        "tags": [
+          "oauth"
+        ],
+        "summary": "List registered MCP OAuth clients",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthClientListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/oauth/clients/{client_id}": {
+      "delete": {
+        "tags": [
+          "oauth"
+        ],
+        "summary": "Disable a registered MCP OAuth client",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "client_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Disabled"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {

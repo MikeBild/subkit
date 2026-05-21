@@ -154,7 +154,10 @@ export function registerOAuthDcrRoutes(app: OpenAPIHono<AppEnv>): void {
     const provider = createMcpOAuthProvider({ db, config: getConfig() });
 
     try {
-      const result = await provider.registerClient(parsed.data);
+      const result = await provider.registerClient({
+        ...parsed.data,
+        requestSource: readRequestSource(c) ?? "api",
+      });
       // `registration_client_uri` is intentionally omitted: subkit does not
       // serve the RFC 7591 client-configuration endpoint, and advertising a
       // URL with no handler is worse than not advertising it.

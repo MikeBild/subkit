@@ -477,6 +477,10 @@ export const AuditAction = {
   MCP_OAUTH_CONSENT_DENIED: "mcp_oauth.consent_denied",
   MCP_OAUTH_TOKEN_USED: "mcp_oauth.token_used",
   MCP_OAUTH_DCR_RATE_LIMITED: "mcp_oauth.dcr_rate_limited",
+  // Emitted once per scheduler tick after the four retention sweeps.
+  MCP_OAUTH_EXPIRED_PRUNED: "mcp_oauth.expired_pruned",
+  // Emitted when an admin disables a registered OAuth client via the admin API.
+  MCP_OAUTH_CLIENT_DISABLED: "mcp_oauth.client_disabled",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

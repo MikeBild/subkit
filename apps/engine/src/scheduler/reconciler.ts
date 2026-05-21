@@ -29,6 +29,7 @@ import {
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { parseCronExpression } from "./cron.ts";
 import { runFilesCleanup } from "./files-cleanup-runner.ts";
+import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
 
 /** Fixed cadence for proactive drift scans (per scope decision). One
@@ -43,6 +44,11 @@ const PROACTIVE_DRIFT_SCAN_CADENCE_MS = 60 * 60 * 1000;
  *  clock-overlaps; that's safe — DELETE / UPDATE are filtered by
  *  `now() - interval ...` so the second instance is a no-op. */
 const FILES_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
+
+/** Fixed cadence for the MCP OAuth retention sweep. Hour resolution
+ *  matches the files-cleanup cadence — the sweeps are filtered by
+ *  `now() - interval ...` so a second concurrent instance is a no-op. */
+const MCP_OAUTH_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
 export interface ReconcilerOptions {
   boss: PgBoss;
@@ -242,6 +248,10 @@ export class SchedulerReconciler {
    *  see the comment on the cadence constant. */
   private lastFilesCleanupAt: Date | null = null;
 
+  /** Last instant the MCP OAuth cleanup cron ran. Same in-process
+   *  throttle as `lastFilesCleanupAt`. */
+  private lastMcpOAuthCleanupAt: Date | null = null;
+
   constructor(private readonly opts: ReconcilerOptions) {}
 
   async start(): Promise<void> {
@@ -336,6 +346,17 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "files_cleanup_failed",
         msg: "scheduler files cleanup pass failed",
+        ...errorFields(err),
+      });
+    });
+    // MCP OAuth retention sweep. Hour-throttled in-process; errors
+    // inside the sweeps are caught per-sweep so a failure does not
+    // abort the rest of the reconciler tick.
+    await this.reconcileMcpOAuthCleanup().catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "mcp_oauth_cleanup_failed",
+        msg: "scheduler MCP OAuth cleanup pass failed",
         ...errorFields(err),
       });
     });
@@ -656,6 +677,21 @@ export class SchedulerReconciler {
     }
     this.lastFilesCleanupAt = now;
     await runFilesCleanup(now, this.opts.db);
+  }
+
+  /**
+   * Throttle the MCP OAuth retention sweep to one fire per
+   * `MCP_OAUTH_CLEANUP_CADENCE_MS`. Same semantics as
+   * `reconcileFilesCleanup` — the sweeps are filtered by
+   * `now() - interval ...` so a concurrent instance is a no-op.
+   */
+  async reconcileMcpOAuthCleanup(now: Date = new Date()): Promise<void> {
+    if (this.lastMcpOAuthCleanupAt !== null) {
+      const elapsed = now.getTime() - this.lastMcpOAuthCleanupAt.getTime();
+      if (elapsed < MCP_OAUTH_CLEANUP_CADENCE_MS) return;
+    }
+    this.lastMcpOAuthCleanupAt = now;
+    await runMcpOAuthCleanup(now, this.opts.db);
   }
 
   private async fireWorkflowSchedule(

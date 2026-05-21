@@ -362,6 +362,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
         scope,
         resource: resource || undefined,
         state: state || undefined,
+        requestSource: readRequestSource(c) ?? "api",
       });
 
       await auditAwait(
