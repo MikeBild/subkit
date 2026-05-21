@@ -476,6 +476,7 @@ export const AuditAction = {
   MCP_OAUTH_CONSENT_GRANTED: "mcp_oauth.consent_granted",
   MCP_OAUTH_CONSENT_DENIED: "mcp_oauth.consent_denied",
   MCP_OAUTH_TOKEN_USED: "mcp_oauth.token_used",
+  MCP_OAUTH_DCR_RATE_LIMITED: "mcp_oauth.dcr_rate_limited",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

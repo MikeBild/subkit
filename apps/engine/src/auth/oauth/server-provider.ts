@@ -128,7 +128,12 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         resource_type: "mcp_oauth_client",
         resource_id: clientId,
         result: "success",
-        metadata: { client_id: clientId, scope, grant_types: grantTypes },
+        metadata: {
+          request_source: "api",
+          client_id: clientId,
+          scope,
+          grant_types: grantTypes,
+        },
       },
       db,
     );
@@ -201,7 +206,11 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         resource_type: "mcp_oauth_code",
         resource_id: hash.slice(0, 16),
         result: "success",
-        metadata: { client_id: input.clientId, scope: input.scope },
+        metadata: {
+          request_source: "api",
+          client_id: input.clientId,
+          scope: input.scope,
+        },
       },
       db,
     );
@@ -300,7 +309,11 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         resource_type: "mcp_oauth_token",
         resource_id: access.prefix,
         result: "success",
-        metadata: { client_id: codeRow.client_id, scope: codeRow.scope },
+        metadata: {
+          request_source: "api",
+          client_id: codeRow.client_id,
+          scope: codeRow.scope,
+        },
       },
       db,
     );
@@ -441,6 +454,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         resource_id: newAccessPrefix,
         result: "success",
         metadata: {
+          request_source: "api",
           client_id: refreshRow.client_id,
           scope: grantedScope,
           old_prefix: refreshRow.prefix,
@@ -491,7 +505,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
           resource_type: "mcp_oauth_token",
           resource_id: accessRow.id,
           result: "success",
-          metadata: { client_id: accessRow.client_id, kind: "access" },
+          metadata: { request_source: "api", client_id: accessRow.client_id, kind: "access" },
         },
         db,
       );
@@ -525,7 +539,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
           resource_type: "mcp_oauth_token",
           resource_id: refreshRow.id,
           result: "success",
-          metadata: { client_id: refreshRow.client_id, kind: "refresh" },
+          metadata: { request_source: "api", client_id: refreshRow.client_id, kind: "refresh" },
         },
         db,
       );
@@ -588,13 +602,21 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     await auditAwait(
       {
         tenant_id: tenantId,
+        // System-initiated, replay-triggered revocation — no human actor.
+        // Per audit/actor.ts, actor_type "system" carries actor_id: null;
+        // the affected user is recorded in metadata instead.
         actor_type: "system",
-        actor_id: userId,
+        actor_id: null,
         action: AuditAction.MCP_OAUTH_TOKEN_REVOKED,
         resource_type: "mcp_oauth_token",
         resource_id: refreshId,
         result: "success",
-        metadata: { reason: "replay_detected", chain_revoked: true },
+        metadata: {
+          request_source: "api",
+          reason: "replay_detected",
+          chain_revoked: true,
+          affected_user_id: userId,
+        },
       },
       db,
     );

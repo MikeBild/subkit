@@ -9,7 +9,7 @@
 // - Sampled audit on flush window
 // - Builds a ResolvedPrincipal with tenant + roles + scopes from the token
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";
@@ -74,7 +74,13 @@ async function maybeFlushLastUsed(
       resource_type: "mcp_oauth_token",
       resource_id: tokenId,
       result: "success",
-      metadata: { prefix, sampled: true, window_ms: FLUSH_INTERVAL_MS },
+      // The flush fires from the /mcp resource-server request path.
+      metadata: {
+        request_source: "mcp",
+        prefix,
+        sampled: true,
+        window_ms: FLUSH_INTERVAL_MS,
+      },
     },
     db,
   );
@@ -153,8 +159,10 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         return null;
       }
 
-      // Resolve user roles
-      // tenant-filter:exempt — token already carries tenant_id
+      // Resolve user roles. The token row's tenant_id is the trusted
+      // binding — require the user record to still belong to that tenant
+      // (defence in depth: denies a token whose user was moved or
+      // recreated under a different tenant since the token was issued).
       const userRows = await db
         .select({
           role: users.role,
@@ -164,7 +172,7 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         })
         .from(users)
         .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
-        .where(eq(users.id, row.user_id))
+        .where(and(eq(users.id, row.user_id), eq(users.tenant_id, row.tenant_id)))
         .limit(1);
       const u = userRows[0];
       if (!u) {

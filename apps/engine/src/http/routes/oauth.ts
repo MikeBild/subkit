@@ -21,7 +21,7 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
 import { z } from "zod";
-import { AuditAction, audit, auditAwait } from "../../audit/index.ts";
+import { AuditAction, auditAwait, readRequestSource } from "../../audit/index.ts";
 import { createMcpOAuthProvider } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { sessions, tenants, users } from "../../db/schema/index.ts";
@@ -325,6 +325,23 @@ export function registerMcpOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     const ip =
       c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? c.req.header("x-real-ip") ?? null;
     if (ip !== null && !checkDcrRateLimit(ip)) {
+      // A 429 here is security-relevant (scanning / abuse) — persist it.
+      await auditAwait(
+        {
+          tenant_id: "00000000-0000-0000-0000-000000000000",
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_DCR_RATE_LIMITED,
+          resource_type: "mcp_oauth_client",
+          resource_id: null,
+          result: "denied",
+          metadata: {
+            request_source: readRequestSource(c),
+            reason: "rate_limited",
+            ip,
+          },
+        },
+        c.get("db"),
+      );
       return c.json({ error: "too_many_requests", error_description: "rate limit exceeded" }, 429);
     }
 
@@ -429,15 +446,21 @@ export function registerMcpOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         msg: "client registration failed",
         error: err instanceof Error ? err.message : String(err),
       });
-      audit({
-        tenant_id: "00000000-0000-0000-0000-000000000000",
-        actor_type: "system",
-        action: AuditAction.OAUTH_CLIENT_REGISTRATION_FAILED,
-        resource_type: "mcp_oauth_client",
-        resource_id: null,
-        result: "error",
-        metadata: { error: err instanceof Error ? err.message : String(err) },
-      });
+      await auditAwait(
+        {
+          tenant_id: "00000000-0000-0000-0000-000000000000",
+          actor_type: "system",
+          action: AuditAction.OAUTH_CLIENT_REGISTRATION_FAILED,
+          resource_type: "mcp_oauth_client",
+          resource_id: null,
+          result: "error",
+          metadata: {
+            request_source: readRequestSource(c),
+            error: err instanceof Error ? err.message : String(err),
+          },
+        },
+        db,
+      );
       if (oauthError) {
         return c.json({ error: oauthError }, 400);
       }
@@ -470,33 +493,44 @@ export function registerMcpOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     const client = await provider.getClient(clientId);
 
     if (!client) {
-      audit({
-        tenant_id: "00000000-0000-0000-0000-000000000000",
-        actor_type: "system",
-        action: AuditAction.AUTH_TOKEN_REJECTED,
-        resource_type: "mcp_oauth_client",
-        resource_id: clientId,
-        result: "denied",
-        metadata: { reason: "unknown_client_id", client_id: clientId },
-      });
+      await auditAwait(
+        {
+          tenant_id: "00000000-0000-0000-0000-000000000000",
+          actor_type: "system",
+          action: AuditAction.AUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_client",
+          resource_id: clientId,
+          result: "denied",
+          metadata: {
+            request_source: readRequestSource(c),
+            reason: "unknown_client_id",
+            client_id: clientId,
+          },
+        },
+        db,
+      );
       return c.json({ error: "invalid_client", error_description: "unknown client_id" }, 400);
     }
 
     // Exact redirect_uri match — open-redirect critical guard
     if (!client.redirect_uris.includes(redirectUri)) {
-      audit({
-        tenant_id: "00000000-0000-0000-0000-000000000000",
-        actor_type: "system",
-        action: AuditAction.AUTH_TOKEN_REJECTED,
-        resource_type: "mcp_oauth_client",
-        resource_id: clientId,
-        result: "denied",
-        metadata: {
-          reason: "unregistered_redirect_uri",
-          client_id: clientId,
-          redirect_uri: redirectUri,
+      await auditAwait(
+        {
+          tenant_id: "00000000-0000-0000-0000-000000000000",
+          actor_type: "system",
+          action: AuditAction.AUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_client",
+          resource_id: clientId,
+          result: "denied",
+          metadata: {
+            request_source: readRequestSource(c),
+            reason: "unregistered_redirect_uri",
+            client_id: clientId,
+            redirect_uri: redirectUri,
+          },
         },
-      });
+        db,
+      );
       return c.json(
         { error: "invalid_request", error_description: "redirect_uri not registered" },
         400,
@@ -508,15 +542,22 @@ export function registerMcpOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     if (!codeChallenge || codeChallengeMethod !== "S256") {
-      audit({
-        tenant_id: "00000000-0000-0000-0000-000000000000",
-        actor_type: "system",
-        action: AuditAction.AUTH_TOKEN_REJECTED,
-        resource_type: "mcp_oauth_client",
-        resource_id: clientId,
-        result: "denied",
-        metadata: { reason: "bad_pkce", client_id: clientId },
-      });
+      await auditAwait(
+        {
+          tenant_id: "00000000-0000-0000-0000-000000000000",
+          actor_type: "system",
+          action: AuditAction.AUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_client",
+          resource_id: clientId,
+          result: "denied",
+          metadata: {
+            request_source: readRequestSource(c),
+            reason: "bad_pkce",
+            client_id: clientId,
+          },
+        },
+        db,
+      );
       return buildErrorRedirect(redirectUri, "invalid_request", state);
     }
 
@@ -627,7 +668,11 @@ export function registerMcpOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
 
     return c.html(html, 200, {
       "X-Frame-Options": "DENY",
-      "Content-Security-Policy": "frame-ancestors 'none'",
+      // Lock the consent page down: no scripts/images/fetch of any kind,
+      // inline <style> only, form POST restricted to same-origin. Defence
+      // in depth behind the escapeHtml() of every interpolated value.
+      "Content-Security-Policy":
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
       "Cache-Control": "no-store",
     });
   });
@@ -688,7 +733,11 @@ export function registerMcpOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
           resource_type: "mcp_oauth_client",
           resource_id: clientId,
           result: "denied",
-          metadata: { client_id: clientId },
+          metadata: {
+            request_source: readRequestSource(c),
+            client_id: clientId,
+            reason: "user_denied",
+          },
         },
         db,
       );
@@ -709,10 +758,32 @@ export function registerMcpOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     const freshRole = freshUserRows[0]?.role ?? "enduser";
     const freshRoleScopes = permittedScopesForRole(freshRole);
-    // Re-intersect the baked scope against the current role permissions;
-    // this narrows the scope if the role was downgraded since the consent page
-    // was rendered.
-    const scope = intersectScopes(csrfScope, freshRoleScopes) || csrfScope;
+    // Re-intersect the baked scope against the current role permissions so a
+    // role downgrade between consent render and decision is honored. NO
+    // fallback to the stale csrfScope — if the downgrade leaves an empty
+    // intersection the user no longer holds any consented scope, so the
+    // grant must be denied rather than minted at the pre-downgrade level.
+    const scope = intersectScopes(csrfScope, freshRoleScopes);
+    if (!scope) {
+      await auditAwait(
+        {
+          tenant_id: sessionPayload.tenant_id,
+          actor_type: "user",
+          actor_id: sessionPayload.user_id,
+          action: AuditAction.MCP_OAUTH_CONSENT_DENIED,
+          resource_type: "mcp_oauth_client",
+          resource_id: clientId,
+          result: "denied",
+          metadata: {
+            request_source: readRequestSource(c),
+            client_id: clientId,
+            reason: "role_downgrade",
+          },
+        },
+        db,
+      );
+      return buildErrorRedirect(redirectUri, "access_denied", state);
+    }
 
     try {
       const code = await provider.issueAuthorizationCode({
@@ -735,7 +806,11 @@ export function registerMcpOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
           resource_type: "mcp_oauth_client",
           resource_id: clientId,
           result: "success",
-          metadata: { client_id: clientId, scope },
+          metadata: {
+            request_source: readRequestSource(c),
+            client_id: clientId,
+            scope,
+          },
         },
         db,
       );

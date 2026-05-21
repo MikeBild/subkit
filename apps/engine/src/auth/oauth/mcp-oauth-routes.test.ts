@@ -743,6 +743,73 @@ describe("scope intersection — role-based scope restriction", () => {
     expect(scopes).not.toContain("mcp:admin");
     expect(scopes).toContain("mcp:read");
   });
+
+  test("role downgrade between consent render and decision denies the grant", async () => {
+    // Member renders the consent page for mcp:authoring (a scope an
+    // enduser does NOT hold), is then downgraded to enduser, and clicks
+    // Approve. The decision handler re-intersects against the fresh role;
+    // the empty result must deny — no code, no token at the stale scope.
+    const [user] = await db
+      .insert(users)
+      .values({ tenant_id: ctx.tenantId, email: "downgrade@test.local", role: "member" })
+      .returning();
+    if (!user) throw new Error("seed user failed");
+
+    const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://downgrade.example.com/cb"] }),
+    });
+    const { client_id: clientId } = (await regRes.json()) as { client_id: string };
+
+    const sessionId = await seedSession(db, ctx.tenantId, user.id);
+    const jwt = await mintSessionCookie({
+      session_id: sessionId,
+      user_id: user.id,
+      tenant_id: ctx.tenantId,
+    });
+
+    const authRes = await fetch(
+      `${ctx.baseUrl}/v1/oauth/authorize?${new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: "https://downgrade.example.com/cb",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        scope: "mcp:authoring",
+      })}`,
+      { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
+    );
+    expect(authRes.status).toBe(200);
+    const html = await authRes.text();
+    const csrfMatch = html.match(/name="csrf_token"\s+value="([^"]+)"/);
+    expect(csrfMatch).not.toBeNull();
+    const csrfToken = csrfMatch![1] as string;
+
+    // Downgrade AFTER the consent page rendered, BEFORE the decision POST.
+    await db.update(users).set({ role: "enduser" }).where(eq(users.id, user.id));
+
+    const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: `subkit_session=${jwt}`,
+      },
+      body: new URLSearchParams({
+        csrf_token: csrfToken,
+        client_id: clientId,
+        redirect_uri: "https://downgrade.example.com/cb",
+        resource: "",
+        state: "",
+        decision: "approve",
+      }).toString(),
+      redirect: "manual",
+    });
+    expect(decisionRes.status).toBe(302);
+    const location = new URL(decisionRes.headers.get("location") ?? "");
+    expect(location.searchParams.get("error")).toBe("access_denied");
+    expect(location.searchParams.get("code")).toBeNull();
+  });
 });
 
 // ─── Audit log assertions ──────────────────────────────────────────────────
