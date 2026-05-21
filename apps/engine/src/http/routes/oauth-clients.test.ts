@@ -3,22 +3,55 @@
 // Covers:
 //   - GET lists registered clients
 //   - DELETE soft-disables a client; subsequent /authorize with that client_id is rejected
-//   - Both routes return 403 without the admin permission
+//   - Both routes return 403 for a member-role principal without the admin permission
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
+import { apiKeys, users } from "../../db/schema/index.ts";
 import { mcpOauthClients } from "../../db/schema/mcp_oauth.ts";
+import { createRole } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
 let ctx: HttpTestServer;
 let priorBaseUrl = "";
+// Member-role API key — no mcp_oauth_client:read or :revoke permissions.
+let memberApiKey = "";
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("oauth-clients-admin");
   const { getConfig } = await import("../../config/loader.ts");
   priorBaseUrl = getConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", "https://test.example.com", { force: true });
+
+  // Mint a member-role user bound to a no-permissions custom role so we can
+  // exercise the 403 branch. The built-in member role already excludes
+  // mcp_oauth_client:* via memberPermissionFilter, but we use a noop role to
+  // be explicit about the absence of those grants.
+  const noopRole = await createRole(ctx.db, ctx.tenantId, "noop-oauth-clients", "no permissions");
+  const [member] = await ctx.db
+    .insert(users)
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "member-oauth-clients@test.local",
+      role: "member",
+      role_id: noopRole.id,
+    })
+    .returning();
+  if (!member) throw new Error("seed member failed");
+
+  const rand = createHash("sha256").update("member-oauth-clients-seed").digest("hex").slice(0, 32);
+  memberApiKey = `wf_live_${rand}`;
+  const memberPrefix = memberApiKey.slice(0, 12);
+  const memberHash = createHash("sha256").update(memberApiKey).digest("hex");
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: ctx.tenantId,
+    user_id: member.id,
+    prefix: memberPrefix,
+    token_sha256: memberHash,
+    scopes: ["*"],
+  });
 }, 30_000);
 
 afterAll(async () => {
@@ -48,12 +81,23 @@ function authHeader(): { Authorization: string } {
   return { Authorization: `Bearer ${ctx.apiKey}` };
 }
 
+function memberAuthHeader(): { Authorization: string } {
+  return { Authorization: `Bearer ${memberApiKey}` };
+}
+
 // ── GET /v1/oauth/clients ─────────────────────────────────────────────────────
 
 describe("GET /v1/oauth/clients", () => {
-  test("returns 403 without auth", async () => {
+  test("returns 401 without auth", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/oauth/clients`);
     expect(res.status).toBe(401);
+  });
+
+  test("returns 403 for a member-role principal", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/oauth/clients`, {
+      headers: memberAuthHeader(),
+    });
+    expect(res.status).toBe(403);
   });
 
   test("lists registered clients for an admin principal", async () => {
@@ -87,6 +131,18 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
       method: "DELETE",
     });
     expect(res.status).toBe(401);
+  });
+
+  test("returns 403 for a member-role principal", async () => {
+    // Use a UUID-format client_id so the resource_grant lookup can cast it correctly.
+    const clientId = "00000000-0000-0000-0000-000000fff666";
+    await seedClient(clientId);
+
+    const res = await fetch(`${ctx.baseUrl}/v1/oauth/clients/${clientId}`, {
+      method: "DELETE",
+      headers: memberAuthHeader(),
+    });
+    expect(res.status).toBe(403);
   });
 
   test("returns 404 for unknown client_id", async () => {

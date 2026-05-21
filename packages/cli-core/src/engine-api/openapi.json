@@ -12036,7 +12036,7 @@
         "tags": [
           "oauth"
         ],
-        "summary": "Disable a registered MCP OAuth client",
+        "summary": "Disable a registered MCP OAuth client and revoke its outstanding tokens",
         "security": [
           {
             "bearerAuth": []

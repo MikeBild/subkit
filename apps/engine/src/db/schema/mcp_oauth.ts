@@ -3,6 +3,7 @@
 
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { timestamps } from "./_common.ts";
+import { tenants } from "./identity.ts";
 
 // ── mcp_oauth_clients ─────────────────────────────────────────────────────────
 // Public clients only (token_endpoint_auth_method = "none").
@@ -38,7 +39,9 @@ export const mcpOauthAuthorizationCodes = pgTable(
   "mcp_oauth_authorization_codes",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    tenant_id: uuid("tenant_id").notNull(),
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
     client_id: text("client_id").notNull(),
     user_id: uuid("user_id").notNull(),
     code_sha256: text("code_sha256").notNull(),
@@ -65,7 +68,9 @@ export const mcpOauthRefreshTokens = pgTable(
   "mcp_oauth_refresh_tokens",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    tenant_id: uuid("tenant_id").notNull(),
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
     client_id: text("client_id").notNull(),
     user_id: uuid("user_id").notNull(),
     prefix: text("prefix").notNull(),
@@ -89,7 +94,9 @@ export const mcpOauthAccessTokens = pgTable(
   "mcp_oauth_access_tokens",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    tenant_id: uuid("tenant_id").notNull(),
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
     client_id: text("client_id").notNull(),
     user_id: uuid("user_id").notNull(),
     prefix: text("prefix").notNull(),

@@ -1488,7 +1488,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Disable a registered MCP OAuth client */
+        /** Disable a registered MCP OAuth client and revoke its outstanding tokens */
         delete: {
             parameters: {
                 query?: never;

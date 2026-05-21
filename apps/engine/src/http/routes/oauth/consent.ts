@@ -13,7 +13,7 @@ import {
 } from "../../../audit/index.ts";
 import { createMcpOAuthProvider } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
-import { tenants, users } from "../../../db/schema/index.ts";
+import { roles as rolesTable, tenants, users } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 import {
@@ -100,6 +100,22 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     if (responseType !== "code") {
+      await auditAwait(
+        {
+          tenant_id: SYSTEM_TENANT_ID,
+          actor_type: "system",
+          action: AuditAction.AUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_client",
+          resource_id: clientId,
+          result: "denied",
+          metadata: {
+            request_source: readRequestSource(c),
+            reason: "unsupported_response_type",
+            client_id: clientId,
+          },
+        },
+        db,
+      );
       return buildErrorRedirect(redirectUri, "unsupported_response_type", state);
     }
 
@@ -142,8 +158,9 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
 
     // Fetch user info for consent page
     const userRows = await db
-      .select({ email: users.email, role: users.role })
+      .select({ email: users.email, role: users.role, role_name: rolesTable.name })
       .from(users)
+      .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
       .where(
         and(eq(users.id, sessionPayload.user_id), eq(users.tenant_id, sessionPayload.tenant_id)),
       )
@@ -172,11 +189,13 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     // starts at "mcp:read" before being narrowed by the role check.
     const requestedScope = scope || "mcp:read";
     // A token can never carry a scope its owner's role lacks.
+    // Prefer the custom-role name from the roles table; fall back to the
+    // legacy enum column so built-in roles without a roles row still resolve.
     const roleScopes = await permittedMcpScopes(
       db,
       sessionPayload.tenant_id,
       sessionPayload.user_id,
-      userRow.role,
+      userRow.role_name ?? userRow.role,
     );
     const grantedScope = intersectScopes(
       intersectScopes(requestedScope, supportedScopes),
@@ -312,13 +331,17 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     // role downgrade between consent render and decision is honored.
     const csrfScope = (csrfPayload.scope as string | undefined) ?? "";
     const freshUserRows = await db
-      .select({ role: users.role })
+      .select({ role: users.role, role_name: rolesTable.name })
       .from(users)
+      .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
       .where(
         and(eq(users.id, sessionPayload.user_id), eq(users.tenant_id, sessionPayload.tenant_id)),
       )
       .limit(1);
-    const freshRole = freshUserRows[0]?.role ?? "enduser";
+    const freshRoleRow = freshUserRows[0];
+    // Prefer the custom-role name from the roles table; fall back to the
+    // legacy enum column so built-in roles without a roles row still resolve.
+    const freshRole = freshRoleRow?.role_name ?? freshRoleRow?.role ?? "enduser";
     const freshRoleScopes = await permittedMcpScopes(
       db,
       sessionPayload.tenant_id,

@@ -273,11 +273,11 @@ export const AuthorizeQuerySchema = z.object({
 
 export const TokenRequestSchema = z.object({
   grant_type: z.string(),
-  code: z.string().optional(),
-  code_verifier: z.string().optional(),
+  code: z.string().max(512).optional(),
+  code_verifier: z.string().max(512).optional(),
   redirect_uri: z.string().optional(),
   client_id: z.string().optional(),
-  refresh_token: z.string().optional(),
+  refresh_token: z.string().max(512).optional(),
   scope: z.string().optional(),
 });
 

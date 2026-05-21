@@ -481,6 +481,7 @@ export const AuditAction = {
   MCP_OAUTH_EXPIRED_PRUNED: "mcp_oauth.expired_pruned",
   // Emitted when an admin disables a registered OAuth client via the admin API.
   MCP_OAUTH_CLIENT_DISABLED: "mcp_oauth.client_disabled",
+  MCP_OAUTH_CLIENT_LISTED: "mcp_oauth.client_listed",
   MCP_OAUTH_TOKEN_REJECTED: "mcp_oauth.token_rejected",
 } as const;
 

@@ -1,7 +1,7 @@
 // Admin surface for platform-global MCP OAuth clients.
 //
 // GET  /v1/oauth/clients          — list registered clients (no secrets)
-// DELETE /v1/oauth/clients/{client_id} — soft-disable a client
+// DELETE /v1/oauth/clients/{client_id} — soft-disable a client and revoke its live tokens
 //
 // These are AUTHENTICATED admin-only routes. Unlike the bootstrap OAuth
 // routes in routes/oauth.ts, they require a bearer token and the
@@ -11,10 +11,14 @@
 // Routes are platform-global and admin-gated for that reason.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait, readRequestSource } from "../../audit/index.ts";
-import { mcpOauthClients } from "../../db/schema/index.ts";
+import {
+  mcpOauthAccessTokens,
+  mcpOauthClients,
+  mcpOauthRefreshTokens,
+} from "../../db/schema/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -64,7 +68,7 @@ const revokeRoute = createRoute({
   method: "delete",
   path: "/v1/oauth/clients/{client_id}",
   tags: ["oauth"],
-  summary: "Disable a registered MCP OAuth client",
+  summary: "Disable a registered MCP OAuth client and revoke its outstanding tokens",
   request: { params: ClientIdParam },
   security: [{ bearerAuth: [] }],
   responses: {
@@ -95,7 +99,7 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   app.openapi(listRoute, async (c) => {
-    requireAuth(c);
+    const principal = requireAuth(c);
     const db = c.get("db");
     // tenant-filter:exempt — mcp_oauth_clients has no tenant_id; admin-only route
     const rows = await db
@@ -119,6 +123,23 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
       disabled_at: r.disabled_at ? r.disabled_at.toISOString() : null,
       created_at: r.created_at.toISOString(),
     }));
+
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: AuditAction.MCP_OAUTH_CLIENT_LISTED,
+        resource_type: "mcp_oauth_client",
+        resource_id: null,
+        result: "success",
+        metadata: {
+          request_source: readRequestSource(c),
+          count: items.length,
+        },
+      },
+      db,
+    );
 
     return c.json({ items }, 200);
   });
@@ -145,6 +166,28 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
         .set({ disabled_at: now })
         .where(eq(mcpOauthClients.client_id, client_id));
 
+      // Revoke all outstanding access and refresh tokens for this client.
+      const revokedAccess = await db
+        .update(mcpOauthAccessTokens)
+        .set({ revoked_at: now })
+        .where(
+          and(
+            eq(mcpOauthAccessTokens.client_id, client_id),
+            isNull(mcpOauthAccessTokens.revoked_at),
+          ),
+        )
+        .returning({ id: mcpOauthAccessTokens.id });
+      const revokedRefresh = await db
+        .update(mcpOauthRefreshTokens)
+        .set({ revoked_at: now })
+        .where(
+          and(
+            eq(mcpOauthRefreshTokens.client_id, client_id),
+            isNull(mcpOauthRefreshTokens.revoked_at),
+          ),
+        )
+        .returning({ id: mcpOauthRefreshTokens.id });
+
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
@@ -157,6 +200,26 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
           metadata: {
             client_id,
             request_source: readRequestSource(c),
+          },
+        },
+        db,
+      );
+
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: principal.kind,
+          actor_id: principal.id,
+          action: AuditAction.MCP_OAUTH_TOKEN_REVOKED,
+          resource_type: "mcp_oauth_client",
+          resource_id: row.id,
+          result: "success",
+          metadata: {
+            request_source: readRequestSource(c),
+            reason: "client_disabled",
+            client_id,
+            access_tokens_revoked: revokedAccess.length,
+            refresh_tokens_revoked: revokedRefresh.length,
           },
         },
         db,

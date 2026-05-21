@@ -29,7 +29,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "mcp_oauth_clients_client_id_key"
 -- code_sha256 is the SHA-256 of the opaque plaintext code.
 CREATE TABLE IF NOT EXISTS "mcp_oauth_authorization_codes" (
   "id"                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenant_id"            uuid NOT NULL,
+  "tenant_id"            uuid NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
   "client_id"            text NOT NULL,
   "user_id"              uuid NOT NULL,
   "code_sha256"          text NOT NULL,
@@ -55,7 +55,7 @@ CREATE INDEX IF NOT EXISTS "mcp_oauth_authorization_codes_expires_idx"
 -- replacement token; reusing a rotated token revokes the whole chain.
 CREATE TABLE IF NOT EXISTS "mcp_oauth_refresh_tokens" (
   "id"             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenant_id"      uuid NOT NULL,
+  "tenant_id"      uuid NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
   "client_id"      text NOT NULL,
   "user_id"        uuid NOT NULL,
   "prefix"         text NOT NULL,
@@ -82,7 +82,7 @@ CREATE INDEX IF NOT EXISTS "mcp_oauth_refresh_tokens_tenant_idx"
 -- for tokens issued without a refresh token (future grant types).
 CREATE TABLE IF NOT EXISTS "mcp_oauth_access_tokens" (
   "id"               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenant_id"        uuid NOT NULL,
+  "tenant_id"        uuid NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
   "client_id"        text NOT NULL,
   "user_id"          uuid NOT NULL,
   "prefix"           text NOT NULL,
