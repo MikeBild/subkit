@@ -94,10 +94,24 @@ jobs:
               --json conclusion,status \
               --jq '.[0] // ""'
           }
-          # Give the push-triggered ci.yml run a moment to register.
-          sleep 30
-          if [ -z "$(latest_run)" ]; then
-            echo "No ci.yml run for $SHA — dispatching one against ref=$DISPATCH_REF."
+          # Poll for the push-triggered ci.yml run to register instead
+          # of a fixed `sleep 30`. The push trigger usually fires within
+          # a few seconds, but a slow webhook can take longer — a fixed
+          # window either wastes time or dispatches a redundant run. Poll
+          # every 6s for up to 60s; proceed to the wait loop as soon as a
+          # run appears. Only if none has registered after the full poll
+          # budget do we dispatch one ourselves.
+          found=""
+          poll_deadline=$(( $(date +%s) + 60 ))
+          while [ "$(date +%s)" -lt "$poll_deadline" ]; do
+            if [ -n "$(latest_run)" ]; then
+              found="yes"
+              break
+            fi
+            sleep 6
+          done
+          if [ -z "$found" ]; then
+            echo "No ci.yml run for $SHA after 60s — dispatching one against ref=$DISPATCH_REF."
             gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$DISPATCH_REF"
           else
             echo "Found an existing ci.yml run for $SHA — waiting for it."

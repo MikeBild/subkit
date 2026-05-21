@@ -14,6 +14,7 @@
 
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 import { getConfig } from "../config/loader.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
@@ -51,6 +52,21 @@ export interface OffloadRef {
   /** Serialized byte size of the offloaded payload. */
   size_bytes: number;
 }
+
+/**
+ * Runtime parser for an `OffloadRef`. `isOffloadRef` is the cheap
+ * structural guard for hot-path branching (the loop accumulator, the
+ * preview collapse); `OffloadRefSchema` is the fail-fast boundary —
+ * `resolveOffloaded` parses the incoming ref through it so a malformed
+ * value (missing `preview` / `size_bytes`, a re-targeted shape) is
+ * rejected with a typed error before any storage I/O runs.
+ */
+export const OffloadRefSchema = z.object({
+  $offloaded: z.literal(true),
+  storage_uri: z.string(),
+  preview: z.string(),
+  size_bytes: z.number(),
+});
 
 /**
  * Redact a `storage_uri` to its scheme only. A full offload locator is
@@ -146,7 +162,23 @@ export async function resolveOffloaded(
   ref: OffloadRef,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const uri = ref.storage_uri;
+  // Fail-fast boundary: a malformed ref (missing preview/size_bytes, a
+  // re-targeted shape) must never reach storage I/O. Parse through the
+  // Zod schema and throw the typed `OffloadResolutionError` on failure.
+  // The error `.message` carries only the REDACTED locator scheme, so a
+  // best-effort `storage_uri` is recovered for redaction even when the
+  // overall shape is invalid.
+  const parsed = OffloadRefSchema.safeParse(ref);
+  if (!parsed.success) {
+    const rawUri =
+      ref &&
+      typeof ref === "object" &&
+      typeof (ref as { storage_uri?: unknown }).storage_uri === "string"
+        ? (ref as { storage_uri: string }).storage_uri
+        : "";
+    throw new OffloadResolutionError(rawUri, `malformed offload ref: ${parsed.error.message}`);
+  }
+  const uri = parsed.data.storage_uri;
   if (signal?.aborted) {
     throw new OffloadResolutionError(uri, "execution aborted before re-hydration");
   }

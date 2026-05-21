@@ -21,6 +21,7 @@ import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { logger } from "../logging/logger.ts";
+import { recordLoopIterationsOffloaded } from "../observability/instrumentation.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
 import { buildStepDag, topoSort } from "../workflows/dag.ts";
@@ -430,8 +431,17 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         // with the actual envelope shape so the LLM can fix its
         // JSONata next turn instead of guessing.
         if (iterationResults.length > 0) {
+          // Count offloaded iterations alongside productive ones — an
+          // iteration whose body payload was offloaded to durable
+          // storage holds an `OffloadRef` in the run-resident scope
+          // instead of the full envelope (the OOM fix). Surfacing the
+          // tally as a metric makes big-loop memory pressure
+          // observable to operators.
+          let offloadedIterations = 0;
           const productiveIterations = iterationResults.filter((iter) => {
             if (!iter || typeof iter !== "object") return false;
+            let iterProductive = false;
+            let iterOffloaded = false;
             for (const value of Object.values(iter as Record<string, unknown>)) {
               const env = value as ScopeEnvelope | null | undefined;
               if (!env || typeof env !== "object") continue;
@@ -441,13 +451,24 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               // An offloaded body payload appears as an `OffloadRef`.
               // It is productive by definition (only oversize payloads
               // offload) — count it without re-hydrating.
-              if (isOffloadRef(data)) return true;
+              if (isOffloadRef(data)) {
+                iterOffloaded = true;
+                iterProductive = true;
+                continue;
+              }
               if (Array.isArray(data) && data.length === 0) continue;
               if (typeof data === "object" && Object.keys(data as object).length === 0) continue;
-              return true;
+              iterProductive = true;
             }
-            return false;
+            if (iterOffloaded) offloadedIterations += 1;
+            return iterProductive;
           }).length;
+          if (offloadedIterations > 0) {
+            recordLoopIterationsOffloaded({
+              tenant_id,
+              count: offloadedIterations,
+            });
+          }
           if (productiveIterations === 0) {
             const sampleIteration = iterationResults[0];
             const bodyKeys =
@@ -618,7 +639,28 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // An `OffloadRef` must never cross an external surface. A re-hydration
   // failure throws `OffloadResolutionError`, failing the run.
   if (lastOutput !== undefined && lastOutput !== null) {
-    lastOutput = await deepResolveOffloadRefs(db, tenant_id, lastOutput, signal);
+    try {
+      lastOutput = await deepResolveOffloadRefs(db, tenant_id, lastOutput, signal);
+    } catch (err) {
+      // A re-hydration failure must NOT bubble out of `runExecution` as
+      // an unhandled 500 — it has to be audited as a proper failed
+      // execution record, the same shape as an output_transform throw
+      // just below. Stamp the typed error and fall through to the
+      // persistence layer. The error `.message` is already REDACTED to
+      // the locator scheme by `OffloadResolutionError`.
+      logger.warn({
+        module: "execution",
+        action: "execution.offload_resolution_failed",
+        msg: "final-output offload re-hydration failed",
+        execution_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      finalStatus = "failed";
+      validationError = {
+        code: "offload_resolution_failed",
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 
   // Optional final-output transform. The two forms are mutually

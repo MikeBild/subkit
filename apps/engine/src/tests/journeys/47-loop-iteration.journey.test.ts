@@ -14,10 +14,9 @@
 // Spec refs: plan docs — §2e LOOP STEP: Actual Item Iteration
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { containsOffloadRef } from "../../execution/offload-rehydrate.ts";
 import { STEP_RESULT_DB_BYTES } from "../../execution/timeouts.ts";
+import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 // Payload large enough to trigger the offload path inside the engine.
@@ -179,22 +178,10 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
     // The REST response from POST /v1/executions must NOT contain any
     // `$offloaded: true` discriminant — that is an internal implementation
     // detail that must never cross the external surface.
-    let mockServer: Server | undefined;
-    let mockBase = "";
-
-    await new Promise<void>((resolve) => {
-      const srv = createServer((_req, res) => {
-        res.setHeader("content-type", "application/json");
-        res.statusCode = 200;
-        res.end(JSON.stringify({ blob: OFFLOAD_BLOB }));
-      });
-      mockServer = srv;
-      srv.listen(0, "127.0.0.1", () => {
-        const addr = srv.address() as AddressInfo;
-        mockBase = `http://127.0.0.1:${addr.port}`;
-        resolve();
-      });
-    });
+    const mockServer: MockServer = await createMockServer((_req, res) =>
+      jsonResponse(res, 200, { blob: OFFLOAD_BLOB }),
+    );
+    const mockBase = mockServer.baseUrl;
 
     try {
       const createRes = await journeyFetch(ctx, "/v1/workflows", {
@@ -282,7 +269,7 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
         expect((blob ?? "").length).toBeGreaterThan(STEP_RESULT_DB_BYTES);
       }
     } finally {
-      await new Promise<void>((resolve) => mockServer!.close(() => resolve()));
+      await mockServer.close();
     }
   });
 });

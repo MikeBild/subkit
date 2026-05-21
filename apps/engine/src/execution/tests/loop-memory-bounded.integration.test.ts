@@ -343,12 +343,29 @@ describe("loop memory-bounded: OOM guard", () => {
   });
 
   test("TC6 — loop with no downstream consumer never re-materialises refs (fast-path)", async () => {
-    // A workflow that has a large-body loop but NO transform/branch/request
-    // step consuming its scope output after it. The fast-path in
-    // resolveScopeForJsonata must return the original scope reference without
-    // resolving the refs — we can't observe the internal scope directly, but
-    // we CAN verify the run still succeeds and no extra fixture rows are
-    // created beyond the per-body-step writes that happen regardless.
+    // A workflow with a large-body loop but NO transform/branch/request
+    // step consuming its scope output. The fast-path in
+    // resolveScopeForJsonata must return the original scope reference
+    // without resolving the refs — we can't observe the internal scope
+    // directly, but we CAN verify the run succeeds and that the number
+    // of new fixture rows is EXACTLY accounted for.
+    //
+    // Size budget — this assertion is deterministic only because the
+    // sizes below are pinned:
+    //   * The loop is a SINGLE iteration. Its one body step fetches a
+    //     payload of `LARGE_SIZE` (= STEP_RESULT_DB_BYTES + 1) bytes —
+    //     one byte over the inline threshold — so the body step writes
+    //     exactly ONE `offload` fixture row.
+    //   * `engine.ts` re-hydrates the loop output before the top-level
+    //     `maybeOffload`. The re-hydrated top-level output is the
+    //     single iteration's body payload (`LARGE_SIZE` bytes plus the
+    //     surrounding envelope), which is ALSO above STEP_RESULT_DB_BYTES,
+    //     so the aggregate write produces exactly ONE more `offload` row.
+    //   * Total: 1 body row + 1 aggregate row = delta of exactly 2.
+    // A second iteration would push the re-hydrated aggregate to ~2×
+    // the body size and add a third row in a way that depends on the
+    // exact envelope overhead — non-deterministic to assert. Keeping
+    // the loop single-iteration pins the count.
     const fixtureCountBefore = await ctx.testDb.db
       .select({ id: executionFixtures.id })
       .from(executionFixtures)
@@ -361,7 +378,7 @@ describe("loop memory-bounded: OOM guard", () => {
           kind: "transform",
           id: "items6",
           language: "jsonata",
-          expression: "[1, 2]",
+          expression: "[1]",
         },
         {
           kind: "loop",
@@ -394,16 +411,10 @@ describe("loop memory-bounded: OOM guard", () => {
       .from(executionFixtures)
       .where(eq(executionFixtures.tenant_id, ctx.tenantId));
 
-    // Exactly 2 new fixture rows — one per body step iteration (plus
-    // possibly one for the overall execution result if it exceeded the
-    // threshold, which it shouldn't because the loop output is re-hydrated
-    // before persistence). We must NOT see more than iterations + 1.
+    // Exactly 2 new fixture rows: 1 body-step offload + 1 top-level
+    // aggregate offload (see the size budget above). No off-by-one.
     const delta = fixtureCountAfter.length - fixtureCountBefore.length;
-    // 2 body iterations wrote 2 fixture rows; the loop result is resolved
-    // to plain JSON before the top-level maybeOffload, which is small enough
-    // to stay inline (structure only, no blob strings).
-    expect(delta).toBeLessThanOrEqual(3); // 2 body + 1 top-level if border-case
-    expect(delta).toBeGreaterThanOrEqual(2); // at minimum the 2 body writes
+    expect(delta).toBe(2);
 
     // No OffloadRef in the returned output.
     expect(containsOffloadRef(result.output)).toBe(false);
