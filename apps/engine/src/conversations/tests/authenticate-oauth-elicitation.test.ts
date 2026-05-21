@@ -20,7 +20,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import {
   type MockOAuthServer,
@@ -43,6 +42,7 @@ import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { dispatchTool } from "../../tools/dispatcher.ts";
 import { conversationToolProvider, staticToolProvider } from "../../tools/index.ts";
 import { buildRegistry } from "../../tools/registry.ts";
+import { makeTestPrincipal } from "../../tools/tests/_helpers.ts";
 import { authenticateOAuthTool } from "../tools/authenticate-oauth.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
@@ -342,13 +342,11 @@ describe("authenticate_oauth — RBAC gate is not bypassed by the elicitation br
 
     // A user principal with no role and no grants: `can()` resolves no
     // role_id for this id, so `connector:oauth` denies.
-    const principal: ResolvedPrincipal = {
-      kind: "user",
+    const principal = makeTestPrincipal({
       id: "00000000-0000-0000-0000-0000000000aa",
       tenant_id,
       roles: [],
-      // biome-ignore lint/suspicious/noExplicitAny: minimal principal stub for an RBAC-deny test
-    } as any;
+    });
 
     const registry = buildRegistry([staticToolProvider, conversationToolProvider]);
 

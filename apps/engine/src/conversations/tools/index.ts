@@ -8,6 +8,7 @@
 import type { z } from "@hono/zod-openapi";
 import type { Db } from "../../db/client.ts";
 import type { EngineClient } from "../../engine-client/index.ts";
+import type { ElicitationBridge } from "../../mcp/elicitation/bridge.ts";
 import type { DraftDocument } from "../types.ts";
 import { analyzeScrapeTargetTool } from "./analyze-scrape-target.ts";
 import {
@@ -142,7 +143,7 @@ export interface ToolContext {
    * DB-pause / `respondElicitation` round-trip. See
    * `apps/engine/src/mcp/elicitation/bridge.ts`.
    */
-  elicitationBridge?: import("../../mcp/elicitation/bridge.ts").ElicitationBridge;
+  elicitationBridge?: ElicitationBridge;
 }
 
 /** Elicitation pause descriptor shared by both ToolResult branches. */

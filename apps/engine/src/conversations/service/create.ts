@@ -10,6 +10,7 @@ import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { log } from "../../logging/logger.ts";
+import type { ElicitationBridge } from "../../mcp/elicitation/bridge.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../abort.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { type RunLoopResult, runLoop } from "../loop.ts";
@@ -70,7 +71,7 @@ export interface CreateConversationParams {
    * runs inside an MCP `tools/call` whose client advertised the
    * `elicitation` capability. Threaded onto the loop's `ToolContext`.
    */
-  elicitationBridge?: import("../../mcp/elicitation/bridge.ts").ElicitationBridge;
+  elicitationBridge?: ElicitationBridge;
 }
 
 export async function createConversation(

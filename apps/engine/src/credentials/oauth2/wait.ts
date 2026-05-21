@@ -56,6 +56,15 @@ export interface WaitForOAuthCredentialInput {
 const DEFAULT_TIMEOUT_MS = 45_000;
 const POLL_INTERVAL_MS = 1_500;
 
+// Budget ceiling/floor for callers that share the client's tool-call
+// timeout with a prior round-trip (e.g. `authenticate_oauth` issues an
+// MCP `elicitation/create` bridge call BEFORE the wait). The caller
+// subtracts the elapsed bridge cost from `OAUTH_WAIT_CEILING_MS` and
+// clamps to `OAUTH_WAIT_MIN_FLOOR_MS` so the wait still does at least a
+// couple of DB-poll ticks even when the elicitation round-trip was slow.
+export const OAUTH_WAIT_CEILING_MS = DEFAULT_TIMEOUT_MS;
+export const OAUTH_WAIT_MIN_FLOOR_MS = 5_000;
+
 /** Is there a non-deleted credential row for (tenant, connector, env)? */
 async function credentialExists(
   db: Db,
@@ -155,11 +164,21 @@ export async function waitForOAuthCredential(
       resolve(status);
     };
 
-    // 1 + 2. pubsub — fastest signal. Tolerate a missing listener (tests).
+    // 1 + 2. pubsub — fastest signal. Tolerate a missing listener (tests),
+    // but surface it: in production a missing listener means the
+    // `callback_failed` event can never resolve the wait early, so a
+    // misconfigured prod listener must not stay invisible.
     try {
       getListener().on("connector.oauth", handler);
-    } catch {
-      /* no listener — DB poll still covers the success case */
+    } catch (err) {
+      logger.warn({
+        module: "oauth",
+        action: "oauth.wait.listener_unavailable",
+        msg: "pubsub listener unavailable — OAuth wait falls back to DB poll only; callback_failed cannot resolve early",
+        tenant_id: p.tenant_id,
+        connector_id: p.connector_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     // 1. DB poll fallback — covers a missed `callback_succeeded` event.

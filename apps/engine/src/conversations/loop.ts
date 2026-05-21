@@ -53,6 +53,7 @@ import {
   toLlmProviderError,
 } from "../llm/provider-errors.ts";
 import { log, logger } from "../logging/logger.ts";
+import type { ElicitationBridge } from "../mcp/elicitation/bridge.ts";
 import {
   recordLlmQuotaExhausted,
   recordLlmTokens,
@@ -170,7 +171,7 @@ export interface RunLoopParams {
    * DB-pause / `respondElicitation` round-trip. `undefined` on the
    * HTTP/SSE portal surface.
    */
-  elicitationBridge?: import("../mcp/elicitation/bridge.ts").ElicitationBridge;
+  elicitationBridge?: ElicitationBridge;
 }
 
 export interface RunLoopResult {

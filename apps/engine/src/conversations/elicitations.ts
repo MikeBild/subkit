@@ -60,20 +60,53 @@ function rowToRecord(row: Row): ElicitationRecord {
   };
 }
 
-export async function createElicitation(
-  p: {
-    tenant_id: string;
-    conversation_id: string;
-    tool_call_id: string | null;
-    parent_message_id?: string | null;
-    tool_name: string;
-    summary: string;
-    input: unknown;
-    actor_id: string | null;
-    /** True when the row backs an MCP-native `elicitation/create`
-     *  round-trip rather than the DB-pause path. Defaults false. */
-    protocol_native?: boolean;
-  },
+/** Fields a caller supplies to open an elicitation row. The
+ *  `protocol_native` flag is NOT part of this shape — it is fixed by the
+ *  entry point (`createElicitation` vs `createNativeElicitation`) so a
+ *  caller cannot claim a bridge round-trip it never issued. */
+export interface CreateElicitationParams {
+  tenant_id: string;
+  conversation_id: string;
+  tool_call_id: string | null;
+  parent_message_id?: string | null;
+  tool_name: string;
+  summary: string;
+  input: unknown;
+  actor_id: string | null;
+}
+
+/**
+ * Open an elicitation row for the DB-pause + `respondElicitation` path.
+ * Always writes `protocol_native: false` — the row is satisfied via a
+ * portal POST, not an MCP `elicitation/create` round-trip.
+ *
+ * Bridge-path callers (in-process MCP `elicitation/create`) must use
+ * `createNativeElicitation` instead so the `surface` audit metadata
+ * stays truthful regardless of what the caller passes.
+ */
+export function createElicitation(
+  p: CreateElicitationParams,
+  exec: Executor,
+): Promise<ElicitationRecord> {
+  return insertElicitation(p, false, exec);
+}
+
+/**
+ * Open an elicitation row that backs an MCP-native `elicitation/create`
+ * round-trip (the in-process bridge). Always writes
+ * `protocol_native: true`. Use this ONLY on a path that actually issues
+ * the bridge call — the flag drives the `surface` audit metadata.
+ */
+export function createNativeElicitation(
+  p: CreateElicitationParams,
+  exec: Executor,
+): Promise<ElicitationRecord> {
+  return insertElicitation(p, true, exec);
+}
+
+async function insertElicitation(
+  p: CreateElicitationParams,
+  protocolNative: boolean,
   exec: Executor,
 ): Promise<ElicitationRecord> {
   // Single-pending-elicitation invariant. The LLM must never see two
@@ -130,7 +163,7 @@ export async function createElicitation(
       summary: p.summary,
       input: (p.input ?? {}) as Record<string, unknown>,
       status: "pending",
-      protocol_native: p.protocol_native ?? false,
+      protocol_native: protocolNative,
     })
     .returning();
   assertInsertRow(inserted, "elicitation");
@@ -296,6 +329,9 @@ export async function resolveElicitation(
     id: string;
     output: unknown;
     decided_by: string | null;
+    /** Persisted verbatim to `decision_reason`. May be human-readable
+     *  prose OR a machine code (e.g. `oauth_timeout`,
+     *  `elicitation_transport_failed`) — consumers must tolerate both. */
     reason?: string;
     status?: "resolved" | "cancelled";
   },

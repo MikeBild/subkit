@@ -22,6 +22,16 @@ export type PolicyDecision =
   | { kind: "not_available_on_surface"; reason: string };
 
 /**
+ * Canonical one-line description of how the engine surfaces interactive
+ * prompts on an MCP client. Pinned here as the single source of truth so
+ * the `conversation_start` / `conversation_append` tool descriptions,
+ * the `DRAFT_WRITE_MCP_UNAVAILABLE_REASON` below, and any tests stay in
+ * lock-step. Reference this constant rather than re-typing the phrase.
+ */
+export const MCP_ELICITATION_BLURB =
+  "the engine surfaces forms and OAuth authorization prompts directly in this client via MCP elicitation, so the operator never leaves the chat";
+
+/**
  * Reason string surfaced when a `draft_write` tool is reached on the
  * MCP surface. Exported so the `tools/list` `disabled` badge
  * (`tools/providers/conversation.ts#describeDisabled`) and this
@@ -30,8 +40,7 @@ export type PolicyDecision =
  * surfaced via MCP elicitation. Keep the two surfaces in lock-step by
  * sourcing the text here.
  */
-export const DRAFT_WRITE_MCP_UNAVAILABLE_REASON =
-  "This tool mutates a conversation-scoped working draft and is only available inside an authoring conversation. Call conversation_start to begin connector/workflow authoring; the engine surfaces forms and OAuth prompts directly in this client via MCP elicitation.";
+export const DRAFT_WRITE_MCP_UNAVAILABLE_REASON = `This tool mutates a conversation-scoped working draft and is only available inside an authoring conversation. Call conversation_start to begin connector/workflow authoring; ${MCP_ELICITATION_BLURB}.`;
 
 /** Confirmation marker the client sets when re-issuing a previously
  *  paused call. Two aliases for symmetry with the legacy sdk-wrap /

@@ -20,6 +20,7 @@ import {
 } from "../../conversations/abort.ts";
 import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
+import { MCP_ELICITATION_BLURB } from "../../tools/policy.ts";
 import type { ElicitationBridge } from "../elicitation/bridge.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 
@@ -29,8 +30,7 @@ export function listConversationTools(): Tool[] {
   return [
     {
       name: "conversation_start",
-      description:
-        "Start here for ANY connector setup, OAuth authorization, or workflow authoring. Opens a new authoring conversation and drives the first turn — the engine surfaces forms and authorization prompts directly in this client via MCP elicitation, so the operator never leaves the chat.",
+      description: `Start here for ANY connector setup, OAuth authorization, or workflow authoring. Opens a new authoring conversation and drives the first turn — ${MCP_ELICITATION_BLURB}.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -43,8 +43,7 @@ export function listConversationTools(): Tool[] {
     },
     {
       name: "conversation_append",
-      description:
-        "Continue an authoring conversation — append a user message and drive another turn. Use this to answer the engine's questions or steer connector/workflow authoring; forms and OAuth authorization prompts are surfaced directly in this client via MCP elicitation.",
+      description: `Continue an authoring conversation — append a user message and drive another turn. Use this to answer the engine's questions or steer connector/workflow authoring; ${MCP_ELICITATION_BLURB}.`,
       inputSchema: {
         type: "object",
         properties: {

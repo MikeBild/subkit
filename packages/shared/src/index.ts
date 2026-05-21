@@ -13,6 +13,7 @@ export {
   ConnectorOperationError,
   isConnectorOperationError,
 } from "./connector-operation-error.ts";
+export { OAUTH_AUTHORIZATION_URL_FIELD } from "./elicitation-constants.ts";
 export {
   FILE_LINK_RESOURCE_TYPES,
   type FileLinkResourceType,

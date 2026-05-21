@@ -21,7 +21,11 @@
 
 import { logger } from "../../../logging/logger.ts";
 import { ElicitationUnsupportedError } from "../../../mcp/elicitation/bridge.ts";
-import { createElicitation, resolveElicitationAndReactivate } from "../../elicitations.ts";
+import {
+  createElicitation,
+  createNativeElicitation,
+  resolveElicitationAndReactivate,
+} from "../../elicitations.ts";
 import { applyElicitationOutcome } from "../../persistence/apply-outcome.ts";
 import { ELICITATION_ALREADY_RESOLVED, ELICITATION_TRANSPORT_FAILED } from "../error-codes.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
@@ -62,7 +66,7 @@ export async function pauseForUserInput(
       // Still persist the row — audit trail + single-pending-elicitation
       // invariant — but mark it protocol_native so observability can
       // distinguish a wire elicitation from a DB-pause one.
-      const row = await createElicitation(
+      const row = await createNativeElicitation(
         {
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
@@ -72,7 +76,6 @@ export async function pauseForUserInput(
           summary: p.summary,
           input: p.input,
           actor_id: ctx.actor_id,
-          protocol_native: true,
         },
         ctx.db,
       );

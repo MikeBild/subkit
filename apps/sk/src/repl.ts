@@ -24,6 +24,7 @@ import {
   type SkSessionState,
   type TurnEvent,
 } from "@cli-core/index.ts";
+import { OAUTH_AUTHORIZATION_URL_FIELD } from "@shared/elicitation-constants.ts";
 import type { ResolvedProfile } from "./config.ts";
 import {
   type DebugCorrelationFields,
@@ -57,7 +58,7 @@ function extractOAuthUrl(input: unknown): string | null {
   const obj = input as Record<string, unknown>;
   // `BrowserUrlSchema` owns the http(s)-only launch policy — route the
   // candidate through it rather than re-implementing the prefix check.
-  const parsed = BrowserUrlSchema.safeParse(obj.authorization_url);
+  const parsed = BrowserUrlSchema.safeParse(obj[OAUTH_AUTHORIZATION_URL_FIELD]);
   return parsed.success ? parsed.data : null;
 }
 

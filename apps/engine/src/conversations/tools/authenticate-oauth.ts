@@ -28,26 +28,29 @@
 // actually lands — the previous optimistic marking (before the operator
 // even opened the URL) is the bug this rework fixes.
 //
-// Follow-up: experimental MCP Tasks (SEP-1686) is the documented path
-// for removing the held-open connection during the wait — out of scope
-// for this phase.
+// Follow-up: MCP Tasks (SEP-1686) could remove the held-open connection.
 //
 // The credential row is keyed on (tenant_id, connector_id, environment),
 // so there is no user-supplied "credential name" — same auto-naming
 // pattern as bearer/basic/header/query atomic save.
 
 import { z } from "@hono/zod-openapi";
+import { OAUTH_AUTHORIZATION_URL_FIELD } from "@shared/elicitation-constants.ts";
 import { and, desc, eq, gt } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";
 import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts";
-import { waitForOAuthCredential } from "../../credentials/oauth2/wait.ts";
+import {
+  OAUTH_WAIT_CEILING_MS,
+  OAUTH_WAIT_MIN_FLOOR_MS,
+  waitForOAuthCredential,
+} from "../../credentials/oauth2/wait.ts";
 import { connectorOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { ElicitationUnsupportedError } from "../../mcp/elicitation/bridge.ts";
 import { withConnectorAuthenticated } from "../authoring-state.ts";
-import { createElicitation, resolveElicitationAndReactivate } from "../elicitations.ts";
+import { createNativeElicitation, resolveElicitationAndReactivate } from "../elicitations.ts";
 import { pauseForUserInput } from "./ask-user/common.ts";
 import { OAUTH_AUTHORIZATION_DECLINED, OAUTH_ELICITATION_TRANSPORT_FAILED } from "./error-codes.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
@@ -94,7 +97,7 @@ function openOAuthApprovalElicitation(
   ctx: ToolContext,
   p: { connectorLabel: string; authorizationUrl: string; message: string },
 ): Promise<import("../elicitations.ts").ElicitationRecord> {
-  return createElicitation(
+  return createNativeElicitation(
     {
       tenant_id: ctx.tenant_id,
       conversation_id: ctx.conversation_id,
@@ -106,10 +109,9 @@ function openOAuthApprovalElicitation(
         kind: "external_write",
         question: "Have you completed the authorization in your browser?",
         summary: p.message,
-        authorization_url: p.authorizationUrl,
+        [OAUTH_AUTHORIZATION_URL_FIELD]: p.authorizationUrl,
       },
       actor_id: ctx.actor_id,
-      protocol_native: true,
     },
     ctx.db,
   );
@@ -160,6 +162,19 @@ async function hasPendingOAuthState(
     .orderBy(desc(connectorOauthStates.created_at))
     .limit(1);
   return rows.length > 0;
+}
+
+/**
+ * Remaining `waitForOAuthCredential` budget after a bridge elicitation
+ * round-trip already consumed part of the client's shared tool-call
+ * timeout. `bridgeStartedAt` is captured immediately before the
+ * `elicitOob` / `elicitForm` call; the elapsed bridge cost is subtracted
+ * from `OAUTH_WAIT_CEILING_MS` and clamped to `OAUTH_WAIT_MIN_FLOOR_MS`
+ * so the wait always gets at least a few DB-poll ticks.
+ */
+function remainingWaitBudgetMs(bridgeStartedAt: number): number {
+  const elapsed = Date.now() - bridgeStartedAt;
+  return Math.max(OAUTH_WAIT_MIN_FLOOR_MS, OAUTH_WAIT_CEILING_MS - elapsed);
 }
 
 export const authenticateOAuthTool: ConversationTool = {
@@ -278,6 +293,9 @@ export const authenticateOAuthTool: ConversationTool = {
         authorizationUrl: started.authorization_url,
         message,
       });
+      // Start the shared-budget clock before the bridge round-trip so its
+      // cost is subtracted from the `waitForOAuthCredential` timeout.
+      const bridgeStartedAt = Date.now();
       try {
         await bridge.elicitOob({
           url: started.authorization_url,
@@ -338,6 +356,7 @@ export const authenticateOAuthTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         connector_id: connectorId,
         environment,
+        timeout_ms: remainingWaitBudgetMs(bridgeStartedAt),
         db: ctx.db,
       });
       await resolveOAuthApprovalElicitation(ctx, approval.id, status);
@@ -357,6 +376,9 @@ export const authenticateOAuthTool: ConversationTool = {
         authorizationUrl: started.authorization_url,
         message,
       });
+      // Start the shared-budget clock before the bridge round-trip so its
+      // cost is subtracted from the `waitForOAuthCredential` timeout.
+      const bridgeStartedAt = Date.now();
       try {
         const result = await bridge.elicitForm({
           message,
@@ -439,6 +461,7 @@ export const authenticateOAuthTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         connector_id: connectorId,
         environment,
+        timeout_ms: remainingWaitBudgetMs(bridgeStartedAt),
         db: ctx.db,
       });
       await resolveOAuthApprovalElicitation(ctx, approval.id, status);
@@ -469,8 +492,9 @@ function dbPauseForOAuth(
       question: "Have you completed the authorization in your browser?",
       summary: message,
       // Surfaced verbatim on the `elicit_request` frame so sk-cli can
-      // detect the OAuth step and auto-open the browser.
-      authorization_url: authorizationUrl,
+      // detect the OAuth step and auto-open the browser. The field name
+      // is the shared `OAUTH_AUTHORIZATION_URL_FIELD` contract.
+      [OAUTH_AUTHORIZATION_URL_FIELD]: authorizationUrl,
       redirect_uri: redirectUri,
     },
   });

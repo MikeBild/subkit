@@ -240,10 +240,8 @@ describe("mapElicitResultToAskUserOutput — ask_user_confirm", () => {
     });
   });
 
-  test("a non-boolean confirmed coerces to false", () => {
-    expect(mapElicitResultToAskUserOutput("ask_user_confirm", {}, { confirmed: "yes" })).toEqual({
-      confirmed: false,
-    });
+  test("a non-boolean confirmed is a contract violation → null (decline-equivalent)", () => {
+    expect(mapElicitResultToAskUserOutput("ask_user_confirm", {}, { confirmed: "yes" })).toBeNull();
   });
 });
 

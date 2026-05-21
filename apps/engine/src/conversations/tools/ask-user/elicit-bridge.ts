@@ -252,7 +252,13 @@ export function mapElicitResultToAskUserOutput(
     }
 
     case "ask_user_confirm": {
-      const confirmed = c.confirmed === true;
+      // The elicitation `requestedSchema` pinned `confirmed` to a
+      // boolean. A non-boolean answer is a protocol violation — mirror
+      // `ask_user_choice` and return `null` (the decline-equivalent
+      // non-answer) rather than silently coercing it to `false`, which
+      // would negative-assert a decision the user never made.
+      if (typeof c.confirmed !== "boolean") return null;
+      const confirmed = c.confirmed;
       const reason = typeof c.reason === "string" && c.reason.length > 0 ? c.reason : undefined;
       return reason ? { confirmed, reason } : { confirmed };
     }
