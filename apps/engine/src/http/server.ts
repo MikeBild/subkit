@@ -10,6 +10,7 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
+import { createMcpOAuthAuthProvider } from "../auth/providers/mcp-oauth.ts";
 import { createOidcProvider } from "../auth/providers/oidc.ts";
 import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
 import { AuthProviderRegistry } from "../auth/registry.ts";
@@ -61,6 +62,7 @@ import { registerKnowledgeSourceRoutes } from "./routes/knowledge-sources.ts";
 import { registerMcpCatalogRoutes } from "./routes/mcp-catalog.ts";
 import { registerMetricsRoute } from "./routes/metrics.ts";
 import { registerNotificationRoutes } from "./routes/notifications/index.ts";
+import { registerMcpOAuthRoutes } from "./routes/oauth.ts";
 import { registerPatchCandidateRoutes } from "./routes/patch-candidates.ts";
 import { registerRbacRoutes } from "./routes/rbac/index.ts";
 import { registerRequestHookRoutes } from "./routes/request-hooks.ts";
@@ -85,7 +87,13 @@ export interface CreateAppOptions {
 
 export function buildDefaultRegistry(db?: Db): AuthProviderRegistry {
   const reg = new AuthProviderRegistry();
-  // Portal tokens are registered first so `wf_portal_*` bearers resolve
+  // MCP OAuth tokens (wf_mcp_*) are registered first as a performance
+  // preference: the prefix is unambiguous so non-matching requests are
+  // rejected before the DB is touched. The registry executes sequentially
+  // (for...of, early return on first non-null principal), so registration
+  // order is a latency optimisation, not a correctness requirement.
+  reg.register(createMcpOAuthAuthProvider(db ? { db } : {}));
+  // Portal tokens are registered next so `wf_portal_*` bearers resolve
   // before the api-key provider even runs its prefix lookup. Both
   // providers reject foreign prefixes fast, so ordering is a
   // performance/logging preference rather than a correctness
@@ -198,6 +206,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerProvidersRoute(app);
   registerSessionsOidcRoute(app);
   registerLoginRoutes(app);
+  registerMcpOAuthRoutes(app);
   registerWhoamiRoute(app);
   registerSkBootstrapRoute(app);
   registerWorkflowRoutes(app);

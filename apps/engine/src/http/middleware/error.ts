@@ -10,7 +10,7 @@ import { logger } from "../../logging/logger.ts";
 import type { CapturedError } from "../../observability/error-ring.ts";
 import { errorRing } from "../../observability/error-ring.ts";
 import { ENVELOPE_BRAND } from "../_internal.ts";
-import { HttpError } from "../errors.ts";
+import { HttpError, UnauthorizedError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
 
 interface EnvelopeOptions {
@@ -211,6 +211,12 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
 export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Response | null {
   if (err instanceof HttpError) {
     if (err.status >= 500) captureToRing(c, err, err.status, err.code, "http");
+    // Emit WWW-Authenticate header when the error carries one.
+    // Scoped to UnauthorizedError so the header only appears on 401s
+    // that explicitly set it (e.g. the /mcp resource server).
+    if (err instanceof UnauthorizedError && err.wwwAuthenticate) {
+      c.header("WWW-Authenticate", err.wwwAuthenticate);
+    }
     // If the error carries hint/retry_after, route through the new
     // branded envelope; otherwise preserve the legacy positional-
     // details path so existing throw sites that pass

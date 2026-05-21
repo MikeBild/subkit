@@ -86,6 +86,73 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 
 **Resource update notifications.** When a client subscribes to a resource URI (`workflow://<id>`, `connector://<id>`, `knowledge://<id>`, `skill-candidate://<id>`), the engine emits `notifications/resources/updated` on every committed state change in that resource. The notification follows the MCP spec exactly: it carries only the URI — no event-type discriminator, no payload diff, no actor. Clients that need to distinguish a delete from a rename must re-fetch via `readResource`, or for workflows specifically observe the lifecycle audit row directly through `/v1/audit-log`. Delivery is at-most-once — a transient `sendResourceUpdated` failure is logged and dropped — so clients on critical paths should also poll. Subscriptions are subject to the same RBAC check as `readResource`: a portal token or custom role lacking `workflow:read` on the underlying resource receives no notifications, even if it knew the URI to subscribe.
 
+### MCP OAuth 2.1 (ChatGPT / Claude.ai / Cursor)
+
+The sk engine is a full OAuth 2.1 authorization server and resource server for `/mcp`. This lets OAuth-only clients — including the ChatGPT custom connector, Claude.ai, and Cursor — authenticate without a static API key.
+
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`).
+
+**Discovery endpoints.**
+
+| Endpoint | Spec | Purpose |
+|---|---|---|
+| `GET /.well-known/oauth-protected-resource` | RFC 9728 | Points clients to the authorization server. |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 | Authorization server metadata (endpoints, scopes, PKCE). |
+
+**OAuth flow.**
+
+1. Client fetches `/.well-known/oauth-protected-resource` to discover the authorization server.
+2. Client fetches `/.well-known/oauth-authorization-server` to get all endpoints.
+3. Client registers itself at `POST /v1/oauth/register` (dynamic client registration, RFC 7591). Returns `client_id` (and `client_secret` for confidential clients).
+4. Client redirects the user to `GET /v1/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&code_challenge=...&code_challenge_method=S256&scope=mcp:read&state=...`. PKCE S256 is mandatory; `plain` is rejected.
+5. If not logged in, the engine redirects to `/v1/identity/login/start` (OIDC). After login the user returns to the authorize page.
+6. The consent page shows the client name, tenant, and requested scopes. The user approves or denies.
+7. On approval, the engine issues an authorization code and redirects to the client's `redirect_uri?code=...&state=...`.
+8. Client exchanges the code at `POST /v1/oauth/token` (form-encoded, `grant_type=authorization_code`). Response: `{ access_token: "wf_mcp_...", refresh_token: "wf_mcr_...", token_type: "bearer", expires_in: 3600 }`.
+9. Client uses `Authorization: Bearer wf_mcp_...` on subsequent `POST /mcp` calls.
+10. Client refreshes at `POST /v1/oauth/token` (`grant_type=refresh_token`). Refresh tokens rotate on every use; replaying a rotated token revokes the whole chain.
+11. Client revokes at `POST /v1/oauth/revoke`.
+
+**Scopes.**
+
+| Scope | MCP mode | What the token unlocks |
+|---|---|---|
+| `mcp:read` | product | Callable workflow entries and the `authenticate` tool only. |
+| `mcp:authoring` | authoring | Adds `conversation.*` authoring tools. |
+| `mcp:admin` | admin | Adds full `tenant.*` admin tools (subject to RBAC). |
+
+The scope granted at consent is the intersection of what the client requested and what the consenting user's role permits. A token can never carry a scope its owner lacks.
+
+**Connecting ChatGPT custom connector.**
+
+1. In ChatGPT → Settings → Connectors → New connector, set the server URL to your engine's MCP endpoint (`https://your-engine.example.com/mcp`).
+2. ChatGPT auto-discovers OAuth via `/.well-known/oauth-protected-resource`.
+3. ChatGPT performs dynamic client registration and opens the sk login + consent flow.
+4. After approval, ChatGPT stores the OAuth tokens and uses them on all future calls.
+
+**Connecting Claude.ai.**
+
+1. In Claude.ai → Settings → Integrations → Add integration, enter `https://your-engine.example.com/mcp`.
+2. Claude.ai discovers OAuth metadata and performs DCR automatically.
+3. Complete the login + consent flow in the browser.
+
+**Connecting Cursor.**
+
+Add to `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "sk": {
+      "url": "https://your-engine.example.com/mcp",
+      "transport": "http"
+    }
+  }
+}
+```
+Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthenticated request and opens the browser-based consent flow.
+
+**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Refresh tokens rotate on every use and replay of a rotated token revokes the full chain. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored.
+
 ---
 
 ## Chat Systems (Slack, Teams, Google Chat)

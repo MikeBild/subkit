@@ -20,6 +20,8 @@ import { randomUUID } from "node:crypto";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { getConfig } from "../../config/loader.ts";
+import { UnauthorizedError } from "../../http/errors.ts";
 import { requireAuth } from "../../http/middleware/auth.ts";
 import type { AppEnv } from "../../http/openapi.ts";
 import { logger } from "../../logging/logger.ts";
@@ -37,6 +39,21 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
   // `/mcp` is not part of the OpenAPI surface so we use the raw
   // `.all(path, handler)` signature.
   app.all("/mcp", async (c) => {
+    // When no principal resolved, emit the RFC 9728 resource_metadata discovery
+    // header so OAuth-only clients (ChatGPT, Claude.ai, Cursor) can perform
+    // the authorization server discovery handshake.
+    if (!c.get("principal")) {
+      let baseUrl = "";
+      try {
+        baseUrl = getConfig().server.public_base_url;
+      } catch {
+        /* config not loaded yet — degrade gracefully */
+      }
+      const wwwAuth = baseUrl
+        ? `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`
+        : "Bearer";
+      throw new UnauthorizedError("missing_or_invalid_credentials", wwwAuth);
+    }
     const principal = requireAuth(c);
     const db = c.get("db");
     const sessionHeader = c.req.header("mcp-session-id");

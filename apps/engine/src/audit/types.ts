@@ -466,6 +466,16 @@ export const AuditAction = {
 
   OAUTH_CLIENT_REGISTERED: "oauth_client.registered",
   OAUTH_CLIENT_REGISTRATION_FAILED: "oauth_client.registration_failed",
+
+  // ── MCP OAuth 2.1 authorization server ────────────────────────────────────
+  MCP_OAUTH_CLIENT_REGISTERED: "mcp_oauth.client_registered",
+  MCP_OAUTH_CODE_ISSUED: "mcp_oauth.code_issued",
+  MCP_OAUTH_TOKEN_ISSUED: "mcp_oauth.token_issued",
+  MCP_OAUTH_TOKEN_REFRESHED: "mcp_oauth.token_refreshed",
+  MCP_OAUTH_TOKEN_REVOKED: "mcp_oauth.token_revoked",
+  MCP_OAUTH_CONSENT_GRANTED: "mcp_oauth.consent_granted",
+  MCP_OAUTH_CONSENT_DENIED: "mcp_oauth.consent_denied",
+  MCP_OAUTH_TOKEN_USED: "mcp_oauth.token_used",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

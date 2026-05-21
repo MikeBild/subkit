@@ -3,8 +3,10 @@
 // route_layering check at apps/engine/scripts/audit-invariants.ts.
 
 export * from "./hooks.ts";
+export * from "./oauth/server-provider.ts";
 export * from "./policy.ts";
 export * from "./providers/api-key.ts";
+export * from "./providers/mcp-oauth.ts";
 export * from "./providers/oidc.ts";
 export * from "./providers/portal-token.ts";
 export * from "./types.ts";

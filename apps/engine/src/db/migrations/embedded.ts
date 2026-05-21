@@ -41,6 +41,7 @@ import sql0020FilesDedupCounter from "./0020_files_dedup_counter.sql" with { typ
 import sql0021TenantTimezone from "./0021_tenant_timezone.sql" with { type: "text" };
 import sql0022CredentialModeOauth2Client from "./0022_credential_mode_oauth2_client.sql" with { type: "text" };
 import sql0023CredentialsUniquePerMode from "./0023_credentials_unique_per_mode.sql" with { type: "text" };
+import sql0024McpOauth from "./0024_mcp_oauth.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -89,6 +90,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0021_tenant_timezone": sql0021TenantTimezone,
   "0022_credential_mode_oauth2_client": sql0022CredentialModeOauth2Client,
   "0023_credentials_unique_per_mode": sql0023CredentialsUniquePerMode,
+  "0024_mcp_oauth": sql0024McpOauth,
 };
 
 const journal = journalMeta as unknown as Journal;
