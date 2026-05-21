@@ -7,6 +7,10 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { getConfig } from "../../../config/loader.ts";
 import type { AppEnv } from "../../openapi.ts";
 
+function buildProtectedResourceDocument(base: string) {
+  return { resource: `${base}/mcp`, authorization_servers: [base] };
+}
+
 export function registerOAuthDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
   // ── RFC 9728 Protected Resource Metadata ─────────────────────────────────
   // Raw handler — .well-known paths are not expressible as zod-openapi routes.
@@ -17,10 +21,7 @@ export function registerOAuthDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     } catch {
       return c.json({ error: "service_unavailable" }, 503);
     }
-    return c.json({
-      resource: `${base}/mcp`,
-      authorization_servers: [base],
-    });
+    return c.json(buildProtectedResourceDocument(base));
   });
 
   app.get("/.well-known/oauth-protected-resource/mcp", (c) => {
@@ -30,10 +31,7 @@ export function registerOAuthDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     } catch {
       return c.json({ error: "service_unavailable" }, 503);
     }
-    return c.json({
-      resource: `${base}/mcp`,
-      authorization_servers: [base],
-    });
+    return c.json(buildProtectedResourceDocument(base));
   });
 
   // ── RFC 8414 Authorization Server Metadata ─────────────────────────────────

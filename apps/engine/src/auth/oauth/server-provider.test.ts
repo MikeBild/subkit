@@ -3,10 +3,11 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Config } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
 import {
+  auditLog,
   mcpOauthAccessTokens,
   mcpOauthRefreshTokens,
   tenants,
@@ -147,11 +148,7 @@ describe("registerClient", () => {
     expect(result.scope).toBe("mcp:read");
   });
 
-  test("registerClient completes without error (audit is fire-and-forget to global db)", async () => {
-    // audit() in server-provider uses the global db connection, not the test db.
-    // Audit log assertions are validated at the HTTP layer (mcp-oauth-routes.test.ts)
-    // where the full stack is wired. Here we confirm registration succeeds and the
-    // client row is queryable.
+  test("registerClient writes a mcp_oauth.client_registered audit row", async () => {
     const result = await provider.registerClient({
       redirect_uris: [REDIRECT_URI],
       client_name: "AuditTest",
@@ -159,6 +156,18 @@ describe("registerClient", () => {
     expect(result.client_id).toBeDefined();
     const client = await provider.getClient(result.client_id);
     expect(client).not.toBeNull();
+
+    const rows = await db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, "00000000-0000-0000-0000-000000000000"),
+          eq(auditLog.action, "mcp_oauth.client_registered"),
+        ),
+      )
+      .limit(10);
+    expect(rows.length).toBeGreaterThanOrEqual(1);
   });
 
   test("getClient returns the registered client", async () => {
@@ -220,12 +229,17 @@ describe("authorization code flow", () => {
     expect(tokens.scope).toBe("mcp:read");
   });
 
-  test("exchange returns token_type=bearer and expires_in (audit fire-and-forget)", async () => {
-    // audit() uses global db — see registerClient test note.
-    // Verify the exchange response shape which confirms the happy path ran.
+  test("exchangeAuthorizationCode writes a mcp_oauth.token_issued audit row", async () => {
     const tokens = await issueTokenPair();
     expect(tokens.token_type).toBe("bearer");
     expect(tokens.expires_in).toBeGreaterThan(0);
+
+    const rows = await db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.action, "mcp_oauth.token_issued")))
+      .limit(10);
+    expect(rows.length).toBeGreaterThanOrEqual(1);
   });
 
   test("code is single-use: second exchange throws invalid_grant", async () => {
@@ -400,8 +414,7 @@ describe("refresh token rotation", () => {
     expect(rows[0]?.rotated_to_id).not.toBeNull();
   });
 
-  test("rotation response has valid token shapes (audit fire-and-forget)", async () => {
-    // audit() uses global db — see registerClient test note.
+  test("exchangeRefreshToken writes a mcp_oauth.token_refreshed audit row", async () => {
     const clientId = await registerTestClient({ scope: "mcp:read" });
     const firstPair = await issueTokenPair({ clientId, scope: "mcp:read" });
 
@@ -412,6 +425,15 @@ describe("refresh token rotation", () => {
 
     expect(refreshed.token_type).toBe("bearer");
     expect(refreshed.expires_in).toBeGreaterThan(0);
+
+    const rows = await db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, tenantId), eq(auditLog.action, "mcp_oauth.token_refreshed")),
+      )
+      .limit(10);
+    expect(rows.length).toBeGreaterThanOrEqual(1);
   });
 
   test("replaying a rotated refresh token revokes the chain (invalid_grant)", async () => {
@@ -529,9 +551,7 @@ describe("refresh token rotation", () => {
 // ─── revokeToken ───────────────────────────────────────────────────────────
 
 describe("revokeToken", () => {
-  test("revoking an access token sets revoked_at (audit fire-and-forget)", async () => {
-    // audit() uses global db — see registerClient test note.
-    // We verify the DB-visible side effect: revoked_at is set.
+  test("revoking an access token sets revoked_at and writes mcp_oauth.token_revoked audit row", async () => {
     const pair = await issueTokenPair();
     await provider.revokeToken(pair.access_token);
 
@@ -542,6 +562,13 @@ describe("revokeToken", () => {
       .where(eq(mcpOauthAccessTokens.token_sha256, tokenHash))
       .limit(1);
     expect(rows[0]?.revoked_at).not.toBeNull();
+
+    const auditRows = await db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.action, "mcp_oauth.token_revoked")))
+      .limit(10);
+    expect(auditRows.length).toBeGreaterThanOrEqual(1);
   });
 
   test("revoking a refresh token sets revoked_at", async () => {
@@ -561,5 +588,125 @@ describe("revokeToken", () => {
     await expect(
       provider.revokeToken("wf_mcp_totallyunknowntoken1234567890"),
     ).resolves.toBeUndefined();
+  });
+});
+
+// ─── mcp_oauth.token_rejected audit rows ──────────────────────────────────
+
+describe("token_rejected audit", () => {
+  test("PKCE mismatch on code exchange emits mcp_oauth.token_rejected row", async () => {
+    const clientId = await registerTestClient();
+    const code = await provider.issueAuthorizationCode({
+      clientId,
+      tenantId,
+      userId,
+      redirectUri: REDIRECT_URI,
+      codeChallenge: CODE_CHALLENGE,
+      scope: "mcp:read",
+    });
+
+    let err: unknown;
+    try {
+      await provider.exchangeAuthorizationCode({
+        code,
+        codeVerifier: "wrong-verifier-value-that-does-not-match",
+        redirectUri: REDIRECT_URI,
+        clientId,
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect((err as { oauth_error?: string }).oauth_error).toBe("invalid_grant");
+
+    const rows = await db
+      .select({ action: auditLog.action, metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.action, "mcp_oauth.token_rejected")))
+      .limit(10);
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    const reasons = rows.map((r) => (r.metadata as Record<string, unknown>).reason);
+    expect(reasons).toContain("pkce_mismatch");
+  });
+
+  test("unknown code exchange emits mcp_oauth.token_rejected row", async () => {
+    const beforeCount = (
+      await db
+        .select({ action: auditLog.action })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, "00000000-0000-0000-0000-000000000000"),
+            eq(auditLog.action, "mcp_oauth.token_rejected"),
+          ),
+        )
+        .limit(100)
+    ).length;
+
+    let err: unknown;
+    try {
+      await provider.exchangeAuthorizationCode({
+        code: "nonexistent-code-value-abcdef999999",
+        codeVerifier: CODE_VERIFIER,
+        redirectUri: REDIRECT_URI,
+        clientId: "someclientid",
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect((err as { oauth_error?: string }).oauth_error).toBe("invalid_grant");
+
+    const afterRows = await db
+      .select({ action: auditLog.action, metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, "00000000-0000-0000-0000-000000000000"),
+          eq(auditLog.action, "mcp_oauth.token_rejected"),
+        ),
+      )
+      .limit(100);
+    expect(afterRows.length).toBeGreaterThan(beforeCount);
+    const reasons = afterRows.map((r) => (r.metadata as Record<string, unknown>).reason);
+    expect(reasons).toContain("code_not_found");
+  });
+
+  test("unknown refresh token exchange emits mcp_oauth.token_rejected row", async () => {
+    const beforeCount = (
+      await db
+        .select({ action: auditLog.action })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, "00000000-0000-0000-0000-000000000000"),
+            eq(auditLog.action, "mcp_oauth.token_rejected"),
+          ),
+        )
+        .limit(100)
+    ).length;
+
+    let err: unknown;
+    try {
+      await provider.exchangeRefreshToken({
+        refreshToken: "wf_mcr_nonexistent_refresh_token_abc123",
+        clientId: "someclientid",
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect((err as { oauth_error?: string }).oauth_error).toBe("invalid_grant");
+
+    const afterRows = await db
+      .select({ action: auditLog.action, metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, "00000000-0000-0000-0000-000000000000"),
+          eq(auditLog.action, "mcp_oauth.token_rejected"),
+        ),
+      )
+      .limit(100);
+    expect(afterRows.length).toBeGreaterThan(beforeCount);
+    const reasons = afterRows.map((r) => (r.metadata as Record<string, unknown>).reason);
+    expect(reasons).toContain("refresh_not_found");
   });
 });

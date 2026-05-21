@@ -160,6 +160,7 @@ export async function sessionIsLive(db: Db, sessionId: string, tenantId: string)
 export function renderConsentPage(opts: {
   clientName: string;
   tenantName: string;
+  userEmail: string;
   scopes: string[];
   csrfToken: string;
   state: string;
@@ -200,6 +201,7 @@ export function renderConsentPage(opts: {
   <h1>Authorize access</h1>
   <p><span class="client">${escapeHtml(opts.clientName)}</span> is requesting permission to access
   your <strong>${escapeHtml(opts.tenantName)}</strong> workspace.</p>
+  <p>Signed in as <strong>${escapeHtml(opts.userEmail)}</strong></p>
   <p>It will be able to:</p>
   <ul>${scopeItems}</ul>
   <form method="POST" action="/v1/oauth/authorize/decision">
@@ -257,6 +259,17 @@ export async function parseFormBody(req: Request): Promise<URLSearchParams> {
 // ── Request body schemas ──────────────────────────────────────────────────────
 // Form-encoded endpoints are raw Hono handlers (not @hono/zod-openapi), but
 // their bodies are still Zod-validated at the boundary per AGENTS.md.
+
+export const AuthorizeQuerySchema = z.object({
+  client_id: z.string().min(1),
+  redirect_uri: z.string().min(1),
+  response_type: z.string().optional(),
+  code_challenge: z.string().optional(),
+  code_challenge_method: z.string().optional(),
+  scope: z.string().optional(),
+  resource: z.string().optional(),
+  state: z.string().optional(),
+});
 
 export const TokenRequestSchema = z.object({
   grant_type: z.string(),

@@ -245,17 +245,53 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const codeRow = claimedRows[0];
 
     if (!codeRow) {
+      await auditAwait(
+        {
+          tenant_id: SYSTEM_TENANT_ID,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: "api", reason: "code_not_found" },
+        },
+        db,
+      );
       throw Object.assign(new Error("invalid_grant"), { oauth_error: "invalid_grant" });
     }
 
     const now = new Date();
     if (codeRow.expires_at <= now) {
+      await auditAwait(
+        {
+          tenant_id: codeRow.tenant_id,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: "api", reason: "code_expired" },
+        },
+        db,
+      );
       throw Object.assign(new Error("invalid_grant: code expired"), {
         oauth_error: "invalid_grant",
       });
     }
 
     if (codeRow.client_id !== input.clientId) {
+      await auditAwait(
+        {
+          tenant_id: codeRow.tenant_id,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: "api", reason: "client_mismatch" },
+        },
+        db,
+      );
       throw Object.assign(new Error("invalid_grant: client mismatch"), {
         oauth_error: "invalid_grant",
       });
@@ -263,6 +299,18 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
     // Exact redirect_uri match — critical open-redirect guard
     if (codeRow.redirect_uri !== input.redirectUri) {
+      await auditAwait(
+        {
+          tenant_id: codeRow.tenant_id,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: "api", reason: "redirect_mismatch" },
+        },
+        db,
+      );
       throw Object.assign(new Error("invalid_grant: redirect_uri mismatch"), {
         oauth_error: "invalid_grant",
       });
@@ -270,6 +318,18 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
     // PKCE S256 verification
     if (!verifyS256(input.codeVerifier, codeRow.code_challenge)) {
+      await auditAwait(
+        {
+          tenant_id: codeRow.tenant_id,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: "api", reason: "pkce_mismatch" },
+        },
+        db,
+      );
       throw Object.assign(new Error("invalid_grant: PKCE verification failed"), {
         oauth_error: "invalid_grant",
       });
@@ -348,10 +408,34 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const refreshRow = rows[0];
 
     if (!refreshRow) {
+      await auditAwait(
+        {
+          tenant_id: SYSTEM_TENANT_ID,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: "api", reason: "refresh_not_found" },
+        },
+        db,
+      );
       throw Object.assign(new Error("invalid_grant"), { oauth_error: "invalid_grant" });
     }
 
     if (refreshRow.client_id !== clientId) {
+      await auditAwait(
+        {
+          tenant_id: refreshRow.tenant_id,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: "api", reason: "client_mismatch" },
+        },
+        db,
+      );
       throw Object.assign(new Error("invalid_grant: client mismatch"), {
         oauth_error: "invalid_grant",
       });
@@ -362,6 +446,18 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     if (refreshRow.revoked_at && refreshRow.revoked_at <= now) {
       // A rotated/revoked token was replayed — revoke the whole chain.
       await revokeChain(refreshRow.id, refreshRow.tenant_id, refreshRow.user_id, now);
+      await auditAwait(
+        {
+          tenant_id: refreshRow.tenant_id,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: "api", reason: "refresh_replayed" },
+        },
+        db,
+      );
       throw Object.assign(new Error("invalid_grant: token replay detected — chain revoked"), {
         oauth_error: "invalid_grant",
       });
@@ -370,12 +466,36 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     if (refreshRow.rotated_to_id) {
       // Already rotated — replay attack; revoke the chain.
       await revokeChain(refreshRow.id, refreshRow.tenant_id, refreshRow.user_id, now);
+      await auditAwait(
+        {
+          tenant_id: refreshRow.tenant_id,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: "api", reason: "refresh_replayed" },
+        },
+        db,
+      );
       throw Object.assign(new Error("invalid_grant: token already rotated — chain revoked"), {
         oauth_error: "invalid_grant",
       });
     }
 
     if (refreshRow.expires_at <= now) {
+      await auditAwait(
+        {
+          tenant_id: refreshRow.tenant_id,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: "api", reason: "refresh_expired" },
+        },
+        db,
+      );
       throw Object.assign(new Error("invalid_grant: refresh token expired"), {
         oauth_error: "invalid_grant",
       });
@@ -400,56 +520,79 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const newRefreshExpiresAt = new Date(now.getTime() + cfg.refresh_token_ttl_seconds * 1000);
     const newAccessExpiresAt = new Date(now.getTime() + cfg.access_token_ttl_seconds * 1000);
 
-    const { newRefreshId, newAccessPrefix } = await db.transaction(async (tx) => {
-      const insertedRefreshRows = await tx
-        .insert(mcpOauthRefreshTokens)
-        .values({
+    // The rotation race branch throws invalid_grant from inside the transaction.
+    // Catching it here (outside the tx) lets us emit the audit row on the outer
+    // db connection — emitting inside the tx would roll the audit back with it.
+    let txResult: { newRefreshId: string; newAccessPrefix: string };
+    try {
+      txResult = await db.transaction(async (tx) => {
+        const insertedRefreshRows = await tx
+          .insert(mcpOauthRefreshTokens)
+          .values({
+            tenant_id: refreshRow.tenant_id,
+            client_id: refreshRow.client_id,
+            user_id: refreshRow.user_id,
+            prefix: newRefresh.prefix,
+            token_sha256: newRefresh.hash,
+            scope: grantedScope,
+            expires_at: newRefreshExpiresAt,
+          })
+          .returning({ id: mcpOauthRefreshTokens.id });
+        const newRefreshRow = insertedRefreshRows[0];
+        if (!newRefreshRow) {
+          throw new Error("server_error: failed to insert refresh token");
+        }
+
+        // Atomic claim: only succeeds if old token hasn't been rotated yet
+        const claimed = await tx
+          .update(mcpOauthRefreshTokens)
+          .set({ rotated_to_id: newRefreshRow.id })
+          .where(
+            and(
+              eq(mcpOauthRefreshTokens.id, refreshRow.id),
+              isNull(mcpOauthRefreshTokens.rotated_to_id),
+            ),
+          )
+          .returning({ id: mcpOauthRefreshTokens.id });
+
+        if (claimed.length === 0) {
+          tx.rollback();
+          throw Object.assign(new Error("invalid_grant: token already rotated — chain revoked"), {
+            oauth_error: "invalid_grant",
+          });
+        }
+
+        await tx.insert(mcpOauthAccessTokens).values({
           tenant_id: refreshRow.tenant_id,
           client_id: refreshRow.client_id,
           user_id: refreshRow.user_id,
-          prefix: newRefresh.prefix,
-          token_sha256: newRefresh.hash,
+          prefix: newAccess.prefix,
+          token_sha256: newAccess.hash,
           scope: grantedScope,
-          expires_at: newRefreshExpiresAt,
-        })
-        .returning({ id: mcpOauthRefreshTokens.id });
-      const newRefreshRow = insertedRefreshRows[0];
-      if (!newRefreshRow) {
-        throw new Error("server_error: failed to insert refresh token");
-      }
-
-      // Atomic claim: only succeeds if old token hasn't been rotated yet
-      const claimed = await tx
-        .update(mcpOauthRefreshTokens)
-        .set({ rotated_to_id: newRefreshRow.id })
-        .where(
-          and(
-            eq(mcpOauthRefreshTokens.id, refreshRow.id),
-            isNull(mcpOauthRefreshTokens.rotated_to_id),
-          ),
-        )
-        .returning({ id: mcpOauthRefreshTokens.id });
-
-      if (claimed.length === 0) {
-        tx.rollback();
-        throw Object.assign(new Error("invalid_grant: token already rotated — chain revoked"), {
-          oauth_error: "invalid_grant",
+          refresh_token_id: newRefreshRow.id,
+          expires_at: newAccessExpiresAt,
         });
-      }
 
-      await tx.insert(mcpOauthAccessTokens).values({
-        tenant_id: refreshRow.tenant_id,
-        client_id: refreshRow.client_id,
-        user_id: refreshRow.user_id,
-        prefix: newAccess.prefix,
-        token_sha256: newAccess.hash,
-        scope: grantedScope,
-        refresh_token_id: newRefreshRow.id,
-        expires_at: newAccessExpiresAt,
+        return { newRefreshId: newRefreshRow.id, newAccessPrefix: newAccess.prefix };
       });
-
-      return { newRefreshId: newRefreshRow.id, newAccessPrefix: newAccess.prefix };
-    });
+    } catch (txErr) {
+      if ((txErr as { oauth_error?: string }).oauth_error === "invalid_grant") {
+        await auditAwait(
+          {
+            tenant_id: refreshRow.tenant_id,
+            actor_type: "system",
+            action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+            resource_type: "mcp_oauth_token",
+            resource_id: null,
+            result: "denied",
+            metadata: { request_source: "api", reason: "refresh_replayed" },
+          },
+          db,
+        );
+      }
+      throw txErr;
+    }
+    const { newRefreshId, newAccessPrefix } = txResult;
 
     await auditAwait(
       {

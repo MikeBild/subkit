@@ -43,6 +43,7 @@ async function maybeFlushLastUsed(
   tokenId: string,
   tenantId: string,
   prefix: string,
+  userId: string,
 ): Promise<void> {
   const now = Date.now();
   const last = lastFlush.get(tokenId) ?? 0;
@@ -69,7 +70,8 @@ async function maybeFlushLastUsed(
   audit(
     {
       tenant_id: tenantId,
-      actor_type: "system",
+      actor_type: "user",
+      actor_id: userId,
       action: AuditAction.MCP_OAUTH_TOKEN_USED,
       resource_type: "mcp_oauth_token",
       resource_id: tokenId,
@@ -205,7 +207,7 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         tenant_id: row.tenant_id,
       });
 
-      await maybeFlushLastUsed(db, row.id, row.tenant_id, prefix);
+      await maybeFlushLastUsed(db, row.id, row.tenant_id, prefix, row.user_id);
 
       return principal;
     },

@@ -17,6 +17,7 @@ import { tenants, users } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 import {
+  AuthorizeQuerySchema,
   buildErrorRedirect,
   DecisionRequestSchema,
   deriveSessionSecret,
@@ -33,23 +34,21 @@ import {
 export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
   // ── Authorization endpoint ─────────────────────────────────────────────────
   app.get("/v1/oauth/authorize", async (c) => {
-    const qs = c.req.query();
-    const clientId = qs.client_id;
-    const redirectUri = qs.redirect_uri;
-    const responseType = qs.response_type;
-    const codeChallenge = qs.code_challenge;
-    const codeChallengeMethod = qs.code_challenge_method;
-    const scope = qs.scope ?? "mcp:read";
-    const resource = qs.resource ?? "";
-    const state = qs.state ?? "";
-
-    // Validate required params before any redirect to prevent open-redirect
-    if (!clientId || !redirectUri) {
+    const q = AuthorizeQuerySchema.safeParse(c.req.query());
+    if (!q.success) {
       return c.json(
-        { error: "invalid_request", error_description: "client_id and redirect_uri required" },
+        { error: "invalid_request", error_description: "invalid authorize parameters" },
         400,
       );
     }
+    const clientId = q.data.client_id;
+    const redirectUri = q.data.redirect_uri;
+    const responseType = q.data.response_type;
+    const codeChallenge = q.data.code_challenge;
+    const codeChallengeMethod = q.data.code_challenge_method;
+    const scope = q.data.scope ?? "mcp:read";
+    const resource = q.data.resource ?? "";
+    const state = q.data.state ?? "";
 
     const db = c.get("db");
     const provider = createMcpOAuthProvider({ db, config: getConfig() });
@@ -207,6 +206,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     const html = renderConsentPage({
       clientName: client.client_name ?? clientId,
       tenantName: tenantRow?.display_name ?? sessionPayload.tenant_id,
+      userEmail: userRow.email,
       scopes: scopeList,
       csrfToken,
       state,

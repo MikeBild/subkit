@@ -20,6 +20,7 @@ import type { AppEnv } from "../../openapi.ts";
 // Max 10 registrations per IP per 60s. Checked before any DB work.
 const DCR_MAX = 10;
 const DCR_WINDOW_MS = 60_000;
+const DCR_BUCKET_CAP = 10_000;
 interface DcrBucket {
   count: number;
   resetAt: number;
@@ -34,6 +35,12 @@ export function registerOAuthDcrRoutes(app: OpenAPIHono<AppEnv>): void {
     const now = Date.now();
     const bucket = dcrBuckets.get(ip);
     if (!bucket || now >= bucket.resetAt) {
+      // Before inserting a new entry, prune expired buckets if the map is full.
+      if (!bucket && dcrBuckets.size >= DCR_BUCKET_CAP) {
+        for (const [key, b] of dcrBuckets) {
+          if (b.resetAt <= now) dcrBuckets.delete(key);
+        }
+      }
       dcrBuckets.set(ip, { count: 1, resetAt: now + DCR_WINDOW_MS });
       return true;
     }
