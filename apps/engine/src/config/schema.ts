@@ -237,6 +237,45 @@ const LlmSection = z
   .prefault({})
   .describe("LLM configuration");
 
+const McpOAuthSection = z
+  .object({
+    enabled: z
+      .boolean()
+      .default(true)
+      .describe("Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor).")
+      .meta(global({ requiresRestart: true })),
+    dynamic_registration_enabled: z
+      .boolean()
+      .default(true)
+      .describe("Allow RFC 7591 dynamic client registration at POST /v1/oauth/register.")
+      .meta(global()),
+    access_token_ttl_seconds: z
+      .int()
+      .positive()
+      .default(3600)
+      .describe("Lifetime in seconds for MCP OAuth access tokens.")
+      .meta(global()),
+    refresh_token_ttl_seconds: z
+      .int()
+      .positive()
+      .default(2592000)
+      .describe("Lifetime in seconds for MCP OAuth refresh tokens (30 days).")
+      .meta(global()),
+    authorization_code_ttl_seconds: z
+      .int()
+      .positive()
+      .default(60)
+      .describe("Lifetime in seconds for MCP OAuth authorization codes.")
+      .meta(global()),
+    scopes_supported: z
+      .array(z.string())
+      .default(["mcp:read", "mcp:authoring", "mcp:admin"])
+      .describe("OAuth scopes advertised in the authorization server metadata.")
+      .meta(global()),
+  })
+  .prefault({})
+  .describe("MCP OAuth 2.1 authorization + resource server");
+
 const AuthSection = z
   .object({
     oidc: z
@@ -276,6 +315,7 @@ const AuthSection = z
       })
       .prefault({})
       .describe("Firebase authentication"),
+    mcp_oauth: McpOAuthSection,
   })
   .prefault({})
   .describe("Authentication");

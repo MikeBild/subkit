@@ -61,6 +61,8 @@ function memberAllows(name: string): boolean {
   if (name === "api_key:revoke") return false;
   if (name.startsWith("credential:") && name !== "credential:read") return false;
   if (name === "discovery:approve") return false;
+  if (name === "mcp:admin") return false;
+  if (name.startsWith("mcp_oauth_client:")) return false;
   return true;
 }
 

@@ -250,6 +250,16 @@
     "description": "List MCP prompts, resources, and tools for slash-command pickers",
     "resource_type": "mcp"
   },
+  {
+    "name": "mcp:authoring",
+    "description": "Access the MCP endpoint with conversation authoring tools enabled",
+    "resource_type": "mcp"
+  },
+  {
+    "name": "mcp:admin",
+    "description": "Access the MCP endpoint with full tenant admin tools enabled",
+    "resource_type": "mcp"
+  },
 
   {
     "name": "knowledge:read",
@@ -308,5 +318,16 @@
     "name": "file:delete",
     "description": "Delete files (soft-delete via `deleted_at`)",
     "resource_type": "file"
+  },
+
+  {
+    "name": "mcp_oauth_client:read",
+    "description": "List registered MCP OAuth clients",
+    "resource_type": "mcp_oauth_client"
+  },
+  {
+    "name": "mcp_oauth_client:revoke",
+    "description": "Disable a registered MCP OAuth client",
+    "resource_type": "mcp_oauth_client"
   }
 ]

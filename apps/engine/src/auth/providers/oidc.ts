@@ -165,6 +165,26 @@ function httpError(status: number, code: string, message: string): Response {
   });
 }
 
+/**
+ * isSafeRedirect — returns true only for:
+ *   - path-only relative URLs (start with `/`, not `//` — `//` is protocol-relative)
+ *   - absolute URLs same-origin as `baseUrl`
+ * Guards the MCP OAuth login funnel's `redirect_to` against open redirects.
+ */
+function isSafeRedirect(url: string, baseUrl: string): boolean {
+  if (!url) return false;
+  // Path-only relative: must start with / but not //
+  if (url.startsWith("/") && !url.startsWith("//")) return true;
+  // Same-origin absolute
+  try {
+    const target = new URL(url);
+    const base = new URL(baseUrl);
+    return target.origin === base.origin;
+  } catch {
+    return false;
+  }
+}
+
 async function resolveTenantId(db: Db, slug: string | null): Promise<string | null> {
   const lookupSlug = slug ?? DEFAULT_TENANT_SLUG;
   const rows = await db
@@ -461,7 +481,10 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         exec,
       );
 
-      const target = pending.redirect_to ?? "/";
+      // Validate the stored redirect_to before following it — closes the
+      // open redirect the MCP OAuth login funnel depends on.
+      const rawTarget = pending.redirect_to ?? null;
+      const target = rawTarget && isSafeRedirect(rawTarget, redirectUri) ? rawTarget : "/";
       const res = new Response(null, {
         status: 302,
         headers: {

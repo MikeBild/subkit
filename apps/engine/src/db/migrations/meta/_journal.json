@@ -169,6 +169,13 @@
       "when": 1779500000000,
       "tag": "0023_credentials_unique_per_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1779600000000,
+      "tag": "0024_mcp_oauth",
+      "breakpoints": true
     }
   ]
 }

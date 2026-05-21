@@ -117,8 +117,11 @@ export class HttpError extends Error {
 // switched to the internal import, so the public surface is clean.
 
 export class UnauthorizedError extends HttpError {
-  constructor(reason = "missing_or_invalid_credentials") {
+  readonly wwwAuthenticate?: string | undefined;
+
+  constructor(reason = "missing_or_invalid_credentials", wwwAuthenticate?: string | undefined) {
     super(401, "unauthorized", reason);
+    this.wwwAuthenticate = wwwAuthenticate;
   }
 }
 
