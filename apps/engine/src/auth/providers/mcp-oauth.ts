@@ -55,7 +55,7 @@ async function maybeFlushLastUsed(
   await db
     .update(mcpOauthAccessTokens)
     .set({ last_used_at: new Date(now) })
-    .where(eq(mcpOauthAccessTokens.id, tokenId))
+    .where(and(eq(mcpOauthAccessTokens.id, tokenId), eq(mcpOauthAccessTokens.tenant_id, tenantId)))
     .catch((err: unknown) => {
       logger.warn({
         module: "auth",

@@ -143,8 +143,10 @@ describe("POST /v1/oauth/register", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(typeof body.client_id).toBe("string");
     expect(typeof body.client_id_issued_at).toBe("number");
-    expect(typeof body.registration_client_uri).toBe("string");
     expect(Array.isArray(body.redirect_uris)).toBe(true);
+    // registration_client_uri is intentionally not advertised — subkit
+    // does not serve the RFC 7591 client-configuration endpoint.
+    expect(body.registration_client_uri).toBeUndefined();
   });
 
   test("returns 400 with invalid_client_metadata for missing redirect_uris", async () => {
@@ -655,6 +657,61 @@ describe("consent denial", () => {
     expect(location).toContain("error=access_denied");
     expect(location).toContain("state=deny-state");
   });
+
+  test("session revoked between consent render and decision returns 401", async () => {
+    const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://client.example.com/revoke-cb"] }),
+    });
+    const { client_id: clientId } = (await regRes.json()) as { client_id: string };
+
+    const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
+    const jwt = await mintSessionCookie({
+      session_id: sessionId,
+      user_id: ctx.userId,
+      tenant_id: ctx.tenantId,
+    });
+
+    const authRes = await fetch(
+      `${ctx.baseUrl}/v1/oauth/authorize?${new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: "https://client.example.com/revoke-cb",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        scope: "mcp:read",
+      })}`,
+      { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
+    );
+    const html = await authRes.text();
+    const csrfToken = html.match(/name="csrf_token"\s+value="([^"]+)"/)?.[1] as string;
+    expect(csrfToken).toBeDefined();
+
+    // Revoke the session row AFTER the consent page rendered.
+    await db
+      .update(sessions)
+      .set({ revoked_at: new Date() }) // allow-wall-clock
+      .where(eq(sessions.id, sessionId));
+
+    const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: `subkit_session=${jwt}`,
+      },
+      body: new URLSearchParams({
+        csrf_token: csrfToken,
+        client_id: clientId,
+        redirect_uri: "https://client.example.com/revoke-cb",
+        resource: "",
+        state: "",
+        decision: "approve",
+      }).toString(),
+      redirect: "manual",
+    });
+    expect(decisionRes.status).toBe(401);
+  });
 });
 
 // ─── Scope intersection: member role cannot get mcp:admin ─────────────────
@@ -902,6 +959,19 @@ describe("POST /v1/oauth/register — redirect_uri validation", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("invalid_client_metadata");
+  });
+
+  test("rejects javascript:/data:/file: pseudo-scheme redirect URIs", async () => {
+    for (const uri of ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd"]) {
+      const res = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ redirect_uris: [uri] }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("invalid_client_metadata");
+    }
   });
 
   test("allows http://localhost:3000/cb and returns 201", async () => {

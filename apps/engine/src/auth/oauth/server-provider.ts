@@ -15,7 +15,7 @@
 import type { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
+import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import type { Config } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
 import {
@@ -122,7 +122,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
     await auditAwait(
       {
-        tenant_id: "00000000-0000-0000-0000-000000000000",
+        tenant_id: SYSTEM_TENANT_ID,
         actor_type: "system",
         action: AuditAction.MCP_OAUTH_CLIENT_REGISTERED,
         resource_type: "mcp_oauth_client",
@@ -169,10 +169,9 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       client_id: row.client_id,
       redirect_uris: row.redirect_uris,
       grant_types: row.grant_types,
-      token_endpoint_auth_method: row.token_endpoint_auth_method as
-        | "none"
-        | "client_secret_basic"
-        | "client_secret_post",
+      // The DB CHECK constraint admits only "none" — public clients are
+      // the only kind subkit registers.
+      token_endpoint_auth_method: row.token_endpoint_auth_method as "none",
       scope: row.scope,
       ...(row.client_name ? { client_name: row.client_name } : {}),
     } satisfies OAuthClientInformationFull;
