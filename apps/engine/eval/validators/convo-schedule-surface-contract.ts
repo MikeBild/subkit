@@ -13,8 +13,8 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
   const prompt = await basePromptFor("converse", "sk_interactive");
   const failures: string[] = [];
 
-  if (!prompt.includes("tenant.create_schedule")) {
-    failures.push("prompt is missing tenant.create_schedule guidance");
+  if (!prompt.includes("tenant_create_schedule")) {
+    failures.push("prompt is missing tenant_create_schedule guidance");
   }
   if (!prompt.includes("every:<seconds>")) {
     failures.push("prompt is missing every:<seconds> guidance");
