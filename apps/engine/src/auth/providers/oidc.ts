@@ -348,7 +348,15 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       let tokens: oauth.TokenEndpointResponse & oauth.TokenEndpointResponseHelpers;
       try {
-        tokens = await oauth.authorizationCodeGrant(configuration, new URL(req.url), {
+        // `req.url` is the engine's internal URL — behind a TLS-terminating
+        // reverse proxy its scheme is `http`. openid-client derives the
+        // token-exchange `redirect_uri` from the URL passed here, so it must
+        // carry the external scheme/host. The configured `auth.oidc.redirect_uri`
+        // IS that canonical value; reuse it with the inbound query so the token
+        // request's redirect_uri matches the one sent at the authorize step.
+        const callbackUrl = new URL(redirectUri);
+        callbackUrl.search = reqUrl.search;
+        tokens = await oauth.authorizationCodeGrant(configuration, callbackUrl, {
           expectedState: pending.state,
           expectedNonce: pending.nonce,
           pkceCodeVerifier: pending.code_verifier,

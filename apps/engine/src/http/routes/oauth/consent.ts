@@ -141,18 +141,28 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
 
     // Check session cookie
     const sessionPayload = await resolveSession(c.req.raw);
+    // The engine sits behind a TLS-terminating proxy, so `c.req.url` is the
+    // internal http:// URL. Rebuild redirect_to against the external base so
+    // the post-login isSafeRedirect (same-origin) check accepts it and the
+    // funnel resumes at /v1/oauth/authorize instead of falling back to "/".
+    const externalAuthorizeUrl = (() => {
+      const u = new URL(c.req.url);
+      const base = new URL(provider.getBaseUrl());
+      u.protocol = base.protocol;
+      u.host = base.host;
+      return u.toString();
+    })();
     if (!sessionPayload) {
       // Not logged in — redirect to OIDC login, then back here
-      const authorizeUrl = c.req.url;
       const loginUrl = new URL(`/v1/identity/login/start`, provider.getBaseUrl());
-      loginUrl.searchParams.set("redirect_to", authorizeUrl);
+      loginUrl.searchParams.set("redirect_to", externalAuthorizeUrl);
       return Response.redirect(loginUrl.toString(), 302);
     }
 
     // Confirm the session row is still live (not revoked since issue).
     if (!(await sessionIsLive(db, sessionPayload.session_id, sessionPayload.tenant_id))) {
       const loginUrl = new URL(`/v1/identity/login/start`, provider.getBaseUrl());
-      loginUrl.searchParams.set("redirect_to", c.req.url);
+      loginUrl.searchParams.set("redirect_to", externalAuthorizeUrl);
       return Response.redirect(loginUrl.toString(), 302);
     }
 
