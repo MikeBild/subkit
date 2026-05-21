@@ -25,7 +25,7 @@ export async function runLoopStep(p: {
     // scope — a nested loop can iterate a prior loop's output. Re-hydrate
     // any `OffloadRef`s an upstream loop spilled so the collection
     // resolves to a real array; no-op when nothing was offloaded.
-    p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope);
+    p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope, p.ctx.signal);
     let collection: unknown;
     // `data_selector` (JS function form) takes precedence when set.
     // The body is wrapped as `(sourceData) => <body>` so authors can

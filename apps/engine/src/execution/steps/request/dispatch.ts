@@ -373,7 +373,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // DB/S3 fetch that is step *setup*, not part of the HTTP call. Arming
   // the timer first would burn the request's `timeout_ms` budget on the
   // rehydrate fetch before the HTTP call even starts.
-  const resolvedScope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope);
+  const resolvedScope = await resolveScopeForJsonata(
+    p.ctx.db,
+    p.ctx.tenant_id,
+    p.scope,
+    p.ctx.signal,
+  );
 
   const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
   const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);

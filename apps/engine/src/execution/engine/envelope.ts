@@ -2,7 +2,7 @@
 // validator used at the input/output boundaries of the execution
 // pipeline. Pure functions only; no DB, no async.
 
-import { type OffloadRef, previewOf } from "../offload.ts";
+import { type OffloadRef, OffloadResolutionError, previewOf } from "../offload.ts";
 import type { RunStepOutcome } from "../step-runner.ts";
 import type { StepResult } from "../types.ts";
 
@@ -106,13 +106,12 @@ export function bodyEnvelopeForLoopAccumulator(outcome: RunStepOutcome): ScopeEn
     // INVARIANT: the step-runner sets `result_size_bytes` and
     // `result_storage_uri` together (offload write returns both). A
     // storage uri with no size is a broken outcome — fail loudly here
-    // rather than fudging a placeholder size that would under-report
-    // the payload everywhere the `OffloadRef` flows.
+    // with a TYPED error rather than fudging a placeholder size that
+    // would under-report the payload everywhere the `OffloadRef` flows.
+    // `OffloadResolutionError` redacts `storageUri` in `.message` (the
+    // raw `s3://<bucket>/<key>` must not leak onto an error surface).
     if (typeof outcome.result_size_bytes !== "number") {
-      throw new Error(
-        `offload outcome invariant violated: result_storage_uri is set ` +
-          `(${storageUri}) but result_size_bytes is missing`,
-      );
+      throw new OffloadResolutionError(storageUri, "missing result_size_bytes");
     }
     const ref: OffloadRef = {
       $offloaded: true,

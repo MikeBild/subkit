@@ -489,4 +489,108 @@ describe("loop memory-bounded: OOM guard", () => {
       expect(iter?.pick_blob7?.data).toBe(LARGE_SIZE);
     }
   });
+
+  test("TC8 — top-level output_transform reads an offloaded loop's output (re-hydrated, not OffloadRef)", async () => {
+    // `engine.ts` runs `deepResolveOffloadRefs` over the final output
+    // BEFORE `output_transform`. The transform's JSONata root context
+    // IS that final output — here the loop's iteration array, whose
+    // entries' `fetch_blob8.data` were offloaded `OffloadRef`s in the
+    // in-memory scope. The transform must see the real re-hydrated
+    // blob string, never an `OffloadRef` stub. TC3/TC7 cover the
+    // per-step JSONata sites; this covers the engine-level pipeline.
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "loop-output-transform",
+      // The root context is the loop iteration array. Read the first
+      // iteration's offloaded body blob and return its length. If the
+      // transform saw an `OffloadRef` instead of the re-hydrated
+      // payload, the ref has no `.blob` and `$length(...)` would
+      // operate on `undefined` — the assertion below would fail.
+      output_transform: "$length($[0].fetch_blob8.data.blob)",
+      steps: [
+        {
+          kind: "transform",
+          id: "items8",
+          language: "jsonata",
+          expression: "[1, 2]",
+        },
+        {
+          kind: "loop",
+          id: "each8",
+          over: "$scope.items8.data",
+          item_var: "item",
+          body: ["fetch_blob8"],
+        },
+        {
+          kind: "request",
+          id: "fetch_blob8",
+          method: "GET",
+          url: `${largeMock.baseUrl}/big`,
+        },
+      ],
+    });
+
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+
+    expect(result.status).toBe("succeeded");
+    // The transform saw the FULL re-hydrated blob string — its length
+    // equals the offloaded payload size, proving no `OffloadRef` stub
+    // reached the output pipeline.
+    expect(result.output).toBe(LARGE_SIZE);
+    expect(containsOffloadRef(result.output)).toBe(false);
+  });
+
+  test("TC9 — top-level output_schema validates over an offloaded loop's re-hydrated output", async () => {
+    // `output_schema` (required-field validation) also runs after
+    // `deepResolveOffloadRefs` — and after `output_transform`. The
+    // transform lifts the first iteration's offloaded body (root
+    // context is the loop iteration array) so the schema has the
+    // re-hydrated `{ blob }` object to inspect. An `OffloadRef`
+    // reaching either stage has no `blob` key.
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "loop-output-schema",
+      output_transform: "$[0].fetch_blob9.data",
+      output_schema: { type: "object", required: ["blob"] },
+      steps: [
+        {
+          kind: "transform",
+          id: "items9",
+          language: "jsonata",
+          expression: "[1]",
+        },
+        {
+          kind: "loop",
+          id: "each9",
+          over: "$scope.items9.data",
+          item_var: "item",
+          body: ["fetch_blob9"],
+        },
+        {
+          kind: "request",
+          id: "fetch_blob9",
+          method: "GET",
+          url: `${largeMock.baseUrl}/big`,
+        },
+      ],
+    });
+
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+
+    // The run succeeds: `output_schema` saw the re-hydrated `{ blob }`
+    // object and the `required: ["blob"]` check passed. An `OffloadRef`
+    // reaching the validator would have no `blob` key and fail.
+    expect(result.status).toBe("succeeded");
+    expect(containsOffloadRef(result.output)).toBe(false);
+    const out = result.output as { blob?: string };
+    expect(out?.blob).toBe(LARGE_BLOB);
+  });
 });

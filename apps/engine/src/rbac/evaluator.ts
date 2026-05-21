@@ -335,7 +335,10 @@ function emitDeny(check: PermissionCheck, reason: string, source: string): void 
     log.rbac.checked({ allow: false, source, reason, ...rbacCtx(check) });
     return;
   }
-  log.rbac.denied({ reason, ...rbacCtx(check) });
+  // The genuine-deny WARN path is the one forensics reads — include
+  // `source` so an operator sees WHICH rule rejected the request, not
+  // just that it was rejected.
+  log.rbac.denied({ source, reason, ...rbacCtx(check) });
 }
 
 /**

@@ -21,7 +21,7 @@ export async function runBranchStep(p: {
     // A branch predicate is a downstream JSONata consumer of the scope.
     // Re-hydrate any `OffloadRef`s an upstream loop spilled so the
     // predicate sees original arrays; no-op when nothing was offloaded.
-    p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope);
+    p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope, p.ctx.signal);
     // Same binding surface as transform.expression and loop.over —
     // `$scope.<id>.data` reads identically across every author site.
     const bindings = buildJsonataBindings(p.scope, (p.scope as { $input?: unknown }).$input);

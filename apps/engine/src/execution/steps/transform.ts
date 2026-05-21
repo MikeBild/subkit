@@ -387,7 +387,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
   // common case pays only one shallow scan. Reassigning the local
   // params field cannot mutate the engine's `scope` (the resolved copy
   // is fresh). A re-hydration failure throws and fails this step.
-  p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope);
+  p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope, p.ctx.signal);
   // Web-scraper #144 — three of the supported languages are dispatched
   // elsewhere; only `jsonata` / `javascript` need `expression` here. The
   // schema superRefine enforces this contract at authoring time; the

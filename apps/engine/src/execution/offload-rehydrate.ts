@@ -12,7 +12,7 @@
 // `OffloadResolutionError` — never a silent fallback.
 
 import type { Db } from "../db/client.ts";
-import { isOffloadRef, type OffloadRef, resolveOffloaded } from "./offload.ts";
+import { isOffloadRef, type OffloadRef, redactStorageUri, resolveOffloaded } from "./offload.ts";
 
 /**
  * Recursively walk `value`, replacing every `OffloadRef` with its
@@ -30,9 +30,10 @@ export async function deepResolveOffloadRefs(
   db: Db,
   tenant_id: string,
   value: unknown,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   if (!containsOffloadRef(value)) return value;
-  return resolveNode(db, tenant_id, value);
+  return resolveNode(db, tenant_id, value, signal);
 }
 
 /** Cheap pre-scan: true when `value` holds at least one `OffloadRef`. */
@@ -59,18 +60,27 @@ export function containsOffloadRef(value: unknown): boolean {
  * LLM reads, themselves returned in `RunResult` over the REST surface)
  * where re-hydrating the full payload from storage would be wasteful.
  *
- * The marker is a primitive string — `[offloaded:<storage_uri>:<n>B]`
+ * The marker is a primitive string — `[offloaded:<scheme>://…:<n>B]`
  * — deliberately NOT a structured object. A preview that survives this
  * collapse can never carry an object discriminant (`$offloaded` /
  * `_offloaded`), so the primitive type alone proves no payload (and no
  * `OffloadRef`) leaked onto an external surface. Returns the input
  * unchanged when no `OffloadRef` is present.
+ *
+ * The locator is REDACTED to its scheme (`s3://…` / `fixture://…`) via
+ * the same `redactStorageUri` helper the error `.message` uses — the
+ * full `s3://<bucket>/<key>` / `fixture://<uuid>` exposes the offload
+ * backend layout and must never reach `output_preview` (LLM-readable
+ * on the REST surface).
  */
 export function previewOffloadRefs(value: unknown): unknown {
+  // Per-node fast path: a sub-tree with no `OffloadRef` is returned by
+  // reference, un-walked and un-reallocated. Without this the recursion
+  // descended into (and rebuilt) every clean node below the first ref.
   if (!containsOffloadRef(value)) return value;
   if (isOffloadRef(value)) {
     const ref = value as OffloadRef;
-    return `[offloaded:${ref.storage_uri}:${ref.size_bytes}B]`;
+    return `[offloaded:${redactStorageUri(ref.storage_uri)}:${ref.size_bytes}B]`;
   }
   if (Array.isArray(value)) {
     return value.map((item) => previewOffloadRefs(item));
@@ -85,9 +95,14 @@ export function previewOffloadRefs(value: unknown): unknown {
   return value;
 }
 
-async function resolveNode(db: Db, tenant_id: string, value: unknown): Promise<unknown> {
+async function resolveNode(
+  db: Db,
+  tenant_id: string,
+  value: unknown,
+  signal?: AbortSignal,
+): Promise<unknown> {
   if (isOffloadRef(value)) {
-    const resolved = await resolveOffloaded(db, tenant_id, value as OffloadRef);
+    const resolved = await resolveOffloaded(db, tenant_id, value as OffloadRef, signal);
     // The re-hydrated payload itself cannot contain an OffloadRef
     // (offload stores plain JSON), so no recursion into `resolved`.
     return resolved;
@@ -95,14 +110,14 @@ async function resolveNode(db: Db, tenant_id: string, value: unknown): Promise<u
   if (Array.isArray(value)) {
     const out: unknown[] = [];
     for (const item of value) {
-      out.push(await resolveNode(db, tenant_id, item));
+      out.push(await resolveNode(db, tenant_id, item, signal));
     }
     return out;
   }
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = await resolveNode(db, tenant_id, v);
+      out[k] = await resolveNode(db, tenant_id, v, signal);
     }
     return out;
   }

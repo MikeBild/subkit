@@ -58,8 +58,12 @@ export interface OffloadRef {
  * the offload backend layout, so the user-facing error `.message` must
  * never carry it. Operators get the full uri via the structured-log
  * `storage_uri` field (and `OffloadResolutionError.storage_uri`).
+ *
+ * Exported so every external-surface marker (error `.message`, the
+ * `output_preview` offload marker in `offload-rehydrate.ts`) redacts a
+ * locator identically — one helper, one redaction shape.
  */
-function redactStorageUri(storage_uri: string): string {
+export function redactStorageUri(storage_uri: string): string {
   const sep = storage_uri.indexOf("://");
   return sep > 0 ? `${storage_uri.slice(0, sep)}://…` : "…";
 }
@@ -79,6 +83,36 @@ export class OffloadResolutionError extends Error {
     this.name = "OffloadResolutionError";
     this.storage_uri = storage_uri;
   }
+}
+
+/**
+ * Race a promise against an `AbortSignal`. The s3-lite-client API takes
+ * no signal, so a cancelled execution cannot interrupt the in-flight
+ * `fetch`; this at least stops the engine from *awaiting* a multi-MB
+ * GET / body read on an already-cancelled run. The underlying socket is
+ * released by GC once the orphaned promise settles.
+ */
+function raceAbort<T>(p: Promise<T>, signal: AbortSignal | undefined, uri: string): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) {
+    return Promise.reject(new OffloadResolutionError(uri, "execution aborted during re-hydration"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(new OffloadResolutionError(uri, "execution aborted during re-hydration"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(e);
+      },
+    );
+  });
 }
 
 /** Type guard for `OffloadRef`. */
@@ -110,8 +144,12 @@ export async function resolveOffloaded(
   db: Db,
   tenant_id: string,
   ref: OffloadRef,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const uri = ref.storage_uri;
+  if (signal?.aborted) {
+    throw new OffloadResolutionError(uri, "execution aborted before re-hydration");
+  }
   if (uri.startsWith("fixture://")) {
     const id = uri.slice("fixture://".length);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
@@ -134,20 +172,47 @@ export async function resolveOffloaded(
     if (!cfg) {
       throw new OffloadResolutionError(uri, "s3 offload storage is not configured");
     }
-    // uri is `s3://<bucket>/<key>` — strip scheme + bucket to get the key.
+    // uri is `s3://<bucket>/<key>` — split scheme, bucket, key.
     const withoutScheme = uri.slice("s3://".length);
     const slash = withoutScheme.indexOf("/");
     if (slash < 0) {
       throw new OffloadResolutionError(uri, "malformed s3 uri (no key component)");
     }
+    const uriBucket = withoutScheme.slice(0, slash);
     const key = withoutScheme.slice(slash + 1);
+    // The bucket segment is authoritative: a uri that names a bucket
+    // other than the configured offload bucket is a re-target attempt
+    // (or stale config) — fail with a typed error instead of silently
+    // reading from `cfg.bucket` and returning the wrong object.
+    if (uriBucket !== cfg.bucket) {
+      throw new OffloadResolutionError(
+        uri,
+        "s3 uri bucket does not match configured offload bucket",
+      );
+    }
     try {
       const client = offloadS3Client(cfg);
-      const res = await client.getObject(key);
-      const text = await res.text();
+      // s3-lite-client's `getObject` exposes no AbortSignal — plumb the
+      // signal as far as the API allows: a pre-call abort check above
+      // plus a race so a cancelled run stops awaiting the GET/body read
+      // instead of streaming a multi-MB object to completion.
+      const res = await raceAbort(client.getObject(key), signal, uri);
+      const text = await raceAbort(res.text(), signal, uri);
       return JSON.parse(text);
     } catch (err) {
-      throw new OffloadResolutionError(uri, err instanceof Error ? err.message : String(err));
+      if (err instanceof OffloadResolutionError) throw err;
+      // The raw S3 error can carry the bucket name, signed-URL fragments
+      // or a request-id — none of which is safe on the user-facing
+      // `.message`. Capture it in a structured log line only and throw a
+      // fixed category string.
+      logger.error({
+        module: "execution",
+        action: "offload.resolve_failed",
+        msg: "s3 offload re-hydration failed",
+        storage_uri: uri,
+        detail: err instanceof Error ? err.message : String(err),
+      });
+      throw new OffloadResolutionError(uri, "s3 read failed");
     }
   }
   throw new OffloadResolutionError(uri, "unsupported storage uri scheme");

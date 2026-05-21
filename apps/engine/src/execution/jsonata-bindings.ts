@@ -65,11 +65,16 @@ export function buildJsonataBindings(
  *
  * A re-hydration failure throws `OffloadResolutionError`, failing the
  * consuming step with a typed error.
+ *
+ * `signal` is the execution abort signal: re-hydrating a multi-MB S3
+ * object is an interruptible fetch, so a cancelled run must not run the
+ * GET to completion. Threaded down to `resolveOffloaded`.
  */
 export async function resolveScopeForJsonata(
   db: Db,
   tenant_id: string,
   scope: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   // Fast path: nothing offloaded → return the original reference.
   let needsResolve = false;
@@ -82,7 +87,7 @@ export async function resolveScopeForJsonata(
   if (!needsResolve) return scope;
   const resolved: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(scope)) {
-    resolved[k] = await deepResolveOffloadRefs(db, tenant_id, v);
+    resolved[k] = await deepResolveOffloadRefs(db, tenant_id, v, signal);
   }
   return resolved;
 }

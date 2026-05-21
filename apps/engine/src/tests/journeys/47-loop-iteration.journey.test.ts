@@ -263,6 +263,14 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
       expect(loopPreview).not.toContain("$offloaded");
       expect(loopPreview).not.toContain("_offloaded");
 
+      // The offload preview marker must be REDACTED to the scheme only:
+      // `[offloaded:<scheme>://…:<n>B]`. The full `s3://<bucket>/<key>`
+      // or `fixture://<uuid>` locator exposes the offload backend layout
+      // and must never reach `output_preview` (LLM-readable). A bucket
+      // path or a fixture uuid surviving the marker is a leak.
+      expect(loopPreview).not.toMatch(/s3:\/\/[^…]/);
+      expect(loopPreview).not.toMatch(/fixture:\/\/[0-9a-f]/);
+
       // The output is the iteration array; each iteration must hold the
       // real blob data, not a truncated preview or reference stub.
       const iterations = runBody.output as Array<{ get_blob: { data: { blob?: string } } }>;

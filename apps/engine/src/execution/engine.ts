@@ -618,7 +618,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // An `OffloadRef` must never cross an external surface. A re-hydration
   // failure throws `OffloadResolutionError`, failing the run.
   if (lastOutput !== undefined && lastOutput !== null) {
-    lastOutput = await deepResolveOffloadRefs(db, tenant_id, lastOutput);
+    lastOutput = await deepResolveOffloadRefs(db, tenant_id, lastOutput, signal);
   }
 
   // Optional final-output transform. The two forms are mutually
