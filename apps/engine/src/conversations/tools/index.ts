@@ -131,6 +131,18 @@ export interface ToolContext {
     before: string;
     after: string;
   }) => void;
+  /**
+   * MCP-native elicitation bridge. Present ONLY on the MCP surface and
+   * ONLY when the connected client advertised the `elicitation`
+   * capability — `undefined` on the HTTP/SSE portal surface and on MCP
+   * clients without the capability. Tools that collect user input
+   * (`ask_user_*`, `authenticate_oauth`) probe
+   * `elicitationBridge?.capabilities` and, when present, issue a
+   * server→client `elicitation/create` request instead of taking the
+   * DB-pause / `respondElicitation` round-trip. See
+   * `apps/engine/src/mcp/elicitation/bridge.ts`.
+   */
+  elicitationBridge?: import("../../mcp/elicitation/bridge.ts").ElicitationBridge;
 }
 
 /** Elicitation pause descriptor shared by both ToolResult branches. */

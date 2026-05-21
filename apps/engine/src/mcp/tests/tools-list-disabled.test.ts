@@ -33,7 +33,7 @@ describe("mcp tools/list — disabled descriptors (authoring mode)", () => {
     const meta = (saveDraft as Record<string, unknown>)._meta as
       | { subkit?: { disabled?: { reason?: string } } }
       | undefined;
-    expect(meta?.subkit?.disabled?.reason).toBe("requires_conversation_surface");
+    expect(meta?.subkit?.disabled?.reason).toContain("conversation_start");
   });
 
   test("includes dry_run_workflow with _meta.subkit.disabled.reason", async () => {
@@ -44,7 +44,7 @@ describe("mcp tools/list — disabled descriptors (authoring mode)", () => {
     const meta = (dryRun as Record<string, unknown>)._meta as
       | { subkit?: { disabled?: { reason?: string } } }
       | undefined;
-    expect(meta?.subkit?.disabled?.reason).toBe("requires_conversation_surface");
+    expect(meta?.subkit?.disabled?.reason).toContain("conversation_start");
   });
 });
 
@@ -79,7 +79,7 @@ describe("mcp tools/call — disabled tools short-circuit", () => {
       reason?: string;
     };
     expect(data.error_code).toBe("not_available_on_surface");
-    expect(data.reason).toBe("requires_conversation_surface");
+    expect(data.reason).toContain("conversation_start");
 
     // Critical safety: short-circuit must happen BEFORE any audit row.
     const afterRows = await suite.http.db
@@ -107,6 +107,6 @@ describe("mcp tools/call — disabled tools short-circuit", () => {
       reason?: string;
     };
     expect(data.error_code).toBe("not_available_on_surface");
-    expect(data.reason).toBe("requires_conversation_surface");
+    expect(data.reason).toContain("conversation_start");
   });
 });

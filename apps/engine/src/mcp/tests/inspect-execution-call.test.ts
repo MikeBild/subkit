@@ -79,6 +79,6 @@ describe("mcp inspect_execution — surface-agnostic tenant_read", () => {
     const content = result.content as Array<{ type: string; text: string }>;
     const data = JSON.parse(content[0]!.text) as { error_code?: string; reason?: string };
     expect(data.error_code).toBe("not_available_on_surface");
-    expect(data.reason).toBe("requires_conversation_surface");
+    expect(data.reason).toContain("conversation_start");
   });
 });

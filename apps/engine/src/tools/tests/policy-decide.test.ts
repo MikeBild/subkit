@@ -57,7 +57,11 @@ describe("tools/policy.policyDecide (active parity)", () => {
     });
     expect(decision.kind).toBe("not_available_on_surface");
     if (decision.kind === "not_available_on_surface") {
-      expect(decision.reason).toBe("requires_conversation_surface");
+      // Structured, actionable message naming the entry tool — the
+      // §7 elicitation rework replaced the bare `requires_conversation_surface`
+      // code with a sentence the client can surface verbatim.
+      expect(decision.reason).toContain("conversation_start");
+      expect(decision.reason).toContain("MCP elicitation");
     }
   });
 

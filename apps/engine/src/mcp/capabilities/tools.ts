@@ -45,6 +45,7 @@ import type { ToolInvocation } from "../../tools/types.ts";
 import { synthesizeInputSchema } from "../../workflows/input-schema-synth.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
+import { createElicitationBridge } from "../elicitation/bridge.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { modeFlags, resolveMcpMode } from "../mode-resolver.ts";
 
@@ -378,11 +379,17 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           permissionModeMeta === "yolo"
             ? permissionModeMeta
             : undefined;
+        // Build the MCP-native elicitation bridge for this call. The
+        // conversation loop threads it onto `ToolContext` so ask_user_*
+        // / authenticate_oauth surface forms + OAuth prompts directly
+        // in this client rather than taking the DB-pause round-trip.
+        const elicitationBridge = createElicitationBridge(server, extra);
         const result = await handleConversationTool({
           db,
           principal,
           name,
           args: args as Record<string, unknown>,
+          elicitationBridge,
           ...(permissionMode ? { permission_mode: permissionMode } : {}),
         });
         logger.info({

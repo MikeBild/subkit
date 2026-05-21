@@ -161,6 +161,16 @@ export interface RunLoopParams {
    * after N consecutive dismissals.
    */
   next_suggestion_suppress?: boolean;
+  /**
+   * MCP-native elicitation bridge. Present ONLY when this turn runs
+   * inside an MCP `tools/call` whose client advertised the
+   * `elicitation` capability. Set on the `ToolContext` so input-
+   * collecting tools (`ask_user_*`, `authenticate_oauth`) can surface
+   * forms + OAuth prompts directly in the client instead of taking the
+   * DB-pause / `respondElicitation` round-trip. `undefined` on the
+   * HTTP/SSE portal surface.
+   */
+  elicitationBridge?: import("../mcp/elicitation/bridge.ts").ElicitationBridge;
 }
 
 export interface RunLoopResult {
@@ -272,6 +282,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     },
     abortSignal: turnAbortCtrl.signal,
     recentUserMessage: ingestedUserMessage ?? null,
+    // MCP-native elicitation bridge — undefined on the HTTP/SSE portal
+    // surface. The `perCallCtx = { ...ctx }` spread in sdk-wrap/invoke
+    // carries it onto every tool's per-call context automatically.
+    ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),
   };
 
   const route = await resolveModelRoute(p.tenant_id, p.db);

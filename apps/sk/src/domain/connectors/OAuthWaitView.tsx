@@ -7,13 +7,13 @@
 // 4. Always lets the operator paste a token manually as a fallback —
 //    no browser, no problem.
 
-import { spawn } from "node:child_process";
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import { defaultOpenBrowser } from "../../lib/open-browser.ts";
 
-// R3-S5 review fix: validate the engine→CLI poll response at the
+// Validate the engine→CLI poll response at the
 // boundary. The credential payload arrives over HTTP and lands in
 // `onConnected` — exactly the kind of "CLI input" AGENTS.md says
 // should be Zod-validated. `passthrough()` keeps unknown extras
@@ -66,38 +66,9 @@ export interface OAuthWaitViewProps {
   openBrowser?: (url: string) => Promise<void>;
 }
 
-// Argv-style browser launch — never `exec` with string interpolation.
-// Even though `authUrl` originates from the engine (not user TTY input),
-// the AGENTS.md threat-model treats anything launched by the CLI as a
-// boundary. `spawn(bin, [arg], { shell: false })` makes shell metacharacters
-// (`$`, `;`, `|`, backticks, …) inert by passing argv through directly to
-// the OS — there is no shell to interpret them. Resolves R2-W3.
-//
-// Windows special case: the canonical `start` is a `cmd.exe` builtin, not
-// a binary, so we go through `cmd.exe /c start "" <url>` and pass the URL
-// as a separate argv slot. `windowsVerbatimArguments: false` (the default)
-// lets Node escape it correctly.
-function defaultOpenBrowser(url: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const platform = process.platform;
-    const [bin, args] =
-      platform === "darwin"
-        ? (["open", [url]] as const)
-        : platform === "win32"
-          ? (["cmd.exe", ["/c", "start", "", url]] as const)
-          : (["xdg-open", [url]] as const);
-    const child = spawn(bin, [...args], {
-      shell: false,
-      detached: true,
-      stdio: "ignore",
-    });
-    child.once("error", reject);
-    // Don't keep the parent process alive waiting on the child to exit —
-    // the browser, by design, outlives this REPL.
-    child.unref();
-    resolve();
-  });
-}
+// Argv-style browser launch lives in the shared `lib/open-browser.ts`
+// util — see that file for the shell-injection / URL-scheme threat
+// model. The REPL's OAuth-elicitation path reuses the same helper.
 
 export function OAuthWaitView({
   authUrl,

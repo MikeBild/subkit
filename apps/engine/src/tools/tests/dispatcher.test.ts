@@ -59,7 +59,8 @@ describe("tools/dispatcher (active)", () => {
     );
     expect(envelope.status).toBe("not_available_on_surface");
     if (envelope.status === "not_available_on_surface") {
-      expect(envelope.reason).toBe("requires_conversation_surface");
+      expect(envelope.reason).toContain("conversation_start");
+      expect(envelope.reason).toContain("MCP elicitation");
     }
   });
 

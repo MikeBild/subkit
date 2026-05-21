@@ -9992,6 +9992,7 @@
               "workflow.updated",
               "connector.oauth.refreshed",
               "connector.oauth.callback_succeeded",
+              "connector.oauth.callback_failed",
               "patch.proposed",
               "apikey.rotated",
               "conversation.committed"

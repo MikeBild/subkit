@@ -37,12 +37,28 @@ import {
   looksLikeAssistantConfirmRequest,
 } from "./elicitation-intent.ts";
 import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
+import { defaultOpenBrowser } from "./lib/open-browser.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { handleSlash as handleSharedSlash } from "./repl/slash/handler.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
 import { findSlashCommand, type PersonaProbe, renderHelp, SLASH_COMMANDS } from "./slash.ts";
+
+/**
+ * Pull the OAuth authorization URL out of an `elicit_request` input
+ * payload. `authenticate_oauth` on the portal surface pauses via
+ * `ask_user_confirm` carrying `kind: "external_write"` and an
+ * `authorization_url` field — that's the marker the REPL keys on to
+ * auto-open the browser. Returns `null` for any other elicitation.
+ */
+function extractOAuthUrl(input: unknown): string | null {
+  if (input == null || typeof input !== "object") return null;
+  const obj = input as Record<string, unknown>;
+  const url = obj.authorization_url;
+  if (typeof url === "string" && /^https?:\/\//i.test(url)) return url;
+  return null;
+}
 
 export interface ReplRunOptions {
   profile: ResolvedProfile;
@@ -528,10 +544,27 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         }
         break;
       }
-      case "elicit_request":
+      case "elicit_request": {
+        const oauthUrl = extractOAuthUrl(ev.input);
+        if (oauthUrl) {
+          // OAuth authorization step — auto-open the browser and show a
+          // clear waiting status. The engine-side waitForOAuthCredential
+          // gates the actual continuation; the operator resumes via the
+          // same confirm/`/respond` path once the browser flow finishes.
+          line(`  ! authorization needed: ${ev.summary}`);
+          line(`    open in browser: ${oauthUrl}`);
+          defaultOpenBrowser(oauthUrl).then(
+            () => line("    waiting for authorization in your browser…"),
+            () =>
+              line("    browser launch failed — open the URL above manually, then resume below"),
+          );
+          line(`    when done, run '/respond ${ev.elicitation_id} {"confirmed":true}'`);
+          break;
+        }
         line(`  ! input needed: ${ev.tool_name} — ${ev.summary}`);
         line(`    run '/respond ${ev.elicitation_id} <value>'`);
         break;
+      }
       case "validation_error":
         for (const e of ev.errors) line(`  × validation: ${e.path}: ${e.message}`);
         break;

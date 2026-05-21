@@ -76,6 +76,32 @@ export const ConnectorOauthCallbackPayloadSchema = z.object({
 export type ConnectorOauthCallbackPayload = z.infer<typeof ConnectorOauthCallbackPayloadSchema>;
 
 /**
+ * Payload contract for `connector.oauth.callback_failed` events on the
+ * `connector.oauth` channel. Emitted from the callback route's failure
+ * branches (provider error, missing code, token-exchange failure) when
+ * a state row was claimed — so a tenant + connector scope is available.
+ *
+ * Mirrors `ConnectorOauthCallbackPayloadSchema` but carries no
+ * `connector_slug`: the only consumer is `waitForOAuthCredential`, which
+ * keys on `connector_id` alone. There is no SSE log-readability consumer
+ * for the failed payload, so the slug is intentionally dropped.
+ *
+ * Field semantics:
+ *   - `connector_id` — the connector whose OAuth dance failed.
+ *   - `reason`       — short machine/human reason: the provider's
+ *                      `error` code, `"missing_code"`, or the
+ *                      token-exchange error message.
+ */
+export const ConnectorOauthCallbackFailedPayloadSchema = z.object({
+  connector_id: z.string().uuid(),
+  reason: z.string().min(1),
+});
+
+export type ConnectorOauthCallbackFailedPayload = z.infer<
+  typeof ConnectorOauthCallbackFailedPayloadSchema
+>;
+
+/**
  * Channels the listener fans out to in-process subscribers. The literal
  * list is `satisfies`-typed against `readonly OutboxChannel[]` so the
  * compiler rejects any drift from the union in `db/events.ts` — a

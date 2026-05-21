@@ -70,6 +70,9 @@ export async function createElicitation(
     summary: string;
     input: unknown;
     actor_id: string | null;
+    /** True when the row backs an MCP-native `elicitation/create`
+     *  round-trip rather than the DB-pause path. Defaults false. */
+    protocol_native?: boolean;
   },
   exec: Executor,
 ): Promise<ElicitationRecord> {
@@ -127,6 +130,7 @@ export async function createElicitation(
       summary: p.summary,
       input: (p.input ?? {}) as Record<string, unknown>,
       status: "pending",
+      protocol_native: p.protocol_native ?? false,
     })
     .returning();
   assertInsertRow(inserted, "elicitation");

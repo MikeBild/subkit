@@ -85,7 +85,8 @@ describe("tools/cross-surface-parity", () => {
       reason?: string;
     };
     expect(parsed.error_code).toBe("not_available_on_surface");
-    expect(parsed.reason).toBe("requires_conversation_surface");
+    expect(parsed.reason).toContain("conversation_start");
+    expect(parsed.reason).toContain("MCP elicitation");
 
     // The MCP adapter additionally carries the same reason in
     // _meta.subkit.not_available_on_surface for clients that prefer
@@ -93,7 +94,7 @@ describe("tools/cross-surface-parity", () => {
     const meta = mcpResult._meta as
       | { subkit?: { not_available_on_surface?: { reason: string } } }
       | undefined;
-    expect(meta?.subkit?.not_available_on_surface?.reason).toBe("requires_conversation_surface");
+    expect(meta?.subkit?.not_available_on_surface?.reason).toContain("conversation_start");
   });
 
   test("tenant_write on MCP without permission — RBAC denies BEFORE policy gate", async () => {

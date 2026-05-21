@@ -44,6 +44,13 @@ export interface RespondElicitationParams {
    *  Required: the HTTP route handler / MCP tool path registers on
    *  the synchronous frame of request-accept and threads through. */
   turn_abort_ctrl: AbortController;
+  /**
+   * MCP-native elicitation bridge — present only when the resume runs
+   * inside an MCP `tools/call` whose client advertised the
+   * `elicitation` capability. Threaded onto the resumed loop's
+   * `ToolContext`.
+   */
+  elicitationBridge?: import("../../mcp/elicitation/bridge.ts").ElicitationBridge;
 }
 
 /**
@@ -164,28 +171,16 @@ export async function respondElicitation(
   // buildModelMessages will replay so the LLM sees the persistence as
   // a normal tool result with `source: "harness_auto_persist"`.
   // Decline path injects a synthetic decline result so the next turn
-  // carries the signal without firing the actual write.
-  const { maybeAutoPersistFromElicitation, maybeCacheDraftCredentialFromElicitation } =
-    await import("../persistence/auto-persist.ts");
-  // Cache the credential first — if `auto-persist` then fires a
-  // successful `save_connector_draft`, `saveConnectorAtomic` clears
-  // the cache as part of the same call. The cache is what
-  // `probe_connector_draft` reads when no `connector_credentials`
-  // row exists yet (synthetic draft id ≠ UUID).
-  await maybeCacheDraftCredentialFromElicitation({
-    tenant_id: p.tenant_id,
-    conversation_id: p.conversation_id,
-    elicitation_output: p.output,
-    elicitation: {
-      tool_name: resolved.tool_name,
-    },
-    db: exec,
-  });
-  const autoPersist = await maybeAutoPersistFromElicitation({
+  // carries the signal without firing the actual write. The
+  // credential-cache + auto-persist sequence is factored into
+  // `applyElicitationOutcome` so the MCP-native in-process bridge path
+  // (ask-user/common.ts) runs the exact same logic.
+  const { applyElicitationOutcome } = await import("../persistence/apply-outcome.ts");
+  const autoPersist = await applyElicitationOutcome({
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
-    elicitation_output: p.output,
+    output: p.output,
     elicitation: {
       id: resolved.id,
       tool_name: resolved.tool_name,
@@ -247,6 +242,7 @@ export async function respondElicitation(
     turn_abort_ctrl: p.turn_abort_ctrl,
     ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
+    ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),
   });
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");

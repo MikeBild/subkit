@@ -45,7 +45,10 @@ import {
 import { writeEvent } from "../../../db/events.ts";
 import { connectorOauthStates, connectors } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
-import { ConnectorOauthCallbackPayloadSchema } from "../../../pubsub/index.ts";
+import {
+  ConnectorOauthCallbackFailedPayloadSchema,
+  ConnectorOauthCallbackPayloadSchema,
+} from "../../../pubsub/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -239,6 +242,10 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         had_code: Boolean(q.code),
         had_error: Boolean(q.error),
       });
+      // No `callback_failed` publish here: with no `stateRow` there is
+      // no tenant_id/connector_id to scope the event to. A waiter is
+      // keyed to a real state token, so a bogus/expired callback simply
+      // lets that waiter time out — which is the correct outcome.
       return renderCallbackPage(c, {
         kind: "error",
         title: "OAuth state not found",
@@ -261,6 +268,11 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         provider_error: q.error,
         provider_error_description: q.error_description ?? null,
       });
+      await publishCallbackFailed(db, {
+        tenant_id: stateRow.tenant_id,
+        connector_id: stateRow.connector_id,
+        reason: q.error,
+      });
       return renderCallbackPage(c, {
         kind: "error",
         title: "OAuth provider returned an error",
@@ -278,6 +290,11 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: stateRow.tenant_id,
         connector_id: stateRow.connector_id,
         state_prefix: stateRow.state.slice(0, 8),
+      });
+      await publishCallbackFailed(db, {
+        tenant_id: stateRow.tenant_id,
+        connector_id: stateRow.connector_id,
+        reason: "missing_code",
       });
       return renderCallbackPage(c, {
         kind: "error",
@@ -386,6 +403,11 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         state_prefix: stateRow.state.slice(0, 8),
         error: message,
       });
+      await publishCallbackFailed(db, {
+        tenant_id: stateRow.tenant_id,
+        connector_id: stateRow.connector_id,
+        reason: message,
+      });
       return renderCallbackPage(c, {
         kind: "error",
         title: "Token exchange failed",
@@ -399,6 +421,41 @@ interface CallbackPage {
   kind: "success" | "error";
   title: string;
   message: string;
+}
+
+/**
+ * Publish a `connector.oauth.callback_failed` event for a claimed state
+ * row. Best-effort: a publish failure is logged and swallowed so it can
+ * never derail the error-page render. The waiter
+ * (`waitForOAuthCredential`) resolves `failed` ONLY from this explicit
+ * event — the absence of a state row no longer implies failure, because
+ * the callback DELETEs the row at the START of a seconds-long exchange.
+ */
+async function publishCallbackFailed(
+  db: import("../../../db/client.ts").Db,
+  p: { tenant_id: string; connector_id: string; reason: string },
+): Promise<void> {
+  try {
+    const payload = ConnectorOauthCallbackFailedPayloadSchema.parse({
+      connector_id: p.connector_id,
+      reason: p.reason,
+    });
+    await writeEvent(db, {
+      tenant_id: p.tenant_id,
+      channel: "connector.oauth",
+      type: "connector.oauth.callback_failed",
+      payload,
+    });
+  } catch (publishErr) {
+    logger.warn({
+      module: "oauth",
+      action: "oauth.callback.failed_event_publish_failed",
+      msg: "oauth callback failed but the callback_failed pubsub event could not be written; a waiter will time out instead of failing fast",
+      tenant_id: p.tenant_id,
+      connector_id: p.connector_id,
+      error: publishErr instanceof Error ? publishErr.message : String(publishErr),
+    });
+  }
 }
 
 // Minimal HTML page rendered to the user's browser tab at the end of

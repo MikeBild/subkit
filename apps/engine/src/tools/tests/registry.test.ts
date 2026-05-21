@@ -50,11 +50,12 @@ describe("tools/registry — providers (active)", () => {
     });
     const saveDraft = descriptors.find((d) => d.name === "save_workflow_draft");
     expect(saveDraft).toBeDefined();
-    expect(saveDraft?.disabled?.reason).toBe("requires_conversation_surface");
+    expect(saveDraft?.disabled?.reason).toContain("conversation_start");
+    expect(saveDraft?.disabled?.reason).toContain("MCP elicitation");
 
     const dryRun = descriptors.find((d) => d.name === "dry_run_workflow");
     expect(dryRun).toBeDefined();
-    expect(dryRun?.disabled?.reason).toBe("requires_conversation_surface");
+    expect(dryRun?.disabled?.reason).toContain("conversation_start");
   });
 
   test("ConversationToolProvider hides tenant_write tools on MCP read-only mode", () => {

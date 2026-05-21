@@ -65,6 +65,12 @@ export interface CreateConversationParams {
    * fallback that previously lived inside `runLoop` was retired.
    */
   turn_abort_ctrl?: AbortController;
+  /**
+   * MCP-native elicitation bridge — present only when the initial turn
+   * runs inside an MCP `tools/call` whose client advertised the
+   * `elicitation` capability. Threaded onto the loop's `ToolContext`.
+   */
+  elicitationBridge?: import("../../mcp/elicitation/bridge.ts").ElicitationBridge;
 }
 
 export async function createConversation(
@@ -199,6 +205,7 @@ export async function createConversation(
           ...(p.onEvent ? { onEvent: p.onEvent } : {}),
           ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
           ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
+          ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),
         })
       : { events: [], status: "active" as const };
   } finally {

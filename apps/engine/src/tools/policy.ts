@@ -21,6 +21,18 @@ export type PolicyDecision =
   | { kind: "needs_confirm"; envelope: ConfirmEnvelope }
   | { kind: "not_available_on_surface"; reason: string };
 
+/**
+ * Reason string surfaced when a `draft_write` tool is reached on the
+ * MCP surface. Exported so the `tools/list` `disabled` badge
+ * (`tools/providers/conversation.ts#describeDisabled`) and this
+ * decision path emit the SAME actionable message — naming
+ * `conversation_start` and explaining that forms and OAuth prompts are
+ * surfaced via MCP elicitation. Keep the two surfaces in lock-step by
+ * sourcing the text here.
+ */
+export const DRAFT_WRITE_MCP_UNAVAILABLE_REASON =
+  "This tool mutates a conversation-scoped working draft and is only available inside an authoring conversation. Call conversation_start to begin connector/workflow authoring; the engine surfaces forms and OAuth prompts directly in this client via MCP elicitation.";
+
 /** Confirmation marker the client sets when re-issuing a previously
  *  paused call. Two aliases for symmetry with the legacy sdk-wrap /
  *  policy-gate code: `_meta.sk_confirm` on MCP, `__policy_confirmed`
@@ -61,13 +73,17 @@ export interface PolicyDecideInput {
 }
 
 export function policyDecide(input: PolicyDecideInput): PolicyDecision {
-  // draft_write on MCP — surface this honestly with a structured error
-  // rather than silently omitting or running the conversation-shaped
-  // ask_user_confirm gate against a non-conversation surface.
+  // draft_write on MCP — surface this honestly with a structured,
+  // actionable message rather than silently omitting or running the
+  // conversation-shaped ask_user_confirm gate against a non-conversation
+  // surface. The message names `conversation_start` as the entry tool
+  // so the client can funnel the operator into an authoring conversation
+  // — where forms and OAuth prompts are surfaced directly via MCP
+  // elicitation.
   if (input.category === "draft_write" && input.surface === "mcp") {
     return {
       kind: "not_available_on_surface",
-      reason: "requires_conversation_surface",
+      reason: DRAFT_WRITE_MCP_UNAVAILABLE_REASON,
     };
   }
 

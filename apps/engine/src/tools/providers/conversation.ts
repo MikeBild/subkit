@@ -24,6 +24,7 @@ import type {
   ToolResult,
 } from "../../conversations/tools/index.ts";
 import { listTools } from "../../conversations/tools/index.ts";
+import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
 import type { ToolListFilter, ToolProvider } from "../registry.ts";
 import type { ToolDescriptor, ToolSurface } from "../types.ts";
 
@@ -73,7 +74,10 @@ function visibilityFor(
 
 function describeDisabled(category: ToolCategory): { reason: string } | undefined {
   if (category === "draft_write") {
-    return { reason: "requires_conversation_surface" };
+    // Same actionable message `policyDecide` emits when a draft_write
+    // tool is actually called on MCP — sourced from `policy.ts` so the
+    // `tools/list` badge and the call-time rejection never drift.
+    return { reason: DRAFT_WRITE_MCP_UNAVAILABLE_REASON };
   }
   return undefined;
 }
