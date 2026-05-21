@@ -56,8 +56,8 @@ export const SubkitCompleteRequestSchema = z
   })
   .passthrough();
 
-const TOOL_PREFIX = "wf.";
-const PROMPT_PREFIX = "skill.";
+const TOOL_PREFIX = "wf_";
+const PROMPT_PREFIX = "skill_";
 const COMPLETION_LIMIT = 100;
 
 interface SkillArgument {

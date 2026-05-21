@@ -58,7 +58,7 @@ describe("mcp completion/complete", () => {
       {
         method: "completion/complete",
         params: {
-          ref: { type: "ref/prompt", name: `skill.${id}` },
+          ref: { type: "ref/prompt", name: `skill_${id}` },
           argument: { name: "name", value: "loaf" },
         },
       } as unknown as Parameters<typeof client.request>[0],
@@ -94,7 +94,7 @@ describe("mcp completion/complete", () => {
       {
         method: "completion/complete",
         params: {
-          ref: { type: "ref/tool", name: "wf.complete-probe" },
+          ref: { type: "ref/tool", name: "wf_complete-probe" },
           argument: { name: "name", value: "l" },
         },
       } as unknown as Parameters<typeof client.request>[0],

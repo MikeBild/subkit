@@ -110,7 +110,9 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
     const clientId = randomBytes(16).toString("hex");
     const grantTypes = input.grant_types ?? ["authorization_code", "refresh_token"];
-    const scope = input.scope ?? "mcp:read";
+    // Deduplicate scope tokens: split on whitespace, drop empties, unique, rejoin.
+    const rawScope = input.scope ?? "mcp:read";
+    const scope = [...new Set(rawScope.split(/\s+/).filter(Boolean))].join(" ");
     const requestSource = input.requestSource ?? "api";
 
     await db.insert(mcpOauthClients).values({

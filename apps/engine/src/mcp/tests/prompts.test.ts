@@ -21,9 +21,9 @@ describe("mcp prompts", () => {
     const client = await suite.connect();
     const list = await client.listPrompts();
     const names = list.prompts.map((p) => p.name);
-    expect(names).toContain(`skill.${id}`);
+    expect(names).toContain(`skill_${id}`);
 
-    const got = await client.getPrompt({ name: `skill.${id}` });
+    const got = await client.getPrompt({ name: `skill_${id}` });
     expect(got.description).toBe("Bake bread");
     // First message carries the body, subsequent messages carry examples.
     expect(got.messages.length).toBe(3);

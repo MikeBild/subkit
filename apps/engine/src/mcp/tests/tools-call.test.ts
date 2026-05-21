@@ -35,7 +35,7 @@ describe("mcp tools/call", () => {
     });
     const client = await suite.connect();
     const result = await client.callTool({
-      name: "wf.call-probe",
+      name: "wf_call-probe",
       arguments: {},
     });
     expect(result.isError).toBeFalsy();
@@ -80,7 +80,7 @@ describe("mcp tools/call", () => {
       });
       const client = await suite.connect();
       const result = await client.callTool({
-        name: "wf.call-offload",
+        name: "wf_call-offload",
         arguments: {},
       });
       expect(result.isError).toBeFalsy();
@@ -102,7 +102,7 @@ describe("mcp tools/call", () => {
       };
       expect(link.type).toBe("resource_link");
       expect(link.uri).toMatch(/^(fixture|s3):\/\//);
-      expect(link.name).toContain("call-offload");
+      expect(link.name).toContain("call-offload"); // wf_call-offload
       expect(link.mimeType).toBe("application/json");
       expect(typeof link.size).toBe("number");
       expect((link.size ?? 0) > 30_000).toBe(true);
@@ -148,7 +148,7 @@ describe("mcp tools/call", () => {
     });
     const client = await suite.connect();
     const result = await client.callTool({
-      name: "wf.call-input-probe",
+      name: "wf_call-input-probe",
       arguments: {
         date: "tomorrow +1",
       },

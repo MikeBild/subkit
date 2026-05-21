@@ -9,9 +9,9 @@ type Subkit = { category: string; confirm_required: boolean; destructive: boolea
 type WithMeta = { name: string; _meta?: { subkit?: Subkit } };
 
 describe("MCP tool listing _meta.subkit", () => {
-  it("flags tenant.delete_workflow as confirm_required + destructive", () => {
+  it("flags tenant_delete_workflow as confirm_required + destructive", () => {
     const tools = listTenantTools({ allowWrites: true }) as WithMeta[];
-    const del = tools.find((t) => t.name === "tenant.delete_workflow");
+    const del = tools.find((t) => t.name === "tenant_delete_workflow");
     expect(del).toBeDefined();
     expect(del?._meta?.subkit).toEqual({
       category: "tenant_write",
@@ -20,9 +20,9 @@ describe("MCP tool listing _meta.subkit", () => {
     });
   });
 
-  it("leaves tenant.list_workflows as a plain read", () => {
+  it("leaves tenant_list_workflows as a plain read", () => {
     const tools = listTenantTools({ allowWrites: true }) as WithMeta[];
-    const list = tools.find((t) => t.name === "tenant.list_workflows");
+    const list = tools.find((t) => t.name === "tenant_list_workflows");
     expect(list).toBeDefined();
     expect(list?._meta?.subkit).toEqual({
       category: "tenant_read",
@@ -33,7 +33,7 @@ describe("MCP tool listing _meta.subkit", () => {
 
   it("flags revoke_api_key as confirm_required even though not destructive-prefixed", () => {
     const tools = listTenantTools({ allowWrites: true }) as WithMeta[];
-    const rev = tools.find((t) => t.name === "tenant.revoke_api_key");
+    const rev = tools.find((t) => t.name === "tenant_revoke_api_key");
     expect(rev).toBeDefined();
     expect(rev?._meta?.subkit?.confirm_required).toBe(true);
     expect(rev?._meta?.subkit?.destructive).toBe(true);

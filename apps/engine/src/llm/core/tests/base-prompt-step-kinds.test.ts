@@ -58,7 +58,7 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
     expect(p).toContain("/docs");
     expect(p).toContain("sk mcp");
     expect(p).toContain("Google Chat is a first-class chat adapter");
-    expect(p).toContain("tenant.create_schedule");
+    expect(p).toContain("tenant_create_schedule");
     expect(p).toContain("every:<seconds>");
     expect(p).toContain("/permissions");
   });

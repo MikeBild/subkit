@@ -22,12 +22,12 @@ import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 
-export const CONVERSATION_TOOL_PREFIX = "conversation.";
+export const CONVERSATION_TOOL_PREFIX = "conversation_";
 
 export function listConversationTools(): Tool[] {
   return [
     {
-      name: "conversation.start",
+      name: "conversation_start",
       description: "Start a new authoring conversation and drive the first turn.",
       inputSchema: {
         type: "object",
@@ -40,7 +40,7 @@ export function listConversationTools(): Tool[] {
       },
     },
     {
-      name: "conversation.append",
+      name: "conversation_append",
       description: "Append a user message to an existing conversation and drive another turn.",
       inputSchema: {
         type: "object",
@@ -52,7 +52,7 @@ export function listConversationTools(): Tool[] {
       },
     },
     {
-      name: "conversation.commit",
+      name: "conversation_commit",
       description: "Return the committed workflow id for a committed conversation.",
       inputSchema: {
         type: "object",
@@ -61,7 +61,7 @@ export function listConversationTools(): Tool[] {
       },
     },
     {
-      name: "conversation.respond_elicitation",
+      name: "conversation_respond_elicitation",
       description:
         "Resolve a pending ask_user_* elicitation with the user's answer and resume the loop.",
       inputSchema: {
@@ -101,7 +101,7 @@ export async function handleConversationTool(
 ): Promise<HandleConversationToolResult> {
   const { db, principal, name, args, permission_mode } = p;
   try {
-    if (name === "conversation.start") {
+    if (name === "conversation_start") {
       const message = args.message;
       if (typeof message !== "string") {
         return errorText("message is required");
@@ -130,7 +130,7 @@ export async function handleConversationTool(
       });
     }
 
-    if (name === "conversation.append") {
+    if (name === "conversation_append") {
       const conversation_id = args.conversation_id;
       const message = args.message;
       if (typeof conversation_id !== "string" || typeof message !== "string") {
@@ -165,7 +165,7 @@ export async function handleConversationTool(
       }
     }
 
-    if (name === "conversation.respond_elicitation") {
+    if (name === "conversation_respond_elicitation") {
       const conversation_id = args.conversation_id;
       const elicitation_id = args.elicitation_id;
       if (typeof conversation_id !== "string" || typeof elicitation_id !== "string") {
@@ -196,7 +196,7 @@ export async function handleConversationTool(
       }
     }
 
-    if (name === "conversation.commit") {
+    if (name === "conversation_commit") {
       const conversation_id = args.conversation_id;
       if (typeof conversation_id !== "string") {
         return errorText("conversation_id is required");

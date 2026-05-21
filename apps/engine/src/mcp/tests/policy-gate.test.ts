@@ -57,7 +57,7 @@ describe("gateTenantToolCall", () => {
     expect(gate.envelope.confirm_required).toBe(true);
     expect(gate.envelope.policy_mode).toBe("confirm_before_execution");
     expect(gate.envelope.reason).toBe("destructive_action");
-    expect(gate.envelope.target.tool).toBe("tenant.delete_workflow");
+    expect(gate.envelope.target.tool).toBe("tenant_delete_workflow");
     expect(gate.envelope.target.args).toEqual({
       id: "11111111-1111-1111-1111-111111111111",
     });

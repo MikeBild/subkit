@@ -58,7 +58,7 @@ import { gateTenantToolCall } from "./policy-gate.ts";
 import { handleTenantTool, listTenantTools, TENANT_TOOL_PREFIX } from "./tenant-tools.ts";
 import { buildWorkflowToolMeta } from "./tool-meta.ts";
 
-const TOOL_PREFIX = "wf.";
+const TOOL_PREFIX = "wf_";
 const PROGRESS_POLL_MS = 250;
 
 function emptyObjectSchema(): Tool["inputSchema"] {

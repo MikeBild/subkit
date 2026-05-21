@@ -28,7 +28,7 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { buildConversationToolMeta } from "./tool-meta.ts";
 
-export const TENANT_TOOL_PREFIX = "tenant.";
+export const TENANT_TOOL_PREFIX = "tenant_";
 
 /**
  * Zod → JSON Schema for MCP tool exposure. Uses Zod v4's native

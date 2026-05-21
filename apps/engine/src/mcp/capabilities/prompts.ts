@@ -17,7 +17,7 @@ import type { Db } from "../../db/client.ts";
 import { skills } from "../../db/schema/index.ts";
 import { can } from "../../rbac/evaluator.ts";
 
-const PREFIX = "skill.";
+const PREFIX = "skill_";
 
 function toName(id: string): string {
   // Keep the full uuid so ids are unambiguous.

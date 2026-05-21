@@ -93,7 +93,7 @@ describe("journey: MCP agent drives workflow", () => {
     try {
       const list = await client.listTools();
       const names = list.tools.map((t) => t.name);
-      expect(names).toContain(`wf.${workflowSlug}`);
+      expect(names).toContain(`wf_${workflowSlug}`);
     } finally {
       await client.close();
     }
@@ -103,7 +103,7 @@ describe("journey: MCP agent drives workflow", () => {
     const client = await connect();
     try {
       const result = await client.callTool({
-        name: `wf.${workflowSlug}`,
+        name: `wf_${workflowSlug}`,
         arguments: {},
       });
       expect(result.isError).toBeFalsy();

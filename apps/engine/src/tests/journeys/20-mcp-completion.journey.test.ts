@@ -128,7 +128,7 @@ describe("journey 20: MCP completion/complete", () => {
       {
         method: "completion/complete",
         params: {
-          ref: { type: "ref/tool", name: `wf.${workflowSlug}` },
+          ref: { type: "ref/tool", name: `wf_${workflowSlug}` },
           argument: { name: "name", value: "" },
         },
       } as unknown as Parameters<typeof client.request>[0],
@@ -148,7 +148,7 @@ describe("journey 20: MCP completion/complete", () => {
       {
         method: "completion/complete",
         params: {
-          ref: { type: "ref/prompt", name: `skill.${skillId}` },
+          ref: { type: "ref/prompt", name: `skill_${skillId}` },
           argument: { name: "name", value: "" },
         },
       } as unknown as Parameters<typeof client.request>[0],
@@ -173,7 +173,7 @@ describe("journey 20: MCP completion/complete", () => {
       {
         method: "completion/complete",
         params: {
-          ref: { type: "ref/prompt", name: `skill.${skillId}` },
+          ref: { type: "ref/prompt", name: `skill_${skillId}` },
           argument: { name: "style", value: "" },
         },
       } as unknown as Parameters<typeof client.request>[0],

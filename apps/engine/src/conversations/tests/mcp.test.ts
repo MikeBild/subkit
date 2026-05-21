@@ -2,9 +2,9 @@
 //
 // Drives a full list-users conversation via MCP tools/call:
 //
-//   conversation.start            → pauses with pending_elicitation_id
-//   conversation.respond_elicitation → approves the pending askUser.confirm
-//   conversation.commit           → returns the committed workflow id
+//   conversation_start            → pauses with pending_elicitation_id
+//   conversation_respond_elicitation → approves the pending askUser.confirm
+//   conversation_commit           → returns the committed workflow id
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors } from "../../db/schema/index.ts";
@@ -51,14 +51,14 @@ describe("mcp conversation tools", () => {
     // The canonical cluster: start + append + respond_elicitation + commit.
     const list = await client.listTools();
     const names = list.tools.map((t) => t.name);
-    expect(names).toContain("conversation.start");
-    expect(names).toContain("conversation.append");
-    expect(names).toContain("conversation.respond_elicitation");
-    expect(names).toContain("conversation.commit");
+    expect(names).toContain("conversation_start");
+    expect(names).toContain("conversation_append");
+    expect(names).toContain("conversation_respond_elicitation");
+    expect(names).toContain("conversation_commit");
 
     // Start a conversation via MCP.
     const start = await client.callTool({
-      name: "conversation.start",
+      name: "conversation_start",
       arguments: {
         connector_id: connectorId,
         message: "please list users from the api",
@@ -76,7 +76,7 @@ describe("mcp conversation tools", () => {
     expect(startParsed.pending_elicitation_id).toBeDefined();
 
     const respond = await client.callTool({
-      name: "conversation.respond_elicitation",
+      name: "conversation_respond_elicitation",
       arguments: {
         conversation_id: startParsed.conversation_id,
         elicitation_id: startParsed.pending_elicitation_id,
@@ -93,7 +93,7 @@ describe("mcp conversation tools", () => {
     expect(respondParsed.status).toBe("committed");
 
     const commit = await client.callTool({
-      name: "conversation.commit",
+      name: "conversation_commit",
       arguments: { conversation_id: startParsed.conversation_id },
     });
     expect(commit.isError).toBeFalsy();

@@ -229,13 +229,13 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
       const list = await client.listTools();
       const names = list.tools.map((t) => t.name);
       // The seeded workflow lives in Tenant A; Tenant B must not see it.
-      expect(names).not.toContain(`wf.${tenantAWorkflowSlug}`);
+      expect(names).not.toContain(`wf_${tenantAWorkflowSlug}`);
 
       // Calling Tenant A's tool name from Tenant B must not run Tenant
       // A's workflow. The MCP server may either reject (isError=true)
       // or treat the slug as a tenant-scoped lookup miss.
       const result = await client
-        .callTool({ name: `wf.${tenantAWorkflowSlug}`, arguments: {} })
+        .callTool({ name: `wf_${tenantAWorkflowSlug}`, arguments: {} })
         .catch((err: unknown) => ({ isError: true, errorCause: err }));
       const isError = (result as { isError?: boolean }).isError;
       expect(isError).toBe(true);

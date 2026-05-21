@@ -58,7 +58,7 @@ describe("mcp tools — catalog characterization", () => {
     return suite.connect().then(async (client) => {
       const result = await client.listTools();
       const names = new Set(result.tools.map((t) => t.name));
-      expect(names.has("self_healing.scan")).toBe(false);
+      expect(names.has("self_healing_scan")).toBe(false);
     });
   });
 
@@ -86,7 +86,7 @@ describe("mcp tools — catalog characterization", () => {
     const client = await suite.connect();
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name);
-    expect(names).toContain("wf.parity-probe");
+    expect(names).toContain("wf_parity-probe");
   });
 });
 

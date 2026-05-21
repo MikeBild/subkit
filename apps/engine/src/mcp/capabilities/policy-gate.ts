@@ -69,7 +69,7 @@ function buildTarget(
   // Strip the confirmation marker from the echoed target so the client
   // can re-submit the payload verbatim without double-flagging.
   const { [ARGS_CONFIRM_KEY]: _omit, ...rest } = args;
-  return { tool: `tenant.${tool}`, args: rest };
+  return { tool: `tenant_${tool}`, args: rest };
 }
 
 /**
@@ -106,7 +106,7 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
         resource_id: tool_call_id,
         result: "success",
         metadata: {
-          tool: `tenant.${p.tool}`,
+          tool: `tenant_${p.tool}`,
           policy_mode: resolvedMode,
           via: "mcp",
         },
@@ -126,7 +126,7 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
       resource_id: tool_call_id,
       result: "success",
       metadata: {
-        tool: `tenant.${p.tool}`,
+        tool: `tenant_${p.tool}`,
         policy_mode: resolvedMode,
         via: "mcp",
       },

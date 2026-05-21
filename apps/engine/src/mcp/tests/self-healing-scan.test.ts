@@ -1,4 +1,4 @@
-// MCP integration test for the `self_healing.scan` admin tool.
+// MCP integration test for the `self_healing_scan` admin tool.
 //
 // Covers:
 //   - The tool appears in tools/list only in admin MCP mode.
@@ -32,18 +32,18 @@ afterAll(async () => {
   else process.env.SK_MCP_MODE = prevMode;
 });
 
-describe("mcp self_healing.scan tool", () => {
+describe("mcp self_healing_scan tool", () => {
   test("appears in tools/list under admin mode", async () => {
     const client = await suite.connect();
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name);
-    expect(names).toContain("self_healing.scan");
+    expect(names).toContain("self_healing_scan");
   });
 
   test("tools/call runs a scan and persists the self_healing_scans row", async () => {
     const client = await suite.connect();
     const callResult = await client.callTool({
-      name: "self_healing.scan",
+      name: "self_healing_scan",
       arguments: {},
     });
     // The dispatcher returns a content envelope. We don't expect

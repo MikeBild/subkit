@@ -1,5 +1,5 @@
 // preview_attachment surfaces under its bare name (via the unified
-// registry) AND under its `tenant.preview_attachment` legacy alias
+// registry) AND under its `tenant_preview_attachment` legacy alias
 // (via the prefix proxy in `mcp/capabilities/tenant-tools.ts`). Both
 // paths must remain reachable — the bare name is the post-cutover
 // canonical, the alias is the backward-compat shim for pre-cutover
@@ -31,18 +31,18 @@ describe("mcp tools/list — preview_attachment naming", () => {
     expect(names.has("preview_attachment")).toBe(true);
   });
 
-  test("also includes 'tenant.preview_attachment' for backward compat (no breaking change)", async () => {
+  test("also includes 'tenant_preview_attachment' for backward compat (no breaking change)", async () => {
     const client = await suite.connect();
     const result = await client.listTools();
     const names = new Set(result.tools.map((t) => t.name));
-    expect(names.has("tenant.preview_attachment")).toBe(true);
+    expect(names.has("tenant_preview_attachment")).toBe(true);
   });
 
   test("both names carry the same _meta.subkit.category so clients can dedupe", async () => {
     const client = await suite.connect();
     const result = await client.listTools();
     const bare = result.tools.find((t) => t.name === "preview_attachment");
-    const aliased = result.tools.find((t) => t.name === "tenant.preview_attachment");
+    const aliased = result.tools.find((t) => t.name === "tenant_preview_attachment");
     expect(bare).toBeDefined();
     expect(aliased).toBeDefined();
     const bareCategory = (bare as Record<string, unknown>)._meta as
@@ -73,10 +73,10 @@ describe("mcp tools/call — preview_attachment routing", () => {
     expect(() => JSON.parse(content[0]!.text)).not.toThrow();
   });
 
-  test("legacy 'tenant.preview_attachment' alias still routes to the conversation tool", async () => {
+  test("legacy 'tenant_preview_attachment' alias still routes to the conversation tool", async () => {
     const client = await suite.connect();
     const result = await client.callTool({
-      name: "tenant.preview_attachment",
+      name: "tenant_preview_attachment",
       arguments: { slug: "00000000-0000-0000-0000-000000000000", max_chars: 512 },
     });
     // The legacy tenant.* proxy renders ok:false ToolResults as plain

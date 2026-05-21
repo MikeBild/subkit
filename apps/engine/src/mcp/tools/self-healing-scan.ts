@@ -31,7 +31,7 @@ import {
 } from "../../observability/instrumentation.ts";
 import { processDriftSignal, scanForDrift } from "../../self-healing/index.ts";
 
-export const SELF_HEALING_SCAN_TOOL_NAME = "self_healing.scan";
+export const SELF_HEALING_SCAN_TOOL_NAME = "self_healing_scan";
 
 export const selfHealingScanMcpTool: Tool = {
   name: SELF_HEALING_SCAN_TOOL_NAME,

@@ -133,7 +133,7 @@ export function registerMcpCatalogRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(
       {
         items: rows.map((r) => ({
-          name: `skill.${r.id}`,
+          name: `skill_${r.id}`,
           description: r.title,
           scope: r.scope,
           skill_id: r.id,

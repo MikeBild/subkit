@@ -223,7 +223,7 @@ describe("journey: portal token end-user", () => {
     let caught: unknown = null;
     try {
       await client.callTool({
-        name: "wf.not-allowed",
+        name: "wf_not-allowed",
         arguments: {},
       });
     } catch (err) {

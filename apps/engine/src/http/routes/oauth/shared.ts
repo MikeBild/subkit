@@ -111,7 +111,7 @@ export async function verifyCsrfToken(
 export function intersectScopes(requested: string, supported: string[]): string {
   const parts = requested.split(" ").filter(Boolean);
   const valid = parts.filter((s) => supported.includes(s));
-  return valid.join(" ");
+  return [...new Set(valid)].join(" ");
 }
 
 // The OAuth scope strings are 1:1 with RBAC permission names.
