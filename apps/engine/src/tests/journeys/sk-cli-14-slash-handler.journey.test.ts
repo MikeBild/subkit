@@ -180,7 +180,7 @@ describe("journey: sk-cli slash handler", () => {
     expect(line).toContain("resources (");
     expect(line).toContain("callable entries (");
     // the seeded skill shows up as an MCP prompt entry
-    expect(line).toContain("/mcp__skill.");
+    expect(line).toContain("/mcp__skill_");
   });
 
   test("AC8: /permissions lists the granted permissions", async () => {
