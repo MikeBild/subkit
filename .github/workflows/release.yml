@@ -77,44 +77,63 @@ jobs:
           DISPATCH_REF: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          # Look for a successful run of ci.yml against this exact SHA.
-          status=$(gh run list \
-            --repo "$GITHUB_REPOSITORY" \
-            --workflow ci.yml \
-            --commit "$SHA" \
-            --limit 5 \
-            --json conclusion,status \
-            --jq 'map(select(.status=="completed")) | .[0].conclusion // ""')
-          if [ "$status" = "success" ]; then
-            echo "ci.yml is already green on $SHA — gate passes."
-            exit 0
-          fi
-          echo "No green ci.yml run for $SHA (status='$status'); dispatching one against ref=$DISPATCH_REF and waiting."
-          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$DISPATCH_REF"
-          # Wait up to 30 min for the dispatched run to finish.
-          deadline=$(( $(date +%s) + 1800 ))
-          while [ "$(date +%s)" -lt "$deadline" ]; do
-            sleep 30
-            row=$(gh run list \
+          # A release tag is pushed alongside its `main` commit, so a
+          # ci.yml run for this exact SHA is normally ALREADY running
+          # (triggered by the `main` push). Wait for whatever ci.yml run
+          # exists on this SHA — only dispatch one if none exists at all.
+          # Previously this step always dispatched a fresh run and waited
+          # 30 min; ci.yml itself takes ~30+ min, so the wait timed out
+          # and failed the release even though ci.yml went green. The
+          # 45-min budget below comfortably exceeds ci.yml's runtime.
+          latest_run() {
+            gh run list \
               --repo "$GITHUB_REPOSITORY" \
               --workflow ci.yml \
               --commit "$SHA" \
               --limit 1 \
-              --json conclusion,status,databaseId \
-              --jq '.[0]')
+              --json conclusion,status \
+              --jq '.[0] // ""'
+          }
+          # Poll for the push-triggered ci.yml run to register instead
+          # of a fixed `sleep 30`. The push trigger usually fires within
+          # a few seconds, but a slow webhook can take longer — a fixed
+          # window either wastes time or dispatches a redundant run. Poll
+          # every 6s for up to 60s; proceed to the wait loop as soon as a
+          # run appears. Only if none has registered after the full poll
+          # budget do we dispatch one ourselves.
+          found=""
+          poll_deadline=$(( $(date +%s) + 60 ))
+          while [ "$(date +%s)" -lt "$poll_deadline" ]; do
+            if [ -n "$(latest_run)" ]; then
+              found="yes"
+              break
+            fi
+            sleep 6
+          done
+          if [ -z "$found" ]; then
+            echo "No ci.yml run for $SHA after 60s — dispatching one against ref=$DISPATCH_REF."
+            gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$DISPATCH_REF"
+          else
+            echo "Found an existing ci.yml run for $SHA — waiting for it."
+          fi
+          # Wait up to 45 min for the ci.yml run on this SHA to complete.
+          deadline=$(( $(date +%s) + 2700 ))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            sleep 30
+            row=$(latest_run)
             if [ -z "$row" ] || [ "$row" = "null" ]; then continue; fi
             st=$(echo "$row" | jq -r '.status')
             if [ "$st" = "completed" ]; then
               cc=$(echo "$row" | jq -r '.conclusion')
               if [ "$cc" = "success" ]; then
-                echo "ci.yml dispatched run completed: success"
+                echo "ci.yml run for $SHA completed: success — gate passes."
                 exit 0
               fi
-              echo "ci.yml dispatched run completed: $cc — failing release gate."
+              echo "ci.yml run for $SHA completed: $cc — failing release gate."
               exit 1
             fi
           done
-          echo "Timed out waiting for ci.yml run on $SHA."
+          echo "Timed out (45 min) waiting for ci.yml run on $SHA."
           exit 1
 
   # ── Multi-platform CLI binaries ──

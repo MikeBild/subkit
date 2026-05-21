@@ -3,7 +3,7 @@ slug: mcp-tool-contract
 scope: global
 title: MCP Callable Contract
 description: Reference for sk's MCP callable surface — how callable entries are named, how destructive calls flow through `_meta.sk_confirm`, when to trust the synthesized `inputSchema`, and how to read the `warnings[]` envelope. Consult this before driving sk from any MCP client (Codex, Claude Desktop, Cursor, sk, etc.).
-activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp tool"},{"kind":"intent_keyword","word":"mcp tools"},{"kind":"intent_keyword","word":"tenant delete"},{"kind":"intent_keyword","word":"confirm_required"},{"kind":"intent_keyword","word":"sk_confirm"},{"kind":"intent_keyword","word":"ask_user_confirm"},{"kind":"intent_keyword","word":"unresolved_identifier"},{"kind":"intent_keyword","word":"warnings"},{"kind":"intent_keyword","word":"input schema"},{"kind":"intent_keyword","word":"wf."},{"kind":"intent_keyword","word":"tenant."},{"kind":"intent_keyword","word":"conversation."}]
+activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp tool"},{"kind":"intent_keyword","word":"mcp tools"},{"kind":"intent_keyword","word":"tenant delete"},{"kind":"intent_keyword","word":"confirm_required"},{"kind":"intent_keyword","word":"sk_confirm"},{"kind":"intent_keyword","word":"ask_user_confirm"},{"kind":"intent_keyword","word":"unresolved_identifier"},{"kind":"intent_keyword","word":"warnings"},{"kind":"intent_keyword","word":"input schema"},{"kind":"intent_keyword","word":"wf_"},{"kind":"intent_keyword","word":"tenant_"},{"kind":"intent_keyword","word":"conversation_"}]
 side_effects: read
 idempotency: none
 maturity: stable
@@ -17,9 +17,9 @@ sk exposes three families of callable entries over MCP. Calling them correctly s
 
 ## Callable families
 
-- **`tenant.<name>`** — operator surface. Reads (`tenant.list_workflows`, `tenant.get_connector`, …) and writes (`tenant.delete_workflow`, `tenant.revoke_api_key`, …). Use these for CRUD.
-- **`wf.<slug>`** — run a specific workflow. Arguments match the workflow's declared `input_schema`; when absent, sk synthesises one from the DAG's `${input.X}` placeholders and jsonata `$input.X` references.
-- **`conversation.*`** — multi-turn authoring sessions (`conversation.start`, `conversation.append`, `conversation.respond_elicitation`). Use these when the operator is **designing** a workflow or connector. Do NOT start a conversation for routine CRUD — the `tenant.*` surface is the cheap path.
+- **`tenant_<name>`** — operator surface. Reads (`tenant_list_workflows`, `tenant_get_connector`, …) and writes (`tenant_delete_workflow`, `tenant_revoke_api_key`, …). Use these for CRUD.
+- **`wf_<slug>`** — run a specific workflow. Arguments match the workflow's declared `input_schema`; when absent, sk synthesises one from the DAG's `${input.X}` placeholders and jsonata `$input.X` references.
+- **`conversation_*`** — multi-turn authoring sessions (`conversation_start`, `conversation_append`, `conversation_respond_elicitation`). Use these when the operator is **designing** a workflow or connector. Do NOT start a conversation for routine CRUD — the `tenant_*` surface is the cheap path.
 
 ## Reading `_meta.sk` on every callable entry
 
@@ -37,7 +37,7 @@ Every sk callable entry ships a `_meta.sk` envelope:
 
 ## Destructive-action flow (two MCP calls, one human confirmation)
 
-1. Call the callable entry normally, e.g. `tenant.delete_workflow({id: "abc"})`.
+1. Call the callable entry normally, e.g. `tenant_delete_workflow({id: "abc"})`.
 2. sk replies with a structured envelope:
    ```json
    {
@@ -45,7 +45,7 @@ Every sk callable entry ships a `_meta.sk` envelope:
      "confirm_required": true,
      "policy_mode": "confirm_before_execution",
      "reason": "destructive_action",
-     "target": { "tool": "tenant.delete_workflow", "args": { "id": "abc" } },
+     "target": { "tool": "tenant_delete_workflow", "args": { "id": "abc" } },
      "resume": "Re-issue the same call with _meta.sk_confirm=true after the operator approves.",
      "tool_call_id": "<uuid>"
    }
@@ -53,7 +53,7 @@ Every sk callable entry ships a `_meta.sk` envelope:
 3. Relay the `target` + `destructive: true` hint to the operator. Wait for a human "yes".
 4. Re-issue **the same call** with `_meta.sk_confirm: true`:
    ```json
-   { "name": "tenant.delete_workflow", "arguments": {"id":"abc"}, "_meta": {"sk_confirm": true} }
+   { "name": "tenant_delete_workflow", "arguments": {"id":"abc"}, "_meta": {"sk_confirm": true} }
    ```
 5. sk executes the callable entry, writes the `approval.approved` audit row, and returns the normal result.
 
@@ -82,7 +82,7 @@ When a jsonata transform references an identifier that isn't in scope, sk return
 
 `warnings[]` is non-fatal — `status` stays `succeeded`. Surface it to the operator but do not retry blindly.
 
-## Synthesised `inputSchema` for `wf.<slug>`
+## Synthesised `inputSchema` for `wf_<slug>`
 
 When a workflow does not declare `input_schema`, sk scans the DAG:
 
@@ -93,4 +93,4 @@ The identifiers become `properties: { foo: {type: "string"} }` with `additionalP
 
 ## Authoring sandbox code via MCP
 
-When an MCP client submits JavaScript for a `transform` step or a before-request hook (e.g. through `tenant.create_request_hook`, `tenant.update_workflow`, or the conversational authoring loop), prefer the `sk.*` stdlib surface over raw comparisons — `sk.http.isMutating(method)`, `sk.get(obj, path, fallback)`, `sk.allow()`, `sk.deny(reason)`. The full surface and rationale live in `workflow-authoring.md`. The stdlib is injected into every sandbox context, is frozen, versioned, and deterministic; proposing `sk.*`-based code keeps the policy surface uniform across tenants.
+When an MCP client submits JavaScript for a `transform` step or a before-request hook (e.g. through `tenant_create_request_hook`, `tenant_update_workflow`, or the conversational authoring loop), prefer the `sk.*` stdlib surface over raw comparisons — `sk.http.isMutating(method)`, `sk.get(obj, path, fallback)`, `sk.allow()`, `sk.deny(reason)`. The full surface and rationale live in `workflow-authoring.md`. The stdlib is injected into every sandbox context, is frozen, versioned, and deterministic; proposing `sk.*`-based code keeps the policy surface uniform across tenants.

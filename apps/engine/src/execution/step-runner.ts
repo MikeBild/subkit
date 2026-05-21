@@ -58,6 +58,23 @@ export interface RunStepOutcome {
    * so the LLM can see what the selector dropped without re-running.
    */
   raw_output?: unknown;
+  /**
+   * Durable locator of this step's offloaded result, when the step's
+   * payload exceeded `STEP_RESULT_DB_BYTES` and was spilled to S3 or
+   * the `execution_fixtures` table. `fixture://<uuid>` or
+   * `s3://<bucket>/<key>`; `null` when the result was small enough to
+   * persist inline. The loop runner reuses this locator to build an
+   * `OffloadRef` without a second offload write.
+   */
+  result_storage_uri?: string | null;
+  /**
+   * Inline `STEP_RESULT_PREVIEW_BYTES`-capped preview of the offloaded
+   * payload. Set together with `result_storage_uri`; the loop runner
+   * carries it onto the `OffloadRef.preview`.
+   */
+  result_preview?: string | null;
+  /** Serialized byte size of the step result (offloaded or inline). */
+  result_size_bytes?: number;
 }
 
 // Workstream A7: redact step output keys the recipe declared as
@@ -175,7 +192,13 @@ export async function runStep(
         error_msg: result.error?.message,
         execution_id: ctx.execution_id,
       });
-      return { result, scope_value };
+      return {
+        result,
+        scope_value,
+        result_storage_uri: offload.storage_uri,
+        result_preview: offload.preview,
+        result_size_bytes: offload.size_bytes,
+      };
     }
   }
 
@@ -469,5 +492,8 @@ export async function runStep(
     result,
     scope_value,
     ...(raw_output !== undefined ? { raw_output } : {}),
+    result_storage_uri: offload.storage_uri,
+    result_preview: offload.preview,
+    result_size_bytes: offload.size_bytes,
   };
 }

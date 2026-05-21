@@ -2,7 +2,7 @@
 // real Postgres database so role_permissions + group joins + resource
 // grants behave exactly like they do in production.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -18,6 +18,7 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { logger } from "../../logging/logger.ts";
 import { can } from "../evaluator.ts";
 import * as grantsSvc from "../grants.ts";
 
@@ -227,6 +228,60 @@ describe("rbac evaluator", () => {
     });
     expect(d.allow).toBe(false);
     expect(d.reason).toContain("permission_unknown");
+  });
+
+  test("a genuine deny WARN-logs (rbac.denied)", async () => {
+    const warnSpy = spyOn(logger, "warn");
+    const debugSpy = spyOn(logger, "debug");
+    try {
+      const d = await can(db, {
+        tenant_id: tenantId,
+        principal: mkPrincipal(memberUserId, "member"),
+        permission: "audit:read", // admin-only — member is denied
+      });
+      expect(d.allow).toBe(false);
+      const denyWarn = warnSpy.mock.calls.find(
+        (c) => (c[0] as { module?: string; action?: string })?.action === "denied",
+      );
+      expect(denyWarn).toBeDefined();
+      // No `rbac.checked` debug line for this enforcement deny.
+      const checkedDebug = debugSpy.mock.calls.find(
+        (c) => (c[0] as { module?: string; action?: string })?.action === "checked",
+      );
+      expect(checkedDebug).toBeUndefined();
+    } finally {
+      warnSpy.mockRestore();
+      debugSpy.mockRestore();
+    }
+  });
+
+  test("a quiet deny logs at DEBUG (rbac.checked), never WARN", async () => {
+    const warnSpy = spyOn(logger, "warn");
+    const debugSpy = spyOn(logger, "debug");
+    try {
+      const d = await can(db, {
+        tenant_id: tenantId,
+        principal: mkPrincipal(memberUserId, "member"),
+        permission: "audit:read",
+        quiet: true,
+      });
+      expect(d.allow).toBe(false);
+      // quiet → no WARN line for this probe-style deny.
+      const denyWarn = warnSpy.mock.calls.find(
+        (c) => (c[0] as { module?: string; action?: string })?.action === "denied",
+      );
+      expect(denyWarn).toBeUndefined();
+      // …downgraded to a DEBUG `rbac.checked` line carrying allow:false.
+      const checkedDebug = debugSpy.mock.calls.find(
+        (c) =>
+          (c[0] as { action?: string; allow?: boolean })?.action === "checked" &&
+          (c[0] as { allow?: boolean })?.allow === false,
+      );
+      expect(checkedDebug).toBeDefined();
+    } finally {
+      warnSpy.mockRestore();
+      debugSpy.mockRestore();
+    }
   });
 
   // Suppress unused imports used to pin types to Db barrel.

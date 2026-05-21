@@ -47,6 +47,16 @@ export interface PermissionCheck {
   principal: ResolvedPrincipal;
   permission: string;
   resource?: { type: string; id: string };
+  /**
+   * When set, a DENY decision is logged at DEBUG (`rbac.checked`)
+   * instead of WARN (`rbac.denied`). Use ONLY for probe-style checks
+   * where a "no" is an expected, routine outcome — e.g. enumerating
+   * which of several scopes a role holds. A genuine enforcement check
+   * (gating an actual request) must NOT set this: an unexpected deny
+   * there is operator-actionable and belongs at WARN. The deny metric
+   * counter fires regardless of `quiet`.
+   */
+  quiet?: boolean;
 }
 
 export interface Decision {
@@ -235,7 +245,7 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
   if (!permissionId) {
     // Unknown permission name — deny. Surfaces early during development.
     recordMetric("deny", check.permission, "unknown_permission");
-    log.rbac.denied({ reason: `permission_unknown:${check.permission}`, ...rbacCtx(check) });
+    emitDeny(check, `permission_unknown:${check.permission}`, "unknown_permission");
     return {
       allow: false,
       reason: `permission_unknown:${check.permission}`,
@@ -303,11 +313,32 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
     isPortalToken && (check.permission === "workflow:run" || check.permission === "workflow:read")
       ? "workflow_not_in_allowlist"
       : `permission_denied:${check.permission}`;
-  log.rbac.denied({ reason, ...rbacCtx(check) });
+  emitDeny(check, reason, "none");
   return {
     allow: false,
     reason,
   };
+}
+
+/**
+ * Emit the structured log line for a DENY decision.
+ *
+ * A genuine enforcement deny (gating a real request) logs at WARN
+ * (`rbac.denied`) — it is operator-actionable. A `quiet` deny logs at
+ * DEBUG (`rbac.checked`) — `quiet` marks a probe-style check where a
+ * "no" is the expected, routine outcome and a WARN would be pure
+ * noise. The deny metric counter is bumped by the caller in BOTH
+ * cases; `quiet` only changes the log level, never the metric.
+ */
+function emitDeny(check: PermissionCheck, reason: string, source: string): void {
+  if (check.quiet) {
+    log.rbac.checked({ allow: false, source, reason, ...rbacCtx(check) });
+    return;
+  }
+  // The genuine-deny WARN path is the one forensics reads — include
+  // `source` so an operator sees WHICH rule rejected the request, not
+  // just that it was rejected.
+  log.rbac.denied({ source, reason, ...rbacCtx(check) });
 }
 
 /**

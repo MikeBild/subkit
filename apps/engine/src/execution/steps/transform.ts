@@ -20,7 +20,7 @@ import { extractStepIdReferences, suggestClosest } from "../../workflows/levensh
 import { enumerateScopePaths } from "../../workflows/scope-shape.ts";
 import type { TransformStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
-import { buildJsonataBindings } from "../jsonata-bindings.ts";
+import { buildJsonataBindings, resolveScopeForJsonata } from "../jsonata-bindings.ts";
 import { compile as compileJsonata, extractAst } from "../jsonata-engine.ts";
 import { TRANSFORM_TIMEOUT_DEFAULT_MS } from "../timeouts.ts";
 import type { StepResult, StepRunContext, StepWarning } from "../types.ts";
@@ -379,6 +379,15 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
   const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
   const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
   const language = p.step.language ?? "jsonata";
+  // A transform is a downstream JSONata/JS consumer of the scope. When
+  // an upstream loop spilled large body payloads to storage, the loop
+  // key in `scope` holds `OffloadRef` placeholders — re-hydrate them
+  // here so the transform expression sees the original arrays. The
+  // helper returns the SAME object when nothing is offloaded, so the
+  // common case pays only one shallow scan. Reassigning the local
+  // params field cannot mutate the engine's `scope` (the resolved copy
+  // is fresh). A re-hydration failure throws and fails this step.
+  p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope, p.ctx.signal);
   // Web-scraper #144 — three of the supported languages are dispatched
   // elsewhere; only `jsonata` / `javascript` need `expression` here. The
   // schema superRefine enforces this contract at authoring time; the
