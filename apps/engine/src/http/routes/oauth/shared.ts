@@ -176,7 +176,9 @@ export function renderConsentPage(opts: {
   const scopeItems = opts.scopes
     .map((s) => {
       const label = scopeLabels[s] ?? s;
-      return `<li><strong>${escapeHtml(s)}</strong> — ${escapeHtml(label)}</li>`;
+      return `<li><span class="scope-name">${escapeHtml(s)}</span><span class="scope-desc">${escapeHtml(
+        label,
+      )}</span></li>`;
     })
     .join("");
 
@@ -185,36 +187,76 @@ export function renderConsentPage(opts: {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Authorize — sk</title>
+  <title>Authorize access — sk</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 48px auto; padding: 0 16px; }
-    h1 { font-size: 1.25rem; }
-    .client { font-weight: bold; }
-    ul { padding-left: 1.2em; }
-    .actions { display: flex; gap: 12px; margin-top: 24px; }
-    button { padding: 8px 20px; font-size: 1rem; cursor: pointer; border: none; border-radius: 4px; }
-    .approve { background: #0070f3; color: #fff; }
-    .deny { background: #e5e7eb; color: #111; }
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; padding: 24px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f4f5f7; color: #1f2328;
+    }
+    .card {
+      background: #fff; width: 100%; max-width: 420px;
+      border: 1px solid #e3e5e9; border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(20, 24, 33, .08);
+      padding: 32px;
+    }
+    .brand {
+      display: flex; align-items: center; justify-content: center;
+      width: 42px; height: 42px; border-radius: 11px;
+      background: #1f2328; color: #fff;
+      font-weight: 700; font-size: 19px; letter-spacing: -.03em;
+      margin: 0 0 20px;
+    }
+    h1 { font-size: 1.2rem; line-height: 1.3; margin: 0 0 8px; }
+    p { margin: 0 0 10px; line-height: 1.5; }
+    .muted { color: #6a7280; font-size: .9rem; }
+    .strong { font-weight: 600; }
+    ul.scopes { list-style: none; margin: 18px 0 4px; padding: 0; }
+    ul.scopes li {
+      display: flex; flex-direction: column; gap: 2px;
+      padding: 12px 14px; margin-bottom: 8px;
+      background: #f7f8fa; border: 1px solid #ebedf0; border-radius: 9px;
+    }
+    .scope-name { font-weight: 600; font-size: .92rem; }
+    .scope-desc { color: #6a7280; font-size: .85rem; }
+    .actions { display: flex; gap: 10px; margin-top: 22px; }
+    button {
+      flex: 1; padding: 11px 18px; font-size: .95rem; font-weight: 600;
+      cursor: pointer; border-radius: 9px; border: 1px solid transparent;
+      font-family: inherit;
+    }
+    .approve { background: #1f6feb; color: #fff; }
+    .approve:hover { background: #1a60d0; }
+    .deny { background: #fff; color: #1f2328; border-color: #d6d9de; }
+    .deny:hover { background: #f4f5f7; }
+    .footer { margin-top: 20px; color: #99a0aa; font-size: .78rem; text-align: center; }
   </style>
 </head>
 <body>
-  <h1>Authorize access</h1>
-  <p><span class="client">${escapeHtml(opts.clientName)}</span> is requesting permission to access
-  your <strong>${escapeHtml(opts.tenantName)}</strong> workspace.</p>
-  <p>Signed in as <strong>${escapeHtml(opts.userEmail)}</strong></p>
-  <p>It will be able to:</p>
-  <ul>${scopeItems}</ul>
-  <form method="POST" action="/v1/oauth/authorize/decision">
-    <input type="hidden" name="csrf_token" value="${escapeHtml(opts.csrfToken)}">
-    <input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">
-    <input type="hidden" name="redirect_uri" value="${escapeHtml(opts.redirectUri)}">
-    <input type="hidden" name="resource" value="${escapeHtml(opts.resource)}">
-    <input type="hidden" name="state" value="${escapeHtml(opts.state)}">
-    <div class="actions">
-      <button type="submit" name="decision" value="approve" class="approve">Approve</button>
-      <button type="submit" name="decision" value="deny" class="deny">Deny</button>
-    </div>
-  </form>
+  <div class="card">
+    <div class="brand">sk</div>
+    <h1>Authorize access</h1>
+    <p><span class="strong">${escapeHtml(opts.clientName)}</span> is requesting access to your
+    <span class="strong">${escapeHtml(opts.tenantName)}</span> workspace.</p>
+    <p class="muted">Signed in as ${escapeHtml(opts.userEmail)}</p>
+    <p class="muted">It will be able to:</p>
+    <ul class="scopes">${scopeItems}</ul>
+    <form method="POST" action="/v1/oauth/authorize/decision">
+      <input type="hidden" name="csrf_token" value="${escapeHtml(opts.csrfToken)}">
+      <input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">
+      <input type="hidden" name="redirect_uri" value="${escapeHtml(opts.redirectUri)}">
+      <input type="hidden" name="resource" value="${escapeHtml(opts.resource)}">
+      <input type="hidden" name="state" value="${escapeHtml(opts.state)}">
+      <div class="actions">
+        <button type="submit" name="decision" value="deny" class="deny">Deny</button>
+        <button type="submit" name="decision" value="approve" class="approve">Approve</button>
+      </div>
+    </form>
+    <div class="footer">subkit MCP · OAuth 2.1</div>
+  </div>
 </body>
 </html>`;
 }

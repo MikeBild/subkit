@@ -256,10 +256,13 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.html(html, 200, {
       "X-Frame-Options": "DENY",
       // Lock the consent page down: no scripts/images/fetch of any kind,
-      // inline <style> only, form POST restricted to same-origin. Defence
-      // in depth behind the escapeHtml() of every interpolated value.
+      // inline <style> only. NOTE: no `form-action` directive — the consent
+      // decision legitimately redirects (302) to the OAuth client's
+      // redirect_uri (e.g. chatgpt.com), which `form-action 'self'` would
+      // block in the browser. The single form's action is hard-coded in
+      // renderConsentPage, so there is no injected-form-action surface.
       "Content-Security-Policy":
-        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+        "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
       "Cache-Control": "no-store",
     });
   });
