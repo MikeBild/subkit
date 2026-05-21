@@ -10,6 +10,13 @@
 // `invoke.ts`, and so the unit test can assert the catalogue is
 // complete by importing from one canonical location.
 
+import {
+  ELICITATION_ALREADY_RESOLVED,
+  ELICITATION_TRANSPORT_FAILED,
+  OAUTH_AUTHORIZATION_DECLINED,
+  OAUTH_ELICITATION_TRANSPORT_FAILED,
+} from "../error-codes.ts";
+
 /**
  * Maps known error codes to concrete next-action suggestions for the
  * model. Add a new entry whenever a new structured `error_code` ships
@@ -104,13 +111,13 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   repair_loop_detected:
     "three consecutive runs surfaced the same authoring warning — stop, read data-handling.md / workflow-authoring.md, and propose a structurally different draft",
   // OAuth authorization — chat-driven authenticate_oauth.
-  oauth_authorization_declined:
+  [OAUTH_AUTHORIZATION_DECLINED]:
     "the user declined to start the OAuth authorization — do not retry silently; ask the user whether they still want to connect this integration before calling authenticate_oauth again",
-  oauth_elicitation_transport_failed:
+  [OAUTH_ELICITATION_TRANSPORT_FAILED]:
     "the MCP elicitation carrying the OAuth authorization URL failed in transit — the authorization state row is still valid, so call authenticate_oauth again for the same connector to resume the existing flow (it will not mint a new URL)",
-  elicitation_transport_failed:
+  [ELICITATION_TRANSPORT_FAILED]:
     "the MCP elicitation request failed in transit (client disconnected or never answered) — the conversation is no longer waiting on input; re-ask the user with an ask_user_* tool only if their answer is still needed",
-  elicitation_already_resolved:
+  [ELICITATION_ALREADY_RESOLVED]:
     "this elicitation was already answered through another channel (a concurrent resume) — do not retry the ask_user_* tool; re-read the conversation state and continue from the answer that already landed",
 };
 

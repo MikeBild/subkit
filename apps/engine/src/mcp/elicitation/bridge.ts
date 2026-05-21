@@ -107,8 +107,9 @@ export class ElicitationBridge {
    * answer. Throws `ElicitationUnsupportedError` when the client did
    * not advertise the capability.
    */
-  async elicitForm(params: ElicitFormParams): Promise<ElicitationResult> {
+  async elicitForm(rawParams: ElicitFormParams): Promise<ElicitationResult> {
     if (!this.capabilities.form) throw new ElicitationUnsupportedError("form");
+    const params = ElicitFormParamsSchema.parse(rawParams);
     const result: ElicitResult = await this.server.elicitInput(
       {
         mode: "form",
@@ -129,8 +130,9 @@ export class ElicitationBridge {
    * SDK-vs-spec note in the file header. Throws
    * `ElicitationUnsupportedError` when unsupported.
    */
-  async elicitOob(params: ElicitOobParams): Promise<ElicitationResult> {
+  async elicitOob(rawParams: ElicitOobParams): Promise<ElicitationResult> {
     if (!this.capabilities.oob) throw new ElicitationUnsupportedError("oob");
+    const params = ElicitOobParamsSchema.parse(rawParams);
     const result: ElicitResult = await this.server.elicitInput(
       {
         // `mode: "url"` — the SDK schema (ElicitRequestURLParamsSchema)

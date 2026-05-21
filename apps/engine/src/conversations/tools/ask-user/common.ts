@@ -19,12 +19,11 @@
 // The loop treats any `ToolResult.pause` the same way it treats the
 // existing approval pause, so the pause contract stays compatible.
 
-import { and, eq } from "drizzle-orm";
-import { conversations } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/logger.ts";
 import { ElicitationUnsupportedError } from "../../../mcp/elicitation/bridge.ts";
-import { createElicitation, resolveElicitation } from "../../elicitations.ts";
+import { createElicitation, resolveElicitationAndReactivate } from "../../elicitations.ts";
 import { applyElicitationOutcome } from "../../persistence/apply-outcome.ts";
+import { ELICITATION_ALREADY_RESOLVED, ELICITATION_TRANSPORT_FAILED } from "../error-codes.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
 import {
   type FormBridgeToolName,
@@ -42,7 +41,7 @@ type AskUserToolName = NonNullable<ToolResult["pause"]>["tool_name"];
 function alreadyResolved(elicitationId: string): ToolResult {
   return {
     ok: false,
-    error_code: "elicitation_already_resolved",
+    error_code: ELICITATION_ALREADY_RESOLVED,
     message:
       "This elicitation was already answered through another channel; re-read conversation state instead of retrying.",
     data: { status: "already_resolved", elicitation_id: elicitationId },
@@ -88,41 +87,23 @@ export async function pauseForUserInput(
             p.input,
             result.content,
           );
-          // The state transition — resolve the elicitation row AND flip
-          // the conversation back to `active` — must be one atomic unit.
-          // `createElicitation` moved the conversation to
-          // `awaiting_input`; if the row resolved but the status flip
-          // failed, the loop's pending-elicitation guard would wedge the
-          // conversation with no pending row to resume from.
-          //
-          // Capture the resolve outcome: a concurrent `respondElicitation`
-          // may have resolved this row first (lost race) — that must not
-          // be treated as a fresh accept.
-          let acceptResolution: Awaited<ReturnType<typeof resolveElicitation>> | undefined;
-          await ctx.db.transaction(async (tx) => {
-            acceptResolution = await resolveElicitation(
-              {
-                tenant_id: ctx.tenant_id,
-                id: row.id,
-                output,
-                decided_by: ctx.actor_id,
-                status: "resolved",
-              },
-              tx,
-            );
-            if (acceptResolution.kind === "resolved") {
-              await tx
-                .update(conversations)
-                .set({ status: "active", updated_at: new Date() })
-                .where(
-                  and(
-                    eq(conversations.tenant_id, ctx.tenant_id),
-                    eq(conversations.id, ctx.conversation_id),
-                  ),
-                );
-            }
-          });
-          if (acceptResolution?.kind !== "resolved") {
+          // Resolve the row AND flip the conversation back to `active`
+          // as one atomic unit (see `resolveElicitationAndReactivate`).
+          // A concurrent `respondElicitation` may have resolved this row
+          // first (lost race) — that must not be treated as a fresh
+          // accept.
+          const acceptResolution = await resolveElicitationAndReactivate(
+            {
+              tenant_id: ctx.tenant_id,
+              conversation_id: ctx.conversation_id,
+              id: row.id,
+              output,
+              decided_by: ctx.actor_id,
+              status: "resolved",
+            },
+            ctx.db,
+          );
+          if (acceptResolution.kind !== "resolved") {
             return alreadyResolved(row.id);
           }
           // Credential-cache + auto-persist runs AFTER the transition
@@ -145,32 +126,19 @@ export async function pauseForUserInput(
         // decline / cancel — resolve as cancelled, no continuation.
         // Same atomic transition unit (and same lost-race guard) as the
         // accept path.
-        let cancelResolution: Awaited<ReturnType<typeof resolveElicitation>> | undefined;
-        await ctx.db.transaction(async (tx) => {
-          cancelResolution = await resolveElicitation(
-            {
-              tenant_id: ctx.tenant_id,
-              id: row.id,
-              output: result.content ?? null,
-              decided_by: ctx.actor_id,
-              status: "cancelled",
-              reason: result.action === "decline" ? "user_declined" : "user_cancelled",
-            },
-            tx,
-          );
-          if (cancelResolution.kind === "resolved") {
-            await tx
-              .update(conversations)
-              .set({ status: "active", updated_at: new Date() })
-              .where(
-                and(
-                  eq(conversations.tenant_id, ctx.tenant_id),
-                  eq(conversations.id, ctx.conversation_id),
-                ),
-              );
-          }
-        });
-        if (cancelResolution?.kind !== "resolved") {
+        const cancelResolution = await resolveElicitationAndReactivate(
+          {
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            id: row.id,
+            output: result.content ?? null,
+            decided_by: ctx.actor_id,
+            status: "cancelled",
+            reason: result.action === "decline" ? "user_declined" : "user_cancelled",
+          },
+          ctx.db,
+        );
+        if (cancelResolution.kind !== "resolved") {
           return alreadyResolved(row.id);
         }
         return {
@@ -223,14 +191,19 @@ export async function pauseForUserInput(
           tool_name: p.tool_name,
           error: err instanceof Error ? err.message : String(err),
         });
-        const transportResolution = await resolveElicitation(
+        // Resolve the row `cancelled` AND flip the conversation back to
+        // `active` as one atomic unit (see
+        // `resolveElicitationAndReactivate`) so a partial failure cannot
+        // leave the conversation wedged.
+        const transportResolution = await resolveElicitationAndReactivate(
           {
             tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
             id: row.id,
             output: null,
             decided_by: ctx.actor_id,
             status: "cancelled",
-            reason: "elicitation_transport_failed",
+            reason: ELICITATION_TRANSPORT_FAILED,
           },
           ctx.db,
         );
@@ -240,18 +213,9 @@ export async function pauseForUserInput(
           // the transport failure.
           return alreadyResolved(row.id);
         }
-        await ctx.db
-          .update(conversations)
-          .set({ status: "active", updated_at: new Date() })
-          .where(
-            and(
-              eq(conversations.tenant_id, ctx.tenant_id),
-              eq(conversations.id, ctx.conversation_id),
-            ),
-          );
         return {
           ok: false,
-          error_code: "elicitation_transport_failed",
+          error_code: ELICITATION_TRANSPORT_FAILED,
           message:
             "The MCP elicitation request failed in transit — the client may have disconnected or did not answer. The conversation is no longer waiting on input; ask the user again if their answer is still needed.",
           data: { status: "transport_failed", elicitation_id: row.id },

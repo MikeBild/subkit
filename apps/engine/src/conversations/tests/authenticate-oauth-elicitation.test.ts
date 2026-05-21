@@ -1,6 +1,6 @@
 // authenticate_oauth — MCP elicitation URL-mode integration tests.
 //
-// Covers the §6 elicitation rework's load-bearing contract:
+// Covers the load-bearing contract of MCP-native OAuth elicitation:
 //
 //   - URL-mode happy path: an oob-capable MCP client, the tool issues an
 //     out-of-band `elicitation/create` with the authorization URL, then
@@ -20,6 +20,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import {
   type MockOAuthServer,
@@ -39,6 +40,9 @@ import { globalEmitter } from "../../pubsub/emitter.ts";
 import { startListener, stopListener } from "../../pubsub/listener.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { dispatchTool } from "../../tools/dispatcher.ts";
+import { conversationToolProvider, staticToolProvider } from "../../tools/index.ts";
+import { buildRegistry } from "../../tools/registry.ts";
 import { authenticateOAuthTool } from "../tools/authenticate-oauth.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
@@ -329,5 +333,54 @@ describe("authenticate_oauth — resume re-entry (idempotent wait)", () => {
       .where(eq(connectorOauthStates.connector_id, connectorId));
     expect(stateRows).toHaveLength(1);
     expect(draftRef.current.state?.checkpoints?.connector_authenticated?.ok).toBe(true);
+  });
+});
+
+describe("authenticate_oauth — RBAC gate is not bypassed by the elicitation bridge", () => {
+  test("a principal lacking connector:oauth is denied even with an elicitation-capable bridge", async () => {
+    const connectorId = await makeOAuthConnector("aoe-rbac");
+
+    // A user principal with no role and no grants: `can()` resolves no
+    // role_id for this id, so `connector:oauth` denies.
+    const principal: ResolvedPrincipal = {
+      kind: "user",
+      id: "00000000-0000-0000-0000-0000000000aa",
+      tenant_id,
+      roles: [],
+      // biome-ignore lint/suspicious/noExplicitAny: minimal principal stub for an RBAC-deny test
+    } as any;
+
+    const registry = buildRegistry([staticToolProvider, conversationToolProvider]);
+
+    // The dispatcher runs the descriptor-declared `connector:oauth` gate
+    // BEFORE `authenticate_oauth.execute` — so the elicitation bridge,
+    // which lives on the conversation ctx the executor would receive, is
+    // never reached. Presence of a bridge cannot bypass the permission
+    // gate. We pass a bridge-carrying conversationCtx to make that
+    // explicit; the deny short-circuits before it is consumed.
+    const draftRef: { current: DraftDocument } = {
+      current: {
+        mode: "connector_authoring",
+        connector: { name: "aoe-rbac", slug: "aoe-rbac", driver: "http", environment: "dev" },
+        workflow: { name: "", steps: [] },
+      } as DraftDocument,
+    };
+    const conversationCtx = buildCtx(connectorId, makeOobBridge("accept"), draftRef);
+
+    const envelope = await dispatchTool(
+      { registry, db: ctx.db, principal, conversationCtx },
+      { surface: "chat", name: "authenticate_oauth", args: { connector_id: connectorId } },
+    );
+
+    expect(envelope.status).toBe("error");
+    if (envelope.status === "error") {
+      expect(envelope.error_code).toBe("policy_denied");
+    }
+    // The gate fired before the executor ran — no OAuth state row minted.
+    const stateRows = await ctx.db
+      .select({ id: connectorOauthStates.id })
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.connector_id, connectorId));
+    expect(stateRows).toHaveLength(0);
   });
 });

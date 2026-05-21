@@ -13,7 +13,7 @@
 //      per engine, routed by opaque state) which exchanges the code
 //      for tokens and persists them via upsertCredential.
 //
-// Surface-aware completion (the §6 elicitation rework):
+// Surface-aware completion:
 //   - MCP client advertises elicitation (oob) — issue an out-of-band
 //     `elicitation/create` with the authorization URL, then block on
 //     `waitForOAuthCredential` until the callback lands the credential.
@@ -47,8 +47,10 @@ import { connectorOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { ElicitationUnsupportedError } from "../../mcp/elicitation/bridge.ts";
 import { withConnectorAuthenticated } from "../authoring-state.ts";
+import { createElicitation, resolveElicitationAndReactivate } from "../elicitations.ts";
 import { pauseForUserInput } from "./ask-user/common.ts";
-import type { ConversationTool, ToolResult } from "./index.ts";
+import { OAUTH_AUTHORIZATION_DECLINED, OAUTH_ELICITATION_TRANSPORT_FAILED } from "./error-codes.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 
 const inputSchema = z
   .object({
@@ -72,6 +74,73 @@ const inputSchema = z
       .describe("Optional URL to redirect the user back to after a successful authorization."),
   })
   .openapi("AuthenticateOAuthToolInput");
+
+/**
+ * Open the governance elicitation row for an MCP-native OAuth prompt.
+ *
+ * The DB-pause path writes an `APPROVAL_REQUESTED` audit row via
+ * `pauseForUserInput → createElicitation`. The MCP-native oob/form
+ * branches issue `elicitation/create` straight through the bridge, so
+ * without this they would skip that audit trail entirely. Insert a
+ * `protocol_native` carrier row BEFORE the bridge call so the
+ * APPROVAL_REQUESTED → APPROVAL_APPROVED/REJECTED lifecycle is recorded
+ * for the OAuth authorization the same way the portal path records it.
+ *
+ * `ask_user_confirm` is the carrier tool name — the operator is
+ * confirming a governed external authorization, the same intent the
+ * DB-pause path expresses via `ask_user_confirm`.
+ */
+function openOAuthApprovalElicitation(
+  ctx: ToolContext,
+  p: { connectorLabel: string; authorizationUrl: string; message: string },
+): Promise<import("../elicitations.ts").ElicitationRecord> {
+  return createElicitation(
+    {
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      tool_call_id: ctx.tool_call_id ?? null,
+      ...(ctx.assistant_message_id ? { parent_message_id: ctx.assistant_message_id } : {}),
+      tool_name: "ask_user_confirm",
+      summary: `Authorize OAuth access for ${p.connectorLabel}.`,
+      input: {
+        kind: "external_write",
+        question: "Have you completed the authorization in your browser?",
+        summary: p.message,
+        authorization_url: p.authorizationUrl,
+      },
+      actor_id: ctx.actor_id,
+      protocol_native: true,
+    },
+    ctx.db,
+  );
+}
+
+/**
+ * Close the governance elicitation row once `waitForOAuthCredential`
+ * settles. `succeeded` → `resolved` (APPROVAL_APPROVED); `failed` /
+ * `timeout` → `cancelled` (APPROVAL_REJECTED) with the status as the
+ * reason. Idempotent against a lost race: a concurrent resolver makes
+ * the conditional update miss, which `resolveElicitation` reports as
+ * `already_resolved` — harmless here, the audit row already landed.
+ */
+async function resolveOAuthApprovalElicitation(
+  ctx: ToolContext,
+  elicitationId: string,
+  status: "succeeded" | "failed" | "timeout",
+): Promise<void> {
+  await resolveElicitationAndReactivate(
+    {
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      id: elicitationId,
+      output: { status },
+      decided_by: ctx.actor_id,
+      status: status === "succeeded" ? "resolved" : "cancelled",
+      ...(status === "succeeded" ? {} : { reason: `oauth_${status}` }),
+    },
+    ctx.db,
+  );
+}
 
 /** Did this connector already get an authorization URL this round? */
 async function hasPendingOAuthState(
@@ -201,6 +270,14 @@ export const authenticateOAuthTool: ConversationTool = {
 
     // ── MCP oob-capable — out-of-band URL elicitation, then wait ──────
     if (bridge?.capabilities.oob) {
+      // Open the governance elicitation row BEFORE the bridge call so
+      // the APPROVAL_REQUESTED audit row is written for this OAuth
+      // authorization — matching the DB-pause path's audit trail.
+      const approval = await openOAuthApprovalElicitation(ctx, {
+        connectorLabel,
+        authorizationUrl: started.authorization_url,
+        message,
+      });
       try {
         await bridge.elicitOob({
           url: started.authorization_url,
@@ -213,6 +290,8 @@ export const authenticateOAuthTool: ConversationTool = {
       } catch (err) {
         if (err instanceof ElicitationUnsupportedError) {
           // Capability raced away — fall through to the DB-pause path.
+          // `dbPauseForOAuth → createElicitation` supersedes the row
+          // opened above, so the audit trail stays consistent.
           logger.warn({
             module: "conversation",
             action: "authenticate_oauth.oob_unsupported_fallback",
@@ -235,9 +314,21 @@ export const authenticateOAuthTool: ConversationTool = {
           connector_id: connectorId,
           error: err instanceof Error ? err.message : String(err),
         });
+        await resolveElicitationAndReactivate(
+          {
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            id: approval.id,
+            output: null,
+            decided_by: ctx.actor_id,
+            status: "cancelled",
+            reason: OAUTH_ELICITATION_TRANSPORT_FAILED,
+          },
+          ctx.db,
+        );
         return {
           ok: false,
-          error_code: "oauth_elicitation_transport_failed",
+          error_code: OAUTH_ELICITATION_TRANSPORT_FAILED,
           message:
             "The MCP elicitation for the OAuth authorization URL failed in transit. The authorization state is still valid — call authenticate_oauth again for this connector to retry.",
           data: { authorization_url: started.authorization_url, redirect_uri },
@@ -249,6 +340,7 @@ export const authenticateOAuthTool: ConversationTool = {
         environment,
         db: ctx.db,
       });
+      await resolveOAuthApprovalElicitation(ctx, approval.id, status);
       return finalizeWaitResult(ctx, connector, status, {
         authorization_url: started.authorization_url,
         redirect_uri,
@@ -258,6 +350,13 @@ export const authenticateOAuthTool: ConversationTool = {
 
     // ── MCP form-capable only — form elicitation with the URL ─────────
     if (bridge?.capabilities.form) {
+      // Governance elicitation row — same audit-trail rationale as the
+      // oob branch above.
+      const approval = await openOAuthApprovalElicitation(ctx, {
+        connectorLabel,
+        authorizationUrl: started.authorization_url,
+        message,
+      });
       try {
         const result = await bridge.elicitForm({
           message,
@@ -274,9 +373,21 @@ export const authenticateOAuthTool: ConversationTool = {
           },
         });
         if (result.action !== "accept") {
+          await resolveElicitationAndReactivate(
+            {
+              tenant_id: ctx.tenant_id,
+              conversation_id: ctx.conversation_id,
+              id: approval.id,
+              output: null,
+              decided_by: ctx.actor_id,
+              status: "cancelled",
+              reason: OAUTH_AUTHORIZATION_DECLINED,
+            },
+            ctx.db,
+          );
           return {
             ok: false,
-            error_code: "oauth_authorization_declined",
+            error_code: OAUTH_AUTHORIZATION_DECLINED,
             message: "The user declined to start the OAuth authorization.",
             data: { authorization_url: started.authorization_url, redirect_uri },
           };
@@ -304,9 +415,21 @@ export const authenticateOAuthTool: ConversationTool = {
           connector_id: connectorId,
           error: err instanceof Error ? err.message : String(err),
         });
+        await resolveElicitationAndReactivate(
+          {
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            id: approval.id,
+            output: null,
+            decided_by: ctx.actor_id,
+            status: "cancelled",
+            reason: OAUTH_ELICITATION_TRANSPORT_FAILED,
+          },
+          ctx.db,
+        );
         return {
           ok: false,
-          error_code: "oauth_elicitation_transport_failed",
+          error_code: OAUTH_ELICITATION_TRANSPORT_FAILED,
           message:
             "The MCP elicitation for the OAuth authorization URL failed in transit. The authorization state is still valid — call authenticate_oauth again for this connector to retry.",
           data: { authorization_url: started.authorization_url, redirect_uri },
@@ -318,6 +441,7 @@ export const authenticateOAuthTool: ConversationTool = {
         environment,
         db: ctx.db,
       });
+      await resolveOAuthApprovalElicitation(ctx, approval.id, status);
       return finalizeWaitResult(ctx, connector, status, {
         authorization_url: started.authorization_url,
         redirect_uri,

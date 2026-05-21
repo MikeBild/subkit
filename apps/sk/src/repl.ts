@@ -37,7 +37,7 @@ import {
   looksLikeAssistantConfirmRequest,
 } from "./elicitation-intent.ts";
 import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
-import { defaultOpenBrowser } from "./lib/open-browser.ts";
+import { BrowserUrlSchema, defaultOpenBrowser } from "./lib/open-browser.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { handleSlash as handleSharedSlash } from "./repl/slash/handler.ts";
@@ -55,9 +55,10 @@ import { findSlashCommand, type PersonaProbe, renderHelp, SLASH_COMMANDS } from 
 function extractOAuthUrl(input: unknown): string | null {
   if (input == null || typeof input !== "object") return null;
   const obj = input as Record<string, unknown>;
-  const url = obj.authorization_url;
-  if (typeof url === "string" && /^https?:\/\//i.test(url)) return url;
-  return null;
+  // `BrowserUrlSchema` owns the http(s)-only launch policy — route the
+  // candidate through it rather than re-implementing the prefix check.
+  const parsed = BrowserUrlSchema.safeParse(obj.authorization_url);
+  return parsed.success ? parsed.data : null;
 }
 
 export interface ReplRunOptions {

@@ -350,9 +350,68 @@ export async function resolveElicitation(
       metadata: {
         conversation_id: row.conversation_id,
         tool_name: row.tool_name,
+        // Distinguishes an operator confirming via an MCP
+        // `elicitation/create` round-trip from a portal POST to
+        // `/respond`. Derived from the carrier row, not the caller.
+        surface: row.protocol_native ? "mcp_elicitation" : "portal",
       },
     },
     exec,
   );
   return { kind: "resolved", record: rowToRecord(row) };
+}
+
+/**
+ * Resolve an elicitation row AND flip the owning conversation back to
+ * `active`, as ONE atomic unit.
+ *
+ * `createElicitation` moves the conversation to `awaiting_input`. If the
+ * row resolved but the status flip failed (separate writes, no tx), the
+ * loop's pending-elicitation guard would wedge the conversation with no
+ * pending row left to resume from. Both writes therefore run inside a
+ * single `transaction`.
+ *
+ * The conversation flip fires ONLY when the resolve actually
+ * transitioned (`kind === "resolved"`). A lost race — a concurrent
+ * `respondElicitation` resolved the row first — returns
+ * `already_resolved`; the winning path already flipped the status, so
+ * re-flipping here would be wrong.
+ */
+export async function resolveElicitationAndReactivate(
+  p: {
+    tenant_id: string;
+    conversation_id: string;
+    id: string;
+    output: unknown;
+    decided_by: string | null;
+    reason?: string;
+    status?: "resolved" | "cancelled";
+  },
+  db: Db,
+): Promise<ResolveElicitationResult> {
+  let resolution: ResolveElicitationResult | undefined;
+  await db.transaction(async (tx) => {
+    resolution = await resolveElicitation(
+      {
+        tenant_id: p.tenant_id,
+        id: p.id,
+        output: p.output,
+        decided_by: p.decided_by,
+        ...(p.reason ? { reason: p.reason } : {}),
+        ...(p.status ? { status: p.status } : {}),
+      },
+      tx,
+    );
+    if (resolution.kind === "resolved") {
+      await tx
+        .update(conversations)
+        .set({ status: "active", updated_at: new Date() })
+        .where(
+          and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+        );
+    }
+  });
+  // `resolution` is always assigned — `resolveElicitation` returns a
+  // value on every path and the tx callback awaits it before returning.
+  return resolution as ResolveElicitationResult;
 }

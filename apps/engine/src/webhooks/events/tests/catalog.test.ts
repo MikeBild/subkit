@@ -16,6 +16,7 @@ describe("events catalog", () => {
       "workflow.updated",
       "connector.oauth.refreshed",
       "connector.oauth.callback_succeeded",
+      "connector.oauth.callback_failed",
       "patch.proposed",
       "apikey.rotated",
       "conversation.committed",
@@ -28,6 +29,14 @@ describe("events catalog", () => {
       connector_slug: "google-gmail",
       has_refresh_token: true,
       source: "oauth_callback",
+    });
+    expect(res.ok).toBe(true);
+  });
+
+  test("validateEventPayload accepts a connector.oauth.callback_failed payload", () => {
+    const res = validateEventPayload("connector.oauth.callback_failed", {
+      connector_id: "33333333-3333-4333-8333-333333333333",
+      reason: "access_denied",
     });
     expect(res.ok).toBe(true);
   });
