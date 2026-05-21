@@ -21,7 +21,7 @@
 
 import { ConfigSchema } from "../src/config/schema.ts";
 
-function main(): void {
+async function main(): Promise<void> {
   const parsed = ConfigSchema.safeParse({
     database: { url: "postgresql://USER:PASSWORD@localhost:5432/subkit" },
   });
@@ -33,7 +33,18 @@ function main(): void {
     );
     process.exit(2);
   }
-  process.stdout.write(`${JSON.stringify(parsed.data, null, 2)}\n`);
+  // Format through biome so the generated file is byte-identical to what
+  // `bun run lint` expects — `JSON.stringify` always multi-lines arrays
+  // while biome keeps short ones inline, which would otherwise leave the
+  // generated example perpetually lint-dirty.
+  const raw = JSON.stringify(parsed.data, null, 2);
+  const proc = Bun.spawn(
+    ["bunx", "biome", "format", "--stdin-file-path=subkit.config.example.json"],
+    { stdin: new TextEncoder().encode(raw), stdout: "pipe" },
+  );
+  const formatted = await new Response(proc.stdout).text();
+  await proc.exited;
+  process.stdout.write(formatted.endsWith("\n") ? formatted : `${formatted}\n`);
 }
 
-main();
+await main();

@@ -88,6 +88,12 @@ Authentication
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `auth.firebase.login_url` | string | `""` | global | no | yes |  |
 | `auth.firebase.project_id` | string | `""` | global | no | yes |  |
+| `auth.mcp_oauth.access_token_ttl_seconds` | number | `3600` | global | no | no | Lifetime in seconds for MCP OAuth access tokens. |
+| `auth.mcp_oauth.authorization_code_ttl_seconds` | number | `60` | global | no | no | Lifetime in seconds for MCP OAuth authorization codes. |
+| `auth.mcp_oauth.dynamic_registration_enabled` | boolean | `true` | global | no | no | Allow RFC 7591 dynamic client registration at POST /v1/oauth/register. |
+| `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
+| `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
+| `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
 | `auth.oidc.client_id` | string | `""` | global | no | yes |  |
 | `auth.oidc.client_secret` | string | `""` | global | yes | yes |  |
 | `auth.oidc.issuer_url` | string | `""` | global | no | yes |  |

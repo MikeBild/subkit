@@ -91,6 +91,12 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "auth.session.secret": "Session signing secret",
   "auth.firebase.project_id": "Firebase project ID",
   "auth.firebase.login_url": "Firebase login URL",
+  "auth.mcp_oauth.enabled": "MCP OAuth server enabled",
+  "auth.mcp_oauth.dynamic_registration_enabled": "MCP OAuth dynamic client registration",
+  "auth.mcp_oauth.access_token_ttl_seconds": "MCP OAuth access token TTL (seconds)",
+  "auth.mcp_oauth.refresh_token_ttl_seconds": "MCP OAuth refresh token TTL (seconds)",
+  "auth.mcp_oauth.authorization_code_ttl_seconds": "MCP OAuth authorization code TTL (seconds)",
+  "auth.mcp_oauth.scopes_supported": "MCP OAuth advertised scopes",
 
   // ── Chat platform integrations ─────────────────────────────────
   "platform.slack.signing_secret": "Slack signing secret",

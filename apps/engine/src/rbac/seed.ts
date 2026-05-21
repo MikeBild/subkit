@@ -72,7 +72,6 @@ const ENDUSER_PERMISSIONS = new Set<string>([
   "conversation:list",
   "knowledge:read",
   "file:read",
-  "mcp:read",
 ]);
 const METRICS_SCRAPER_PERMISSIONS = new Set<string>(["metrics:read"]);
 const PORTAL_TOKEN_USER_PERMISSIONS = new Set<string>([

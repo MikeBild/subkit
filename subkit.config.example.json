@@ -85,6 +85,14 @@
     "firebase": {
       "project_id": "",
       "login_url": ""
+    },
+    "mcp_oauth": {
+      "enabled": true,
+      "dynamic_registration_enabled": true,
+      "access_token_ttl_seconds": 3600,
+      "refresh_token_ttl_seconds": 2592000,
+      "authorization_code_ttl_seconds": 60,
+      "scopes_supported": ["mcp:read", "mcp:authoring", "mcp:admin"]
     }
   },
   "platform": {
