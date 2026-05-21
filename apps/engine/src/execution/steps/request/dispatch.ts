@@ -361,8 +361,6 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   const max_attempts = (p.step.max_retries ?? 4) + 1; // 1 initial + N retries
   const timeoutMs = p.step.timeout_ms ?? REQUEST_TIMEOUT_DEFAULT_MS;
   const timeoutCtrl = new AbortController();
-  const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
-  const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
 
   // A request step is a downstream consumer of the scope via
   // `${scope.<step>.…}` placeholder substitution. When an upstream loop
@@ -370,7 +368,15 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // holds `OffloadRef` placeholders — re-hydrate them so a token like
   // `${scope.prior_loop.data}` substitutes the real payload. The helper
   // returns the same object when nothing was offloaded.
+  //
+  // This runs BEFORE the timeout timer is armed: rehydration is a
+  // DB/S3 fetch that is step *setup*, not part of the HTTP call. Arming
+  // the timer first would burn the request's `timeout_ms` budget on the
+  // rehydrate fetch before the HTTP call even starts.
   const resolvedScope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope);
+
+  const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
+  const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
 
   // Substitute `${item.…}`, `${scope.<step>.…}`, `${input.…}`,
   // `${cred.…}`, `${connector.…}` against the live execution scope BEFORE

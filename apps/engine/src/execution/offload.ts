@@ -52,13 +52,30 @@ export interface OffloadRef {
   size_bytes: number;
 }
 
+/**
+ * Redact a `storage_uri` to its scheme only. A full offload locator is
+ * `s3://<bucket>/<key>` or `fixture://<uuid>` — the bucket/key exposes
+ * the offload backend layout, so the user-facing error `.message` must
+ * never carry it. Operators get the full uri via the structured-log
+ * `storage_uri` field (and `OffloadResolutionError.storage_uri`).
+ */
+function redactStorageUri(storage_uri: string): string {
+  const sep = storage_uri.indexOf("://");
+  return sep > 0 ? `${storage_uri.slice(0, sep)}://…` : "…";
+}
+
 /** Typed failure raised when an `OffloadRef` cannot be re-hydrated.
- *  Never swallowed — re-hydration failure fails the consuming step. */
+ *  Never swallowed — re-hydration failure fails the consuming step.
+ *
+ *  `.message` carries only the REDACTED scheme (`s3://…` / `fixture://…`)
+ *  so it is safe to surface in a REST/MCP error envelope. The full
+ *  locator stays on `.storage_uri` — a non-message field — for operator
+ *  log lines. */
 export class OffloadResolutionError extends Error {
   readonly code = "offload_resolution_failed";
   readonly storage_uri: string;
   constructor(storage_uri: string, detail: string) {
-    super(`failed to resolve offloaded payload ${storage_uri}: ${detail}`);
+    super(`failed to resolve offloaded payload ${redactStorageUri(storage_uri)}: ${detail}`);
     this.name = "OffloadResolutionError";
     this.storage_uri = storage_uri;
   }
@@ -125,14 +142,7 @@ export async function resolveOffloaded(
     }
     const key = withoutScheme.slice(slash + 1);
     try {
-      const client = new S3Client({
-        endPoint: cfg.endpoint ?? `s3.${cfg.region}.amazonaws.com`,
-        region: cfg.region,
-        bucket: cfg.bucket,
-        accessKey: cfg.accessKey,
-        secretKey: cfg.secretKey,
-        pathStyle: Boolean(cfg.endpoint),
-      });
+      const client = offloadS3Client(cfg);
       const res = await client.getObject(key);
       const text = await res.text();
       return JSON.parse(text);
@@ -232,6 +242,37 @@ function s3OffloadConfig(): S3OffloadConfig | null {
   return cfg;
 }
 
+// Lazily-memoised S3 client for the offload bucket. Both the WRITE
+// path (`writeToS3`) and the READ path (`resolveOffloaded`) share this
+// one client — a loop rehydrating N offloaded bodies would otherwise
+// build N clients (and N TLS pools). The memo key is the resolved
+// config so a `setConfigKey` change (new bucket/keys at runtime) builds
+// a fresh client instead of reusing a stale one.
+let memoisedOffloadClient: { key: string; client: S3Client } | null = null;
+
+function offloadS3Client(cfg: S3OffloadConfig): S3Client {
+  const key = JSON.stringify([
+    cfg.bucket,
+    cfg.region,
+    cfg.endpoint ?? "",
+    cfg.accessKey,
+    cfg.secretKey,
+  ]);
+  if (memoisedOffloadClient && memoisedOffloadClient.key === key) {
+    return memoisedOffloadClient.client;
+  }
+  const client = new S3Client({
+    endPoint: cfg.endpoint ?? `s3.${cfg.region}.amazonaws.com`,
+    region: cfg.region,
+    bucket: cfg.bucket,
+    accessKey: cfg.accessKey,
+    secretKey: cfg.secretKey,
+    pathStyle: Boolean(cfg.endpoint),
+  });
+  memoisedOffloadClient = { key, client };
+  return client;
+}
+
 async function writeToS3(
   cfg: S3OffloadConfig,
   params: MaybeOffloadParams,
@@ -242,14 +283,7 @@ async function writeToS3(
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const key = `${cfg.keyPrefix}/${params.tenant_id}/${params.execution_id}/${id}.json`;
-  const client = new S3Client({
-    endPoint: cfg.endpoint ?? `s3.${cfg.region}.amazonaws.com`,
-    region: cfg.region,
-    bucket: cfg.bucket,
-    accessKey: cfg.accessKey,
-    secretKey: cfg.secretKey,
-    pathStyle: Boolean(cfg.endpoint),
-  });
+  const client = offloadS3Client(cfg);
   await client.putObject(key, serialized);
   return `s3://${cfg.bucket}/${key}`;
 }

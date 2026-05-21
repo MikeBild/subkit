@@ -236,6 +236,7 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
       const runBody = (await runRes.json()) as {
         status: string;
         output: unknown;
+        steps?: Array<{ output_preview?: unknown }>;
       };
 
       // The run must succeed end-to-end.
@@ -244,6 +245,23 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
       // The external REST response must be pure JSON — no OffloadRef
       // discriminant object anywhere in the output tree.
       expect(containsOffloadRef(runBody.output)).toBe(false);
+
+      // Step summaries (`steps[].output_preview`) are ALSO returned over
+      // the REST surface. A loop step's preview collapses OffloadRefs to
+      // a scalar string marker — neither object discriminant (`$offloaded`
+      // dollar form nor `_offloaded` underscore form) may survive. String-
+      // search the whole serialized run body to catch a leak past
+      // `containsOffloadRef`, which only matches the dollar discriminant.
+      const serializedRun = JSON.stringify(runBody);
+      expect(serializedRun).not.toContain("$offloaded");
+      expect(serializedRun).not.toContain("_offloaded");
+      const loopSummary = runBody.steps?.find(
+        (s) => (s as { step_key?: string }).step_key === "fetch_large",
+      );
+      expect(loopSummary).toBeDefined();
+      const loopPreview = JSON.stringify(loopSummary?.output_preview ?? null);
+      expect(loopPreview).not.toContain("$offloaded");
+      expect(loopPreview).not.toContain("_offloaded");
 
       // The output is the iteration array; each iteration must hold the
       // real blob data, not a truncated preview or reference stub.

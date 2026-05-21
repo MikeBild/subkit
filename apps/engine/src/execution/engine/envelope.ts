@@ -4,7 +4,6 @@
 
 import { type OffloadRef, previewOf } from "../offload.ts";
 import type { RunStepOutcome } from "../step-runner.ts";
-import { STEP_RESULT_DB_BYTES } from "../timeouts.ts";
 import type { StepResult } from "../types.ts";
 
 export function validateAgainstJsonSchema(
@@ -104,12 +103,22 @@ export function bodyEnvelopeForLoopAccumulator(outcome: RunStepOutcome): ScopeEn
   // Only swap when the step-runner actually offloaded this payload.
   // `result_storage_uri` is `null` for inline (small) results.
   if (storageUri && outcome.scope_value != null) {
-    const sizeBytes = outcome.result_size_bytes ?? STEP_RESULT_DB_BYTES + 1;
+    // INVARIANT: the step-runner sets `result_size_bytes` and
+    // `result_storage_uri` together (offload write returns both). A
+    // storage uri with no size is a broken outcome — fail loudly here
+    // rather than fudging a placeholder size that would under-report
+    // the payload everywhere the `OffloadRef` flows.
+    if (typeof outcome.result_size_bytes !== "number") {
+      throw new Error(
+        `offload outcome invariant violated: result_storage_uri is set ` +
+          `(${storageUri}) but result_size_bytes is missing`,
+      );
+    }
     const ref: OffloadRef = {
       $offloaded: true,
       storage_uri: storageUri,
       preview: outcome.result_preview ?? previewOf(outcome.scope_value),
-      size_bytes: sizeBytes,
+      size_bytes: outcome.result_size_bytes,
     };
     env.data = ref;
   }

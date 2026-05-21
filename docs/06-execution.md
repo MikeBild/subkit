@@ -174,6 +174,20 @@ what the payload looked like without resolving it.
 The `GET /v1/executions/:id` route hydrates from the storage URI when
 present; consumers never read the URI directly.
 
+Inside a run, a loop that spills large body payloads keeps its
+`iterationResults` array bounded by substituting an `OffloadRef` — a
+small in-memory placeholder pointing at the already-spilled
+`storage_uri` — in place of each full payload. This is the loop-memory
+(OOM) guard: N iterations cost N references, not N resident envelopes.
+An `OffloadRef` is an execution-internal, in-memory-only type. It MUST
+be fully resolved back to plain JSON before the value crosses any
+external surface — the persisted execution result, the REST response,
+the MCP `wf_*` tools, or `get_raw_result`. Readers never see the
+discriminant; a persisted result that still contains one is a contract
+violation. Preview surfaces (loop/parallel step summaries) are exempt
+from re-hydration but still carry no discriminant: each `OffloadRef`
+collapses to a plain scalar string marker, never a structured object.
+
 ### Self-Healing Mode
 
 `RunOptions.self_healing.enabled` lets a caller opt out of the

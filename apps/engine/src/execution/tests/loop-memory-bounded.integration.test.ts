@@ -408,4 +408,85 @@ describe("loop memory-bounded: OOM guard", () => {
     // No OffloadRef in the returned output.
     expect(containsOffloadRef(result.output)).toBe(false);
   });
+
+  test("TC7 — downstream LOOP iterates a prior loop's offloaded output (re-hydrated at the loop call site)", async () => {
+    // An OUTER loop produces large body payloads (each iteration's body
+    // step exceeds STEP_RESULT_DB_BYTES → offloaded, so the outer loop's
+    // scope entry holds OffloadRefs). An INNER loop then iterates
+    // `$scope.<outer>.data` — the outer loop's iteration array.
+    //
+    // TC3 covers a downstream TRANSFORM (the jsonata-bindings.ts call
+    // site); this exercises `resolveScopeForJsonata` at the `loop.ts`
+    // call site instead. The inner loop's `over` is a downstream
+    // consumer of the scope, so its OffloadRefs MUST be re-hydrated
+    // before the collection resolves — otherwise the inner loop would
+    // iterate over reference stubs, not the real payloads.
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "loop-downstream-loop",
+      steps: [
+        {
+          kind: "transform",
+          id: "items7",
+          language: "jsonata",
+          expression: "[1, 2]",
+        },
+        // Outer loop: each iteration fetches a large blob → offloaded.
+        {
+          kind: "loop",
+          id: "outer7",
+          over: "$scope.items7.data",
+          item_var: "item",
+          body: ["fetch_blob7"],
+        },
+        {
+          kind: "request",
+          id: "fetch_blob7",
+          method: "GET",
+          url: `${largeMock.baseUrl}/big`,
+        },
+        // Inner loop: iterates the outer loop's iteration array. The
+        // `over` expression reads `$scope.outer7.data`, which carries
+        // OffloadRefs until resolveScopeForJsonata re-hydrates it.
+        {
+          kind: "loop",
+          id: "inner7",
+          over: "$scope.outer7.data",
+          item_var: "row",
+          body: ["pick_blob7"],
+        },
+        // Inner body: extract the blob length from the re-hydrated row.
+        // `row` is one outer-iteration envelope: { fetch_blob7: { data: { blob } } }.
+        {
+          kind: "transform",
+          id: "pick_blob7",
+          language: "jsonata",
+          expression: "$length(row.fetch_blob7.data.blob)",
+        },
+      ],
+    });
+
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+
+    expect(result.status).toBe("succeeded");
+    // No OffloadRef leaks into the persisted / returned output.
+    expect(containsOffloadRef(result.output)).toBe(false);
+
+    // The final output is the inner loop's iteration array — one entry
+    // per outer-loop iteration. Each entry's `pick_blob7.data` is the
+    // blob length, proving the inner loop saw the FULLY re-hydrated
+    // outer-loop array (not reference stubs).
+    const output = result.output as Array<{ pick_blob7: { data: unknown } }>;
+    expect(Array.isArray(output)).toBe(true);
+    expect(output).toHaveLength(2);
+    for (const iter of output) {
+      expect(isOffloadRef(iter?.pick_blob7?.data)).toBe(false);
+      // Each inner iteration computed the length of a re-hydrated blob.
+      expect(iter?.pick_blob7?.data).toBe(LARGE_SIZE);
+    }
+  });
 });

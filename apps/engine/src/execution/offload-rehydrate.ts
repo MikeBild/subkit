@@ -54,22 +54,23 @@ export function containsOffloadRef(value: unknown): boolean {
 
 /**
  * Synchronous, DB-free counterpart to `deepResolveOffloadRefs`: walk
- * `value` and collapse every `OffloadRef` to a small marker object
- * carrying its inline `preview` string. Used for preview surfaces
- * (step summaries the LLM reads) where re-hydrating the full payload
- * from storage would be wasteful — the operator/LLM only needs a
- * sample. Returns the input unchanged when no `OffloadRef` is present.
+ * `value` and collapse every `OffloadRef` to a plain SCALAR string
+ * marker. Used for preview surfaces (loop/parallel step summaries the
+ * LLM reads, themselves returned in `RunResult` over the REST surface)
+ * where re-hydrating the full payload from storage would be wasteful.
+ *
+ * The marker is a primitive string — `[offloaded:<storage_uri>:<n>B]`
+ * — deliberately NOT a structured object. A preview that survives this
+ * collapse can never carry an object discriminant (`$offloaded` /
+ * `_offloaded`), so the primitive type alone proves no payload (and no
+ * `OffloadRef`) leaked onto an external surface. Returns the input
+ * unchanged when no `OffloadRef` is present.
  */
 export function previewOffloadRefs(value: unknown): unknown {
   if (!containsOffloadRef(value)) return value;
   if (isOffloadRef(value)) {
     const ref = value as OffloadRef;
-    return {
-      _offloaded: true,
-      storage_uri: ref.storage_uri,
-      size_bytes: ref.size_bytes,
-      preview: ref.preview,
-    };
+    return `[offloaded:${ref.storage_uri}:${ref.size_bytes}B]`;
   }
   if (Array.isArray(value)) {
     return value.map((item) => previewOffloadRefs(item));
