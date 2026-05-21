@@ -134,11 +134,12 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         return null;
       }
 
+      const ip =
+        req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+        req.headers.get("x-real-ip") ??
+        "unknown";
+
       if (!constantTimeHexEquals(row.token_sha256, tokenHash)) {
-        const ip =
-          req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-          req.headers.get("x-real-ip") ??
-          "unknown";
         recordAuthFailure(ip);
         log.auth.denied({
           provider: "mcp_oauth",
@@ -152,11 +153,13 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
       const now = new Date();
 
       if (row.revoked_at && row.revoked_at <= now) {
+        recordAuthFailure(ip);
         log.auth.denied({ provider: "mcp_oauth", reason: "revoked", token_id: row.id });
         return null;
       }
 
       if (row.expires_at <= now) {
+        recordAuthFailure(ip);
         log.auth.denied({ provider: "mcp_oauth", reason: "expired", token_id: row.id });
         return null;
       }

@@ -202,6 +202,15 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       roleScopes,
     );
 
+    // Validate RFC 8707 resource indicator — must target this server if present.
+    if (resource) {
+      const publicBaseUrl = getConfig().server.public_base_url;
+      const allowed = [publicBaseUrl, `${publicBaseUrl}/mcp`];
+      if (!allowed.includes(resource)) {
+        return buildErrorRedirect(redirectUri, "invalid_target", state);
+      }
+    }
+
     // Empty intersection after role-check → access_denied
     if (!grantedScope) {
       return buildErrorRedirect(redirectUri, "access_denied", state);

@@ -12,6 +12,7 @@
 
 // ── SDK type shapes ───────────────────────────────────────────────────────────
 // Import only type shapes from the MCP SDK — never runtime handlers.
+import { randomBytes } from "node:crypto";
 import type { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
@@ -98,8 +99,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
   // ── registerClient ──────────────────────────────────────────────────────────
   async function registerClient(input: RegisterClientInput): Promise<RegisterClientResult> {
-    const { randomBytes } = await import("node:crypto");
-
     // Only public clients (none) are supported — confidential clients dropped.
     const authMethod = input.token_endpoint_auth_method ?? "none";
     if (authMethod !== "none") {

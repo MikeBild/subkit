@@ -88,12 +88,8 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   app.use("/v1/oauth/clients/:client_id", (c, next) => {
-    const client_id = c.req.param("client_id");
     if (c.req.method === "DELETE") {
-      return requirePermission("mcp_oauth_client:revoke", () => ({
-        type: "mcp_oauth_client",
-        id: client_id,
-      }))(c, next);
+      return requirePermission("mcp_oauth_client:revoke")(c, next);
     }
     return next();
   });
@@ -211,7 +207,7 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
           actor_type: principal.kind,
           actor_id: principal.id,
           action: AuditAction.MCP_OAUTH_TOKEN_REVOKED,
-          resource_type: "mcp_oauth_client",
+          resource_type: "mcp_oauth_token",
           resource_id: row.id,
           result: "success",
           metadata: {

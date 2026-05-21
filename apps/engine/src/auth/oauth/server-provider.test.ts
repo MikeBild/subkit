@@ -540,6 +540,57 @@ describe("refresh token rotation", () => {
     expect(scopes).not.toContain("mcp:admin");
     expect(scopes).toContain("mcp:read");
   });
+
+  test("3-hop chain replay revokes all tokens (A→B→C, replay A revokes A+B+C)", async () => {
+    const clientId = await registerTestClient({ scope: "mcp:read" });
+
+    // Hop 1: issue initial pair (A)
+    const pairA = await issueTokenPair({ clientId, scope: "mcp:read" });
+
+    // Hop 2: rotate A → B
+    const pairB = await provider.exchangeRefreshToken({
+      refreshToken: pairA.refresh_token,
+      clientId,
+    });
+
+    // Hop 3: rotate B → C
+    const pairC = await provider.exchangeRefreshToken({
+      refreshToken: pairB.refresh_token,
+      clientId,
+    });
+    void pairC;
+
+    // Replay token A (already rotated to B) — must revoke A, B, C and their access tokens
+    let err: unknown;
+    try {
+      await provider.exchangeRefreshToken({ refreshToken: pairA.refresh_token, clientId });
+    } catch (e) {
+      err = e;
+    }
+    expect((err as { oauth_error?: string }).oauth_error).toBe("invalid_grant");
+
+    // All three refresh tokens must be revoked
+    for (const pair of [pairA, pairB, pairC]) {
+      const h = sha256Hex(pair.refresh_token);
+      const rows = await db
+        .select({ revoked_at: mcpOauthRefreshTokens.revoked_at })
+        .from(mcpOauthRefreshTokens)
+        .where(eq(mcpOauthRefreshTokens.token_sha256, h))
+        .limit(1);
+      expect(rows[0]?.revoked_at).not.toBeNull();
+    }
+
+    // All three access tokens must be revoked
+    for (const pair of [pairA, pairB, pairC]) {
+      const h = sha256Hex(pair.access_token);
+      const rows = await db
+        .select({ revoked_at: mcpOauthAccessTokens.revoked_at })
+        .from(mcpOauthAccessTokens)
+        .where(eq(mcpOauthAccessTokens.token_sha256, h))
+        .limit(1);
+      expect(rows[0]?.revoked_at).not.toBeNull();
+    }
+  });
 });
 
 // ─── verifyAccessToken ─────────────────────────────────────────────────────

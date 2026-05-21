@@ -134,8 +134,7 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
   });
 
   test("returns 403 for a member-role principal", async () => {
-    // Use a UUID-format client_id so the resource_grant lookup can cast it correctly.
-    const clientId = "00000000-0000-0000-0000-000000fff666";
+    const clientId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
     await seedClient(clientId);
 
     const res = await fetch(`${ctx.baseUrl}/v1/oauth/clients/${clientId}`, {
