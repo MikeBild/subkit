@@ -37,13 +37,15 @@ import {
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
+  bodyEnvelopeForLoopAccumulator,
   envelopeFor,
   type ScopeEnvelope,
   validateAgainstJsonSchema,
   wrapEnvelope,
 } from "./engine/envelope.ts";
 import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
-import { maybeOffload, previewOf } from "./offload.ts";
+import { isOffloadRef, maybeOffload, previewOf } from "./offload.ts";
+import { deepResolveOffloadRefs, previewOffloadRefs } from "./offload-rehydrate.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
 import {
@@ -402,8 +404,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                 outcome: bodyOutcome.result.status,
               });
             }
+            // Full envelope in `childScope` so later body steps in THIS
+            // iteration can read `$scope.<id>.data`. `bodyResults`
+            // accumulates into the run-resident `iterationResults`, so it
+            // gets the OffloadRef-swapped envelope: a large body payload
+            // is replaced by a reference to its already-persisted
+            // storage_uri (no second write), bounding loop memory.
             childScope[bodyStep.id] = envelopeFor(bodyOutcome);
-            bodyResults[bodyStep.id] = envelopeFor(bodyOutcome);
+            bodyResults[bodyStep.id] = bodyEnvelopeForLoopAccumulator(bodyOutcome);
           }
           iterationResults.push(bodyResults);
         }
@@ -430,6 +438,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               if (env.error) continue;
               const data = env.data;
               if (data == null) continue;
+              // An offloaded body payload appears as an `OffloadRef`.
+              // It is productive by definition (only oversize payloads
+              // offload) — count it without re-hydrating.
+              if (isOffloadRef(data)) return true;
               if (Array.isArray(data) && data.length === 0) continue;
               if (typeof data === "object" && Object.keys(data as object).length === 0) continue;
               return true;
@@ -544,7 +556,11 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     if (step.kind === "loop" || step.kind === "parallel") {
       const wrapped = scope[step.id] as { data?: unknown } | undefined;
       if (wrapped && typeof wrapped === "object" && "data" in wrapped) {
-        outputPreview = wrapped.data;
+        // For a loop, `wrapped.data` (iterationResults) may embed
+        // `OffloadRef` placeholders. The step summary is a preview
+        // surface for the LLM — collapse each ref to its inline
+        // `preview` string rather than re-hydrating from storage.
+        outputPreview = previewOffloadRefs(wrapped.data);
       }
     }
     stepSummaries.push({
@@ -592,6 +608,17 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       }
       // continue mode: keep scope value, mark continue
     }
+  }
+
+  // Re-hydrate any `OffloadRef` placeholders in the final output BEFORE
+  // output_transform / response_filters / output_schema / validation /
+  // the aggregate `maybeOffload`. The loop runner keeps `iterationResults`
+  // bounded by substituting refs (the OOM fix); here — once — we resolve
+  // them so downstream consumers and the PERSISTED result see plain JSON.
+  // An `OffloadRef` must never cross an external surface. A re-hydration
+  // failure throws `OffloadResolutionError`, failing the run.
+  if (lastOutput !== undefined && lastOutput !== null) {
+    lastOutput = await deepResolveOffloadRefs(db, tenant_id, lastOutput);
   }
 
   // Optional final-output transform. The two forms are mutually

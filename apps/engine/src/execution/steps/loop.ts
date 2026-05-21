@@ -6,7 +6,7 @@ import { logger } from "../../logging/logger.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { LoopStep } from "../../workflows/types.ts";
-import { buildJsonataBindings } from "../jsonata-bindings.ts";
+import { buildJsonataBindings, resolveScopeForJsonata } from "../jsonata-bindings.ts";
 import { compile as compileJsonata } from "../jsonata-engine.ts";
 import { applySelector } from "../selectors.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
@@ -21,6 +21,11 @@ export async function runLoopStep(p: {
 }): Promise<StepResult> {
   const start = Date.now();
   try {
+    // A loop's `over` / `data_selector` is a downstream consumer of the
+    // scope — a nested loop can iterate a prior loop's output. Re-hydrate
+    // any `OffloadRef`s an upstream loop spilled so the collection
+    // resolves to a real array; no-op when nothing was offloaded.
+    p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope);
     let collection: unknown;
     // `data_selector` (JS function form) takes precedence when set.
     // The body is wrapped as `(sourceData) => <body>` so authors can

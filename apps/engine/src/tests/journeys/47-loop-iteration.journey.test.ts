@@ -8,10 +8,22 @@
 //   - AC3: `$loop_index` is injected and increments correctly.
 //   - AC4: Body steps are skipped in the linear walk (not double-executed).
 //   - AC5: Workflow status is "succeeded" when all iterations complete.
+//   - AC6: A loop whose body produces large (offloaded) payloads still
+//          succeeds end-to-end; the final output is correct plain JSON
+//          (no OffloadRef discriminant leaks through the REST surface).
 // Spec refs: plan docs — §2e LOOP STEP: Actual Item Iteration
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { containsOffloadRef } from "../../execution/offload-rehydrate.ts";
+import { STEP_RESULT_DB_BYTES } from "../../execution/timeouts.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
+
+// Payload large enough to trigger the offload path inside the engine.
+// This is the JOURNEY layer — we want to prove that the REST surface
+// returns plain JSON even when the engine used OffloadRefs internally.
+const OFFLOAD_BLOB = "z".repeat(STEP_RESULT_DB_BYTES + 512);
 
 let ctx: JourneyCtx;
 
@@ -159,5 +171,92 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
     // not as "succeeded" — it was already handled inside the loop body.
     const halveLinear = runBody.steps.find((s) => s.step_key === "halve");
     expect(halveLinear?.status).toBe("aborted");
+  });
+
+  test("AC6: large-body loop offloads internally; REST surface returns plain JSON (no OffloadRef leaks)", async () => {
+    // Start a local mock server that returns a payload exceeding the offload
+    // threshold so the engine stores OffloadRefs in its in-memory scope.
+    // The REST response from POST /v1/executions must NOT contain any
+    // `$offloaded: true` discriminant — that is an internal implementation
+    // detail that must never cross the external surface.
+    let mockServer: Server | undefined;
+    let mockBase = "";
+
+    await new Promise<void>((resolve) => {
+      const srv = createServer((_req, res) => {
+        res.setHeader("content-type", "application/json");
+        res.statusCode = 200;
+        res.end(JSON.stringify({ blob: OFFLOAD_BLOB }));
+      });
+      mockServer = srv;
+      srv.listen(0, "127.0.0.1", () => {
+        const addr = srv.address() as AddressInfo;
+        mockBase = `http://127.0.0.1:${addr.port}`;
+        resolve();
+      });
+    });
+
+    try {
+      const createRes = await journeyFetch(ctx, "/v1/workflows", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "loop-offload-journey",
+          slug: "loop-offload-journey",
+          steps: [
+            {
+              kind: "transform",
+              id: "get_ids",
+              expression: "[1, 2]",
+            },
+            {
+              kind: "loop",
+              id: "fetch_large",
+              over: "get_ids.data",
+              item_var: "id",
+              body: ["get_blob"],
+            },
+            {
+              kind: "request",
+              id: "get_blob",
+              method: "GET",
+              url: `${mockBase}/blob`,
+            },
+          ],
+        }),
+      });
+      expect(createRes.status).toBe(201);
+      const wf = (await createRes.json()) as { id: string };
+
+      const runRes = await journeyFetch(ctx, "/v1/executions", {
+        method: "POST",
+        body: JSON.stringify({ source: "saved", workflow_id: wf.id, input: {} }),
+      });
+      expect(runRes.status).toBe(200);
+
+      const runBody = (await runRes.json()) as {
+        status: string;
+        output: unknown;
+      };
+
+      // The run must succeed end-to-end.
+      expect(runBody.status).toBe("succeeded");
+
+      // The external REST response must be pure JSON — no OffloadRef
+      // discriminant object anywhere in the output tree.
+      expect(containsOffloadRef(runBody.output)).toBe(false);
+
+      // The output is the iteration array; each iteration must hold the
+      // real blob data, not a truncated preview or reference stub.
+      const iterations = runBody.output as Array<{ get_blob: { data: { blob?: string } } }>;
+      expect(Array.isArray(iterations)).toBe(true);
+      expect(iterations).toHaveLength(2);
+      for (const iter of iterations) {
+        const blob = iter?.get_blob?.data?.blob;
+        expect(typeof blob).toBe("string");
+        expect((blob ?? "").length).toBeGreaterThan(STEP_RESULT_DB_BYTES);
+      }
+    } finally {
+      await new Promise<void>((resolve) => mockServer!.close(() => resolve()));
+    }
   });
 });

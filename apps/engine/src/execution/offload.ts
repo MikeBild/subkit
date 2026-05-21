@@ -13,6 +13,7 @@
 // at a glance what the payload looked like without resolving it.
 
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
+import { and, eq } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
@@ -25,6 +26,121 @@ export interface OffloadResult {
   storage_uri: string | null;
   preview: string | null; // truncated string preview if offloaded
   size_bytes: number;
+}
+
+/**
+ * Execution-internal placeholder for a large payload that has ALREADY
+ * been offloaded to durable storage (S3 or the `execution_fixtures`
+ * table) by an upstream step. Substituted into the in-memory `scope`
+ * in place of the full payload so a loop's `iterationResults` array
+ * holds bounded references instead of N resident envelopes — the OOM
+ * fix in `engine.ts`.
+ *
+ * INVARIANT: an `OffloadRef` is in-memory-only. It MUST be resolved
+ * back to plain JSON via `resolveOffloaded` before the value crosses
+ * ANY external surface — persisted execution result, validator input,
+ * `data_selector` input, MCP/HTTP response. A persisted result that
+ * still contains an `OffloadRef` is a contract violation.
+ */
+export interface OffloadRef {
+  $offloaded: true;
+  /** `fixture://<uuid>` or `s3://<bucket>/<key>` — the durable locator. */
+  storage_uri: string;
+  /** Inline `STEP_RESULT_PREVIEW_BYTES`-capped sample for diagnostics. */
+  preview: string;
+  /** Serialized byte size of the offloaded payload. */
+  size_bytes: number;
+}
+
+/** Typed failure raised when an `OffloadRef` cannot be re-hydrated.
+ *  Never swallowed — re-hydration failure fails the consuming step. */
+export class OffloadResolutionError extends Error {
+  readonly code = "offload_resolution_failed";
+  readonly storage_uri: string;
+  constructor(storage_uri: string, detail: string) {
+    super(`failed to resolve offloaded payload ${storage_uri}: ${detail}`);
+    this.name = "OffloadResolutionError";
+    this.storage_uri = storage_uri;
+  }
+}
+
+/** Type guard for `OffloadRef`. */
+export function isOffloadRef(v: unknown): v is OffloadRef {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    (v as { $offloaded?: unknown }).$offloaded === true &&
+    typeof (v as { storage_uri?: unknown }).storage_uri === "string"
+  );
+}
+
+/**
+ * Re-hydrate an `OffloadRef` to the original payload.
+ *
+ * `fixture://<id>` → SELECT `body` from `execution_fixtures` filtered
+ * by **both** `tenant_id` AND `id` — the tenant predicate is mandatory;
+ * a cross-tenant read is the single highest isolation risk on this
+ * path. `s3://<bucket>/<key>` → stream the object via the offload S3
+ * client (the `storage.offload.*` credential block, NOT the
+ * `storage.files.*` object store).
+ *
+ * On a missing or unreadable ref this THROWS `OffloadResolutionError`
+ * — it never returns `undefined`. A silent fallback would let a
+ * truncated result reach a validator or the persisted execution
+ * record.
+ */
+export async function resolveOffloaded(
+  db: Db,
+  tenant_id: string,
+  ref: OffloadRef,
+): Promise<unknown> {
+  const uri = ref.storage_uri;
+  if (uri.startsWith("fixture://")) {
+    const id = uri.slice("fixture://".length);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw new OffloadResolutionError(uri, `invalid fixture id "${id}"`);
+    }
+    const rows = await db
+      .select({ body: executionFixtures.body })
+      .from(executionFixtures)
+      .where(and(eq(executionFixtures.tenant_id, tenant_id), eq(executionFixtures.id, id)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      throw new OffloadResolutionError(uri, "fixture row not found for this tenant");
+    }
+    // `body` is jsonb — drizzle returns the parsed value directly.
+    return row.body ?? null;
+  }
+  if (uri.startsWith("s3://")) {
+    const cfg = s3OffloadConfig();
+    if (!cfg) {
+      throw new OffloadResolutionError(uri, "s3 offload storage is not configured");
+    }
+    // uri is `s3://<bucket>/<key>` — strip scheme + bucket to get the key.
+    const withoutScheme = uri.slice("s3://".length);
+    const slash = withoutScheme.indexOf("/");
+    if (slash < 0) {
+      throw new OffloadResolutionError(uri, "malformed s3 uri (no key component)");
+    }
+    const key = withoutScheme.slice(slash + 1);
+    try {
+      const client = new S3Client({
+        endPoint: cfg.endpoint ?? `s3.${cfg.region}.amazonaws.com`,
+        region: cfg.region,
+        bucket: cfg.bucket,
+        accessKey: cfg.accessKey,
+        secretKey: cfg.secretKey,
+        pathStyle: Boolean(cfg.endpoint),
+      });
+      const res = await client.getObject(key);
+      const text = await res.text();
+      return JSON.parse(text);
+    } catch (err) {
+      throw new OffloadResolutionError(uri, err instanceof Error ? err.message : String(err));
+    }
+  }
+  throw new OffloadResolutionError(uri, "unsupported storage uri scheme");
 }
 
 export function previewOf(value: unknown): string {

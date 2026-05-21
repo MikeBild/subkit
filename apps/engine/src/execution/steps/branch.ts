@@ -5,7 +5,7 @@
 import { logger } from "../../logging/logger.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { BranchStep } from "../../workflows/types.ts";
-import { buildJsonataBindings } from "../jsonata-bindings.ts";
+import { buildJsonataBindings, resolveScopeForJsonata } from "../jsonata-bindings.ts";
 import { compile as compileJsonata } from "../jsonata-engine.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
@@ -18,6 +18,10 @@ export async function runBranchStep(p: {
   const start = Date.now();
   try {
     const expr = compileJsonata(p.step.when);
+    // A branch predicate is a downstream JSONata consumer of the scope.
+    // Re-hydrate any `OffloadRef`s an upstream loop spilled so the
+    // predicate sees original arrays; no-op when nothing was offloaded.
+    p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope);
     // Same binding surface as transform.expression and loop.over —
     // `$scope.<id>.data` reads identically across every author site.
     const bindings = buildJsonataBindings(p.scope, (p.scope as { $input?: unknown }).$input);
