@@ -20,6 +20,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import * as conversationsSvc from "../../conversations/service.ts";
+import { createConversationWithTurn } from "../../conversations/tests/setup.ts";
 import { auditLog, conversationElicitations, workflows } from "../../db/schema/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
@@ -57,7 +58,10 @@ describe("journey: sk-cli elicitation lifecycle", () => {
     conversationId: string;
     elicitationId: string;
   }> {
-    const outcome = await conversationsSvc.createConversation(
+    // createConversation is insert-only; the turn runs via
+    // runConversationTurn. createConversationWithTurn composes both so
+    // the mock provider's queued elicitation actually lands.
+    const outcome = await createConversationWithTurn(
       {
         tenant_id: ctx.tenantId,
         actor_id: ctx.userId,
