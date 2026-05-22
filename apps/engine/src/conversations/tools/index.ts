@@ -8,7 +8,7 @@
 import type { z } from "@hono/zod-openapi";
 import type { Db } from "../../db/client.ts";
 import type { EngineClient } from "../../engine-client/index.ts";
-import type { ElicitationBridge } from "../../mcp/elicitation/bridge.ts";
+import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import type { DraftDocument } from "../types.ts";
 import { analyzeScrapeTargetTool } from "./analyze-scrape-target.ts";
 import {
@@ -141,7 +141,8 @@ export interface ToolContext {
    * `elicitationBridge?.capabilities` and, when present, issue a
    * server→client `elicitation/create` request instead of taking the
    * DB-pause / `respondElicitation` round-trip. See
-   * `apps/engine/src/mcp/elicitation/bridge.ts`.
+   * The contract lives in `conversations/elicitation-bridge.ts`; the
+   * concrete MCP implementation is `mcp/elicitation/bridge.ts`.
    */
   elicitationBridge?: ElicitationBridge;
 }

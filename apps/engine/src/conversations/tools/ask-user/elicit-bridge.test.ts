@@ -278,4 +278,23 @@ describe("mapElicitResultToAskUserOutput — ask_user_form", () => {
   test("undefined content yields an empty object", () => {
     expect(mapElicitResultToAskUserOutput("ask_user_form", {}, undefined)).toEqual({});
   });
+
+  test("a nested-object field value is a contract violation → null (decline-equivalent)", () => {
+    // The form `requestedSchema` only ever declares primitives; a client
+    // returning a nested object broke the contract. The mapper collapses
+    // to null rather than persisting the non-primitive onto `output`.
+    expect(
+      mapElicitResultToAskUserOutput("ask_user_form", {}, { field: { nested: true } }),
+    ).toBeNull();
+  });
+
+  test("an array field value is also a contract violation → null", () => {
+    expect(mapElicitResultToAskUserOutput("ask_user_form", {}, { tags: ["a", "b"] })).toBeNull();
+  });
+
+  test("null field values are permitted primitives", () => {
+    expect(mapElicitResultToAskUserOutput("ask_user_form", {}, { key: null })).toEqual({
+      key: null,
+    });
+  });
 });

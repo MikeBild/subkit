@@ -20,7 +20,7 @@
 // existing approval pause, so the pause contract stays compatible.
 
 import { logger } from "../../../logging/logger.ts";
-import { ElicitationUnsupportedError } from "../../../mcp/elicitation/bridge.ts";
+import { ElicitationUnsupportedError } from "../../elicitation-bridge.ts";
 import {
   createElicitation,
   createNativeElicitation,

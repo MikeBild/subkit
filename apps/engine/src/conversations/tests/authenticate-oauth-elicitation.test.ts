@@ -35,8 +35,6 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
-import type { ElicitationBridge, ElicitationResult } from "../../mcp/elicitation/bridge.ts";
-import { ElicitationUnsupportedError } from "../../mcp/elicitation/bridge.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import { startListener, stopListener } from "../../pubsub/listener.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
@@ -45,6 +43,8 @@ import { dispatchTool } from "../../tools/dispatcher.ts";
 import { conversationToolProvider, staticToolProvider } from "../../tools/index.ts";
 import { buildRegistry } from "../../tools/registry.ts";
 import { makeTestPrincipal } from "../../tools/tests/_helpers.ts";
+import type { ElicitationBridge, ElicitationResult } from "../elicitation-bridge.ts";
+import { ElicitationUnsupportedError } from "../elicitation-bridge.ts";
 import { authenticateOAuthTool } from "../tools/authenticate-oauth.ts";
 import {
   OAUTH_AUTHORIZATION_DECLINED,

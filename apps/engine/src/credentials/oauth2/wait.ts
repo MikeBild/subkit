@@ -74,13 +74,16 @@ export const OAUTH_WAIT_MIN_FLOOR_MS = 5_000;
 // cap is rejected IMMEDIATELY (`rejected_concurrency`) rather than blocked
 // — blocking would just move the slot-starvation one level up. The proper
 // fix is MCP Tasks (SEP-1686), which removes the held-open connection
-// entirely; until then this bounds the blast radius.
+// entirely; until then this bounds the blast radius. Tracked as
+// GitHub issue #199 (replace the held-open OAuth wait + this process-local
+// cap with MCP async Tasks per SEP-1686).
 //
 // `inFlightOAuthWaits` is module-scope and therefore PROCESS-LOCAL: in a
 // multi-replica deployment the effective per-tenant cap is
 // `replicas × MAX_CONCURRENT_OAUTH_WAITS_PER_TENANT`, since each replica
 // counts only its own in-flight waits — if the engine ever moves past one
-// replica this counter must move to Postgres or Redis to stay a true cap.
+// replica this counter must move to Postgres or Redis to stay a true cap
+// (also folded into GitHub issue #199).
 const MAX_CONCURRENT_OAUTH_WAITS_PER_TENANT = 8;
 const inFlightOAuthWaits = new Map<string, number>();
 

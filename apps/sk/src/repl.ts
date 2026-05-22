@@ -24,7 +24,7 @@ import {
   type SkSessionState,
   type TurnEvent,
 } from "@cli-core/index.ts";
-import { OAUTH_AUTHORIZATION_URL_FIELD } from "@shared/elicitation-constants.ts";
+import { OAuthApprovalInputSchema } from "@shared/elicitation-constants.ts";
 import type { ResolvedProfile } from "./config.ts";
 import {
   type DebugCorrelationFields,
@@ -52,13 +52,21 @@ import { findSlashCommand, type PersonaProbe, renderHelp, SLASH_COMMANDS } from 
  * `ask_user_confirm` carrying `kind: "external_write"` and an
  * `authorization_url` field — that's the marker the REPL keys on to
  * auto-open the browser. Returns `null` for any other elicitation.
+ *
+ * The whole payload is validated against the shared
+ * `OAuthApprovalInputSchema` (the engine producer builds through the
+ * same schema), so producer and consumer cannot silently drift. A
+ * non-OAuth `ask_user_confirm` pause fails the schema and returns
+ * `null` — `.safeParse` keeps that contract intact.
  */
 function extractOAuthUrl(input: unknown): string | null {
-  if (input == null || typeof input !== "object") return null;
-  const obj = input as Record<string, unknown>;
+  const approval = OAuthApprovalInputSchema.safeParse(input);
+  if (!approval.success) return null;
   // `BrowserUrlSchema` owns the http(s)-only launch policy — route the
   // candidate through it rather than re-implementing the prefix check.
-  const parsed = BrowserUrlSchema.safeParse(obj[OAUTH_AUTHORIZATION_URL_FIELD]);
+  // (`OAuthApprovalInputSchema` already validated it is a URL; this
+  // additionally clamps the scheme to http(s) before a browser launch.)
+  const parsed = BrowserUrlSchema.safeParse(approval.data.authorization_url);
   return parsed.success ? parsed.data : null;
 }
 

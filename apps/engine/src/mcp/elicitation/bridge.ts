@@ -1,4 +1,4 @@
-// MCP-native elicitation bridge.
+// MCP-native elicitation bridge — concrete implementation.
 //
 // Wraps an MCP `Server` + the per-request `RequestHandlerExtra` so a
 // conversation tool running inside an MCP `tools/call` can issue a
@@ -6,6 +6,14 @@
 // answer — without falling back to the DB-pause / `respondElicitation`
 // round-trip. The bridge is the single seam between the engine's
 // conversation tools and the MCP SDK's `server.elicitInput()`.
+//
+// ── Domain directionality ────────────────────────────────────────────
+// The bridge CONTRACT — the `ElicitationBridge` interface plus its Zod
+// param/result schemas — is owned by `conversations/` (see
+// `conversations/elicitation-bridge.ts`). `conversations/*` tools depend
+// on that contract; this `mcp/` module `implements` it. The `mcp/` side
+// keeps the construction/transport logic only. Re-exported below so
+// existing `mcp/`-side importers keep one import path.
 //
 // ── SDK-vs-spec discrepancy (intentional) ────────────────────────────
 // The MCP spec prose calls out-of-band elicitation "oob", and this
@@ -24,69 +32,39 @@
 // Clients that advertise elicitation at all (claude.ai, Cursor) accept
 // both modes. If a future SDK adds a sub-flag, narrow `oob` here.
 
-import { z } from "@hono/zod-openapi";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
-  ElicitRequestFormParams,
   ElicitResult,
   ServerNotification,
   ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
+import {
+  type ElicitationBridge as ElicitationBridgeContract,
+  type ElicitationResult,
+  ElicitationUnsupportedError,
+  type ElicitFormParams,
+  ElicitFormParamsSchema,
+  type ElicitOobParams,
+  ElicitOobParamsSchema,
+  ElicitResultSchema,
+} from "../../conversations/elicitation-bridge.ts";
 
-/**
- * A flat JSON-Schema object of primitive properties — the only shape
- * the MCP `elicitation/create` form mode accepts. Aliased to the SDK's
- * own `requestedSchema` type so the bridge stays in lock-step with the
- * installed SDK's primitive-property contract. Built by the
- * ask-user → primitive-schema mapper.
- */
-export type ElicitRequestedSchema = ElicitRequestFormParams["requestedSchema"];
+// Re-export the contract so existing `mcp/`-side importers (and tests)
+// keep a single import path into the bridge.
+export {
+  type ElicitationBridge as ElicitationBridgeContract,
+  type ElicitationResult,
+  ElicitationUnsupportedError,
+  type ElicitFormParams,
+  ElicitFormParamsSchema,
+  type ElicitOobParams,
+  ElicitOobParamsSchema,
+  type ElicitRequestedSchema,
+  ElicitResultSchema,
+} from "../../conversations/elicitation-bridge.ts";
 
-/** Public params for a form-mode elicitation. */
-export const ElicitFormParamsSchema = z.object({
-  message: z.string().min(1),
-  requestedSchema: z.custom<ElicitRequestedSchema>(
-    (v) =>
-      typeof v === "object" &&
-      v !== null &&
-      (v as { type?: unknown }).type === "object" &&
-      typeof (v as { properties?: unknown }).properties === "object",
-  ),
-});
-export type ElicitFormParams = z.infer<typeof ElicitFormParamsSchema>;
-
-/** Public params for an out-of-band (URL) elicitation. */
-export const ElicitOobParamsSchema = z.object({
-  message: z.string().min(1),
-  url: z.string().url(),
-  /** Opaque correlation id echoed back by the client. */
-  elicitationId: z.string().min(1),
-});
-export type ElicitOobParams = z.infer<typeof ElicitOobParamsSchema>;
-
-/** Normalized result of an elicitation round-trip. */
-export const ElicitResultSchema = z.object({
-  action: z.enum(["accept", "decline", "cancel"]),
-  content: z.record(z.string(), z.unknown()).optional(),
-});
-export type ElicitationResult = z.infer<typeof ElicitResultSchema>;
-
-/**
- * Thrown when a tool asks the bridge for a capability the connected
- * client did not advertise. Callers catch this and fall back to the
- * DB-pause path.
- */
-export class ElicitationUnsupportedError extends Error {
-  readonly capability: "form" | "oob";
-  constructor(capability: "form" | "oob") {
-    super(`MCP client does not advertise elicitation capability: ${capability}`);
-    this.name = "ElicitationUnsupportedError";
-    this.capability = capability;
-  }
-}
-
-export class ElicitationBridge {
+export class ElicitationBridge implements ElicitationBridgeContract {
   /**
    * `form` and `oob` both track the presence of the single SDK 1.29
    * `elicitation` capability object — see the file header.

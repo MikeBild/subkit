@@ -8,7 +8,7 @@ import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
-import type { ElicitationBridge } from "../../mcp/elicitation/bridge.ts";
+import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { runLoop } from "../loop.ts";
 import type { ConversationPermissionMode } from "../types.ts";
 import { getConversation } from "./get.ts";

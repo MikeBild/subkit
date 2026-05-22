@@ -13,7 +13,7 @@
 // degrade decision lives HERE so there is one place to reason about it.
 
 import { logger } from "../../../logging/logger.ts";
-import type { ElicitRequestedSchema } from "../../../mcp/elicitation/bridge.ts";
+import type { ElicitRequestedSchema } from "../../elicitation-bridge.ts";
 import type { FormFieldDefinition } from "./form.ts";
 
 /** Tool names that take the form-mode elicitation bridge. */
@@ -218,6 +218,16 @@ function readSelectOptions(raw: unknown): SelectOption[] | null {
 }
 
 /**
+ * Is `v` a JSON primitive the elicitation form contract permits — a
+ * string, number, boolean, or null? An `elicitation/create` form
+ * `requestedSchema` only ever declares primitive properties, so a
+ * returned object/array is a protocol violation the mapper rejects.
+ */
+function isElicitationPrimitive(v: unknown): v is string | number | boolean | null {
+  return v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean";
+}
+
+/**
  * Map an accepted elicitation `result.content` back to the output shape
  * the `ask_user_*` tool's resolve / auto-persist path expects.
  *
@@ -297,11 +307,30 @@ export function mapElicitResultToAskUserOutput(
     }
 
     case "ask_user_form": {
-      // Pass primitive field values straight through as a {name:value}
-      // map — the schema only ever carried primitives (json/multi
-      // degraded earlier).
+      // The `requestedSchema` only ever declared primitive properties
+      // (json/multi fields degraded to DB-pause earlier in
+      // `mapAskUserToPrimitiveSchema`). A compliant client therefore
+      // returns only primitives. A non-compliant MCP client could return
+      // a nested object/array where a primitive was declared; passing
+      // that straight through would let the engine persist it onto the
+      // elicitation `output` (feeding `maybeAutoPersistFromElicitation`).
+      // Mirror the `ask_user_choice` / `ask_user_confirm` branches:
+      // a contract violation collapses to `null`, the decline-equivalent
+      // non-answer.
       const out: Record<string, unknown> = {};
-      for (const [key, raw] of Object.entries(c)) out[key] = raw;
+      for (const [key, raw] of Object.entries(c)) {
+        if (!isElicitationPrimitive(raw)) {
+          logger.warn({
+            module: "conversation",
+            action: "elicitation.form_field_not_primitive",
+            msg: "ask_user_form elicitation returned a non-primitive field value — treating as a decline",
+            tool_name: toolName,
+            field: key,
+          });
+          return null;
+        }
+        out[key] = raw;
+      }
       return out;
     }
   }

@@ -29,13 +29,17 @@
 // even opened the URL) is the bug this rework fixes.
 //
 // Follow-up: MCP Tasks (SEP-1686) could remove the held-open connection.
+// Tracked as GitHub issue #199.
 //
 // The credential row is keyed on (tenant_id, connector_id, environment),
 // so there is no user-supplied "credential name" — same auto-naming
 // pattern as bearer/basic/header/query atomic save.
 
 import { z } from "@hono/zod-openapi";
-import { OAUTH_AUTHORIZATION_URL_FIELD } from "@shared/elicitation-constants.ts";
+import {
+  OAUTH_AUTHORIZATION_URL_FIELD,
+  OAuthApprovalInputSchema,
+} from "@shared/elicitation-constants.ts";
 import { and, desc, eq, gt } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
@@ -49,8 +53,8 @@ import {
 } from "../../credentials/oauth2/wait.ts";
 import { connectorOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
-import { ElicitationUnsupportedError } from "../../mcp/elicitation/bridge.ts";
 import { withConnectorAuthenticated } from "../authoring-state.ts";
+import { ElicitationUnsupportedError } from "../elicitation-bridge.ts";
 import {
   createNativeElicitation,
   demoteElicitationToPortal,
@@ -106,7 +110,7 @@ const inputSchema = z
  */
 function openOAuthApprovalElicitation(
   ctx: ToolContext,
-  p: { connectorLabel: string; authorizationUrl: string; message: string },
+  p: { connectorLabel: string; authorizationUrl: string; redirectUri: string; message: string },
 ): Promise<import("../elicitations.ts").ElicitationRecord> {
   return createNativeElicitation(
     {
@@ -116,12 +120,9 @@ function openOAuthApprovalElicitation(
       ...(ctx.assistant_message_id ? { parent_message_id: ctx.assistant_message_id } : {}),
       tool_name: "ask_user_confirm",
       summary: `Authorize OAuth access for ${p.connectorLabel}.`,
-      input: {
-        kind: "external_write",
-        question: "Have you completed the authorization in your browser?",
-        summary: p.message,
-        [OAUTH_AUTHORIZATION_URL_FIELD]: p.authorizationUrl,
-      },
+      // Source the carrier payload from the single `oauthApprovalInput`
+      // builder so the bridge (oob/form) and DB-pause paths cannot drift.
+      input: oauthApprovalInput(p.authorizationUrl, p.redirectUri, p.message),
       actor_id: ctx.actor_id,
     },
     ctx.db,
@@ -333,6 +334,7 @@ export const authenticateOAuthTool: ConversationTool = {
       const approval = await openOAuthApprovalElicitation(ctx, {
         connectorLabel,
         authorizationUrl: started.authorization_url,
+        redirectUri: redirect_uri,
         message,
       });
       // Start the shared-budget clock before the bridge round-trip so its
@@ -420,6 +422,7 @@ export const authenticateOAuthTool: ConversationTool = {
       const approval = await openOAuthApprovalElicitation(ctx, {
         connectorLabel,
         authorizationUrl: started.authorization_url,
+        redirectUri: redirect_uri,
         message,
       });
       // Start the shared-budget clock before the bridge round-trip so its
@@ -536,13 +539,16 @@ function oauthApprovalInput(
   redirectUri: string,
   message: string,
 ): Record<string, unknown> {
-  return {
+  // Build THROUGH the shared `OAuthApprovalInputSchema` so the carrier
+  // shape the CLI consumer (`extractOAuthUrl`) parses cannot drift from
+  // what this producer emits — a Zod-checked contract end to end.
+  return OAuthApprovalInputSchema.parse({
     kind: "external_write",
     question: "Have you completed the authorization in your browser?",
     summary: message,
     [OAUTH_AUTHORIZATION_URL_FIELD]: authorizationUrl,
     redirect_uri: redirectUri,
-  };
+  });
 }
 
 /** DB-pause path: surface the authorization URL via `ask_user_confirm`. */

@@ -53,7 +53,6 @@ import {
   toLlmProviderError,
 } from "../llm/provider-errors.ts";
 import { log, logger } from "../logging/logger.ts";
-import type { ElicitationBridge } from "../mcp/elicitation/bridge.ts";
 import {
   recordLlmQuotaExhausted,
   recordLlmTokens,
@@ -66,6 +65,7 @@ import { resolveAttachmentSlugsInText } from "./attachments.ts";
 import { expandPriorFailuresFromToolCalls } from "./authoring-critic/prior-failures.ts";
 import { startNewWorkflowDraft } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
+import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
 import {

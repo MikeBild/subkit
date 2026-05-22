@@ -9,8 +9,9 @@ import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
-import type { ElicitationBridge } from "../../mcp/elicitation/bridge.ts";
+import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { runLoop } from "../loop.ts";
+import { applyElicitationOutcome } from "../persistence/apply-outcome.ts";
 import type { ConversationPermissionMode } from "../types.ts";
 import { getConversation } from "./get.ts";
 import {
@@ -176,7 +177,6 @@ export async function respondElicitation(
   // credential-cache + auto-persist sequence is factored into
   // `applyElicitationOutcome` so the MCP-native in-process bridge path
   // (ask-user/common.ts) runs the exact same logic.
-  const { applyElicitationOutcome } = await import("../persistence/apply-outcome.ts");
   const autoPersist = await applyElicitationOutcome({
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
