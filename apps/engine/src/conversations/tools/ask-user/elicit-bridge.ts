@@ -12,6 +12,7 @@
 // back to the DB-pause path for that one elicitation. The per-tool
 // degrade decision lives HERE so there is one place to reason about it.
 
+import { logger } from "../../../logging/logger.ts";
 import type { ElicitRequestedSchema } from "../../../mcp/elicitation/bridge.ts";
 import type { FormFieldDefinition } from "./form.ts";
 
@@ -248,7 +249,18 @@ export function mapElicitResultToAskUserOutput(
       // Returning `{ value }` would silently persist an option the user
       // never had — instead return `null`, the decline-equivalent
       // non-answer (`checkDecline` maps null → user_declined).
-      return optionIndex >= 0 ? { value, option_index: optionIndex } : null;
+      if (optionIndex < 0) {
+        // Surface the misbehaving client in observability — otherwise an
+        // out-of-enum answer resolves as a silent decline with no signal.
+        logger.warn({
+          module: "conversation",
+          action: "elicitation.choice_out_of_enum",
+          msg: "ask_user_choice elicitation returned a value outside the requested enum — treating as a decline",
+          tool_name: toolName,
+        });
+        return null;
+      }
+      return { value, option_index: optionIndex };
     }
 
     case "ask_user_confirm": {
@@ -257,7 +269,17 @@ export function mapElicitResultToAskUserOutput(
       // `ask_user_choice` and return `null` (the decline-equivalent
       // non-answer) rather than silently coercing it to `false`, which
       // would negative-assert a decision the user never made.
-      if (typeof c.confirmed !== "boolean") return null;
+      if (typeof c.confirmed !== "boolean") {
+        // Surface the misbehaving client in observability — otherwise a
+        // non-boolean answer resolves as a silent decline with no signal.
+        logger.warn({
+          module: "conversation",
+          action: "elicitation.confirm_not_boolean",
+          msg: "ask_user_confirm elicitation returned a non-boolean `confirmed` — treating as a decline",
+          tool_name: toolName,
+        });
+        return null;
+      }
       const confirmed = c.confirmed;
       const reason = typeof c.reason === "string" && c.reason.length > 0 ? c.reason : undefined;
       return reason ? { confirmed, reason } : { confirmed };

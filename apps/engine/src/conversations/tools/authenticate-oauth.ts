@@ -394,7 +394,13 @@ export const authenticateOAuthTool: ConversationTool = {
             required: ["acknowledged"],
           },
         });
-        if (result.action !== "accept") {
+        // An explicit non-accept action is a decline. An `accept` whose
+        // `acknowledged` boolean is not `true` is ALSO a decline: the
+        // operator dismissed the form without confirming they completed
+        // the authorization, so proceeding into `waitForOAuthCredential`
+        // and resolving the audit row as APPROVAL_APPROVED would be
+        // semantically wrong. Both collapse to the same decline path.
+        if (result.action !== "accept" || result.content?.acknowledged !== true) {
           await resolveElicitationAndReactivate(
             {
               tenant_id: ctx.tenant_id,
@@ -488,6 +494,10 @@ function dbPauseForOAuth(
     tool_name: "ask_user_confirm",
     summary: message,
     input: {
+      // `external_write` is deliberate: it forces this OAuth pause to be
+      // non-auto-approvable. A dedicated `external_authorization` kind was
+      // considered and rejected — it would risk an approval-semantics
+      // regression for no behavioural gain.
       kind: "external_write",
       question: "Have you completed the authorization in your browser?",
       summary: message,

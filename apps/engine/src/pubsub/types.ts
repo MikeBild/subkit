@@ -88,13 +88,24 @@ export type ConnectorOauthCallbackPayload = z.infer<typeof ConnectorOauthCallbac
  *
  * Field semantics:
  *   - `connector_id` — the connector whose OAuth dance failed.
- *   - `reason`       — short machine/human reason: the provider's
- *                      `error` code, `"missing_code"`, or the
- *                      token-exchange error message.
+ *   - `reason`       — a short sanitized failure token from a fixed
+ *                      allowlist. It must NEVER carry raw provider error
+ *                      text or a token-exchange exception message: those
+ *                      can embed request fragments (state tokens,
+ *                      redirect URIs) and this event is broadcast over
+ *                      pub/sub and exposed via the webhook catalog. The
+ *                      verbose original error stays in the structured
+ *                      `logger` call only.
  */
+export const ConnectorOauthCallbackFailedReasons = [
+  "provider_error",
+  "missing_code",
+  "token_exchange_failed",
+] as const;
+
 export const ConnectorOauthCallbackFailedPayloadSchema = z.object({
   connector_id: z.string().uuid(),
-  reason: z.string().min(1),
+  reason: z.enum(ConnectorOauthCallbackFailedReasons),
 });
 
 export type ConnectorOauthCallbackFailedPayload = z.infer<

@@ -119,6 +119,12 @@ export async function waitForOAuthCredential(
         void (async () => {
           if (settled) return;
           try {
+            // The `settled` check above can be stale by the time this
+            // await resolves — the DB poll or timeout may have settled
+            // concurrently. That is safe: `finish()` has its own
+            // `settled` guard and is idempotent, so a late re-read that
+            // calls `finish` after another path already did is a no-op.
+            // `finish` is therefore never effectively called twice.
             if (await credentialExists(p.db, p.tenant_id, p.connector_id, p.environment)) {
               finish("succeeded");
             }
@@ -205,7 +211,10 @@ export async function waitForOAuthCredential(
     }, POLL_INTERVAL_MS);
     pollTimer.unref?.();
 
-    // 3. Upper bound.
+    // 3. Upper bound. Each call holds one connection open for up to
+    // `timeoutMs`; a tenant-wide cap on concurrent OAuth waits is NOT
+    // enforced here — that belongs upstream (request admission /
+    // connection pooling), not in this per-call helper.
     timeoutTimer = setTimeout(() => finish("timeout"), timeoutMs);
     timeoutTimer.unref?.();
   });

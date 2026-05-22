@@ -316,7 +316,9 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
               session.conversationId,
               session.pendingElicitation.id,
               { confirmed: intent.kind === "confirm" },
-              intent.kind === "reject" ? "user replied with a short negative" : undefined,
+              // `reason` is a machine-code decision token, not prose —
+              // it lands in the `decision_reason` audit column.
+              intent.kind === "reject" ? "user_declined" : undefined,
               traceContext(),
             );
             session = { ...session, pendingElicitation: null, status: "running" };
@@ -555,7 +557,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           // same confirm/`/respond` path once the browser flow finishes.
           line(`  ! authorization needed: ${ev.summary}`);
           line(`    open in browser: ${oauthUrl}`);
-          defaultOpenBrowser(oauthUrl).then(
+          void defaultOpenBrowser(oauthUrl).then(
             () => line("    waiting for authorization in your browser…"),
             () =>
               line("    browser launch failed — open the URL above manually, then resume below"),
@@ -911,14 +913,18 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           );
           return;
         }
-        const reason = args.slice(1).join(" ") || undefined;
+        // Operator-typed free text from `/reject <reason>`. It is user
+        // feedback, not a machine code, so it travels in the `output`
+        // payload — `decision_reason` (the `reason` arg) only ever
+        // carries the stable `user_declined` token.
+        const feedback = args.slice(1).join(" ") || undefined;
         elicitInFlight = true;
         try {
           const outcome = await client.respondElicitation(
             session.conversationId,
             elicitationId,
-            { confirmed: false },
-            reason,
+            { confirmed: false, ...(feedback ? { feedback } : {}) },
+            "user_declined",
             activeDebugContext ?? undefined,
           );
           session = { ...session, pendingElicitation: null, status: "running" };

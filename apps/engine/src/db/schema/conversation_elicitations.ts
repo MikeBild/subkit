@@ -56,11 +56,11 @@ export const conversationElicitations = pgTable(
     protocol_native: boolean("protocol_native").notNull().default(false),
     decided_by: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
     decided_at: timestamp("decided_at", { withTimezone: true }),
-    // Free-form decision note. May carry EITHER human-readable prose
-    // (operator-supplied feedback) OR a machine code — `resolveElicitation`
-    // stores codes like `oauth_timeout` / `elicitation_transport_failed`
-    // here so the resolution path stays auditable without a separate
-    // column. Consumers must tolerate both forms.
+    // Machine-code decision token — a stable string, not free prose.
+    // `resolveElicitation` stores codes like `user_declined`,
+    // `user_cancelled`, `oauth_timeout`, `elicitation_transport_failed`,
+    // or `superseded_by_new_elicitation` here so the resolution path
+    // stays auditable and consumers can switch on it.
     decision_reason: text("decision_reason"),
     expires_at: timestamp("expires_at", { withTimezone: true }),
     ...timestamps,

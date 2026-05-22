@@ -24,6 +24,7 @@ import { ElicitationUnsupportedError } from "../../../mcp/elicitation/bridge.ts"
 import {
   createElicitation,
   createNativeElicitation,
+  demoteElicitationToPortal,
   resolveElicitationAndReactivate,
 } from "../../elicitations.ts";
 import { applyElicitationOutcome } from "../../persistence/apply-outcome.ts";
@@ -158,6 +159,13 @@ export async function pauseForUserInput(
           // Capability raced away between the constructor probe and the
           // call — fall back to DB-pause. The row already exists and is
           // pending; surface it as a normal pause.
+          //
+          // The row was opened via `createNativeElicitation`
+          // (`protocol_native: true`), but it will now be satisfied by a
+          // portal POST to `respondElicitation`. Demote it so
+          // `resolveElicitation`'s `surface` audit metadata resolves to
+          // `portal`, not `mcp_elicitation`.
+          await demoteElicitationToPortal(ctx.tenant_id, row.id, ctx.db);
           logger.warn({
             module: "conversation",
             action: "elicitation.bridge_unsupported_fallback",

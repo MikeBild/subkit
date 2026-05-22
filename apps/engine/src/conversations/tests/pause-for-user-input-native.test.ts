@@ -250,9 +250,11 @@ describe("pauseForUserInput — bridge transport failure", () => {
     expect(await readConversationStatus(conversation_id)).toBe("awaiting_input");
     const rows = await readElicitation(conversation_id);
     expect(rows[0]!.status).toBe("pending");
-    // The row was created on the bridge path, so it is protocol_native
-    // even though it degraded to a pause.
-    expect(rows[0]!.protocol_native).toBe(true);
+    // The row was opened on the bridge path (protocol_native), but the
+    // capability raced away and it now resumes via a portal POST. The
+    // fallback demotes it so the `surface` audit metadata resolves to
+    // `portal`, not `mcp_elicitation`.
+    expect(rows[0]!.protocol_native).toBe(false);
   });
 });
 

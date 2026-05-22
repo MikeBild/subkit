@@ -18,7 +18,11 @@
 // dispatch silently goes missing on one surface.
 
 import type { Db } from "../../db/client.ts";
-import type { AutoPersistDispatch } from "./auto-persist.ts";
+import {
+  type AutoPersistDispatch,
+  maybeAutoPersistFromElicitation,
+  maybeCacheDraftCredentialFromElicitation,
+} from "./auto-persist.ts";
 
 export interface ApplyElicitationOutcomeInput {
   tenant_id: string;
@@ -43,11 +47,6 @@ export interface ApplyElicitationOutcomeInput {
 export async function applyElicitationOutcome(
   p: ApplyElicitationOutcomeInput,
 ): Promise<AutoPersistDispatch> {
-  // Dynamic import breaks a real cycle: auto-persist.ts → tools/index.ts
-  // → authenticate-oauth.ts → ask-user/common.ts → this module. A static
-  // import here would close that loop at module-eval time.
-  const { maybeAutoPersistFromElicitation, maybeCacheDraftCredentialFromElicitation } =
-    await import("./auto-persist.ts");
   // Cache the credential FIRST — if auto-persist then fires a
   // successful `save_connector_draft`, `saveConnectorAtomic` clears the
   // cache as part of the same call. The cache is what

@@ -108,7 +108,7 @@ export const EVENT_CATALOG = {
     schema: ConnectorOauthCallbackFailedPayloadSchema,
     example: {
       connector_id: "00000000-0000-0000-0000-000000000003",
-      reason: "access_denied",
+      reason: "provider_error",
     },
   },
   "patch.proposed": {

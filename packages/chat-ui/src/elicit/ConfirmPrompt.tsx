@@ -1,6 +1,6 @@
 // askUser.confirm prompt — single source of truth for confirmation
 // rendering. Digit keybinds (1 Approve / 3 Reject), arrow+Enter
-// fallback, Tab reveals a reason text area for a `decision_reason`.
+// fallback, Tab reveals a free-text feedback area (output `feedback`).
 // The `kind` input picks the sub-body (save-workflow-draft diff,
 // external-write target, generic).
 //
@@ -45,7 +45,7 @@ export interface ConfirmPromptProps {
    * without parsing raw JSON in `diff` / `target`.
    */
   pendingOutput?: Record<string, unknown> | undefined;
-  onResponse: (value: { confirmed: boolean; decision_reason?: string }) => void;
+  onResponse: (value: { confirmed: boolean; feedback?: string }) => void;
   inputDisabled?: boolean | undefined;
 }
 
@@ -89,9 +89,12 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
   const [reason, setReason] = useState("");
 
   const submit = (confirmed: boolean): void => {
-    const out: { confirmed: boolean; decision_reason?: string } = { confirmed };
+    // The operator's typed text is free-form feedback, not a machine
+    // code — it travels in `feedback` (inside the `output` payload),
+    // never in the machine-code-only `decision_reason` audit column.
+    const out: { confirmed: boolean; feedback?: string } = { confirmed };
     const trimmed = reason.trim();
-    if (trimmed) out.decision_reason = trimmed;
+    if (trimmed) out.feedback = trimmed;
     onResponse(out);
   };
 

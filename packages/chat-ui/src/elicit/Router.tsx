@@ -17,12 +17,16 @@ import { MultiChoicePrompt } from "./MultiChoicePrompt.tsx";
 import { PartialApprovalPrompt, type PartialDiffEntry } from "./PartialApprovalPrompt.tsx";
 import { TextPrompt } from "./TextPrompt.tsx";
 
+// `decision_reason` carries a machine-code token (e.g. `user_cancelled`)
+// and lands in the elicitation's `decision_reason` audit column. Operator
+// free text is NOT a machine code — it travels in `feedback`, inside the
+// `output` payload, so the audit column stays a stable, switchable token.
 export type ElicitationResponse =
   | { value: string }
   | { values: string[] }
   | { text: string }
   | { values: Record<string, unknown> }
-  | { confirmed: boolean; decision_reason?: string }
+  | { confirmed: boolean; decision_reason?: string; feedback?: string }
   | {
       // Partial-diff approval response (Bug TT). When `partial` is
       // true, the engine applies only the diffs at `approved_indices`;

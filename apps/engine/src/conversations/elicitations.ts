@@ -221,6 +221,37 @@ async function insertElicitation(
   return rowToRecord(inserted);
 }
 
+/**
+ * Demote an elicitation row from protocol-native to portal-backed.
+ *
+ * Used when a bridge-path elicitation (opened via `createNativeElicitation`,
+ * so `protocol_native: true`) degrades mid-call to the DB-pause +
+ * `respondElicitation` path because the MCP `elicitation` capability
+ * raced away. The row will now be satisfied by a portal POST, so its
+ * `protocol_native` flag must flip to `false` — otherwise
+ * `resolveElicitation`'s `surface` audit metadata would mislabel a
+ * portal resolution as `mcp_elicitation`.
+ *
+ * Tenant-scoped and pending-scoped: a row already resolved (e.g. a
+ * concurrent `respondElicitation` won the race) is left untouched.
+ */
+export async function demoteElicitationToPortal(
+  tenant_id: string,
+  id: string,
+  exec: Executor,
+): Promise<void> {
+  await exec
+    .update(conversationElicitations)
+    .set({ protocol_native: false, updated_at: new Date() })
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, tenant_id),
+        eq(conversationElicitations.id, id),
+        eq(conversationElicitations.status, "pending"),
+      ),
+    );
+}
+
 export async function getElicitation(
   tenant_id: string,
   id: string,
@@ -329,9 +360,10 @@ export async function resolveElicitation(
     id: string;
     output: unknown;
     decided_by: string | null;
-    /** Persisted verbatim to `decision_reason`. May be human-readable
-     *  prose OR a machine code (e.g. `oauth_timeout`,
-     *  `elicitation_transport_failed`) — consumers must tolerate both. */
+    /** Persisted verbatim to `decision_reason`. Carries a machine code —
+     *  a stable token, not free prose (e.g. `user_declined`,
+     *  `user_cancelled`, `oauth_timeout`, `elicitation_transport_failed`,
+     *  `oauth_authorization_declined`). Consumers may switch on it. */
     reason?: string;
     status?: "resolved" | "cancelled";
   },
@@ -425,7 +457,10 @@ export async function resolveElicitationAndReactivate(
   },
   db: Db,
 ): Promise<ResolveElicitationResult> {
-  let resolution: ResolveElicitationResult | undefined;
+  // Definite assignment: `resolveElicitation` returns a value on every
+  // path and the tx callback awaits it before the transaction resolves,
+  // so `resolution` is always assigned by the time control returns here.
+  let resolution!: ResolveElicitationResult;
   await db.transaction(async (tx) => {
     resolution = await resolveElicitation(
       {
@@ -447,7 +482,5 @@ export async function resolveElicitationAndReactivate(
         );
     }
   });
-  // `resolution` is always assigned — `resolveElicitation` returns a
-  // value on every path and the tx callback awaits it before returning.
-  return resolution as ResolveElicitationResult;
+  return resolution;
 }

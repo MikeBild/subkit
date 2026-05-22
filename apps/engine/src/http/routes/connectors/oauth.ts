@@ -47,6 +47,7 @@ import { connectorOauthStates, connectors } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import {
   ConnectorOauthCallbackFailedPayloadSchema,
+  type ConnectorOauthCallbackFailedReasons,
   ConnectorOauthCallbackPayloadSchema,
 } from "../../../pubsub/index.ts";
 import { now } from "../../../utils/clock.ts";
@@ -268,10 +269,14 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         provider_error: q.error,
         provider_error_description: q.error_description ?? null,
       });
+      // `reason` is a sanitized token, not `q.error` verbatim: provider
+      // error strings can embed request fragments (state tokens,
+      // redirect URIs) and this event is broadcast over pub/sub. The
+      // verbose `q.error` stays in the `logger.warn` above only.
       await publishCallbackFailed(db, {
         tenant_id: stateRow.tenant_id,
         connector_id: stateRow.connector_id,
-        reason: q.error,
+        reason: "provider_error",
       });
       return renderCallbackPage(c, {
         kind: "error",
@@ -403,10 +408,14 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         state_prefix: stateRow.state.slice(0, 8),
         error: message,
       });
+      // `reason` is a sanitized token, not the exchange `message`
+      // verbatim: a token-exchange exception can embed request fragments
+      // (state tokens, redirect URIs) and this event is broadcast over
+      // pub/sub. The verbose `message` stays in the `logger.warn` above.
       await publishCallbackFailed(db, {
         tenant_id: stateRow.tenant_id,
         connector_id: stateRow.connector_id,
-        reason: message,
+        reason: "token_exchange_failed",
       });
       return renderCallbackPage(c, {
         kind: "error",
@@ -433,7 +442,11 @@ interface CallbackPage {
  */
 async function publishCallbackFailed(
   db: import("../../../db/client.ts").Db,
-  p: { tenant_id: string; connector_id: string; reason: string },
+  p: {
+    tenant_id: string;
+    connector_id: string;
+    reason: (typeof ConnectorOauthCallbackFailedReasons)[number];
+  },
 ): Promise<void> {
   try {
     const payload = ConnectorOauthCallbackFailedPayloadSchema.parse({

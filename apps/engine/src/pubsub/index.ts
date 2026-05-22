@@ -11,6 +11,7 @@ export {
 export {
   type ConnectorOauthCallbackFailedPayload,
   ConnectorOauthCallbackFailedPayloadSchema,
+  ConnectorOauthCallbackFailedReasons,
   type ConnectorOauthCallbackPayload,
   ConnectorOauthCallbackPayloadSchema,
   type EventEnvelope,
