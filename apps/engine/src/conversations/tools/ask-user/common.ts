@@ -57,6 +57,69 @@ function alreadyResolved(elicitationId: string): ToolResult {
   };
 }
 
+/**
+ * Resolve an elicitation row `cancelled` (decline / cancel / transport
+ * failure), flip the owning conversation back to `active`, and return the
+ * structured-error `ToolResult` the caller surfaces — all as one step.
+ *
+ * Collapses the repeated "resolve cancelled → reactivate → return
+ * { ok: false }" sequence shared by the `ask_user_*` family and
+ * `authenticate_oauth`. A lost race (a concurrent `respondElicitation`
+ * resolved the row first) returns `alreadyResolved` instead — the winning
+ * path already reactivated the conversation, so re-flipping would be wrong
+ * and re-reporting the cancel reason would be misleading.
+ *
+ * `transport` is the bridge round-trip outcome — `"succeeded"` when the
+ * elicitation was delivered and the operator answered (a decline still
+ * means transport succeeded), `"failed"` when the round-trip itself broke.
+ * It is recorded on the resolve audit row independently of the `cancelled`
+ * resolution. Omit it for non-bridge (portal) resolutions.
+ */
+export async function resolveAndError(
+  ctx: ToolContext,
+  rowId: string,
+  p: {
+    reason: string;
+    errorCode: string;
+    message: string;
+    transport?: "succeeded" | "failed";
+    /** Persisted to the elicitation row's `output`. Defaults to `null`. */
+    output?: unknown;
+    /** Extra payload merged into the returned `data`. */
+    data?: Record<string, unknown>;
+    /** When set, written as `data.status` in the returned result. Omitted
+     *  from `data` entirely when not passed — some callers carry no
+     *  `status` key. */
+    status?: string;
+  },
+): Promise<ToolResult> {
+  const resolution = await resolveElicitationAndReactivate(
+    {
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      id: rowId,
+      output: p.output ?? null,
+      decided_by: ctx.actor_id,
+      status: "cancelled",
+      reason: p.reason,
+      ...(p.transport ? { transport: p.transport } : {}),
+    },
+    ctx.db,
+  );
+  if (resolution.kind !== "resolved") {
+    return alreadyResolved(rowId);
+  }
+  return {
+    ok: false,
+    error_code: p.errorCode,
+    message: p.message,
+    data: {
+      ...(p.status !== undefined ? { status: p.status } : {}),
+      ...(p.data ?? {}),
+    },
+  };
+}
+
 export async function pauseForUserInput(
   ctx: ToolContext,
   p: { tool_name: AskUserToolName; summary: string; input: unknown },
@@ -145,49 +208,35 @@ export async function pauseForUserInput(
           return { ok: true, data: output };
         }
         // decline / cancel / protocol-violating-accept — resolve as
-        // cancelled, no continuation. Same atomic transition unit (and
-        // same lost-race guard) as the accept path. An `accept` whose
-        // mapped output is `null` lands here as `invalid_elicit_response`.
+        // cancelled, no continuation. `resolveAndError` runs the same
+        // atomic transition unit (and same lost-race guard) as the accept
+        // path. An `accept` whose mapped output is `null` lands here as
+        // `invalid_elicit_response`. The form round-trip completed in all
+        // three cases — the operator answered — so `transport: "succeeded"`.
         const invalidAccept = result.action === "accept";
-        const cancelReason = invalidAccept
-          ? INVALID_ELICIT_RESPONSE
-          : result.action === "decline"
-            ? "user_declined"
-            : "user_cancelled";
-        const cancelResolution = await resolveElicitationAndReactivate(
-          {
-            tenant_id: ctx.tenant_id,
-            conversation_id: ctx.conversation_id,
-            id: row.id,
-            output: result.content ?? null,
-            decided_by: ctx.actor_id,
-            status: "cancelled",
-            reason: cancelReason,
-            transport: "succeeded",
-          },
-          ctx.db,
-        );
-        if (cancelResolution.kind !== "resolved") {
-          return alreadyResolved(row.id);
-        }
         if (invalidAccept) {
-          return {
-            ok: false,
-            error_code: INVALID_ELICIT_RESPONSE,
+          return resolveAndError(ctx, row.id, {
+            reason: INVALID_ELICIT_RESPONSE,
+            errorCode: INVALID_ELICIT_RESPONSE,
             message:
               "The MCP client returned an answer that violates the requested schema (an out-of-enum choice or a non-boolean confirm). It was recorded as a decline; ask the user again only if their answer is still needed.",
-            data: { status: "invalid_elicit_response", elicitation_id: row.id },
-          };
+            transport: "succeeded",
+            status: "invalid_elicit_response",
+            output: result.content ?? null,
+            data: { elicitation_id: row.id },
+          });
         }
-        return {
-          ok: false,
-          error_code: result.action === "decline" ? "user_declined" : "user_cancelled",
+        return resolveAndError(ctx, row.id, {
+          reason: result.action === "decline" ? "user_declined" : "user_cancelled",
+          errorCode: result.action === "decline" ? "user_declined" : "user_cancelled",
           message:
             result.action === "decline"
               ? "The user declined to provide the requested input."
               : "The user cancelled the input request.",
-          data: { status: result.action },
-        };
+          transport: "succeeded",
+          status: result.action,
+          output: result.content ?? null,
+        });
       } catch (err) {
         if (err instanceof ElicitationUnsupportedError) {
           // Capability raced away between the constructor probe and the
@@ -237,35 +286,20 @@ export async function pauseForUserInput(
           error: err instanceof Error ? err.message : String(err),
         });
         // Resolve the row `cancelled` AND flip the conversation back to
-        // `active` as one atomic unit (see
-        // `resolveElicitationAndReactivate`) so a partial failure cannot
-        // leave the conversation wedged.
-        const transportResolution = await resolveElicitationAndReactivate(
-          {
-            tenant_id: ctx.tenant_id,
-            conversation_id: ctx.conversation_id,
-            id: row.id,
-            output: null,
-            decided_by: ctx.actor_id,
-            status: "cancelled",
-            reason: ELICITATION_TRANSPORT_FAILED,
-            transport: "failed",
-          },
-          ctx.db,
-        );
-        if (transportResolution.kind !== "resolved") {
-          // A concurrent `respondElicitation` already resolved this row —
-          // the conversation is no longer wedged; report that rather than
-          // the transport failure.
-          return alreadyResolved(row.id);
-        }
-        return {
-          ok: false,
-          error_code: ELICITATION_TRANSPORT_FAILED,
+        // `active` as one atomic unit so a partial failure cannot leave
+        // the conversation wedged. A lost race (a concurrent
+        // `respondElicitation` already resolved this row) returns
+        // `already_resolved` — the conversation is no longer wedged, so
+        // `resolveAndError` reports that rather than the transport failure.
+        return resolveAndError(ctx, row.id, {
+          reason: ELICITATION_TRANSPORT_FAILED,
+          errorCode: ELICITATION_TRANSPORT_FAILED,
           message:
             "The MCP elicitation request failed in transit — the client may have disconnected or did not answer. The conversation is no longer waiting on input; ask the user again if their answer is still needed.",
-          data: { status: "transport_failed", elicitation_id: row.id },
-        };
+          transport: "failed",
+          status: "transport_failed",
+          data: { elicitation_id: row.id },
+        });
       }
     }
   }

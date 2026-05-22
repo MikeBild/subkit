@@ -353,6 +353,64 @@ describe("authenticate_oauth — resume re-entry (idempotent wait)", () => {
   });
 });
 
+describe("authenticate_oauth — single dance per connector", () => {
+  test("a second authenticate_oauth call with a live state row resumes it, no second state row", async () => {
+    const connectorId = await makeOAuthConnector("aoe-single-dance");
+    // A live state row from a prior turn — the operator was already
+    // handed an authorization URL for this connector. `hasPendingOAuthState`
+    // is scoped to (tenant, connector) only, deliberately NOT to the
+    // operator, so ANY caller's `authenticate_oauth` for this connector
+    // resumes THIS dance instead of minting a competing second row.
+    await ctx.db.insert(connectorOauthStates).values({
+      tenant_id,
+      connector_id: connectorId,
+      state: "single-dance-state-token",
+      code_verifier: "verifier",
+      redirect_uri: "https://engine.test.example/v1/oauth/callback",
+      expires_at: new Date(Date.now() + 10 * 60_000), // allow-wall-clock: OAuth state row real expiry
+    });
+    // The credential already landed — the resume path's idempotent wait
+    // returns `succeeded` immediately.
+    await insertCredential(connectorId);
+
+    const draftRef: { current: DraftDocument } = {
+      current: {
+        mode: "connector_authoring",
+        connector: {
+          name: "aoe-single-dance",
+          slug: "aoe-single-dance",
+          driver: "http",
+          environment: "dev",
+        },
+        workflow: { name: "", steps: [] },
+      } as DraftDocument,
+    };
+
+    // A SECOND authenticate_oauth call for the same connector — simulates
+    // a different operator (or a retry) hitting the tool while a dance is
+    // already in flight.
+    const result = await authenticateOAuthTool.execute(
+      buildCtx(connectorId, makeOobBridge("accept"), draftRef),
+      { connector_id: connectorId },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect((result.data as { status: string }).status).toBe("authenticated");
+    }
+
+    // Exactly ONE state row — the second call resumed the existing dance
+    // and did NOT mint a competing `connector_oauth_states` row. A second
+    // row would race two callbacks to overwrite the one credential.
+    const stateRows = await ctx.db
+      .select({ id: connectorOauthStates.id, state: connectorOauthStates.state })
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.connector_id, connectorId));
+    expect(stateRows).toHaveLength(1);
+    expect(stateRows[0]!.state).toBe("single-dance-state-token");
+  });
+});
+
 describe("authenticate_oauth — RBAC gate is not bypassed by the elicitation bridge", () => {
   test("a principal lacking connector:oauth is denied even with an elicitation-capable bridge", async () => {
     const connectorId = await makeOAuthConnector("aoe-rbac");

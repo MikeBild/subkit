@@ -75,6 +75,12 @@ export const OAUTH_WAIT_MIN_FLOOR_MS = 5_000;
 // — blocking would just move the slot-starvation one level up. The proper
 // fix is MCP Tasks (SEP-1686), which removes the held-open connection
 // entirely; until then this bounds the blast radius.
+//
+// `inFlightOAuthWaits` is module-scope and therefore PROCESS-LOCAL: in a
+// multi-replica deployment the effective per-tenant cap is
+// `replicas × MAX_CONCURRENT_OAUTH_WAITS_PER_TENANT`, since each replica
+// counts only its own in-flight waits — if the engine ever moves past one
+// replica this counter must move to Postgres or Redis to stay a true cap.
 const MAX_CONCURRENT_OAUTH_WAITS_PER_TENANT = 8;
 const inFlightOAuthWaits = new Map<string, number>();
 

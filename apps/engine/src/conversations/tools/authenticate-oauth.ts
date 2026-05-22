@@ -51,8 +51,12 @@ import { connectorOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { ElicitationUnsupportedError } from "../../mcp/elicitation/bridge.ts";
 import { withConnectorAuthenticated } from "../authoring-state.ts";
-import { createNativeElicitation, resolveElicitationAndReactivate } from "../elicitations.ts";
-import { pauseForUserInput } from "./ask-user/common.ts";
+import {
+  createNativeElicitation,
+  demoteElicitationToPortal,
+  resolveElicitationAndReactivate,
+} from "../elicitations.ts";
+import { pauseForUserInput, resolveAndError } from "./ask-user/common.ts";
 import {
   OAUTH_AUTHORIZATION_DECLINED,
   OAUTH_AUTHORIZATION_FAILED,
@@ -172,7 +176,17 @@ function oauthWaitErrorCode(status: "failed" | "timeout" | "rejected_concurrency
   }
 }
 
-/** Did this connector already get an authorization URL this round? */
+/**
+ * Did this connector already get an authorization URL this round?
+ *
+ * Scoped to `(tenant_id, connector_id)` ONLY — deliberately NOT to the
+ * operator who started the dance. This pins a single-dance-per-connector
+ * intent: a connector holds exactly one credential per environment, so a
+ * second operator's `authenticate_oauth` for the same connector RESUMES
+ * the in-flight dance rather than minting a competing second state row.
+ * Do not add a `decided_by` / actor filter — concurrent dances for the
+ * same connector would race to overwrite the one credential row.
+ */
 async function hasPendingOAuthState(
   ctx: { db: import("../../db/client.ts").Db; tenant_id: string },
   connectorId: string,
@@ -340,18 +354,28 @@ export const authenticateOAuthTool: ConversationTool = {
         });
       } catch (err) {
         if (err instanceof ElicitationUnsupportedError) {
-          // Capability raced away — fall through to the DB-pause path.
-          // `dbPauseForOAuth → createElicitation` supersedes the row
-          // opened above, so the audit trail stays consistent.
+          // Capability raced away — degrade to the DB-pause path on the
+          // SAME governance row opened above. Minting a second row via
+          // `createElicitation` would trip the single-pending invariant
+          // and SQL-cancel the first `APPROVAL_REQUESTED` without a paired
+          // resolution — `demoteElicitationToPortal` keeps one row through
+          // the whole audit lifecycle instead.
           logger.warn({
             module: "conversation",
             action: "authenticate_oauth.oob_unsupported_fallback",
-            msg: "MCP oob elicitation unsupported — falling back to DB-pause",
+            msg: "MCP oob elicitation unsupported — degrading native row to DB-pause",
             tenant_id: ctx.tenant_id,
             connector_id: connectorId,
+            elicitation_id: approval.id,
             error: err.message,
           });
-          return dbPauseForOAuth(ctx, started.authorization_url, redirect_uri, message);
+          return demoteOAuthApprovalToPortal(
+            ctx,
+            approval.id,
+            started.authorization_url,
+            redirect_uri,
+            message,
+          );
         }
         // A transport/timeout failure with the bridge present. Do NOT
         // DB-pause: an external MCP client cannot resume a DB-pause.
@@ -365,26 +389,14 @@ export const authenticateOAuthTool: ConversationTool = {
           connector_id: connectorId,
           error: err instanceof Error ? err.message : String(err),
         });
-        await resolveElicitationAndReactivate(
-          {
-            tenant_id: ctx.tenant_id,
-            conversation_id: ctx.conversation_id,
-            id: approval.id,
-            output: null,
-            decided_by: ctx.actor_id,
-            status: "cancelled",
-            reason: OAUTH_ELICITATION_TRANSPORT_FAILED,
-            transport: "failed",
-          },
-          ctx.db,
-        );
-        return {
-          ok: false,
-          error_code: OAUTH_ELICITATION_TRANSPORT_FAILED,
+        return resolveAndError(ctx, approval.id, {
+          reason: OAUTH_ELICITATION_TRANSPORT_FAILED,
+          errorCode: OAUTH_ELICITATION_TRANSPORT_FAILED,
           message:
             "The MCP elicitation for the OAuth authorization URL failed in transit. The authorization state is still valid — call authenticate_oauth again for this connector to retry.",
+          transport: "failed",
           data: { authorization_url: started.authorization_url, redirect_uri },
-        };
+        });
       }
       const status = await waitForOAuthCredential({
         tenant_id: ctx.tenant_id,
@@ -435,39 +447,37 @@ export const authenticateOAuthTool: ConversationTool = {
         // and resolving the audit row as APPROVAL_APPROVED would be
         // semantically wrong. Both collapse to the same decline path.
         if (result.action !== "accept" || result.content?.acknowledged !== true) {
-          await resolveElicitationAndReactivate(
-            {
-              tenant_id: ctx.tenant_id,
-              conversation_id: ctx.conversation_id,
-              id: approval.id,
-              output: null,
-              decided_by: ctx.actor_id,
-              status: "cancelled",
-              reason: OAUTH_AUTHORIZATION_DECLINED,
-              // The form round-trip completed — the operator answered
-              // (declined / did not acknowledge). Transport succeeded.
-              transport: "succeeded",
-            },
-            ctx.db,
-          );
-          return {
-            ok: false,
-            error_code: OAUTH_AUTHORIZATION_DECLINED,
+          // The form round-trip completed — the operator answered
+          // (declined / did not acknowledge), so `transport: "succeeded"`.
+          return resolveAndError(ctx, approval.id, {
+            reason: OAUTH_AUTHORIZATION_DECLINED,
+            errorCode: OAUTH_AUTHORIZATION_DECLINED,
             message: "The user declined to start the OAuth authorization.",
+            transport: "succeeded",
             data: { authorization_url: started.authorization_url, redirect_uri },
-          };
+          });
         }
       } catch (err) {
         if (err instanceof ElicitationUnsupportedError) {
+          // Same audit-trail rationale as the oob branch: degrade the
+          // already-created native row to a DB-pause via
+          // `demoteElicitationToPortal` instead of minting a second row.
           logger.warn({
             module: "conversation",
             action: "authenticate_oauth.form_unsupported_fallback",
-            msg: "MCP form elicitation unsupported — falling back to DB-pause",
+            msg: "MCP form elicitation unsupported — degrading native row to DB-pause",
             tenant_id: ctx.tenant_id,
             connector_id: connectorId,
+            elicitation_id: approval.id,
             error: err.message,
           });
-          return dbPauseForOAuth(ctx, started.authorization_url, redirect_uri, message);
+          return demoteOAuthApprovalToPortal(
+            ctx,
+            approval.id,
+            started.authorization_url,
+            redirect_uri,
+            message,
+          );
         }
         // Transport/timeout failure with the bridge present — do NOT
         // DB-pause (an external MCP client cannot resume one). Return a
@@ -480,26 +490,14 @@ export const authenticateOAuthTool: ConversationTool = {
           connector_id: connectorId,
           error: err instanceof Error ? err.message : String(err),
         });
-        await resolveElicitationAndReactivate(
-          {
-            tenant_id: ctx.tenant_id,
-            conversation_id: ctx.conversation_id,
-            id: approval.id,
-            output: null,
-            decided_by: ctx.actor_id,
-            status: "cancelled",
-            reason: OAUTH_ELICITATION_TRANSPORT_FAILED,
-            transport: "failed",
-          },
-          ctx.db,
-        );
-        return {
-          ok: false,
-          error_code: OAUTH_ELICITATION_TRANSPORT_FAILED,
+        return resolveAndError(ctx, approval.id, {
+          reason: OAUTH_ELICITATION_TRANSPORT_FAILED,
+          errorCode: OAUTH_ELICITATION_TRANSPORT_FAILED,
           message:
             "The MCP elicitation for the OAuth authorization URL failed in transit. The authorization state is still valid — call authenticate_oauth again for this connector to retry.",
+          transport: "failed",
           data: { authorization_url: started.authorization_url, redirect_uri },
-        };
+        });
       }
       const status = await waitForOAuthCredential({
         tenant_id: ctx.tenant_id,
@@ -521,6 +519,32 @@ export const authenticateOAuthTool: ConversationTool = {
   },
 };
 
+/**
+ * The `ask_user_confirm` row input for an OAuth authorization pause.
+ *
+ * `external_write` is deliberate: it forces this OAuth pause to be
+ * non-auto-approvable. A dedicated `external_authorization` kind was
+ * considered and rejected — it would risk an approval-semantics
+ * regression for no behavioural gain.
+ *
+ * The `OAUTH_AUTHORIZATION_URL_FIELD` key is the shared contract sk-cli
+ * reads off the `elicit_request` frame to detect the OAuth step and
+ * auto-open the browser.
+ */
+function oauthApprovalInput(
+  authorizationUrl: string,
+  redirectUri: string,
+  message: string,
+): Record<string, unknown> {
+  return {
+    kind: "external_write",
+    question: "Have you completed the authorization in your browser?",
+    summary: message,
+    [OAUTH_AUTHORIZATION_URL_FIELD]: authorizationUrl,
+    redirect_uri: redirectUri,
+  };
+}
+
 /** DB-pause path: surface the authorization URL via `ask_user_confirm`. */
 function dbPauseForOAuth(
   ctx: import("./index.ts").ToolContext,
@@ -531,21 +555,47 @@ function dbPauseForOAuth(
   return pauseForUserInput(ctx, {
     tool_name: "ask_user_confirm",
     summary: message,
-    input: {
-      // `external_write` is deliberate: it forces this OAuth pause to be
-      // non-auto-approvable. A dedicated `external_authorization` kind was
-      // considered and rejected — it would risk an approval-semantics
-      // regression for no behavioural gain.
-      kind: "external_write",
-      question: "Have you completed the authorization in your browser?",
-      summary: message,
-      // Surfaced verbatim on the `elicit_request` frame so sk-cli can
-      // detect the OAuth step and auto-open the browser. The field name
-      // is the shared `OAUTH_AUTHORIZATION_URL_FIELD` contract.
-      [OAUTH_AUTHORIZATION_URL_FIELD]: authorizationUrl,
-      redirect_uri: redirectUri,
-    },
+    input: oauthApprovalInput(authorizationUrl, redirectUri, message),
   });
+}
+
+/**
+ * Bridge-degrade pause path: surface the authorization URL as a pause
+ * that references the ALREADY-created native elicitation row.
+ *
+ * The oob/form branches open the governance row via
+ * `openOAuthApprovalElicitation` (`createNativeElicitation`) BEFORE the
+ * bridge call so an `APPROVAL_REQUESTED` audit row lands. When the bridge
+ * raises `ElicitationUnsupportedError`, that row is still pending — it
+ * must NOT be superseded by a second `createElicitation` (the
+ * single-pending invariant would SQL-cancel the first row without a
+ * paired `APPROVAL_APPROVED/REJECTED`, breaking the audit trail). Instead
+ * `demoteElicitationToPortal` flips the same row to `protocol_native:
+ * false` (it is now satisfied by a portal POST to `respondElicitation`)
+ * and the pause envelope points at that same `rowId`. One row carries the
+ * whole `APPROVAL_REQUESTED → APPROVAL_APPROVED/REJECTED` lifecycle.
+ *
+ * Mirrors the `ask_user_*` `ElicitationUnsupportedError` fallback in
+ * `pauseForUserInput` (`ask-user/common.ts`).
+ */
+async function demoteOAuthApprovalToPortal(
+  ctx: ToolContext,
+  rowId: string,
+  authorizationUrl: string,
+  redirectUri: string,
+  message: string,
+): Promise<ToolResult> {
+  await demoteElicitationToPortal(ctx.tenant_id, rowId, ctx.db);
+  return {
+    ok: true,
+    data: { status: "awaiting_input", elicitation_id: rowId },
+    pause: {
+      tool_name: "ask_user_confirm",
+      summary: message,
+      elicitation_id: rowId,
+      input: oauthApprovalInput(authorizationUrl, redirectUri, message),
+    },
+  };
 }
 
 /**
