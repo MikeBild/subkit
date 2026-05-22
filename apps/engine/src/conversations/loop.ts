@@ -1022,6 +1022,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           toolsByName,
           signals: stepRouterSignals,
           turnThinkingEnabled: thinkingThisTurn,
+          // Thread the turn-level forced tool so `activeTools` narrowing
+          // can never drop it — the AI SDK validates the forced tool
+          // against every step's `activeTools` set.
+          forcedTool: preferredTool,
         });
         if (!decision) return {};
         const result: Record<string, unknown> = {};

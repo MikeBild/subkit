@@ -34,6 +34,8 @@ import {
 import { appendSnapshot } from "../draft.ts";
 import { getElicitation } from "../elicitations.ts";
 import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist.ts";
+import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
+import { findPriorSaveWorkflowApproval } from "../persistence/save-workflow-approval.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { DraftDocument, TurnEvent } from "../types.ts";
@@ -223,14 +225,20 @@ describe("save_workflow_draft — policy gate", () => {
       actor_type: "system",
       db: ctx.testDb.db,
     });
-    // Pre-seed a resolved ask_user_confirm{kind:save_workflow_draft} so the
-    // inner prior-approval gate also passes.
+    // Pre-seed a resolved ask_user_confirm carrying
+    // commit_intent.kind:save_workflow_draft so the inner prior-approval
+    // gate (which authorizes on the commit_intent, not the cosmetic
+    // top-level kind) also passes.
     await ctx.testDb.db.insert(conversationElicitations).values({
       tenant_id: ctx.tenant_id,
       conversation_id,
       tool_name: "ask_user_confirm",
       summary: "commit",
-      input: { kind: "save_workflow_draft", summary: "commit" },
+      input: {
+        kind: "save_workflow_draft",
+        summary: "commit",
+        commit_intent: { kind: "save_workflow_draft", payload: {}, description: "commit" },
+      },
       output: { confirmed: true },
       status: "resolved",
     });
@@ -331,5 +339,335 @@ describe("save_workflow_draft — auto-persist via commit_intent", () => {
     const out = synthetic!.output as Record<string, unknown>;
     expect(out.source).toBe("harness_auto_persist");
     expect(out.ok).toBe(true);
+  });
+});
+
+describe("commit gate — authorizes on commit_intent.kind, not top-level kind", () => {
+  test("PRODUCTION CASE: generic-kind confirm + save_workflow_draft commit_intent authorizes the commit", async () => {
+    // The exact stuck-conversation row: top-level `kind:"generic"`,
+    // `commit_intent.kind:"save_workflow_draft"`, `confirmed:true`.
+    // Pre-fix the commit gate keyed on `input->>'kind' =
+    // 'save_workflow_draft'` and rejected it → no_prior_approval →
+    // conversation_commit dead-ended with "no committed workflow".
+    const conversation_id = await freshConversation();
+    const draft = readyWorkflowDraft("commit-gate-prod-case");
+    await appendSnapshot(ctx.tenant_id, conversation_id, draft, ctx.testDb.db);
+
+    // Seed the multi-turn elicitation history exactly as observed:
+    // an external_write resolved + cancelled, a review_after_execution
+    // resolved, then the decisive generic-kind save approval.
+    await ctx.testDb.db.insert(conversationElicitations).values([
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_confirm",
+        summary: "external write",
+        input: { kind: "external_write", target: { tool: "call_connector" } },
+        output: { confirmed: true },
+        status: "resolved",
+      },
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_confirm",
+        summary: "external write cancelled",
+        input: { kind: "external_write", target: { tool: "call_connector" } },
+        status: "cancelled",
+      },
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_confirm",
+        summary: "post-exec review",
+        input: { kind: "review_after_execution" },
+        output: { confirmed: true },
+        status: "resolved",
+      },
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_confirm",
+        summary: "save the workflow",
+        input: {
+          kind: "generic",
+          commit_intent: {
+            kind: "save_workflow_draft",
+            payload: {},
+            description: "Save the current workflow draft.",
+          },
+        },
+        output: { confirmed: true },
+        status: "resolved",
+      },
+    ]);
+
+    let liveDraft = draft;
+    const toolCtx: ToolContext = {
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      actor_id: null,
+      connector_id: null,
+      workflow_id: null,
+      permission_mode: "ask",
+      engineClient: new EngineClient({
+        tenant_id: ctx.tenant_id,
+        actor_id: null,
+        actor_type: "system",
+        db: ctx.testDb.db,
+      }),
+      getDraft: () => liveDraft,
+      setDraft: async (next) => {
+        liveDraft = next;
+      },
+    };
+
+    // The prior-approval gate runs (skipPriorApprovalCheck omitted).
+    const result = await commitWorkflowAtomic({ ctx: toolCtx });
+    expect(result.ok).toBe(true);
+    expect(result.committed_workflow_id).toBeDefined();
+
+    const wfRows = await ctx.testDb.db
+      .select()
+      .from(workflows)
+      .where(eq(workflows.tenant_id, ctx.tenant_id));
+    expect(wfRows.find((r) => r.slug === "commit-gate-prod-case")).toBeDefined();
+  });
+
+  test("an external_write confirm with NO save-workflow commit_intent does NOT authorize the commit", async () => {
+    const conversation_id = await freshConversation();
+    const draft = readyWorkflowDraft("commit-gate-no-intent");
+    await appendSnapshot(ctx.tenant_id, conversation_id, draft, ctx.testDb.db);
+
+    // Only an external_write confirm exists — no commit_intent.
+    await ctx.testDb.db.insert(conversationElicitations).values({
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      summary: "external write",
+      input: { kind: "external_write", target: { tool: "call_connector" } },
+      output: { confirmed: true },
+      status: "resolved",
+    });
+
+    let liveDraft = draft;
+    const toolCtx: ToolContext = {
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      actor_id: null,
+      connector_id: null,
+      workflow_id: null,
+      permission_mode: "ask",
+      engineClient: new EngineClient({
+        tenant_id: ctx.tenant_id,
+        actor_id: null,
+        actor_type: "system",
+        db: ctx.testDb.db,
+      }),
+      getDraft: () => liveDraft,
+      setDraft: async (next) => {
+        liveDraft = next;
+      },
+    };
+
+    const result = await commitWorkflowAtomic({ ctx: toolCtx });
+    expect(result.ok).toBe(false);
+    const data = result.data as Record<string, unknown>;
+    expect(data.error_code).toBe("no_prior_approval");
+  });
+
+  test("non-save dedup matches on input.target.tool — not a shared kind bucket", async () => {
+    // The non-`save_workflow_draft` dedup keys on the ORIGINATING tool
+    // (`input.target.tool`, stamped on every policy-gate elicitation),
+    // not the cosmetic top-level `kind`. A recent resolved confirm
+    // whose `target.tool` equals the current tool must dedup the
+    // pre-confirm; a confirm for a DIFFERENT tool must NOT — even
+    // though both bucket to the same `external_write` kind, which is
+    // the cross-intent false positive the fix closes.
+
+    // (a) MATCH: a resolved confirm for run_workflow → pre-confirm skipped.
+    {
+      const conversation_id = await freshConversation();
+      await ctx.testDb.db.insert(conversationElicitations).values({
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_confirm",
+        summary: "run the workflow",
+        input: {
+          kind: "external_write",
+          question: "Run this workflow?",
+          target: { tool: "run_workflow", args: {} },
+        },
+        output: { confirmed: true },
+        status: "resolved",
+      });
+
+      const events: TurnEvent[] = [];
+      const signals = freshSignals();
+      const engineClient = new EngineClient({
+        tenant_id: ctx.tenant_id,
+        actor_id: null,
+        actor_type: "system",
+        db: ctx.testDb.db,
+      });
+      const toolCtx: ToolContext = {
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        actor_id: null,
+        connector_id: null,
+        workflow_id: null,
+        engineClient,
+        getDraft: () => ({ workflow: { name: "", steps: [] } }),
+        setDraft: async () => {},
+      };
+      const wrapped = wrapTools(
+        toolCtx,
+        signals,
+        events,
+        ctx.testDb.db,
+        ["workflow-authoring"],
+        {},
+      );
+
+      // run_workflow in prod mode → confirm_before_execution. The
+      // recent run_workflow confirm dedups the pre-confirm, so the
+      // inner tool runs (and fails workflow_not_found on the fake id —
+      // proof the gate did NOT pause).
+      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      const result = await (wrapped.run_workflow!.execute as any)(
+        { workflow_id: "00000000-0000-0000-0000-000000000000", environment: "prod" },
+        { toolCallId: "dedup-match-call", messages: [] },
+      );
+      expect(result.pause).toBeUndefined();
+      // No policy-gate elicitation was synthesised this turn.
+      const elicit = events.find((e) => e.type === "elicit_request");
+      expect(elicit).toBeUndefined();
+    }
+
+    // (b) NO MATCH: the only recent confirm targets a DIFFERENT tool
+    // (web_search) → no cross-intent dedup → run_workflow still pauses.
+    {
+      const conversation_id = await freshConversation();
+      await ctx.testDb.db.insert(conversationElicitations).values({
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_confirm",
+        summary: "run the web search",
+        input: {
+          kind: "external_write",
+          question: "Run this web search?",
+          target: { tool: "web_search", args: {} },
+        },
+        output: { confirmed: true },
+        status: "resolved",
+      });
+
+      const events: TurnEvent[] = [];
+      const signals = freshSignals();
+      const engineClient = new EngineClient({
+        tenant_id: ctx.tenant_id,
+        actor_id: null,
+        actor_type: "system",
+        db: ctx.testDb.db,
+      });
+      const toolCtx: ToolContext = {
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        actor_id: null,
+        connector_id: null,
+        workflow_id: null,
+        engineClient,
+        getDraft: () => ({ workflow: { name: "", steps: [] } }),
+        setDraft: async () => {},
+      };
+      const wrapped = wrapTools(
+        toolCtx,
+        signals,
+        events,
+        ctx.testDb.db,
+        ["workflow-authoring"],
+        {},
+      );
+
+      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      const result = await (wrapped.run_workflow!.execute as any)(
+        { workflow_id: "00000000-0000-0000-0000-000000000000", environment: "prod" },
+        { toolCallId: "dedup-nomatch-call", messages: [] },
+      );
+      // The web_search confirm does NOT dedup a run_workflow gate —
+      // the pre-confirm fires and the tool is paused before execution.
+      expect(result.ok).toBe(false);
+      expect(result.pause).toBeDefined();
+      expect(result.pause?.tool_name).toBe("ask_user_confirm");
+      expect(result.data).toMatchObject({
+        pending: true,
+        policy_mode: "confirm_before_execution",
+      });
+      const elicit = events.find((e) => e.type === "elicit_request");
+      expect(elicit).toBeDefined();
+    }
+  });
+
+  test("policy gate and commit gate agree — both consult the shared predicate", async () => {
+    // Regression: the two gates must never disagree. We assert the
+    // shared predicate's verdict matches the commit gate's outcome for
+    // the production-shaped approval row.
+    const conversation_id = await freshConversation();
+    const draft = readyWorkflowDraft("commit-gate-agreement");
+    await appendSnapshot(ctx.tenant_id, conversation_id, draft, ctx.testDb.db);
+
+    await ctx.testDb.db.insert(conversationElicitations).values({
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      summary: "save the workflow",
+      input: {
+        kind: "generic",
+        commit_intent: {
+          kind: "save_workflow_draft",
+          payload: {},
+          description: "Save the current workflow draft.",
+        },
+      },
+      output: { confirmed: true },
+      status: "resolved",
+    });
+
+    // The shared predicate (used by the policy gate's
+    // recentlyConfirmedByLLM detection) sees an approval...
+    const approval = await findPriorSaveWorkflowApproval(
+      ctx.testDb.db,
+      ctx.tenant_id,
+      conversation_id,
+    );
+    expect(approval).not.toBeNull();
+
+    // ...and the commit gate (which consults the SAME predicate)
+    // therefore accepts the commit. Identical verdict → no divergence.
+    let liveDraft = draft;
+    const toolCtx: ToolContext = {
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      actor_id: null,
+      connector_id: null,
+      workflow_id: null,
+      permission_mode: "ask",
+      engineClient: new EngineClient({
+        tenant_id: ctx.tenant_id,
+        actor_id: null,
+        actor_type: "system",
+        db: ctx.testDb.db,
+      }),
+      getDraft: () => liveDraft,
+      setDraft: async (next) => {
+        liveDraft = next;
+      },
+    };
+    const result = await commitWorkflowAtomic({ ctx: toolCtx });
+    expect(result.ok).toBe(true);
   });
 });

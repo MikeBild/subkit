@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.0.1](https://github.com/MikeBild/subkit/compare/subkit-v6.0.0...subkit-v6.0.1) (2026-05-22)
+
+
+### Bug Fixes
+
+* **conversations:** authoring commit gate now authorizes on `commit_intent.kind`, not the cosmetic top-level `input.kind`. A confirmed `ask_user_confirm` carrying `commit_intent.kind: save_workflow_draft` is a valid save-workflow approval even when its top-level `kind` is `generic` — fixes the production dead-end where `conversation_commit` reported "conversation has no committed workflow". The commit gate and the policy-gate pre-confirm dedup now share one `findPriorSaveWorkflowApproval` predicate so they can never disagree. The pre-confirm dedup for non-save tools now matches on the originating tool (`input.target.tool`) instead of a shared `kind` bucket, eliminating cross-intent false positives. A turn-level forced tool (e.g. `run_workflow`) is always retained in the step router's narrowed `activeTools` so the AI SDK no longer throws `Tool not found in provided tools`. An auto-mode commit-gate bypass now emits a forensic audit log.
+
 ## [6.0.0](https://github.com/MikeBild/subkit/compare/subkit-v5.2.4...subkit-v6.0.0) (2026-05-22)
 
 

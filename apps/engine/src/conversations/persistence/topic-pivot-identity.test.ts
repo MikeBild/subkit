@@ -96,7 +96,13 @@ async function seedApprovedConfirm(conversationId: string): Promise<void> {
     conversation_id: conversationId,
     tool_name: "ask_user_confirm",
     summary: "commit",
-    input: { kind: "save_workflow_draft", summary: "commit" },
+    // The commit gate authorizes on `commit_intent.kind` — the
+    // authoritative field — not the cosmetic top-level `kind`.
+    input: {
+      kind: "save_workflow_draft",
+      summary: "commit",
+      commit_intent: { kind: "save_workflow_draft", payload: {}, description: "commit" },
+    },
     output: { confirmed: true },
     status: "resolved",
   });

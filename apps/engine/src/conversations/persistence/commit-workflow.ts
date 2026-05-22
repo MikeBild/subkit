@@ -10,9 +10,9 @@
 // pass. We accept an explicit `skipPriorApprovalCheck` so callers can
 // document intent.
 
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { recordWorkflowCreated, recordWorkflowUpdated } from "../../audit/recorders/index.ts";
-import { conversationElicitations, conversations, workflows } from "../../db/schema/index.ts";
+import { conversations, workflows } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { createWorkflow, updateWorkflow } from "../../workflows/service.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
@@ -23,6 +23,7 @@ import {
   missingFreshCheckpoints,
 } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { findPriorSaveWorkflowApproval } from "./save-workflow-approval.ts";
 
 /**
  * Build the `WorkflowDef`-shaped object the workflows service accepts,
@@ -93,60 +94,53 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   // Prior-approval gate — only when the tool path requested it AND the
   // session is not in `permission_mode=auto`. The harness auto-persist
   // path bypasses this entirely (skipPriorApprovalCheck=true).
+  //
+  // Authorization is resolved via the SHARED `findPriorSaveWorkflowApproval`
+  // predicate — keyed on `input.commit_intent.kind === "save_workflow_draft"`,
+  // the authoritative field, NOT the cosmetic top-level `input.kind`.
+  // The policy gate in `tools/sdk-wrap/invoke.ts` imports the SAME
+  // predicate, so the two gates can never disagree again.
+  const gateBypassedByAutoMode = !p.skipPriorApprovalCheck && ctx.permission_mode === "auto";
+  if (gateBypassedByAutoMode) {
+    // FIX 6 / BUG-6: forensic audit so "did anyone approve this commit?"
+    // is answerable from logs. Mirrors `tool.executed_yolo`.
+    logger.warn({
+      module: "conversation_persistence",
+      action: "commit_gate.auto_bypass",
+      msg: "save_workflow_draft commit gate bypassed — permission_mode=auto",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      permission_mode: "auto",
+      bypassed_prior_approval: true,
+    });
+  }
   if (!p.skipPriorApprovalCheck && ctx.permission_mode !== "auto") {
-    const rows = await ctx.db
-      .select()
-      .from(conversationElicitations)
-      .where(
-        and(
-          eq(conversationElicitations.tenant_id, ctx.tenant_id),
-          eq(conversationElicitations.conversation_id, ctx.conversation_id),
-          eq(conversationElicitations.tool_name, "ask_user_confirm"),
-          sql`(${conversationElicitations.input} ->> 'kind') = 'save_workflow_draft'`,
-        ),
-      )
-      .orderBy(desc(conversationElicitations.created_at))
-      .limit(1);
-    const head = rows[0];
-    const confirmed =
-      head?.status === "resolved" &&
-      typeof head.output === "object" &&
-      head.output !== null &&
-      (head.output as { confirmed?: unknown }).confirmed === true;
-    if (!head || !confirmed) {
-      // Forensic log: the gate denied the commit. Carries enough
-      // shape to distinguish "no elicitation at all" (head=null —
-      // typical when the LLM skipped ask_user_confirm) from "user
-      // declined" (head.confirmed=false) from "still awaiting input"
-      // (head.status=pending). Pre-fix this collapsed into a single
-      // "tool.failed: no_prior_approval" line which forced operators
-      // to bisect three different bugs.
+    const approval = await findPriorSaveWorkflowApproval(
+      ctx.db,
+      ctx.tenant_id,
+      ctx.conversation_id,
+    );
+    if (!approval) {
+      // Forensic log: the gate denied the commit. Pre-fix this
+      // collapsed into a single "tool.failed: no_prior_approval" line
+      // which forced operators to bisect three different bugs.
       logger.warn({
         module: "conversation_persistence",
         action: "commit_gate.denied",
-        msg: "commitWorkflowAtomic prior-approval gate denied — no resolved ask_user_confirm{kind:save_workflow_draft, confirmed:true} found",
+        msg: "commitWorkflowAtomic prior-approval gate denied — no resolved ask_user_confirm with commit_intent.kind:save_workflow_draft and confirmed:true found",
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         permission_mode: ctx.permission_mode,
         intent_kind_expected: "save_workflow_draft",
-        latest_elicitation_id: head?.id ?? null,
-        latest_elicitation_status: head?.status ?? null,
-        latest_elicitation_confirmed:
-          head && typeof head.output === "object" && head.output !== null
-            ? (head.output as { confirmed?: unknown }).confirmed === true
-            : null,
       });
       return {
         ok: false,
         data: buildGateError(ctx.getDraft(), {
           error_code: "no_prior_approval",
           message:
-            "save_workflow_draft requires a resolved ask_user_confirm { kind: save_workflow_draft, confirmed: true }",
+            "save_workflow_draft requires a resolved ask_user_confirm whose commit_intent.kind is save_workflow_draft and whose output.confirmed is true",
           recommended_mode: "workflow",
           next_best_actions: ["ask_user_confirm"],
-          extra: {
-            latest_elicitation_status: head?.status ?? null,
-          },
         }),
       };
     }

@@ -17,7 +17,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import {
   conversationElicitations,
@@ -36,6 +36,7 @@ import { isDangerousTool } from "../../dangerous-tools.ts";
 import { createDraftSnapshot } from "../../draft-checkpoints.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
+import { findPriorSaveWorkflowApproval } from "../../persistence/save-workflow-approval.ts";
 import { resolveScopeFactsForConversation } from "../../scope-facts.ts";
 import { autoloadForToolCall, loadActivationCatalog } from "../../skill-autoload.ts";
 import { computeLineDiff } from "../../text-line-diff.ts";
@@ -57,6 +58,8 @@ import {
   extractText,
   isAffirmation,
   mapToolToCommitIntentKind,
+  proseConfirmationApplies,
+  REVIEW_AFTER_EXECUTION_KIND,
   referencesProseConfirmation,
   summarizeToolData,
   topLevelElicitationKindForTool,
@@ -451,48 +454,75 @@ export function wrapOne(
         // the most recent matching elicitation; skips the gate when
         // that elicitation was confirmed within the last 5 minutes.
         const intentKindForCurrentTool = mapToolToCommitIntentKind(inner.name);
-        // Dedupe filter: the LLM-emitted ask_user_confirm uses the
-        // CONFIRM_KIND namespace (`"save_workflow_draft" | "external_write" |
-        // "generic"`) as `input.kind`, NOT the COMMIT_INTENT_KIND
-        // namespace (`"save_workflow_draft" | …`) that the harness
-        // routes on. So when checking "did the LLM already prompt for
-        // this same intent?" we must compare against the top-level
-        // confirm kind, not the commit_intent kind. Pre-fix the
-        // dedupe always missed because the SQL compared the wrong
-        // namespaces; the bug only surfaced after the gate started
-        // firing for save_workflow_draft (previously the category guard
-        // suppressed the second pause entirely).
-        const llmEmittedKindForCurrentTool = topLevelElicitationKindForTool(inner.name);
+        // Dedup decision: "did the operator already confirm THIS tool's
+        // intent recently?" — if so, skip the policy-gate pre-confirm.
+        //
+        // For `save_workflow_draft` the dedup MUST use the exact same
+        // predicate the commit gate authorizes on
+        // (`findPriorSaveWorkflowApproval`, keyed on
+        // `input.commit_intent.kind`). If the two diverged, the policy
+        // gate could skip the pre-confirm on an approval the commit gate
+        // then rejects (the production dead-end), or pause redundantly
+        // on an approval the commit gate would accept.
+        //
+        // For every other tool the dedup matches on the ORIGINATING
+        // tool (`input.target.tool` — stamped on every policy-gate
+        // elicitation), NOT a shared top-level `kind` bucket. Keying on
+        // the cosmetic `kind` enum let a `run_workflow` confirm dedup
+        // against an unrelated `web_search` confirm (both bucket to
+        // `external_write`) — the cross-intent false positive.
         let recentlyConfirmedByLLM = false;
         if (intentKindForCurrentTool) {
           try {
-            const recent = await db
-              .select({
-                id: conversationElicitations.id,
-                status: conversationElicitations.status,
-                output: conversationElicitations.output,
-                created_at: conversationElicitations.created_at,
-              })
-              .from(conversationElicitations)
-              .where(
-                and(
-                  eq(conversationElicitations.tenant_id, ctx.tenant_id),
-                  eq(conversationElicitations.conversation_id, ctx.conversation_id),
-                  eq(conversationElicitations.tool_name, "ask_user_confirm"),
-                  sql`(${conversationElicitations.input} ->> 'kind') = ${llmEmittedKindForCurrentTool}`,
-                ),
-              )
-              .orderBy(desc(conversationElicitations.created_at))
-              .limit(1);
-            const head = recent[0];
-            if (
-              head?.status === "resolved" &&
-              typeof head.output === "object" &&
-              head.output !== null &&
-              (head.output as { confirmed?: unknown }).confirmed === true &&
-              Date.now() - (head.created_at?.getTime() ?? 0) < 5 * 60 * 1000
-            ) {
-              recentlyConfirmedByLLM = true;
+            if (inner.name === "save_workflow_draft") {
+              const approval = await findPriorSaveWorkflowApproval(
+                db,
+                ctx.tenant_id,
+                ctx.conversation_id,
+              );
+              if (approval && Date.now() - (approval.created_at?.getTime() ?? 0) < 5 * 60 * 1000) {
+                recentlyConfirmedByLLM = true;
+              }
+            } else {
+              const recent = await db
+                .select({
+                  id: conversationElicitations.id,
+                  status: conversationElicitations.status,
+                  input: conversationElicitations.input,
+                  output: conversationElicitations.output,
+                  created_at: conversationElicitations.created_at,
+                })
+                .from(conversationElicitations)
+                .where(
+                  and(
+                    eq(conversationElicitations.tenant_id, ctx.tenant_id),
+                    eq(conversationElicitations.conversation_id, ctx.conversation_id),
+                    eq(conversationElicitations.tool_name, "ask_user_confirm"),
+                  ),
+                )
+                .orderBy(desc(conversationElicitations.created_at))
+                // 20-row scan is a safe-direction bound: a matching
+                // confirm beyond the 20 most-recent rows simply isn't
+                // found, so the gate re-pauses (asks again) rather than
+                // skips — never the other way round. Mirrors the
+                // `5 * 60 * 1000` freshness window below.
+                .limit(20);
+              const head = recent.find((row) => {
+                const input = row.input;
+                if (typeof input !== "object" || input === null) return false;
+                const target = (input as { target?: unknown }).target;
+                if (typeof target !== "object" || target === null) return false;
+                return (target as { tool?: unknown }).tool === inner.name;
+              });
+              if (
+                head?.status === "resolved" &&
+                typeof head.output === "object" &&
+                head.output !== null &&
+                (head.output as { confirmed?: unknown }).confirmed === true &&
+                Date.now() - (head.created_at?.getTime() ?? 0) < 5 * 60 * 1000
+              ) {
+                recentlyConfirmedByLLM = true;
+              }
             }
           } catch {
             // DB blip: fall back to gating. Better to ask twice than
@@ -513,44 +543,52 @@ export function wrapOne(
         // Heuristic is scoped to the IMMEDIATELY-PRECEDING two
         // messages and a 5-minute freshness window so the path
         // cannot retroactively wave through an unrelated approval.
+        //
+        // The recent-messages query only runs for tools where prose
+        // dedupe can actually apply (`delete_*` / `revoke_*`). For every
+        // other tool `referencesProseConfirmation` short-circuits to
+        // false, so running the query would be a guaranteed no-op DB
+        // round-trip on every tool call (FIX 7 / INCONSISTENCY-2).
         let recentlyConfirmedByProse = false;
-        try {
-          const recentMessages = await db
-            .select({
-              role: conversationMessages.role,
-              content: conversationMessages.content,
-              created_at: conversationMessages.created_at,
-            })
-            .from(conversationMessages)
-            .where(
-              and(
-                eq(conversationMessages.tenant_id, ctx.tenant_id),
-                eq(conversationMessages.conversation_id, ctx.conversation_id),
-              ),
-            )
-            .orderBy(desc(conversationMessages.created_at))
-            .limit(4);
-          // Walk newest → older, looking for [user-affirm, assistant-question]
-          // pairs where the assistant question references the same tool
-          // (or destructive verb) the gate is about to fire on.
-          const FIVE_MIN_MS = 5 * 60 * 1000;
-          for (let i = 0; i < recentMessages.length - 1; i++) {
-            const userMsg = recentMessages[i];
-            const asstMsg = recentMessages[i + 1];
-            if (!userMsg || !asstMsg) continue;
-            if (userMsg.role !== "user" || asstMsg.role !== "assistant") continue;
-            if (userMsg.created_at && Date.now() - userMsg.created_at.getTime() > FIVE_MIN_MS)
+        if (proseConfirmationApplies(inner.name)) {
+          try {
+            const recentMessages = await db
+              .select({
+                role: conversationMessages.role,
+                content: conversationMessages.content,
+                created_at: conversationMessages.created_at,
+              })
+              .from(conversationMessages)
+              .where(
+                and(
+                  eq(conversationMessages.tenant_id, ctx.tenant_id),
+                  eq(conversationMessages.conversation_id, ctx.conversation_id),
+                ),
+              )
+              .orderBy(desc(conversationMessages.created_at))
+              .limit(4);
+            // Walk newest → older, looking for [user-affirm, assistant-question]
+            // pairs where the assistant question references the same tool
+            // (or destructive verb) the gate is about to fire on.
+            const FIVE_MIN_MS = 5 * 60 * 1000;
+            for (let i = 0; i < recentMessages.length - 1; i++) {
+              const userMsg = recentMessages[i];
+              const asstMsg = recentMessages[i + 1];
+              if (!userMsg || !asstMsg) continue;
+              if (userMsg.role !== "user" || asstMsg.role !== "assistant") continue;
+              if (userMsg.created_at && Date.now() - userMsg.created_at.getTime() > FIVE_MIN_MS)
+                break;
+              const userText = extractText(userMsg.content);
+              const asstText = extractText(asstMsg.content);
+              if (!isAffirmation(userText)) continue;
+              if (!referencesProseConfirmation(asstText, inner.name)) continue;
+              recentlyConfirmedByProse = true;
               break;
-            const userText = extractText(userMsg.content);
-            const asstText = extractText(asstMsg.content);
-            if (!isAffirmation(userText)) continue;
-            if (!referencesProseConfirmation(asstText, inner.name)) continue;
-            recentlyConfirmedByProse = true;
-            break;
+            }
+          } catch {
+            // DB blip: fall back to gating. Better to ask twice than
+            // silently elide a security-critical confirm.
           }
-        } catch {
-          // DB blip: fall back to gating. Better to ask twice than
-          // silently elide a security-critical confirm.
         }
         // Gate decision is driven by `resolvedMode` ALONE — not by
         // `inner.category`. The legacy `category === "tenant_write"`
@@ -1320,7 +1358,7 @@ export function wrapOne(
               tool_name: "ask_user_confirm",
               summary: `Review result of ${inner.name}`,
               input: {
-                kind: "review_after_execution",
+                kind: REVIEW_AFTER_EXECUTION_KIND,
                 summary: `Review result of ${inner.name}`,
                 target: { tool: inner.name, args: rawArgs },
                 ...confirmationMetadataForTool(inner.name, rawArgs),
@@ -1339,7 +1377,7 @@ export function wrapOne(
             tool_name: "ask_user_confirm",
             summary: `Review result of ${inner.name}`,
             input: {
-              kind: "review_after_execution",
+              kind: REVIEW_AFTER_EXECUTION_KIND,
               question: `${inner.name} ran. Keep this result?`,
               target: { tool: inner.name, args: rawArgs },
               ...confirmationMetadataForTool(inner.name, rawArgs),
@@ -1350,15 +1388,15 @@ export function wrapOne(
           log.conversation.approval.requested({
             conversation_id: ctx.conversation_id,
             approval_id: reviewElicitationId,
-            kind: "review_after_execution",
+            kind: REVIEW_AFTER_EXECUTION_KIND,
           });
           signals.pendingElicitation = {
             elicitation_id: reviewElicitationId,
             tool_name: "ask_user_confirm",
-            kind: "review_after_execution",
+            kind: REVIEW_AFTER_EXECUTION_KIND,
             summary: `Review result of ${inner.name}`,
             input: {
-              kind: "review_after_execution",
+              kind: REVIEW_AFTER_EXECUTION_KIND,
               question: `${inner.name} ran. Keep this result?`,
               target: { tool: inner.name, args: rawArgs },
               ...confirmationMetadataForTool(inner.name, rawArgs),
@@ -1381,7 +1419,7 @@ export function wrapOne(
               summary: `Review result of ${inner.name}`,
               elicitation_id: reviewElicitationId,
               input: {
-                kind: "review_after_execution",
+                kind: REVIEW_AFTER_EXECUTION_KIND,
                 question: `${inner.name} ran. Keep this result?`,
                 target: { tool: inner.name, args: rawArgs },
               },

@@ -35,6 +35,7 @@ const TOOLS: Record<string, ConversationTool> = Object.fromEntries([
   fakeTool("propose_step", "draft_write"),
   fakeTool("save_workflow_draft", "tenant_write"),
   fakeTool("delete_workflow", "tenant_write"),
+  fakeTool("run_workflow", "tenant_write"),
 ]);
 
 function baseParams(over: Partial<StepRouterParams> = {}): StepRouterParams {
@@ -193,6 +194,37 @@ describe("prepareStep — activeTools narrowing", () => {
     // unset (full palette) so save_workflow_draft / delete_workflow remain
     // available.
     expect(decision?.activeTools).toBeUndefined();
+  });
+});
+
+describe("prepareStep — forced tool survives activeTools narrowing (FIX 4 / BUG-3)", () => {
+  it("keeps a forced run_workflow in activeTools even though the stage drops tenant_write", () => {
+    // `workflow_previewed` narrows to tenant_read + draft_write and
+    // would otherwise drop `run_workflow` (a tenant_write tool). The AI
+    // SDK validates the turn-level forced tool against EVERY step's
+    // activeTools — if it is missing the SDK throws
+    // `Tool 'run_workflow' not found in provided tools`.
+    const decision = prepareStep(
+      baseParams({ signals: { stage: "workflow_previewed" }, forcedTool: "run_workflow" }),
+    );
+    expect(decision?.activeTools).toBeDefined();
+    expect(decision?.activeTools).toContain("run_workflow");
+    // The narrowing itself still happens — only the forced tool is re-added.
+    expect(decision?.activeTools).toContain("propose_step");
+    expect(decision?.activeTools).not.toContain("delete_workflow");
+  });
+
+  it("narrowing still drops tenant_write tools that are NOT the forced tool", () => {
+    const decision = prepareStep(
+      baseParams({ signals: { stage: "workflow_previewed" }, forcedTool: "run_workflow" }),
+    );
+    expect(decision?.activeTools).not.toContain("save_workflow_draft");
+  });
+
+  it("no forced tool — narrowing drops every tenant_write tool as before", () => {
+    const decision = prepareStep(baseParams({ signals: { stage: "workflow_previewed" } }));
+    expect(decision?.activeTools).not.toContain("run_workflow");
+    expect(decision?.activeTools).not.toContain("save_workflow_draft");
   });
 });
 

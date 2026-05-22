@@ -68,6 +68,19 @@ export interface StepRouterParams {
    * the `preferredTool` path.
    */
   turnThinkingEnabled?: boolean;
+  /**
+   * The turn-level forced tool, when `loop.ts` set
+   * `toolChoice: { type: "tool", toolName }` for the whole streamText
+   * invocation. The AI SDK validates the forced tool name against the
+   * step's `activeTools` set on EVERY step — if `activeToolsForStage`
+   * narrowing drops it (e.g. `run_workflow`, a `tenant_write` tool, on
+   * the `workflow_previewed` stage), the SDK throws
+   * `Tool '<name>' not found in provided tools` and the turn fails.
+   * The router must therefore always re-add this tool to any narrowed
+   * `activeTools` set. The tool stays policy-gated downstream — being
+   * visible to the model is not the same as bypassing confirmation.
+   */
+  forcedTool?: string | null;
 }
 
 /**
@@ -262,18 +275,22 @@ const ALWAYS_AVAILABLE: ReadonlySet<string> = new Set([
 function activeToolsForStage(
   stage: AuthoringStage | undefined,
   toolsByName: Record<string, ConversationTool>,
+  forcedTool: string | null | undefined,
 ): string[] | undefined {
   if (!stage || stage === "idle") {
     // No active draft yet — leave full palette so the model can start anywhere.
     return undefined;
   }
   const names = Object.keys(toolsByName);
-  const keep = (predicate: (t: ConversationTool) => boolean): string[] =>
-    names.filter((n) => {
+  const keep = (predicate: (t: ConversationTool) => boolean): string[] => {
+    const kept = names.filter((n) => {
       if (ALWAYS_AVAILABLE.has(n)) return true;
+      if (forcedTool && n === forcedTool) return true;
       const t = toolsByName[n];
       return t ? predicate(t) : false;
     });
+    return kept;
+  };
   switch (stage) {
     case "connector_targeted":
     case "workflow_targeted":
@@ -350,7 +367,10 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
   }
 
   // ---- activeTools narrowing -------------------------------------------
-  const activeTools = activeToolsForStage(signals.stage, toolsByName);
+  // The turn-level forced tool is threaded in so a narrowed palette can
+  // never drop it — otherwise the AI SDK throws
+  // `Tool '<name>' not found in provided tools` on the step.
+  const activeTools = activeToolsForStage(signals.stage, toolsByName, params.forcedTool);
   if (activeTools !== undefined) {
     reasonParts.push(`narrow:${activeTools.length}`);
   }

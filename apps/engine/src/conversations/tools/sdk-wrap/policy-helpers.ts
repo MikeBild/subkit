@@ -118,20 +118,40 @@ export function isAffirmation(text: string): boolean {
 const PROSE_PRECONFIRM_RE =
   /\b(shall i (?:proceed|continue|delete|remove|drop|revoke)|should i (?:proceed|continue|go ahead|delete|remove)|do you want me to (?:proceed|continue|delete|remove|drop|revoke)|confirm (?:if|that|whether)|(?:proceed|go ahead) (?:to|with) (?:delete|remove|drop|revoke))\b/i;
 
+/**
+ * Map a destructive tool name to the noun its prose pre-confirmation is
+ * expected to mention. Returns `null` for every tool that prose-dedupe
+ * does not apply to — `referencesProseConfirmation` is a dead branch
+ * for those, so callers gate the (otherwise useless) DB query on this.
+ */
+function proseConfirmationNounForTool(toolName: string): RegExp | null {
+  if (toolName === "delete_workflow") return /\bworkflow/i;
+  if (toolName === "delete_connector") return /\bconnector/i;
+  if (toolName === "delete_knowledge_source") return /\bknowledge/i;
+  if (toolName === "delete_subscription") return /\bsubscription/i;
+  if (toolName === "delete_schedule") return /\bschedule/i;
+  if (toolName === "revoke_api_key") return /\b(?:api[_ ]?key|key)/i;
+  if (toolName === "revoke_portal_token") return /\b(?:portal[_ ]?token|token)/i;
+  return null;
+}
+
+/**
+ * True when prose-pre-confirmation dedupe can possibly apply to this
+ * tool. Only destructive (`delete_*` / `revoke_*`) tools qualify —
+ * `referencesProseConfirmation` short-circuits to `false` for everything
+ * else, so the `recentlyConfirmedByProse` DB query in `invoke.ts` is a
+ * no-op for non-destructive tools and must be skipped (FIX 7 /
+ * INCONSISTENCY-2).
+ */
+export function proseConfirmationApplies(toolName: string): boolean {
+  return proseConfirmationNounForTool(toolName) !== null;
+}
+
 export function referencesProseConfirmation(asstText: string, toolName: string): boolean {
   // Map the tool to a noun the prose is likely to mention. Without
   // this match the dedupe could trigger on an unrelated prior
   // question — too risky for a destructive write.
-  const verbObject = (() => {
-    if (toolName === "delete_workflow") return /\bworkflow/i;
-    if (toolName === "delete_connector") return /\bconnector/i;
-    if (toolName === "delete_knowledge_source") return /\bknowledge/i;
-    if (toolName === "delete_subscription") return /\bsubscription/i;
-    if (toolName === "delete_schedule") return /\bschedule/i;
-    if (toolName === "revoke_api_key") return /\b(?:api[_ ]?key|key)/i;
-    if (toolName === "revoke_portal_token") return /\b(?:portal[_ ]?token|token)/i;
-    return null;
-  })();
+  const verbObject = proseConfirmationNounForTool(toolName);
   if (!verbObject) return false;
   // Both signals must co-occur in the SAME sentence. Pre-fix the
   // checker globbed the whole assistant message and false-matched on
@@ -170,6 +190,26 @@ export function topLevelElicitationKindForTool(
   if (tool === "save_workflow_draft") return "save_workflow_draft";
   return "external_write";
 }
+
+/**
+ * Sentinel `input.kind` stamped on the post-execution review
+ * elicitation the `confirm_after_execution` policy mode raises.
+ *
+ * This is NOT a member of the `ask_user_confirm` schema's `kind` enum
+ * (`save_workflow_draft | external_write | generic`) — it is an
+ * out-of-band marker the post-execution-review path uses to tag a
+ * confirm whose subject is a result that has ALREADY been produced.
+ *
+ * `review_after_execution` is ADVISORY-ONLY by design: the underlying
+ * `tenant_write` tools are mostly idempotent and non-rollbackable, so a
+ * declined review has no automatic rollback path. `maybeAutoPersistFromElicitation`
+ * therefore returns early for these (no `commit_intent` is attached),
+ * and a decline is logged + surfaced for the model to react to on the
+ * next turn — it does not trigger a harness write. The exported
+ * constant exists so this sentinel is referenced by name everywhere
+ * instead of as a bare magic string.
+ */
+export const REVIEW_AFTER_EXECUTION_KIND = "review_after_execution" as const;
 
 /**
  * Build the optional `commit_intent` carrier the harness reads in
