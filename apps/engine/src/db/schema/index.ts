@@ -22,6 +22,7 @@ export * from "./knowledge_sources.ts";
 export * from "./llm.ts";
 export * from "./mcp_oauth.ts";
 export * from "./mcp_servers.ts";
+export * from "./mcp_tasks.ts";
 export * from "./notifications.ts";
 export * from "./rbac.ts";
 export * from "./request_hooks.ts";

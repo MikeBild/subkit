@@ -203,6 +203,13 @@ export const AuditAction = {
   CONVERSATION_UPDATED: "conversation.updated",
   CONVERSATION_MEMORY_INJECTED: "conversation.memory_injected",
   CONVERSATION_RESUMED: "conversation.resumed",
+  // A backgrounded conversation turn (MCP async Tasks, SEP-1686) threw
+  // inside the `conversation.run-turn` pg-boss worker. Metadata carries
+  // the `mcp_task_id` + the `failure_reason` code so operators can
+  // trace a failed task back to the run that produced it. A turn that
+  // is *cancelled* (client `tasks/cancel`) does NOT emit this — it is
+  // an expected terminal state, not a failure.
+  CONVERSATION_TURN_FAILED: "conversation.turn_failed",
   // Direct `probe_connector` tool call — does not materialise a workflow
   // execution, but we audit the outbound request so operators can trace
   // which connectors the LLM poked during an authoring session. Metadata

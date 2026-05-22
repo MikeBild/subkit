@@ -9,7 +9,12 @@ import { streamSSE } from "hono/streaming";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import type { ConversationStatus, TurnEvent } from "../../../conversations/index.ts";
 import * as svc from "../../../conversations/index.ts";
-import { buildMessagesV2, serializeEvent } from "../../../conversations/index.ts";
+import {
+  buildMessagesV2,
+  registerConversationAbort,
+  serializeEvent,
+  unregisterConversationAbort,
+} from "../../../conversations/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -126,7 +131,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
-    const baseParams = {
+    const createParams = {
       tenant_id: principal.tenant_id,
       actor_id: principal.id,
       ...(body.connector_id ? { connector_id: body.connector_id } : {}),
@@ -136,8 +141,41 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(body.model ? { model: body.model } : {}),
       ...(body.title ? { title: body.title } : {}),
       ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-      runtime_context: buildRuntimeContextFromRequest(c, principal),
     } as const;
+    const runtimeContext = buildRuntimeContextFromRequest(c, principal);
+
+    // Conversation create is a two-step split: `createConversation`
+    // inserts the row + persists the first user-message row, then
+    // `runConversationTurn` drives the model loop. The HTTP route runs
+    // both inline so the SSE streaming surface keeps working; the MCP
+    // async-Tasks path runs the turn in a background worker instead.
+    const driveTurn = async (
+      created: svc.CreateConversationResult,
+      onEvent?: (ev: TurnEvent) => void,
+    ): Promise<svc.ConversationTurnOutcome> => {
+      // Register the AbortController on the synchronous frame right
+      // after the row insert (#148); unregister in `finally` so the
+      // registry slot is released on every code path.
+      const turnAbortCtrl = registerConversationAbort(principal.tenant_id, created.conversation.id);
+      try {
+        return await svc.runConversationTurn(
+          {
+            tenant_id: principal.tenant_id,
+            conversation_id: created.conversation.id,
+            actor_id: principal.id,
+            user_message: created.initial_message ?? "",
+            user_memory: created.user_memory,
+            turn_abort_ctrl: turnAbortCtrl,
+            runtime_context: runtimeContext,
+            ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+            ...(onEvent ? { onEvent } : {}),
+          },
+          db,
+        );
+      } finally {
+        unregisterConversationAbort(principal.tenant_id, created.conversation.id, turnAbortCtrl);
+      }
+    };
 
     if (wantsSSE(c.req.header("accept"))) {
       // streamSSE returns plain Response; the openapi handler signature
@@ -148,21 +186,26 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       // replay route below that bypasses openapi for the same reason.
       return streamSSE(c, async (stream) => {
         try {
-          const outcome = await svc.createConversation(
-            {
-              ...baseParams,
-              onCreated: (record) => {
-                void stream.writeSSE({
-                  event: "conversation_started",
-                  data: JSON.stringify({ conversation: record }),
-                });
-              },
-              onEvent: (ev: TurnEvent) => {
-                void stream.writeSSE(serializeEvent(ev));
-              },
-            },
-            db,
-          );
+          const created = await svc.createConversation(createParams, db);
+          // Emit the `conversation_started` frame as soon as the row
+          // exists so the client learns the conversation_id before the
+          // turn finishes.
+          await stream.writeSSE({
+            event: "conversation_started",
+            data: JSON.stringify({ conversation: created.conversation }),
+          });
+          if (!created.initial_message) {
+            await stream.writeSSE(
+              outcomeFrame({
+                conversation: created.conversation,
+                result: { events: [], status: "active" },
+              }),
+            );
+            return;
+          }
+          const outcome = await driveTurn(created, (ev: TurnEvent) => {
+            void stream.writeSSE(serializeEvent(ev));
+          });
           await stream.writeSSE(outcomeFrame(outcome));
         } catch (error) {
           const err = error as Error;
@@ -177,7 +220,17 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       }) as any;
     }
 
-    const outcome = await svc.createConversation(baseParams, db);
+    const created = await svc.createConversation(createParams, db);
+    if (!created.initial_message) {
+      return c.json(
+        serializeConversation({
+          conversation: created.conversation,
+          result: { events: [], status: "active" },
+        }),
+        201,
+      );
+    }
+    const outcome = await driveTurn(created);
     return c.json(serializeConversation(outcome), 201);
   });
 

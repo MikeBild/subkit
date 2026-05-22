@@ -5,6 +5,8 @@ import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { registerOAuth2RefreshHandler } from "../../credentials/oauth2/refresh-worker.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
+import { registerConversationRunTurnHandler } from "./conversation-run-turn.ts";
+import { registerConversationRunTurnDlqHandler } from "./conversation-run-turn-dlq.ts";
 import { registerEventFanoutHandler } from "./event-fanout.ts";
 import { registerExecutionRunHandler } from "./execution-run.ts";
 import { registerIngestDocsHandler } from "./ingest-docs.ts";
@@ -23,6 +25,8 @@ export interface RegisterHandlersOptions {
 
 export interface RegisteredHandlers {
   executionRunWorkerId: string;
+  conversationRunTurnWorkerId: string;
+  conversationRunTurnDlqWorkerId: string;
   oauth2RefreshWorkerId: string;
   ingestDocsWorkerId: string;
   ingestKnowledgeWorkerId: string;
@@ -36,6 +40,18 @@ export async function registerAllHandlers(
   opts: RegisterHandlersOptions,
 ): Promise<RegisteredHandlers> {
   const executionRunWorkerId = await registerExecutionRunHandler({
+    boss: opts.boss,
+    db: opts.db,
+  });
+  const conversationRunTurnWorkerId = await registerConversationRunTurnHandler({
+    boss: opts.boss,
+    db: opts.db,
+  });
+  // DLQ consumer — reconciles `mcp_tasks` rows stranded `working` when
+  // the run-turn worker process died mid-turn (the turn's own `catch`
+  // never ran). Without this an OOM restart leaves a forever-polling
+  // task. See conversation-run-turn-dlq.ts.
+  const conversationRunTurnDlqWorkerId = await registerConversationRunTurnDlqHandler({
     boss: opts.boss,
     db: opts.db,
   });
@@ -76,6 +92,8 @@ export async function registerAllHandlers(
     action: "handlers.registered",
     msg: "all queue handlers registered",
     execution_run_worker_id: executionRunWorkerId,
+    conversation_run_turn_worker_id: conversationRunTurnWorkerId,
+    conversation_run_turn_dlq_worker_id: conversationRunTurnDlqWorkerId,
     oauth2_refresh_worker_id: oauth2RefreshWorkerId,
     ingest_docs_worker_id: ingestDocsWorkerId,
     ingest_knowledge_worker_id: ingestKnowledgeWorkerId,
@@ -87,6 +105,8 @@ export async function registerAllHandlers(
   });
   return {
     executionRunWorkerId,
+    conversationRunTurnWorkerId,
+    conversationRunTurnDlqWorkerId,
     oauth2RefreshWorkerId,
     ingestDocsWorkerId,
     ingestKnowledgeWorkerId,

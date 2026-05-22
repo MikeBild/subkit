@@ -93,16 +93,25 @@ export async function createBoss(opts: StartBossOptions): Promise<PgBoss> {
   // queues that have no consumer yet still succeed. DLQs must exist
   // before their owning queue references them via `deadLetter`.
   const existing = new Set((await boss.getQueues()).map((q: QueueResult) => q.name));
-  if (!existing.has("execution.run.dlq")) {
+  // DLQs must exist before their owning queue references them via
+  // `deadLetter`. Collected from every queue definition so a new queue
+  // with a dead-letter target is wired up without a manual edit here.
+  const deadLetters = new Set<string>();
+  for (const name of QUEUE_NAMES) {
+    const dl = QUEUE_DEFINITIONS[name as QueueName].queue.deadLetter;
+    if (dl) deadLetters.add(dl);
+  }
+  for (const dlq of deadLetters) {
+    if (existing.has(dlq)) continue;
     try {
-      await boss.createQueue("execution.run.dlq");
-      existing.add("execution.run.dlq");
+      await boss.createQueue(dlq);
+      existing.add(dlq);
     } catch (err) {
       logger.warn({
         module: "queue",
         action: "queue.create_failed",
         msg: "could not create DLQ",
-        queue: "execution.run.dlq",
+        queue: dlq,
         error: err instanceof Error ? err.message : String(err),
       });
     }

@@ -78,32 +78,47 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     // keeps the surrounding `try` alive until completion.
     let ownershipTransferred = false;
     try {
-      const baseParams = {
+      const appendParams = {
         tenant_id: principal.tenant_id,
         conversation_id: id,
         actor_id: principal.id,
         message: body.message,
-        turn_abort_ctrl: turnAbortCtrl,
         ...(body.memory !== undefined ? { memory: body.memory } : {}),
         ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-        ...(body.client_suppress !== undefined
-          ? { next_suggestion_suppress: body.client_suppress }
-          : {}),
-        runtime_context: buildRuntimeContextFromRequest(c, principal),
       } as const;
+      const runtimeContext = buildRuntimeContextFromRequest(c, principal);
+      // The append + turn split: `appendUserMessage` validates + persists
+      // the user message row, `runConversationTurn` drives the model loop.
+      // The HTTP route runs both inline so the SSE surface keeps streaming.
+      const driveTurn = (
+        appended: svc.AppendMessageResult,
+        onEvent?: (ev: TurnEvent) => void,
+      ): Promise<svc.ConversationTurnOutcome> =>
+        svc.runConversationTurn(
+          {
+            tenant_id: principal.tenant_id,
+            conversation_id: id,
+            actor_id: principal.id,
+            user_message: appended.message,
+            user_memory: appended.user_memory,
+            turn_abort_ctrl: turnAbortCtrl,
+            runtime_context: runtimeContext,
+            ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+            ...(body.client_suppress !== undefined
+              ? { next_suggestion_suppress: body.client_suppress }
+              : {}),
+            ...(onEvent ? { onEvent } : {}),
+          },
+          db,
+        );
 
       if (wantsSSE(c.req.header("accept"))) {
         const response = streamSSE(c, async (stream) => {
           try {
-            const outcome = await svc.appendUserMessage(
-              {
-                ...baseParams,
-                onEvent: (ev: TurnEvent) => {
-                  void stream.writeSSE(serializeEvent(ev));
-                },
-              },
-              db,
-            );
+            const appended = await svc.appendUserMessage(appendParams, db);
+            const outcome = await driveTurn(appended, (ev: TurnEvent) => {
+              void stream.writeSSE(serializeEvent(ev));
+            });
             await stream.writeSSE(outcomeFrame(outcome));
           } catch (error) {
             if (error instanceof svc.PendingElicitationBlockedError) {
@@ -141,7 +156,8 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
 
       let outcome: svc.ConversationTurnOutcome;
       try {
-        outcome = await svc.appendUserMessage(baseParams, db);
+        const appended = await svc.appendUserMessage(appendParams, db);
+        outcome = await driveTurn(appended);
       } catch (error) {
         if (error instanceof svc.PendingElicitationBlockedError) {
           throw new HttpError(409, "pending_elicitation_blocked", error.message, {
@@ -235,14 +251,24 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     // single outer try/finally is sufficient).
     const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
     try {
-      const outcome = await svc.appendUserMessage(
+      const appended = await svc.appendUserMessage(
         {
           tenant_id: principal.tenant_id,
           conversation_id: id,
           actor_id: principal.id,
           message: enrichedMessage,
-          turn_abort_ctrl: turnAbortCtrl,
           ...(typeof memory === "string" && memory.length > 0 ? { memory } : {}),
+        },
+        db,
+      );
+      const outcome = await svc.runConversationTurn(
+        {
+          tenant_id: principal.tenant_id,
+          conversation_id: id,
+          actor_id: principal.id,
+          user_message: appended.message,
+          user_memory: appended.user_memory,
+          turn_abort_ctrl: turnAbortCtrl,
           runtime_context: buildRuntimeContextFromRequest(c, principal),
         },
         db,

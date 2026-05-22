@@ -6,6 +6,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getConfig, loadConfig } from "../../config/loader.ts";
+import type { Db } from "../../db/client.ts";
 import {
   connectorDocumentChunks,
   connectorDocuments,
@@ -16,6 +17,97 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { registerConversationAbort, unregisterConversationAbort } from "../abort.ts";
+import * as svc from "../service.ts";
+
+// ── Test helpers: create / append + drive the turn in one call ───────────────
+//
+// Production `createConversation` / `appendUserMessage` STOP after
+// persisting the user message row — the model loop runs separately via
+// `runConversationTurn` (inline on the HTTP/SSE route, or in the
+// `conversation.run-turn` worker for the MCP async-Tasks path). Most
+// unit tests want the old "call once, get the turn outcome" ergonomics;
+// these helpers compose the split + register an AbortController so the
+// test reads the `ConversationTurnOutcome` directly.
+
+/** create the conversation, persist the first message, run the turn. */
+export async function createConversationWithTurn(
+  params: svc.CreateConversationParams &
+    Pick<svc.RunConversationTurnParams, "onEvent" | "runtime_context">,
+  db: Db,
+): Promise<svc.ConversationTurnOutcome> {
+  const { onEvent, runtime_context, ...createParams } = params;
+  const created = await svc.createConversation(createParams, db);
+  if (!created.initial_message) {
+    return { conversation: created.conversation, result: { events: [], status: "active" } };
+  }
+  const ctrl = registerConversationAbort(created.conversation.tenant_id, created.conversation.id);
+  try {
+    return await svc.runConversationTurn(
+      {
+        tenant_id: created.conversation.tenant_id,
+        conversation_id: created.conversation.id,
+        actor_id: createParams.actor_id ?? null,
+        user_message: created.initial_message,
+        user_memory: created.user_memory,
+        turn_abort_ctrl: ctrl,
+        ...(createParams.permission_mode ? { permission_mode: createParams.permission_mode } : {}),
+        ...(onEvent ? { onEvent } : {}),
+        ...(runtime_context ? { runtime_context } : {}),
+      },
+      db,
+    );
+  } finally {
+    unregisterConversationAbort(created.conversation.tenant_id, created.conversation.id, ctrl);
+  }
+}
+
+/** resolve an elicitation + resume the loop, with a registered abort controller. */
+export async function respondElicitationForTest(
+  params: Omit<svc.RespondElicitationParams, "turn_abort_ctrl">,
+  db: Db,
+): Promise<svc.ConversationTurnOutcome> {
+  const ctrl = registerConversationAbort(params.tenant_id, params.conversation_id);
+  try {
+    return await svc.respondElicitation({ ...params, turn_abort_ctrl: ctrl }, db);
+  } finally {
+    unregisterConversationAbort(params.tenant_id, params.conversation_id, ctrl);
+  }
+}
+
+/** persist the appended message, run the turn. */
+export async function appendMessageWithTurn(
+  params: svc.AppendMessageParams &
+    Pick<
+      svc.RunConversationTurnParams,
+      "onEvent" | "runtime_context" | "surface" | "next_suggestion_suppress"
+    >,
+  db: Db,
+): Promise<svc.ConversationTurnOutcome> {
+  const { onEvent, runtime_context, surface, next_suggestion_suppress, ...appendParams } = params;
+  const appended = await svc.appendUserMessage(appendParams, db);
+  const ctrl = registerConversationAbort(appendParams.tenant_id, appendParams.conversation_id);
+  try {
+    return await svc.runConversationTurn(
+      {
+        tenant_id: appendParams.tenant_id,
+        conversation_id: appendParams.conversation_id,
+        actor_id: appendParams.actor_id ?? null,
+        user_message: appended.message,
+        user_memory: appended.user_memory,
+        turn_abort_ctrl: ctrl,
+        ...(appendParams.permission_mode ? { permission_mode: appendParams.permission_mode } : {}),
+        ...(onEvent ? { onEvent } : {}),
+        ...(runtime_context ? { runtime_context } : {}),
+        ...(surface ? { surface } : {}),
+        ...(next_suggestion_suppress !== undefined ? { next_suggestion_suppress } : {}),
+      },
+      db,
+    );
+  } finally {
+    unregisterConversationAbort(appendParams.tenant_id, appendParams.conversation_id, ctrl);
+  }
+}
 
 // Ensure the v3.5 config loader is bootstrapped so getConfig() calls
 // inside the conversation pipeline don't 500 with "called before

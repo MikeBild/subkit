@@ -57,7 +57,43 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import {
+  registerConversationAbort,
+  unregisterConversationAbort,
+} from "../../conversations/abort.ts";
 import * as conversationsSvc from "../../conversations/service.ts";
+import type { Db } from "../../db/client.ts";
+
+// Create a conversation, persist the first message, run the turn — the
+// pre-async-Tasks `createConversation` ergonomics. Production splits
+// row-insert from the model loop; this helper recomposes them for the
+// journey assertions.
+async function createConversationAndRunTurn(
+  params: conversationsSvc.CreateConversationParams,
+  db: Db,
+): Promise<conversationsSvc.ConversationTurnOutcome> {
+  const created = await conversationsSvc.createConversation(params, db);
+  if (!created.initial_message) {
+    return { conversation: created.conversation, result: { events: [], status: "active" } };
+  }
+  const ctrl = registerConversationAbort(created.conversation.tenant_id, created.conversation.id);
+  try {
+    return await conversationsSvc.runConversationTurn(
+      {
+        tenant_id: created.conversation.tenant_id,
+        conversation_id: created.conversation.id,
+        actor_id: params.actor_id ?? null,
+        user_message: created.initial_message,
+        user_memory: created.user_memory,
+        turn_abort_ctrl: ctrl,
+      },
+      db,
+    );
+  } finally {
+    unregisterConversationAbort(created.conversation.tenant_id, created.conversation.id, ctrl);
+  }
+}
+
 import { runWorkflowTool } from "../../conversations/tools/generated/writes/run-workflow.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
@@ -90,7 +126,7 @@ afterAll(async () => {
 
 describe("journey 53: session-79bf2cca regression set", () => {
   test("AC1: duplicate /respond returns 409 elicitation_already_resolved with the previous decision", async () => {
-    const outcome = await conversationsSvc.createConversation(
+    const outcome = await createConversationAndRunTurn(
       {
         tenant_id: ctx.tenantId,
         actor_id: ctx.userId,
@@ -379,7 +415,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
     // Asserting on the event shape is the cheap, deterministic way to
     // pin the contract — the logger call is a sibling of the same
     // `breakdown` literal.
-    const conversation = await conversationsSvc.createConversation(
+    const conversation = await createConversationAndRunTurn(
       {
         tenant_id: ctx.tenantId,
         actor_id: ctx.userId,

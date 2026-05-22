@@ -3,8 +3,13 @@ import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { createWorkflow } from "../../workflows/service.ts";
-import { appendUserMessage, createConversation, respondElicitation } from "../service.ts";
-import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+import {
+  appendMessageWithTurn,
+  type ConversationTestCtx,
+  createConversationTestCtx,
+  createConversationWithTurn,
+  respondElicitationForTest,
+} from "./setup.ts";
 
 let ctx: ConversationTestCtx;
 
@@ -50,7 +55,7 @@ async function countAudit(action: string, resourceId: string): Promise<number> {
 describe("cleanup write tools in the conversation loop", () => {
   test("delete_workflow goes through confirm-before-execution and then deletes", async () => {
     const workflow = await seedWorkflow("Delete Me", "delete-me");
-    const conversation = await createConversation(
+    const conversation = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -63,9 +68,8 @@ describe("cleanup write tools in the conversation loop", () => {
       { tool: "delete_workflow", args: { slug: workflow.slug, __policy_confirmed: true } },
     ]);
 
-    const first = await appendUserMessage(
+    const first = await appendMessageWithTurn(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.conversation.id,
         actor_id: ctx.user_id,
@@ -82,9 +86,8 @@ describe("cleanup write tools in the conversation loop", () => {
     ]);
     expect(await countAudit("workflow.deleted", workflow.id)).toBe(0);
 
-    const resumed = await respondElicitation(
+    const resumed = await respondElicitationForTest(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.conversation.id,
         elicitation_id: first.result.pending_elicitation_id!,
@@ -117,7 +120,7 @@ describe("cleanup write tools in the conversation loop", () => {
         scopes: [],
       })
       .returning();
-    const conversation = await createConversation(
+    const conversation = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -130,9 +133,8 @@ describe("cleanup write tools in the conversation loop", () => {
       { tool: "revoke_api_key", args: { id: apiKey!.id, __policy_confirmed: true } },
     ]);
 
-    const first = await appendUserMessage(
+    const first = await appendMessageWithTurn(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.conversation.id,
         actor_id: ctx.user_id,
@@ -143,9 +145,8 @@ describe("cleanup write tools in the conversation loop", () => {
     expect(first.result.status).toBe("awaiting_input");
     expect(first.result.pending_elicitation_id).toBeTruthy();
 
-    const resumed = await respondElicitation(
+    const resumed = await respondElicitationForTest(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.conversation.id,
         elicitation_id: first.result.pending_elicitation_id!,

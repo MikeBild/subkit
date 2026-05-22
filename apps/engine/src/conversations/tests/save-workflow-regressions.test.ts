@@ -14,9 +14,14 @@ import {
   withWorkflowInspection,
   withWorkflowValidation,
 } from "../authoring-state.ts";
-import { appendUserMessage, createConversation, getConversation } from "../service.ts";
+import { getConversation } from "../service.ts";
 import type { DraftDocument } from "../types.ts";
-import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+import {
+  appendMessageWithTurn,
+  type ConversationTestCtx,
+  createConversationTestCtx,
+  createConversationWithTurn,
+} from "./setup.ts";
 
 let ctx: ConversationTestCtx;
 
@@ -109,9 +114,8 @@ describe("workflow save regressions", () => {
 
     getMockProvider().setConversePlan(conversation.id, [{ tool: "save_workflow_draft", args: {} }]);
 
-    const result = await appendUserMessage(
+    const result = await appendMessageWithTurn(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.id,
         actor_id: ctx.user_id,
@@ -167,9 +171,8 @@ describe("workflow save regressions", () => {
       { tool: "save_workflow_draft", args: {} },
     ]);
 
-    const result = await appendUserMessage(
+    const result = await appendMessageWithTurn(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.id,
         actor_id: ctx.user_id,
@@ -188,7 +191,7 @@ describe("workflow save regressions", () => {
 
   test("explicit new-workflow intent detaches the previous saved workflow target before authoring", async () => {
     const existing = await seedLiveWorkflow("berlin-weather", "Berlin Weather");
-    const created = await createConversation(
+    const created = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -210,9 +213,8 @@ describe("workflow save regressions", () => {
       },
     ]);
 
-    await appendUserMessage(
+    await appendMessageWithTurn(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         actor_id: ctx.user_id,

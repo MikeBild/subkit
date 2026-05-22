@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { setConfigKey } from "../../config/loader.ts";
-import { createConversation, getConversation, respondElicitation } from "../service.ts";
-import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+import { getConversation } from "../service.ts";
+import {
+  type ConversationTestCtx,
+  createConversationTestCtx,
+  createConversationWithTurn,
+  respondElicitationForTest,
+} from "./setup.ts";
 
 let ctx: ConversationTestCtx;
 let server: ReturnType<typeof Bun.serve>;
@@ -37,7 +42,7 @@ afterAll(async () => {
 
 describe("guided authoring conversation loop", () => {
   test("runs connector-first onboarding, pauses for approvals, then commits workflow", async () => {
-    const created = await createConversation(
+    const created = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -68,9 +73,8 @@ describe("guided authoring conversation loop", () => {
       ),
     ).toBe(true);
 
-    const resumedSave = await respondElicitation(
+    const resumedSave = await respondElicitationForTest(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         elicitation_id: created.result.pending_elicitation_id!,
@@ -105,9 +109,8 @@ describe("guided authoring conversation loop", () => {
       ),
     ).toBe(true);
 
-    const resumedCommit = await respondElicitation(
+    const resumedCommit = await respondElicitationForTest(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         elicitation_id: resumedSave.result.pending_elicitation_id!,

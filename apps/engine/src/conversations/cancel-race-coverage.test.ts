@@ -77,26 +77,34 @@ const SURFACES: readonly Surface[] = [
     serviceCall: "svc.respondElicitation",
   },
   {
-    label: "MCP conversations capability — conversation.append + respond_elicitation",
-    file: "apps/engine/src/mcp/capabilities/conversations.ts",
-    registerCall: "registerConversationAbort(principal.tenant_id, conversation_id)",
+    // MCP async Tasks (SEP-1686): the conversation tool handler no
+    // longer runs the turn — it enqueues a `conversation.run-turn` job.
+    // The cancel-race register/unregister pair moved to the worker,
+    // which registers the controller around the backgrounded turn so
+    // `tasks/cancel` can abort it.
+    label: "conversation.run-turn worker — backgrounded turn register/unregister",
+    file: "apps/engine/src/queue/handlers/conversation-run-turn.ts",
+    registerCall: "registerConversationAbort(data.tenant_id, data.conversation_id)",
     unregisterCall:
-      "unregisterConversationAbort(principal.tenant_id, conversation_id, turnAbortCtrl)",
-    serviceCall: "svc.appendUserMessage",
+      "unregisterConversationAbort(data.tenant_id, data.conversation_id, turnAbortCtrl)",
+    serviceCall: "svc.runConversationTurn",
   },
   {
     label: "Chat dispatcher — Slack / Teams append + respond paths",
     file: "apps/engine/src/chat/dispatcher.ts",
     registerCall: "registerConversationAbort(tenant_id, conversation_id)",
     unregisterCall: "unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl)",
-    serviceCall: "appendUserMessage(",
+    serviceCall: "runConversationTurn(",
   },
   {
-    label: "createConversation — internal registration after row insert",
-    file: "apps/engine/src/conversations/service/create.ts",
-    registerCall: "registerConversationAbort(p.tenant_id, row.id)",
-    unregisterCall: "unregisterConversationAbort(p.tenant_id, row.id, turnAbortCtrl)",
-    serviceCall: "runLoop({",
+    // The conversation-create + turn split: `createConversation` only
+    // inserts the row, `runConversationTurn` runs the loop. The HTTP
+    // create route registers the controller around `runConversationTurn`.
+    label: "HTTP create route — registration around runConversationTurn",
+    file: "apps/engine/src/http/routes/conversations/collection.ts",
+    registerCall: "registerConversationAbort(",
+    unregisterCall: "unregisterConversationAbort(principal.tenant_id, created.conversation.id",
+    serviceCall: "runConversationTurn(",
   },
 ];
 

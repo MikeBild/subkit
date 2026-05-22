@@ -32,10 +32,26 @@ export interface McpTestSuite {
   http: HttpTestServer;
   cleanup: () => Promise<void>;
   connect: () => Promise<Client>;
+  /**
+   * Connect a client that advertises the MCP async-Tasks (SEP-1686)
+   * capability — `tasks/get|result|list|cancel` plus task-augmented
+   * `tools/call`. Required to exercise the `CreateTaskResult` path.
+   */
+  connectTasks: () => Promise<Client>;
   seedWorkflow: (def: WorkflowDef & { slug: string }) => Promise<{ id: string; slug: string }>;
   seedConnector: (overrides?: Partial<ConnectorSeed>) => Promise<{ id: string }>;
   seedSkill: (overrides?: Partial<SkillSeed>) => Promise<{ id: string }>;
   seedExecution: (opts?: SeedExecutionOpts) => Promise<{ execution_id: string }>;
+}
+
+export interface StartMcpTestSuiteOptions {
+  /**
+   * Start pg-boss against the test DB and register the
+   * `conversation.run-turn` worker. Required for any suite that drives
+   * the conversation tool cluster — those tools enqueue a background
+   * turn and the worker runs the model loop.
+   */
+  withQueue?: boolean;
 }
 
 interface SeedExecutionStep {
@@ -65,8 +81,27 @@ interface SkillSeed {
   examples: unknown[];
 }
 
-export async function startMcpTestSuite(label: string): Promise<McpTestSuite> {
+export async function startMcpTestSuite(
+  label: string,
+  opts: StartMcpTestSuiteOptions = {},
+): Promise<McpTestSuite> {
   const http = await createHttpTestServer(`mcp-${label}`);
+
+  // Optional pg-boss + conversation-run-turn worker — the conversation
+  // tool cluster enqueues a background turn (MCP async Tasks, SEP-1686),
+  // so a suite exercising those tools must run the worker.
+  let bossCleanup: (() => Promise<void>) | null = null;
+  if (opts.withQueue) {
+    const { startBoss, stopBoss } = await import("../../queue/boss.ts");
+    const { registerConversationRunTurnHandler } = await import(
+      "../../queue/handlers/conversation-run-turn.ts"
+    );
+    const boss = await startBoss({ connectionString: http.testDb.url });
+    await registerConversationRunTurnHandler({ boss, db: http.db });
+    bossCleanup = async () => {
+      await stopBoss(5_000);
+    };
+  }
 
   // Track clients we open so we can clean them up.
   const openClients: Client[] = [];
@@ -78,6 +113,21 @@ export async function startMcpTestSuite(label: string): Promise<McpTestSuite> {
       },
     });
     const client = new Client({ name: "subkit-mcp-tests", version: "0.0.0" });
+    await client.connect(transport as unknown as Transport);
+    openClients.push(client);
+    return client;
+  };
+
+  const connectTasks = async (): Promise<Client> => {
+    const transport = new StreamableHTTPClientTransport(new URL(`${http.baseUrl}/mcp`), {
+      requestInit: {
+        headers: { authorization: `Bearer ${http.apiKey}` },
+      },
+    });
+    const client = new Client(
+      { name: "subkit-mcp-tests-tasks", version: "0.0.0" },
+      { capabilities: { tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } } } },
+    );
     await client.connect(transport as unknown as Transport);
     openClients.push(client);
     return client;
@@ -187,8 +237,24 @@ export async function startMcpTestSuite(label: string): Promise<McpTestSuite> {
         // ignore
       }
     }
+    if (bossCleanup) {
+      try {
+        await bossCleanup();
+      } catch {
+        // ignore
+      }
+    }
     await http.cleanup();
   };
 
-  return { http, cleanup, connect, seedWorkflow, seedConnector, seedSkill, seedExecution };
+  return {
+    http,
+    cleanup,
+    connect,
+    connectTasks,
+    seedWorkflow,
+    seedConnector,
+    seedSkill,
+    seedExecution,
+  };
 }

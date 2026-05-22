@@ -361,6 +361,50 @@ export async function setElicitationParentMessage(
     .where(inArray(conversationElicitations.id, ids));
 }
 
+/** Outcome of staging a `respond_elicitation` answer (see below). */
+export type StageElicitationAnswerResult =
+  | { kind: "not_found" }
+  | { kind: "already_resolved"; existing: ElicitationRecord }
+  | { kind: "staged" };
+
+/**
+ * Persist a `respond_elicitation` answer onto the elicitation row's
+ * `output` column WITHOUT resolving it (status stays `pending`). This
+ * is the MCP async-Tasks pre-enqueue step: the answer — an
+ * `ask_user_form` payload can exceed pg-boss' 8 KB envelope cap — must
+ * land in the DB before the tiny `conversation.run-turn` job is sent,
+ * so the worker reads it back by `elicitation_id` and the envelope
+ * carries only ids. The row stays `pending` so the worker's
+ * `respondElicitation` still drives the real resolve + loop resume.
+ *
+ * Scoped by (tenant, conversation, id): a foreign tenant or a
+ * mismatched conversation can never stage an answer onto another's
+ * elicitation.
+ */
+export async function stageElicitationAnswer(
+  p: { tenant_id: string; conversation_id: string; id: string; output: unknown },
+  exec: Executor,
+): Promise<StageElicitationAnswerResult> {
+  const [row] = await exec
+    .update(conversationElicitations)
+    .set({ output: (p.output ?? null) as Record<string, unknown> | null, updated_at: new Date() })
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, p.tenant_id),
+        eq(conversationElicitations.conversation_id, p.conversation_id),
+        eq(conversationElicitations.id, p.id),
+        eq(conversationElicitations.status, "pending"),
+      ),
+    )
+    .returning();
+  if (row) return { kind: "staged" };
+  // The conditional update missed — either no such row, or it is no
+  // longer pending. Read it back to tell the caller which.
+  const existing = await getElicitation(p.tenant_id, p.id, exec);
+  if (!existing || existing.conversation_id !== p.conversation_id) return { kind: "not_found" };
+  return { kind: "already_resolved", existing };
+}
+
 /**
  * Outcome of attempting to resolve an elicitation. The caller distinguishes
  * three cases:

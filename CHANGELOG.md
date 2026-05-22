@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.0.2](https://github.com/MikeBild/subkit/compare/subkit-v6.0.1...subkit-v6.0.2) (2026-05-22)
+
+
+### Features
+
+* **mcp:** MCP async Tasks (SEP-1686) for the long-running conversation tools. `conversation_start`, `conversation_append`, and `conversation_respond_elicitation` no longer run the 68–160 s authoring turn inside the `tools/call` handler — past the ~60 s MCP client timeout. The handler now persists the conversation + user message, inserts an `mcp_tasks` index row, enqueues a `conversation.run-turn` pg-boss job, and returns immediately. The turn runs in a background worker. Tasks-capable clients receive a `CreateTaskResult` and poll `tasks/get` / `tasks/result` (server advertises `capabilities.tasks`); non-Tasks clients receive a fast `working` body and poll the new read-only `conversation_get` tool. A backgrounded turn has no live MCP session, so an elicitation takes the DB-pause path and the task derives `input_required`; the client resolves it via `conversation_respond_elicitation`. `tasks/cancel` aborts the running turn. The five conversation tools migrated from hand-rolled JSON Schema to Zod-first input schemas. Task state is derived from the conversation row — `mcp_tasks` is a thin correlation index, not a parallel lifecycle table. Adds migration `0026_mcp_tasks`.
+
 ## [6.0.1](https://github.com/MikeBild/subkit/compare/subkit-v6.0.0...subkit-v6.0.1) (2026-05-22)
 
 

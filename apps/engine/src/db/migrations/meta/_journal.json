@@ -183,6 +183,13 @@
       "when": 1779700000000,
       "tag": "0025_elicitation_protocol_native",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1779800000000,
+      "tag": "0026_mcp_tasks",
+      "breakpoints": true
     }
   ]
 }

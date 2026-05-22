@@ -12,6 +12,7 @@ import type { Queue, SendOptions } from "pg-boss";
 
 export type QueueName =
   | "execution.run"
+  | "conversation.run-turn"
   | "connector.refresh-oauth"
   | "connector.ingest-docs"
   | "knowledge.ingest"
@@ -22,6 +23,7 @@ export type QueueName =
 
 export const QUEUE_NAMES: QueueName[] = [
   "execution.run",
+  "conversation.run-turn",
   "connector.refresh-oauth",
   "connector.ingest-docs",
   "knowledge.ingest",
@@ -39,6 +41,7 @@ export interface QueueConfig {
 }
 
 const EXECUTION_RUN_VISIBILITY_SECONDS = 10 * 60;
+const CONVERSATION_RUN_TURN_VISIBILITY_SECONDS = 10 * 60;
 const DEFAULT_RETENTION_SECONDS = 14 * 24 * 60 * 60;
 
 /**
@@ -61,6 +64,20 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
       retryDelayMax: 60,
       expireInSeconds: EXECUTION_RUN_VISIBILITY_SECONDS,
       deadLetter: "execution.run.dlq",
+      retentionSeconds: DEFAULT_RETENTION_SECONDS,
+    },
+  },
+  // A backgrounded MCP conversation turn. retryLimit:0 — a turn makes
+  // real, non-idempotent LLM + external calls; replaying it would
+  // double-charge tokens and re-fire side effects. A turn that throws
+  // lands in the DLQ for inspection and the `mcp_tasks` row is marked
+  // `failed` by the worker's catch.
+  "conversation.run-turn": {
+    name: "conversation.run-turn",
+    queue: {
+      retryLimit: 0,
+      expireInSeconds: CONVERSATION_RUN_TURN_VISIBILITY_SECONDS,
+      deadLetter: "conversation.run-turn.dlq",
       retentionSeconds: DEFAULT_RETENTION_SECONDS,
     },
   },
@@ -127,6 +144,39 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
 
 export const EXECUTION_RUN_QUEUE: QueueName = "execution.run";
 export const EXECUTION_RUN_DLQ: string = "execution.run.dlq";
+
+export const CONVERSATION_RUN_TURN_QUEUE: QueueName = "conversation.run-turn";
+export const CONVERSATION_RUN_TURN_DLQ: string = "conversation.run-turn.dlq";
+
+/**
+ * Envelope a `conversation.run-turn` job carries. TINY by design — only
+ * ids, well under pg-boss' 8 KB cap. No payload body travels here:
+ *  - the user message body is persisted to `conversation_messages`
+ *    before enqueue; the worker reads it back by the
+ *    `mcp_tasks.user_message_id` the handler pinned,
+ *  - a `respond_elicitation` answer is persisted to
+ *    `conversation_elicitations.output` before enqueue; the worker
+ *    reads it back by `elicitation_id`. An `ask_user_form` answer can
+ *    exceed pg-boss' 8 KB cap, so it must never ride inline.
+ * `mcp_task_id` correlates the job to its `mcp_tasks` index row.
+ */
+export interface ConversationRunTurnJob {
+  tenant_id: string;
+  conversation_id: string;
+  mcp_task_id: string;
+  actor_id: string | null;
+  kind: "start" | "append" | "respond_elicitation";
+  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  /** Present only for `respond_elicitation` turns. */
+  elicitation_id?: string;
+  reason?: string;
+  runtime_context?: {
+    engine_url?: string;
+    tenant_slug?: string;
+    actor_email?: string;
+    actor_role?: string;
+  };
+}
 
 /**
  * Envelope that execution.run jobs carry. Fields are kept small enough to

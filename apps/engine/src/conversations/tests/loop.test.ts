@@ -14,13 +14,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { conversationDrafts, workflows } from "../../db/schema/index.ts";
+import { getConversation } from "../service.ts";
 import {
-  appendUserMessage,
-  createConversation,
-  getConversation,
-  respondElicitation,
-} from "../service.ts";
-import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+  appendMessageWithTurn,
+  type ConversationTestCtx,
+  createConversationTestCtx,
+  createConversationWithTurn,
+  respondElicitationForTest,
+} from "./setup.ts";
 
 let ctx: ConversationTestCtx;
 
@@ -34,7 +35,7 @@ afterAll(async () => {
 
 describe("conversations/loop", () => {
   test("drives the full list-users tool trace with validation feedback, approval, commit", async () => {
-    const outcome = await createConversation(
+    const outcome = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -90,9 +91,8 @@ describe("conversations/loop", () => {
     // Now confirm and resume — the plan continues with save_workflow_draft.
     const elicitationId = outcome.result.pending_elicitation_id;
     if (!elicitationId) throw new Error("expected pending_elicitation_id");
-    const resumed = await respondElicitation(
+    const resumed = await respondElicitationForTest(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: outcome.conversation.id,
         elicitation_id: elicitationId,
@@ -122,7 +122,7 @@ describe("conversations/loop", () => {
   });
 
   test("unknown user message simply ends the turn cleanly", async () => {
-    const outcome = await createConversation(
+    const outcome = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -134,9 +134,8 @@ describe("conversations/loop", () => {
     const toolCalls = outcome.result.events.filter((e) => e.type === "tool_call_start");
     expect(toolCalls.length).toBe(0);
     // Appending another message still works and is a no-op.
-    const cont = await appendUserMessage(
+    const cont = await appendMessageWithTurn(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: outcome.conversation.id,
         actor_id: ctx.user_id,

@@ -45,7 +45,6 @@ import type { ToolInvocation } from "../../tools/types.ts";
 import { synthesizeInputSchema } from "../../workflows/input-schema-synth.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
-import { createElicitationBridge } from "../elicitation/bridge.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { modeFlags, resolveMcpMode } from "../mode-resolver.ts";
 
@@ -379,18 +378,25 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           permissionModeMeta === "yolo"
             ? permissionModeMeta
             : undefined;
-        // Build the MCP-native elicitation bridge for this call. The
-        // conversation loop threads it onto `ToolContext` so ask_user_*
-        // / authenticate_oauth surface forms + OAuth prompts directly
-        // in this client rather than taking the DB-pause round-trip.
-        const elicitationBridge = createElicitationBridge(server, extra);
+        // MCP async Tasks (SEP-1686). A conversation turn runs in the
+        // background `conversation.run-turn` worker — the handler never
+        // runs the model loop inline. `request.params.task` is set by
+        // the SDK only when the client advertised the `tasks`
+        // capability; its presence (cross-checked with the negotiated
+        // client capability) means the client can consume a
+        // `CreateTaskResult`. The conversation loop therefore takes the
+        // DB-pause elicitation path, NOT the live `ElicitationBridge` —
+        // a backgrounded turn has no live session.
+        const taskParamPresent = request.params.task !== undefined;
+        const clientTasksCapable = server.getClientCapabilities()?.tasks !== undefined;
+        const taskAugmented = taskParamPresent && clientTasksCapable;
         const result = await handleConversationTool({
           db,
           principal,
           name,
           args: args as Record<string, unknown>,
-          elicitationBridge,
           ...(permissionMode ? { permission_mode: permissionMode } : {}),
+          ...(taskAugmented ? { taskAugmented } : {}),
         });
         logger.info({
           module: "mcp",
@@ -399,7 +405,13 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           tool: name,
           duration_ms: Date.now() - started,
           is_error: result.isError,
+          task_augmented: taskAugmented,
         });
+        // A Tasks-capable, turn-driving call returns a CreateTaskResult
+        // verbatim; everything else returns the plain CallToolResult.
+        if (result.createTaskResult) {
+          return result.createTaskResult;
+        }
         return {
           isError: result.isError,
           content: result.content.map((c) => ({ type: "text" as const, text: c.text })),

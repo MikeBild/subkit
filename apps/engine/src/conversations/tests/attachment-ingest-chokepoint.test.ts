@@ -59,16 +59,15 @@ describe("attachment ingest chokepoint", () => {
       slug: "policy-doc",
     });
 
-    // Drive a turn whose user content references the attachment by
-    // legacy slug. The mock LLM will respond with a short ack — we
-    // only care about the persisted user-row.
+    // Append a user message referencing the attachment by legacy slug.
+    // `appendUserMessage` owns the rewrite chokepoint + the row insert
+    // (the model loop is a separate step we do not need here).
     await appendUserMessage(
       {
         tenant_id: ctx.tenant_id,
         conversation_id,
         actor_id: ctx.user_id,
         message: "check @attachment:policy-doc please",
-        turn_abort_ctrl: new AbortController(),
       },
       ctx.testDb.db,
     );

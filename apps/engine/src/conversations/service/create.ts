@@ -1,4 +1,8 @@
-// Create a new conversation row + drive the optional first turn.
+// Create a new conversation row + persist the optional first user
+// message. This function STOPS before the model loop — the turn runs
+// via `runConversationTurn` (see ./run-turn.ts), called either inline
+// by the HTTP/SSE route or in the `conversation.run-turn` pg-boss
+// worker for the MCP async-Tasks path.
 //
 // The mock-provider plan-seeding branch handles canned tests; in
 // production it is a no-op because LLM_PROVIDER isn't `mock`.
@@ -10,14 +14,12 @@ import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { log } from "../../logging/logger.ts";
-import { registerConversationAbort, unregisterConversationAbort } from "../abort.ts";
+import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
-import type { ElicitationBridge } from "../elicitation-bridge.ts";
-import { type RunLoopResult, runLoop } from "../loop.ts";
+import { appendMessage } from "../persist.ts";
 import { listBaselineSlugs, loadActivationCatalog } from "../skill-autoload.ts";
 import type { ConversationRecord } from "../types.ts";
-import { getConversation } from "./get.ts";
-import { type ConversationTurnOutcome, normalizePermissionMode, rowToRecord } from "./shared.ts";
+import { normalizePermissionMode, rowToRecord } from "./shared.ts";
 
 export interface CreateConversationParams {
   tenant_id: string;
@@ -31,53 +33,40 @@ export interface CreateConversationParams {
   model?: string | null;
   /** Optional human title (sets conversations.title). */
   title?: string | null;
-  /** Client-supplied permission mode for the initial turn. */
+  /** Client-supplied permission mode — persisted on the draft session. */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
-  /** Live-event emitter — enables SSE streaming for the initial turn. */
-  onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
-  /**
-   * Fired synchronously once the conversation row has been inserted
-   * but before the initial runLoop turn begins. Lets SSE callers emit
-   * a `conversation_started` frame so the client knows the
-   * conversation_id immediately, instead of waiting for the terminal
-   * `outcome` frame at the end of the turn.
-   */
-  onCreated?: (record: ConversationRecord) => void;
-  /** Real runtime context (engine_url, tenant_slug, actor email/role) — see runtime-context.ts. */
-  runtime_context?: {
-    engine_url?: string;
-    tenant_slug?: string;
-    actor_email?: string;
-    actor_role?: string;
-  };
-  /**
-   * Pre-registered AbortController for the initial turn's runLoop.
-   *
-   * Optional because the route handler does NOT know `conversation_id`
-   * before this function inserts the row — there is no synchronous-
-   * accept frame at the route layer that can register a controller
-   * keyed on (tenant, conv) the way `messages.ts` does. When the
-   * caller omits this, `createConversation` registers internally
-   * directly after the row insert (still synchronous from the runLoop
-   * call's perspective) and unregisters in a `finally`. When the
-   * caller supplies one, lifetime ownership stays with the caller.
-   *
-   * Per #148: every `runLoop` call site threads a controller; the
-   * fallback that previously lived inside `runLoop` was retired.
-   */
-  turn_abort_ctrl?: AbortController;
-  /**
-   * MCP-native elicitation bridge — present only when the initial turn
-   * runs inside an MCP `tools/call` whose client advertised the
-   * `elicitation` capability. Threaded onto the loop's `ToolContext`.
-   */
-  elicitationBridge?: ElicitationBridge;
 }
 
+export interface CreateConversationResult {
+  conversation: ConversationRecord;
+  /**
+   * The rewritten first user message (attachment slugs resolved). The
+   * `conversation_messages` row is already persisted; this value is
+   * handed to `runConversationTurn` so the turn does not re-insert it.
+   * `null` when the conversation was created without an opening
+   * message.
+   */
+  initial_message: string | null;
+  /**
+   * The `conversation_messages` row id of the persisted first user
+   * message. The MCP async-Tasks handler pins this onto the `mcp_tasks`
+   * row so the worker runs the turn on THIS message rather than a
+   * later concurrently-appended one. `null` when no opening message.
+   */
+  initial_message_id: string | null;
+  /** Memory payload persisted on the row, if any. */
+  user_memory: string | null;
+}
+
+/**
+ * Insert a conversation row, emit the create audit, seed any canned
+ * mock plan, and persist the first user-message row. Does NOT run the
+ * model loop — the caller drives the turn via `runConversationTurn`.
+ */
 export async function createConversation(
   p: CreateConversationParams,
   exec: Db,
-): Promise<ConversationTurnOutcome> {
+): Promise<CreateConversationResult> {
   const memory = typeof p.memory === "string" ? p.memory : null;
   const initialPermissionMode = normalizePermissionMode(p.permission_mode);
   const initialDraft = createEmptyDraftDocument();
@@ -153,14 +142,6 @@ export async function createConversation(
     );
   }
 
-  if (p.onCreated) {
-    try {
-      p.onCreated(rowToRecord(row));
-    } catch {
-      // Never block conversation creation on a callback error.
-    }
-  }
-
   // Seed the mock provider plan for known canned flows when the initial
   // message matches. In production this is a no-op because `LLM_PROVIDER`
   // isn't `mock` and the canned plan map stays empty. Tests flip the
@@ -183,40 +164,29 @@ export async function createConversation(
     }
   }
 
-  // #148: every runLoop call site threads a controller. Caller may
-  // supply one (rare, since they didn't have `row.id` until just now);
-  // otherwise we register here, immediately after the row insert that
-  // produced the conversation_id, and unregister in `finally`.
-  const ownsAbortRegistration = p.turn_abort_ctrl == null;
-  const turnAbortCtrl = p.turn_abort_ctrl ?? registerConversationAbort(p.tenant_id, row.id);
-  let result: RunLoopResult;
-  try {
-    result = p.initial_message
-      ? await runLoop({
-          db: exec,
-          tenant_id: p.tenant_id,
-          conversation_id: row.id,
-          actor_id: p.actor_id,
-          connector_id: p.connector_id ?? null,
-          workflow_id: p.workflow_id ?? null,
-          user_message: p.initial_message,
-          user_memory: memory,
-          model_override: p.model ?? null,
-          turn_abort_ctrl: turnAbortCtrl,
-          ...(p.onEvent ? { onEvent: p.onEvent } : {}),
-          ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
-          ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
-          ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),
-        })
-      : { events: [], status: "active" as const };
-  } finally {
-    if (ownsAbortRegistration) {
-      unregisterConversationAbort(p.tenant_id, row.id, turnAbortCtrl);
-    }
+  // Persist the first user-message row before the turn runs. The MCP
+  // async-Tasks worker reads it back from the DB; the HTTP/SSE route
+  // hands the rewritten text straight to `runConversationTurn`. Both
+  // pass `user_message_persisted: true` into `runLoop` so the loop
+  // does not double-insert.
+  let initialMessage: string | null = null;
+  let initialMessageId: string | null = null;
+  if (p.initial_message) {
+    const rewrite = await resolveAttachmentSlugsInText(p.initial_message, {
+      db: exec,
+      tenant_id: p.tenant_id,
+      conversation_id: row.id,
+    });
+    initialMessage = rewrite.text;
+    initialMessageId = await appendMessage(exec, p.tenant_id, row.id, "user", {
+      text: initialMessage,
+    });
   }
 
-  // Re-load so status reflects any loop side-effects.
-  const updated = await getConversation(p.tenant_id, row.id, exec);
-  if (!updated) throw new Error("conversation disappeared");
-  return { conversation: updated.conversation, result };
+  return {
+    conversation: rowToRecord(row),
+    initial_message: initialMessage,
+    initial_message_id: initialMessageId,
+    user_memory: memory,
+  };
 }

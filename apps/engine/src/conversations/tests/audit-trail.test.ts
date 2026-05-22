@@ -14,8 +14,12 @@ import {
   llmUsage,
   workflows,
 } from "../../db/schema/index.ts";
-import { createConversation, respondElicitation } from "../service.ts";
-import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+import {
+  type ConversationTestCtx,
+  createConversationTestCtx,
+  createConversationWithTurn,
+  respondElicitationForTest,
+} from "./setup.ts";
 
 let ctx: ConversationTestCtx;
 
@@ -29,7 +33,7 @@ afterAll(async () => {
 
 describe("conversations/audit-trail", () => {
   test("list-users flow writes exactly the expected DB rows + audit entries", async () => {
-    const created = await createConversation(
+    const created = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -114,9 +118,8 @@ describe("conversations/audit-trail", () => {
     expect(anyApprovalRequested.length).toBe(1);
 
     // ----- Resume after user confirms -----
-    const resumed = await respondElicitation(
+    const resumed = await respondElicitationForTest(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         elicitation_id: elicitationId,

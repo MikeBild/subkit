@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { getMockProvider } from "../../llm/mock-provider.ts";
+import { getConversation } from "../service.ts";
 import {
-  appendUserMessage,
-  createConversation,
-  getConversation,
-  respondElicitation,
-} from "../service.ts";
-import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+  appendMessageWithTurn,
+  type ConversationTestCtx,
+  createConversationTestCtx,
+  createConversationWithTurn,
+  respondElicitationForTest,
+} from "./setup.ts";
 
 let ctx: ConversationTestCtx;
 
@@ -20,7 +21,7 @@ afterAll(async () => {
 
 describe("conversation permission mode persistence", () => {
   test("stored auto mode survives an elicitation resume and still auto-confirms safe prompts", async () => {
-    const created = await createConversation(
+    const created = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -55,9 +56,8 @@ describe("conversation permission mode persistence", () => {
       },
     ]);
 
-    const firstTurn = await appendUserMessage(
+    const firstTurn = await appendMessageWithTurn(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         actor_id: ctx.user_id,
@@ -69,9 +69,8 @@ describe("conversation permission mode persistence", () => {
     expect(firstTurn.result.status).toBe("awaiting_input");
     expect(firstTurn.result.pending_elicitation_id).toBeTruthy();
 
-    const resumed = await respondElicitation(
+    const resumed = await respondElicitationForTest(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         elicitation_id: firstTurn.result.pending_elicitation_id!,

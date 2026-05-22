@@ -16,13 +16,14 @@ import {
   conversationToolCalls,
 } from "../../db/schema/index.ts";
 import { buildModelMessages } from "../persist.ts";
+import { getConversation } from "../service.ts";
 import {
-  appendUserMessage,
-  createConversation,
-  getConversation,
-  respondElicitation,
-} from "../service.ts";
-import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+  appendMessageWithTurn,
+  type ConversationTestCtx,
+  createConversationTestCtx,
+  createConversationWithTurn,
+  respondElicitationForTest,
+} from "./setup.ts";
 
 let ctx: ConversationTestCtx;
 
@@ -36,7 +37,7 @@ afterAll(async () => {
 
 describe("conversations/elicitation", () => {
   test("rejecting a confirm keeps the conversation active and audits the decision", async () => {
-    const outcome = await createConversation(
+    const outcome = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -56,9 +57,8 @@ describe("conversations/elicitation", () => {
       .limit(1);
     expect(pendingRow[0]?.status).toBe("pending");
 
-    const responded = await respondElicitation(
+    const responded = await respondElicitationForTest(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: outcome.conversation.id,
         elicitation_id: elicitationId,
@@ -124,7 +124,7 @@ describe("conversations/elicitation", () => {
   });
 
   test("a duplicate /respond on an already-resolved elicitation raises ElicitationAlreadyResolvedError", async () => {
-    const outcome = await createConversation(
+    const outcome = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -137,9 +137,8 @@ describe("conversations/elicitation", () => {
     if (!elicitationId) throw new Error("no elicitation id");
 
     // First response — should succeed and move the row to resolved.
-    await respondElicitation(
+    await respondElicitationForTest(
       {
-        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: outcome.conversation.id,
         elicitation_id: elicitationId,
@@ -153,9 +152,8 @@ describe("conversations/elicitation", () => {
     // the conversation loop and double-charge the LLM (the silent-hang
     // failure mode in session 79bf2cca).
     await expect(
-      respondElicitation(
+      respondElicitationForTest(
         {
-          turn_abort_ctrl: new AbortController(),
           tenant_id: ctx.tenant_id,
           conversation_id: outcome.conversation.id,
           elicitation_id: elicitationId,
@@ -172,7 +170,7 @@ describe("conversations/elicitation", () => {
   });
 
   test("a fresh user prompt is blocked while an elicitation is still pending", async () => {
-    const outcome = await createConversation(
+    const outcome = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -185,9 +183,8 @@ describe("conversations/elicitation", () => {
     if (!elicitationId) throw new Error("no elicitation id");
 
     await expect(
-      appendUserMessage(
+      appendMessageWithTurn(
         {
-          turn_abort_ctrl: new AbortController(),
           tenant_id: ctx.tenant_id,
           conversation_id: outcome.conversation.id,
           actor_id: ctx.user_id,

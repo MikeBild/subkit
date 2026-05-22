@@ -1,81 +1,108 @@
 // MCP conversation tool cluster.
 //
-// Exposes five tools that drive a full authoring session over the
-// MCP transport:
+// Exposes the authoring-session tools over the MCP transport:
 //
-//   - conversation.start(connector_id?, workflow_id?, message)
-//   - conversation.append(conversation_id, message)
-//   - conversation.respond_elicitation(conversation_id, elicitation_id, output, reason?)
-//   - conversation.commit(conversation_id)
+//   - conversation_start(connector_id?, workflow_id?, message)
+//   - conversation_append(conversation_id, message)
+//   - conversation_respond_elicitation(conversation_id, elicitation_id, output, reason?)
+//   - conversation_get(conversation_id)            ← fast read-only poll
+//   - conversation_commit(conversation_id)
 //
-// These are additive to the P7 `wf.<slug>` workflow tools — the list
-// handler in `capabilities/tools.ts` concatenates both sets before
-// responding to `tools/list`.
+// MCP async Tasks (SEP-1686). A conversation turn takes 68-160s — far
+// past the ~60s MCP client timeout. So the three turn-driving tools
+// NEVER run the model loop inline. Each one:
+//   1. inserts/validates the conversation row + persists the user
+//      message row,
+//   2. inserts an `mcp_tasks` index row + enqueues a
+//      `conversation.run-turn` pg-boss job (the worker runs the loop),
+//   3. returns immediately.
+//
+// A Tasks-capable client (the SDK sets `request.params.task`) gets a
+// `CreateTaskResult`; it then polls `tasks/get` + `tasks/result`. A
+// non-Tasks client gets a plain `CallToolResult` text body telling it
+// to poll the `conversation_get` tool. Either way the `tools/call`
+// returns in milliseconds.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import {
-  registerConversationAbort,
-  unregisterConversationAbort,
-} from "../../conversations/abort.ts";
 import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
+import { enqueueConversationRunTurn } from "../../queue/handlers/conversation-run-turn.ts";
+import { getBoss } from "../../queue/index.ts";
 import { MCP_ELICITATION_BLURB } from "../../tools/policy.ts";
-import type { ElicitationBridge } from "../elicitation/bridge.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
+import { insertMcpTask, setMcpTaskFailure, setMcpTaskJobId } from "../tasks/store.ts";
+import {
+  CONVERSATION_TASK_POLL_INTERVAL_MS,
+  CONVERSATION_TASK_TTL_MS,
+} from "../tasks/task-store.ts";
 
 export const CONVERSATION_TOOL_PREFIX = "conversation_";
+
+// ── Zod input schemas ─────────────────────────────────────────────────────────
+// Zod-first: the JSON Schema the MCP client sees is generated from
+// these, never hand-rolled.
+
+const StartArgs = z.object({
+  connector_id: z.string().optional(),
+  workflow_id: z.string().optional(),
+  message: z.string(),
+});
+const AppendArgs = z.object({
+  conversation_id: z.string(),
+  message: z.string(),
+});
+const RespondElicitationArgs = z.object({
+  conversation_id: z.string(),
+  elicitation_id: z.string(),
+  output: z.unknown(),
+  reason: z.string().optional(),
+});
+const GetArgs = z.object({
+  conversation_id: z.string(),
+});
+const CommitArgs = z.object({
+  conversation_id: z.string(),
+});
+
+function jsonSchema(schema: z.ZodTypeAny): Tool["inputSchema"] {
+  // Zod v4 exposes `toJSONSchema` on the runtime module; the typed
+  // export does not surface it. Matches the helper in mcp/adapter.ts.
+  // biome-ignore lint/suspicious/noExplicitAny: zod v4 runtime surface.
+  const anyZ = z as any;
+  const json = anyZ.toJSONSchema(schema, { target: "jsonSchema7" });
+  return json as Tool["inputSchema"];
+}
 
 export function listConversationTools(): Tool[] {
   return [
     {
       name: "conversation_start",
-      description: `Start here for ANY connector setup, OAuth authorization, or workflow authoring. Opens a new authoring conversation and drives the first turn — ${MCP_ELICITATION_BLURB}.`,
-      inputSchema: {
-        type: "object",
-        properties: {
-          connector_id: { type: "string" },
-          workflow_id: { type: "string" },
-          message: { type: "string" },
-        },
-        required: ["message"],
-      },
+      description: `Start here for ANY connector setup, OAuth authorization, or workflow authoring. Opens a new authoring conversation and runs the first turn in the background — returns immediately with a task to poll. ${MCP_ELICITATION_BLURB}.`,
+      inputSchema: jsonSchema(StartArgs),
     },
     {
       name: "conversation_append",
-      description: `Continue an authoring conversation — append a user message and drive another turn. Use this to answer the engine's questions or steer connector/workflow authoring; ${MCP_ELICITATION_BLURB}.`,
-      inputSchema: {
-        type: "object",
-        properties: {
-          conversation_id: { type: "string" },
-          message: { type: "string" },
-        },
-        required: ["conversation_id", "message"],
-      },
-    },
-    {
-      name: "conversation_commit",
-      description: "Return the committed workflow id for a committed conversation.",
-      inputSchema: {
-        type: "object",
-        properties: { conversation_id: { type: "string" } },
-        required: ["conversation_id"],
-      },
+      description: `Continue an authoring conversation — append a user message and run another turn in the background. Returns immediately with a task to poll; use this to answer the engine's questions or steer connector/workflow authoring. ${MCP_ELICITATION_BLURB}.`,
+      inputSchema: jsonSchema(AppendArgs),
     },
     {
       name: "conversation_respond_elicitation",
       description:
-        "Resolve a pending ask_user_* elicitation with the user's answer and resume the loop.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          conversation_id: { type: "string" },
-          elicitation_id: { type: "string" },
-          output: {},
-          reason: { type: "string" },
-        },
-        required: ["conversation_id", "elicitation_id", "output"],
-      },
+        "Resolve a pending ask_user_* elicitation with the user's answer and resume the loop in the background. Returns immediately with a task to poll.",
+      inputSchema: jsonSchema(RespondElicitationArgs),
+    },
+    {
+      name: "conversation_get",
+      description:
+        "Poll the state of a backgrounded conversation turn. Returns status (working | completed | failed | input_required), the turn events when finished, the pending elicitation form when input is required, and the committed workflow id when committed.",
+      inputSchema: jsonSchema(GetArgs),
+    },
+    {
+      name: "conversation_commit",
+      description: "Return the committed workflow id for a committed conversation.",
+      inputSchema: jsonSchema(CommitArgs),
     },
   ];
 }
@@ -92,128 +119,241 @@ export interface HandleConversationToolParams {
    */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   /**
-   * MCP-native elicitation bridge for this `tools/call`. Threaded into
-   * the conversation loop's `ToolContext` so input-collecting tools
-   * surface forms + OAuth prompts directly in the MCP client. Absent on
-   * non-MCP callers.
+   * True when the `tools/call` request carried `params.task` — the SDK
+   * gates this on the client's advertised `tasks` capability, so its
+   * presence means the client is Tasks-capable. Tasks-capable clients
+   * receive a `CreateTaskResult`; everyone else gets a plain
+   * `CallToolResult` telling them to poll `conversation_get`.
    */
-  elicitationBridge?: ElicitationBridge;
+  taskAugmented?: boolean;
 }
 
 export interface HandleConversationToolResult {
   isError: boolean;
   content: Array<{ type: "text" } & { text: string }>;
+  /**
+   * Set ONLY for a Tasks-capable, turn-driving call. When present the
+   * tools.ts handler returns it verbatim as the `CreateTaskResult`
+   * instead of the `content` envelope.
+   */
+  createTaskResult?: {
+    task: {
+      taskId: string;
+      status: "working";
+      ttl: number;
+      createdAt: string;
+      lastUpdatedAt: string;
+      pollInterval: number;
+    };
+  };
+}
+
+/**
+ * Insert the `mcp_tasks` index row, enqueue the `conversation.run-turn`
+ * job, and shape the fast response. Shared by all three turn-driving
+ * conversation tools.
+ *
+ * `user_message_id` pins the exact `conversation_messages` user row the
+ * worker must run the turn on — without it the worker would pick the
+ * most-recent row and a second turn racing in on the same conversation
+ * would run on the wrong message. `null` for `respond_elicitation`
+ * (no new user message). The `respond_elicitation` answer is staged on
+ * the elicitation row by the caller BEFORE this runs, so the job
+ * envelope carries no payload body.
+ */
+async function backgroundTurn(p: {
+  db: Db;
+  principal: ResolvedPrincipal;
+  conversation_id: string;
+  kind: "start" | "append" | "respond_elicitation";
+  user_message_id: string | null;
+  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  elicitation_id?: string;
+  reason?: string;
+  taskAugmented?: boolean;
+}): Promise<HandleConversationToolResult> {
+  const taskId = await insertMcpTask(
+    {
+      tenant_id: p.principal.tenant_id,
+      conversation_id: p.conversation_id,
+      kind: p.kind,
+      actor_id: p.principal.id,
+      request_source: "mcp",
+      user_message_id: p.user_message_id,
+    },
+    p.db,
+  );
+
+  // Enqueue the run-turn job. If `boss.send` throws (queue down) or
+  // returns null (pg-boss dedup), the `mcp_tasks` row exists with no
+  // job — `deriveTask` would report `working` forever. Mark the row
+  // `failed` and return a structured error instead of a fake `working`.
+  let jobId: string | null;
+  try {
+    jobId = await enqueueConversationRunTurn(getBoss(), {
+      tenant_id: p.principal.tenant_id,
+      conversation_id: p.conversation_id,
+      mcp_task_id: taskId,
+      actor_id: p.principal.id,
+      kind: p.kind,
+      ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
+      ...(p.elicitation_id ? { elicitation_id: p.elicitation_id } : {}),
+      ...(p.reason ? { reason: p.reason } : {}),
+    });
+  } catch (err) {
+    await setMcpTaskFailure(p.principal.tenant_id, taskId, "enqueue_failed", p.db);
+    return errorText(
+      `failed to enqueue conversation turn: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (!jobId) {
+    await setMcpTaskFailure(p.principal.tenant_id, taskId, "enqueue_failed", p.db);
+    return errorText("failed to enqueue conversation turn: queue rejected the job");
+  }
+  await setMcpTaskJobId(p.principal.tenant_id, taskId, jobId, p.db);
+
+  const now = new Date().toISOString();
+  if (p.taskAugmented) {
+    // Tasks-capable client — return a CreateTaskResult. The SDK
+    // surfaces `task` and the client polls `tasks/get` + `tasks/result`.
+    return {
+      isError: false,
+      content: [],
+      createTaskResult: {
+        task: {
+          taskId,
+          status: "working",
+          ttl: CONVERSATION_TASK_TTL_MS,
+          createdAt: now,
+          lastUpdatedAt: now,
+          pollInterval: CONVERSATION_TASK_POLL_INTERVAL_MS,
+        },
+      },
+    };
+  }
+  // Non-Tasks client — return a plain text body steering it to the
+  // `conversation_get` poll tool.
+  return successText({
+    conversation_id: p.conversation_id,
+    mcp_task_id: taskId,
+    status: "working",
+    poll_with: "conversation_get",
+    poll_arg: { conversation_id: p.conversation_id },
+  });
 }
 
 export async function handleConversationTool(
   p: HandleConversationToolParams,
 ): Promise<HandleConversationToolResult> {
-  const { db, principal, name, args, permission_mode, elicitationBridge } = p;
+  const { db, principal, name, args, permission_mode, taskAugmented } = p;
   try {
     if (name === "conversation_start") {
-      const message = args.message;
-      if (typeof message !== "string") {
-        return errorText("message is required");
-      }
-      const outcome = await svc.createConversation(
+      const parsed = StartArgs.safeParse(args);
+      if (!parsed.success) return errorText("message is required");
+      const created = await svc.createConversation(
         {
           tenant_id: principal.tenant_id,
           actor_id: principal.id,
-          ...(typeof args.connector_id === "string" ? { connector_id: args.connector_id } : {}),
-          ...(typeof args.workflow_id === "string" ? { workflow_id: args.workflow_id } : {}),
-          initial_message: message,
+          ...(parsed.data.connector_id ? { connector_id: parsed.data.connector_id } : {}),
+          ...(parsed.data.workflow_id ? { workflow_id: parsed.data.workflow_id } : {}),
+          initial_message: parsed.data.message,
           ...(permission_mode ? { permission_mode } : {}),
-          ...(elicitationBridge ? { elicitationBridge } : {}),
         },
         db,
       );
-      return successText({
-        conversation_id: outcome.conversation.id,
-        status: outcome.result.status,
-        ...(outcome.result.pending_elicitation_id
-          ? { pending_elicitation_id: outcome.result.pending_elicitation_id }
-          : {}),
-        ...(outcome.result.committed_workflow_id
-          ? { committed_workflow_id: outcome.result.committed_workflow_id }
-          : {}),
-        events: outcome.result.events,
+      return backgroundTurn({
+        db,
+        principal,
+        conversation_id: created.conversation.id,
+        kind: "start",
+        // The first user-message row id — pins the worker to THIS
+        // message even if a concurrent append lands first.
+        user_message_id: created.initial_message_id,
+        ...(permission_mode ? { permission_mode } : {}),
+        ...(taskAugmented ? { taskAugmented } : {}),
       });
     }
 
     if (name === "conversation_append") {
-      const conversation_id = args.conversation_id;
-      const message = args.message;
-      if (typeof conversation_id !== "string" || typeof message !== "string") {
-        return errorText("conversation_id and message are required");
-      }
-      // #146 / A4 + #148 — register the AbortController on the
-      // synchronous frame of MCP-tool-accept so a cancel arriving in
-      // the first ~40ms always finds a controller. Same pattern as
-      // the HTTP messages route. Unregister in `finally`; the
-      // operation here is non-streaming, so the outer guard is
-      // sufficient (no SSE ownership-transfer needed).
-      const turnAbortCtrl = registerConversationAbort(principal.tenant_id, conversation_id);
-      try {
-        const outcome = await svc.appendUserMessage(
-          {
-            tenant_id: principal.tenant_id,
-            conversation_id,
-            actor_id: principal.id,
-            message,
-            turn_abort_ctrl: turnAbortCtrl,
-            ...(permission_mode ? { permission_mode } : {}),
-            ...(elicitationBridge ? { elicitationBridge } : {}),
-          },
-          db,
-        );
-        return successText({
-          conversation_id: outcome.conversation.id,
-          status: outcome.result.status,
-          events: outcome.result.events,
-        });
-      } finally {
-        unregisterConversationAbort(principal.tenant_id, conversation_id, turnAbortCtrl);
-      }
+      const parsed = AppendArgs.safeParse(args);
+      if (!parsed.success) return errorText("conversation_id and message are required");
+      // appendUserMessage validates the conversation, refuses with
+      // PendingElicitationBlockedError when an ask_user_* is open, and
+      // persists the user message row — all fast, no model loop. It
+      // returns the persisted row id so the worker runs THIS turn's
+      // message under concurrent appends.
+      const appended = await svc.appendUserMessage(
+        {
+          tenant_id: principal.tenant_id,
+          conversation_id: parsed.data.conversation_id,
+          actor_id: principal.id,
+          message: parsed.data.message,
+          ...(permission_mode ? { permission_mode } : {}),
+        },
+        db,
+      );
+      return backgroundTurn({
+        db,
+        principal,
+        conversation_id: parsed.data.conversation_id,
+        kind: "append",
+        user_message_id: appended.message_id,
+        ...(permission_mode ? { permission_mode } : {}),
+        ...(taskAugmented ? { taskAugmented } : {}),
+      });
     }
 
     if (name === "conversation_respond_elicitation") {
-      const conversation_id = args.conversation_id;
-      const elicitation_id = args.elicitation_id;
-      if (typeof conversation_id !== "string" || typeof elicitation_id !== "string") {
+      const parsed = RespondElicitationArgs.safeParse(args);
+      if (!parsed.success) {
         return errorText("conversation_id and elicitation_id are required");
       }
-      // Same sync-register pattern — see `conversation.append` above.
-      const turnAbortCtrl = registerConversationAbort(principal.tenant_id, conversation_id);
-      try {
-        const outcome = await svc.respondElicitation(
-          {
-            tenant_id: principal.tenant_id,
-            conversation_id,
-            elicitation_id,
-            actor_id: principal.id,
-            output: args.output,
-            turn_abort_ctrl: turnAbortCtrl,
-            ...(typeof args.reason === "string" ? { reason: args.reason } : {}),
-            ...(elicitationBridge ? { elicitationBridge } : {}),
-          },
-          db,
-        );
-        return successText({
-          conversation_id: outcome.conversation.id,
-          status: outcome.result.status,
-          events: outcome.result.events,
-        });
-      } finally {
-        unregisterConversationAbort(principal.tenant_id, conversation_id, turnAbortCtrl);
+      // Stage the answer onto the `conversation_elicitations.output`
+      // column BEFORE enqueue. An `ask_user_form` answer can exceed
+      // pg-boss' 8 KB envelope cap; staging it here keeps the job
+      // envelope to ids only. The row stays `pending` so the worker's
+      // `respondElicitation` still drives the real resolve + resume.
+      const { stageElicitationAnswer } = await import("../../conversations/elicitations.ts");
+      const staged = await stageElicitationAnswer(
+        {
+          tenant_id: principal.tenant_id,
+          conversation_id: parsed.data.conversation_id,
+          id: parsed.data.elicitation_id,
+          output: parsed.data.output,
+        },
+        db,
+      );
+      if (staged.kind === "not_found") return errorText("elicitation not found");
+      if (staged.kind === "already_resolved") {
+        return errorText(`elicitation already ${staged.existing.status}`);
       }
+      return backgroundTurn({
+        db,
+        principal,
+        conversation_id: parsed.data.conversation_id,
+        kind: "respond_elicitation",
+        user_message_id: null,
+        elicitation_id: parsed.data.elicitation_id,
+        ...(parsed.data.reason ? { reason: parsed.data.reason } : {}),
+        ...(permission_mode ? { permission_mode } : {}),
+        ...(taskAugmented ? { taskAugmented } : {}),
+      });
+    }
+
+    if (name === "conversation_get") {
+      const parsed = GetArgs.safeParse(args);
+      if (!parsed.success) return errorText("conversation_id is required");
+      return conversationGet(db, principal, parsed.data.conversation_id);
     }
 
     if (name === "conversation_commit") {
-      const conversation_id = args.conversation_id;
-      if (typeof conversation_id !== "string") {
-        return errorText("conversation_id is required");
-      }
-      const detail = await svc.getConversation(principal.tenant_id, conversation_id, db);
+      const parsed = CommitArgs.safeParse(args);
+      if (!parsed.success) return errorText("conversation_id is required");
+      const detail = await svc.getConversation(
+        principal.tenant_id,
+        parsed.data.conversation_id,
+        db,
+      );
       if (!detail) return errorText("conversation not found");
       if (!detail.conversation.target_workflow_id) {
         return errorText("conversation has no committed workflow");
@@ -229,6 +369,101 @@ export async function handleConversationTool(
   } catch (err) {
     return errorText(toMcpErrorText(err));
   }
+}
+
+/**
+ * Fast read-only poll. Joins the conversation to its most recent
+ * `mcp_tasks` row and reports the derived task status, the terminal
+ * envelope when finished, and the pending elicitation form when input
+ * is required.
+ */
+async function conversationGet(
+  db: Db,
+  principal: ResolvedPrincipal,
+  conversation_id: string,
+): Promise<HandleConversationToolResult> {
+  const detail = await svc.getConversation(principal.tenant_id, conversation_id, db);
+  if (!detail) return errorText("conversation not found");
+
+  const { latestMcpTaskForConversation } = await import("../tasks/store.ts");
+  const latest = await latestMcpTaskForConversation(principal.tenant_id, conversation_id, db);
+
+  // No task yet (or a conversation created outside the MCP async path)
+  // — report the conversation's own status so the client is never stuck.
+  if (!latest) {
+    return successText({
+      status: detail.conversation.status === "awaiting_input" ? "input_required" : "working",
+      conversation_id,
+    });
+  }
+
+  if (latest.failure_reason) {
+    return successText({
+      status: "failed",
+      conversation_id,
+      failure_reason: latest.failure_reason,
+    });
+  }
+  if (latest.cancelled_at) {
+    return successText({ status: "cancelled", conversation_id });
+  }
+
+  // The turn finished but the conversation paused at `awaiting_input`
+  // (a backgrounded turn uses the DB-pause elicitation path — it has no
+  // live MCP session). Report `input_required` with the pending form so
+  // the client resolves it via `conversation_respond_elicitation`.
+  //
+  // BUT: a `respond_elicitation` task that has not finished yet is
+  // actively resolving the pending elicitation — the conversation still
+  // reads `awaiting_input` until the worker resolves it. Treat that as
+  // `working`, not `input_required`, so the client keeps polling
+  // instead of re-submitting the same answer.
+  const respondInFlight = latest.kind === "respond_elicitation" && !latest.result;
+  const pending =
+    detail.conversation.status === "awaiting_input" && !respondInFlight
+      ? await (async () => {
+          const { listElicitationsForConversation } = await import(
+            "../../conversations/elicitations.ts"
+          );
+          return (await listElicitationsForConversation(principal.tenant_id, conversation_id, db))
+            .filter((e) => e.status === "pending")
+            .at(0);
+        })()
+      : undefined;
+
+  if (latest.result) {
+    if (pending) {
+      return successText({
+        status: "input_required",
+        conversation_id,
+        pending_elicitation_id: pending.id,
+        input: pending.input,
+        events: latest.result.events,
+        result: latest.result,
+      });
+    }
+    return successText({
+      status: "completed",
+      conversation_id,
+      events: latest.result.events,
+      ...(latest.result.committed_workflow_id
+        ? { committed_workflow_id: latest.result.committed_workflow_id }
+        : {}),
+      result: latest.result,
+    });
+  }
+
+  // Still running — `input_required` when the turn paused mid-flight,
+  // otherwise `working`.
+  if (pending) {
+    return successText({
+      status: "input_required",
+      conversation_id,
+      pending_elicitation_id: pending.id,
+      input: pending.input,
+    });
+  }
+  return successText({ status: "working", conversation_id });
 }
 
 function successText(obj: unknown): HandleConversationToolResult {

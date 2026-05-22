@@ -13,6 +13,7 @@ import { registerCompletionCapability } from "./capabilities/completion.ts";
 import { registerPromptsCapability } from "./capabilities/prompts.ts";
 import { registerResourcesCapability } from "./capabilities/resources.ts";
 import { registerToolsCapability } from "./capabilities/tools.ts";
+import { ConversationTaskStore } from "./tasks/task-store.ts";
 
 export interface CreateMcpServerParams {
   db: Db;
@@ -22,6 +23,12 @@ export interface CreateMcpServerParams {
 
 export function createMcpServer(p: CreateMcpServerParams): Server {
   const { db, principal, transport } = p;
+
+  // Per-session, tenant-bound TaskStore backing the MCP async-Tasks
+  // surface (SEP-1686). Every conversation tool can be invoked as a
+  // task so the `tools/call` returns immediately and the long turn
+  // runs in the `conversation.run-turn` pg-boss worker.
+  const taskStore = new ConversationTaskStore({ db, tenant_id: principal.tenant_id });
 
   const server = new Server(
     {
@@ -33,7 +40,13 @@ export function createMcpServer(p: CreateMcpServerParams): Server {
         tools: {},
         resources: { subscribe: true },
         prompts: {},
+        // Tasks: list + cancel + task-augmented `tools/call`. The SDK
+        // installs the tasks/get|result|list|cancel handlers when a
+        // `taskStore` is supplied; this capability advertises them to
+        // the client during initialize.
+        tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } },
       },
+      taskStore,
     },
   );
 

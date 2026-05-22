@@ -12,11 +12,15 @@ import type { Db } from "../../db/client.ts";
 import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
 import type { LlmProviderError } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
-import { createConversation } from "../service.ts";
+
 import type { ConversationTool, ToolContext, ToolResult } from "../tools/index.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
-import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+import {
+  type ConversationTestCtx,
+  createConversationTestCtx,
+  createConversationWithTurn,
+} from "./setup.ts";
 
 let ctx: ConversationTestCtx;
 
@@ -67,7 +71,7 @@ describe("conversations/hardening", () => {
     };
 
     // Need a real conversation to satisfy the FK in conversation_tool_calls.
-    const convo = await createConversation(
+    const convo = await createConversationWithTurn(
       { tenant_id: ctx.tenant_id, actor_id: ctx.user_id, initial_message: "hello" },
       ctx.testDb.db,
     );
@@ -163,7 +167,7 @@ describe("conversations/hardening", () => {
     // Prime a one-shot overloaded error on the primary.
     getMockProvider().setFailure("hardening-primary", "overloaded");
 
-    const outcome = await createConversation(
+    const outcome = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -229,7 +233,7 @@ describe("conversations/hardening", () => {
     getMockProvider().setFailure("quota-primary", "quota_exhausted");
 
     await expect(
-      createConversation(
+      createConversationWithTurn(
         {
           tenant_id: ctx.tenant_id,
           actor_id: ctx.user_id,

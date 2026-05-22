@@ -155,6 +155,17 @@ export interface RunLoopParams {
    */
   turn_abort_ctrl: AbortController;
   /**
+   * Set when the caller has ALREADY inserted the `conversation_messages`
+   * user row for this turn (the MCP async-Tasks path persists the
+   * message before enqueueing the `conversation.run-turn` job so the
+   * worker can read it back). The loop then skips its own insert to
+   * avoid a duplicate row, but still rewrites attachment slugs + emits
+   * the `message` event so context assembly and the event replay are
+   * unchanged. Defaults to `false` — every synchronous caller persists
+   * inside the loop as before.
+   */
+  user_message_persisted?: boolean;
+  /**
    * Per-turn opt-out for the next-message preview frame. When set,
    * the loop still emits a `next_suggestion` event so the SSE close
    * is deterministic, but with `suggestion: null, reason:
@@ -218,15 +229,26 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // conversation's `file_links` rows by `resolveAttachmentSlugsInText`.
   let ingestedUserMessage: string | null = p.user_message;
   if (p.user_message) {
+    // When `user_message_persisted` is set the MCP handler already ran
+    // this resolution before persisting the row; re-running it here is
+    // deliberately idempotent — `resolveAttachmentSlugsInText` on
+    // already-resolved text is a no-op (no `@attachment:` tokens left),
+    // so the loop need not branch on whether the caller pre-resolved.
     const rewrite = await resolveAttachmentSlugsInText(p.user_message, {
       db: p.db,
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
     });
     ingestedUserMessage = rewrite.text;
-    await appendMessage(p.db, p.tenant_id, p.conversation_id, "user", {
-      text: ingestedUserMessage,
-    });
+    // The MCP async-Tasks worker path persists the user row before
+    // enqueue (so it survives a crash between accept and turn-start);
+    // skip the insert here to avoid a duplicate. All synchronous
+    // callers leave `user_message_persisted` falsy and persist here.
+    if (!p.user_message_persisted) {
+      await appendMessage(p.db, p.tenant_id, p.conversation_id, "user", {
+        text: ingestedUserMessage,
+      });
+    }
     events.push({ type: "message", role: "user", content: { text: ingestedUserMessage } });
   }
 

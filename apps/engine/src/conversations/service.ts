@@ -23,6 +23,7 @@
 
 export {
   type AppendMessageParams,
+  type AppendMessageResult,
   appendUserMessage,
 } from "./service/append.ts";
 export {
@@ -33,6 +34,7 @@ export {
 } from "./service/compact.ts";
 export {
   type CreateConversationParams,
+  type CreateConversationResult,
   createConversation,
 } from "./service/create.ts";
 export {
@@ -54,6 +56,10 @@ export {
   type PatchConversationParams,
   patchConversation,
 } from "./service/lifecycle.ts";
+export {
+  type RunConversationTurnParams,
+  runConversationTurn,
+} from "./service/run-turn.ts";
 export {
   type ConversationTurnOutcome,
   ElicitationAlreadyResolvedError,

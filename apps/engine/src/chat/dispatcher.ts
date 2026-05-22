@@ -32,6 +32,7 @@ import {
   appendUserMessage,
   createConversation,
   respondElicitation,
+  runConversationTurn,
 } from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
 import {
@@ -546,18 +547,24 @@ export async function handleChatEvent(
   let outcome: RunLoopResult;
   if (existing) {
     conversation_id = existing.conversation_id;
-    // #148 — every appendUserMessage caller threads a controller.
-    // Chat dispatch is the same shape as the HTTP messages route:
-    // we know the conversation_id from the lookup above, register
-    // synchronously, unregister in `finally`.
+    // #148 — every turn caller threads a controller. Chat dispatch is
+    // the same shape as the HTTP messages route: we know the
+    // conversation_id from the lookup above, register synchronously,
+    // unregister in `finally`. The append + turn split: `appendUserMessage`
+    // persists the message row, `runConversationTurn` drives the loop.
     const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
     try {
-      const turn = await appendUserMessage(
+      const appended = await appendUserMessage(
+        { tenant_id, conversation_id, actor_id: user_id, message: prompt },
+        db,
+      );
+      const turn = await runConversationTurn(
         {
           tenant_id,
           conversation_id,
           actor_id: user_id,
-          message: prompt,
+          user_message: appended.message,
+          user_memory: appended.user_memory,
           turn_abort_ctrl: turnAbortCtrl,
         },
         db,
@@ -567,8 +574,6 @@ export async function handleChatEvent(
       unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
     }
   } else {
-    // createConversation handles its own register-after-row-insert
-    // because the conversation_id doesn't exist before the call.
     const created = await createConversation(
       { tenant_id, actor_id: user_id, initial_message: prompt },
       db,
@@ -580,7 +585,23 @@ export async function handleChatEvent(
       thread_id: threadKey,
       conversation_id,
     });
-    outcome = created.result;
+    const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+    try {
+      const turn = await runConversationTurn(
+        {
+          tenant_id,
+          conversation_id,
+          actor_id: user_id,
+          user_message: created.initial_message ?? "",
+          user_memory: created.user_memory,
+          turn_abort_ctrl: turnAbortCtrl,
+        },
+        db,
+      );
+      outcome = turn.result;
+    } finally {
+      unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+    }
   }
 
   let approval_sent = false;

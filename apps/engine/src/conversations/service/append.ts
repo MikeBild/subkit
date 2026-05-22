@@ -1,6 +1,11 @@
-// Append a user message and drive the next loop turn. Refuses with
+// Append a user message and persist it. Refuses with
 // `PendingElicitationBlockedError` when an `ask_user_*` is still
 // pending — the loop must resume via `respondElicitation` instead.
+//
+// This function STOPS after persisting the message row + the memory
+// side-effects. The model loop runs via `runConversationTurn` (see
+// ./run-turn.ts), called inline by the HTTP/SSE route or in the
+// `conversation.run-turn` pg-boss worker for the MCP async-Tasks path.
 
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
@@ -8,12 +13,11 @@ import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
-import type { ElicitationBridge } from "../elicitation-bridge.ts";
-import { runLoop } from "../loop.ts";
-import type { ConversationPermissionMode } from "../types.ts";
+import { resolveAttachmentSlugsInText } from "../attachments.ts";
+import { appendMessage } from "../persist.ts";
+import type { ConversationPermissionMode, ConversationRecord } from "../types.ts";
 import { getConversation } from "./get.ts";
 import {
-  type ConversationTurnOutcome,
   getStoredPermissionMode,
   normalizePermissionMode,
   PendingElicitationBlockedError,
@@ -27,48 +31,40 @@ export interface AppendMessageParams {
   message: string;
   /** Optional user-supplied memory payload to attach to this turn. */
   memory?: string | null;
-  /** Surface for per-variant prompts — threaded to runLoop. */
-  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web";
-  /** Live-event emitter — enables SSE streaming. */
-  onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
-  /** Real runtime context (engine_url, tenant_slug, actor email/role) — see runtime-context.ts. */
-  runtime_context?: {
-    engine_url?: string;
-    tenant_slug?: string;
-    actor_email?: string;
-    actor_role?: string;
-  };
   /** Client-supplied permission mode for this turn. */
   permission_mode?: ConversationPermissionMode | null;
-  /** Pre-registered AbortController — see RunLoopParams.turn_abort_ctrl.
-   *  Required: the HTTP route handler / MCP tool path registers on
-   *  the synchronous frame of request-accept and threads through.
-   *  runLoop does not fall back to creating its own controller. */
-  turn_abort_ctrl: AbortController;
-  /**
-   * Client-side opt-out for the next-message preview frame. When true
-   * the loop emits `{ suggestion: null, reason: "client-suppress" }`
-   * and skips any model call; sk-cli sets this after N consecutive
-   * dismissals.
-   */
-  next_suggestion_suppress?: boolean;
-  /**
-   * MCP-native elicitation bridge — present only when this turn runs
-   * inside an MCP `tools/call` whose client advertised the
-   * `elicitation` capability. Threaded onto the loop's `ToolContext`.
-   */
-  elicitationBridge?: ElicitationBridge;
 }
 
+export interface AppendMessageResult {
+  conversation: ConversationRecord;
+  /** The rewritten user message (attachment slugs resolved). The row
+   * is already persisted; handed to `runConversationTurn` so the turn
+   * does not re-insert it. */
+  message: string;
+  /**
+   * The `conversation_messages` row id of the persisted user message.
+   * The MCP async-Tasks handler pins this onto the `mcp_tasks` row so
+   * the worker runs the turn on THIS message even when another turn
+   * appends concurrently.
+   */
+  message_id: string;
+  /** Memory payload effective for the turn. */
+  user_memory: string | null;
+}
+
+/**
+ * Validate the conversation, persist the user message row + memory
+ * side-effects, and return the data the turn needs. Does NOT run the
+ * model loop — the caller drives the turn via `runConversationTurn`.
+ */
 export async function appendUserMessage(
   p: AppendMessageParams,
   exec: Db,
-): Promise<ConversationTurnOutcome> {
+): Promise<AppendMessageResult> {
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
   const explicitPermissionMode = normalizePermissionMode(p.permission_mode);
   const storedPermissionMode = getStoredPermissionMode(conv.draft);
-  const effectivePermissionMode = explicitPermissionMode ?? storedPermissionMode;
   if (explicitPermissionMode && explicitPermissionMode !== storedPermissionMode) {
     await persistPermissionModeIfChanged({
       exec,
@@ -128,34 +124,30 @@ export async function appendUserMessage(
   } else {
     // Reuse whatever was last persisted on the row.
     const [row] = await exec
-      .select({ memory: conversations.memory, model: conversations.model })
+      .select({ memory: conversations.memory })
       .from(conversations)
       .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
       .limit(1);
     effectiveMemory = row?.memory ?? null;
   }
 
-  const result = await runLoop({
+  // Persist the user-message row before the turn runs (the MCP worker
+  // reads it back; the HTTP/SSE route hands the text to
+  // `runConversationTurn` directly). Both pass `user_message_persisted`
+  // into `runLoop` so the loop does not double-insert.
+  const rewrite = await resolveAttachmentSlugsInText(p.message, {
     db: exec,
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
-    actor_id: p.actor_id,
-    connector_id: conv.conversation.target_connector_id,
-    workflow_id: conv.conversation.target_workflow_id,
-    user_message: p.message,
-    user_memory: effectiveMemory,
-    model_override: conv.conversation.model,
-    turn_abort_ctrl: p.turn_abort_ctrl,
-    ...(p.surface ? { surface: p.surface } : {}),
-    ...(p.onEvent ? { onEvent: p.onEvent } : {}),
-    ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
-    ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
-    ...(p.next_suggestion_suppress !== undefined
-      ? { next_suggestion_suppress: p.next_suggestion_suppress }
-      : {}),
-    ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),
   });
-  const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
-  if (!updated) throw new Error("conversation disappeared");
-  return { conversation: updated.conversation, result };
+  const messageId = await appendMessage(exec, p.tenant_id, p.conversation_id, "user", {
+    text: rewrite.text,
+  });
+
+  return {
+    conversation: conv.conversation,
+    message: rewrite.text,
+    message_id: messageId,
+    user_memory: effectiveMemory,
+  };
 }
