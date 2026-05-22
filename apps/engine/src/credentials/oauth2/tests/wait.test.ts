@@ -302,6 +302,157 @@ describe("waitForOAuthCredential", () => {
     await hardDeleteCredential(credId);
   });
 
+  describe("per-tenant concurrency cap", () => {
+    // `MAX_CONCURRENT_OAUTH_WAITS_PER_TENANT` is 8 (module-private). The
+    // admission counter is incremented SYNCHRONOUSLY on entry (before the
+    // first `await`), so issuing all calls in one synchronous burst — no
+    // `await` between them — pins the slots deterministically and the
+    // over-cap call observes the full count without a race.
+    //
+    // Held waits use a long `timeout_ms` and a tenant with NO credential
+    // row and NO event, so they stay pending. They are drained at the end
+    // of each test by an explicit `callback_failed` event per tenant so
+    // no timers leak; the per-tenant `connector_id` filter is satisfied
+    // by reusing the seeded `connector_id`.
+    const CAP = 8;
+    const HELD_TIMEOUT_MS = 30_000;
+
+    /** Drain N held waits for one tenant via a single `callback_failed`
+     *  event — the handler filters on `tenant_id` + `connector_id`. Each
+     *  held wait registers its pubsub handler only AFTER an async
+     *  idempotency query, so wait for all N handlers before dispatching. */
+    async function drainHeldWaits(
+      heldTenant: string,
+      held: Promise<unknown>[],
+      handlersBefore: number,
+    ): Promise<void> {
+      await waitFor(
+        () => globalEmitter.listenerCount("connector.oauth") >= handlersBefore + held.length,
+        { label: "held oauth.wait handlers", sleepMs: 5, tries: 400 },
+      );
+      await globalEmitter.dispatch({ ...failedEvent(connector_id), tenant_id: heldTenant });
+      const settled = await Promise.all(held);
+      expect(settled.every((s) => s === "failed")).toBe(true);
+    }
+
+    test("the 9th concurrent wait for one tenant is rejected immediately", async () => {
+      const capTenant = "11111111-1111-1111-1111-111111111111";
+      const handlersBefore = globalEmitter.listenerCount("connector.oauth");
+      // Fill the cap with N=8 non-resolving waits in one synchronous burst.
+      const held = Array.from({ length: CAP }, () =>
+        waitForOAuthCredential({
+          tenant_id: capTenant,
+          connector_id,
+          environment: "dev",
+          timeout_ms: HELD_TIMEOUT_MS,
+          db: ctx.db,
+        }),
+      );
+
+      // The 9th call is over the cap — it returns immediately without
+      // blocking on the 30s timeout the held waits carry.
+      const rejected = await waitForOAuthCredential({
+        tenant_id: capTenant,
+        connector_id,
+        environment: "dev",
+        timeout_ms: HELD_TIMEOUT_MS,
+        db: ctx.db,
+      });
+      expect(rejected).toBe("rejected_concurrency");
+
+      await drainHeldWaits(capTenant, held, handlersBefore);
+    });
+
+    test("a settled in-flight wait releases its slot — a later wait is admitted again", async () => {
+      const capTenant = "22222222-2222-2222-2222-222222222222";
+      const handlersBefore = globalEmitter.listenerCount("connector.oauth");
+      // Fill the cap. One wait carries a SHORT timeout so it settles on
+      // its own and frees a slot; the rest stay long-lived.
+      const shortWait = waitForOAuthCredential({
+        tenant_id: capTenant,
+        connector_id,
+        environment: "dev",
+        timeout_ms: 300,
+        db: ctx.db,
+      });
+      const longWaits = Array.from({ length: CAP - 1 }, () =>
+        waitForOAuthCredential({
+          tenant_id: capTenant,
+          connector_id,
+          environment: "dev",
+          timeout_ms: HELD_TIMEOUT_MS,
+          db: ctx.db,
+        }),
+      );
+
+      // While at the cap, a 9th call is rejected.
+      expect(
+        await waitForOAuthCredential({
+          tenant_id: capTenant,
+          connector_id,
+          environment: "dev",
+          timeout_ms: HELD_TIMEOUT_MS,
+          db: ctx.db,
+        }),
+      ).toBe("rejected_concurrency");
+
+      // Let the short wait time out — its `finally` decrements the counter.
+      expect(await shortWait).toBe("timeout");
+
+      // A slot is free now: a fresh wait for the SAME tenant is admitted
+      // — it is NOT rejected, it settles on a real timeout signal instead.
+      const admitted = await waitForOAuthCredential({
+        tenant_id: capTenant,
+        connector_id,
+        environment: "dev",
+        timeout_ms: 300,
+        db: ctx.db,
+      });
+      expect(admitted).toBe("timeout");
+
+      await drainHeldWaits(capTenant, longWaits, handlersBefore);
+    });
+
+    test("the cap is per-tenant — a different tenant is admitted while the first is full", async () => {
+      const fullTenant = "33333333-3333-3333-3333-333333333333";
+      const otherTenant = "44444444-4444-4444-4444-444444444444";
+      const handlersBefore = globalEmitter.listenerCount("connector.oauth");
+      // Saturate `fullTenant` in one synchronous burst.
+      const held = Array.from({ length: CAP }, () =>
+        waitForOAuthCredential({
+          tenant_id: fullTenant,
+          connector_id,
+          environment: "dev",
+          timeout_ms: HELD_TIMEOUT_MS,
+          db: ctx.db,
+        }),
+      );
+      expect(
+        await waitForOAuthCredential({
+          tenant_id: fullTenant,
+          connector_id,
+          environment: "dev",
+          timeout_ms: HELD_TIMEOUT_MS,
+          db: ctx.db,
+        }),
+      ).toBe("rejected_concurrency");
+
+      // A DIFFERENT tenant has its own counter — it is admitted even
+      // though `fullTenant` is at the cap. A short timeout lets it settle
+      // on its own.
+      const otherStatus = await waitForOAuthCredential({
+        tenant_id: otherTenant,
+        connector_id,
+        environment: "dev",
+        timeout_ms: 300,
+        db: ctx.db,
+      });
+      expect(otherStatus).toBe("timeout");
+
+      await drainHeldWaits(fullTenant, held, handlersBefore);
+    });
+  });
+
   test("a callback_succeeded event for the wrong tenant is ignored", async () => {
     const before = globalEmitter.listenerCount("connector.oauth");
     // Timeout generously above the 1.5s poll interval — the cross-tenant

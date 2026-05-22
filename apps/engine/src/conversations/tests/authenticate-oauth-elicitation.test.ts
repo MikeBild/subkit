@@ -28,6 +28,7 @@ import {
 import {
   connectorOauthStates,
   connectors,
+  conversationElicitations,
   conversations,
   credentials,
   tenants,
@@ -35,6 +36,7 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import type { ElicitationBridge, ElicitationResult } from "../../mcp/elicitation/bridge.ts";
+import { ElicitationUnsupportedError } from "../../mcp/elicitation/bridge.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import { startListener, stopListener } from "../../pubsub/listener.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
@@ -44,7 +46,11 @@ import { conversationToolProvider, staticToolProvider } from "../../tools/index.
 import { buildRegistry } from "../../tools/registry.ts";
 import { makeTestPrincipal } from "../../tools/tests/_helpers.ts";
 import { authenticateOAuthTool } from "../tools/authenticate-oauth.ts";
-import { OAUTH_AUTHORIZATION_FAILED } from "../tools/error-codes.ts";
+import {
+  OAUTH_AUTHORIZATION_DECLINED,
+  OAUTH_AUTHORIZATION_FAILED,
+  OAUTH_ELICITATION_TRANSPORT_FAILED,
+} from "../tools/error-codes.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 
@@ -141,6 +147,59 @@ function makeOobBridge(action: "accept" | "decline" = "accept"): ElicitationBrid
     elicitForm: fn,
     elicitOob: fn,
   } as unknown as ElicitationBridge;
+}
+
+/** Bridge whose `elicitOob` throws — used for the oob transport-failure
+ *  and capability-raced-away (`ElicitationUnsupportedError`) branches. */
+function makeOobThrowingBridge(error: Error): ElicitationBridge {
+  const fn = async (): Promise<ElicitationResult> => {
+    throw error;
+  };
+  return {
+    capabilities: { form: true, oob: true },
+    elicitForm: async (): Promise<ElicitationResult> => ({ action: "accept" }),
+    elicitOob: fn,
+  } as unknown as ElicitationBridge;
+}
+
+/** Form-only bridge: `oob` capability absent so the tool takes the
+ *  `elicitForm` branch. `elicitForm` returns the supplied result. */
+function makeFormBridge(result: ElicitationResult): ElicitationBridge {
+  return {
+    capabilities: { form: true, oob: false },
+    elicitForm: async (): Promise<ElicitationResult> => result,
+    elicitOob: async (): Promise<ElicitationResult> => ({ action: "accept" }),
+  } as unknown as ElicitationBridge;
+}
+
+/** Form-only bridge whose `elicitForm` throws — for the form-mode
+ *  transport-failure and `ElicitationUnsupportedError` demote branches. */
+function makeFormThrowingBridge(error: Error): ElicitationBridge {
+  return {
+    capabilities: { form: true, oob: false },
+    elicitForm: async (): Promise<ElicitationResult> => {
+      throw error;
+    },
+    elicitOob: async (): Promise<ElicitationResult> => ({ action: "accept" }),
+  } as unknown as ElicitationBridge;
+}
+
+/** All `conversation_elicitations` rows for a conversation. */
+async function readElicitations(convId: string) {
+  return ctx.db
+    .select()
+    .from(conversationElicitations)
+    .where(eq(conversationElicitations.conversation_id, convId));
+}
+
+function makeDraftRef(slug: string): { current: DraftDocument } {
+  return {
+    current: {
+      mode: "connector_authoring",
+      connector: { name: slug, slug, driver: "http", environment: "dev" },
+      workflow: { name: "", steps: [] },
+    } as DraftDocument,
+  };
 }
 
 function succeededEvent(connectorId: string): EventEnvelope {
@@ -455,5 +514,150 @@ describe("authenticate_oauth — RBAC gate is not bypassed by the elicitation br
       .from(connectorOauthStates)
       .where(eq(connectorOauthStates.connector_id, connectorId));
     expect(stateRows).toHaveLength(0);
+  });
+});
+
+describe("authenticate_oauth — form-mode elicitation", () => {
+  test("an accepted form whose acknowledged box is false is treated as a decline", async () => {
+    const connectorId = await makeOAuthConnector("aoe-form-unack");
+    const draftRef = makeDraftRef("aoe-form-unack");
+    // Form-only bridge: the operator submitted the form but left the
+    // `acknowledged` checkbox unticked. `action: "accept"` +
+    // `acknowledged !== true` must collapse to the decline path —
+    // proceeding into the credential wait + APPROVAL_APPROVED would be
+    // semantically wrong.
+    const bridge = makeFormBridge({ action: "accept", content: { acknowledged: false } });
+
+    const result = await authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
+      connector_id: connectorId,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error_code).toBe(OAUTH_AUTHORIZATION_DECLINED);
+    }
+    // The governance row was resolved cancelled, not left pending.
+    const rows = await readElicitations(conversation_id);
+    const row = rows.find((r) => r.tool_call_id == null && r.summary.includes("aoe-form-unack"));
+    expect(row?.status).toBe("cancelled");
+    expect(row?.decision_reason).toBe(OAUTH_AUTHORIZATION_DECLINED);
+    // No credential landed — the checkpoint stays unset.
+    expect(draftRef.current.state?.checkpoints?.connector_authenticated ?? null).toBeNull();
+  });
+
+  test("an explicit form decline yields oauth_authorization_declined", async () => {
+    const connectorId = await makeOAuthConnector("aoe-form-decline");
+    const draftRef = makeDraftRef("aoe-form-decline");
+    const bridge = makeFormBridge({ action: "decline" });
+
+    const result = await authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
+      connector_id: connectorId,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error_code).toBe(OAUTH_AUTHORIZATION_DECLINED);
+    expect(draftRef.current.state?.checkpoints?.connector_authenticated ?? null).toBeNull();
+  });
+});
+
+describe("authenticate_oauth — elicitation transport failure", () => {
+  test("an oob transport failure yields a structured error and keeps the state row live", async () => {
+    const connectorId = await makeOAuthConnector("aoe-oob-transport");
+    const draftRef = makeDraftRef("aoe-oob-transport");
+    // A generic (non-ElicitationUnsupported) throw mid-`elicitOob` — a
+    // transport/timeout failure. Must NOT DB-pause (an MCP client cannot
+    // resume one); returns a structured error and the live state row lets
+    // a retry resume.
+    const bridge = makeOobThrowingBridge(new Error("client disconnected"));
+
+    const result = await authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
+      connector_id: connectorId,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error_code).toBe(OAUTH_ELICITATION_TRANSPORT_FAILED);
+    // The state row is still live so a retry resumes the same flow.
+    const stateRows = await ctx.db
+      .select({ id: connectorOauthStates.id })
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.connector_id, connectorId));
+    expect(stateRows).toHaveLength(1);
+  });
+
+  test("a form transport failure yields a structured error", async () => {
+    const connectorId = await makeOAuthConnector("aoe-form-transport");
+    const draftRef = makeDraftRef("aoe-form-transport");
+    const bridge = makeFormThrowingBridge(new Error("client disconnected"));
+
+    const result = await authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
+      connector_id: connectorId,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error_code).toBe(OAUTH_ELICITATION_TRANSPORT_FAILED);
+  });
+});
+
+describe("authenticate_oauth — ElicitationUnsupportedError demote to portal", () => {
+  test("oob: capability raced away mid-call → demote the SAME row, no second elicitation", async () => {
+    const connectorId = await makeOAuthConnector("aoe-oob-demote");
+    const draftRef = makeDraftRef("aoe-oob-demote");
+    // `elicitOob` throws `ElicitationUnsupportedError` AFTER the tool
+    // already opened the `protocol_native` governance row. The fallback
+    // must demote that row to a portal carrier — NOT mint a second row —
+    // so the one-row APPROVAL_REQUESTED → APPROVAL_* lifecycle survives.
+    const bridge = makeOobThrowingBridge(new ElicitationUnsupportedError("oob"));
+
+    const result = await authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
+      connector_id: connectorId,
+    });
+
+    // The result is a pause referencing the demoted row.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.pause).toBeDefined();
+      expect(result.pause?.tool_name).toBe("ask_user_confirm");
+    }
+
+    // Exactly ONE elicitation row for this connector's dance, demoted in
+    // place to protocol_native: false, still pending.
+    const rows = (await readElicitations(conversation_id)).filter((r) =>
+      r.summary.includes("aoe-oob-demote"),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.protocol_native).toBe(false);
+    expect(rows[0]!.status).toBe("pending");
+    // The pause references that SAME row id.
+    if (result.ok) {
+      expect(result.pause?.elicitation_id).toBe(rows[0]!.id);
+      expect((result.data as { elicitation_id: string }).elicitation_id).toBe(rows[0]!.id);
+    }
+  });
+
+  test("form: capability raced away mid-call → demote the SAME row, no second elicitation", async () => {
+    const connectorId = await makeOAuthConnector("aoe-form-demote");
+    const draftRef = makeDraftRef("aoe-form-demote");
+    const bridge = makeFormThrowingBridge(new ElicitationUnsupportedError("form"));
+
+    const result = await authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
+      connector_id: connectorId,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.pause).toBeDefined();
+      expect(result.pause?.tool_name).toBe("ask_user_confirm");
+    }
+
+    const rows = (await readElicitations(conversation_id)).filter((r) =>
+      r.summary.includes("aoe-form-demote"),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.protocol_native).toBe(false);
+    expect(rows[0]!.status).toBe("pending");
+    if (result.ok) {
+      expect(result.pause?.elicitation_id).toBe(rows[0]!.id);
+      expect((result.data as { elicitation_id: string }).elicitation_id).toBe(rows[0]!.id);
+    }
   });
 });

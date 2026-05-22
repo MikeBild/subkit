@@ -256,6 +256,44 @@ describe("pauseForUserInput — bridge transport failure", () => {
     // `portal`, not `mcp_elicitation`.
     expect(rows[0]!.protocol_native).toBe(false);
   });
+
+  test("ElicitationUnsupportedError mid-call demotes the SAME row — no second elicitation minted", async () => {
+    // The `elicitForm` call raises `ElicitationUnsupportedError` AFTER
+    // `createNativeElicitation` already wrote the `protocol_native: true`
+    // carrier row. The fallback must NOT mint a second row: it demotes
+    // the original to a portal carrier and the pause references its id —
+    // so the one-row APPROVAL_REQUESTED → APPROVAL_* audit lifecycle is
+    // preserved.
+    const conversation_id = await freshConversation();
+    const bridge = makeBridge({
+      kind: "throw",
+      error: new ElicitationUnsupportedError("form"),
+    });
+    const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
+      tool_name: "ask_user_text",
+      summary: "What is your name?",
+      input: { question: "What is your name?" },
+    });
+
+    // Exactly ONE `conversation_elicitations` row for this conversation —
+    // the demote reuses the row `createNativeElicitation` opened.
+    const rows = await readElicitation(conversation_id);
+    expect(rows).toHaveLength(1);
+    const originalRowId = rows[0]!.id;
+
+    // The original row was demoted in place: protocol_native flipped to
+    // false, still pending (it now resumes via a portal POST).
+    expect(rows[0]!.protocol_native).toBe(false);
+    expect(rows[0]!.status).toBe("pending");
+
+    // The returned pause references the SAME row id, both on the pause
+    // envelope and the `data` payload — not a freshly-minted second row.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.pause?.elicitation_id).toBe(originalRowId);
+      expect((result.data as { elicitation_id: string }).elicitation_id).toBe(originalRowId);
+    }
+  });
 });
 
 describe("pauseForUserInput — degrade-to-DB-pause for non-flat tool input", () => {
