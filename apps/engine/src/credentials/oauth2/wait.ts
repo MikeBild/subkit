@@ -127,13 +127,8 @@ export async function waitForOAuthCredential(
   }
 }
 
-async function runOAuthWait(p: WaitForOAuthCredentialInput): Promise<OAuthWaitStatus> {
+function runOAuthWait(p: WaitForOAuthCredentialInput): Promise<OAuthWaitStatus> {
   const timeoutMs = p.timeout_ms ?? DEFAULT_TIMEOUT_MS;
-
-  // Idempotency — if the credential already exists, we are done.
-  if (await credentialExists(p.db, p.tenant_id, p.connector_id, p.environment)) {
-    return "succeeded";
-  }
 
   return new Promise<OAuthWaitStatus>((resolve) => {
     let settled = false;
@@ -208,10 +203,16 @@ async function runOAuthWait(p: WaitForOAuthCredentialInput): Promise<OAuthWaitSt
       resolve(status);
     };
 
-    // 1 + 2. pubsub — fastest signal. Tolerate a missing listener (tests),
-    // but surface it: in production a missing listener means the
-    // `callback_failed` event can never resolve the wait early, so a
-    // misconfigured prod listener must not stay invisible.
+    // 1 + 2. pubsub — fastest signal. Registered FIRST, before the
+    // idempotency `credentialExists` query below, so a `callback_*`
+    // event landing during that async query is not missed. Registering
+    // after the query left a blind window: the failure path has no
+    // DB-poll fallback (`callback_failed` is detectable ONLY via the
+    // event), so an event missed there meant a guaranteed full timeout.
+    // Tolerate a missing listener (tests), but surface it: in production
+    // a missing listener means the `callback_failed` event can never
+    // resolve the wait early, so a misconfigured prod listener must not
+    // stay invisible.
     try {
       getListener().on("connector.oauth", handler);
     } catch (err) {
@@ -254,5 +255,20 @@ async function runOAuthWait(p: WaitForOAuthCredentialInput): Promise<OAuthWaitSt
     // `waitForOAuthCredential` admission gate above this inner runner.
     timeoutTimer = setTimeout(() => finish("timeout"), timeoutMs);
     timeoutTimer.unref?.();
+
+    // Idempotency — resolve immediately if the credential already
+    // exists (covers the DB-pause OAuth resume re-driving the tool).
+    // Runs AFTER the listener is registered above, so a `callback_*`
+    // event arriving during this async query is still caught.
+    void (async () => {
+      if (settled) return;
+      try {
+        if (await credentialExists(p.db, p.tenant_id, p.connector_id, p.environment)) {
+          finish("succeeded");
+        }
+      } catch {
+        /* best-effort — the DB poll and timeout still bound the wait */
+      }
+    })();
   });
 }

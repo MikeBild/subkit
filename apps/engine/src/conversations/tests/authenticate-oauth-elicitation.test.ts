@@ -225,6 +225,18 @@ async function awaitOAuthStateRow(connectorId: string): Promise<void> {
   );
 }
 
+/** Wait until `waitForOAuthCredential` has registered its pubsub handler
+ *  on the `connector.oauth` channel, so a dispatched event cannot race
+ *  ahead of the listener. The failure path has no DB-poll fallback, so a
+ *  missed `callback_failed` event there is a guaranteed full timeout. */
+async function awaitHandlerRegistered(beforeCount: number): Promise<void> {
+  await waitFor(() => globalEmitter.listenerCount("connector.oauth") > beforeCount, {
+    label: "connector.oauth handler registered",
+    sleepMs: 5,
+    tries: 400,
+  });
+}
+
 describe("authenticate_oauth — URL-mode elicitation, happy path", () => {
   test("connector_authenticated checkpoint is marked ONLY after the credential lands", async () => {
     const connectorId = await makeOAuthConnector("aoe-happy");
@@ -236,6 +248,7 @@ describe("authenticate_oauth — URL-mode elicitation, happy path", () => {
       } as DraftDocument,
     };
     const bridge = makeOobBridge("accept");
+    const listenersBefore = globalEmitter.listenerCount("connector.oauth");
 
     const running = authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
       connector_id: connectorId,
@@ -249,7 +262,8 @@ describe("authenticate_oauth — URL-mode elicitation, happy path", () => {
     expect(checkpointsBefore).toBeNull();
 
     // Simulate the OAuth callback: persist the credential then publish
-    // the success event.
+    // the success event — once the wait's pubsub handler is registered.
+    await awaitHandlerRegistered(listenersBefore);
     await insertCredential(connectorId);
     await globalEmitter.dispatch(succeededEvent(connectorId));
 
@@ -277,12 +291,14 @@ describe("authenticate_oauth — URL-mode elicitation, provider failure", () => 
       } as DraftDocument,
     };
     const bridge = makeOobBridge("accept");
+    const listenersBefore = globalEmitter.listenerCount("connector.oauth");
 
     const running = authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
       connector_id: connectorId,
     });
 
     await awaitOAuthStateRow(connectorId);
+    await awaitHandlerRegistered(listenersBefore);
     await globalEmitter.dispatch(failedEvent(connectorId));
 
     const result = await running;
