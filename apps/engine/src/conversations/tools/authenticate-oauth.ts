@@ -28,9 +28,6 @@
 // actually lands — the previous optimistic marking (before the operator
 // even opened the URL) is the bug this rework fixes.
 //
-// Follow-up: MCP Tasks (SEP-1686) could remove the held-open connection.
-// Tracked as GitHub issue #199.
-//
 // The credential row is keyed on (tenant_id, connector_id, environment),
 // so there is no user-supplied "credential name" — same auto-naming
 // pattern as bearer/basic/header/query atomic save.
@@ -66,7 +63,6 @@ import {
   OAUTH_AUTHORIZATION_FAILED,
   OAUTH_ELICITATION_TRANSPORT_FAILED,
   OAUTH_TIMEOUT,
-  OAUTH_TOO_MANY_CONCURRENT,
 } from "./error-codes.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 
@@ -166,12 +162,10 @@ async function resolveOAuthApprovalElicitation(
  * structured `error_code`. Kept in one place so `finalizeWaitResult` and
  * `resolveOAuthApprovalElicitation` cannot drift.
  */
-function oauthWaitErrorCode(status: "failed" | "timeout" | "rejected_concurrency"): string {
+function oauthWaitErrorCode(status: "failed" | "timeout"): string {
   switch (status) {
     case "timeout":
       return OAUTH_TIMEOUT;
-    case "rejected_concurrency":
-      return OAUTH_TOO_MANY_CONCURRENT;
     case "failed":
       return OAUTH_AUTHORIZATION_FAILED;
   }
@@ -649,12 +643,10 @@ async function finalizeWaitResult(
 }
 
 /** Human-readable message for a non-`succeeded` wait status. */
-function oauthWaitFailureMessage(status: "failed" | "timeout" | "rejected_concurrency"): string {
+function oauthWaitFailureMessage(status: "failed" | "timeout"): string {
   switch (status) {
     case "timeout":
       return "Still waiting for the OAuth authorization to complete — the authorization is pending, not failed. The authorization URL and state row are still valid: call authenticate_oauth again for this connector to resume waiting for the same flow (it will NOT mint a new URL while the state row is live).";
-    case "rejected_concurrency":
-      return "This tenant already has the maximum number of OAuth authorizations waiting at once. The authorization state row is still valid — wait a short moment, then call authenticate_oauth again for this connector to resume the same flow.";
     case "failed":
       return "The OAuth authorization did not complete — no credential was persisted. Re-run authenticate_oauth to try again.";
   }

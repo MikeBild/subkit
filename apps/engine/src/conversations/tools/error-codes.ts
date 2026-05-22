@@ -38,8 +38,3 @@ export const OAUTH_TIMEOUT = "oauth_timeout";
 /** The OAuth authorization-code dance produced an explicit
  *  `callback_failed` signal — no credential was persisted. */
 export const OAUTH_AUTHORIZATION_FAILED = "oauth_authorization_failed";
-
-/** A tenant already has the maximum number of concurrent OAuth waits in
- *  flight; this request was rejected immediately rather than queued so a
- *  burst cannot exhaust request slots. */
-export const OAUTH_TOO_MANY_CONCURRENT = "oauth_too_many_concurrent";

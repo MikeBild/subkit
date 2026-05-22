@@ -18,7 +18,6 @@ import {
   OAUTH_AUTHORIZATION_FAILED,
   OAUTH_ELICITATION_TRANSPORT_FAILED,
   OAUTH_TIMEOUT,
-  OAUTH_TOO_MANY_CONCURRENT,
 } from "../error-codes.ts";
 
 /**
@@ -129,8 +128,6 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the operator did not finish authorizing in time — the authorization is pending, not failed, and the state row is still live; call authenticate_oauth again for the same connector to resume waiting for the existing flow (it will NOT mint a new URL)",
   [OAUTH_AUTHORIZATION_FAILED]:
     "the OAuth provider reported the authorization did not complete — no credential was persisted; call authenticate_oauth again for this connector to start a fresh authorization attempt",
-  [OAUTH_TOO_MANY_CONCURRENT]:
-    "this tenant already has the maximum number of OAuth authorizations waiting at once — do not loop; wait a short moment and call authenticate_oauth again for this connector once one of the in-flight waits settles",
 };
 
 /**
