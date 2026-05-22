@@ -41,17 +41,23 @@ describe("mcp resources/subscribe live updates", () => {
       created_at: new Date(TEST_NOW_MS),
     });
 
-    // Short poll loop — the notification arrives asynchronously over the
-    // streamable HTTP SSE channel.
+    // Poll loop — the notification arrives asynchronously over the
+    // streamable HTTP SSE channel (emitter → resource capability → SSE
+    // push → client handler). The deadline is generous: on a saturated
+    // CI runner the multi-hop async delivery is far slower than the
+    // sub-second path seen in isolation, and a tight bound flaked.
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
-    const deadline = Date.now() + 5_000;
+    const deadline = Date.now() + 15_000;
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (received.length === 0 && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: MCP resource subscription propagation cadence
     }
     expect(received.length).toBeGreaterThanOrEqual(1);
     expect(received[0]?.uri).toBe(`connector://${id}`);
-  });
+    // Per-test timeout above the 15s poll deadline — bun's default 5s
+    // timeout was the real flake: it killed the test before a
+    // load-delayed notification could arrive.
+  }, 20_000);
 
   test("non-subscribed connector events are ignored", async () => {
     const { id: subscribedId } = await suite.seedConnector({ slug: "sub-probe-2" });
