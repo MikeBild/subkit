@@ -29,6 +29,8 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
+  AuditAction,
+  auditAwait,
   recordOAuthClientRegistered,
   recordOAuthClientRegistrationFailed,
 } from "../../../audit/index.ts";
@@ -45,7 +47,11 @@ import {
 import { writeEvent } from "../../../db/events.ts";
 import { connectorOauthStates, connectors } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
-import { ConnectorOauthCallbackPayloadSchema } from "../../../pubsub/index.ts";
+import {
+  ConnectorOauthCallbackFailedPayloadSchema,
+  type ConnectorOauthCallbackFailedReasons,
+  ConnectorOauthCallbackPayloadSchema,
+} from "../../../pubsub/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -239,6 +245,10 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         had_code: Boolean(q.code),
         had_error: Boolean(q.error),
       });
+      // No `callback_failed` publish here: with no `stateRow` there is
+      // no tenant_id/connector_id to scope the event to. A waiter is
+      // keyed to a real state token, so a bogus/expired callback simply
+      // lets that waiter time out — which is the correct outcome.
       return renderCallbackPage(c, {
         kind: "error",
         title: "OAuth state not found",
@@ -261,6 +271,15 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         provider_error: q.error,
         provider_error_description: q.error_description ?? null,
       });
+      // `reason` is a sanitized token, not `q.error` verbatim: provider
+      // error strings can embed request fragments (state tokens,
+      // redirect URIs) and this event is broadcast over pub/sub. The
+      // verbose `q.error` stays in the `logger.warn` above only.
+      await publishCallbackFailed(db, {
+        tenant_id: stateRow.tenant_id,
+        connector_id: stateRow.connector_id,
+        reason: "provider_error",
+      });
       return renderCallbackPage(c, {
         kind: "error",
         title: "OAuth provider returned an error",
@@ -278,6 +297,11 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: stateRow.tenant_id,
         connector_id: stateRow.connector_id,
         state_prefix: stateRow.state.slice(0, 8),
+      });
+      await publishCallbackFailed(db, {
+        tenant_id: stateRow.tenant_id,
+        connector_id: stateRow.connector_id,
+        reason: "missing_code",
       });
       return renderCallbackPage(c, {
         kind: "error",
@@ -386,6 +410,15 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         state_prefix: stateRow.state.slice(0, 8),
         error: message,
       });
+      // `reason` is a sanitized token, not the exchange `message`
+      // verbatim: a token-exchange exception can embed request fragments
+      // (state tokens, redirect URIs) and this event is broadcast over
+      // pub/sub. The verbose `message` stays in the `logger.warn` above.
+      await publishCallbackFailed(db, {
+        tenant_id: stateRow.tenant_id,
+        connector_id: stateRow.connector_id,
+        reason: "token_exchange_failed",
+      });
       return renderCallbackPage(c, {
         kind: "error",
         title: "Token exchange failed",
@@ -399,6 +432,71 @@ interface CallbackPage {
   kind: "success" | "error";
   title: string;
   message: string;
+}
+
+/**
+ * Record an OAuth-callback failure for a claimed state row, then publish
+ * the `connector.oauth.callback_failed` event.
+ *
+ * The callback DELETEs the `connector_oauth_states` row at the start of
+ * the request — a state change. AGENTS.md requires every state change to
+ * write an `audit_log` entry, so the durable, append-only audit row is
+ * written FIRST (awaited — it must not be lost), then the best-effort
+ * pubsub event is published for live waiters. A publish failure is
+ * logged and swallowed so it can never derail the error-page render. The
+ * waiter (`waitForOAuthCredential`) resolves `failed` ONLY from the
+ * explicit event — the absence of a state row no longer implies failure,
+ * because the row is deleted at the START of a seconds-long exchange.
+ *
+ * The state-not-found branch does NOT call this: with no claimed row
+ * there is no tenant to scope either the audit row or the event to.
+ */
+async function publishCallbackFailed(
+  db: import("../../../db/client.ts").Db,
+  p: {
+    tenant_id: string;
+    connector_id: string;
+    reason: (typeof ConnectorOauthCallbackFailedReasons)[number];
+  },
+): Promise<void> {
+  // Durable compliance record for the state change (the claimed state
+  // row was deleted). The sanitized `reason` token — never the verbose
+  // provider/exchange error — carries the failure classification.
+  await auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.CONNECTOR_OAUTH_CALLBACK_FAILED,
+      resource_type: "connector",
+      resource_id: p.connector_id,
+      result: "error",
+      reason: p.reason,
+      metadata: { connector_id: p.connector_id, reason: p.reason },
+    },
+    db,
+  );
+  try {
+    const payload = ConnectorOauthCallbackFailedPayloadSchema.parse({
+      connector_id: p.connector_id,
+      reason: p.reason,
+    });
+    await writeEvent(db, {
+      tenant_id: p.tenant_id,
+      channel: "connector.oauth",
+      type: "connector.oauth.callback_failed",
+      payload,
+    });
+  } catch (publishErr) {
+    logger.warn({
+      module: "oauth",
+      action: "oauth.callback.failed_event_publish_failed",
+      msg: "oauth callback failed but the callback_failed pubsub event could not be written; a waiter will time out instead of failing fast",
+      tenant_id: p.tenant_id,
+      connector_id: p.connector_id,
+      error: publishErr instanceof Error ? publishErr.message : String(publishErr),
+    });
+  }
 }
 
 // Minimal HTML page rendered to the user's browser tab at the end of

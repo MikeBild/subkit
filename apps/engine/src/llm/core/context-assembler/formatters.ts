@@ -342,8 +342,13 @@ export function formatLatestPreview(entries: LatestPreviewEntry[]): string {
 export function formatInteractionLog(entries: InteractionLogEntry[]): string {
   if (entries.length === 0) return "";
   const lines = entries.map((e) => {
-    const reason = e.decision_reason ? ` (${e.decision_reason})` : "";
-    return `- ${e.tool_name} → ${e.decision}${reason}`;
+    // Prefer the operator's free-text `feedback` (the prose they typed);
+    // fall back to the machine-code `decision_reason` when no feedback
+    // was given. Reading only `decision_reason` would surface a stable
+    // token like `user_declined` instead of the operator's actual words.
+    const note = e.feedback ?? e.decision_reason;
+    const suffix = note ? ` (${note})` : "";
+    return `- ${e.tool_name} → ${e.decision}${suffix}`;
   });
   return [
     "# Interaction log",

@@ -5,6 +5,7 @@
 // surfaces.
 
 import { describe, expect, it } from "bun:test";
+import * as errorCodes from "../error-codes.ts";
 import { buildCapAlternatives, ERROR_CODE_ALTERNATIVES } from "../sdk-wrap/error-recovery-hints.ts";
 
 describe("buildCapAlternatives", () => {
@@ -175,5 +176,28 @@ describe("ERROR_CODE_ALTERNATIVES catalogue completeness", () => {
       // Catalogue keys are the same shape as the literals (lowercase + underscores).
       expect(code).toMatch(/^[a-z][a-z0-9_]+$/);
     }
+  });
+
+  // W5 (fifth review): the grep-for-literals check above misses the
+  // elicitation / OAuth codes — those tools return `error_code: <CONST>`
+  // referencing the `error-codes.ts` exports, not inline string literals,
+  // so the `error_code:\s*['"]...['"]` regex never sees them. Pin the
+  // catalogue directly against every exported constant from
+  // `error-codes.ts`: each one is a structured `error_code` a tool
+  // surfaces, so each MUST have a recovery hint. The module is the
+  // canonical owner of these codes (see its header) — a constant added
+  // there without a matching hint silently drops the cap's recovery line.
+  it("has a hint for every error code exported from error-codes.ts", () => {
+    const exportedCodes = Object.entries(errorCodes)
+      .filter(([, v]) => typeof v === "string")
+      .map(([, v]) => v as string)
+      .sort();
+    // Discovery sanity — error-codes.ts must export something.
+    expect(exportedCodes.length).toBeGreaterThan(0);
+    const missing = exportedCodes.filter((code) => !(code in ERROR_CODE_ALTERNATIVES));
+    expect({
+      missing_from_catalogue: missing,
+      hint: "every constant exported from conversations/tools/error-codes.ts must have an entry in ERROR_CODE_ALTERNATIVES (sdk-wrap/error-recovery-hints.ts). If a code legitimately needs no hint, drop it from error-codes.ts or document the exclusion explicitly here.",
+    }).toEqual({ missing_from_catalogue: [], hint: expect.any(String) });
   });
 });

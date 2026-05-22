@@ -524,12 +524,13 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     instance.unmount();
   });
 
-  test("AC3: Tab-then-type-then-`n` rejects with the typed reason", async () => {
-    // Reject path with a free-text decision_reason: Tab opens the
-    // reason field, the operator types prose, Tab closes the field,
-    // then `n` (or `3`) submits the reject. Architecturally the
-    // ConfirmPrompt's own useInput owns the keyboard for the entire
-    // dance; the composer is inactive throughout.
+  test("AC3: Tab-then-type-then-`n` rejects with the typed feedback", async () => {
+    // Reject path with free-text feedback: Tab opens the feedback
+    // field, the operator types prose, Tab closes the field, then `n`
+    // (or `3`) submits the reject. Architecturally the ConfirmPrompt's
+    // own useInput owns the keyboard for the entire dance; the composer
+    // is inactive throughout. The typed prose travels in `output.feedback`
+    // — the wire `reason` carries only machine codes.
     const decisions: Array<{ id: string; output: unknown; reason?: string }> = [];
     const instance = renderApp({
       onPrompt: async () => ({
@@ -547,19 +548,23 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     await type(instance, "please commit");
     await pressEnter(instance);
     await tick(100);
-    instance.stdin.write("\t"); // open reason input
+    instance.stdin.write("\t"); // open feedback input
     await tick(20);
     for (const ch of "step 1 missing connector_id") {
       instance.stdin.write(ch);
       await tick(5);
     }
-    instance.stdin.write("\t"); // close reason input
+    instance.stdin.write("\t"); // close feedback input
     await tick(20);
     instance.stdin.write("n"); // submit reject
     await tick(60);
     expect(decisions.length).toBe(1);
-    expect((decisions[0]?.output as { confirmed: boolean }).confirmed).toBe(false);
-    expect(decisions[0]?.reason).toBe("step 1 missing connector_id");
+    const out = decisions[0]?.output as { confirmed: boolean; feedback?: string };
+    expect(out.confirmed).toBe(false);
+    // Free-text prose lands in `output.feedback`, never in the
+    // machine-code-only wire `reason`.
+    expect(out.feedback).toBe("step 1 missing connector_id");
+    expect(decisions[0]?.reason).toBeUndefined();
     instance.unmount();
   });
 });

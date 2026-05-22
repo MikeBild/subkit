@@ -12,6 +12,7 @@ import { getMockProvider } from "../../llm/mock-provider.ts";
 import { log } from "../../logging/logger.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../abort.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
+import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { type RunLoopResult, runLoop } from "../loop.ts";
 import { listBaselineSlugs, loadActivationCatalog } from "../skill-autoload.ts";
 import type { ConversationRecord } from "../types.ts";
@@ -65,6 +66,12 @@ export interface CreateConversationParams {
    * fallback that previously lived inside `runLoop` was retired.
    */
   turn_abort_ctrl?: AbortController;
+  /**
+   * MCP-native elicitation bridge — present only when the initial turn
+   * runs inside an MCP `tools/call` whose client advertised the
+   * `elicitation` capability. Threaded onto the loop's `ToolContext`.
+   */
+  elicitationBridge?: ElicitationBridge;
 }
 
 export async function createConversation(
@@ -199,6 +206,7 @@ export async function createConversation(
           ...(p.onEvent ? { onEvent: p.onEvent } : {}),
           ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
           ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
+          ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),
         })
       : { events: [], status: "active" as const };
   } finally {

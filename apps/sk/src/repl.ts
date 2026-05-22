@@ -24,6 +24,7 @@ import {
   type SkSessionState,
   type TurnEvent,
 } from "@cli-core/index.ts";
+import { OAuthApprovalInputSchema } from "@shared/elicitation-constants.ts";
 import type { ResolvedProfile } from "./config.ts";
 import {
   type DebugCorrelationFields,
@@ -37,12 +38,37 @@ import {
   looksLikeAssistantConfirmRequest,
 } from "./elicitation-intent.ts";
 import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
+import { BrowserUrlSchema, defaultOpenBrowser } from "./lib/open-browser.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { handleSlash as handleSharedSlash } from "./repl/slash/handler.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
 import { findSlashCommand, type PersonaProbe, renderHelp, SLASH_COMMANDS } from "./slash.ts";
+
+/**
+ * Pull the OAuth authorization URL out of an `elicit_request` input
+ * payload. `authenticate_oauth` on the portal surface pauses via
+ * `ask_user_confirm` carrying `kind: "external_write"` and an
+ * `authorization_url` field — that's the marker the REPL keys on to
+ * auto-open the browser. Returns `null` for any other elicitation.
+ *
+ * The whole payload is validated against the shared
+ * `OAuthApprovalInputSchema` (the engine producer builds through the
+ * same schema), so producer and consumer cannot silently drift. A
+ * non-OAuth `ask_user_confirm` pause fails the schema and returns
+ * `null` — `.safeParse` keeps that contract intact.
+ */
+function extractOAuthUrl(input: unknown): string | null {
+  const approval = OAuthApprovalInputSchema.safeParse(input);
+  if (!approval.success) return null;
+  // `BrowserUrlSchema` owns the http(s)-only launch policy — route the
+  // candidate through it rather than re-implementing the prefix check.
+  // (`OAuthApprovalInputSchema` already validated it is a URL; this
+  // additionally clamps the scheme to http(s) before a browser launch.)
+  const parsed = BrowserUrlSchema.safeParse(approval.data.authorization_url);
+  return parsed.success ? parsed.data : null;
+}
 
 export interface ReplRunOptions {
   profile: ResolvedProfile;
@@ -298,7 +324,9 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
               session.conversationId,
               session.pendingElicitation.id,
               { confirmed: intent.kind === "confirm" },
-              intent.kind === "reject" ? "user replied with a short negative" : undefined,
+              // `reason` is a machine-code decision token, not prose —
+              // it lands in the `decision_reason` audit column.
+              intent.kind === "reject" ? "user_declined" : undefined,
               traceContext(),
             );
             session = { ...session, pendingElicitation: null, status: "running" };
@@ -528,10 +556,27 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         }
         break;
       }
-      case "elicit_request":
+      case "elicit_request": {
+        const oauthUrl = extractOAuthUrl(ev.input);
+        if (oauthUrl) {
+          // OAuth authorization step — auto-open the browser and show a
+          // clear waiting status. The engine-side waitForOAuthCredential
+          // gates the actual continuation; the operator resumes via the
+          // same confirm/`/respond` path once the browser flow finishes.
+          line(`  ! authorization needed: ${ev.summary}`);
+          line(`    open in browser: ${oauthUrl}`);
+          void defaultOpenBrowser(oauthUrl).then(
+            () => line("    waiting for authorization in your browser…"),
+            () =>
+              line("    browser launch failed — open the URL above manually, then resume below"),
+          );
+          line(`    when done, run '/respond ${ev.elicitation_id} {"confirmed":true}'`);
+          break;
+        }
         line(`  ! input needed: ${ev.tool_name} — ${ev.summary}`);
         line(`    run '/respond ${ev.elicitation_id} <value>'`);
         break;
+      }
       case "validation_error":
         for (const e of ev.errors) line(`  × validation: ${e.path}: ${e.message}`);
         break;
@@ -876,14 +921,18 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           );
           return;
         }
-        const reason = args.slice(1).join(" ") || undefined;
+        // Operator-typed free text from `/reject <reason>`. It is user
+        // feedback, not a machine code, so it travels in the `output`
+        // payload — `decision_reason` (the `reason` arg) only ever
+        // carries the stable `user_declined` token.
+        const feedback = args.slice(1).join(" ") || undefined;
         elicitInFlight = true;
         try {
           const outcome = await client.respondElicitation(
             session.conversationId,
             elicitationId,
-            { confirmed: false },
-            reason,
+            { confirmed: false, ...(feedback ? { feedback } : {}) },
+            "user_declined",
             activeDebugContext ?? undefined,
           );
           session = { ...session, pendingElicitation: null, status: "running" };

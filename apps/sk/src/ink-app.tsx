@@ -2459,8 +2459,16 @@ export const InkApp: React.FC<InkAppProps> = ({
             reasonTokens = parts;
           }
           const confirmed = cmd.name === "approve";
-          const reason = !confirmed && reasonTokens.length > 0 ? reasonTokens.join(" ") : undefined;
-          await submitElicitationResponse(elicitationId, { confirmed }, reason);
+          // Operator-typed free text is user feedback — it travels in
+          // the `output` payload. The wire `reason` only ever carries
+          // the stable `user_declined` machine-code token.
+          const feedback =
+            !confirmed && reasonTokens.length > 0 ? reasonTokens.join(" ") : undefined;
+          await submitElicitationResponse(
+            elicitationId,
+            { confirmed, ...(feedback ? { feedback } : {}) },
+            confirmed ? undefined : "user_declined",
+          );
           return;
         }
         if (cmd.name === "yolo") {

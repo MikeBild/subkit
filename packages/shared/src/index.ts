@@ -14,6 +14,11 @@ export {
   isConnectorOperationError,
 } from "./connector-operation-error.ts";
 export {
+  OAUTH_AUTHORIZATION_URL_FIELD,
+  type OAuthApprovalInput,
+  OAuthApprovalInputSchema,
+} from "./elicitation-constants.ts";
+export {
   FILE_LINK_RESOURCE_TYPES,
   type FileLinkResourceType,
   MAX_INLINE_BYTES,

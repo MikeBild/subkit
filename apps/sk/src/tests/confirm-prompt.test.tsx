@@ -132,9 +132,11 @@ describe("ConfirmPrompt — reason textarea (regression for @inkjs/ui TextInput 
     // Now the user deliberately submits with 1 and the reason is attached.
     await writeKeys(instance, ["1"]);
     expect(onResponse).toHaveBeenCalledTimes(1);
+    // Operator free text travels in `feedback` (output payload), not in
+    // the machine-code-only `decision_reason` audit field.
     expect(onResponse.mock.calls[0]?.[0]).toEqual({
       confirmed: true,
-      decision_reason: "because",
+      feedback: "because",
     });
   });
 

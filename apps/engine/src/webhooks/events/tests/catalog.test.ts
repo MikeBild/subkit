@@ -16,6 +16,7 @@ describe("events catalog", () => {
       "workflow.updated",
       "connector.oauth.refreshed",
       "connector.oauth.callback_succeeded",
+      "connector.oauth.callback_failed",
       "patch.proposed",
       "apikey.rotated",
       "conversation.committed",
@@ -30,6 +31,24 @@ describe("events catalog", () => {
       source: "oauth_callback",
     });
     expect(res.ok).toBe(true);
+  });
+
+  test("validateEventPayload accepts a connector.oauth.callback_failed payload", () => {
+    // `reason` is constrained to a sanitized-token allowlist — raw
+    // provider error strings must never reach the wire.
+    const res = validateEventPayload("connector.oauth.callback_failed", {
+      connector_id: "33333333-3333-4333-8333-333333333333",
+      reason: "provider_error",
+    });
+    expect(res.ok).toBe(true);
+  });
+
+  test("validateEventPayload rejects a free-text connector.oauth.callback_failed reason", () => {
+    const res = validateEventPayload("connector.oauth.callback_failed", {
+      connector_id: "33333333-3333-4333-8333-333333333333",
+      reason: "the provider said access_denied for state=abc123",
+    });
+    expect(res.ok).toBe(false);
   });
 
   test("isKnownEventType", () => {

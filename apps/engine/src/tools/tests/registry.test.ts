@@ -8,6 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import { listTools } from "../../conversations/tools/index.ts";
 import { conversationToolProvider, staticToolProvider } from "../index.ts";
+import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
 import { buildRegistry, type ToolProvider } from "../registry.ts";
 
 describe("tools/registry — providers (active)", () => {
@@ -50,11 +51,11 @@ describe("tools/registry — providers (active)", () => {
     });
     const saveDraft = descriptors.find((d) => d.name === "save_workflow_draft");
     expect(saveDraft).toBeDefined();
-    expect(saveDraft?.disabled?.reason).toBe("requires_conversation_surface");
+    expect(saveDraft?.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
 
     const dryRun = descriptors.find((d) => d.name === "dry_run_workflow");
     expect(dryRun).toBeDefined();
-    expect(dryRun?.disabled?.reason).toBe("requires_conversation_surface");
+    expect(dryRun?.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
   });
 
   test("ConversationToolProvider hides tenant_write tools on MCP read-only mode", () => {

@@ -194,6 +194,28 @@ decision. This keeps the gate testable without DB and centralizes the
 audit semantics. Per-tool audits (e.g., `recordConnectorInvoked` inside
 `test_connector`) continue to fire from inside the tool's executor.
 
+### Elicitation audit is a tri-state — transport ≠ approval
+
+An elicitation resolve audit row carries up to three independent facts,
+and they must not be conflated:
+
+- **`action`** — `APPROVAL_APPROVED` (resolved) vs `APPROVAL_REJECTED`
+  (cancelled). This is the *governance decision*.
+- **`decision_reason`** — the machine code behind a cancel
+  (`user_declined`, `oauth_timeout`, `elicitation_transport_failed`, …).
+- **`elicitation_transport`** — `succeeded` | `failed`, present only for
+  bridge-delivered (`protocol_native`) rows. This records whether the
+  MCP `elicitation/create` round-trip *delivered*, NOT whether the
+  operator approved.
+
+Crucially, `elicitation_transport: "succeeded"` can coexist with a
+`cancelled` resolution: a clean bridge round-trip whose operator
+declined, or did not acknowledge an OAuth authorization, succeeded *as
+transport* but rejected *as a decision*. An audit query for "successful
+elicitations" must therefore filter on `action` / `decision_reason`, not
+on `elicitation_transport` — equating transport success with approval
+double-counts every declined-but-delivered prompt.
+
 ## Reference implementation comparison
 
 A peer integration platform was audited during the design phase.

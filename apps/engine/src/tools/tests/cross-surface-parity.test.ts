@@ -16,6 +16,7 @@
 import { describe, expect, test } from "bun:test";
 import { invokeForSdk } from "../../conversations/tools/dispatch-adapter.ts";
 import { callToolViaDispatcher } from "../../mcp/adapter.ts";
+import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
 import { makeStubCtx, makeStubDb, makeTestPrincipal } from "./_helpers.ts";
 
 const PRINCIPAL = makeTestPrincipal();
@@ -85,7 +86,7 @@ describe("tools/cross-surface-parity", () => {
       reason?: string;
     };
     expect(parsed.error_code).toBe("not_available_on_surface");
-    expect(parsed.reason).toBe("requires_conversation_surface");
+    expect(parsed.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
 
     // The MCP adapter additionally carries the same reason in
     // _meta.subkit.not_available_on_surface for clients that prefer
@@ -93,7 +94,7 @@ describe("tools/cross-surface-parity", () => {
     const meta = mcpResult._meta as
       | { subkit?: { not_available_on_surface?: { reason: string } } }
       | undefined;
-    expect(meta?.subkit?.not_available_on_surface?.reason).toBe("requires_conversation_surface");
+    expect(meta?.subkit?.not_available_on_surface?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
   });
 
   test("tenant_write on MCP without permission — RBAC denies BEFORE policy gate", async () => {

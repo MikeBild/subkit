@@ -9,6 +9,9 @@ export {
   stopListener,
 } from "./listener.ts";
 export {
+  type ConnectorOauthCallbackFailedPayload,
+  ConnectorOauthCallbackFailedPayloadSchema,
+  ConnectorOauthCallbackFailedReasons,
   type ConnectorOauthCallbackPayload,
   ConnectorOauthCallbackPayloadSchema,
   type EventEnvelope,

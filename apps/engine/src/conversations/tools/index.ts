@@ -8,6 +8,7 @@
 import type { z } from "@hono/zod-openapi";
 import type { Db } from "../../db/client.ts";
 import type { EngineClient } from "../../engine-client/index.ts";
+import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import type { DraftDocument } from "../types.ts";
 import { analyzeScrapeTargetTool } from "./analyze-scrape-target.ts";
 import {
@@ -131,6 +132,19 @@ export interface ToolContext {
     before: string;
     after: string;
   }) => void;
+  /**
+   * MCP-native elicitation bridge. Present ONLY on the MCP surface and
+   * ONLY when the connected client advertised the `elicitation`
+   * capability — `undefined` on the HTTP/SSE portal surface and on MCP
+   * clients without the capability. Tools that collect user input
+   * (`ask_user_*`, `authenticate_oauth`) probe
+   * `elicitationBridge?.capabilities` and, when present, issue a
+   * server→client `elicitation/create` request instead of taking the
+   * DB-pause / `respondElicitation` round-trip. The contract lives in
+   * `conversations/elicitation-bridge.ts`; the concrete MCP
+   * implementation is `mcp/elicitation/bridge.ts`.
+   */
+  elicitationBridge?: ElicitationBridge;
 }
 
 /** Elicitation pause descriptor shared by both ToolResult branches. */

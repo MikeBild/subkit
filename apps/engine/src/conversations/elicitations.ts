@@ -60,17 +60,53 @@ function rowToRecord(row: Row): ElicitationRecord {
   };
 }
 
-export async function createElicitation(
-  p: {
-    tenant_id: string;
-    conversation_id: string;
-    tool_call_id: string | null;
-    parent_message_id?: string | null;
-    tool_name: string;
-    summary: string;
-    input: unknown;
-    actor_id: string | null;
-  },
+/** Fields a caller supplies to open an elicitation row. The
+ *  `protocol_native` flag is NOT part of this shape — it is fixed by the
+ *  entry point (`createElicitation` vs `createNativeElicitation`) so a
+ *  caller cannot claim a bridge round-trip it never issued. */
+export interface CreateElicitationParams {
+  tenant_id: string;
+  conversation_id: string;
+  tool_call_id: string | null;
+  parent_message_id?: string | null;
+  tool_name: string;
+  summary: string;
+  input: unknown;
+  actor_id: string | null;
+}
+
+/**
+ * Open an elicitation row for the DB-pause + `respondElicitation` path.
+ * Always writes `protocol_native: false` — the row is satisfied via a
+ * portal POST, not an MCP `elicitation/create` round-trip.
+ *
+ * Bridge-path callers (in-process MCP `elicitation/create`) must use
+ * `createNativeElicitation` instead so the `surface` audit metadata
+ * stays truthful regardless of what the caller passes.
+ */
+export function createElicitation(
+  p: CreateElicitationParams,
+  exec: Executor,
+): Promise<ElicitationRecord> {
+  return insertElicitation(p, false, exec);
+}
+
+/**
+ * Open an elicitation row that backs an MCP-native `elicitation/create`
+ * round-trip (the in-process bridge). Always writes
+ * `protocol_native: true`. Use this ONLY on a path that actually issues
+ * the bridge call — the flag drives the `surface` audit metadata.
+ */
+export function createNativeElicitation(
+  p: CreateElicitationParams,
+  exec: Executor,
+): Promise<ElicitationRecord> {
+  return insertElicitation(p, true, exec);
+}
+
+async function insertElicitation(
+  p: CreateElicitationParams,
+  protocolNative: boolean,
   exec: Executor,
 ): Promise<ElicitationRecord> {
   // Single-pending-elicitation invariant. The LLM must never see two
@@ -127,6 +163,7 @@ export async function createElicitation(
       summary: p.summary,
       input: (p.input ?? {}) as Record<string, unknown>,
       status: "pending",
+      protocol_native: protocolNative,
     })
     .returning();
   assertInsertRow(inserted, "elicitation");
@@ -182,6 +219,62 @@ export async function createElicitation(
     exec,
   );
   return rowToRecord(inserted);
+}
+
+/**
+ * Demote an elicitation row from protocol-native to portal-backed.
+ *
+ * Used when a bridge-path elicitation (opened via `createNativeElicitation`,
+ * so `protocol_native: true`) degrades mid-call to the DB-pause +
+ * `respondElicitation` path because the MCP `elicitation` capability
+ * raced away. The row will now be satisfied by a portal POST, so its
+ * `protocol_native` flag must flip to `false` — otherwise
+ * `resolveElicitation`'s `surface` audit metadata would mislabel a
+ * portal resolution as `mcp_elicitation`.
+ *
+ * Tenant-scoped and pending-scoped: a row already resolved (e.g. a
+ * concurrent `respondElicitation` won the race) is left untouched.
+ */
+export async function demoteElicitationToPortal(
+  tenant_id: string,
+  id: string,
+  exec: Executor,
+): Promise<void> {
+  const [demoted] = await exec
+    .update(conversationElicitations)
+    .set({ protocol_native: false, updated_at: new Date() })
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, tenant_id),
+        eq(conversationElicitations.id, id),
+        eq(conversationElicitations.status, "pending"),
+      ),
+    )
+    .returning();
+  // The pending-scoped UPDATE missed — a concurrent `respondElicitation`
+  // already resolved the row. Nothing changed, so nothing to audit.
+  if (!demoted) return;
+  // Forensic trace: the carrier row was minted as `mcp_elicitation`
+  // (`protocol_native: true`) and has now become `portal`. Without this
+  // row an audit reader sees only the final `surface: portal` on the
+  // resolve row and cannot tell the elicitation ever attempted the MCP
+  // bridge.
+  await auditAwait(
+    {
+      tenant_id,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.ELICITATION_DEMOTED_TO_PORTAL,
+      resource_type: "conversation_elicitation",
+      resource_id: demoted.id,
+      result: "success",
+      metadata: {
+        conversation_id: demoted.conversation_id,
+        tool_name: demoted.tool_name,
+      },
+    },
+    exec,
+  );
 }
 
 export async function getElicitation(
@@ -286,14 +379,60 @@ export type ResolveElicitationResult =
   | { kind: "already_resolved"; existing: ElicitationRecord }
   | { kind: "resolved"; record: ElicitationRecord };
 
+/**
+ * Outcome of the bridge round-trip that delivered a `protocol_native`
+ * elicitation. Recorded on the resolve audit row so an operator can tell
+ * a clean MCP `elicitation/create` round-trip apart from one that fell
+ * through to a transport-failure resolution. Omitted entirely for
+ * non-bridge (portal) resolutions — the key only appears when known.
+ */
+export type ElicitationTransportOutcome = "succeeded" | "failed";
+
+/**
+ * Which channel satisfied an elicitation row — emitted as the `surface`
+ * audit metadata on the resolve row. `mcp_elicitation` is an in-process
+ * MCP `elicitation/create` round-trip; `portal` is a DB-pause satisfied
+ * by a portal POST to `/respond`. Derived from the carrier row's
+ * `protocol_native` flag, never from a caller argument. Naming this as a
+ * union (rather than a stringified literal) makes a typo in a future
+ * emitter a compile error.
+ */
+export type ElicitationSurface = "mcp_elicitation" | "portal";
+
+/**
+ * The `metadata` shape of an `APPROVAL_APPROVED` / `APPROVAL_REJECTED`
+ * elicitation-resolve audit row. Pinning it as a named type makes the
+ * tri-state discriminators (`surface`, `elicitation_transport`) typed at
+ * the producer so a misspelled key is caught at compile time. The
+ * `[k: string]: unknown` index signature keeps it assignable to the
+ * audit layer's `Record<string, unknown>` `metadata` column without
+ * losing the typo-protection on the named keys. The on-the-wire / in-DB
+ * JSONB shape is unchanged.
+ */
+export interface ElicitationResolveAuditMetadata {
+  conversation_id: string;
+  tool_name: string;
+  surface: ElicitationSurface;
+  elicitation_transport?: ElicitationTransportOutcome;
+  [k: string]: unknown;
+}
+
 export async function resolveElicitation(
   p: {
     tenant_id: string;
     id: string;
     output: unknown;
     decided_by: string | null;
+    /** Persisted verbatim to `decision_reason`. Carries a machine code —
+     *  a stable token, not free prose (e.g. `user_declined`,
+     *  `user_cancelled`, `oauth_timeout`, `elicitation_transport_failed`,
+     *  `oauth_authorization_declined`). Consumers may switch on it. */
     reason?: string;
     status?: "resolved" | "cancelled";
+    /** Bridge round-trip outcome. Set ONLY by bridge callers on a
+     *  `protocol_native` row; emitted as `elicitation_transport` audit
+     *  metadata. Non-bridge callers omit it (no key written). */
+    transport?: ElicitationTransportOutcome;
   },
   exec: Executor,
 ): Promise<ResolveElicitationResult> {
@@ -333,6 +472,29 @@ export async function resolveElicitation(
     if (!existing) return { kind: "not_found" };
     return { kind: "already_resolved", existing: rowToRecord(existing) };
   }
+  // Elicitation audit is a TRI-STATE — see docs/10-tool-palette.md
+  // ("Elicitation audit is a tri-state — transport ≠ approval"). Three
+  // independent facts land on this row and must not be conflated:
+  //   - `action`               = the governance DECISION (APPROVAL_APPROVED
+  //                              vs APPROVAL_REJECTED).
+  //   - `decision_reason`       = the machine-code token behind a cancel
+  //                              (`user_declined`, `oauth_timeout`, …).
+  //   - `elicitation_transport`= whether the MCP bridge round-trip
+  //                              DELIVERED — `succeeded` can coexist with
+  //                              an APPROVAL_REJECTED (a clean round-trip
+  //                              whose operator declined).
+  const metadata: ElicitationResolveAuditMetadata = {
+    conversation_id: row.conversation_id,
+    tool_name: row.tool_name,
+    // Distinguishes an operator confirming via an MCP
+    // `elicitation/create` round-trip from a portal POST to
+    // `/respond`. Derived from the carrier row, not the caller.
+    surface: row.protocol_native ? "mcp_elicitation" : "portal",
+    // Bridge round-trip outcome — emitted only when the caller knows
+    // it (a `protocol_native` row resolved by the bridge path). A
+    // portal resolution omits the key entirely.
+    ...(p.transport && row.protocol_native ? { elicitation_transport: p.transport } : {}),
+  };
   await auditAwait(
     {
       tenant_id: p.tenant_id,
@@ -343,12 +505,69 @@ export async function resolveElicitation(
       resource_id: row.id,
       result: "success",
       reason: p.reason ?? null,
-      metadata: {
-        conversation_id: row.conversation_id,
-        tool_name: row.tool_name,
-      },
+      metadata,
     },
     exec,
   );
   return { kind: "resolved", record: rowToRecord(row) };
+}
+
+/**
+ * Resolve an elicitation row AND flip the owning conversation back to
+ * `active`, as ONE atomic unit.
+ *
+ * `createElicitation` moves the conversation to `awaiting_input`. If the
+ * row resolved but the status flip failed (separate writes, no tx), the
+ * loop's pending-elicitation guard would wedge the conversation with no
+ * pending row left to resume from. Both writes therefore run inside a
+ * single `transaction`.
+ *
+ * The conversation flip fires ONLY when the resolve actually
+ * transitioned (`kind === "resolved"`). A lost race — a concurrent
+ * `respondElicitation` resolved the row first — returns
+ * `already_resolved`; the winning path already flipped the status, so
+ * re-flipping here would be wrong.
+ */
+export async function resolveElicitationAndReactivate(
+  p: {
+    tenant_id: string;
+    conversation_id: string;
+    id: string;
+    output: unknown;
+    decided_by: string | null;
+    reason?: string;
+    status?: "resolved" | "cancelled";
+    /** Bridge round-trip outcome — see `resolveElicitation`. Bridge
+     *  callers pass it; non-bridge callers omit it. */
+    transport?: ElicitationTransportOutcome;
+  },
+  db: Db,
+): Promise<ResolveElicitationResult> {
+  // Definite assignment: `resolveElicitation` returns a value on every
+  // path and the tx callback awaits it before the transaction resolves,
+  // so `resolution` is always assigned by the time control returns here.
+  let resolution!: ResolveElicitationResult;
+  await db.transaction(async (tx) => {
+    resolution = await resolveElicitation(
+      {
+        tenant_id: p.tenant_id,
+        id: p.id,
+        output: p.output,
+        decided_by: p.decided_by,
+        ...(p.reason ? { reason: p.reason } : {}),
+        ...(p.status ? { status: p.status } : {}),
+        ...(p.transport ? { transport: p.transport } : {}),
+      },
+      tx,
+    );
+    if (resolution.kind === "resolved") {
+      await tx
+        .update(conversations)
+        .set({ status: "active", updated_at: new Date() })
+        .where(
+          and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+        );
+    }
+  });
+  return resolution;
 }

@@ -8,6 +8,7 @@ import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
+import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { runLoop } from "../loop.ts";
 import type { ConversationPermissionMode } from "../types.ts";
 import { getConversation } from "./get.ts";
@@ -51,6 +52,12 @@ export interface AppendMessageParams {
    * dismissals.
    */
   next_suggestion_suppress?: boolean;
+  /**
+   * MCP-native elicitation bridge — present only when this turn runs
+   * inside an MCP `tools/call` whose client advertised the
+   * `elicitation` capability. Threaded onto the loop's `ToolContext`.
+   */
+  elicitationBridge?: ElicitationBridge;
 }
 
 export async function appendUserMessage(
@@ -146,6 +153,7 @@ export async function appendUserMessage(
     ...(p.next_suggestion_suppress !== undefined
       ? { next_suggestion_suppress: p.next_suggestion_suppress }
       : {}),
+    ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),
   });
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");

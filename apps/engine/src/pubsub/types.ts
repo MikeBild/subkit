@@ -76,6 +76,43 @@ export const ConnectorOauthCallbackPayloadSchema = z.object({
 export type ConnectorOauthCallbackPayload = z.infer<typeof ConnectorOauthCallbackPayloadSchema>;
 
 /**
+ * Payload contract for `connector.oauth.callback_failed` events on the
+ * `connector.oauth` channel. Emitted from the callback route's failure
+ * branches (provider error, missing code, token-exchange failure) when
+ * a state row was claimed — so a tenant + connector scope is available.
+ *
+ * Mirrors `ConnectorOauthCallbackPayloadSchema` but carries no
+ * `connector_slug`: the only consumer is `waitForOAuthCredential`, which
+ * keys on `connector_id` alone. There is no SSE log-readability consumer
+ * for the failed payload, so the slug is intentionally dropped.
+ *
+ * Field semantics:
+ *   - `connector_id` — the connector whose OAuth dance failed.
+ *   - `reason`       — a short sanitized failure token from a fixed
+ *                      allowlist. It must NEVER carry raw provider error
+ *                      text or a token-exchange exception message: those
+ *                      can embed request fragments (state tokens,
+ *                      redirect URIs) and this event is broadcast over
+ *                      pub/sub and exposed via the webhook catalog. The
+ *                      verbose original error stays in the structured
+ *                      `logger` call only.
+ */
+export const ConnectorOauthCallbackFailedReasons = [
+  "provider_error",
+  "missing_code",
+  "token_exchange_failed",
+] as const;
+
+export const ConnectorOauthCallbackFailedPayloadSchema = z.object({
+  connector_id: z.string().uuid(),
+  reason: z.enum(ConnectorOauthCallbackFailedReasons),
+});
+
+export type ConnectorOauthCallbackFailedPayload = z.infer<
+  typeof ConnectorOauthCallbackFailedPayloadSchema
+>;
+
+/**
  * Channels the listener fans out to in-process subscribers. The literal
  * list is `satisfies`-typed against `readonly OutboxChannel[]` so the
  * compiler rejects any drift from the union in `db/events.ts` — a

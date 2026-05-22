@@ -10,6 +10,16 @@
 // `invoke.ts`, and so the unit test can assert the catalogue is
 // complete by importing from one canonical location.
 
+import {
+  ELICITATION_ALREADY_RESOLVED,
+  ELICITATION_TRANSPORT_FAILED,
+  INVALID_ELICIT_RESPONSE,
+  OAUTH_AUTHORIZATION_DECLINED,
+  OAUTH_AUTHORIZATION_FAILED,
+  OAUTH_ELICITATION_TRANSPORT_FAILED,
+  OAUTH_TIMEOUT,
+} from "../error-codes.ts";
+
 /**
  * Maps known error codes to concrete next-action suggestions for the
  * model. Add a new entry whenever a new structured `error_code` ships
@@ -103,6 +113,21 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the workflow verifier rejected the change — read the rejection reason and either revise the patch or call ask_user_confirm to confirm an exception",
   repair_loop_detected:
     "three consecutive runs surfaced the same authoring warning — stop, read data-handling.md / workflow-authoring.md, and propose a structurally different draft",
+  // OAuth authorization — chat-driven authenticate_oauth.
+  [OAUTH_AUTHORIZATION_DECLINED]:
+    "the user declined to start the OAuth authorization — do not retry silently; ask the user whether they still want to connect this integration before calling authenticate_oauth again",
+  [OAUTH_ELICITATION_TRANSPORT_FAILED]:
+    "the MCP elicitation carrying the OAuth authorization URL failed in transit — the authorization state row is still valid, so call authenticate_oauth again for the same connector to resume the existing flow (it will not mint a new URL)",
+  [ELICITATION_TRANSPORT_FAILED]:
+    "the MCP elicitation request failed in transit (client disconnected or never answered) — the conversation is no longer waiting on input; re-ask the user with an ask_user_* tool only if their answer is still needed",
+  [ELICITATION_ALREADY_RESOLVED]:
+    "this elicitation was already answered through another channel (a concurrent resume) — do not retry the ask_user_* tool; re-read the conversation state and continue from the answer that already landed",
+  [INVALID_ELICIT_RESPONSE]:
+    "the MCP client returned an answer that violates the requested schema (an out-of-enum choice or a non-boolean confirm) — this was recorded as a decline; do not silently retry, ask the user again with an ask_user_* tool only if their answer is still needed",
+  [OAUTH_TIMEOUT]:
+    "the operator did not finish authorizing in time — the authorization is pending, not failed, and the state row is still live; call authenticate_oauth again for the same connector to resume waiting for the existing flow (it will NOT mint a new URL)",
+  [OAUTH_AUTHORIZATION_FAILED]:
+    "the OAuth provider reported the authorization did not complete — no credential was persisted; call authenticate_oauth again for this connector to start a fresh authorization attempt",
 };
 
 /**

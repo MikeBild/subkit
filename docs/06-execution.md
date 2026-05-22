@@ -81,6 +81,8 @@ Execution state changes — a run starting, a step completing, a run finishing �
 
 The platform uses an outbox pattern to ensure that events are never silently lost. Events are written to the database as part of the same transaction as the state change that produced them. Delivery is attempted after the transaction commits, and any undelivered event is retried. The outbox provides a durable event log that survives restarts and partial failures.
 
+Pub/sub channels are **global, not per-tenant**. The `connector.oauth` channel — over which an out-of-band OAuth callback announces `callback_succeeded` / `callback_failed` — carries events for every tenant. A consumer that subscribes to it (e.g. `waitForOAuthCredential` in [`apps/engine/src/credentials/oauth2/wait.ts`](../apps/engine/src/credentials/oauth2/wait.ts)) is therefore responsible for tenant isolation itself: it MUST drop any event whose `tenant_id` does not match the wait's own `tenant_id` in-handler, before acting on it. There is no channel-level scoping to fall back on.
+
 ---
 
 ## Self-Healing

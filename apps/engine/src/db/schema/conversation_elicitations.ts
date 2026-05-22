@@ -16,7 +16,7 @@
 // `save-workflow-draft` repo-wide and this table now backs the
 // save-workflow-draft + external-write confirmation flows.
 
-import { index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
 import { conversationMessages, conversations, conversationToolCalls } from "./conversations.ts";
 import { tenants, users } from "./identity.ts";
@@ -49,8 +49,18 @@ export const conversationElicitations = pgTable(
     input: jsonb("input").notNull(),
     output: jsonb("output"),
     status: elicitationStatusEnum("status").notNull().default("pending"),
+    // True when this elicitation was satisfied via an MCP-native
+    // `elicitation/create` round-trip (the in-process bridge) rather
+    // than the DB-pause + `respondElicitation` path. Lets observability
+    // distinguish a protocol-native prompt from a portal-surface one.
+    protocol_native: boolean("protocol_native").notNull().default(false),
     decided_by: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
     decided_at: timestamp("decided_at", { withTimezone: true }),
+    // Machine-code decision token — a stable string, not free prose.
+    // `resolveElicitation` stores codes like `user_declined`,
+    // `user_cancelled`, `oauth_timeout`, `elicitation_transport_failed`,
+    // or `superseded_by_new_elicitation` here so the resolution path
+    // stays auditable and consumers can switch on it.
     decision_reason: text("decision_reason"),
     expires_at: timestamp("expires_at", { withTimezone: true }),
     ...timestamps,

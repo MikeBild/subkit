@@ -20,6 +20,8 @@ import {
 } from "../../conversations/abort.ts";
 import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
+import { MCP_ELICITATION_BLURB } from "../../tools/policy.ts";
+import type { ElicitationBridge } from "../elicitation/bridge.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 
 export const CONVERSATION_TOOL_PREFIX = "conversation_";
@@ -28,7 +30,7 @@ export function listConversationTools(): Tool[] {
   return [
     {
       name: "conversation_start",
-      description: "Start a new authoring conversation and drive the first turn.",
+      description: `Start here for ANY connector setup, OAuth authorization, or workflow authoring. Opens a new authoring conversation and drives the first turn — ${MCP_ELICITATION_BLURB}.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -41,7 +43,7 @@ export function listConversationTools(): Tool[] {
     },
     {
       name: "conversation_append",
-      description: "Append a user message to an existing conversation and drive another turn.",
+      description: `Continue an authoring conversation — append a user message and drive another turn. Use this to answer the engine's questions or steer connector/workflow authoring; ${MCP_ELICITATION_BLURB}.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -89,6 +91,13 @@ export interface HandleConversationToolParams {
    * When undefined, the conversation falls back to the tenant default.
    */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  /**
+   * MCP-native elicitation bridge for this `tools/call`. Threaded into
+   * the conversation loop's `ToolContext` so input-collecting tools
+   * surface forms + OAuth prompts directly in the MCP client. Absent on
+   * non-MCP callers.
+   */
+  elicitationBridge?: ElicitationBridge;
 }
 
 export interface HandleConversationToolResult {
@@ -99,7 +108,7 @@ export interface HandleConversationToolResult {
 export async function handleConversationTool(
   p: HandleConversationToolParams,
 ): Promise<HandleConversationToolResult> {
-  const { db, principal, name, args, permission_mode } = p;
+  const { db, principal, name, args, permission_mode, elicitationBridge } = p;
   try {
     if (name === "conversation_start") {
       const message = args.message;
@@ -114,6 +123,7 @@ export async function handleConversationTool(
           ...(typeof args.workflow_id === "string" ? { workflow_id: args.workflow_id } : {}),
           initial_message: message,
           ...(permission_mode ? { permission_mode } : {}),
+          ...(elicitationBridge ? { elicitationBridge } : {}),
         },
         db,
       );
@@ -152,6 +162,7 @@ export async function handleConversationTool(
             message,
             turn_abort_ctrl: turnAbortCtrl,
             ...(permission_mode ? { permission_mode } : {}),
+            ...(elicitationBridge ? { elicitationBridge } : {}),
           },
           db,
         );
@@ -183,6 +194,7 @@ export async function handleConversationTool(
             output: args.output,
             turn_abort_ctrl: turnAbortCtrl,
             ...(typeof args.reason === "string" ? { reason: args.reason } : {}),
+            ...(elicitationBridge ? { elicitationBridge } : {}),
           },
           db,
         );

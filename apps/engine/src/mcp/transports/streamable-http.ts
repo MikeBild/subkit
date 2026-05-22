@@ -7,11 +7,18 @@
 // notifications (including `notifications/progress`) land on the right
 // stream.
 //
-// Synchronous request/response (POST /mcp) returns `application/json` with
-// a JSON-RPC envelope directly in the body — required for clients whose
-// streamable-HTTP adapter cannot deserialize an SSE-framed initialize
-// response (e.g. Codex CLI's rmcp adapter). Notifications and progress
-// events still stream over SSE on the long-lived GET /mcp channel.
+// `enableJsonResponse` is OFF. Every POST /mcp — including `tools/call`
+// — opens an SSE stream for its response. This is REQUIRED for MCP
+// elicitation: a tool whose `execute` issues a server→client
+// `elicitation/create` request mid-call can only deliver that request
+// (and receive the client's reply) when the originating POST holds an
+// open SSE stream. Under `enableJsonResponse: true` the transport
+// buffers a single JSON envelope and closes the stream before the
+// nested request can be flushed — `server.elicitInput()` then hangs
+// until its timeout. The trade-off (an SSE frame for the initialize
+// response) is acceptable; modern clients (claude.ai, Cursor, Codex's
+// current rmcp adapter) all deserialize SSE-framed responses. The
+// stdio transport is unaffected and unchanged.
 //
 // Auth is handled by Hono's `authMiddleware` before this handler runs —
 // `requireAuth(c)` will throw a 401 if the principal is absent.
@@ -69,7 +76,9 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
       const server = createMcpServer({ db, principal, transport: "http" });
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
-        enableJsonResponse: true,
+        // OFF — see the header note: mid-tool-call `elicitation/create`
+        // requests require the POST to keep an SSE stream open.
+        enableJsonResponse: false,
         onsessioninitialized: (sid) => {
           sessions.set(sid, { transport, server });
           logger.info({
