@@ -240,7 +240,7 @@ export async function demoteElicitationToPortal(
   id: string,
   exec: Executor,
 ): Promise<void> {
-  await exec
+  const [demoted] = await exec
     .update(conversationElicitations)
     .set({ protocol_native: false, updated_at: new Date() })
     .where(
@@ -249,7 +249,32 @@ export async function demoteElicitationToPortal(
         eq(conversationElicitations.id, id),
         eq(conversationElicitations.status, "pending"),
       ),
-    );
+    )
+    .returning();
+  // The pending-scoped UPDATE missed — a concurrent `respondElicitation`
+  // already resolved the row. Nothing changed, so nothing to audit.
+  if (!demoted) return;
+  // Forensic trace: the carrier row was minted as `mcp_elicitation`
+  // (`protocol_native: true`) and has now become `portal`. Without this
+  // row an audit reader sees only the final `surface: portal` on the
+  // resolve row and cannot tell the elicitation ever attempted the MCP
+  // bridge.
+  await auditAwait(
+    {
+      tenant_id,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.ELICITATION_DEMOTED_TO_PORTAL,
+      resource_type: "conversation_elicitation",
+      resource_id: demoted.id,
+      result: "success",
+      metadata: {
+        conversation_id: demoted.conversation_id,
+        tool_name: demoted.tool_name,
+      },
+    },
+    exec,
+  );
 }
 
 export async function getElicitation(
@@ -363,6 +388,35 @@ export type ResolveElicitationResult =
  */
 export type ElicitationTransportOutcome = "succeeded" | "failed";
 
+/**
+ * Which channel satisfied an elicitation row — emitted as the `surface`
+ * audit metadata on the resolve row. `mcp_elicitation` is an in-process
+ * MCP `elicitation/create` round-trip; `portal` is a DB-pause satisfied
+ * by a portal POST to `/respond`. Derived from the carrier row's
+ * `protocol_native` flag, never from a caller argument. Naming this as a
+ * union (rather than a stringified literal) makes a typo in a future
+ * emitter a compile error.
+ */
+export type ElicitationSurface = "mcp_elicitation" | "portal";
+
+/**
+ * The `metadata` shape of an `APPROVAL_APPROVED` / `APPROVAL_REJECTED`
+ * elicitation-resolve audit row. Pinning it as a named type makes the
+ * tri-state discriminators (`surface`, `elicitation_transport`) typed at
+ * the producer so a misspelled key is caught at compile time. The
+ * `[k: string]: unknown` index signature keeps it assignable to the
+ * audit layer's `Record<string, unknown>` `metadata` column without
+ * losing the typo-protection on the named keys. The on-the-wire / in-DB
+ * JSONB shape is unchanged.
+ */
+interface ElicitationResolveAuditMetadata {
+  conversation_id: string;
+  tool_name: string;
+  surface: ElicitationSurface;
+  elicitation_transport?: ElicitationTransportOutcome;
+  [k: string]: unknown;
+}
+
 export async function resolveElicitation(
   p: {
     tenant_id: string;
@@ -418,6 +472,29 @@ export async function resolveElicitation(
     if (!existing) return { kind: "not_found" };
     return { kind: "already_resolved", existing: rowToRecord(existing) };
   }
+  // Elicitation audit is a TRI-STATE — see docs/10-tool-palette.md
+  // ("Elicitation audit is a tri-state — transport ≠ approval"). Three
+  // independent facts land on this row and must not be conflated:
+  //   - `action`               = the governance DECISION (APPROVAL_APPROVED
+  //                              vs APPROVAL_REJECTED).
+  //   - `decision_reason`       = the machine-code token behind a cancel
+  //                              (`user_declined`, `oauth_timeout`, …).
+  //   - `elicitation_transport`= whether the MCP bridge round-trip
+  //                              DELIVERED — `succeeded` can coexist with
+  //                              an APPROVAL_REJECTED (a clean round-trip
+  //                              whose operator declined).
+  const metadata: ElicitationResolveAuditMetadata = {
+    conversation_id: row.conversation_id,
+    tool_name: row.tool_name,
+    // Distinguishes an operator confirming via an MCP
+    // `elicitation/create` round-trip from a portal POST to
+    // `/respond`. Derived from the carrier row, not the caller.
+    surface: row.protocol_native ? "mcp_elicitation" : "portal",
+    // Bridge round-trip outcome — emitted only when the caller knows
+    // it (a `protocol_native` row resolved by the bridge path). A
+    // portal resolution omits the key entirely.
+    ...(p.transport && row.protocol_native ? { elicitation_transport: p.transport } : {}),
+  };
   await auditAwait(
     {
       tenant_id: p.tenant_id,
@@ -428,18 +505,7 @@ export async function resolveElicitation(
       resource_id: row.id,
       result: "success",
       reason: p.reason ?? null,
-      metadata: {
-        conversation_id: row.conversation_id,
-        tool_name: row.tool_name,
-        // Distinguishes an operator confirming via an MCP
-        // `elicitation/create` round-trip from a portal POST to
-        // `/respond`. Derived from the carrier row, not the caller.
-        surface: row.protocol_native ? "mcp_elicitation" : "portal",
-        // Bridge round-trip outcome — emitted only when the caller knows
-        // it (a `protocol_native` row resolved by the bridge path). A
-        // portal resolution omits the key entirely.
-        ...(p.transport && row.protocol_native ? { elicitation_transport: p.transport } : {}),
-      },
+      metadata,
     },
     exec,
   );

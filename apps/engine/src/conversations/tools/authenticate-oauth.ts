@@ -147,7 +147,7 @@ async function resolveOAuthApprovalElicitation(
       output: { status },
       decided_by: ctx.actor_id,
       status: status === "succeeded" ? "resolved" : "cancelled",
-      ...(status === "succeeded" ? {} : { reason: oauthWaitErrorCode(status) }),
+      ...(status === "succeeded" ? {} : { reason: mapOAuthWaitFailure(status).code }),
       // This row was delivered through the bridge (oob/form) and the
       // round-trip completed — the operator answered. The subsequent
       // wait outcome is independent of the elicitation transport.
@@ -159,15 +159,25 @@ async function resolveOAuthApprovalElicitation(
 
 /**
  * Map a non-`succeeded` `waitForOAuthCredential` status to its canonical
- * structured `error_code`. Kept in one place so `finalizeWaitResult` and
- * `resolveOAuthApprovalElicitation` cannot drift.
+ * structured `error_code` AND human-readable message. One dispatcher
+ * over the `"failed" | "timeout"` discriminator — `finalizeWaitResult`
+ * and `resolveOAuthApprovalElicitation` both read from here so the two
+ * facets cannot drift.
  */
-function oauthWaitErrorCode(status: "failed" | "timeout"): string {
+function mapOAuthWaitFailure(status: "failed" | "timeout"): { code: string; message: string } {
   switch (status) {
     case "timeout":
-      return OAUTH_TIMEOUT;
+      return {
+        code: OAUTH_TIMEOUT,
+        message:
+          "Still waiting for the OAuth authorization to complete — the authorization is pending, not failed. The authorization URL and state row are still valid: call authenticate_oauth again for this connector to resume waiting for the same flow (it will NOT mint a new URL while the state row is live).",
+      };
     case "failed":
-      return OAUTH_AUTHORIZATION_FAILED;
+      return {
+        code: OAUTH_AUTHORIZATION_FAILED,
+        message:
+          "The OAuth authorization did not complete — no credential was persisted. Re-run authenticate_oauth to try again.",
+      };
   }
 }
 
@@ -664,20 +674,11 @@ async function finalizeWaitResult(
       },
     };
   }
+  const failure = mapOAuthWaitFailure(status);
   return {
     ok: false,
-    error_code: oauthWaitErrorCode(status),
-    message: oauthWaitFailureMessage(status),
+    error_code: failure.code,
+    message: failure.message,
     data: { status, ...(extra ?? {}) },
   };
-}
-
-/** Human-readable message for a non-`succeeded` wait status. */
-function oauthWaitFailureMessage(status: "failed" | "timeout"): string {
-  switch (status) {
-    case "timeout":
-      return "Still waiting for the OAuth authorization to complete — the authorization is pending, not failed. The authorization URL and state row are still valid: call authenticate_oauth again for this connector to resume waiting for the same flow (it will NOT mint a new URL while the state row is live).";
-    case "failed":
-      return "The OAuth authorization did not complete — no credential was persisted. Re-run authenticate_oauth to try again.";
-  }
 }

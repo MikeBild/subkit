@@ -28,7 +28,11 @@ export const BrowserUrlSchema = z
   .string()
   .url()
   .refine((u) => /^https?:\/\//i.test(u), {
-    message: "URL must be http(s); file:/javascript:/data: schemes rejected",
+    // The `^https?://` allowlist is a positive control: it admits only
+    // http(s) and rejects EVERYTHING else (file:, javascript:, data:,
+    // scheme-less, …). The message names what the schema enforces — the
+    // allowlist — rather than enumerating a blocklist it does not have.
+    message: "URL must be an http(s) URL",
   });
 
 /**

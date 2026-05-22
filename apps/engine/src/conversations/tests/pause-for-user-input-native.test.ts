@@ -14,7 +14,8 @@
 //      active, structured `elicitation_transport_failed` error.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { auditLog } from "../../db/schema/audit.ts";
 import { conversationElicitations, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -120,6 +121,24 @@ async function readElicitation(conversation_id: string) {
   return rows;
 }
 
+/** The resolve audit row for an elicitation carrier — `APPROVAL_APPROVED`
+ *  or `APPROVAL_REJECTED`, keyed on the elicitation id as `resource_id`.
+ *  Filtered by action so the paired `APPROVAL_REQUESTED` open row (same
+ *  `resource_id`) is excluded. */
+async function readResolveAudit(elicitation_id: string, action: string) {
+  const [row] = await ctx.db
+    .select()
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, tenant_id),
+        eq(auditLog.resource_id, elicitation_id),
+        eq(auditLog.action, action),
+      ),
+    );
+  return row;
+}
+
 describe("pauseForUserInput — MCP-native form elicitation (capable client)", () => {
   test("accept → no pause, conversation back to active, row protocol_native + resolved", async () => {
     const conversation_id = await freshConversation();
@@ -147,6 +166,15 @@ describe("pauseForUserInput — MCP-native form elicitation (capable client)", (
     expect(rows[0]!.protocol_native).toBe(true);
     expect(rows[0]!.status).toBe("resolved");
     expect(rows[0]!.output).toEqual({ value: "my-answer" });
+
+    // The resolve audit row carries the tri-state discriminators
+    // (docs/10-tool-palette.md): a bridge-delivered accept records
+    // `surface: mcp_elicitation` and `elicitation_transport: succeeded`.
+    const audit = await readResolveAudit(rows[0]!.id, "approval.approved");
+    expect(audit).toBeDefined();
+    const meta = audit!.metadata as Record<string, unknown>;
+    expect(meta.surface).toBe("mcp_elicitation");
+    expect(meta.elicitation_transport).toBe("succeeded");
   });
 
   test("decline → row resolved cancelled (user_declined), structured error, no pause", async () => {
@@ -267,6 +295,17 @@ describe("pauseForUserInput — bridge transport failure", () => {
     const rows = await readElicitation(conversation_id);
     expect(rows[0]!.status).toBe("cancelled");
     expect(rows[0]!.decision_reason).toBe("elicitation_transport_failed");
+
+    // The resolve audit row records the tri-state: a bridge round-trip
+    // that broke in transit is `APPROVAL_REJECTED` with
+    // `surface: mcp_elicitation` and `elicitation_transport: failed`
+    // (docs/10-tool-palette.md — transport failure ≠ a governance
+    // decision the operator made).
+    const audit = await readResolveAudit(rows[0]!.id, "approval.rejected");
+    expect(audit).toBeDefined();
+    const meta = audit!.metadata as Record<string, unknown>;
+    expect(meta.surface).toBe("mcp_elicitation");
+    expect(meta.elicitation_transport).toBe("failed");
   });
 
   test("ElicitationUnsupportedError throw → falls back to a DB-pause on the existing row", async () => {

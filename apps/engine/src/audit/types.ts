@@ -280,6 +280,13 @@ export const AuditAction = {
   APPROVAL_REQUESTED: "approval.requested",
   APPROVAL_APPROVED: "approval.approved",
   APPROVAL_REJECTED: "approval.rejected",
+  // A `protocol_native` (MCP-bridge) elicitation row degraded mid-call
+  // to the portal DB-pause path because the MCP `elicitation`
+  // capability raced away. The row flips `protocol_native: true →
+  // false` — a governance-row state change. This row preserves the
+  // forensic trace that the carrier was minted as `mcp_elicitation`
+  // before becoming `portal`.
+  ELICITATION_DEMOTED_TO_PORTAL: "elicitation.demoted_to_portal",
 
   // H2: Knowledge Sources
   KNOWLEDGE_SOURCE_CREATED: "knowledge_source.created",
@@ -466,6 +473,15 @@ export const AuditAction = {
 
   OAUTH_CLIENT_REGISTERED: "oauth_client.registered",
   OAUTH_CLIENT_REGISTRATION_FAILED: "oauth_client.registration_failed",
+  // `/v1/oauth/callback` failure paths — the provider denied access,
+  // the callback carried no authorization code, or the token exchange
+  // raised. Each deletes the claimed `connector_oauth_states` row (a
+  // state change), so AGENTS.md requires an audit row. The companion
+  // `connector.oauth.callback_failed` pubsub event is observability,
+  // not the durable compliance record — this is. The state-not-found
+  // branch emits nothing: there is no claimed row and so no tenant to
+  // scope the audit entry to.
+  CONNECTOR_OAUTH_CALLBACK_FAILED: "connector.oauth.callback_failed",
 
   // ── MCP OAuth 2.1 authorization server ────────────────────────────────────
   MCP_OAUTH_CLIENT_REGISTERED: "mcp_oauth.client_registered",

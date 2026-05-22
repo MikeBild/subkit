@@ -29,6 +29,8 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
+  AuditAction,
+  auditAwait,
   recordOAuthClientRegistered,
   recordOAuthClientRegistrationFailed,
 } from "../../../audit/index.ts";
@@ -433,12 +435,21 @@ interface CallbackPage {
 }
 
 /**
- * Publish a `connector.oauth.callback_failed` event for a claimed state
- * row. Best-effort: a publish failure is logged and swallowed so it can
- * never derail the error-page render. The waiter
- * (`waitForOAuthCredential`) resolves `failed` ONLY from this explicit
- * event — the absence of a state row no longer implies failure, because
- * the callback DELETEs the row at the START of a seconds-long exchange.
+ * Record an OAuth-callback failure for a claimed state row, then publish
+ * the `connector.oauth.callback_failed` event.
+ *
+ * The callback DELETEs the `connector_oauth_states` row at the start of
+ * the request — a state change. AGENTS.md requires every state change to
+ * write an `audit_log` entry, so the durable, append-only audit row is
+ * written FIRST (awaited — it must not be lost), then the best-effort
+ * pubsub event is published for live waiters. A publish failure is
+ * logged and swallowed so it can never derail the error-page render. The
+ * waiter (`waitForOAuthCredential`) resolves `failed` ONLY from the
+ * explicit event — the absence of a state row no longer implies failure,
+ * because the row is deleted at the START of a seconds-long exchange.
+ *
+ * The state-not-found branch does NOT call this: with no claimed row
+ * there is no tenant to scope either the audit row or the event to.
  */
 async function publishCallbackFailed(
   db: import("../../../db/client.ts").Db,
@@ -448,6 +459,23 @@ async function publishCallbackFailed(
     reason: (typeof ConnectorOauthCallbackFailedReasons)[number];
   },
 ): Promise<void> {
+  // Durable compliance record for the state change (the claimed state
+  // row was deleted). The sanitized `reason` token — never the verbose
+  // provider/exchange error — carries the failure classification.
+  await auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.CONNECTOR_OAUTH_CALLBACK_FAILED,
+      resource_type: "connector",
+      resource_id: p.connector_id,
+      result: "error",
+      reason: p.reason,
+      metadata: { connector_id: p.connector_id, reason: p.reason },
+    },
+    db,
+  );
   try {
     const payload = ConnectorOauthCallbackFailedPayloadSchema.parse({
       connector_id: p.connector_id,

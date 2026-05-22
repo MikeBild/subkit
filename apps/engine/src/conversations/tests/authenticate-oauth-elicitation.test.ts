@@ -19,12 +19,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import {
   type MockOAuthServer,
   startMockOAuthServer,
 } from "../../credentials/oauth2/tests/mock-server.ts";
+import { auditLog } from "../../db/schema/audit.ts";
 import {
   connectorOauthStates,
   connectors,
@@ -192,6 +193,24 @@ async function readElicitations(convId: string) {
     .where(eq(conversationElicitations.conversation_id, convId));
 }
 
+/** The resolve audit row for an elicitation carrier — `APPROVAL_APPROVED`
+ *  or `APPROVAL_REJECTED`, keyed on the elicitation id as `resource_id`.
+ *  Filtered by action so the paired `APPROVAL_REQUESTED` open row (same
+ *  `resource_id`) is excluded. */
+async function readResolveAudit(elicitationId: string, action: string) {
+  const [row] = await ctx.db
+    .select()
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, tenant_id),
+        eq(auditLog.resource_id, elicitationId),
+        eq(auditLog.action, action),
+      ),
+    );
+  return row;
+}
+
 function makeDraftRef(slug: string): { current: DraftDocument } {
   return {
     current: {
@@ -336,6 +355,20 @@ describe("authenticate_oauth — URL-mode elicitation, happy path", () => {
     const cp = draftRef.current.state?.checkpoints?.connector_authenticated;
     expect(cp).toBeDefined();
     expect(cp?.ok).toBe(true);
+
+    // The bridge (oob) governance row resolved `APPROVAL_APPROVED`. Its
+    // resolve audit carries the tri-state discriminators
+    // (docs/10-tool-palette.md): a bridge-delivered accept records
+    // `surface: mcp_elicitation` and `elicitation_transport: succeeded`.
+    const elicitation = (await readElicitations(conversation_id)).find((r) =>
+      r.summary.includes("aoe-happy"),
+    );
+    expect(elicitation).toBeDefined();
+    const audit = await readResolveAudit(elicitation!.id, "approval.approved");
+    expect(audit).toBeDefined();
+    const meta = audit!.metadata as Record<string, unknown>;
+    expect(meta.surface).toBe("mcp_elicitation");
+    expect(meta.elicitation_transport).toBe("succeeded");
   });
 });
 
@@ -582,6 +615,21 @@ describe("authenticate_oauth — elicitation transport failure", () => {
       .from(connectorOauthStates)
       .where(eq(connectorOauthStates.connector_id, connectorId));
     expect(stateRows).toHaveLength(1);
+
+    // The governance row resolved `APPROVAL_REJECTED`. Its resolve audit
+    // records the tri-state (docs/10-tool-palette.md): the carrier was
+    // delivered through the MCP bridge, so `surface: mcp_elicitation`,
+    // and the round-trip broke in transit, so
+    // `elicitation_transport: failed`.
+    const elicitation = (await readElicitations(conversation_id)).find((r) =>
+      r.summary.includes("aoe-oob-transport"),
+    );
+    expect(elicitation).toBeDefined();
+    const audit = await readResolveAudit(elicitation!.id, "approval.rejected");
+    expect(audit).toBeDefined();
+    const meta = audit!.metadata as Record<string, unknown>;
+    expect(meta.surface).toBe("mcp_elicitation");
+    expect(meta.elicitation_transport).toBe("failed");
   });
 
   test("a form transport failure yields a structured error", async () => {
