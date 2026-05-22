@@ -409,7 +409,7 @@ export type ElicitationSurface = "mcp_elicitation" | "portal";
  * losing the typo-protection on the named keys. The on-the-wire / in-DB
  * JSONB shape is unchanged.
  */
-interface ElicitationResolveAuditMetadata {
+export interface ElicitationResolveAuditMetadata {
   conversation_id: string;
   tool_name: string;
   surface: ElicitationSurface;

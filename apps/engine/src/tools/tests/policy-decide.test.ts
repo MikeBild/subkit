@@ -9,7 +9,11 @@
 
 import { describe, expect, test } from "bun:test";
 import { resolveToolMode, type ToolPolicies } from "../../conversations/tool-policies.ts";
-import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON, policyDecide } from "../policy.ts";
+import {
+  DRAFT_WRITE_MCP_UNAVAILABLE_REASON,
+  MCP_ELICITATION_BLURB,
+  policyDecide,
+} from "../policy.ts";
 
 const EMPTY_OVERRIDES: ToolPolicies = {};
 
@@ -62,6 +66,16 @@ describe("tools/policy.policyDecide (active parity)", () => {
       // rather than a bare `requires_conversation_surface` code.
       expect(decision.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
     }
+  });
+
+  // Lock-step protection: `DRAFT_WRITE_MCP_UNAVAILABLE_REASON` is built
+  // by interpolating `MCP_ELICITATION_BLURB`, and the same blurb is woven
+  // into the `conversation_start` / `conversation_append` tool
+  // descriptions. Pinning the containment here means a future wording
+  // change to the blurb cannot silently desync the constant from its
+  // consumers — the assertion fails before the desync ships.
+  test("DRAFT_WRITE_MCP_UNAVAILABLE_REASON embeds MCP_ELICITATION_BLURB verbatim", () => {
+    expect(DRAFT_WRITE_MCP_UNAVAILABLE_REASON.includes(MCP_ELICITATION_BLURB)).toBe(true);
   });
 
   test("save_workflow_draft chat (draft_write) without prior confirm → needs_confirm", () => {

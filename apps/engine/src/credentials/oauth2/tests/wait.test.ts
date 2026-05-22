@@ -19,7 +19,24 @@ import { globalEmitter } from "../../../pubsub/emitter.ts";
 import { startListener, stopListener } from "../../../pubsub/listener.ts";
 import type { EventEnvelope } from "../../../pubsub/types.ts";
 import { waitFor } from "../../../test-helpers/determinism/wait.ts";
-import { waitForOAuthCredential } from "../wait.ts";
+import { OAUTH_WAIT_MIN_FLOOR_MS, POLL_INTERVAL_MS, waitForOAuthCredential } from "../wait.ts";
+
+// Test timeout budgets derived from `wait.ts`'s own constants so a
+// cadence/ceiling change cannot silently invalidate these tests.
+//
+// EVENT_BUDGET_MS — for tests that settle on a pubsub event (handler
+// already registered): the wait must not hit its timeout while the
+// event is being processed. The floor is the smallest budget the wait
+// itself clamps to, so it is a safe headroom.
+const EVENT_BUDGET_MS = OAUTH_WAIT_MIN_FLOOR_MS;
+// POLL_BUDGET_MS — for tests that settle via the DB poll fallback: must
+// span several poll ticks. Three ticks plus a tick of slack.
+const POLL_BUDGET_MS = POLL_INTERVAL_MS * 4;
+// SHORT_TIMEOUT_MS — for tests that assert a `timeout` outcome with no
+// landing signal: long enough to clear one poll tick (so the poll has
+// genuinely run and found nothing) yet short enough to keep the test
+// fast. Half a poll interval past one tick.
+const SHORT_TIMEOUT_MS = POLL_INTERVAL_MS + POLL_INTERVAL_MS / 2;
 
 let ctx: TestDb;
 let tenant_id: string;
@@ -142,10 +159,13 @@ function failedEvent(connectorId: string, reason = "provider_error"): EventEnvel
 }
 
 /**
- * `waitForOAuthCredential` runs an async `credentialExists` idempotency
- * query BEFORE it registers its pubsub handler. A test that dispatches
- * an event the instant the wait is called would race that registration.
- * Poll the emitter's subscriber count so the dispatch is observed.
+ * `waitForOAuthCredential` (see `credentials/oauth2/wait.ts`) registers
+ * its `connector.oauth` pubsub listener FIRST — before its first DB
+ * round-trip (the `credentialExists` idempotency query). That ordering
+ * is what makes polling the emitter's subscriber count a valid readiness
+ * signal: once the count rises, the handler is live and a dispatched
+ * event cannot race ahead of it. A test that dispatches an event the
+ * instant the wait is called would otherwise race that registration.
  */
 async function awaitHandlerRegistered(beforeCount: number): Promise<void> {
   // The idempotency check is a real Postgres round-trip — poll with a
@@ -165,6 +185,9 @@ describe("waitForOAuthCredential", () => {
       tenant_id,
       connector_id,
       environment: "dev",
+      // Independent of the wait constants: the credential already
+      // exists, so the idempotency check resolves before any timer
+      // matters. A small positive value is all that is required.
       timeout_ms: 500,
       db: ctx.db,
     });
@@ -179,7 +202,7 @@ describe("waitForOAuthCredential", () => {
       tenant_id,
       connector_id,
       environment: "dev",
-      timeout_ms: 5_000,
+      timeout_ms: EVENT_BUDGET_MS,
       db: ctx.db,
     });
     await awaitHandlerRegistered(before);
@@ -197,8 +220,9 @@ describe("waitForOAuthCredential", () => {
       tenant_id,
       connector_id,
       environment: "dev",
-      // poll interval is 1.5s; allow two ticks before the timeout bound.
-      timeout_ms: 5_000,
+      // Settles via the DB poll fallback — the budget must span several
+      // poll ticks (POLL_BUDGET_MS = 4 × POLL_INTERVAL_MS).
+      timeout_ms: POLL_BUDGET_MS,
       db: ctx.db,
     });
     const credId = await insertCredential(connector_id);
@@ -215,7 +239,7 @@ describe("waitForOAuthCredential", () => {
       tenant_id,
       connector_id,
       environment: "dev",
-      timeout_ms: 800,
+      timeout_ms: SHORT_TIMEOUT_MS,
       db: ctx.db,
     });
     await awaitHandlerRegistered(before);
@@ -232,7 +256,7 @@ describe("waitForOAuthCredential", () => {
       tenant_id,
       connector_id,
       environment: "dev",
-      timeout_ms: 5_000,
+      timeout_ms: EVENT_BUDGET_MS,
       db: ctx.db,
     });
     await awaitHandlerRegistered(before);
@@ -246,7 +270,7 @@ describe("waitForOAuthCredential", () => {
       tenant_id,
       connector_id,
       environment: "dev",
-      timeout_ms: 400,
+      timeout_ms: SHORT_TIMEOUT_MS,
       db: ctx.db,
     });
     expect(status).toBe("timeout");
@@ -258,7 +282,7 @@ describe("waitForOAuthCredential", () => {
       tenant_id,
       connector_id,
       environment: "dev",
-      timeout_ms: 700,
+      timeout_ms: SHORT_TIMEOUT_MS,
       db: ctx.db,
     });
     await awaitHandlerRegistered(before);
@@ -277,7 +301,7 @@ describe("waitForOAuthCredential", () => {
       tenant_id,
       connector_id,
       environment: "dev",
-      timeout_ms: 700,
+      timeout_ms: SHORT_TIMEOUT_MS,
       db: ctx.db,
     });
     await awaitHandlerRegistered(before);
@@ -295,7 +319,7 @@ describe("waitForOAuthCredential", () => {
       tenant_id,
       connector_id,
       environment: "dev",
-      timeout_ms: 400,
+      timeout_ms: SHORT_TIMEOUT_MS,
       db: ctx.db,
     });
     expect(status).toBe("timeout");
@@ -304,13 +328,13 @@ describe("waitForOAuthCredential", () => {
 
   test("a callback_succeeded event for the wrong tenant is ignored", async () => {
     const before = globalEmitter.listenerCount("connector.oauth");
-    // Timeout generously above the 1.5s poll interval — the cross-tenant
-    // event is dropped, so only the DB poll can settle this `succeeded`.
+    // Budget spans several poll ticks — the cross-tenant event is
+    // dropped, so only the DB poll can settle this `succeeded`.
     const waiting = waitForOAuthCredential({
       tenant_id,
       connector_id,
       environment: "dev",
-      timeout_ms: 6_000,
+      timeout_ms: POLL_BUDGET_MS,
       db: ctx.db,
     });
     await awaitHandlerRegistered(before);

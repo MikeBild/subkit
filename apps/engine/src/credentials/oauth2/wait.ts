@@ -63,7 +63,11 @@ export interface WaitForOAuthCredentialInput {
 // result the agent can act on, instead of an opaque transport error.
 export const OAUTH_WAIT_CEILING_MS = 45_000;
 export const OAUTH_WAIT_MIN_FLOOR_MS = 5_000;
-const POLL_INTERVAL_MS = 1_500;
+// DB-poll cadence for the `credentials`-row fallback. Exported so tests
+// can derive their timeout budgets from the same cadence the wait uses
+// — a test that needs "at least N poll ticks" can compute the budget
+// instead of hardcoding a number that silently desyncs if this changes.
+export const POLL_INTERVAL_MS = 1_500;
 
 /** Is there a non-deleted credential row for (tenant, connector, env)? */
 async function credentialExists(

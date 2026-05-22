@@ -306,7 +306,12 @@ async function awaitOAuthStateRow(connectorId: string): Promise<void> {
 /** Wait until `waitForOAuthCredential` has registered its pubsub handler
  *  on the `connector.oauth` channel, so a dispatched event cannot race
  *  ahead of the listener. The failure path has no DB-poll fallback, so a
- *  missed `callback_failed` event there is a guaranteed full timeout. */
+ *  missed `callback_failed` event there is a guaranteed full timeout.
+ *
+ *  Polling the listener count is a valid readiness signal because
+ *  `waitForOAuthCredential` (see `credentials/oauth2/wait.ts`) registers
+ *  its pubsub listener BEFORE its first DB round-trip — once the count
+ *  rises, the handler is live. */
 async function awaitHandlerRegistered(beforeCount: number): Promise<void> {
   await waitFor(() => globalEmitter.listenerCount("connector.oauth") > beforeCount, {
     label: "connector.oauth handler registered",
