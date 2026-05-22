@@ -396,7 +396,7 @@ describe("conversation.run-turn worker — elicitation pause", () => {
   }, 45_000);
 });
 
-describe("conversation.run-turn worker — cancel TOCTOU (S1)", () => {
+describe("conversation.run-turn worker — cancel in the guard window", () => {
   test("a cancel landing in the guard window still stops the turn — no result written", async () => {
     // The cancel can land between the worker's entry guard and the
     // `registerConversationAbort` call: it stamps `cancelled_at` AND

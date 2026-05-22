@@ -194,9 +194,8 @@ describe("conversation_respond_elicitation", () => {
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
 
-    // Seed a real pending elicitation — the handler now stages the
-    // answer onto it before enqueue (S3), so the row must exist and be
-    // `pending`.
+    // Seed a real pending elicitation — the handler stages the answer
+    // onto it before enqueue, so the row must exist and be `pending`.
     const [elicitation] = await testDb.db
       .insert(conversationElicitations)
       .values({
