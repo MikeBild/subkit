@@ -44,6 +44,7 @@ import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts"
 import {
   OAUTH_WAIT_CEILING_MS,
   OAUTH_WAIT_MIN_FLOOR_MS,
+  type OAuthWaitStatus,
   waitForOAuthCredential,
 } from "../../credentials/oauth2/wait.ts";
 import { connectorOauthStates } from "../../db/schema/index.ts";
@@ -52,7 +53,13 @@ import { ElicitationUnsupportedError } from "../../mcp/elicitation/bridge.ts";
 import { withConnectorAuthenticated } from "../authoring-state.ts";
 import { createNativeElicitation, resolveElicitationAndReactivate } from "../elicitations.ts";
 import { pauseForUserInput } from "./ask-user/common.ts";
-import { OAUTH_AUTHORIZATION_DECLINED, OAUTH_ELICITATION_TRANSPORT_FAILED } from "./error-codes.ts";
+import {
+  OAUTH_AUTHORIZATION_DECLINED,
+  OAUTH_AUTHORIZATION_FAILED,
+  OAUTH_ELICITATION_TRANSPORT_FAILED,
+  OAUTH_TIMEOUT,
+  OAUTH_TOO_MANY_CONCURRENT,
+} from "./error-codes.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -119,16 +126,17 @@ function openOAuthApprovalElicitation(
 
 /**
  * Close the governance elicitation row once `waitForOAuthCredential`
- * settles. `succeeded` → `resolved` (APPROVAL_APPROVED); `failed` /
- * `timeout` → `cancelled` (APPROVAL_REJECTED) with the status as the
- * reason. Idempotent against a lost race: a concurrent resolver makes
- * the conditional update miss, which `resolveElicitation` reports as
- * `already_resolved` — harmless here, the audit row already landed.
+ * settles. `succeeded` → `resolved` (APPROVAL_APPROVED); every other
+ * status → `cancelled` (APPROVAL_REJECTED) with the matching structured
+ * error code as the reason. Idempotent against a lost race: a concurrent
+ * resolver makes the conditional update miss, which `resolveElicitation`
+ * reports as `already_resolved` — harmless here, the audit row already
+ * landed.
  */
 async function resolveOAuthApprovalElicitation(
   ctx: ToolContext,
   elicitationId: string,
-  status: "succeeded" | "failed" | "timeout",
+  status: OAuthWaitStatus,
 ): Promise<void> {
   await resolveElicitationAndReactivate(
     {
@@ -138,10 +146,30 @@ async function resolveOAuthApprovalElicitation(
       output: { status },
       decided_by: ctx.actor_id,
       status: status === "succeeded" ? "resolved" : "cancelled",
-      ...(status === "succeeded" ? {} : { reason: `oauth_${status}` }),
+      ...(status === "succeeded" ? {} : { reason: oauthWaitErrorCode(status) }),
+      // This row was delivered through the bridge (oob/form) and the
+      // round-trip completed — the operator answered. The subsequent
+      // wait outcome is independent of the elicitation transport.
+      transport: "succeeded",
     },
     ctx.db,
   );
+}
+
+/**
+ * Map a non-`succeeded` `waitForOAuthCredential` status to its canonical
+ * structured `error_code`. Kept in one place so `finalizeWaitResult` and
+ * `resolveOAuthApprovalElicitation` cannot drift.
+ */
+function oauthWaitErrorCode(status: "failed" | "timeout" | "rejected_concurrency"): string {
+  switch (status) {
+    case "timeout":
+      return OAUTH_TIMEOUT;
+    case "rejected_concurrency":
+      return OAUTH_TOO_MANY_CONCURRENT;
+    case "failed":
+      return OAUTH_AUTHORIZATION_FAILED;
+  }
 }
 
 /** Did this connector already get an authorization URL this round? */
@@ -297,6 +325,11 @@ export const authenticateOAuthTool: ConversationTool = {
       // cost is subtracted from the `waitForOAuthCredential` timeout.
       const bridgeStartedAt = Date.now();
       try {
+        // Deliberate: an oob transport failure mid-call returns a
+        // structured error and the agent re-calls authenticate_oauth —
+        // there is NO automatic fallback to a form-mode elicitation
+        // retry. The behaviour is predictable and the live state row
+        // makes the retry resume the same flow.
         await bridge.elicitOob({
           url: started.authorization_url,
           message,
@@ -341,6 +374,7 @@ export const authenticateOAuthTool: ConversationTool = {
             decided_by: ctx.actor_id,
             status: "cancelled",
             reason: OAUTH_ELICITATION_TRANSPORT_FAILED,
+            transport: "failed",
           },
           ctx.db,
         );
@@ -410,6 +444,9 @@ export const authenticateOAuthTool: ConversationTool = {
               decided_by: ctx.actor_id,
               status: "cancelled",
               reason: OAUTH_AUTHORIZATION_DECLINED,
+              // The form round-trip completed — the operator answered
+              // (declined / did not acknowledge). Transport succeeded.
+              transport: "succeeded",
             },
             ctx.db,
           );
@@ -452,6 +489,7 @@ export const authenticateOAuthTool: ConversationTool = {
             decided_by: ctx.actor_id,
             status: "cancelled",
             reason: OAUTH_ELICITATION_TRANSPORT_FAILED,
+            transport: "failed",
           },
           ctx.db,
         );
@@ -518,7 +556,7 @@ function dbPauseForOAuth(
 async function finalizeWaitResult(
   ctx: import("./index.ts").ToolContext,
   connector: { display_name?: string | null; slug: string },
-  status: "succeeded" | "failed" | "timeout",
+  status: OAuthWaitStatus,
   extra?: Record<string, unknown>,
 ): Promise<ToolResult> {
   if (status === "succeeded") {
@@ -548,11 +586,20 @@ async function finalizeWaitResult(
   }
   return {
     ok: false,
-    error_code: status === "timeout" ? "oauth_timeout" : "oauth_authorization_failed",
-    message:
-      status === "timeout"
-        ? "Still waiting for the OAuth authorization to complete — the authorization is pending, not failed. The authorization URL and state row are still valid: call authenticate_oauth again for this connector to resume waiting for the same flow (it will NOT mint a new URL while the state row is live)."
-        : "The OAuth authorization did not complete — no credential was persisted. Re-run authenticate_oauth to try again.",
+    error_code: oauthWaitErrorCode(status),
+    message: oauthWaitFailureMessage(status),
     data: { status, ...(extra ?? {}) },
   };
+}
+
+/** Human-readable message for a non-`succeeded` wait status. */
+function oauthWaitFailureMessage(status: "failed" | "timeout" | "rejected_concurrency"): string {
+  switch (status) {
+    case "timeout":
+      return "Still waiting for the OAuth authorization to complete — the authorization is pending, not failed. The authorization URL and state row are still valid: call authenticate_oauth again for this connector to resume waiting for the same flow (it will NOT mint a new URL while the state row is live).";
+    case "rejected_concurrency":
+      return "This tenant already has the maximum number of OAuth authorizations waiting at once. The authorization state row is still valid — wait a short moment, then call authenticate_oauth again for this connector to resume the same flow.";
+    case "failed":
+      return "The OAuth authorization did not complete — no credential was persisted. Re-run authenticate_oauth to try again.";
+  }
 }

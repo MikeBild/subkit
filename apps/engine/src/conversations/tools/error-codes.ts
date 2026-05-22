@@ -23,3 +23,23 @@ export const ELICITATION_TRANSPORT_FAILED = "elicitation_transport_failed";
 /** The elicitation was already resolved through another channel — a
  *  concurrent `respondElicitation` won the race. */
 export const ELICITATION_ALREADY_RESOLVED = "elicitation_already_resolved";
+
+/** An MCP `ask_user_*` elicitation came back with an `accept` action but
+ *  an answer that violates the requested schema (an out-of-enum
+ *  `ask_user_choice` value, a non-boolean `ask_user_confirm`). Treated as
+ *  a decline rather than persisted as a partial. */
+export const INVALID_ELICIT_RESPONSE = "invalid_elicit_response";
+
+/** `waitForOAuthCredential` reached its upper bound with no callback —
+ *  the authorization is still pending, not failed; the state row is live
+ *  so a retry resumes the same flow. */
+export const OAUTH_TIMEOUT = "oauth_timeout";
+
+/** The OAuth authorization-code dance produced an explicit
+ *  `callback_failed` signal — no credential was persisted. */
+export const OAUTH_AUTHORIZATION_FAILED = "oauth_authorization_failed";
+
+/** A tenant already has the maximum number of concurrent OAuth waits in
+ *  flight; this request was rejected immediately rather than queued so a
+ *  burst cannot exhaust request slots. */
+export const OAUTH_TOO_MANY_CONCURRENT = "oauth_too_many_concurrent";

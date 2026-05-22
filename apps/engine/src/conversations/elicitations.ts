@@ -354,6 +354,15 @@ export type ResolveElicitationResult =
   | { kind: "already_resolved"; existing: ElicitationRecord }
   | { kind: "resolved"; record: ElicitationRecord };
 
+/**
+ * Outcome of the bridge round-trip that delivered a `protocol_native`
+ * elicitation. Recorded on the resolve audit row so an operator can tell
+ * a clean MCP `elicitation/create` round-trip apart from one that fell
+ * through to a transport-failure resolution. Omitted entirely for
+ * non-bridge (portal) resolutions — the key only appears when known.
+ */
+export type ElicitationTransportOutcome = "succeeded" | "failed";
+
 export async function resolveElicitation(
   p: {
     tenant_id: string;
@@ -366,6 +375,10 @@ export async function resolveElicitation(
      *  `oauth_authorization_declined`). Consumers may switch on it. */
     reason?: string;
     status?: "resolved" | "cancelled";
+    /** Bridge round-trip outcome. Set ONLY by bridge callers on a
+     *  `protocol_native` row; emitted as `elicitation_transport` audit
+     *  metadata. Non-bridge callers omit it (no key written). */
+    transport?: ElicitationTransportOutcome;
   },
   exec: Executor,
 ): Promise<ResolveElicitationResult> {
@@ -422,6 +435,10 @@ export async function resolveElicitation(
         // `elicitation/create` round-trip from a portal POST to
         // `/respond`. Derived from the carrier row, not the caller.
         surface: row.protocol_native ? "mcp_elicitation" : "portal",
+        // Bridge round-trip outcome — emitted only when the caller knows
+        // it (a `protocol_native` row resolved by the bridge path). A
+        // portal resolution omits the key entirely.
+        ...(p.transport && row.protocol_native ? { elicitation_transport: p.transport } : {}),
       },
     },
     exec,
@@ -454,6 +471,9 @@ export async function resolveElicitationAndReactivate(
     decided_by: string | null;
     reason?: string;
     status?: "resolved" | "cancelled";
+    /** Bridge round-trip outcome — see `resolveElicitation`. Bridge
+     *  callers pass it; non-bridge callers omit it. */
+    transport?: ElicitationTransportOutcome;
   },
   db: Db,
 ): Promise<ResolveElicitationResult> {
@@ -470,6 +490,7 @@ export async function resolveElicitationAndReactivate(
         decided_by: p.decided_by,
         ...(p.reason ? { reason: p.reason } : {}),
         ...(p.status ? { status: p.status } : {}),
+        ...(p.transport ? { transport: p.transport } : {}),
       },
       tx,
     );

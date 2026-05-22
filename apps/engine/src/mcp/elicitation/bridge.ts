@@ -126,9 +126,15 @@ export class ElicitationBridge {
 
   /**
    * Issue an out-of-band (URL) elicitation and await the client's
-   * acknowledgement. Sends `mode: "url"` on the wire — see the
-   * SDK-vs-spec note in the file header. Throws
-   * `ElicitationUnsupportedError` when unsupported.
+   * acknowledgement. Throws `ElicitationUnsupportedError` when the client
+   * did not advertise the elicitation capability.
+   *
+   * Wire-mode note: although the MCP spec prose calls this "oob" (and the
+   * method keeps that vocabulary), the installed SDK 1.29 ships
+   * `ElicitRequestURLParamsSchema` with `mode: z.literal("url")` and
+   * REJECTS `mode: "oob"`. This method therefore sends `mode: "url"` on
+   * the wire — a deliberate, documented deviation, not a bug. If a future
+   * SDK restores `"oob"`, change it here.
    */
   async elicitOob(rawParams: ElicitOobParams): Promise<ElicitationResult> {
     if (!this.capabilities.oob) throw new ElicitationUnsupportedError("oob");

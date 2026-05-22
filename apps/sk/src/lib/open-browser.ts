@@ -32,24 +32,43 @@ export const BrowserUrlSchema = z
   });
 
 /**
+ * Validate `url` against `BrowserUrlSchema` (plain http(s) only) and
+ * return the validated string. Throws an `Error` carrying the schema's
+ * own message when the URL is not a launchable http(s) URL.
+ *
+ * Single validated entry point for callers that need to assert a URL is
+ * safe to launch before handing it to `defaultOpenBrowser` or any other
+ * launch path — keeps the http(s)-only policy in one place.
+ */
+export function assertHttpsUrl(url: string): string {
+  const parsed = BrowserUrlSchema.safeParse(url);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "invalid URL");
+  }
+  return parsed.data;
+}
+
+/**
  * Open `url` in the operator's default browser. Resolves once the
  * launch is dispatched (the browser, by design, outlives the REPL);
  * rejects if `spawn` errors or the URL is not a plain http(s) URL.
  */
 export function defaultOpenBrowser(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const parsed = BrowserUrlSchema.safeParse(url);
-    if (!parsed.success) {
-      reject(new Error(parsed.error.issues[0]?.message ?? "invalid URL"));
+    let validated: string;
+    try {
+      validated = assertHttpsUrl(url);
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error("invalid URL"));
       return;
     }
     const platform = process.platform;
     const [bin, args] =
       platform === "darwin"
-        ? (["open", [url]] as const)
+        ? (["open", [validated]] as const)
         : platform === "win32"
-          ? (["cmd.exe", ["/c", "start", "", url]] as const)
-          : (["xdg-open", [url]] as const);
+          ? (["cmd.exe", ["/c", "start", "", validated]] as const)
+          : (["xdg-open", [validated]] as const);
     const child = spawn(bin, [...args], {
       shell: false,
       detached: true,

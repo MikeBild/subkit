@@ -37,7 +37,7 @@ import {
   ConnectorOauthCallbackPayloadSchema,
 } from "../../pubsub/types.ts";
 
-export type OAuthWaitStatus = "succeeded" | "failed" | "timeout";
+export type OAuthWaitStatus = "succeeded" | "failed" | "timeout" | "rejected_concurrency";
 
 export interface WaitForOAuthCredentialInput {
   tenant_id: string;
@@ -65,6 +65,19 @@ const POLL_INTERVAL_MS = 1_500;
 export const OAUTH_WAIT_CEILING_MS = DEFAULT_TIMEOUT_MS;
 export const OAUTH_WAIT_MIN_FLOOR_MS = 5_000;
 
+// Per-tenant admission control. Each `waitForOAuthCredential` call holds
+// a request slot open for up to `timeout_ms`; a burst of concurrent OAuth
+// authorizations from one tenant could otherwise pin a slot each and
+// starve the engine. Cap how many a single tenant may hold at once.
+//
+// This is a lightweight in-process counter, NOT a queue: a call over the
+// cap is rejected IMMEDIATELY (`rejected_concurrency`) rather than blocked
+// — blocking would just move the slot-starvation one level up. The proper
+// fix is MCP Tasks (SEP-1686), which removes the held-open connection
+// entirely; until then this bounds the blast radius.
+const MAX_CONCURRENT_OAUTH_WAITS_PER_TENANT = 8;
+const inFlightOAuthWaits = new Map<string, number>();
+
 /** Is there a non-deleted credential row for (tenant, connector, env)? */
 async function credentialExists(
   db: Db,
@@ -90,6 +103,31 @@ async function credentialExists(
 export async function waitForOAuthCredential(
   p: WaitForOAuthCredentialInput,
 ): Promise<OAuthWaitStatus> {
+  // Per-tenant admission control. Reject (do not queue) once a tenant is
+  // already at the cap so a burst cannot pin every request slot.
+  const inFlight = inFlightOAuthWaits.get(p.tenant_id) ?? 0;
+  if (inFlight >= MAX_CONCURRENT_OAUTH_WAITS_PER_TENANT) {
+    logger.warn({
+      module: "oauth",
+      action: "oauth.wait.rejected_concurrency",
+      msg: "tenant at the concurrent OAuth-wait cap — rejecting this wait immediately",
+      tenant_id: p.tenant_id,
+      connector_id: p.connector_id,
+      in_flight: inFlight,
+    });
+    return "rejected_concurrency";
+  }
+  inFlightOAuthWaits.set(p.tenant_id, inFlight + 1);
+  try {
+    return await runOAuthWait(p);
+  } finally {
+    const remaining = (inFlightOAuthWaits.get(p.tenant_id) ?? 1) - 1;
+    if (remaining <= 0) inFlightOAuthWaits.delete(p.tenant_id);
+    else inFlightOAuthWaits.set(p.tenant_id, remaining);
+  }
+}
+
+async function runOAuthWait(p: WaitForOAuthCredentialInput): Promise<OAuthWaitStatus> {
   const timeoutMs = p.timeout_ms ?? DEFAULT_TIMEOUT_MS;
 
   // Idempotency — if the credential already exists, we are done.
@@ -212,9 +250,8 @@ export async function waitForOAuthCredential(
     pollTimer.unref?.();
 
     // 3. Upper bound. Each call holds one connection open for up to
-    // `timeoutMs`; a tenant-wide cap on concurrent OAuth waits is NOT
-    // enforced here — that belongs upstream (request admission /
-    // connection pooling), not in this per-call helper.
+    // `timeoutMs`; the per-tenant concurrent-wait cap is enforced by the
+    // `waitForOAuthCredential` admission gate above this inner runner.
     timeoutTimer = setTimeout(() => finish("timeout"), timeoutMs);
     timeoutTimer.unref?.();
   });

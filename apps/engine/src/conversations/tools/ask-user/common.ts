@@ -28,7 +28,11 @@ import {
   resolveElicitationAndReactivate,
 } from "../../elicitations.ts";
 import { applyElicitationOutcome } from "../../persistence/apply-outcome.ts";
-import { ELICITATION_ALREADY_RESOLVED, ELICITATION_TRANSPORT_FAILED } from "../error-codes.ts";
+import {
+  ELICITATION_ALREADY_RESOLVED,
+  ELICITATION_TRANSPORT_FAILED,
+  INVALID_ELICIT_RESPONSE,
+} from "../error-codes.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
 import {
   type FormBridgeToolName,
@@ -85,12 +89,24 @@ export async function pauseForUserInput(
           message: mapped.message,
           requestedSchema: mapped.requestedSchema,
         });
-        if (result.action === "accept") {
-          const output = mapElicitResultToAskUserOutput(
-            p.tool_name as FormBridgeToolName,
-            p.input,
-            result.content,
-          );
+        const mappedOutput =
+          result.action === "accept"
+            ? mapElicitResultToAskUserOutput(
+                p.tool_name as FormBridgeToolName,
+                p.input,
+                result.content,
+              )
+            : null;
+        // A protocol-violating `accept` — the client returned an
+        // `accept` action but an answer that breaks the requested
+        // schema (an out-of-enum `ask_user_choice`, a non-boolean
+        // `ask_user_confirm`), so `mapElicitResultToAskUserOutput`
+        // returned `null`. Honouring the `accept` would resolve the row
+        // `resolved` / audit `APPROVAL_APPROVED` while the real decision
+        // is a non-answer. Collapse it into the decline/cancel path
+        // instead: resolve `cancelled` with `invalid_elicit_response`.
+        if (result.action === "accept" && mappedOutput !== null) {
+          const output = mappedOutput;
           // Resolve the row AND flip the conversation back to `active`
           // as one atomic unit (see `resolveElicitationAndReactivate`).
           // A concurrent `respondElicitation` may have resolved this row
@@ -104,6 +120,7 @@ export async function pauseForUserInput(
               output,
               decided_by: ctx.actor_id,
               status: "resolved",
+              transport: "succeeded",
             },
             ctx.db,
           );
@@ -127,9 +144,16 @@ export async function pauseForUserInput(
           // No `pause` — the loop continues with the answer in hand.
           return { ok: true, data: output };
         }
-        // decline / cancel — resolve as cancelled, no continuation.
-        // Same atomic transition unit (and same lost-race guard) as the
-        // accept path.
+        // decline / cancel / protocol-violating-accept — resolve as
+        // cancelled, no continuation. Same atomic transition unit (and
+        // same lost-race guard) as the accept path. An `accept` whose
+        // mapped output is `null` lands here as `invalid_elicit_response`.
+        const invalidAccept = result.action === "accept";
+        const cancelReason = invalidAccept
+          ? INVALID_ELICIT_RESPONSE
+          : result.action === "decline"
+            ? "user_declined"
+            : "user_cancelled";
         const cancelResolution = await resolveElicitationAndReactivate(
           {
             tenant_id: ctx.tenant_id,
@@ -138,12 +162,22 @@ export async function pauseForUserInput(
             output: result.content ?? null,
             decided_by: ctx.actor_id,
             status: "cancelled",
-            reason: result.action === "decline" ? "user_declined" : "user_cancelled",
+            reason: cancelReason,
+            transport: "succeeded",
           },
           ctx.db,
         );
         if (cancelResolution.kind !== "resolved") {
           return alreadyResolved(row.id);
+        }
+        if (invalidAccept) {
+          return {
+            ok: false,
+            error_code: INVALID_ELICIT_RESPONSE,
+            message:
+              "The MCP client returned an answer that violates the requested schema (an out-of-enum choice or a non-boolean confirm). It was recorded as a decline; ask the user again only if their answer is still needed.",
+            data: { status: "invalid_elicit_response", elicitation_id: row.id },
+          };
         }
         return {
           ok: false,
@@ -215,6 +249,7 @@ export async function pauseForUserInput(
             decided_by: ctx.actor_id,
             status: "cancelled",
             reason: ELICITATION_TRANSPORT_FAILED,
+            transport: "failed",
           },
           ctx.db,
         );

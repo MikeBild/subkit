@@ -17,6 +17,13 @@ export interface InteractionLogEntry {
   tool_name: string;
   status: string;
   decision: string;
+  /**
+   * The operator's free-text feedback, projected from `output.feedback`.
+   * A previous review pass moved operator prose off `decision_reason`
+   * (which now carries only a machine code) onto the elicitation
+   * `output`. Prefer this when rendering; fall back to `decision_reason`.
+   */
+  feedback: string | null;
   decision_reason: string | null;
   decided_at: Date | null;
 }
@@ -77,10 +84,17 @@ export async function loadInteractionLog(
           : r.status === "resolved"
             ? "declined"
             : r.status;
+      // Operator free text now rides on `output.feedback` — a previous
+      // review pass moved it off `decision_reason` (which keeps only a
+      // machine code). Project it so `formatInteractionLog` can prefer
+      // the human prose over the stable token.
+      const feedback =
+        typeof output?.feedback === "string" && output.feedback.length > 0 ? output.feedback : null;
       return {
         tool_name: r.tool_name,
         status: r.status,
         decision,
+        feedback,
         decision_reason: r.decision_reason,
         decided_at: r.decided_at,
       };

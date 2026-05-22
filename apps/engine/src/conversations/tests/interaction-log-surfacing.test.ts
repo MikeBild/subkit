@@ -86,11 +86,22 @@ describe("interaction log · surfacing", () => {
       status: "resolved",
       output: { confirmed: true },
     });
+    // Operator free text now rides on `output.feedback`; the
+    // interaction-log formatter must surface that prose, not the
+    // machine-code `decision_reason`.
     await seedElicitation(cid, {
       tool_name: "ask_user_confirm",
       status: "resolved",
-      output: { confirmed: false },
-      decision_reason: "user said no",
+      output: { confirmed: false, feedback: "the budget is wrong, fix the totals first" },
+      decision_reason: "user_declined",
+    });
+    // Fallback case: no `output.feedback` — the formatter falls back to
+    // the machine-code `decision_reason`.
+    await seedElicitation(cid, {
+      tool_name: "ask_user_text",
+      status: "cancelled",
+      output: null,
+      decision_reason: "user_cancelled",
     });
     await seedElicitation(cid, {
       tool_name: "ask_user_form",
@@ -112,8 +123,15 @@ describe("interaction log · surfacing", () => {
     expect(system).toContain("approved");
     expect(system).toContain("declined");
     expect(system).toContain("partial");
-    // The decision_reason rides along when present.
-    expect(system).toContain("user said no");
+    // The operator's free-text `output.feedback` is surfaced verbatim —
+    // the model sees the actual prose, not the machine code.
+    expect(system).toContain("the budget is wrong, fix the totals first");
+    // It is preferred OVER the machine-code `decision_reason` on that
+    // same row — `user_declined` must not leak when feedback exists.
+    expect(system).not.toContain("user_declined");
+    // Fallback: a row with no `output.feedback` still surfaces its
+    // machine-code `decision_reason`.
+    expect(system).toContain("user_cancelled");
   });
 
   test("pending elicitations are excluded — only resolved ones surface", async () => {

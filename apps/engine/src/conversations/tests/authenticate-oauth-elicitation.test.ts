@@ -44,6 +44,7 @@ import { conversationToolProvider, staticToolProvider } from "../../tools/index.
 import { buildRegistry } from "../../tools/registry.ts";
 import { makeTestPrincipal } from "../../tools/tests/_helpers.ts";
 import { authenticateOAuthTool } from "../tools/authenticate-oauth.ts";
+import { OAUTH_AUTHORIZATION_FAILED } from "../tools/error-codes.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 
@@ -287,7 +288,7 @@ describe("authenticate_oauth — URL-mode elicitation, provider failure", () => 
     const result = await running;
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error_code).toBe("oauth_authorization_failed");
+      expect(result.error_code).toBe(OAUTH_AUTHORIZATION_FAILED);
     }
     // The checkpoint stays unset — no credential was persisted.
     expect(draftRef.current.state?.checkpoints?.connector_authenticated ?? null).toBeNull();

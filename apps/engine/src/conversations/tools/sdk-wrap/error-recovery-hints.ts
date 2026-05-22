@@ -13,8 +13,12 @@
 import {
   ELICITATION_ALREADY_RESOLVED,
   ELICITATION_TRANSPORT_FAILED,
+  INVALID_ELICIT_RESPONSE,
   OAUTH_AUTHORIZATION_DECLINED,
+  OAUTH_AUTHORIZATION_FAILED,
   OAUTH_ELICITATION_TRANSPORT_FAILED,
+  OAUTH_TIMEOUT,
+  OAUTH_TOO_MANY_CONCURRENT,
 } from "../error-codes.ts";
 
 /**
@@ -119,6 +123,14 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the MCP elicitation request failed in transit (client disconnected or never answered) — the conversation is no longer waiting on input; re-ask the user with an ask_user_* tool only if their answer is still needed",
   [ELICITATION_ALREADY_RESOLVED]:
     "this elicitation was already answered through another channel (a concurrent resume) — do not retry the ask_user_* tool; re-read the conversation state and continue from the answer that already landed",
+  [INVALID_ELICIT_RESPONSE]:
+    "the MCP client returned an answer that violates the requested schema (an out-of-enum choice or a non-boolean confirm) — this was recorded as a decline; do not silently retry, ask the user again with an ask_user_* tool only if their answer is still needed",
+  [OAUTH_TIMEOUT]:
+    "the operator did not finish authorizing in time — the authorization is pending, not failed, and the state row is still live; call authenticate_oauth again for the same connector to resume waiting for the existing flow (it will NOT mint a new URL)",
+  [OAUTH_AUTHORIZATION_FAILED]:
+    "the OAuth provider reported the authorization did not complete — no credential was persisted; call authenticate_oauth again for this connector to start a fresh authorization attempt",
+  [OAUTH_TOO_MANY_CONCURRENT]:
+    "this tenant already has the maximum number of OAuth authorizations waiting at once — do not loop; wait a short moment and call authenticate_oauth again for this connector once one of the in-flight waits settles",
 };
 
 /**
