@@ -56,7 +56,11 @@ describe("admin create → member query", () => {
     // Step 3: Member can also see it via sk.
     const memberList = await run(["workflows", "list"], { env, persona: "member" });
     expect(memberList).toContain("cross-cli-test");
-  });
+    // Three sk-CLI spawns against a live engine — well past bun's 5s
+    // default test timeout on a saturated CI runner (failures landed at
+    // ~5003ms = the bun timeout SIGTERM-ing the CLI). Sized like the
+    // sibling e2e tests in this file.
+  }, 90_000);
 });
 
 // ---------------------------------------------------------------------------
