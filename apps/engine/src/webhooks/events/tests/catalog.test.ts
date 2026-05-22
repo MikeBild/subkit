@@ -35,9 +35,12 @@ describe("events catalog", () => {
 
   test("validateEventPayload accepts a connector.oauth.callback_failed payload", () => {
     // `reason` is constrained to a sanitized-token allowlist — raw
-    // provider error strings must never reach the wire.
+    // provider error strings must never reach the wire. `connector_slug`
+    // is carried for symmetry with the success event so a webhook consumer
+    // can correlate success/failure pairs.
     const res = validateEventPayload("connector.oauth.callback_failed", {
       connector_id: "33333333-3333-4333-8333-333333333333",
+      connector_slug: "google-gmail",
       reason: "provider_error",
     });
     expect(res.ok).toBe(true);
@@ -46,6 +49,7 @@ describe("events catalog", () => {
   test("validateEventPayload rejects a free-text connector.oauth.callback_failed reason", () => {
     const res = validateEventPayload("connector.oauth.callback_failed", {
       connector_id: "33333333-3333-4333-8333-333333333333",
+      connector_slug: "google-gmail",
       reason: "the provider said access_denied for state=abc123",
     });
     expect(res.ok).toBe(false);

@@ -81,21 +81,26 @@ export type ConnectorOauthCallbackPayload = z.infer<typeof ConnectorOauthCallbac
  * branches (provider error, missing code, token-exchange failure) when
  * a state row was claimed — so a tenant + connector scope is available.
  *
- * Mirrors `ConnectorOauthCallbackPayloadSchema` but carries no
- * `connector_slug`: the only consumer is `waitForOAuthCredential`, which
- * keys on `connector_id` alone. There is no SSE log-readability consumer
- * for the failed payload, so the slug is intentionally dropped.
+ * Mirrors `ConnectorOauthCallbackPayloadSchema` — including
+ * `connector_slug`. `connector.oauth.callback_failed` is a published
+ * webhook event (see `webhooks/events/catalog.ts`); a consumer correlating
+ * success/failure pairs must see the slug on BOTH or it loses the
+ * correlation key on failure. The slug is sourced via one connector lookup
+ * on the failure path.
  *
  * Field semantics:
- *   - `connector_id` — the connector whose OAuth dance failed.
- *   - `reason`       — a short sanitized failure token from a fixed
- *                      allowlist. It must NEVER carry raw provider error
- *                      text or a token-exchange exception message: those
- *                      can embed request fragments (state tokens,
- *                      redirect URIs) and this event is broadcast over
- *                      pub/sub and exposed via the webhook catalog. The
- *                      verbose original error stays in the structured
- *                      `logger` call only.
+ *   - `connector_id`   — the connector whose OAuth dance failed.
+ *   - `connector_slug` — operator-friendly slug; mirrors the connectors
+ *                        row so webhook/log readers don't have to resolve
+ *                        UUIDs, and so it pairs with the success event.
+ *   - `reason`         — a short sanitized failure token from a fixed
+ *                        allowlist. It must NEVER carry raw provider error
+ *                        text or a token-exchange exception message: those
+ *                        can embed request fragments (state tokens,
+ *                        redirect URIs) and this event is broadcast over
+ *                        pub/sub and exposed via the webhook catalog. The
+ *                        verbose original error stays in the structured
+ *                        `logger` call only.
  */
 export const ConnectorOauthCallbackFailedReasons = [
   "provider_error",
@@ -105,6 +110,7 @@ export const ConnectorOauthCallbackFailedReasons = [
 
 export const ConnectorOauthCallbackFailedPayloadSchema = z.object({
   connector_id: z.string().uuid(),
+  connector_slug: z.string().min(1),
   reason: z.enum(ConnectorOauthCallbackFailedReasons),
 });
 

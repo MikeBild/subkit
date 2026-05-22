@@ -57,7 +57,8 @@ import {
   demoteElicitationToPortal,
   resolveElicitationAndReactivate,
 } from "../elicitations.ts";
-import { pauseForUserInput, resolveAndError } from "./ask-user/common.ts";
+import { pauseForUserInput } from "./ask-user/common.ts";
+import { resolveAndError } from "./elicitation-resolve.ts";
 import {
   OAUTH_AUTHORIZATION_DECLINED,
   OAUTH_AUTHORIZATION_FAILED,
@@ -214,13 +215,19 @@ async function hasPendingOAuthState(
 /**
  * Remaining `waitForOAuthCredential` budget after a bridge elicitation
  * round-trip already consumed part of the client's shared tool-call
- * timeout. `bridgeStartedAt` is captured immediately before the
- * `elicitOob` / `elicitForm` call; the elapsed bridge cost is subtracted
- * from `OAUTH_WAIT_CEILING_MS` and clamped to `OAUTH_WAIT_MIN_FLOOR_MS`
- * so the wait always gets at least a few DB-poll ticks.
+ * timeout. `bridgeStartedAt` is a `performance.now()` reading captured
+ * immediately before the `elicitOob` / `elicitForm` call; the elapsed
+ * bridge cost is subtracted from `OAUTH_WAIT_CEILING_MS` and clamped to
+ * `OAUTH_WAIT_MIN_FLOOR_MS` so the wait always gets at least a few
+ * DB-poll ticks.
+ *
+ * `performance.now()` — a monotonic clock — is used deliberately instead
+ * of `Date.now()`: an NTP slew between capture and delta could otherwise
+ * make the elapsed measurement negative and inflate the wait budget past
+ * the ceiling. The monotonic clock cannot run backwards.
  */
 function remainingWaitBudgetMs(bridgeStartedAt: number): number {
-  const elapsed = Date.now() - bridgeStartedAt;
+  const elapsed = performance.now() - bridgeStartedAt;
   return Math.max(OAUTH_WAIT_MIN_FLOOR_MS, OAUTH_WAIT_CEILING_MS - elapsed);
 }
 
@@ -379,7 +386,9 @@ export const authenticateOAuthTool: ConversationTool = {
       });
       // Start the shared-budget clock before the bridge round-trip so its
       // cost is subtracted from the `waitForOAuthCredential` timeout.
-      const bridgeStartedAt = Date.now();
+      // `performance.now()` (monotonic) — NTP slew must not make the
+      // elapsed delta in `remainingWaitBudgetMs` go negative.
+      const bridgeStartedAt = performance.now();
       try {
         // Deliberate: an oob transport failure mid-call returns a
         // structured error and the agent re-calls authenticate_oauth —
@@ -464,7 +473,9 @@ export const authenticateOAuthTool: ConversationTool = {
       });
       // Start the shared-budget clock before the bridge round-trip so its
       // cost is subtracted from the `waitForOAuthCredential` timeout.
-      const bridgeStartedAt = Date.now();
+      // `performance.now()` (monotonic) — NTP slew must not make the
+      // elapsed delta in `remainingWaitBudgetMs` go negative.
+      const bridgeStartedAt = performance.now();
       try {
         const result = await bridge.elicitForm({
           message,

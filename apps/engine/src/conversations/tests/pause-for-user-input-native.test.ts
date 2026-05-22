@@ -370,6 +370,14 @@ describe("pauseForUserInput — bridge transport failure", () => {
       expect(result.pause?.elicitation_id).toBe(originalRowId);
       expect((result.data as { elicitation_id: string }).elicitation_id).toBe(originalRowId);
     }
+
+    // The demote leaves a forensic `elicitation.demoted_to_portal` audit
+    // row keyed on the elicitation id — without it an audit reader cannot
+    // tell the carrier ever attempted the MCP bridge.
+    const demoteAudit = await readResolveAudit(originalRowId, "elicitation.demoted_to_portal");
+    expect(demoteAudit).toBeDefined();
+    expect(demoteAudit!.resource_id).toBe(originalRowId);
+    expect(demoteAudit!.tenant_id).toBe(tenant_id);
   });
 });
 

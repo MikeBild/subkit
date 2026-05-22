@@ -243,7 +243,7 @@ function failedEvent(connectorId: string): EventEnvelope {
     tenant_id,
     channel: "connector.oauth",
     type: "connector.oauth.callback_failed",
-    payload: { connector_id: connectorId, reason: "provider_error" },
+    payload: { connector_id: connectorId, connector_slug: "oauth", reason: "provider_error" },
     created_at: new Date(), // allow-wall-clock: synthetic event envelope timestamp
   };
 }
@@ -685,6 +685,14 @@ describe("authenticate_oauth — ElicitationUnsupportedError demote to portal", 
       expect(result.pause?.elicitation_id).toBe(rows[0]!.id);
       expect((result.data as { elicitation_id: string }).elicitation_id).toBe(rows[0]!.id);
     }
+
+    // The demote left a forensic `elicitation.demoted_to_portal` audit row
+    // keyed on the elicitation id — without it an audit reader cannot tell
+    // the carrier ever attempted the MCP bridge.
+    const demoteAudit = await readResolveAudit(rows[0]!.id, "elicitation.demoted_to_portal");
+    expect(demoteAudit).toBeDefined();
+    expect(demoteAudit!.resource_id).toBe(rows[0]!.id);
+    expect(demoteAudit!.tenant_id).toBe(tenant_id);
   });
 
   test("form: capability raced away mid-call → demote the SAME row, no second elicitation", async () => {
@@ -712,5 +720,12 @@ describe("authenticate_oauth — ElicitationUnsupportedError demote to portal", 
       expect(result.pause?.elicitation_id).toBe(rows[0]!.id);
       expect((result.data as { elicitation_id: string }).elicitation_id).toBe(rows[0]!.id);
     }
+
+    // The demote left a forensic `elicitation.demoted_to_portal` audit row
+    // keyed on the elicitation id — same forensic trail as the oob branch.
+    const demoteAudit = await readResolveAudit(rows[0]!.id, "elicitation.demoted_to_portal");
+    expect(demoteAudit).toBeDefined();
+    expect(demoteAudit!.resource_id).toBe(rows[0]!.id);
+    expect(demoteAudit!.tenant_id).toBe(tenant_id);
   });
 });

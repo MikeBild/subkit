@@ -15,11 +15,10 @@ import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import {
-  createElicitationBridge,
-  ElicitationBridge,
   ElicitationUnsupportedError,
   type ElicitRequestedSchema,
-} from "./bridge.ts";
+} from "../../conversations/elicitation-bridge.ts";
+import { createElicitationBridge, ElicitationBridge } from "./bridge.ts";
 
 type ElicitInputCall = { params: unknown; options: unknown };
 

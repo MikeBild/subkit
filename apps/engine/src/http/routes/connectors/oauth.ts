@@ -477,8 +477,15 @@ async function publishCallbackFailed(
     db,
   );
   try {
+    // The failed event carries `connector_slug` for symmetry with the
+    // success event — a webhook consumer correlating success/failure pairs
+    // keys on the slug. One lookup at the failure path; the connector row
+    // is guaranteed to exist (the claimed state row referenced it).
+    const connector = await connectorSvc.getConnector(p.tenant_id, p.connector_id, db);
+    if (!connector) throw new NotFoundError("connector");
     const payload = ConnectorOauthCallbackFailedPayloadSchema.parse({
       connector_id: p.connector_id,
+      connector_slug: connector.slug,
       reason: p.reason,
     });
     await writeEvent(db, {

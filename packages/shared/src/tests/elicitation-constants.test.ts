@@ -63,6 +63,28 @@ describe("OAuthApprovalInputSchema — accepts the producer output", () => {
       }).success,
     ).toBe(false);
   });
+
+  // Defence in depth at the producer: a connector with a hostile
+  // `oauth.issuer_url` could make the engine synthesize a non-http(s)
+  // `authorization_url`. The `^https?://` refinement rejects it before
+  // `oauthApprovalInput` writes the elicitation row — the CLI's
+  // `BrowserUrlSchema` is the second line, not the only one.
+  test("a javascript: authorization_url is rejected", () => {
+    const r = OAuthApprovalInputSchema.safeParse({
+      ...producerOutput(),
+      // eslint-disable-next-line no-script-url
+      [OAUTH_AUTHORIZATION_URL_FIELD]: "javascript:alert(1)",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  test("a data: authorization_url is rejected", () => {
+    const r = OAuthApprovalInputSchema.safeParse({
+      ...producerOutput(),
+      [OAUTH_AUTHORIZATION_URL_FIELD]: "data:text/html,<script>alert(1)</script>",
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe("OAuthApprovalInputSchema — rejects a non-OAuth ask_user_confirm shape", () => {

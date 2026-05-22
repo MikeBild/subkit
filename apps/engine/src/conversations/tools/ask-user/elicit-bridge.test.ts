@@ -292,6 +292,16 @@ describe("mapElicitResultToAskUserOutput — ask_user_form", () => {
     expect(mapElicitResultToAskUserOutput("ask_user_form", {}, { tags: ["a", "b"] })).toBeNull();
   });
 
+  test("a MIXED payload — one valid primitive + one nested object — is rejected whole", () => {
+    // A partial-primitive payload must NOT be partially stripped: a single
+    // non-primitive field poisons the entire output. The mapper returns
+    // `null`, never `{ ok: "yes" }` — the valid primitive is dropped along
+    // with the contract-violating one.
+    expect(
+      mapElicitResultToAskUserOutput("ask_user_form", {}, { ok: "yes", broken: { nested: true } }),
+    ).toBeNull();
+  });
+
   test("null field values are permitted primitives", () => {
     expect(mapElicitResultToAskUserOutput("ask_user_form", {}, { key: null })).toEqual({
       key: null,

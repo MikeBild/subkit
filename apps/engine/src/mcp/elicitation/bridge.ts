@@ -12,8 +12,10 @@
 // param/result schemas — is owned by `conversations/` (see
 // `conversations/elicitation-bridge.ts`). `conversations/*` tools depend
 // on that contract; this `mcp/` module `implements` it. The `mcp/` side
-// keeps the construction/transport logic only. Re-exported below so
-// existing `mcp/`-side importers keep one import path.
+// keeps the construction/transport logic only — its public surface is the
+// `ElicitationBridge` class and the `createElicitationBridge` factory.
+// Importers needing the contract symbols import them straight from
+// `conversations/elicitation-bridge.ts`, the contract owner.
 //
 // ── SDK-vs-spec discrepancy (intentional) ────────────────────────────
 // The MCP spec prose calls out-of-band elicitation "oob", and this
@@ -47,20 +49,6 @@ import {
   ElicitFormParamsSchema,
   type ElicitOobParams,
   ElicitOobParamsSchema,
-  ElicitResultSchema,
-} from "../../conversations/elicitation-bridge.ts";
-
-// Re-export the contract so existing `mcp/`-side importers (and tests)
-// keep a single import path into the bridge.
-export {
-  type ElicitationBridge as ElicitationBridgeContract,
-  type ElicitationResult,
-  ElicitationUnsupportedError,
-  type ElicitFormParams,
-  ElicitFormParamsSchema,
-  type ElicitOobParams,
-  ElicitOobParamsSchema,
-  type ElicitRequestedSchema,
   ElicitResultSchema,
 } from "../../conversations/elicitation-bridge.ts";
 

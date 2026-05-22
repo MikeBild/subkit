@@ -34,8 +34,24 @@ export const OAuthApprovalInputSchema = z
     question: z.string().min(1),
     /** Human-readable summary (the authorize-in-browser instructions). */
     summary: z.string().min(1),
-    /** The OAuth authorization URL the operator opens in their browser. */
-    [OAUTH_AUTHORIZATION_URL_FIELD]: z.string().url(),
+    /**
+     * The OAuth authorization URL the operator opens in their browser.
+     *
+     * Constrained to `http(s)://` at the producer — defence in depth. A
+     * connector with a hostile `oauth.issuer_url` could otherwise make the
+     * engine emit a `javascript:` / `data:` URL into the elicitation row;
+     * the CLI's `BrowserUrlSchema` already rejects it on the consumer side,
+     * but the producer must not write a non-launchable URL in the first
+     * place. Same positive `^https?://` allowlist semantics as
+     * `BrowserUrlSchema` (`apps/sk/src/lib/open-browser.ts`): it admits only
+     * http(s) and rejects everything else (file:, javascript:, data:, …).
+     */
+    [OAUTH_AUTHORIZATION_URL_FIELD]: z
+      .string()
+      .url()
+      .refine((u) => /^https?:\/\//i.test(u), {
+        message: "authorization_url must be an http(s) URL",
+      }),
     /** Canonical engine-synthesized redirect URI for the provider allowlist. */
     redirect_uri: z.string().url(),
   })

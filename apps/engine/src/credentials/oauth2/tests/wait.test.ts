@@ -153,7 +153,7 @@ function failedEvent(connectorId: string, reason = "provider_error"): EventEnvel
     tenant_id,
     channel: "connector.oauth",
     type: "connector.oauth.callback_failed",
-    payload: { connector_id: connectorId, reason },
+    payload: { connector_id: connectorId, connector_slug: "oauth-conn", reason },
     created_at: new Date(), // allow-wall-clock: synthetic event envelope timestamp
   };
 }
