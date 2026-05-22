@@ -12,6 +12,7 @@ import { describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { dispatchTool } from "../dispatcher.ts";
 import { conversationToolProvider, staticToolProvider } from "../index.ts";
+import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
 import { buildRegistry, type ToolProvider } from "../registry.ts";
 import type { ToolDescriptor, ToolEnvelope } from "../types.ts";
 
@@ -59,8 +60,7 @@ describe("tools/dispatcher (active)", () => {
     );
     expect(envelope.status).toBe("not_available_on_surface");
     if (envelope.status === "not_available_on_surface") {
-      expect(envelope.reason).toContain("conversation_start");
-      expect(envelope.reason).toContain("MCP elicitation");
+      expect(envelope.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
     }
   });
 

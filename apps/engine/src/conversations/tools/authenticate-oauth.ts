@@ -214,6 +214,42 @@ function remainingWaitBudgetMs(bridgeStartedAt: number): number {
   return Math.max(OAUTH_WAIT_MIN_FLOOR_MS, OAUTH_WAIT_CEILING_MS - elapsed);
 }
 
+/**
+ * Shared tail of the oob and form bridge branches: run the credential
+ * wait on the bridge-adjusted budget, close the governance elicitation
+ * row, and finalize the `ToolResult` carrying the URL/redirect/return_url
+ * echo payload. Both branches differ only in WHICH `elicit*` call ran
+ * before this — the wait → resolve → finalize sequence is identical, so
+ * it lives here once rather than near-identically inline.
+ */
+async function awaitOAuthCredentialAndFinalize(
+  ctx: ToolContext,
+  p: {
+    connector: { display_name?: string | null; slug: string };
+    connectorId: string;
+    environment: "dev" | "prod";
+    elicitationId: string;
+    bridgeStartedAt: number;
+    authorizationUrl: string;
+    redirectUri: string;
+    returnUrl?: string;
+  },
+): Promise<ToolResult> {
+  const status = await waitForOAuthCredential({
+    tenant_id: ctx.tenant_id,
+    connector_id: p.connectorId,
+    environment: p.environment,
+    timeout_ms: remainingWaitBudgetMs(p.bridgeStartedAt),
+    db: ctx.db,
+  });
+  await resolveOAuthApprovalElicitation(ctx, p.elicitationId, status);
+  return finalizeWaitResult(ctx, p.connector, status, {
+    authorization_url: p.authorizationUrl,
+    redirect_uri: p.redirectUri,
+    ...(p.returnUrl ? { return_url: p.returnUrl } : {}),
+  });
+}
+
 export const authenticateOAuthTool: ConversationTool = {
   name: "authenticate_oauth",
   description:
@@ -394,18 +430,15 @@ export const authenticateOAuthTool: ConversationTool = {
           data: { authorization_url: started.authorization_url, redirect_uri },
         });
       }
-      const status = await waitForOAuthCredential({
-        tenant_id: ctx.tenant_id,
-        connector_id: connectorId,
+      return awaitOAuthCredentialAndFinalize(ctx, {
+        connector,
+        connectorId,
         environment,
-        timeout_ms: remainingWaitBudgetMs(bridgeStartedAt),
-        db: ctx.db,
-      });
-      await resolveOAuthApprovalElicitation(ctx, approval.id, status);
-      return finalizeWaitResult(ctx, connector, status, {
-        authorization_url: started.authorization_url,
-        redirect_uri,
-        ...(args.return_url ? { return_url: args.return_url } : {}),
+        elicitationId: approval.id,
+        bridgeStartedAt,
+        authorizationUrl: started.authorization_url,
+        redirectUri: redirect_uri,
+        ...(args.return_url ? { returnUrl: args.return_url } : {}),
       });
     }
 
@@ -496,18 +529,15 @@ export const authenticateOAuthTool: ConversationTool = {
           data: { authorization_url: started.authorization_url, redirect_uri },
         });
       }
-      const status = await waitForOAuthCredential({
-        tenant_id: ctx.tenant_id,
-        connector_id: connectorId,
+      return awaitOAuthCredentialAndFinalize(ctx, {
+        connector,
+        connectorId,
         environment,
-        timeout_ms: remainingWaitBudgetMs(bridgeStartedAt),
-        db: ctx.db,
-      });
-      await resolveOAuthApprovalElicitation(ctx, approval.id, status);
-      return finalizeWaitResult(ctx, connector, status, {
-        authorization_url: started.authorization_url,
-        redirect_uri,
-        ...(args.return_url ? { return_url: args.return_url } : {}),
+        elicitationId: approval.id,
+        bridgeStartedAt,
+        authorizationUrl: started.authorization_url,
+        redirectUri: redirect_uri,
+        ...(args.return_url ? { returnUrl: args.return_url } : {}),
       });
     }
 

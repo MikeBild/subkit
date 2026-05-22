@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { resolveToolMode, type ToolPolicies } from "../../conversations/tool-policies.ts";
-import { policyDecide } from "../policy.ts";
+import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON, policyDecide } from "../policy.ts";
 
 const EMPTY_OVERRIDES: ToolPolicies = {};
 
@@ -60,8 +60,7 @@ describe("tools/policy.policyDecide (active parity)", () => {
       // Structured, actionable message naming the entry tool — the
       // decision carries a sentence the client can surface verbatim
       // rather than a bare `requires_conversation_surface` code.
-      expect(decision.reason).toContain("conversation_start");
-      expect(decision.reason).toContain("MCP elicitation");
+      expect(decision.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
     }
   });
 

@@ -21,6 +21,7 @@ import { EngineClient } from "../../engine-client/index.ts";
 import type { ElicitationBridge, ElicitationResult } from "../elicitation-bridge.ts";
 import { ElicitationUnsupportedError } from "../elicitation-bridge.ts";
 import { pauseForUserInput } from "../tools/ask-user/common.ts";
+import { INVALID_ELICIT_RESPONSE } from "../tools/error-codes.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 
@@ -182,6 +183,43 @@ describe("pauseForUserInput — MCP-native form elicitation (capable client)", (
     const rows = await readElicitation(conversation_id);
     expect(rows[0]!.status).toBe("cancelled");
     expect(rows[0]!.decision_reason).toBe("user_cancelled");
+  });
+
+  test("accept with a contract-violating answer → row cancelled (invalid_elicit_response), structured error", async () => {
+    // The client returns an `accept` action but an `ask_user_choice`
+    // answer outside the requested enum. `mapElicitResultToAskUserOutput`
+    // maps it to `null`, so the bridge path collapses the bogus accept
+    // into the decline/cancel path: the row resolves `cancelled` with
+    // `decision_reason: invalid_elicit_response` and the tool result
+    // carries `error_code: invalid_elicit_response`.
+    const conversation_id = await freshConversation();
+    const bridge = makeBridge({ kind: "accept", content: { value: "not-in-enum" } });
+    const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
+      tool_name: "ask_user_choice",
+      summary: "Pick a colour",
+      input: {
+        question: "Pick a colour",
+        options: [
+          { value: "red", label: "Red" },
+          { value: "blue", label: "Blue" },
+        ],
+      },
+    });
+
+    // (b) the returned tool result reports the structured error code.
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error_code).toBe(INVALID_ELICIT_RESPONSE);
+      expect(result.pause).toBeUndefined();
+    }
+    // The conversation is unwedged — no longer awaiting input.
+    expect(await readConversationStatus(conversation_id)).toBe("active");
+
+    // (a) the elicitation row ends `cancelled` with the matching reason.
+    const rows = await readElicitation(conversation_id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("cancelled");
+    expect(rows[0]!.decision_reason).toBe(INVALID_ELICIT_RESPONSE);
   });
 });
 

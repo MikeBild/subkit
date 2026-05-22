@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
+import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../../tools/policy.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -33,7 +34,7 @@ describe("mcp tools/list — disabled descriptors (authoring mode)", () => {
     const meta = (saveDraft as Record<string, unknown>)._meta as
       | { subkit?: { disabled?: { reason?: string } } }
       | undefined;
-    expect(meta?.subkit?.disabled?.reason).toContain("conversation_start");
+    expect(meta?.subkit?.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
   });
 
   test("includes dry_run_workflow with _meta.subkit.disabled.reason", async () => {
@@ -44,7 +45,7 @@ describe("mcp tools/list — disabled descriptors (authoring mode)", () => {
     const meta = (dryRun as Record<string, unknown>)._meta as
       | { subkit?: { disabled?: { reason?: string } } }
       | undefined;
-    expect(meta?.subkit?.disabled?.reason).toContain("conversation_start");
+    expect(meta?.subkit?.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
   });
 });
 
@@ -79,7 +80,7 @@ describe("mcp tools/call — disabled tools short-circuit", () => {
       reason?: string;
     };
     expect(data.error_code).toBe("not_available_on_surface");
-    expect(data.reason).toContain("conversation_start");
+    expect(data.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
 
     // Critical safety: short-circuit must happen BEFORE any audit row.
     const afterRows = await suite.http.db
@@ -107,6 +108,6 @@ describe("mcp tools/call — disabled tools short-circuit", () => {
       reason?: string;
     };
     expect(data.error_code).toBe("not_available_on_surface");
-    expect(data.reason).toContain("conversation_start");
+    expect(data.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
   });
 });

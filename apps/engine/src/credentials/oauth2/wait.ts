@@ -43,27 +43,27 @@ export interface WaitForOAuthCredentialInput {
   tenant_id: string;
   connector_id: string;
   environment: "dev" | "prod";
-  /** Upper bound in ms. Defaults to 45s — see `DEFAULT_TIMEOUT_MS`. */
+  /** Upper bound in ms. Defaults to 45s — see `OAUTH_WAIT_CEILING_MS`. */
   timeout_ms?: number;
   db: Db;
 }
 
+// Upper bound for an OAuth wait — also the budget ceiling for callers
+// that share the client's tool-call timeout with a prior round-trip
+// (e.g. `authenticate_oauth` issues an MCP `elicitation/create` bridge
+// call BEFORE the wait; it subtracts the elapsed bridge cost from this
+// value and clamps to `OAUTH_WAIT_MIN_FLOOR_MS` so the wait still does
+// at least a couple of DB-poll ticks even when the elicitation
+// round-trip was slow).
+//
 // Kept safely under the smallest known MCP client tool-call timeout
 // (~60s for claude.ai / Cursor). A tool call that out-runs the client's
 // timeout is killed mid-flight; resolving `timeout` ourselves first lets
 // the tool return a structured "still pending, re-run authenticate_oauth"
 // result the agent can act on, instead of an opaque transport error.
-const DEFAULT_TIMEOUT_MS = 45_000;
-const POLL_INTERVAL_MS = 1_500;
-
-// Budget ceiling/floor for callers that share the client's tool-call
-// timeout with a prior round-trip (e.g. `authenticate_oauth` issues an
-// MCP `elicitation/create` bridge call BEFORE the wait). The caller
-// subtracts the elapsed bridge cost from `OAUTH_WAIT_CEILING_MS` and
-// clamps to `OAUTH_WAIT_MIN_FLOOR_MS` so the wait still does at least a
-// couple of DB-poll ticks even when the elicitation round-trip was slow.
-export const OAUTH_WAIT_CEILING_MS = DEFAULT_TIMEOUT_MS;
+export const OAUTH_WAIT_CEILING_MS = 45_000;
 export const OAUTH_WAIT_MIN_FLOOR_MS = 5_000;
+const POLL_INTERVAL_MS = 1_500;
 
 /** Is there a non-deleted credential row for (tenant, connector, env)? */
 async function credentialExists(
@@ -88,7 +88,7 @@ async function credentialExists(
 }
 
 export function waitForOAuthCredential(p: WaitForOAuthCredentialInput): Promise<OAuthWaitStatus> {
-  const timeoutMs = p.timeout_ms ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = p.timeout_ms ?? OAUTH_WAIT_CEILING_MS;
 
   return new Promise<OAuthWaitStatus>((resolve) => {
     let settled = false;

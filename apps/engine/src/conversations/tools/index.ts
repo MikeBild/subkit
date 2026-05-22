@@ -140,9 +140,9 @@ export interface ToolContext {
    * (`ask_user_*`, `authenticate_oauth`) probe
    * `elicitationBridge?.capabilities` and, when present, issue a
    * server→client `elicitation/create` request instead of taking the
-   * DB-pause / `respondElicitation` round-trip. See
-   * The contract lives in `conversations/elicitation-bridge.ts`; the
-   * concrete MCP implementation is `mcp/elicitation/bridge.ts`.
+   * DB-pause / `respondElicitation` round-trip. The contract lives in
+   * `conversations/elicitation-bridge.ts`; the concrete MCP
+   * implementation is `mcp/elicitation/bridge.ts`.
    */
   elicitationBridge?: ElicitationBridge;
 }
