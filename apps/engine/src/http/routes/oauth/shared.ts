@@ -137,7 +137,12 @@ export async function permittedMcpScopes(
   };
   const allowed: string[] = [];
   for (const permission of MCP_SCOPE_PERMISSIONS) {
-    const decision = await can(db, { tenant_id: tenantId, principal, permission });
+    // `quiet: true` — this loop probes all three `mcp:*` scopes purely
+    // to enumerate which the role holds. Every "no" is an expected,
+    // routine outcome (a `mcp:read` role legitimately lacks `mcp:admin`)
+    // and must not WARN-log as if it were an enforcement failure. The
+    // deny metric still fires.
+    const decision = await can(db, { tenant_id: tenantId, principal, permission, quiet: true });
     if (decision.allow) allowed.push(permission);
   }
   return allowed;

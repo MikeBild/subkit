@@ -320,6 +320,13 @@ export const METRIC_NAMES = {
   SELF_HEALING_REPAIR_RETRIED_TOTAL: "self_healing_repair_retried_total",
   EXECUTION_WARNINGS_EMITTED_TOTAL: "execution_warnings_emitted_total",
   EXECUTION_DRY_RUN_TOTAL: "execution_dry_run_total",
+  // Loop iterations whose body payload was offloaded to durable
+  // storage (the in-memory scope holds an `OffloadRef`, not the full
+  // envelope — the OOM fix). Counted at the `productiveIterations`
+  // short-circuit so operators can see big-loop memory pressure: a
+  // rising count means loops are pushing oversize payloads through
+  // the fixture / S3 offload path.
+  EXECUTION_LOOP_ITERATION_OFFLOADED_TOTAL: "execution_loop_iteration_offloaded_total",
   LLM_CACHE_HIT_TOTAL: "llm_cache_hit_tokens_total",
   LLM_CACHE_CREATION_TOTAL: "llm_cache_creation_tokens_total",
   LLM_PROMPT_TOKENS_TOTAL: "llm_prompt_tokens_total",
@@ -676,6 +683,11 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.EXECUTION_DRY_RUN_TOTAL,
     help: "Dry-run previews of workflows or steps, partitioned by source kind.",
     labels: ["tenant_id", "source_kind"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.EXECUTION_LOOP_ITERATION_OFFLOADED_TOTAL,
+    help: "Loop iterations whose body payload was offloaded to durable storage (the in-memory scope holds an OffloadRef). A rising count signals big-loop memory pressure.",
+    labels: ["tenant_id"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.AUTHORING_GATE_BLOCKS_TOTAL,

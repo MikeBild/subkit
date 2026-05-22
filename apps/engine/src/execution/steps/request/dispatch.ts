@@ -53,6 +53,7 @@ import { recordSuccessShape } from "../../../schema-versions/service.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 import { combineSignals } from "../../abort.ts";
 import { type ExpectedRowCount, evaluateExpectedRowCount } from "../../expected-row-count.ts";
+import { resolveScopeForJsonata } from "../../jsonata-bindings.ts";
 import {
   MAX_PAGES,
   makeStrategy,
@@ -360,6 +361,25 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   const max_attempts = (p.step.max_retries ?? 4) + 1; // 1 initial + N retries
   const timeoutMs = p.step.timeout_ms ?? REQUEST_TIMEOUT_DEFAULT_MS;
   const timeoutCtrl = new AbortController();
+
+  // A request step is a downstream consumer of the scope via
+  // `${scope.<step>.…}` placeholder substitution. When an upstream loop
+  // spilled large body payloads to storage, the loop key in `scope`
+  // holds `OffloadRef` placeholders — re-hydrate them so a token like
+  // `${scope.prior_loop.data}` substitutes the real payload. The helper
+  // returns the same object when nothing was offloaded.
+  //
+  // This runs BEFORE the timeout timer is armed: rehydration is a
+  // DB/S3 fetch that is step *setup*, not part of the HTTP call. Arming
+  // the timer first would burn the request's `timeout_ms` budget on the
+  // rehydrate fetch before the HTTP call even starts.
+  const resolvedScope = await resolveScopeForJsonata(
+    p.ctx.db,
+    p.ctx.tenant_id,
+    p.scope,
+    p.ctx.signal,
+  );
+
   const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
   const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
 
@@ -372,8 +392,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     tenant_id: p.ctx.tenant_id,
     environment: p.ctx.execution_mode,
     db: p.ctx.db,
-    input: p.scope?.$input,
-    scope: p.scope,
+    input: resolvedScope?.$input,
+    scope: resolvedScope,
     ...(p.ctx.principal ? { principal: p.ctx.principal } : {}),
   };
   const pathRes = p.step.path ? await resolveStringPlaceholders(p.step.path, resolverCtx) : null;

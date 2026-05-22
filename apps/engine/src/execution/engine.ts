@@ -21,6 +21,7 @@ import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { logger } from "../logging/logger.ts";
+import { recordLoopIterationsOffloaded } from "../observability/instrumentation.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
 import { buildStepDag, topoSort } from "../workflows/dag.ts";
@@ -37,13 +38,15 @@ import {
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
+  bodyEnvelopeForLoopAccumulator,
   envelopeFor,
   type ScopeEnvelope,
   validateAgainstJsonSchema,
   wrapEnvelope,
 } from "./engine/envelope.ts";
 import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
-import { maybeOffload, previewOf } from "./offload.ts";
+import { isOffloadRef, maybeOffload, previewOf } from "./offload.ts";
+import { deepResolveOffloadRefs, previewOffloadRefs } from "./offload-rehydrate.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
 import {
@@ -402,8 +405,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                 outcome: bodyOutcome.result.status,
               });
             }
+            // Full envelope in `childScope` so later body steps in THIS
+            // iteration can read `$scope.<id>.data`. `bodyResults`
+            // accumulates into the run-resident `iterationResults`, so it
+            // gets the OffloadRef-swapped envelope: a large body payload
+            // is replaced by a reference to its already-persisted
+            // storage_uri (no second write), bounding loop memory.
             childScope[bodyStep.id] = envelopeFor(bodyOutcome);
-            bodyResults[bodyStep.id] = envelopeFor(bodyOutcome);
+            bodyResults[bodyStep.id] = bodyEnvelopeForLoopAccumulator(bodyOutcome);
           }
           iterationResults.push(bodyResults);
         }
@@ -422,20 +431,44 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         // with the actual envelope shape so the LLM can fix its
         // JSONata next turn instead of guessing.
         if (iterationResults.length > 0) {
+          // Count offloaded iterations alongside productive ones — an
+          // iteration whose body payload was offloaded to durable
+          // storage holds an `OffloadRef` in the run-resident scope
+          // instead of the full envelope (the OOM fix). Surfacing the
+          // tally as a metric makes big-loop memory pressure
+          // observable to operators.
+          let offloadedIterations = 0;
           const productiveIterations = iterationResults.filter((iter) => {
             if (!iter || typeof iter !== "object") return false;
+            let iterProductive = false;
+            let iterOffloaded = false;
             for (const value of Object.values(iter as Record<string, unknown>)) {
               const env = value as ScopeEnvelope | null | undefined;
               if (!env || typeof env !== "object") continue;
               if (env.error) continue;
               const data = env.data;
               if (data == null) continue;
+              // An offloaded body payload appears as an `OffloadRef`.
+              // It is productive by definition (only oversize payloads
+              // offload) — count it without re-hydrating.
+              if (isOffloadRef(data)) {
+                iterOffloaded = true;
+                iterProductive = true;
+                continue;
+              }
               if (Array.isArray(data) && data.length === 0) continue;
               if (typeof data === "object" && Object.keys(data as object).length === 0) continue;
-              return true;
+              iterProductive = true;
             }
-            return false;
+            if (iterOffloaded) offloadedIterations += 1;
+            return iterProductive;
           }).length;
+          if (offloadedIterations > 0) {
+            recordLoopIterationsOffloaded({
+              tenant_id,
+              count: offloadedIterations,
+            });
+          }
           if (productiveIterations === 0) {
             const sampleIteration = iterationResults[0];
             const bodyKeys =
@@ -544,7 +577,11 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     if (step.kind === "loop" || step.kind === "parallel") {
       const wrapped = scope[step.id] as { data?: unknown } | undefined;
       if (wrapped && typeof wrapped === "object" && "data" in wrapped) {
-        outputPreview = wrapped.data;
+        // For a loop, `wrapped.data` (iterationResults) may embed
+        // `OffloadRef` placeholders. The step summary is a preview
+        // surface for the LLM — collapse each ref to its inline
+        // `preview` string rather than re-hydrating from storage.
+        outputPreview = previewOffloadRefs(wrapped.data);
       }
     }
     stepSummaries.push({
@@ -591,6 +628,38 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         break;
       }
       // continue mode: keep scope value, mark continue
+    }
+  }
+
+  // Re-hydrate any `OffloadRef` placeholders in the final output BEFORE
+  // output_transform / response_filters / output_schema / validation /
+  // the aggregate `maybeOffload`. The loop runner keeps `iterationResults`
+  // bounded by substituting refs (the OOM fix); here — once — we resolve
+  // them so downstream consumers and the PERSISTED result see plain JSON.
+  // An `OffloadRef` must never cross an external surface. A re-hydration
+  // failure throws `OffloadResolutionError`, failing the run.
+  if (lastOutput !== undefined && lastOutput !== null) {
+    try {
+      lastOutput = await deepResolveOffloadRefs(db, tenant_id, lastOutput, signal);
+    } catch (err) {
+      // A re-hydration failure must NOT bubble out of `runExecution` as
+      // an unhandled 500 — it has to be audited as a proper failed
+      // execution record, the same shape as an output_transform throw
+      // just below. Stamp the typed error and fall through to the
+      // persistence layer. The error `.message` is already REDACTED to
+      // the locator scheme by `OffloadResolutionError`.
+      logger.warn({
+        module: "execution",
+        action: "execution.offload_resolution_failed",
+        msg: "final-output offload re-hydration failed",
+        execution_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      finalStatus = "failed";
+      validationError = {
+        code: "offload_resolution_failed",
+        message: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 

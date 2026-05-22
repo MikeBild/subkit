@@ -330,6 +330,21 @@ export function recordExecutionWarningsEmitted(args: {
   });
 }
 
+/** Count loop iterations whose body payload was offloaded to durable
+ *  storage (the in-memory scope holds an `OffloadRef` rather than the
+ *  full envelope). Emitted at the loop's `productiveIterations`
+ *  short-circuit so big-loop memory pressure is observable. */
+export function recordLoopIterationsOffloaded(args: { tenant_id: string; count: number }): void {
+  safe(() => {
+    if (!Number.isFinite(args.count) || args.count <= 0) return;
+    getMetrics().inc(
+      METRIC_NAMES.EXECUTION_LOOP_ITERATION_OFFLOADED_TOTAL,
+      { tenant_id: args.tenant_id },
+      args.count,
+    );
+  });
+}
+
 /** Allow-list for `code` label values on AUTHORING_GATE_BLOCKS_TOTAL.
  *  Cardinality control: any code outside this list collapses to
  *  "other" so a typo or new-but-unannounced gate can't blow up the
