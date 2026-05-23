@@ -1,5 +1,12 @@
 # Security & Governance
 
+> *Strategy context: this doc is the developer view of requirements
+> [`system-requirements.md`](system-requirements.md) R6 (delegated AI action — scoped,
+> time-bound, revocable, audited), R7 (fine-grained action-level identity and
+> authorisation), R8 (secrets isolation from the AI context), R9 (layered multi-tenant
+> isolation), and R11 (audit-grade evidence — explicitly **not** compliance itself).
+> For the principles, see [`positioning.md`](positioning.md) §5.1.*
+
 Enterprise AI requires enterprise-grade security from the start. A platform that touches production integrations, sensitive credentials, and automated business processes cannot treat security as a layer added later. It has to be the foundation.
 
 sk is designed so that the right security behavior is the default behavior. Every interaction is authorized, every action is auditable, and every secret is protected — by architecture, not by configuration.

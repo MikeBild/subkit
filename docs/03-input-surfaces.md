@@ -1,5 +1,10 @@
 # Input Surfaces
 
+> *Strategy context: this doc is the developer view of the **multiple entry surfaces,
+> one governance point** requirement (see [`system-requirements.md`](system-requirements.md)
+> R12 and R6). For how sk realises it across CLI, API, MCP, and chat with the same
+> approval gate and audit trail, see [`positioning.md`](positioning.md) §5.*
+
 Automation that only works from one place does not fit how enterprise teams actually operate. A developer may prefer a terminal. An analyst may live in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant should be able to call a workflow directly.
 
 sk is designed around this reality. It has multiple entry points — the sk CLI, the REST API, the MCP server, chat platform integrations, webhooks, and scheduled triggers — and all of them lead to the same governed authoring and execution pipeline. The security model, the RBAC checks, and the Audit Log apply identically regardless of where a request originates.

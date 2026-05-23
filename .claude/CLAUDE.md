@@ -16,6 +16,13 @@ to the right helper quickly. It does not override `AGENTS.md`.
 4. `.claude/docs/agent-navigation.md` — maps common tasks → docs + subsystem.
 5. The concept doc(s) that own the concern (see the subsystem table in `AGENTS.md`).
 
+For tasks involving **product framing, vocabulary, or category claims**, also read the
+three strategy documents (in order):
+
+- `../docs/thesis.md` — Document A: *why this category exists.*
+- `../docs/system-requirements.md` — Document B: *what such a system must do.*
+- `../docs/positioning.md` — Document C: *how sk realises it.*
+
 ## Agents
 
 Specialist sub-agents live under `.claude/agents/`. Invoke via the Agent tool with

@@ -1,5 +1,12 @@
 # Workflow Execution
 
+> *Strategy context: this doc is the developer view of **policy- and version-bound
+> execution** plus the **closed learning loop with operator-reviewed remediation** —
+> see [`system-requirements.md`](system-requirements.md) R3, R4, R5 and
+> [`thesis.md`](thesis.md) §5.3–5.4. Execution is deliberately not "intelligent"; the
+> intelligence is concentrated and continuously improving in the authoring/repair loop
+> ([`positioning.md`](positioning.md) §2).*
+
 Everything the AI builds in sk ends up here. The authoring layer is conversational and exploratory; the execution layer is the opposite — deterministic, immutable, and governed.
 
 This document explains how approved workflows run, what governance looks like at runtime, how the platform stays observable at scale, and how the self-healing subsystem keeps workflows healthy as the connected boundaries they depend on change over time.

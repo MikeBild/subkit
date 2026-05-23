@@ -1,12 +1,32 @@
 # sk
 
-**Enterprise AI platform for conversation-driven workflow automation.**
+**sk — operational AI execution layer.** The shared system that turns individual agentic
+productivity into organisational agentic operationalisation.
 
-sk bridges the gap between conversational AI and the deterministic, governed execution
-that enterprise operations require. Describe what you need — sk and its AI help you build,
-approve, and run it reliably across every system in your organization.
+> *Agentic productivity does not automatically scale organisationally. The bottleneck is
+> not model quality or workflow execution; it is the organisation's ability to make
+> operational AI work repeatable, reviewable, and learnable. sk integrates three
+> otherwise separately assembled layers — contextualised AI authoring, operational
+> governance, versioned reproducible execution — into one product whose effect
+> compounds per tenant over time.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+---
+
+## Strategy & positioning
+
+Three short documents, in reading order:
+
+| Document | What it covers |
+|----------|---------------|
+| [The Thesis](docs/thesis.md) | *Why this category exists.* Theory of organisational agentic operationalisation. |
+| [System Requirements](docs/system-requirements.md) | *What such a system must do.* Twelve vendor-agnostic requirements. |
+| [Positioning](docs/positioning.md) | *How sk realises it.* Worked examples, principles, honest gaps. |
+
+For developers, the platform/architecture entry point is
+[`docs/01-platform.md`](docs/01-platform.md); the canonical contract for coding agents
+is [`AGENTS.md`](AGENTS.md).
 
 ---
 
@@ -31,11 +51,11 @@ flowchart LR
         Skills["Skills &\nKnowledge Sources"]
     end
 
-    subgraph Execution["Deterministic Execution"]
+    subgraph Execution["Governed, Versioned Execution"]
         direction TB
         WF["Workflow Engine"]
         Gov["Audit & Governance"]
-        Heal["Self-Healing"]
+        Heal["Drift-Assisted Repair"]
         Sched["Scheduler &\nEvent Triggers"]
     end
 
@@ -44,7 +64,8 @@ flowchart LR
 
 Every interaction — regardless of entry point — flows through the same governed pipeline.
 AI assists with authoring but never executes without human approval. Execution is
-deterministic, auditable, and self-correcting.
+policy- and version-bound, auditable, and operator-reviewed for drift-assisted repair —
+the control flow of an approved workflow is fixed; runtime does not re-decide it.
 
 ---
 
@@ -98,10 +119,14 @@ anything is committed.
 
 ---
 
-## Deterministic Execution
+## Governed, Versioned Execution
 
-Once approved, workflows execute deterministically. The execution engine is not an AI
-agent — it is a strict DAG runner that follows the workflow definition exactly.
+Once approved, workflows execute in a policy- and version-bound way. The execution
+engine is not an AI agent — it is a strict DAG runner that follows the workflow
+definition exactly. Step outputs can vary (external systems return different data;
+humans pause for decisions); the **control flow** does not — the path was fixed at
+approval and the runtime does not re-decide it. Every run is an immutable record;
+rollback is a version change.
 
 **What governs execution:**
 
@@ -111,9 +136,12 @@ agent — it is a strict DAG runner that follows the workflow definition exactly
 - **Versioning** — every workflow change creates a new version with a full DAG snapshot.
   Roll back to any prior version in seconds.
 
-- **Self-healing** — the platform detects connector drift (changed schemas, new error
-  shapes, moved endpoints) and proposes the smallest safe repair. Repairs are
-  dry-run validated and require operator approval before application.
+- **Drift-assisted repair (operator-reviewed remediation)** — the platform detects
+  connector drift (changed schemas, new error shapes, moved endpoints) and proposes the
+  smallest safe repair as a Patch Candidate. Repairs are dry-run validated against
+  recorded fixtures and require operator approval before they apply; nothing is changed
+  autonomously in production. The codebase keeps the technical name *self-healing*
+  ([`docs/02-concepts.md`](docs/02-concepts.md) explains the dual vocabulary).
 
 - **Scheduling and triggers** — workflows run on a cron schedule, in response to inbound
   webhooks, via the API, or through MCP tool calls. The trigger source is recorded in
@@ -142,7 +170,7 @@ Full conceptual documentation in [`docs/`](docs/):
 | [Input Surfaces](docs/03-input-surfaces.md) | CLI, API, MCP, Chat, Webhooks — in depth |
 | [AI-Assisted Authoring](docs/04-authoring.md) | Conversations, skills, knowledge, multi-provider |
 | [Connectors & Integration](docs/05-connectors.md) | Drivers, templates, auth |
-| [Workflow Execution](docs/06-execution.md) | Engine, step kinds, scheduling, self-healing |
+| [Workflow Execution](docs/06-execution.md) | Engine, step kinds, scheduling, drift-assisted repair |
 | [Security & Governance](docs/07-security-governance.md) | Identity, RBAC, audit, compliance |
 | [Deployment & Operations](docs/08-operations.md) | Installation, observability, resource limits |
 | [Deploy a sk engine](docs/operations/deploy.md) | Step-by-step systemd-native host bootstrap + release flow |

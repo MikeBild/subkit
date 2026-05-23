@@ -1,5 +1,12 @@
 # Deployment & Operations
 
+> *Strategy context: this doc is the developer view of requirements
+> [`system-requirements.md`](system-requirements.md) R10 (per-tenant cost attribution
+> and budget), R12 (multiple entry surfaces, one governance point) and the
+> drift-assisted-repair side of R5 (closed learning loop, operator-reviewed). For the
+> structural changes operators can expect, see [`positioning.md`](positioning.md) §7
+> (Part 2b).*
+
 sk is designed for enterprise deployment. That means it has to be reliable enough to run unattended, observable enough to diagnose problems quickly, and self-correcting enough to handle the inevitable drift that comes from running in a changing environment.
 
 This document explains how sk is deployed, how operators monitor it day-to-day, and how the platform handles failure — from a single connector going down to an external API changing its schema.

@@ -1,10 +1,38 @@
 # Concepts & Domain Model
 
-Every enterprise automation platform lives or dies by the clarity of its vocabulary. Ambiguous terms produce misaligned expectations, inconsistent implementations, and governance gaps.
+Every system lives or dies by the clarity of its vocabulary. Ambiguous terms produce misaligned expectations, inconsistent implementations, and governance gaps.
 
 This file is the authoritative glossary for sk. Every term used across all other documentation is defined exactly once here. When a doc uses a term from this list, the meaning is the meaning given here — not an approximation.
 
 Terms are grouped by concern. Read the groups in order for a complete mental model, or jump to a specific group when you need a definition.
+
+For the structural framing of the category sk occupies, see [`thesis.md`](thesis.md);
+for the system requirements that follow, see [`system-requirements.md`](system-requirements.md);
+for sk's realisation, see [`positioning.md`](positioning.md).
+
+---
+
+## Group 0: Strategy Vocabulary
+
+These terms come from the three strategy documents and recur throughout sk's framing. They are kept stable across all documents.
+
+**Operational AI execution layer** — the market term for the category sk occupies. The shared system in which an organisation governs, executes, and learns from operational AI work. (See [`thesis.md`](thesis.md), [`positioning.md`](positioning.md).)
+
+**Organisational agentic operationalisation** — the theory term for the same category. Used in [`thesis.md`](thesis.md) and theory passages of [`system-requirements.md`](system-requirements.md). The market term and the theory term are kept distinct and not mixed inside a single sentence.
+
+**Central axiom** — *The operating model improves because the organisation learns — and that is the part the organisation can actually control.* Recurs verbatim across all strategy documents.
+
+**The three core ideas** — *Idea 1 — Problem:* agentic productivity does not automatically scale organisationally. *Idea 2 — Category:* the bottleneck is not intelligence; it is operationalisation. *Idea 3 — Moat:* the moat emerges from organisational context accumulation, not from any single feature.
+
+**Contextual learning loop / compounding loop** — *Run → Drift → Patch Candidate → Skill Candidate → Better Authoring → Better Run.* The mechanism by which the operating model improves over time. (See [`thesis.md`](thesis.md) §5.3 and §8; [`system-requirements.md`](system-requirements.md) R5.)
+
+**Scaling cliff** — the point at which solo agentic productivity stops aggregating into organisational operationalisation without a shared system. *More solo actors means more variation, not more coherence.* (See [`thesis.md`](thesis.md) §3.)
+
+**Shadow AI scope decision** — sk does not eliminate shadow AI; it provides a governed lane for the operational subset that touches production systems. The rest stays free and that is the deliberate scope choice. (See [`positioning.md`](positioning.md) §1 and Part 3.)
+
+**Drift-assisted repair suggestion / operator-reviewed remediation** — the external phrasing for the codebase's *self-healing* subsystem. Same concept, different audience.
+
+> **Dual-vocabulary note.** Strategy and external surfaces (`README.md`, `docs/thesis.md`, `docs/positioning.md`, public-facing docs) use the external phrasing above. The codebase keeps technical names (`apps/engine/src/self-healing/`, `rbac/`, `credentials/`, etc.) — those names are stable identifiers and must not be renamed for vocabulary alignment.
 
 ---
 

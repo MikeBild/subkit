@@ -1,5 +1,11 @@
 # AI-Assisted Authoring
 
+> *Strategy context: this is the developer view of the **contextualised AI authoring**
+> layer of sk. For the economic argument behind AI-assisted authoring (vs. classical
+> builders / BPMN / low-code / engineering) and the closed authoring-/repair loop, see
+> [`positioning.md`](positioning.md) §2. The system requirement is
+> [`system-requirements.md`](system-requirements.md) R2 (context as a first-class input).*
+
 Traditional enterprise workflow tools put the burden of construction on the builder. You need to know the connector, understand the configuration syntax, and map it all onto a blank canvas. The result is a workflow that reflects what developers can build, not what the business actually needs.
 
 sk inverts that burden. The authoring layer is a conversational interface where a user describes a goal in natural language and the AI does the structural work: proposing steps, looking up connectors, validating the draft, and asking clarifying questions. The user's job is to review and approve — not to build.

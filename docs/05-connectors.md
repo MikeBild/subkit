@@ -1,5 +1,12 @@
 # Connectors & Integration
 
+> *Strategy context: this doc is the developer view of **connectors as a governed
+> integration layer** (see [`positioning.md`](positioning.md) §5.3) and the secrets-
+> isolation requirement ([`system-requirements.md`](system-requirements.md) R8). The
+> point is not the *number* of templates but the integration behaviour: credentials
+> isolated from the AI context, versioned per-endpoint behaviour, per-endpoint drift
+> detection.*
+
 Automation is only as valuable as the connectors it can reach. An AI that can propose a perfect workflow but cannot connect to your CRM, your billing platform, or your internal database is not useful to an enterprise.
 
 Connectors are the integration fabric of sk. They represent every external integration boundary the platform can reach — typed, authenticated, monitored, and secured. Understanding Connectors is essential to understanding how sk connects enterprise AI to real integrations.

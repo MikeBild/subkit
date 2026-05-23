@@ -10,7 +10,13 @@ pointer. The real content lives in:
 - [`AGENTS.md`](AGENTS.md) — canonical rules.
 - [`SKILLS.md`](SKILLS.md) — index of project-local skills.
 - [`.claude/CLAUDE.md`](.claude/CLAUDE.md) — bootstrap index for agents, commands, hooks.
-- [`docs/00-agent-navigation.md`](docs/00-agent-navigation.md) — task → subsystem map.
+- [`.claude/docs/agent-navigation.md`](.claude/docs/agent-navigation.md) — task → subsystem map.
+
+**Strategy & positioning docs** (read these for product framing, vocabulary, category claims):
+
+- [`docs/thesis.md`](docs/thesis.md) — Document A: *why this category exists.*
+- [`docs/system-requirements.md`](docs/system-requirements.md) — Document B: *what such a system must do.*
+- [`docs/positioning.md`](docs/positioning.md) — Document C: *how sk realises it.*
 
 For the nearest directory-local rules when editing code, see
 [`apps/engine/AGENTS.md`](apps/engine/AGENTS.md),

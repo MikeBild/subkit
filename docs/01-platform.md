@@ -1,8 +1,25 @@
 # The Platform
 
-Enterprise teams face a specific problem: the AI tools available today are good at generating plans, but the execution of those plans still requires human assembly, custom glue code, and fragile integrations. On the other side, traditional workflow automation platforms are deterministic and governable — but slow to build, hard to adapt, and opaque to the business stakeholders who care most about the outcome.
+> *For the structural framing of the category sk occupies — why this layer is emerging
+> in enterprise software — read [`thesis.md`](thesis.md). For the requirements that
+> follow from that framing, see [`system-requirements.md`](system-requirements.md). For
+> the full positioning, see [`positioning.md`](positioning.md). This document is the
+> architectural view for developers and operators.*
 
-sk bridges that gap. It is an enterprise AI platform that uses conversational AI to author, validate, and govern deterministic workflow automation. The AI reduces the friction of building. The platform ensures that what runs in production is exactly what a human approved.
+sk is an **operational AI execution layer** — the shared system in which an organisation
+turns individual agentic productivity into organisational agentic operationalisation. The
+problem it addresses is the one named in the thesis:
+
+> *Agentic productivity does not automatically scale organisationally. The bottleneck is
+> not model quality or workflow execution; it is the organisation's ability to make
+> operational AI work repeatable, reviewable, and learnable.*
+
+Concretely, sk uses contextualised AI in the authoring phase to produce a versioned,
+reviewable workflow artefact, then governs and runs it deterministically in production —
+with a closed feedback loop (drift detection → operator-reviewed Patch and Skill
+Candidates → improved next authoring run). The AI lowers the cost of authoring; the
+platform guarantees that what runs in production is exactly what a human approved; the
+learning loop is what makes the operating model improve over time.
 
 ---
 
