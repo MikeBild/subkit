@@ -65,10 +65,20 @@ fi
 # numbers, issue IDs, bug labels, review waves, or roadmap phases.
 # The git history owns ticket linkage; comments own invariants.
 #
-# Carve-out: apps/engine/.audit-loop-policy.md mentions a literal
+# Carve-out 1: apps/engine/.audit-loop-policy.md mentions a literal
 # `issue #66` because that GitHub issue IS the audit-loop pause
 # command (`/audit pause` on issue #66). Real operating procedure,
 # not stale ticket coupling.
+#
+# Carve-out 2: docs/positioning.md, docs/system-requirements.md, and
+# docs/thesis.md are the strategy stack. They DEFINE the requirement
+# IDs R1-R12 (system-requirements.md) and cross-reference them by ID
+# (e.g. "every denial is audited. (R7)"). Those `(R\d+)` parens are
+# anchors, not ticket coupling — they survive across releases and
+# never go stale because the requirement set is canonical. The
+# carve-out is narrow: only `(R\d+)` and `(R\d+, R\d+, …)` shapes in
+# those three files. A leaked `(D5)` decision ID still trips the
+# gate.
 #
 # `Wave[ -][A-Z]` catches review-wave letters from large-PR phasing in
 # both the space-separated form (`Wave B Step 4`) and the hyphenated
@@ -100,7 +110,9 @@ ticket_hits=$(grep -REn "$ticket_pattern" apps/ docs/ packages/ README.md \
     --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=tests \
     --exclude-dir=fixtures --exclude-dir=__tests__ --exclude-dir=out \
     --exclude-dir=seed --exclude=CHANGELOG.md 2>/dev/null \
-    | grep -vE '\.audit-loop-policy\.md:[0-9]+:.*issue #66' || true)
+    | grep -vE '\.audit-loop-policy\.md:[0-9]+:.*issue #66' \
+    | grep -vE 'docs/(positioning|system-requirements|thesis)\.md:[0-9]+:.*\(R[0-9]+(, R[0-9]+)*\)' \
+    || true)
 if [ -n "$ticket_hits" ]; then
   echo "ERROR: ticket-coupling references found. Replace with present-tense invariants." >&2
   echo "$ticket_hits" >&2
