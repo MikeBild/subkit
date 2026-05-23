@@ -3,6 +3,8 @@
 **sk — operational AI execution layer.** The shared system that turns individual agentic
 productivity into organisational agentic operationalisation.
 
+> ***Your operating model used to live in PowerPoint. Now it runs.***
+
 > *Agentic productivity does not automatically scale organisationally. The bottleneck is
 > not model quality or workflow execution; it is the organisation's ability to make
 > operational AI work repeatable, reviewable, and learnable. sk integrates three

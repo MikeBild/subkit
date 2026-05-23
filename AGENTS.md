@@ -32,6 +32,13 @@ instruction files are compatibility layers or indexes — not competing sources 
   events) is preserved and must not be renamed. Same applies to `apps/engine/src/rbac/`
   vs. external "fine-grained action-level identity" phrasing — same concept, different
   audience.
+- **Category-vocabulary triad** (for product framing, see `docs/02-concepts.md` Group
+  0). The category sk occupies has three official names, used at three levels and never
+  mixed inside one sentence: *organisational agentic operationalisation* (theory term,
+  `docs/thesis.md`); *operational AI execution layer* (market term, `docs/positioning.md`
+  and most product copy); **The Operating Model** (iconic short term, the reframed
+  strategic-management phrase — *"your operating model used to live in PowerPoint. Now
+  it runs."*). All three are canonical; do not invent a fourth.
 - Keep public / marketing / documentation surfaces separate from authenticated engine routes.
 
 ## Canonical Sources

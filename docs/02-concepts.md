@@ -16,9 +16,15 @@ for sk's realisation, see [`positioning.md`](positioning.md).
 
 These terms come from the three strategy documents and recur throughout sk's framing. They are kept stable across all documents.
 
-**Operational AI execution layer** — the market term for the category sk occupies. The shared system in which an organisation governs, executes, and learns from operational AI work. (See [`thesis.md`](thesis.md), [`positioning.md`](positioning.md).)
+sk's vocabulary for this category is a **triad** — three terms that say the same thing at three levels and are deliberately *not* mixed inside a single sentence:
 
-**Organisational agentic operationalisation** — the theory term for the same category. Used in [`thesis.md`](thesis.md) and theory passages of [`system-requirements.md`](system-requirements.md). The market term and the theory term are kept distinct and not mixed inside a single sentence.
+**Organisational agentic operationalisation** — *theory term.* Used in [`thesis.md`](thesis.md) and theory passages of [`system-requirements.md`](system-requirements.md). Precise but long; not oral-stable.
+
+**Operational AI execution layer** — *market term.* The shared system in which an organisation governs, executes, and learns from operational AI work. Used in [`positioning.md`](positioning.md) and in product-side discussion. Enterprise-compatible and accurate; not yet memetic.
+
+**The Operating Model** — *iconic short term.* Deliberately reuses an existing strategic-management term and **reframes it as software**: the operating model used to live in PowerPoint as a static description of how the company runs; sk makes it executable, versioned, audited, and actually run by the platform. Used as the punchline alongside the longer terms.
+
+> ***Your operating model used to live in PowerPoint. Now it runs.***
 
 **Central axiom** — *The operating model improves because the organisation learns — and that is the part the organisation can actually control.* Recurs verbatim across all strategy documents.
 

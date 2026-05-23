@@ -344,6 +344,20 @@ precondition. The shift is: **agentic competence becomes an organisational prope
 rather than an individual one**, and a new software layer is required to make that
 shift visible, auditable, and compounding.
 
+The shortest way to say all of this — the iconic compression that companies will
+recognise once they see it:
+
+> ***Your operating model used to live in PowerPoint. Now it runs.***
+
+The strategic-management literature has used "the operating model" for decades to
+describe how a company actually functions — and it has always been a slide deck, a
+diagram, an organisational description. Under organisational agentic operationalisation,
+the operating model stops being a description and becomes *the thing that runs* —
+versioned, audited, inheritable, accumulating. That is the category. (Vocabulary triad:
+*organisational agentic operationalisation* — theory term; *operational AI execution
+layer* — market term; **The Operating Model** — iconic short term. See
+[`02-concepts.md`](./02-concepts.md) Group 0.)
+
 ---
 
 ## 10. Cross-references and further reading

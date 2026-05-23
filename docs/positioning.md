@@ -14,6 +14,16 @@ agentic productivity into organisational agentic operationalisation (see
 chat product, **not** a replacement for general AI assistants, **not** a universal
 AI-governance layer for an entire enterprise.
 
+The iconic short form, for conversations that need one sentence:
+
+> ***Your operating model used to live in PowerPoint. Now it runs.***
+
+The strategic-management term *operating model* — until now a static description, a
+deck, a diagram — becomes executable software. The vocabulary triad is intentional:
+*organisational agentic operationalisation* (theory), *operational AI execution layer*
+(market), **The Operating Model** (iconic). See [`02-concepts.md`](./02-concepts.md)
+Group 0.
+
 **Scope decision (deliberate, GTM-critical).** sk addresses one sharp slice: the
 *governed execution of operationalised workflows* against production systems. Free
 exploration, IDE coding assistance, and employee chat stay outside — they are
