@@ -257,6 +257,34 @@ export interface ConversationTool {
    *  draft-07 limits (no anyOf with unrestricted properties, etc.) that
    *  not every input schema satisfies. */
   readonly strict?: boolean;
+  /**
+   * True when this tool's contract requires a workflow row to already
+   * exist in `workflows` (referenced by id, by an active target with
+   * `lifecycle_state: "persisted"`, or by a `workflow_id` on a related
+   * row like a schedule). Tools that take a `workflow_id` UUID of a
+   * persisted row — `run_workflow`, `update_workflow`, `delete_workflow`,
+   * `create_schedule`, `update_schedule`, `delete_schedule` — cannot
+   * succeed before the first `save_workflow_draft` lands.
+   *
+   * The step-router uses this flag in `activeToolsForStage` to drop
+   * these tools from the LLM's palette on every pre-persistence
+   * authoring stage (`workflow_draft_started`, `workflow_validated`,
+   * `workflow_previewed`). Removing them from the palette prevents the
+   * LLM from picking `run_workflow` over `build_workflow` /
+   * `propose_step` / `save_workflow_draft` on the first authoring step
+   * — the loop-detected production failure from the 04:37–04:39 log
+   * window where the model called `run_workflow` three times against a
+   * workflow that had not been saved.
+   *
+   * The forced-tool invariant still wins: a turn-level
+   * `toolChoice: { type: "tool", toolName: "run_workflow" }` re-adds the
+   * tool to the narrowed palette so the AI SDK's per-step validation
+   * doesn't throw `Tool '<name>' not found in provided tools`. The two
+   * invariants coexist deliberately: this flag governs the *default*
+   * authoring palette; the operator-requested forced-tool path is an
+   * explicit override.
+   */
+  readonly requires_persisted_workflow?: boolean;
 }
 
 const registry: Map<string, ConversationTool> = new Map();

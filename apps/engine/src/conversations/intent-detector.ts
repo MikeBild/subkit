@@ -10,6 +10,7 @@
 // false-positives don't hijack benign messages. When no strong signal
 // is present, the caller falls back to `toolChoice="auto"`.
 
+import { matchesWorkflowAuthoringPattern } from "./loop/authoring-intent.ts";
 import type { AuthoringSummary, ConversationPermissionMode } from "./types.ts";
 
 export interface DetectedIntent {
@@ -42,11 +43,14 @@ const RUN_WORKFLOW_PATTERNS = [
   /\bworkflow\s+.*\b(running|run)\b/i,
 ];
 
-const NEW_WORKFLOW_PATTERNS = [
-  /\b(create|build|make|author|start)\b.{0,40}\b(a|an|another|new)?\s*\b(workflow|pipeline)\b/i,
-  /\b(erstelle|baue|mache|starte)\b.{0,40}\b(workflow)\b/i,
-  /\b(neu(?:en|es|e)?|another|new)\b.{0,24}\b(workflow|pipeline)\b/i,
-];
+// "neu(en|es|e) workflow" / "another workflow" / "new pipeline" —
+// noun-modifier-only phrases the canonical authoring detector
+// intentionally does NOT match (no authoring verb required, so it can
+// also fire on "I want a new workflow" without `build|create|...`).
+// Kept here as a supplemental signal alongside the canonical pattern
+// imported from `loop/authoring-intent.ts`.
+const NEW_WORKFLOW_MODIFIER_PATTERN =
+  /\b(neu(?:en|es|e)?|another|new)\b.{0,20}\b(workflows?|pipelines?)\b/i;
 
 /**
  * Enumeration phrases — the TENANT SNAPSHOT already lists workflows,
@@ -110,10 +114,13 @@ export function detectUserIntent(latestUserText: string | null | undefined): Det
       return { forceTool: "run_workflow", reason: "explicit_run_intent" };
     }
   }
-  for (const pattern of NEW_WORKFLOW_PATTERNS) {
-    if (pattern.test(text)) {
-      return { startNewWorkflow: true, reason: "explicit_new_workflow_intent" };
-    }
+  // SHOULD-FIX 4 (6.0.3 review): use the canonical authoring pattern
+  // from `loop/authoring-intent.ts` so verbs + tightening (proximity
+  // window, connector-object reject) stay in one place. The supplemental
+  // modifier pattern still fires for noun-modifier phrasings without an
+  // authoring verb.
+  if (matchesWorkflowAuthoringPattern(text) || NEW_WORKFLOW_MODIFIER_PATTERN.test(text)) {
+    return { startNewWorkflow: true, reason: "explicit_new_workflow_intent" };
   }
   for (const pattern of ENUMERATION_PATTERNS) {
     if (pattern.test(text)) {

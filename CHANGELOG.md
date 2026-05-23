@@ -1,5 +1,44 @@
 # Changelog
 
+## [6.0.3](https://github.com/MikeBild/subkit/compare/subkit-v6.0.2...subkit-v6.0.3) (2026-05-23)
+
+
+### Bug Fixes
+
+* **conversations,llm:** stop authoring turns from looping on `run_workflow`. Two
+  coherent fixes for the production incident where
+  `conversation_start("build a workflow called X")` looped on `run_workflow`
+  (HTTP 400 → `tool.loop_detected` after 3 identical args) instead of converging
+  on `build_workflow` / `propose_step` / `save_workflow_draft`.
+  - Tools whose contract requires a persisted workflow row — `run_workflow`,
+    `update_workflow`, `delete_workflow`, `create_schedule`, `update_schedule`,
+    `delete_schedule` — now carry a `requires_persisted_workflow: true` flag.
+    The step-router's `activeToolsForStage` drops them from the palette whenever
+    the conversation has no persisted workflow bound (`hasPersistedWorkflow`
+    signal computed live from `target_workflow_id` / `active_target` /
+    `persisted_resources`). The gate fires uniformly across stages — `idle`,
+    `workflow_draft_started`, `workflow_inspected`, `workflow_validated`,
+    `workflow_previewed`, `connector_persisted`, `repairing` — so the
+    `stage = idle` failure mode (first turn of `conversation_start`) is
+    structurally closed.
+  - The round-10 forced-tool invariant still wins: a turn-level
+    `toolChoice: { type: "tool", toolName }` re-adds the named tool so the AI
+    SDK never throws `Tool not found in provided tools`.
+  - A deterministic authoring-intent detector (EN+DE union:
+    `build|create|make|start|generate|design|author|erstelle|baue|mache|starte|erzeuge`
+    + `workflows?|pipelines?`) seeds the FIRST step of an authoring turn on the
+    documented authoring-quality default (Sonnet 4.6) instead of the tenant
+    Haiku 4.5 default. Proximity window narrowed to 20 chars and a
+    connector-object reject (`build a connector for the daily-report workflow`)
+    so enumeration phrases (`list my workflows that build X`) and
+    connector-author phrases stay on the tenant default.
+  - The pattern is consolidated: `conversations/intent-detector.ts` imports
+    `matchesWorkflowAuthoringPattern` from `loop/authoring-intent.ts` instead of
+    maintaining a parallel verb list that drifted. The step-router's
+    `model_swapped` ladder continues to govern later steps; non-authoring
+    conversations (`list workflows`, `run workflow X`, `delete the workflow`)
+    keep the tenant default.
+
 ## [6.0.2](https://github.com/MikeBild/subkit/compare/subkit-v6.0.1...subkit-v6.0.2) (2026-05-22)
 
 

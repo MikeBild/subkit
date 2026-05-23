@@ -140,6 +140,7 @@ export const runWorkflowTool: ConversationTool = {
     "Execute a workflow synchronously by id. Records an audit entry. Default environment is `dev`.",
   inputSchema: Input,
   category: "tenant_write",
+  requires_persisted_workflow: true,
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
     const currentDraft = ctx.getDraft();

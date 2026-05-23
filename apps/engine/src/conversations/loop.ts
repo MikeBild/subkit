@@ -73,6 +73,7 @@ import {
   detectUserIntent,
   inferStateDrivenFollowUpTool,
 } from "./intent-detector.ts";
+import { resolveInitialModel } from "./loop/authoring-intent.ts";
 import {
   DEFAULT_BUDGET,
   MAX_REPAIRS_PER_TURN,
@@ -312,7 +313,32 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   };
 
   const route = await resolveModelRoute(p.tenant_id, p.db);
-  const effectiveModel = p.model_override ?? route.primary;
+  // Authoring-intent seeding: if the user's current message expresses
+  // workflow-authoring intent ("build a workflow ...", "erstelle einen
+  // workflow ...") AND no explicit per-conversation model override is
+  // set, seed the FIRST step with the documented authoring-quality
+  // default (Sonnet 4.6) instead of the global tenant default (Haiku
+  // 4.5 per the 2026-05-22 cost change). The step-router's
+  // `model_swapped` ladder continues to apply for later steps; this
+  // only changes the seed. Non-authoring conversations (enumeration,
+  // run, delete, list) keep the tenant default — `resolveInitialModel`
+  // returns the tenant default for them.
+  const initialModel = resolveInitialModel({
+    modelOverride: p.model_override,
+    tenantDefault: route.primary,
+    recentUserMessage: ingestedUserMessage,
+  });
+  const effectiveModel = initialModel.modelId;
+  if (initialModel.authoringSeeded) {
+    log.debug({
+      module: "conversation",
+      action: "loop.authoring_intent_seeded_model",
+      conversation_id: p.conversation_id,
+      tenant_id: p.tenant_id,
+      tenant_default_model: route.primary,
+      seeded_model: effectiveModel,
+    });
+  }
 
   // Step-router signals — refreshed per turn. The router never
   // downgrades the tenant default; it only escalates upward when one
@@ -1034,6 +1060,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       prepareStep: async ({ stepNumber, steps, messages: stepMessages, model: stepModel }) => {
         const liveStage = draft.summary?.stage;
         if (liveStage !== undefined) stepRouterSignals.stage = liveStage;
+        // Live persisted-workflow gate — recomputed every step so a
+        // mid-turn `save_workflow_draft` flips the palette over to
+        // include `requires_persisted_workflow` tools immediately on
+        // the next step. Mirrors the `hasBoundSavedWorkflow` check at
+        // turn-start (target_workflow_id || active_target persisted ||
+        // persisted_resources includes a workflow).
+        stepRouterSignals.hasPersistedWorkflow =
+          workflowIdForTurn !== null ||
+          (draft.summary?.active_target.kind === "workflow" &&
+            draft.summary?.active_target.lifecycle_state === "persisted") ||
+          draft.summary?.persisted_resources.some((resource) => resource.kind === "workflow") ===
+            true;
         const decision = routerPrepareStep({
           stepNumber,
           steps,

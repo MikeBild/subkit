@@ -24,6 +24,25 @@ const NO_UPGRADE_WARNED: Set<string> = new Set();
 export interface StepRouterSignals {
   /** Active authoring stage (idle / discover / propose / commit / execute / etc). */
   stage?: AuthoringStage;
+  /**
+   * True when the conversation has a PERSISTED workflow bound — either
+   * the bound `target_workflow_id` resolves to a `workflows` row, or
+   * `draft.summary.active_target.kind === "workflow"` with
+   * `lifecycle_state === "persisted"`, or
+   * `draft.summary.persisted_resources` includes a `workflow`.
+   *
+   * Gates the `requires_persisted_workflow` drop pass in
+   * `activeToolsForStage`. The stage alone is not enough — the
+   * production-observed bug fires at `stage = idle` (first turn of
+   * `conversation_start("build a workflow ...")`) where the LLM
+   * repeatedly picks `run_workflow{}` because the palette still shows
+   * it. Whenever this is false, every tool flagged
+   * `requires_persisted_workflow` is dropped from the activeTools set,
+   * regardless of stage. The post-persistence stages
+   * (`workflow_persisted`, `workflow_executed`) still return the full
+   * palette anyway because this signal is true by definition there.
+   */
+  hasPersistedWorkflow?: boolean;
   /** Set by the loop after a tool-call repair fired in the prior step. */
   hadRepairThisTurn?: boolean;
   /** Set when the intent detector flagged a strong run-intent verb. */
@@ -272,25 +291,83 @@ const ALWAYS_AVAILABLE: ReadonlySet<string> = new Set([
   "inspect_authoring_context",
 ]);
 
+/**
+ * Drop `requires_persisted_workflow` tools whenever the conversation
+ * has no persisted workflow bound. Gating on `hasPersistedWorkflow`
+ * (live draft state) rather than `stage` alone closes the
+ * production-observed bug at `stage = idle`: the first turn of
+ * `conversation_start("build a workflow ...")` runs with no draft yet,
+ * the full palette includes `run_workflow{}`, and the LLM repeatedly
+ * fires it until `tool.loop_detected`. The pre-persistence workflow
+ * stages (`workflow_draft_started`, `workflow_inspected`,
+ * `workflow_validated`, `workflow_previewed`) and `connector_persisted`
+ * with no workflow bound exhibit the same failure mode.
+ *
+ * Calling `run_workflow` / `update_workflow` / `delete_workflow` /
+ * `create_schedule` / `update_schedule` / `delete_schedule` against a
+ * non-existent id fails with `workflow_not_persisted` /
+ * `workflow_not_found`. Surfacing them when no workflow is bound is
+ * what trips the loop.
+ */
 function activeToolsForStage(
   stage: AuthoringStage | undefined,
   toolsByName: Record<string, ConversationTool>,
   forcedTool: string | null | undefined,
+  hasPersistedWorkflow: boolean,
 ): string[] | undefined {
-  if (!stage || stage === "idle") {
-    // No active draft yet — leave full palette so the model can start anywhere.
-    return undefined;
-  }
   const names = Object.keys(toolsByName);
+  // True whenever no persisted workflow is bound on the conversation —
+  // tools flagged `requires_persisted_workflow` must be dropped from
+  // the palette regardless of stage. The forced-tool invariant (below)
+  // still re-adds a turn-level forced tool by name so the AI SDK never
+  // throws `Tool not found in provided tools`.
+  const dropPersistedRequired = !hasPersistedWorkflow;
   const keep = (predicate: (t: ConversationTool) => boolean): string[] => {
     const kept = names.filter((n) => {
-      if (ALWAYS_AVAILABLE.has(n)) return true;
+      // Forced-tool invariant (round-10): the turn-level
+      // `toolChoice: { type: "tool", toolName }` is validated against
+      // every step's activeTools by the AI SDK. If the operator
+      // explicitly forced `run_workflow` we must keep it in the
+      // palette — that path is the explicit-override branch and
+      // policy still gates execution downstream. Document the
+      // coexistence with the `requires_persisted_workflow` drop
+      // below: the drop governs the *default* authoring palette; the
+      // forced path is an *explicit* override.
       if (forcedTool && n === forcedTool) return true;
+      if (ALWAYS_AVAILABLE.has(n)) {
+        // ALWAYS_AVAILABLE has no tools flagged
+        // `requires_persisted_workflow` today; the explicit
+        // member-check protects against a future entry slipping in.
+        const t = toolsByName[n];
+        if (dropPersistedRequired && t?.requires_persisted_workflow === true) return false;
+        return true;
+      }
       const t = toolsByName[n];
-      return t ? predicate(t) : false;
+      if (!t) return false;
+      // Drop tools that contractually need a persisted workflow id
+      // when none is bound. Survives only when the operator
+      // explicitly forces one (handled above).
+      if (dropPersistedRequired && t.requires_persisted_workflow === true) return false;
+      return predicate(t);
     });
     return kept;
   };
+
+  // When no persisted workflow is bound yet, every stage where the
+  // model might otherwise see the full palette (idle, repairing,
+  // connector_persisted) still needs the `requires_persisted_workflow`
+  // drop applied. We compute the narrowed list inline and return it.
+  const fullPaletteWithDrop = (): string[] | undefined => {
+    if (!dropPersistedRequired) return undefined;
+    return keep(() => true);
+  };
+
+  if (!stage || stage === "idle") {
+    // No active draft — full palette unless the persisted-workflow gate
+    // narrows it. The fix here is the structural close on the original
+    // production failure mode (first-turn `build a workflow`).
+    return fullPaletteWithDrop();
+  }
   switch (stage) {
     case "connector_targeted":
     case "workflow_targeted":
@@ -307,16 +384,27 @@ function activeToolsForStage(
     case "workflow_validated":
     case "workflow_previewed":
       // Propose / refine phase — draft writes + reads.
+      // The `requires_persisted_workflow` drop above runs here too via
+      // the `keep` helper whenever no persisted workflow is bound.
       return keep((t) => t.category === "tenant_read" || t.category === "draft_write");
     case "repairing":
       // Repair phase — same as propose but `tenant_write` is also
       // available so a successful repair can land its `save_workflow_draft` /
       // `save_connector_draft` without a forced stage transition.
-      return undefined;
+      return fullPaletteWithDrop();
     case "connector_persisted":
+      // A connector was just saved. If there is NO persisted workflow
+      // yet, this turn is structurally pre-workflow and must drop
+      // `requires_persisted_workflow` tools so `run_workflow{}` cannot
+      // be picked. If a persisted workflow is bound (rare on this
+      // stage but possible across multi-artifact conversations), the
+      // full palette returns.
+      return fullPaletteWithDrop();
     case "workflow_persisted":
     case "workflow_executed":
-      // Commit / execute phase — full palette (tenant_write becomes relevant).
+      // Commit / execute phase — full palette (tenant_write becomes
+      // relevant). By definition a workflow row exists at this point,
+      // so `requires_persisted_workflow` tools are valid.
       return undefined;
     default: {
       // Exhaustive guard — TypeScript will flag this if a new stage
@@ -369,8 +457,17 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
   // ---- activeTools narrowing -------------------------------------------
   // The turn-level forced tool is threaded in so a narrowed palette can
   // never drop it — otherwise the AI SDK throws
-  // `Tool '<name>' not found in provided tools` on the step.
-  const activeTools = activeToolsForStage(signals.stage, toolsByName, params.forcedTool);
+  // `Tool '<name>' not found in provided tools` on the step. The
+  // `hasPersistedWorkflow` signal gates `requires_persisted_workflow`
+  // tools uniformly across stages so the production failure mode
+  // (first-turn `build a workflow` looping on `run_workflow`) is
+  // structurally closed.
+  const activeTools = activeToolsForStage(
+    signals.stage,
+    toolsByName,
+    params.forcedTool,
+    signals.hasPersistedWorkflow === true,
+  );
   if (activeTools !== undefined) {
     reasonParts.push(`narrow:${activeTools.length}`);
   }

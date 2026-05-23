@@ -129,6 +129,7 @@ export const updateWorkflowTool: ConversationTool = {
   name: "update_workflow",
   description:
     "Patch a persisted workflow's metadata (slug, display name, lifecycle) without rewriting the dag or version history.",
+  requires_persisted_workflow: true,
   use_case:
     "Use when the user asks to rename a workflow, change its display name, archive it, or reactivate it. Send only the fields that should change. Does NOT alter steps, input/output schema, or version count — for those, edit the draft and use save_workflow_draft.",
   important_notes: [

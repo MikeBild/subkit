@@ -14,6 +14,7 @@ import type { LlmProviderKind } from "../types.ts";
 function fakeTool(
   name: string,
   category: ConversationTool["category"],
+  opts: { requires_persisted_workflow?: boolean } = {},
 ): [string, ConversationTool] {
   return [
     name,
@@ -24,6 +25,9 @@ function fakeTool(
       inputSchema: {} as any,
       category,
       execute: async () => ({ ok: true, data: {} }),
+      ...(opts.requires_persisted_workflow === true
+        ? { requires_persisted_workflow: true as const }
+        : {}),
     },
   ];
 }
@@ -34,8 +38,11 @@ const TOOLS: Record<string, ConversationTool> = Object.fromEntries([
   fakeTool("list_workflows", "tenant_read"),
   fakeTool("propose_step", "draft_write"),
   fakeTool("save_workflow_draft", "tenant_write"),
-  fakeTool("delete_workflow", "tenant_write"),
-  fakeTool("run_workflow", "tenant_write"),
+  fakeTool("build_workflow", "draft_write"),
+  fakeTool("delete_workflow", "tenant_write", { requires_persisted_workflow: true }),
+  fakeTool("update_workflow", "tenant_write", { requires_persisted_workflow: true }),
+  fakeTool("create_schedule", "tenant_write", { requires_persisted_workflow: true }),
+  fakeTool("run_workflow", "tenant_write", { requires_persisted_workflow: true }),
 ]);
 
 function baseParams(over: Partial<StepRouterParams> = {}): StepRouterParams {
@@ -114,12 +121,21 @@ describe("supportsExtendedThinking", () => {
 });
 
 describe("prepareStep — passthrough as default", () => {
-  it("returns undefined when no signals fire and stage is idle", () => {
-    expect(prepareStep(baseParams({ signals: { stage: "idle" } }))).toBeUndefined();
+  it("returns undefined when stage is idle AND a persisted workflow is bound (full palette)", () => {
+    expect(
+      prepareStep(baseParams({ signals: { stage: "idle", hasPersistedWorkflow: true } })),
+    ).toBeUndefined();
   });
 
-  it("returns undefined when stage is undefined", () => {
-    expect(prepareStep(baseParams({ signals: {} }))).toBeUndefined();
+  it("returns undefined when stage and persisted-workflow signal are both unset (synthetic)", () => {
+    // With no stage AND no hasPersistedWorkflow flag, the gate defaults
+    // to "no persisted workflow" which would normally narrow the
+    // palette. But there are no `requires_persisted_workflow` tools
+    // visible in the tools map if we strip the test fixture down, so
+    // here we explicitly assert the gate fires (activeTools defined).
+    const decision = prepareStep(baseParams({ signals: {} }));
+    expect(decision?.activeTools).toBeDefined();
+    expect(decision?.activeTools).not.toContain("run_workflow");
   });
 });
 
@@ -316,5 +332,149 @@ describe("prepareStep — multi-artifact continuation", () => {
       }),
     );
     expect(decision?.toolChoice).toBe("required");
+  });
+});
+
+// 6.0.3 hotfix — FIX 1: pre-persistence workflow stages must drop tools
+// that require a persisted `workflows` row. Without this the LLM picked
+// `run_workflow` on a `build a workflow called X` turn, failing 3x and
+// tripping `tool.loop_detected`. The fix exposes a tool-level
+// `requires_persisted_workflow: true` flag; the step-router filters on
+// it for the workflow-side pre-persistence stages.
+describe("prepareStep — pre-persistence stages drop tools requiring a persisted workflow (6.0.3)", () => {
+  const PRE_PERSISTENCE_STAGES = [
+    "workflow_draft_started",
+    "workflow_inspected",
+    "workflow_validated",
+    "workflow_previewed",
+  ] as const;
+
+  for (const stage of PRE_PERSISTENCE_STAGES) {
+    it(`drops run_workflow + peers on stage='${stage}'`, () => {
+      const decision = prepareStep(baseParams({ signals: { stage } }));
+      expect(decision?.activeTools).toBeDefined();
+      // Every tool flagged requires_persisted_workflow must be gone.
+      expect(decision?.activeTools).not.toContain("run_workflow");
+      expect(decision?.activeTools).not.toContain("update_workflow");
+      expect(decision?.activeTools).not.toContain("delete_workflow");
+      expect(decision?.activeTools).not.toContain("create_schedule");
+      // The authoring tools the LLM should be picking instead must
+      // still be in the palette.
+      expect(decision?.activeTools).toContain("build_workflow");
+      expect(decision?.activeTools).toContain("propose_step");
+      expect(decision?.activeTools).toContain("inspect_workflow");
+      expect(decision?.activeTools).toContain("ask_user_text");
+    });
+  }
+
+  it("INCLUDES run_workflow on stage='workflow_persisted' (post-persistence — full palette)", () => {
+    const decision = prepareStep(baseParams({ signals: { stage: "workflow_persisted" } }));
+    // workflow_persisted returns undefined (full palette) — every
+    // tenant_write tool, including run_workflow, is back on the menu.
+    expect(decision?.activeTools).toBeUndefined();
+  });
+
+  it("INCLUDES run_workflow on stage='workflow_executed' (post-persistence — full palette)", () => {
+    const decision = prepareStep(baseParams({ signals: { stage: "workflow_executed" } }));
+    expect(decision?.activeTools).toBeUndefined();
+  });
+
+  it("forced run_workflow SURVIVES the requires_persisted_workflow drop (round-10 invariant)", () => {
+    // The two invariants coexist: the drop pass governs the default
+    // authoring palette; the forced-tool path is an explicit operator
+    // override that the AI SDK validates against the per-step
+    // activeTools — if the router doesn't keep it the SDK throws
+    // `Tool 'run_workflow' not found in provided tools` and the turn
+    // fails.
+    for (const stage of PRE_PERSISTENCE_STAGES) {
+      const decision = prepareStep(baseParams({ signals: { stage }, forcedTool: "run_workflow" }));
+      expect(decision?.activeTools).toBeDefined();
+      expect(decision?.activeTools).toContain("run_workflow");
+      // Other persisted-workflow-requiring tools that are NOT the
+      // forced one still get dropped.
+      expect(decision?.activeTools).not.toContain("update_workflow");
+      expect(decision?.activeTools).not.toContain("delete_workflow");
+      expect(decision?.activeTools).not.toContain("create_schedule");
+    }
+  });
+});
+
+// SHOULD-FIX 1 + 2 (6.0.3 review): the drop pass must be GATED ON THE
+// LIVE DRAFT STATE, not just the stage. The original production failure
+// fired at stage='idle' (first turn of `conversation_start("build a
+// workflow ...")`), which the stage-only gate did not cover. The fix
+// drops `requires_persisted_workflow` tools whenever
+// `hasPersistedWorkflow` is false — including `idle`, `repairing`, and
+// `connector_persisted` when no workflow is bound yet.
+describe("prepareStep — live-state gate drops persisted-workflow tools across stages (6.0.3)", () => {
+  it("idle + no persisted workflow → drops run_workflow (matches the production failure mode)", () => {
+    const decision = prepareStep(
+      baseParams({ signals: { stage: "idle", hasPersistedWorkflow: false } }),
+    );
+    expect(decision?.activeTools).toBeDefined();
+    expect(decision?.activeTools).not.toContain("run_workflow");
+    expect(decision?.activeTools).not.toContain("update_workflow");
+    expect(decision?.activeTools).not.toContain("delete_workflow");
+    expect(decision?.activeTools).not.toContain("create_schedule");
+    // Authoring tools (and the always-available set) remain.
+    expect(decision?.activeTools).toContain("build_workflow");
+    expect(decision?.activeTools).toContain("propose_step");
+    expect(decision?.activeTools).toContain("ask_user_text");
+  });
+
+  it("idle + persisted workflow BOUND → full palette (no narrowing)", () => {
+    const decision = prepareStep(
+      baseParams({ signals: { stage: "idle", hasPersistedWorkflow: true } }),
+    );
+    // No narrowing, full palette — the conversation can use any tool
+    // because a saved workflow is bound.
+    expect(decision?.activeTools).toBeUndefined();
+  });
+
+  it("connector_persisted + no persisted workflow → drops run_workflow", () => {
+    const decision = prepareStep(
+      baseParams({ signals: { stage: "connector_persisted", hasPersistedWorkflow: false } }),
+    );
+    expect(decision?.activeTools).toBeDefined();
+    expect(decision?.activeTools).not.toContain("run_workflow");
+    expect(decision?.activeTools).not.toContain("update_workflow");
+    expect(decision?.activeTools).not.toContain("delete_workflow");
+    expect(decision?.activeTools).not.toContain("create_schedule");
+  });
+
+  it("connector_persisted + persisted workflow BOUND → full palette", () => {
+    const decision = prepareStep(
+      baseParams({ signals: { stage: "connector_persisted", hasPersistedWorkflow: true } }),
+    );
+    expect(decision?.activeTools).toBeUndefined();
+  });
+
+  it("repairing + no persisted workflow → drops run_workflow (still safe under repair)", () => {
+    const decision = prepareStep(
+      baseParams({ signals: { stage: "repairing", hasPersistedWorkflow: false } }),
+    );
+    expect(decision?.activeTools).toBeDefined();
+    expect(decision?.activeTools).not.toContain("run_workflow");
+  });
+
+  it("repairing + persisted workflow BOUND → full palette", () => {
+    const decision = prepareStep(
+      baseParams({ signals: { stage: "repairing", hasPersistedWorkflow: true } }),
+    );
+    expect(decision?.activeTools).toBeUndefined();
+  });
+
+  it("forced run_workflow + idle + no persisted workflow → still re-added (forced-tool invariant)", () => {
+    const decision = prepareStep(
+      baseParams({
+        signals: { stage: "idle", hasPersistedWorkflow: false },
+        forcedTool: "run_workflow",
+      }),
+    );
+    expect(decision?.activeTools).toBeDefined();
+    expect(decision?.activeTools).toContain("run_workflow");
+    // Peers still drop.
+    expect(decision?.activeTools).not.toContain("update_workflow");
+    expect(decision?.activeTools).not.toContain("delete_workflow");
   });
 });

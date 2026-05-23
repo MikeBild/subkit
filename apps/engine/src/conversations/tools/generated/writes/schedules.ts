@@ -66,6 +66,7 @@ export const createScheduleTool: ConversationTool = {
     'Schedule a workflow to run on a cron cadence. Cron is a standard 5-field expression; the shorthand "every:<seconds>" fires at sub-minute intervals for dev loops. Returns the schedule row; the reconciler picks it up within 60 seconds.',
   inputSchema: CreateInput,
   category: "tenant_write",
+  requires_persisted_workflow: true,
   async execute(ctx, rawArgs) {
     const args = CreateInput.parse(rawArgs);
     try {
@@ -129,6 +130,7 @@ export const updateScheduleTool: ConversationTool = {
     "Update a schedule's cron, timezone, paused flag, or input payload. The reconciler picks up the change within 60 seconds.",
   inputSchema: UpdateInput,
   category: "tenant_write",
+  requires_persisted_workflow: true,
   async execute(ctx, rawArgs) {
     const args = UpdateInput.parse(rawArgs);
     try {
@@ -160,6 +162,7 @@ export const deleteScheduleTool: ConversationTool = {
   description: "Remove a schedule. The reconciler unschedules the pg-boss job within 60 seconds.",
   inputSchema: DeleteInput,
   category: "tenant_write",
+  requires_persisted_workflow: true,
   async execute(ctx, rawArgs) {
     const args = DeleteInput.parse(rawArgs);
     // Fetch before delete so the audit entry carries the workflow id.

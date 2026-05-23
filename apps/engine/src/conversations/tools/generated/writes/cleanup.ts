@@ -134,6 +134,7 @@ export const deleteWorkflowTool: ConversationTool = {
     "Soft-delete a workflow by id or slug. Requires confirmation first and records audit.",
   inputSchema: WorkflowDeleteInput,
   category: "tenant_write",
+  requires_persisted_workflow: true,
   async execute(ctx, rawArgs) {
     const args = WorkflowDeleteInput.parse(rawArgs);
     if (args.id) {
