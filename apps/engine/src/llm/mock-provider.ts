@@ -391,6 +391,74 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
   ];
 }
 
+/**
+ * Canned "list my private GitHub repos" authoring plan. Mirrors the
+ * inner-loop sequence observed in the live claude.ai → SubKit 6.0.3
+ * verification: propose a single `request` step against the GitHub
+ * connector, validate, dry-run on a fixture payload, ask for save
+ * confirmation, then commit. The dry-run input is sealed in-plan so
+ * hermetic CI never reaches out to api.github.com.
+ */
+export function cannedListPrivateGithubReposPlan(connector_id?: string): ConverseMockStep[] {
+  return [
+    { tool: "list_skills", args: {} },
+    { tool: "fetch_connector_docs", args: { query: "github private repos" } },
+    {
+      tool: "propose_step",
+      args: {
+        step: {
+          kind: "request",
+          id: "list-private-repos",
+          method: "GET",
+          ...(connector_id
+            ? { connector_id, path: "/user/repos" }
+            : { url: "https://api.github.com/user/repos" }),
+          query: { visibility: "private", affiliation: "owner", per_page: 100 },
+          paginate: { strategy: "page", page_param: "page", start: 1 },
+        },
+      },
+    },
+    // Tail transform so the auto-commit preview targets pure JSONata
+    // rather than the live HTTP request — mirrors cannedListUsersPlan.
+    // The shape is what an operator typically asks for: a slim repo
+    // summary rather than the raw GitHub envelope.
+    {
+      tool: "propose_step",
+      args: {
+        step: {
+          kind: "transform",
+          id: "shape-repos",
+          expression: '$input.items.{ "id": id, "name": full_name, "private": private }',
+          language: "jsonata",
+        },
+      },
+    },
+    { tool: "inspect_workflow_draft", args: {} },
+    { tool: "validate_draft", args: {} },
+    {
+      tool: "dry_run_step",
+      args: {
+        step_id: "shape-repos",
+        input: {
+          items: [
+            { id: 101, full_name: "octocat/private-alpha", private: true },
+            { id: 102, full_name: "octocat/private-beta", private: true },
+          ],
+        },
+      },
+    },
+    {
+      tool: "ask_user_confirm",
+      args: {
+        question: "Commit this 2-step GitHub-private-repos workflow?",
+        kind: "save_workflow_draft",
+        summary: "commit list-private-github-repos workflow",
+      },
+    },
+    { tool: "save_workflow_draft", args: { __policy_confirmed: true } },
+  ];
+}
+
 export function resetMockProvider(): void {
   singleton.reset();
 }

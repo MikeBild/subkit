@@ -161,6 +161,12 @@ export async function createConversation(
     } else if (/list.*users/i.test(msg)) {
       const { cannedListUsersPlan } = await import("../../llm/mock-provider.ts");
       getMockProvider().setConversePlan(row.id, cannedListUsersPlan(p.connector_id ?? undefined));
+    } else if (/workflow.*(github|git\s*hub).*(private|priv)?.*repos?/i.test(msg)) {
+      const { cannedListPrivateGithubReposPlan } = await import("../../llm/mock-provider.ts");
+      getMockProvider().setConversePlan(
+        row.id,
+        cannedListPrivateGithubReposPlan(p.connector_id ?? undefined),
+      );
     }
   }
 
