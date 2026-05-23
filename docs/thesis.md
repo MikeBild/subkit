@@ -30,27 +30,36 @@ Two supporting hard sentences that come back throughout this document:
 
 ---
 
-## 2. The Three Core Ideas and the Central Axiom
+## 2. The Three Core Ideas (a hierarchy, not three parallel claims) and the Central Axiom
 
-Everything else in this document — and in Documents B and C — subordinates to these three
-ideas. They are the spine.
+Everything else in this document — and in Documents B and C — subordinates to *one*
+master idea. The other two are derivations from it. This is a hierarchy, not three
+parallel claims:
 
-> **Idea 1 — The Problem.** Agentic productivity does not automatically scale
-> organisationally.
+> **Idea 1 — The Problem (master claim).** Agentic productivity does not automatically
+> scale organisationally.
 
-> **Idea 2 — The Category.** The bottleneck is not intelligence; it is operationalisation.
+If Idea 1 is true, the immediate question is *what is missing*. Two derivations follow:
 
-> **Idea 3 — The Moat.** The moat emerges from organisational context accumulation —
-> not from any single feature.
+> **Idea 2 — The Category (follows from Idea 1).** The bottleneck is therefore *not*
+> intelligence — which is supplied generically by model vendors — but
+> *operationalisation*: the organisational machinery that turns generic intelligence
+> into repeatable, reviewable, learnable operational work.
 
-And above all three, the **central axiom** of this entire set of documents:
+> **Idea 3 — The Moat (follows from Ideas 1 and 2).** If intelligence is supplied
+> externally and operationalisation is the bottleneck, the only durable advantage an
+> organisation can build for itself is the one that compounds locally over time —
+> *organisational context accumulation*. The moat is not any single feature.
+
+Above all three, the **central axiom** of this entire set of documents — the sentence
+that compresses Ideas 2 and 3 into a single operational claim:
 
 > ***Central axiom: the operating model improves because the organisation learns — and
 > that is the part the organisation can actually control.***
 
-Documents B and C elaborate these ideas into system requirements and a concrete
-realisation. The rest of this document explains why these three ideas are true and where
-they come from.
+Documents B and C elaborate this hierarchy into system requirements and a concrete
+realisation. The rest of this document explains why Idea 1 is true (and therefore why
+Ideas 2 and 3 must follow).
 
 ---
 
@@ -152,17 +161,61 @@ What used to be implicit must become explicit and machine-readable.
 
 ### 5.3 Operational knowledge becomes accumulable, versionable, inheritable — Git for operational organisational logic
 
-This is the theoretically strongest claim of the document:
+This is the theoretically strongest claim of the document — and the one with the largest
+downstream implications:
 
 > ***Operational knowledge has so far been implicit, situational, bound to people, hard
 > to transfer. Under governed agentic operationalisation it becomes for the first time
 > machine-readable, versioned, reusable, auditable, and accumulative over time — in
 > effect, **Git for operational organisational logic**.***
 
-Consequence: the operational workflow becomes a *versioned organisational artefact*.
-An organisation then accumulates not only software (source code) and documentation, but
-for the first time **operationalised action systems**. On-/offboarding, knowledge
-management, and audit/compliance change in character — structurally, not gradually.
+The first-order consequence is that the operational workflow becomes a *versioned
+organisational artefact*. An organisation accumulates not only software (source code)
+and documentation, but for the first time **operationalised action systems** — the
+literal procedures by which it acts on production systems, expressed as reviewable,
+diffable, rollbackable artefacts.
+
+That first-order consequence has six second-order consequences that, taken together,
+are larger than they look:
+
+- **A new class of organisational assets.** Operational workflows join source code and
+  documentation as first-class assets an organisation owns. They appear on the same
+  *balance sheet* of what the company can carry forward, sell, audit, and inherit. This
+  is not a metaphor — once a workflow has a version history, an owner, an approval
+  trail, and a known production behaviour, it has the legal and operational properties
+  of an asset.
+- **Learning mechanics shift from individual to systematic.** Today, organisational
+  knowledge mostly leaves with the people who hold it. Under governed operationalisation,
+  the same Drift → Patch Candidate → Skill Candidate loop converts each individual
+  insight into a tenant-wide artefact. The organisation learns from its operations the
+  way it currently learns from its source-code history — continuously and structurally,
+  not by accident.
+- **Lock-in shifts from tooling to context.** Switching cost stops being "we use tool
+  X" and starts being "we have N years of accumulated operational context — Skills,
+  Workflows, Knowledge — that our authoring is grounded on". Tool replacements become
+  cheap; *context replacements* become very expensive. This is the source of the
+  platform's durable advantage — and a different kind of lock-in than enterprise
+  software has had so far.
+- **Audit logic changes scope.** Audit moves from being a record of *what was said to a
+  model* to a record of *what action ran, on which workflow version, with which inputs,
+  approved by whom, against which production system*. The unit of evidence shifts from
+  conversation-grade to action-grade. Compliance programmes built on the new unit look
+  fundamentally different.
+- **Knowledge transfer becomes pull-based.** Today, knowledge transfer between teams
+  is push-based: someone has to write the runbook, give the talk, train the new hire.
+  When workflows, skills, and knowledge are first-class tenant assets, a new team
+  *inherits* them by joining; transfer is no longer an active project but a passive
+  consequence of being in the same operating model.
+- **Operational competence becomes a measurable capital stock.** Once you can count
+  workflows, skills, knowledge sources, drift-survivals and inherited patterns, you can
+  measure (and price) the accumulated operational competence of an organisation as a
+  capital quantity, not as a vague cultural property. This is plausibly the largest
+  long-term implication of this shift — and the one we deliberately understate, because
+  the cleanest way to make it credible is to let it emerge from running systems rather
+  than to claim it upfront.
+
+On-/offboarding, knowledge management, audit/compliance, and the organisation's notion
+of *what it owns* change in character — structurally, not gradually.
 
 ### 5.4 A new middleware layer emerges historically — not by accident
 
@@ -203,23 +256,37 @@ competence.
 ## 7. Why a Shared System? (the centralisation argument)
 
 Reasonable counter-question: why is "every team with GitHub + Claude Code + local MCPs
-+ internal conventions" not enough?
++ internal conventions" not enough? The surface answer is "you lose visibility, reuse,
+audit, inheritability" — and that is true, but it is downstream. The deeper claim is:
 
-> ***Local optimisations do not produce organisational memory. Organisational learning
-> only emerges when operational experience becomes visible inside a shared execution
-> and review system.***
+> ***Organisational learning requires shared operational experience. Not shared
+> tooling. Not shared governance. *Commonly operationalised reality* — the same
+> operational artefacts being run, observed, and repaired by the organisation as a
+> whole.***
 
-If every team keeps its drift, repairs, and skills locally, what you get is *n
-improvements in n silos* — not *one* improvement of the organisation. Four properties
-force a shared system:
+The point is not that local teams cannot improve locally — they can. The point is that
+*organisational* memory only forms where operational experience is *shared* at the level
+of the artefact, not at the level of the tool that produced it. Two teams that use the
+same coding assistant on the same kind of API but never see each other's runs do not
+build organisational learning; they build two parallel personal learnings that happen
+to look similar. The substrate of organisational learning is *the artefact someone else
+just ran and you can now see, inherit, and repair*.
 
-- **Visibility.** Repair proposals need a review surface that more than one team can see.
-- **Inheritability.** A skill born in Team A only helps Team B if it lands in the same
-  tenant context, not in a private repo.
-- **Reuse.** Workflows as versioned artefacts are only reusable if they live in a
-  shared version space.
-- **Audit.** Auditing operational actions across the organisation requires a single
-  action log, not n scattered chat histories.
+The four often-cited properties of a shared system are then *expressions* of this
+deeper requirement, not the requirement itself:
+
+- **Visibility** — operational experience that no one else sees does not compound.
+- **Inheritability** — experience that does not transfer to other teams does not
+  accumulate organisation-wide.
+- **Reuse** — experience that does not become a reference for future work does not
+  shape the next run.
+- **Audit** — experience without traceable structure cannot become evidence and cannot
+  be acted on as a class.
+
+Each is necessary because *shared operational experience* requires it. None of them is
+the primary claim.
+
+> ***Local optimisations do not produce organisational memory.***
 
 Without a shared system, agentics stays a **toolkit**; with one, it becomes a
 **platform**. This is the difference between "many teams use Claude Code" and "the

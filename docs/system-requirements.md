@@ -20,20 +20,96 @@ is mixed inside a single sentence.
 
 ---
 
+## Reading guide
+
+This document has two layers:
+
+- **Strategic compression** (below, ~1 page). The R1–R12 requirements grouped into four
+  thematic clusters with one bold claim each. Read this first; it is enough for
+  strategic conversations, capability comparisons, and most reviews.
+- **Full specification** (further down, the rest of the document). The detailed R1–R12,
+  each with derivation back to a thesis section and forward link to the positioning
+  section. Read this when implementing, evaluating against a candidate system, or
+  defending a specific requirement.
+
+The two layers say the same thing; the second one shows the work.
+
+---
+
+## Strategic compression — the requirements in four clusters
+
+Each cluster is one structural property a candidate system must have. The R-numbers in
+parentheses point to the full specification below.
+
+### Cluster A — Shared substrate (R1)
+
+> **A candidate system must be one shared layer, not a federation of per-team installs.**
+
+Without a shared execution and review surface, operational experience does not
+aggregate into organisational memory — only into n parallel personal memories. (Derives
+from [`thesis.md`](./thesis.md) §7.)
+
+### Cluster B — The contextual learning core (R2, R3, R4, R5)
+
+> **A candidate system must ground authoring in accumulated organisational context,
+> produce a versioned operational artefact, and close the loop from production back into
+> authoring.**
+
+This is the moat cluster. R2 puts org-curated context as a first-class input to the
+authoring step. R3 separates probabilistic authoring from policy- and version-bound
+execution. R4 makes the workflow itself a versioned organisational artefact. R5 closes
+the *Run → Drift → Patch → Skill → Better Authoring → Better Run* loop with
+operator-reviewed remediation. Together they are what makes Idea 3 (the moat — context
+accumulation) operational.
+
+### Cluster C — Bounded delegation and isolation (R6, R7, R8, R9)
+
+> **A candidate system must let external AI clients act, but only inside scoped,
+> revocable, audited authority — and must hold secrets and tenants apart from the
+> model.**
+
+R6 enables external AI clients (coding assistants, chat connectors) to trigger
+operational actions without becoming a parallel governance island. R7 puts identity at
+the action level, not the seat level. R8 keeps credentials authenticated-encrypted at
+rest, bound to tenant and record, and outside the model context. R9 enforces multi-
+tenant isolation at storage, query, and response layers as a structural property.
+
+### Cluster D — Operational accounting and surfaces (R10, R11, R12)
+
+> **A candidate system must make cost attributable per tenant, evidence audit-grade
+> (not compliance itself), and the same governance gate visible from every entry
+> surface.**
+
+R10 attributes cost per tenant and per operational flow, with a hard ceiling and
+provider-invoice-matching ledger. R11 produces audit-grade evidence sufficient for a
+compliance programme — without claiming to *be* compliance. R12 puts the same approval
+gate and audit trail behind every entry surface (CLI, API, MCP, chat).
+
+### Anti-cluster — what the system is *not* required to do
+
+Explicit non-goals: replace IDE coding assistants; govern all employee AI usage;
+eliminate shadow AI; be the only AI provider for an organisation. A candidate that
+*does* claim any of these is making a different strategic bet (see "Anti-requirements"
+in the full specification below).
+
+---
+
 ## Recap
 
-> **Idea 1 — The Problem.** Agentic productivity does not automatically scale
-> organisationally.
+The three core ideas are a hierarchy, not three parallel claims (see
+[`thesis.md`](./thesis.md) §2 for the full derivation):
 
-> **Idea 2 — The Category.** The bottleneck is not intelligence; it is operationalisation.
+> **Idea 1 — The Problem (master claim).** Agentic productivity does not automatically
+> scale organisationally.
 
-> **Idea 3 — The Moat.** The moat emerges from organisational context accumulation —
-> not from any single feature.
+> **Idea 2 — The Category (follows from Idea 1).** The bottleneck is *not* intelligence
+> — supplied externally by model vendors — but *operationalisation*.
+
+> **Idea 3 — The Moat (follows from Ideas 1 and 2).** The only durable advantage is
+> what compounds locally — organisational context accumulation, not any single feature.
 
 > ***Central axiom: the operating model improves because the organisation learns — and
 > that is the part the organisation can actually control.***
-
-For the full argument behind these ideas, see [`thesis.md`](./thesis.md).
 
 ![Diagram 2 — Three Integrated Layers vs. Five-Tool Build](./diagrams/02-three-layers.svg)
 
@@ -44,6 +120,12 @@ requirements below describe what each band must provide and where the seams must
 disappear.*
 
 ---
+
+## Full specification
+
+The twelve requirements in detail, in the order they would naturally be evaluated.
+Each links back to a thesis section and forward to the positioning section that
+explains sk's realisation.
 
 ## R1 — A shared operational execution layer
 

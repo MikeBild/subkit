@@ -41,16 +41,18 @@ positioning:
 
 > *Once AI touches operational systems, conversation governance is no longer enough.*
 
-The three core ideas and the central axiom (carried verbatim from
-[`thesis.md`](./thesis.md), they govern everything below):
+The three core ideas are a hierarchy — Idea 1 is the master claim, Ideas 2 and 3 are
+derivations from it (carried verbatim from [`thesis.md`](./thesis.md), they govern
+everything below):
 
-> **Idea 1 — The Problem.** Agentic productivity does not automatically scale
-> organisationally.
+> **Idea 1 — The Problem (master claim).** Agentic productivity does not automatically
+> scale organisationally.
 
-> **Idea 2 — The Category.** The bottleneck is not intelligence; it is operationalisation.
+> **Idea 2 — The Category (follows from Idea 1).** The bottleneck is *not* intelligence
+> — supplied externally by model vendors — but *operationalisation*.
 
-> **Idea 3 — The Moat.** The moat emerges from organisational context accumulation —
-> not from any single feature.
+> **Idea 3 — The Moat (follows from Ideas 1 and 2).** The only durable advantage is
+> what compounds locally — organisational context accumulation, not any single feature.
 
 > ***Central axiom: the operating model improves because the organisation learns — and
 > that is the part the organisation can actually control.***
