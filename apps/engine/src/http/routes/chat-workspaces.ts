@@ -29,7 +29,7 @@ import {
 import { getConfig } from "../../config/loader.ts";
 import { encryptSecret } from "../../crypto/aes-gcm.ts";
 import { chatIdentities, chatWorkspaces } from "../../db/schema/index.ts";
-import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
+import { ConflictError, NotFoundError, ServiceUnavailableError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -171,7 +171,11 @@ export function registerChatWorkspaceRoutes(
     if (body.platform === "slack") {
       const signingSecret = getConfig().platform.slack.signing_secret ?? "";
       if (!signingSecret) {
-        throw new BadRequestError(
+        // 503 (not 400): an empty signing_secret is an engine-config
+        // gap, not a caller-side validation error. The body is fine —
+        // the engine just can't service the install until the
+        // operator sets the config key.
+        throw new ServiceUnavailableError(
           "engine config platform.slack.signing_secret is empty — set it before installing a Slack workspace",
         );
       }

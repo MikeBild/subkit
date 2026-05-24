@@ -86,15 +86,18 @@ export async function hydrateChatRegistry(
           // in the engine's structured log stream. A silent hydration
           // skip would otherwise disable every Slack workspace
           // unnoticed.
+          // Dedicated action — not CHAT_WORKSPACE_INSTALLED — so an
+          // auditor filtering "installs in tenant X" doesn't see a
+          // phantom denied install on every boot.
           await auditAwait(
             {
               tenant_id: row.tenant_id,
               actor_type: "system",
               actor_id: null,
-              action: AuditAction.CHAT_WORKSPACE_INSTALLED,
+              action: AuditAction.CHAT_WORKSPACE_HYDRATE_SKIPPED,
               resource_type: "chat_workspace",
               resource_id: row.id,
-              result: "denied",
+              result: "success",
               reason: "signing_secret_unset",
               metadata: {
                 platform: row.platform,

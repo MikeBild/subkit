@@ -60,7 +60,12 @@ async function ingest(
   // payload an attacker could exploit.
   const cloned = req.clone();
   const peekBody = await cloned.text();
-  if (platform === "slack") {
+  // 8KB peek cap. The legitimate handshake is ~100 bytes; capping
+  // before JSON.parse protects against a pathologically large body
+  // crashing the parse stage. Real chat events route past this peek
+  // through the adapter's verify() which has its own bounds.
+  const PEEK_CAP = 8192;
+  if (platform === "slack" && peekBody.length <= PEEK_CAP) {
     try {
       const maybe = JSON.parse(peekBody);
       if (maybe && maybe.type === "url_verification" && typeof maybe.challenge === "string") {
@@ -123,12 +128,12 @@ async function ingest(
         });
       }
     } catch (err) {
-      // Fall through to normal enqueue path — the click is at worst
-      // lost (modal won't open), but we still acknowledge to keep
-      // Slack happy. The adapter normally logs the underlying failure,
-      // but a sync throw above the adapter's own logger.warn (e.g. a
-      // TypeError on malformed event.raw) would otherwise bypass that;
-      // a bare `catch {}` is fragile observability so surface it here.
+      // The click is past the `trigger_id` window by the time the
+      // queue dequeues, so the modal will never open and the user
+      // sees nothing — and the queued `open_elicit:*` is deliberately
+      // dropped by `routeChatInteraction`. Without an audit row the
+      // failure is invisible to the tenant. Emit a denied row so
+      // SIEM sees it; the structured log captures the throw details.
       logger.warn({
         module: "chat",
         action: "ingest.sync_interaction_failed",
@@ -136,6 +141,31 @@ async function ingest(
         platform,
         error: err instanceof Error ? err.message : String(err),
       });
+      if (db) {
+        try {
+          await auditAwait(
+            {
+              tenant_id: deps.systemTenantId ?? "00000000-0000-0000-0000-000000000000",
+              actor_type: "system",
+              actor_id: null,
+              action: AuditAction.CHAT_MESSAGE_DENIED,
+              resource_type: "chat_message",
+              resource_id: null,
+              result: "denied",
+              reason: "sync_interaction_failed",
+              metadata: {
+                platform,
+                workspace_id_native: event.workspace_id,
+                kind: event.kind,
+                error: err instanceof Error ? err.message : String(err),
+              },
+            },
+            db,
+          );
+        } catch {
+          // audit write itself failed — log already captured the trigger
+        }
+      }
     }
   }
 

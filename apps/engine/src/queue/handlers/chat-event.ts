@@ -25,12 +25,13 @@ import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
+import { ChatEventJobSchema } from "../../chat/api.ts";
 import { markChatEventSeen } from "../../chat/dedup.ts";
 import { type DispatchRunEnqueue, handleChatEvent } from "../../chat/dispatcher.ts";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { Db } from "../../db/client.ts";
 import { chatWorkspaces } from "../../db/schema/index.ts";
-import { log } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/logger.ts";
 import {
   CHAT_EVENT_QUEUE,
   type ChatEventJob,
@@ -46,6 +47,27 @@ export interface RegisterChatEventOptions {
 
 async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions): Promise<void> {
   const { boss, db, chatRegistry } = opts;
+  // Zod-validate the rehydrated job payload at the worker boundary.
+  // pg-boss persists jobs in Postgres and rehydrates after restart; a
+  // schema drift in `ChatEvent` mid-deploy would otherwise silently
+  // dispatch malformed events. A failed parse logs + ACKs the job
+  // (returning normally without throw — re-queueing a malformed
+  // payload would just retry indefinitely). We only use the parse
+  // result for the validation guard; downstream code consumes the
+  // original `job.data.event` so the established `ChatEvent` type
+  // (which uses exactOptionalPropertyTypes-friendly optionals) keeps
+  // narrowing cleanly.
+  const validation = ChatEventJobSchema.safeParse(job.data);
+  if (!validation.success) {
+    logger.warn({
+      module: "queue",
+      action: "chat_event.invalid_job",
+      msg: "chat.event job failed schema validation — dropping",
+      job_id: job.id,
+      issues: validation.error.issues.map((i) => i.message),
+    });
+    return;
+  }
   const event = job.data.event;
   const started = Date.now();
   log.queue.job.dequeued({

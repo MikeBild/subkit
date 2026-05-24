@@ -16,6 +16,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+import { SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type {
   ApprovalCard,
@@ -24,6 +25,7 @@ import type {
   ChatPlatform,
   VerifiedEvent,
 } from "../../chat/types.ts";
+import { auditLog } from "../../db/schema/audit.ts";
 import {
   chatEventsSeen,
   chatIdentities,
@@ -180,5 +182,66 @@ describe("queue: chat.event worker", () => {
     const localSends = adapter.sends.filter((d) => d.channel_id === "C_QUEUE");
     // Exactly one outbound regardless of how many jobs we enqueued.
     expect(localSends.length).toBe(1);
+
+    // The dedup-drop branch writes a chat.message.denied audit row
+    // with reason: "replay" so SIEM can see retries-against-a-known-
+    // workspace traffic even though the worker drops them silently.
+    // Poll because the second job's dedup-drop audit may land after
+    // the seen-row poll above breaks.
+    // allow-wall-clock: real-time poll for audit insert
+    const replayDeadline = Date.now() + 30_000;
+    let replayRow: typeof auditLog.$inferSelect | undefined;
+    while (Date.now() < replayDeadline) {
+      const replayAudits = await testDb.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "chat.message.denied"));
+      replayRow = replayAudits.find(
+        (r) =>
+          r.reason === "replay" &&
+          r.tenant_id === tenantId &&
+          (r.metadata as Record<string, unknown> | null)?.event_key === "Ev_DEDUP_42",
+      );
+      if (replayRow) break;
+      await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: poll cadence
+    }
+    expect(replayRow).toBeTruthy();
+  }, 90_000);
+
+  test("unknown workspace: drops job + writes SYSTEM_TENANT_ID denied audit", async () => {
+    // Enqueue an event whose workspace_id has no chat_workspaces row.
+    const event: ChatEvent = {
+      platform: "slack",
+      workspace_id: "T_NONEXISTENT",
+      channel_id: "C_X",
+      user_id: "U_X",
+      kind: "mention",
+      text: "<@BOT> hi",
+      event_key: "Ev_UNKNOWN_WS",
+      raw: {},
+    };
+    const id = await boss.send(CHAT_EVENT_QUEUE, { event });
+    expect(id).toBeTruthy();
+
+    // Poll until the worker writes the deny row.
+    // allow-wall-clock: real-time polling for queue completion
+    const deadline = Date.now() + 60_000;
+    let denyRow: typeof auditLog.$inferSelect | undefined;
+    while (Date.now() < deadline) {
+      const rows = await testDb.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "chat.message.denied"));
+      denyRow = rows.find(
+        (r) =>
+          r.reason === "workspace_not_installed" &&
+          (r.metadata as Record<string, unknown> | null)?.workspace_id_native === "T_NONEXISTENT",
+      );
+      if (denyRow) break;
+      await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: poll cadence
+    }
+    expect(denyRow).toBeTruthy();
+    // We don't know the owning tenant — record under SYSTEM_TENANT_ID.
+    expect(denyRow?.tenant_id).toBe(SYSTEM_TENANT_ID);
   }, 90_000);
 });

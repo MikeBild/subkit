@@ -33,6 +33,17 @@ export interface RespondElicitationParams {
   reason?: string;
   permission_mode?: ConversationPermissionMode | null;
   /**
+   * When true, require that `actor_id` matches the conversation's
+   * `owner_id` before resolving. Set by chat callers: a posted
+   * Block-Kit button is visible to every user in the channel; without
+   * this check any same-tenant user who can see the message could
+   * resolve another user's pending elicitation. The web portal +
+   * MCP surfaces leave this off because they have their own
+   * authorisation model upstream (per-resource grants, MCP token
+   * scopes) — gating universally here would over-restrict them.
+   */
+  require_same_actor?: boolean;
+  /**
    * Live event emitter. When the route is in SSE mode this fires for
    * every TurnEvent the resumed runLoop produces, so the CLI sees
    * real-time progress instead of a 1–2 minute spinner before the
@@ -60,10 +71,36 @@ export interface RespondElicitationParams {
  * resume the conversation loop. This is the only pause-resume path —
  * the legacy approval flow has been removed.
  */
+/** Raised when `require_same_actor` is set and the actor isn't the
+ *  conversation's owner. Treated as a permission-denied at the caller. */
+export class ElicitationActorMismatchError extends Error {
+  readonly code = "ELICITATION_ACTOR_MISMATCH";
+  constructor(
+    public readonly conversation_id: string,
+    public readonly actor_id: string | null,
+  ) {
+    super(`actor ${actor_id ?? "(anon)"} is not the owner of conversation ${conversation_id}`);
+  }
+}
+
 export async function respondElicitation(
   p: RespondElicitationParams,
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
+  // Chat callers (Slack Block-Kit buttons, view_submission, etc.) opt
+  // into a same-actor gate: a posted button is visible to every user
+  // in the channel, so without this any same-tenant user who can see
+  // the message could resolve another user's pending elicitation. The
+  // web portal and MCP surfaces leave this off because they enforce
+  // authorisation upstream via per-resource grants / token scopes.
+  if (p.require_same_actor) {
+    const detail = await getConversation(p.tenant_id, p.conversation_id, exec);
+    if (!detail) throw new Error("conversation not found");
+    if (detail.conversation.owner_id !== p.actor_id) {
+      throw new ElicitationActorMismatchError(p.conversation_id, p.actor_id);
+    }
+  }
+
   const { resolveElicitation } = await import("../elicitations.ts");
   const resolveOutcome = await resolveElicitation(
     {

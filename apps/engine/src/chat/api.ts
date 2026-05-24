@@ -94,6 +94,78 @@ export const FormOutputSchema = z.record(
   z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())]),
 );
 
+// ---------------------------------------------------------------------
+// Interaction envelope schemas — Block-Kit value + view private_metadata.
+//
+// `interaction.value` carries the conversation_id + typed elicitation
+// output: `{c: <conv_uuid>, o: <typed-output>}`. `view.private_metadata`
+// (Slack modal submissions) carries `{c: <conv_uuid>, e: <elic_uuid>,
+// k: <kind>}`. The strings are attacker-controlled — Slack signs the
+// outer payload, but not the contents of these fields. Validate at
+// the parse boundary instead of via hand-rolled `typeof x === "string"`
+// checks so a contract drift surfaces as a schema rejection.
+// ---------------------------------------------------------------------
+
+const ELIC_KINDS = ["confirm", "choice", "multi", "text", "form"] as const;
+
+export const ChatInteractionEnvelopeSchema = z.object({
+  c: z.string().uuid(),
+  o: z.unknown().optional(),
+});
+
+export const ChatViewMetadataSchema = z.object({
+  c: z.string().uuid(),
+  e: z.string().uuid(),
+  k: z.enum(ELIC_KINDS),
+});
+
+// ---------------------------------------------------------------------
+// Queue job envelope — schema for `chat.event` pg-boss jobs.
+//
+// pg-boss persists jobs in Postgres and rehydrates them after restart;
+// a schema drift between enqueue and dequeue (e.g. a `ChatEvent`
+// field renamed across deploys) would silently dispatch malformed
+// events. Parse at the worker boundary so the drift fails loudly.
+// ---------------------------------------------------------------------
+
+const ChatPlatformSchema = z.enum(["slack", "teams", "google_chat"]);
+
+const ChatInteractionActionSchema = z
+  .object({
+    action_id: z.string().min(1),
+    value: z.string().optional(),
+    form_values: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+const ChatCommandSchema = z.union([
+  z.object({ verb: z.literal("chat"), prompt: z.string() }),
+  z.object({
+    verb: z.literal("run"),
+    workflow: z.string(),
+    args: z.record(z.string(), z.string()),
+  }),
+  z.object({ verb: z.literal("help"), topic: z.string().optional() }),
+]);
+
+const ChatEventSchema = z
+  .object({
+    platform: ChatPlatformSchema,
+    workspace_id: z.string().min(1),
+    channel_id: z.string().min(1),
+    thread_id: z.string().optional(),
+    user_id: z.string().min(1),
+    kind: z.enum(["mention", "slash_command", "interaction"]),
+    text: z.string().optional(),
+    command: ChatCommandSchema.optional(),
+    interaction: ChatInteractionActionSchema.optional(),
+    event_key: z.string().optional(),
+    raw: z.unknown(),
+  })
+  .passthrough();
+
+export const ChatEventJobSchema = z.object({ event: ChatEventSchema });
+
 /** Validate an elicitation output against its declared kind. Returns
  *  the parsed typed value on success or null on failure (the caller
  *  logs a warn and short-circuits). */

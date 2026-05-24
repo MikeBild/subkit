@@ -169,6 +169,11 @@ export const AuditAction = {
 
   CHAT_WORKSPACE_INSTALLED: "chat_workspace.installed",
   CHAT_WORKSPACE_REMOVED: "chat_workspace.removed",
+  /** Boot hydration skipped a chat_workspaces row (e.g. signing
+   *  secret unset). Distinct from `chat_workspace.installed` denied so
+   *  SIEM dashboards counting "install attempts in tenant X" don't
+   *  false-positive on every restart. */
+  CHAT_WORKSPACE_HYDRATE_SKIPPED: "chat_workspace.hydrate_skipped",
   CHAT_IDENTITY_LINKED: "chat_identity.linked",
   CHAT_IDENTITY_UNLINKED: "chat_identity.unlinked",
   CHAT_MESSAGE_RECEIVED: "chat.message.received",

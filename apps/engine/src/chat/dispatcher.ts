@@ -59,8 +59,14 @@ import { getWorkflow, getWorkflowBySlug } from "../workflows/service.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { mapToolNameToKind } from "./api.ts";
 
-// Re-export the shared types so existing callers (chat/index.ts barrel,
-// tests, the queue handler) keep importing them from `./dispatcher.ts`.
+// Backward-compat re-export: `DispatchOutcome` and `DispatchRunEnqueue`
+// moved to `./dispatcher-types.ts` (extracted to break a circular dep
+// with `elicit-routing.ts`), but the chat/index.ts barrel, the queue
+// handler, and existing tests all import these names from
+// `./dispatcher.ts`. Re-exporting keeps those call sites working
+// without churn. The duplicate local import below is the value-side
+// of the re-export — TypeScript requires both shapes when the names
+// are used in this file's own type annotations.
 export type { DispatchOutcome, DispatchRunEnqueue } from "./dispatcher-types.ts";
 
 import type { DispatchOutcome, DispatchRunEnqueue } from "./dispatcher-types.ts";
@@ -233,7 +239,7 @@ function parseSlashCommand(
  * Single forward pass — keeps both candidates (last assistant message,
  * concatenated deltas) and picks the assistant message first.
  */
-function extractAssistantText(outcome: RunLoopResult): string | null {
+export function extractAssistantText(outcome: RunLoopResult): string | null {
   let lastAssistant: string | null = null;
   let deltas: string[] | null = null;
   for (const e of outcome.events) {
@@ -759,7 +765,7 @@ export async function handleChatEvent(
       logger.warn({
         module: "chat",
         action: "dispatcher.no_reply_text",
-        msg: "turn produced no assistant text and no `text_delta` events — loop regression?",
+        msg: "turn produced no assistant text and no `text_delta` events — likely loop regression",
         tenant_id,
         conversation_id,
         outcome_status: outcome.status,

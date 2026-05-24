@@ -173,3 +173,16 @@ export class UnprocessableEntityError extends HttpError {
     super(422, "unprocessable_entity", message, details);
   }
 }
+
+/**
+ * 503 — the request can't be served because of an engine-side
+ * configuration / dependency gap (e.g. an admin route requires a
+ * config key the operator hasn't set). Distinct from 400 (which
+ * blames the caller for a bad body) and from 422 (which blames the
+ * caller for an inconsistent application state).
+ */
+export class ServiceUnavailableError extends HttpError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(503, "service_unavailable", message, details);
+  }
+}

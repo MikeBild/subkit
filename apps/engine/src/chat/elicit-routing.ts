@@ -11,69 +11,80 @@
 // header. This module owns the per-family parse + per-kind output
 // validation (via `validateElicitationOutput` in `chat/api.ts`).
 
+import { auditAwait } from "../audit/audit.ts";
+import { AuditAction } from "../audit/types.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
+import { ElicitationActorMismatchError } from "../conversations/service/elicit.ts";
 import { respondElicitation } from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
-import { validateElicitationOutput } from "./api.ts";
+import {
+  ChatInteractionEnvelopeSchema,
+  ChatViewMetadataSchema,
+  validateElicitationOutput,
+} from "./api.ts";
 import type { DispatchOutcome } from "./dispatcher-types.ts";
 import type { ChatEvent, ElicitationKind } from "./types.ts";
 
 /** Parse a Block-Kit action `value` JSON envelope `{c, o}` carrying
- *  the conversation_id (`c`) and typed elicitation output (`o`).
- *  Invalid / non-JSON values return null so the caller can ignore. */
+ *  the conversation_id (`c`, UUID) and typed elicitation output (`o`).
+ *  Backed by `ChatInteractionEnvelopeSchema` so a contract drift
+ *  (renamed field, non-UUID id) fails at the schema boundary. */
 function parseEnvelope(raw: string): { c: string; o?: unknown } | null {
   if (!raw) return null;
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && typeof parsed.c === "string") {
-      return parsed as { c: string; o?: unknown };
-    }
-    logger.warn({
-      module: "chat",
-      action: "interaction.envelope_malformed",
-      msg: "interaction value JSON-parsed but did not match the {c,o} envelope shape",
-    });
+    parsed = JSON.parse(raw);
   } catch (err) {
     logger.warn({
       module: "chat",
       action: "interaction.envelope_parse_failed",
-      msg: "interaction value is not valid JSON — Block-Kit renderer regression?",
+      msg: "interaction value is not valid JSON — Block-Kit renderer regression",
       error: err instanceof Error ? err.message : String(err),
     });
+    return null;
   }
-  return null;
+  const result = ChatInteractionEnvelopeSchema.safeParse(parsed);
+  if (!result.success) {
+    logger.warn({
+      module: "chat",
+      action: "interaction.envelope_malformed",
+      msg: "interaction value did not match the {c,o} envelope schema",
+      issues: result.error.issues.map((i) => i.message),
+    });
+    return null;
+  }
+  return result.data;
 }
 
 /** Parse the Slack modal `private_metadata` JSON `{c, e, k}` carrying
- *  conversation_id, elicitation_id, and the elicitation kind. */
+ *  conversation_id, elicitation_id, and the elicitation kind. Backed
+ *  by `ChatViewMetadataSchema`. */
 function parseViewMetadata(raw: string): { c: string; e: string; k: string } | null {
   if (!raw) return null;
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw);
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      typeof parsed.c === "string" &&
-      typeof parsed.e === "string" &&
-      typeof parsed.k === "string"
-    ) {
-      return parsed as { c: string; e: string; k: string };
-    }
-    logger.warn({
-      module: "chat",
-      action: "interaction.view_metadata_malformed",
-      msg: "view.private_metadata JSON-parsed but did not match the {c,e,k} shape",
-    });
+    parsed = JSON.parse(raw);
   } catch (err) {
     logger.warn({
       module: "chat",
       action: "interaction.view_metadata_parse_failed",
-      msg: "view.private_metadata is not valid JSON — modal-view builder regression?",
+      msg: "view.private_metadata is not valid JSON — modal-view builder regression",
       error: err instanceof Error ? err.message : String(err),
     });
+    return null;
   }
-  return null;
+  const result = ChatViewMetadataSchema.safeParse(parsed);
+  if (!result.success) {
+    logger.warn({
+      module: "chat",
+      action: "interaction.view_metadata_malformed",
+      msg: "view.private_metadata did not match the {c,e,k} schema",
+      issues: result.error.issues.map((i) => i.message),
+    });
+    return null;
+  }
+  return result.data;
 }
 
 export interface RouteChatInteractionArgs {
@@ -226,7 +237,10 @@ export async function routeChatInteraction(
   }
 
   // Every respondElicitation caller threads an abort controller so a
-  // mid-turn dispose can cleanly interrupt the loop.
+  // mid-turn dispose can cleanly interrupt the loop. `require_same_actor`
+  // gates against the same-tenant cross-actor case: a posted Block-Kit
+  // button is visible to every user in the channel, so without this
+  // check user B could resolve user A's pending elicitation.
   const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
   try {
     await respondElicitation(
@@ -237,9 +251,35 @@ export async function routeChatInteraction(
         actor_id: user_id,
         output,
         turn_abort_ctrl: turnAbortCtrl,
+        require_same_actor: true,
       },
       db,
     );
+  } catch (err) {
+    if (err instanceof ElicitationActorMismatchError) {
+      // Surface a denied audit row so the cross-actor attempt is
+      // visible in SIEM; return ignored so the dispatcher's outer
+      // outcome is unchanged.
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: "user",
+          actor_id: user_id,
+          action: AuditAction.CHAT_MESSAGE_DENIED,
+          resource_type: "conversation_elicitation",
+          resource_id: elicitation_id,
+          result: "denied",
+          reason: "actor_not_owner",
+          metadata: {
+            conversation_id,
+            kind,
+          },
+        },
+        db,
+      );
+      return { status: "ignored", conversation_id };
+    }
+    throw err;
   } finally {
     unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
   }
