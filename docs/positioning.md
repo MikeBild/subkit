@@ -50,6 +50,10 @@ The three core ideas — Idea 1 is the master claim, Ideas 2 and 3 are derivatio
 
 The bold formulation, also carried from the thesis: *the next relevant software layer after SaaS is organisational agentic operationalisation.*
 
+![sk architecture overview — the MCP OAuth bridge between outside-the-bridge AI clients and the governed engine, with all inbound surfaces, the six engine clusters (Tenant Context highlighted as the moat), and the four outbound system categories.](overview.png)
+
+*The full reference-implementation architecture. The mermaids in this document zoom into specific aspects — the bridge above, the three-layer integration in §2, the worked examples in §6. Source: [`overview.drawio`](overview.drawio).*
+
 ---
 
 ## 2. The Core: Contextualised Operational AI Authoring + Governed Execution

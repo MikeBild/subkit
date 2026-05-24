@@ -8,6 +8,10 @@ Automation that only works from one place does not fit how enterprise teams actu
 
 The reference implementation is designed around this reality. It has multiple entry points — the sk CLI, the REST API, the MCP server, chat platform integrations, webhooks, and scheduled triggers — and all of them lead to the same governed authoring and execution pipeline. The security model, the RBAC checks, and the Audit Log apply identically regardless of where a request originates.
 
+![sk architecture overview — every inbound surface routes to the same engine; external AI clients cross the MCP OAuth bridge; other surfaces enter directly.](overview.png)
+
+*System-wide context for this document. The rest of it zooms in on each inbound surface; the diagram below sharpens the "one governance gate" principle. Source: [`overview.drawio`](overview.drawio).*
+
 ```mermaid
 flowchart LR
     CLI["sk CLI<br/>(Ink + citty)"]

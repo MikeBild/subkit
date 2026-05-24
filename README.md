@@ -47,35 +47,9 @@ is [`AGENTS.md`](AGENTS.md).
 
 ## How It Works
 
-```mermaid
-flowchart LR
-    subgraph Surfaces["Input Surfaces"]
-        direction TB
-        CLI["sk CLI"]
-        API["REST API / OpenAPI"]
-        MCP["MCP\n(Claude Code · Codex\nCopilot · Gemini)"]
-        Chat["Chat Systems\n(Slack · Teams\nGoogle Chat)"]
-        WH["Webhooks &\nScheduled Triggers"]
-    end
+![sk architecture at a glance — outside-the-bridge AI clients cross via the MCP OAuth bridge into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding moat.](docs/overview.png)
 
-    subgraph Authoring["AI-Assisted Authoring"]
-        direction TB
-        Conv["Conversation Engine"]
-        AI["Multi-AI Provider\n(Claude · OpenAI · Gemini)"]
-        Conn["90 Connector Templates\n& Credential Vault"]
-        Skills["Skills &\nKnowledge Sources"]
-    end
-
-    subgraph Execution["Governed, Versioned Execution"]
-        direction TB
-        WF["Workflow Engine"]
-        Gov["Audit & Governance"]
-        Heal["Drift-Assisted Repair"]
-        Sched["Scheduler &\nEvent Triggers"]
-    end
-
-    Surfaces --> Authoring --> Execution
-```
+*Outside-the-bridge clients (IDE assistants, employee chat) reach governed workflows only through the **MCP OAuth bridge**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`docs/overview.drawio`](docs/overview.drawio).*
 
 Every interaction — regardless of entry point — flows through the same governed pipeline.
 AI assists with authoring but never executes without human approval. Execution is
