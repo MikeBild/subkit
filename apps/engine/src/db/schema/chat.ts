@@ -118,6 +118,13 @@ export const chatEventsSeen = pgTable(
     seen_at: timestamp("seen_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
+    // The unique key intentionally does NOT lead with tenant_id even
+    // though the table carries one (kept for tenant-scoped retention
+    // sweeps + future RLS). `workspace_id` references `chat_workspaces.id`
+    // which is globally unique post-migration 0028
+    // (`chat_workspaces_platform_workspace_global_key`), so a
+    // (workspace_id, platform_event_id) pair is already tenant-unique
+    // transitively — adding tenant_id would be redundant.
     uniqueIndex("chat_events_seen_key").on(t.workspace_id, t.platform_event_id),
     index("chat_events_seen_seen_at_idx").on(t.seen_at),
   ],

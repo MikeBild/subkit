@@ -22,7 +22,7 @@
 // catalog because the public payloads are platform-owned.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import type {
   ChatAdapter,
   ChatAdapterRegistry,
@@ -95,7 +95,7 @@ async function ingest(
     // `auditAwait` discipline the rest of the chat surface uses.
     await auditAwait(
       {
-        tenant_id: deps.systemTenantId ?? "00000000-0000-0000-0000-000000000000",
+        tenant_id: deps.systemTenantId ?? SYSTEM_TENANT_ID,
         actor_type: "system",
         action: AuditAction.CHAT_MESSAGE_DENIED,
         resource_type: "chat_message",
@@ -145,7 +145,7 @@ async function ingest(
         try {
           await auditAwait(
             {
-              tenant_id: deps.systemTenantId ?? "00000000-0000-0000-0000-000000000000",
+              tenant_id: deps.systemTenantId ?? SYSTEM_TENANT_ID,
               actor_type: "system",
               actor_id: null,
               action: AuditAction.CHAT_MESSAGE_DENIED,
