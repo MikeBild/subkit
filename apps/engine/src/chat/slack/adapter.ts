@@ -31,6 +31,7 @@ import {
   renderMessageBlocks,
   renderOpenFormBlocks,
 } from "./block-kit.ts";
+import { parseSlackInboundPayload } from "./payloads.ts";
 import { verifySlackRequest } from "./verifier.ts";
 
 export interface SlackAdapterOptions {
@@ -107,170 +108,165 @@ export class SlackAdapter implements ChatAdapter {
   }
 
   async receive(ev: VerifiedEvent): Promise<ChatEvent> {
-    const raw = ev.raw as Record<string, unknown>;
+    // Single parse choke-point: every Slack inbound shape runs through
+    // `parseSlackInboundPayload` which enforces required fields via
+    // Zod schemas (`payloads.ts`). A renamed-required-field drift in
+    // the Slack contract surfaces as a logged warn rather than
+    // dispatching with silently-defaulted IDs.
+    const parsed = parseSlackInboundPayload(ev.raw);
 
-    // Events API.
-    if (raw.type === "event_callback") {
-      const inner = raw.event as Record<string, unknown> | undefined;
-
-      if (inner && inner.type === "app_mention") {
-        return {
-          platform: "slack",
-          workspace_id: (raw.team_id as string) ?? "",
-          channel_id: (inner.channel as string) ?? "",
-          thread_id: (inner.thread_ts as string) ?? (inner.ts as string) ?? undefined,
-          user_id: (inner.user as string) ?? "",
-          kind: "mention",
-          text: (inner.text as string) ?? "",
-          event_key: (raw.event_id as string) ?? undefined,
-          raw: ev.raw,
-        };
-      }
-
-      // Direct message to the bot (IM channel). Slack delivers the
-      // bot's own replies through this same event stream, so we MUST
-      // suppress bot-echo or we answer ourselves forever. The cheapest
-      // correct filters: drop anything carrying `bot_id`, any
-      // `subtype` (`bot_message`, `message_changed`, `message_deleted`,
-      // …), or originating from a user marked as a bot at the auth
-      // layer (`is_bot`/`app_id`). Together these cover every
-      // self-emitted shape Slack documents.
-      if (
-        inner &&
-        inner.type === "message" &&
-        inner.channel_type === "im" &&
-        !inner.bot_id &&
-        !inner.subtype &&
-        !inner.app_id
-      ) {
-        return {
-          platform: "slack",
-          workspace_id: (raw.team_id as string) ?? "",
-          channel_id: (inner.channel as string) ?? "",
-          // DMs have no `thread_ts`; fall back to `ts` so the dispatcher's
-          // `thread_id ?? channel_id:root` maps the whole DM to one
-          // conversation 1:1.
-          thread_id: (inner.thread_ts as string) ?? (inner.ts as string) ?? undefined,
-          user_id: (inner.user as string) ?? "",
-          // Normalize to "mention" so the dispatcher takes the same
-          // bare-text-as-prompt branch it does for @mentions in
-          // channels — DMs need no platform-specific dispatch path.
-          kind: "mention",
-          text: (inner.text as string) ?? "",
-          event_key: (raw.event_id as string) ?? undefined,
-          raw: ev.raw,
-        };
-      }
+    if (parsed.kind === "app_mention") {
+      const inner = parsed.inner;
+      return {
+        platform: "slack",
+        workspace_id: parsed.team_id,
+        channel_id: inner.channel,
+        thread_id: inner.thread_ts ?? inner.ts,
+        user_id: inner.user,
+        kind: "mention",
+        text: inner.text,
+        ...(parsed.event_id ? { event_key: parsed.event_id } : {}),
+        raw: ev.raw,
+      };
     }
 
-    // Block Kit interaction payload — either an inline `block_actions`
-    // click (resolves an inline elicitation kind directly, or opens a
-    // modal) or a `view_submission` (the modal form was submitted).
-    if (raw.type === "block_actions" || raw.type === "view_submission") {
-      const channel = (raw.channel as Record<string, unknown>) ?? {};
-      const user = (raw.user as Record<string, unknown>) ?? {};
-      const team = (raw.team as Record<string, unknown>) ?? {};
-      const workspace_id = (team.id as string) ?? (raw.team_id as string) ?? "";
-      const user_id = (user.id as string) ?? "";
+    if (parsed.kind === "message_im") {
+      const inner = parsed.inner;
+      // Bot-echo suppression: Slack delivers the bot's own DMs through
+      // this same event stream. Drop messages carrying `bot_id`, any
+      // `subtype` (`bot_message`, `message_changed`, …), or
+      // `app_id` — together these cover every self-emitted shape.
+      // Treat IM-only events; channel-type other than "im" isn't
+      // routed to the dispatcher.
+      if (inner.channel_type !== "im") {
+        throw new Error(`slack: unrecognized event shape`);
+      }
+      if (inner.bot_id || inner.subtype || inner.app_id || !inner.user) {
+        throw new Error(`slack: unrecognized event shape`);
+      }
+      return {
+        platform: "slack",
+        workspace_id: parsed.team_id,
+        channel_id: inner.channel,
+        // DMs have no `thread_ts`; fall back to `ts` so the dispatcher
+        // maps the whole DM to one conversation 1:1.
+        thread_id: inner.thread_ts ?? inner.ts,
+        user_id: inner.user,
+        // Normalize to "mention" so the dispatcher takes the same
+        // bare-text-as-prompt branch as channel @mentions.
+        kind: "mention",
+        text: inner.text,
+        ...(parsed.event_id ? { event_key: parsed.event_id } : {}),
+        raw: ev.raw,
+      };
+    }
 
-      if (raw.type === "view_submission") {
-        const view = (raw.view as Record<string, unknown>) ?? {};
-        // Flatten Slack's nested view.state.values shape into a flat
-        // `{ field_name: primitive }` dict the dispatcher can pass
-        // directly into `respondElicitation`. Slack's shape is:
-        //   state.values["field:<name>"]["el:<name>"] = { type, value, selected_*, ... }
-        // We map each value object to its primitive answer based on
-        // the input type. Adapters elsewhere produce the same flat
-        // shape — the dispatcher stays provider-agnostic.
-        const state = (view.state as Record<string, unknown>) ?? {};
-        const stateValues =
-          (state.values as Record<string, Record<string, Record<string, unknown>>>) ?? {};
-        const form_values: Record<string, unknown> = {};
-        for (const [blockId, elements] of Object.entries(stateValues)) {
-          if (!blockId.startsWith("field:")) continue;
-          const name = blockId.slice("field:".length);
-          const elKey = `el:${name}`;
-          const el = elements?.[elKey];
-          if (!el) continue;
-          form_values[name] = extractInputValue(el);
-        }
+    if (parsed.kind === "view_submission") {
+      const data = parsed.data;
+      const view = data.view;
+      const channel_id = data.channel?.id ?? "";
+      const workspace_id = data.team?.id ?? data.team_id ?? "";
 
-        const interaction: ChatInteractionAction = {
-          action_id: "view_submission",
-          ...(typeof view.private_metadata === "string"
-            ? { value: view.private_metadata as string }
-            : {}),
-          form_values,
-        };
-        return {
-          platform: "slack",
-          workspace_id,
-          channel_id: (channel.id as string) ?? "",
-          user_id,
-          kind: "interaction",
-          interaction,
-          event_key: (view.id as string) ?? undefined,
-          raw: ev.raw,
-        };
+      // Flatten Slack's nested view.state.values shape into a flat
+      // `{ field_name: primitive }` dict the dispatcher passes
+      // directly into respondElicitation. Adapters elsewhere produce
+      // the same shape — the dispatcher stays provider-agnostic.
+      const stateValues = view.state?.values ?? {};
+      const form_values: Record<string, unknown> = {};
+      for (const [blockId, elements] of Object.entries(stateValues)) {
+        if (!blockId.startsWith("field:")) continue;
+        const name = blockId.slice("field:".length);
+        const elKey = `el:${name}`;
+        const el = (elements as Record<string, unknown>)?.[elKey] as
+          | Record<string, unknown>
+          | undefined;
+        if (!el) continue;
+        form_values[name] = extractInputValue(el);
       }
 
-      // block_actions
-      const actions = (raw.actions as Array<Record<string, unknown>>) ?? [];
-      const a = actions[0] ?? {};
-      const action_id = (a.action_id as string) ?? "";
+      const interaction: ChatInteractionAction = {
+        action_id: "view_submission",
+        ...(view.private_metadata ? { value: view.private_metadata } : {}),
+        form_values,
+      };
+      return {
+        platform: "slack",
+        workspace_id,
+        channel_id,
+        user_id: data.user.id,
+        kind: "interaction",
+        interaction,
+        event_key: view.id,
+        raw: ev.raw,
+      };
+    }
+
+    if (parsed.kind === "block_actions") {
+      const data = parsed.data;
+      const channel_id = data.channel?.id ?? "";
+      const workspace_id = data.team?.id ?? data.team_id ?? "";
+      const a = data.actions[0]!;
+      const action_id = a.action_id;
       const interaction: ChatInteractionAction = {
         action_id,
         ...(typeof a.value === "string" ? { value: a.value } : {}),
       };
       // For a `multi` submit click, the selected checkboxes live in
-      // the message's `state.values` keyed by the checkboxes block_id.
-      // Re-encode them into `form_values.values` so the dispatcher can
-      // forward a clean `{ values: string[] }` to `respondElicitation`
-      // without parsing block payloads.
+      // the message's state.values keyed by the checkboxes block_id;
+      // re-encode them into form_values.values for the dispatcher.
       const multiMatch = /^elicit:([^:]+):multi:submit$/.exec(action_id);
       if (multiMatch) {
-        const state = (raw.state as Record<string, unknown>) ?? {};
-        const stateValues =
-          (state.values as Record<string, Record<string, Record<string, unknown>>>) ?? {};
+        const stateValues = data.state?.values ?? {};
         const optsBlockId = `subkit_elicit_opts:${multiMatch[1]}`;
         const optsElementId = `elicit:${multiMatch[1]}:multi:select`;
-        const checkboxes = stateValues?.[optsBlockId]?.[optsElementId];
-        const selected = (checkboxes?.selected_options as Array<{ value: string }>) ?? [];
+        const elements = (stateValues as Record<string, unknown>)[optsBlockId] as
+          | Record<string, unknown>
+          | undefined;
+        const checkboxes = elements?.[optsElementId] as Record<string, unknown> | undefined;
+        const selected =
+          (checkboxes?.selected_options as Array<{ value: string }> | undefined) ?? [];
         interaction.form_values = { values: selected.map((s) => s.value) };
       }
-      const msg = (raw.message as Record<string, unknown>) ?? {};
+      const thread_id = data.message?.thread_ts ?? data.message?.ts;
       return {
         platform: "slack",
         workspace_id,
-        channel_id: (channel.id as string) ?? "",
-        thread_id: (msg.thread_ts as string) ?? (msg.ts as string) ?? undefined,
-        user_id,
+        channel_id,
+        ...(thread_id ? { thread_id } : {}),
+        user_id: data.user.id,
         kind: "interaction",
         interaction,
-        event_key: (raw.trigger_id as string) ?? undefined,
+        ...(data.trigger_id ? { event_key: data.trigger_id } : {}),
         raw: ev.raw,
       };
     }
 
-    // Slash command (form post).
-    if ((raw as Record<string, unknown>).__slack_form === true) {
-      const form = raw as Record<string, string>;
-      // No native id for slash; key by (command + text + ts) so a retry
-      // of the same submission dedups, but two distinct invocations
-      // collide-free.
-      const stableKey = `slash:${form.team_id ?? ""}:${form.command ?? ""}:${form.text ?? ""}:${form.trigger_id ?? form.user_id ?? ""}`;
+    if (parsed.kind === "slash") {
+      const form = parsed.data;
+      // Stable dedup key: a retry of the same submission collides; two
+      // distinct invocations don't.
+      const stableKey = `slash:${form.team_id}:${form.command}:${form.text}:${form.trigger_id ?? form.user_id}`;
       return {
         platform: "slack",
-        workspace_id: form.team_id ?? "",
-        channel_id: form.channel_id ?? "",
-        user_id: form.user_id ?? "",
+        workspace_id: form.team_id,
+        channel_id: form.channel_id,
+        user_id: form.user_id,
         kind: "slash_command",
-        text: `${form.command ?? ""} ${form.text ?? ""}`.trim(),
+        text: `${form.command} ${form.text}`.trim(),
         event_key: stableKey,
         raw: ev.raw,
       };
     }
 
+    // parsed.kind === "unknown" — schema rejected the payload. Surface
+    // the reason so a Slack contract drift shows up in diagnostics
+    // before it manifests as silently-dropped events.
+    logger.warn({
+      module: "chat",
+      action: "slack.receive.payload_rejected",
+      msg: "slack inbound payload did not match any known schema",
+      reason: parsed.reason,
+    });
     throw new Error(`slack: unrecognized event shape`);
   }
 

@@ -6,7 +6,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { apiKeys, auditLog, chatIdentities, tenants, users } from "../../db/schema/index.ts";
+import {
+  apiKeys,
+  auditLog,
+  chatIdentities,
+  chatWorkspaces,
+  tenants,
+  users,
+} from "../../db/schema/index.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -60,6 +67,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await ctx.db.delete(chatIdentities);
+  await ctx.db.delete(chatWorkspaces);
   await ctx.db.delete(auditLog).where(eq(auditLog.action, "chat_identity.linked"));
   await ctx.db.delete(auditLog).where(eq(auditLog.action, "chat_identity.unlinked"));
 });
@@ -108,6 +116,16 @@ describe("POST /v1/chat/identities", () => {
   });
 
   test("happy path: link a chat user to a same-tenant subkit user", async () => {
+    // Workspace must exist in THIS tenant for the link to be accepted.
+    await ctx.db.insert(chatWorkspaces).values({
+      tenant_id: ctx.tenantId,
+      platform: "slack",
+      workspace_id: "T_OK",
+      bot_ciphertext: Buffer.from([0]),
+      bot_iv: Buffer.from([0]),
+      bot_auth_tag: Buffer.from([0]),
+    });
+
     const res = await fetch(`${ctx.baseUrl}/v1/chat/identities`, {
       method: "POST",
       headers: authedHeaders(),
@@ -126,6 +144,31 @@ describe("POST /v1/chat/identities", () => {
       .where(eq(chatIdentities.platform_user_id, "U_OK"));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.user_id).toBe(ctx.userId);
+  });
+
+  test("rejects a body.workspace_id that isn't installed in this tenant with 404", async () => {
+    // No chat_workspaces row for "T_FOREIGN" in our tenant. Without
+    // the workspace tenant-scoping check, the route would happily
+    // insert a row keyed on a foreign team_id and the dispatcher
+    // would later resolve cross-tenant actors when that workspace
+    // gets installed by another tenant.
+    const res = await fetch(`${ctx.baseUrl}/v1/chat/identities`, {
+      method: "POST",
+      headers: authedHeaders(),
+      body: JSON.stringify({
+        platform: "slack",
+        workspace_id: "T_FOREIGN",
+        platform_user_id: "U_VICTIM",
+        user_id: ctx.userId,
+      }),
+    });
+    expect(res.status).toBe(404);
+
+    const rows = await ctx.db
+      .select()
+      .from(chatIdentities)
+      .where(eq(chatIdentities.platform_user_id, "U_VICTIM"));
+    expect(rows).toHaveLength(0);
   });
 });
 

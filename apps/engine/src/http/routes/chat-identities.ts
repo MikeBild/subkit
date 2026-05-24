@@ -12,7 +12,7 @@ import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import { ChatPlatformZodEnum } from "../../chat/index.ts";
-import { chatIdentities, users } from "../../db/schema/index.ts";
+import { chatIdentities, chatWorkspaces, users } from "../../db/schema/index.ts";
 import { ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -139,6 +139,27 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
+
+    // Verify `body.workspace_id` is a chat_workspaces row installed in
+    // THIS tenant. The `chat_identities` unique key
+    // (platform, workspace_id, platform_user_id) is GLOBAL — without
+    // this check a T_A admin can insert a row keyed on T_B's team_id,
+    // and when T_B later installs that workspace the dispatcher's
+    // (platform, workspace_id, platform_user_id) lookup matches A's
+    // row under tenant B (audit poisoning + cross-tenant actor on
+    // every B-side message from that Slack user).
+    const [ws] = await db
+      .select({ id: chatWorkspaces.id })
+      .from(chatWorkspaces)
+      .where(
+        and(
+          eq(chatWorkspaces.tenant_id, principal.tenant_id),
+          eq(chatWorkspaces.platform, body.platform),
+          eq(chatWorkspaces.workspace_id, body.workspace_id),
+        ),
+      )
+      .limit(1);
+    if (!ws) throw new NotFoundError("chat_workspace");
 
     // Verify `body.user_id` exists in THIS tenant before linking. The
     // `chat_identities.user_id` FK only constrains existence — not

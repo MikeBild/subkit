@@ -246,6 +246,12 @@ async function runServer(): Promise<void> {
   // operators at a glance how many workspaces hydrated — without this
   // a chat misconfiguration is silent until the first inbound event.
   try {
+    // Dynamic import keeps hydration failures isolated from
+    // module-load time. A static `import` at file head would surface a
+    // hydrate.ts parse / circular-dep error during the engine entry
+    // module's eval phase — long before this try/catch could mask it —
+    // and crash boot before the operator-friendly warn fires. The
+    // dynamic import lets the warn-then-continue contract above hold.
     const { hydrateChatRegistry } = await import("./chat/hydrate.ts");
     const outcome = await hydrateChatRegistry(db, chatRegistry);
     logger.info({

@@ -23,6 +23,8 @@
 
 import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
+import { auditAwait } from "../../audit/audit.ts";
+import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import { markChatEventSeen } from "../../chat/dedup.ts";
 import { type DispatchRunEnqueue, handleChatEvent } from "../../chat/dispatcher.ts";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
@@ -77,6 +79,32 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
       workspace_id_native: event.workspace_id,
       duration_ms: Date.now() - started,
     });
+    // Tenant-visible audit row for the drop. Without this a flood of
+    // Slack retries against a removed workspace would be invisible to
+    // every tenant (the structured log only reaches SIEM). We don't
+    // know the owning tenant — the workspace row has been removed or
+    // was never installed — so record under the platform-system
+    // tenant; the platform `workspace_id_native` in metadata is
+    // enough for forensic correlation.
+    await auditAwait(
+      {
+        tenant_id: SYSTEM_TENANT_ID,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.CHAT_MESSAGE_DENIED,
+        resource_type: "chat_message",
+        resource_id: null,
+        result: "denied",
+        reason: "workspace_not_installed",
+        metadata: {
+          platform: event.platform,
+          workspace_id_native: event.workspace_id,
+          event_key: event.event_key ?? null,
+          kind: event.kind,
+        },
+      },
+      db,
+    );
     return;
   }
 
@@ -98,6 +126,28 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
         event_key: event.event_key,
         duration_ms: Date.now() - started,
       });
+      // Tenant-visible audit row for the replay drop. Slack retries
+      // up to 3× per event; flooding can't go unnoticed in the audit
+      // log just because the structured log routes elsewhere.
+      await auditAwait(
+        {
+          tenant_id: workspace.tenant_id,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.CHAT_MESSAGE_DENIED,
+          resource_type: "chat_message",
+          resource_id: null,
+          result: "denied",
+          reason: "replay",
+          metadata: {
+            platform: event.platform,
+            workspace_id: event.workspace_id,
+            event_key: event.event_key,
+            kind: event.kind,
+          },
+        },
+        db,
+      );
       return;
     }
   }

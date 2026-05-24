@@ -375,7 +375,20 @@ export async function handleChatEvent(
       ),
     )
     .limit(1);
-  if (!identity) {
+  // Two reject paths share the same outbound + audit shape: unknown
+  // identity, and an identity row whose tenant_id doesn't match the
+  // workspace's tenant_id. The latter is defense-in-depth — even with
+  // the link route's workspace-tenant check (chat-identities.ts), a
+  // pre-existing mismatched row (seeded before the fix, hand-inserted)
+  // would otherwise bridge tenants because the chat_identities lookup
+  // above is keyed only on the global identity tuple.
+  const denyReason =
+    identity === undefined
+      ? "identity_not_linked"
+      : identity.tenant_id !== tenant_id
+        ? "identity_tenant_mismatch"
+        : null;
+  if (denyReason !== null) {
     // Surface the rejection so the unknown user knows what's wrong;
     // ephemeral so it doesn't pollute a channel.
     try {
@@ -402,7 +415,7 @@ export async function handleChatEvent(
         resource_type: "chat_message",
         resource_id: null,
         result: "denied",
-        reason: "identity_not_linked",
+        reason: denyReason,
         metadata: {
           platform: ev.platform,
           workspace_id: ev.workspace_id,
@@ -414,6 +427,10 @@ export async function handleChatEvent(
     );
     return { status: "ignored" };
   }
+  // `identity` is defined here because `denyReason === null` requires
+  // identity !== undefined; TS's narrowing across the intermediate
+  // local variable would otherwise lose this fact.
+  if (!identity) throw new Error("dispatcher: identity is unexpectedly undefined after deny check");
   const user_id = identity.user_id;
 
   await auditAwait(
@@ -927,9 +944,22 @@ export async function handleChatEvent(
     // status line if the turn somehow produced no text (commit-only
     // turn, or an event-sink path we don't recognise) so the user
     // always sees *something* from the bot.
-    const replyText =
-      extractAssistantText(outcome) ??
-      (outcome.status === "committed" ? "Committed." : "(no reply)");
+    const extracted = extractAssistantText(outcome);
+    if (extracted === null && outcome.status !== "committed") {
+      // No assistant text AND not a normal commit-only turn — this
+      // is a systematic loop regression the operator wants to see,
+      // not a silent "(no reply)" the user just stares at.
+      logger.warn({
+        module: "chat",
+        action: "dispatcher.no_reply_text",
+        msg: "turn produced no assistant text and no `text_delta` events — loop regression?",
+        tenant_id,
+        conversation_id,
+        outcome_status: outcome.status,
+        event_count: outcome.events.length,
+      });
+    }
+    const replyText = extracted ?? (outcome.status === "committed" ? "Committed." : "(no reply)");
     await sendTracked(adapter, ev.platform, {
       tenant_id,
       workspace_id: ev.workspace_id,

@@ -294,6 +294,12 @@ export function registerChatWorkspaceRoutes(
           // survives the rollback — SIEM/forensics need the record of
           // a tenant admin attempting to bind a Slack identity that's
           // already claimed by another principal.
+          // NOTE: do NOT include `existing.user_id` in the metadata.
+          // The conflicting row may belong to another tenant — the
+          // UUID would leak across the isolation boundary into the
+          // current tenant's audit log. Forensic correlation works
+          // off the (platform, workspace_id, platform_user_id)
+          // tuple, which is sufficient + leak-free.
           await auditAwait(
             {
               tenant_id: principal.tenant_id,
@@ -309,7 +315,6 @@ export function registerChatWorkspaceRoutes(
                 platform: body.platform,
                 platform_user_id: body.installer_platform_user_id,
                 workspace_id: body.workspace_id,
-                existing_user_id: existing.user_id,
               },
             },
             db,
