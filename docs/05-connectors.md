@@ -1,15 +1,28 @@
 # Connectors & Integration
 
-> *Strategy context: this doc is the developer view of **connectors as a governed
-> integration layer** (see [`positioning.md`](positioning.md) §5.3) and the secrets-
-> isolation requirement ([`system-requirements.md`](system-requirements.md) R8). The
-> point is not the *number* of templates but the integration behaviour: credentials
-> isolated from the AI context, versioned per-endpoint behaviour, per-endpoint drift
-> detection.*
+> **Reading time:** ~14 min
+> **Audience:** Engineers wiring sk to external systems, operators curating the catalogue
+> **Strategy context:** developer view of connectors as a governed integration layer ([positioning §5.3](./positioning.md#53-organisation--principles)) and [secrets isolation (R8)](./system-requirements.md#r8--secrets-isolation-from-the-ai-context). The point is not the *number* of templates but the integration behaviour: credentials isolated from the AI context, versioned per-endpoint behaviour, per-endpoint drift detection.
 
 Automation is only as valuable as the connectors it can reach. An AI that can propose a perfect workflow but cannot connect to your CRM, your billing platform, or your internal database is not useful to an enterprise.
 
 Connectors are the integration fabric of sk. They represent every external integration boundary the platform can reach — typed, authenticated, monitored, and secured. Understanding Connectors is essential to understanding how sk connects enterprise AI to real integrations.
+
+```mermaid
+flowchart TB
+    Template["Connector Template<br/>(driver type + auth + docs + skill)"]
+    Driver["Driver<br/>(protocol — http · graphql · postgres · s3 · …)"]
+    Cred["Credential<br/>(AEAD-encrypted, in vault)"]
+    Conn["Connector<br/>(tenant-scoped, versioned)"]
+    Workflow["Workflow Step<br/>(references by id)"]
+
+    Template -.-> Conn
+    Driver -.-> Conn
+    Cred -.-> Conn
+    Conn --> Workflow
+```
+
+*Three layers — Template, Driver, Credential — combine into a Connector. Each layer evolves independently. A Workflow Step references the Connector by id; the raw credential never enters the workflow definition, the AI context, or any log.*
 
 ---
 
@@ -143,6 +156,28 @@ Errors are typed: 403 on policy denial, 404 when the connector id is unknown, 42
 
 Connector creation through the conversational surface follows a single, observable contract. Two persistence paths, one for non-OAuth credentials and one for OAuth2:
 
+```mermaid
+flowchart TB
+    Start(["Agent intent:<br/>new connector"])
+    Discover["discover_connector_endpoints"]
+    Draft["start_connector_from_template<br/>or _from_description"]
+    AuthType{Auth type}
+    AskForm["ask_user_form<br/>(password, sensitive)"]
+    AskFormOA["ask_user_form +<br/>commit_intent: save_connector_draft"]
+    Probe["probe_connector_draft"]
+    OAuth["authenticate_oauth<br/>(browser opens)"]
+    ProbeOA["probe_connector_draft<br/>(verify token)"]
+    Saved(["Connector + Credential<br/>persisted atomically<br/>auto_saved: true"])
+    Call["call_connector<br/>(iterate · paginate · sample)"]
+
+    Start --> Discover --> Draft --> AuthType
+    AuthType -- non-OAuth<br/>(bearer/header/query/basic/sigv4) --> AskForm --> Probe --> Saved
+    AuthType -- OAuth2 --> AskFormOA --> OAuth --> ProbeOA --> Saved
+    Saved --> Call
+```
+
+*Both paths end at the same atomic persistence: a green probe (non-OAuth) or a successful OAuth callback (OAuth2) commits the connector and the encrypted credential in one transaction. The diagnostic tools `save_connector_draft` remain available for force-saves and credential rotation.*
+
 **Non-OAuth (bearer / header / query / basic / aws_sigv4):**
 
 1. The agent calls `discover_connector_endpoints` to ground its endpoint choices in real spec data.
@@ -224,7 +259,9 @@ The deliberate non-fail-on-stale design lets the catalogue ship even when the sw
 
 ---
 
-## What to Read Next
+## Further reading
 
-- [docs/05a-recipe-authoring.md](05a-recipe-authoring.md) — the contract for authoring recipes (pre-built workflows shipped on every connector template). Schema, conventions, multi-connector binding, quality gate, promotion checklist.
-- [docs/06-execution.md](06-execution.md) — how workflows that use Connectors actually run: the execution model, step kinds, triggers, versioning, and self-healing.
+- [Recipe authoring contract](./05a-recipe-authoring.md) — schema, conventions, multi-connector binding, quality gate, promotion checklist for pre-built workflows shipped on every connector template.
+- [Workflow execution](./06-execution.md) — how workflows that use Connectors actually run: the execution model, step kinds, triggers, versioning, and self-healing.
+- [glossary — integration terms](./02-concepts.md#group-3-integration) — Connector, Connector Template, Driver, Credential.
+- [secrets isolation (R8)](./system-requirements.md#r8--secrets-isolation-from-the-ai-context) — the requirement this layer realises.

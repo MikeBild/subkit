@@ -1,15 +1,32 @@
 # Input Surfaces
 
-> *Strategy context: this doc is the developer view of the **multiple entry surfaces,
-> one governance point** requirement (see [`system-requirements.md`](system-requirements.md)
-> R12 and R6). For how sk realises it across CLI, API, MCP, and chat with the same
-> approval gate and audit trail, see [`positioning.md`](positioning.md) §5.*
+> **Reading time:** ~12 min
+> **Audience:** Engineers integrating with sk, operators configuring surfaces
+> **Strategy context:** developer view of [one governance gate (R12)](./system-requirements.md#r12--multiple-entry-surfaces-one-governance-point) and [delegated AI action (R6)](./system-requirements.md#r6--delegated-ai-action-with-scoped-time-bound-revocable-audited-authority); the principles for what flows across these surfaces live in [security and governance principles](./positioning.md#51-security-and-governance--principles).
 
 Automation that only works from one place does not fit how enterprise teams actually operate. A developer may prefer a terminal. An analyst may live in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant should be able to call a workflow directly.
 
 sk is designed around this reality. It has multiple entry points — the sk CLI, the REST API, the MCP server, chat platform integrations, webhooks, and scheduled triggers — and all of them lead to the same governed authoring and execution pipeline. The security model, the RBAC checks, and the Audit Log apply identically regardless of where a request originates.
 
-Many doors. One platform.
+```mermaid
+flowchart LR
+    CLI["sk CLI<br/>(Ink + citty)"]
+    HTTP["REST API<br/>/v1/* + OpenAPI"]
+    MCP["MCP Server<br/>(SSE + stdio)"]
+    Chat["Chat Adapters<br/>Slack · Teams · Google"]
+    Hook["Webhooks +<br/>Scheduled Triggers"]
+    Gate{{"can(actor, action, resource)<br/>+ audit on every call"}}
+    Engine[/"sk engine"/]
+
+    CLI --> Gate
+    HTTP --> Gate
+    MCP --> Gate
+    Chat --> Gate
+    Hook --> Gate
+    Gate --> Engine
+```
+
+*Many doors. One platform. The gate is the same callable; the audit row is the same shape; the identity envelope (`tenant_id`, `actor_id`, `request_source`, `trace_id`) is populated at every entry.*
 
 ---
 
@@ -115,6 +132,29 @@ The sk engine is a full OAuth 2.1 authorization server and resource server for `
 
 **OAuth flow.**
 
+```mermaid
+sequenceDiagram
+    participant C as MCP Client
+    participant E as sk engine
+    participant U as User browser
+
+    C->>E: GET /.well-known/oauth-protected-resource
+    E-->>C: { authorization_server }
+    C->>E: GET /.well-known/oauth-authorization-server
+    E-->>C: endpoints, scopes, PKCE required
+    C->>E: POST /v1/oauth/register (DCR, RFC 7591)
+    E-->>C: { client_id, client_secret? }
+    C->>U: 302 to /v1/oauth/authorize?code_challenge=...
+    U->>E: OIDC login + consent
+    E-->>U: 302 to redirect_uri?code=...&state=...
+    U-->>C: deliver code
+    C->>E: POST /v1/oauth/token (code + verifier)
+    E-->>C: { access_token: wf_mcp_*, refresh_token: wf_mcr_* }
+    C->>E: POST /mcp (Authorization: Bearer wf_mcp_*)
+    E-->>C: SSE stream
+    Note over C,E: Refresh rotates the chain; replay revokes it.
+```
+
 1. Client fetches `/.well-known/oauth-protected-resource` to discover the authorization server.
 2. Client fetches `/.well-known/oauth-authorization-server` to get all endpoints.
 3. Client registers itself at `POST /v1/oauth/register` (dynamic client registration, RFC 7591). Returns `client_id` (and `client_secret` for confidential clients).
@@ -197,6 +237,8 @@ Not every workflow starts with a human. Scheduled triggers and inbound webhooks 
 
 ---
 
-## What to Read Next
+## Further reading
 
-- [docs/04-authoring.md](04-authoring.md) — How Conversations work, how the AI assembles Workflows, and how the approval gate turns a Draft into a committed, executable Workflow.
+- [AI-assisted authoring](./04-authoring.md) — how Conversations work, how the AI assembles Workflows, and how the approval gate turns a Draft into a committed, executable Workflow.
+- [glossary](./02-concepts.md#group-6-surfaces) — definitions for sk CLI, MCP Server, Chat Adapter, Notification Rule, Service Metadata.
+- [positioning §5](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory) — the strategy-level principles every surface implements.

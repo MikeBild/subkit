@@ -1,11 +1,8 @@
 # Security & Governance
 
-> *Strategy context: this doc is the developer view of requirements
-> [`system-requirements.md`](system-requirements.md) R6 (delegated AI action — scoped,
-> time-bound, revocable, audited), R7 (fine-grained action-level identity and
-> authorisation), R8 (secrets isolation from the AI context), R9 (layered multi-tenant
-> isolation), and R11 (audit-grade evidence — explicitly **not** compliance itself).
-> For the principles, see [`positioning.md`](positioning.md) §5.1.*
+> **Reading time:** ~12 min
+> **Audience:** Security engineers, compliance reviewers, operators wiring access
+> **Strategy context:** developer view of [delegated AI action (R6)](./system-requirements.md#r6--delegated-ai-action-with-scoped-time-bound-revocable-audited-authority), [action-level identity (R7)](./system-requirements.md#r7--fine-grained-action-level-identity-and-authorisation), [secrets isolation (R8)](./system-requirements.md#r8--secrets-isolation-from-the-ai-context), [tenant isolation (R9)](./system-requirements.md#r9--multi-tenant-isolation-as-a-structural-property), and [audit-grade evidence (R11)](./system-requirements.md#r11--audit-grade-evidence-not-compliance) — explicitly **not** compliance itself. The principles live in [§5.1 of positioning](./positioning.md#51-security-and-governance--principles).
 
 Enterprise AI requires enterprise-grade security from the start. A platform that touches production integrations, sensitive credentials, and automated business processes cannot treat security as a layer added later. It has to be the foundation.
 
@@ -47,13 +44,43 @@ Hooks run in an isolated QuickJS-WASM sandbox with a strict CPU budget. They can
 
 **Policy evaluation order:** RBAC is evaluated first. If the caller has no permission for the action, the request is denied before the hook is consulted. If RBAC passes, the Before-Request Hook runs. If the hook aborts, the request is denied with the hook's reason. Only if both pass does the request proceed.
 
+```mermaid
+flowchart LR
+    Req(["Inbound request<br/>(any surface)"])
+    RBAC{{"RBAC<br/>can(actor, action, resource)?"}}
+    Hook{{"Before-Request Hook<br/>(sandboxed, fail-closed)"}}
+    Driver[/Connector driver/]
+    Deny["Deny + audit row<br/>(policy.denied)"]
+
+    Req --> RBAC
+    RBAC -- deny --> Deny
+    RBAC -- allow --> Hook
+    Hook -- abort --> Deny
+    Hook -- proceed --> Driver
+```
+
 ---
 
 ## The Credential Vault
 
 All integration secrets — API keys, OAuth2 access and refresh tokens, database passwords, connection strings — are stored in the credential vault, encrypted with AES-256-GCM.
 
-Secrets are never logged. They are never included in API responses. They are never visible to the AI during conversations. Connectors reference credentials by identifier; the credential vault resolves the identifier to the actual secret at the moment of use. Outside that moment, the raw value does not exist in memory or in any logged context.
+```mermaid
+flowchart LR
+    User["User / Operator"]
+    Form["ask_user_form<br/>(masked, sensitive: true)"]
+    Vault[("Credential Vault<br/>AES-256-GCM<br/>AAD = credential:tenant_id:cred_id")]
+    Conn["Connector"]
+    Driver["Driver"]
+    AI["AI context<br/>(never sees secret)"]
+
+    User --> Form --> Vault
+    Conn -- cred_id only --> Vault
+    Vault -- decrypt at use --> Driver
+    Vault -. blocked .-x AI
+```
+
+*Secrets are never logged, never returned in API responses, never visible to the AI during conversations. Connectors reference credentials by identifier; the vault resolves the identifier to the actual secret at the moment of use. Outside that moment, the raw value does not exist in memory or in any logged context.*
 
 OAuth2 token refresh is automatic. The engine manages the full OAuth2 lifecycle — access token expiry, refresh token rotation, re-authorization when needed. Connectors never deal with expired tokens; the vault handles it transparently.
 
@@ -119,6 +146,8 @@ The `authenticate_oauth` flow surfaces an authorization URL that the sk CLI auto
 
 ---
 
-## What to Read Next
+## Further reading
 
-- [docs/08-operations.md](08-operations.md) — how sk is deployed, how operators monitor it in production, and how it handles failure gracefully.
+- [Deployment & operations](./08-operations.md) — how sk is deployed, how operators monitor it in production, and how it handles failure gracefully.
+- [glossary — governance terms](./02-concepts.md#group-5-governance) — Audit Log, RBAC, Before-Request Hook, Self-Healing, Patch Candidate.
+- [audit-grade evidence (R11)](./system-requirements.md#r11--audit-grade-evidence-not-compliance) — why audit is evidence, not compliance.

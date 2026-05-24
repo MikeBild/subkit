@@ -1,10 +1,8 @@
 # AI-Assisted Authoring
 
-> *Strategy context: this is the developer view of the **contextualised AI authoring**
-> layer of sk. For the economic argument behind AI-assisted authoring (vs. classical
-> builders / BPMN / low-code / engineering) and the closed authoring-/repair loop, see
-> [`positioning.md`](positioning.md) §2. The system requirement is
-> [`system-requirements.md`](system-requirements.md) R2 (context as a first-class input).*
+> **Reading time:** ~18 min
+> **Audience:** Engineers integrating with sk authoring, operators curating Skills & Knowledge
+> **Strategy context:** developer view of contextualised AI authoring; the economic argument behind it (vs. classical builders / BPMN / low-code / engineering) lives in [§2 of positioning](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution), the system requirement is [context as authoring input (R2)](./system-requirements.md#r2--context-as-a-first-class-input-to-authoring).
 
 Traditional enterprise workflow tools put the burden of construction on the builder. You need to know the connector, understand the configuration syntax, and map it all onto a blank canvas. The result is a workflow that reflects what developers can build, not what the business actually needs.
 
@@ -30,20 +28,27 @@ For operators and scripted clients that already know the target definition, the 
 
 Conversations are no longer just a loose draft plus a few helper actions. The engine maintains an explicit Authoring State Machine for every conversation and uses it to decide which actions are visible, which moves are blocked, and what the next valid move is.
 
-The canonical progression is:
+The canonical progression:
 
-1. Connector drafting
-2. Connector inspection
-3. Connector validation
-4. Connector probe
-5. Connector persisted
-6. Workflow drafting
-7. Workflow inspection
-8. Workflow validation
-9. Workflow preview
-10. Workflow persisted
-11. Workflow executed
-12. Diagnosis and repair when needed
+```mermaid
+stateDiagram-v2
+    [*] --> ConnectorDraft
+    ConnectorDraft --> ConnectorInspected: inspect
+    ConnectorInspected --> ConnectorValidated: validate
+    ConnectorValidated --> ConnectorProbed: probe
+    ConnectorProbed --> ConnectorPersisted: green probe (auto)
+    ConnectorPersisted --> WorkflowDraft
+    WorkflowDraft --> WorkflowInspected: inspect
+    WorkflowInspected --> WorkflowValidated: validate
+    WorkflowValidated --> WorkflowPreviewed: preview / dry-run
+    WorkflowPreviewed --> WorkflowPersisted: green dry-run (auto)
+    WorkflowPersisted --> WorkflowExecuted: run
+    WorkflowExecuted --> Diagnosis: warnings / failure
+    Diagnosis --> WorkflowValidated: repair draft
+    WorkflowExecuted --> [*]: success
+```
+
+*Probe persists the connector inline; dry-run commits the workflow inline. There is no separate "save" step on the happy path — verification is persistence. Any draft mutation invalidates downstream checkpoints automatically.*
 
 This state is persisted in the conversation draft summary and exposed as:
 
@@ -221,25 +226,32 @@ authoring and repair quality; the runtime path stays deterministic once a workfl
 
 ## Context Assembly And Trimming
 
-For each AI-assisted authoring turn, the engine assembles prompt context in a fixed order:
+For each AI-assisted authoring turn, the engine assembles prompt context in a fixed order. Order matters twice — it shapes how the model sees context (top is most foundational) and it shapes how the trimmer drops it under pressure (top survives longest, bottom goes first):
 
-1. Base prompt plus runtime context (engine, tenant, actor, surface)
-2. Auto-loaded Skills (global → connector → workflow)
-3. Explicitly loaded Skills
-4. Knowledge Source chunks
-5. Connector documentation chunks
-6. Prior failures relevant to the current task
-7. User memory and authoring-context blocks
-8. The current turn history as user/assistant messages
+```mermaid
+flowchart TB
+    subgraph build["Assembly order (top = first written)"]
+        direction TB
+        B1["1. Base prompt + runtime envelope<br/>(engine · tenant · actor · surface)"]
+        B2["2. Auto-loaded Skills<br/>(global → connector → workflow)"]
+        B3["3. Explicitly loaded Skills"]
+        B4["4. Knowledge Source chunks"]
+        B5["5. Connector documentation chunks"]
+        B6["6. Prior failures for the current task"]
+        B7["7. User memory + authoring-context blocks"]
+        B8["8. Current turn history<br/>(user / assistant messages)"]
+        B1 --> B2 --> B3 --> B4 --> B5 --> B6 --> B7 --> B8
+    end
+    Trim{{"Trim order (top = dropped first)"}}
+    T1["failures → connector docs → knowledge<br/>→ user memory → authoring context<br/>→ explicit Skills → workflow Skills<br/>→ connector Skills → global Skills"]
+    Note["User turns are never trimmed"]
+    build --> Trim --> T1
+    T1 -. preserved .- Note
+```
 
-This order is part of the contract, not just an implementation detail. When the prompt is too
-large for the active model budget, the engine trims in a fixed order as well: failures →
-connector docs → knowledge → user memory → authoring context → explicitly loaded Skills →
-workflow Skills → connector Skills → global Skills. User turns are not trimmed away. This is why
+This order is part of the contract, not just an implementation detail. Operator-curated connector and workflow guidance survives longer than incidental historical context under tight budgets — so the AI's deep grounding in a tenant's own conventions is the *last* thing dropped, not the first.
 
 Conversation replay is still bounded. Tool results are truncated before they are fed back into later turns, explicit compaction markers suppress older replay, and oversized message histories are collapsed into a deterministic summary plus the recent tail. The model keeps the current task context without dragging every historical tool payload back through the prompt window.
-operator-curated connector and workflow guidance survives longer than incidental historical
-context under tight budgets.
 
 ---
 
@@ -291,7 +303,9 @@ The conversational authoring layer is aware of the stdlib and proposes `sk.*` fo
 
 ---
 
-## What to Read Next
+## Further reading
 
-- [docs/05-connectors.md](05-connectors.md) — how Connectors, Drivers, and Credentials form the integration fabric that authoring draws on.
-- [docs/06-execution.md](06-execution.md) — how approved workflows run deterministically, what governance looks like at execution time, and how self-healing keeps workflows healthy.
+- [Connectors & integration](./05-connectors.md) — how Connectors, Drivers, and Credentials form the integration fabric that authoring draws on.
+- [Workflow execution](./06-execution.md) — how approved workflows run deterministically, what governance looks like at execution time, and how self-healing keeps workflows healthy.
+- [glossary — authoring terms](./02-concepts.md#group-2-authoring) — Conversation, Draft, Skill, Skill Candidate, Knowledge Source, Discovery.
+- [positioning §2](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution) — the economic argument for AI-assisted authoring.

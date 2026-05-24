@@ -1,11 +1,8 @@
 # Deployment & Operations
 
-> *Strategy context: this doc is the developer view of requirements
-> [`system-requirements.md`](system-requirements.md) R10 (per-tenant cost attribution
-> and budget), R12 (multiple entry surfaces, one governance point) and the
-> drift-assisted-repair side of R5 (closed learning loop, operator-reviewed). For the
-> structural changes operators can expect, see [`positioning.md`](positioning.md) §7
-> (Part 2b).*
+> **Reading time:** ~16 min
+> **Audience:** SREs, platform engineers, operators running sk in production
+> **Strategy context:** developer view of [cost attribution (R10)](./system-requirements.md#r10--cost-attribution-and-per-tenant-budget), [one governance gate (R12)](./system-requirements.md#r12--multiple-entry-surfaces-one-governance-point), and the drift-assisted-repair side of the [closed learning loop (R5)](./system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation). For the structural changes operators can expect, see [structural changes in positioning](./positioning.md#7-part-2b--structural-changes-sk-specific-not-generic-outcomes).
 
 sk is designed for enterprise deployment. That means it has to be reliable enough to run unattended, observable enough to diagnose problems quickly, and self-correcting enough to handle the inevitable drift that comes from running in a changing environment.
 
@@ -22,6 +19,24 @@ There is no separate message broker to manage, no distributed queue service to o
 The standard deployment model is straightforward: one engine service and one PostgreSQL instance. For teams that need higher availability, the engine is horizontally scalable — run multiple instances behind a load balancer. The queue and scheduler subsystems are designed for concurrent execution across multiple engine instances without coordination overhead.
 
 ### Deployment layout
+
+```mermaid
+flowchart TB
+    Internet(("Internet"))
+    Caddy["Caddy<br/>(apt; Let's Encrypt TLS)"]
+    Engine["engine binary<br/>/usr/local/bin/engine<br/>(systemd: subkit-engine.service)"]
+    PG[("PostgreSQL 16<br/>apt package<br/>127.0.0.1:5432")]
+    LLM[("LLM Provider<br/>Anthropic / OpenAI / Google")]
+    S3[("S3 (optional)<br/>step-result spillover")]
+
+    Internet -- :443 --> Caddy
+    Caddy -- :3000 --> Engine
+    Engine --> PG
+    Engine -. outbound .-> LLM
+    Engine -. outbound .-> S3
+```
+
+*Single host, three apt-installed system services. No message broker, no distributed queue — pg-boss + outbox in PostgreSQL cover scheduling, queueing, and pub/sub. Horizontal scaling is multiple engine instances behind a load balancer against the same PostgreSQL.*
 
 4.2.0 retired the docker-compose production deploy. The engine is now a single `bun build --compile` binary deployed under systemd; postgres + caddy are apt-installed system services on the host.
 
@@ -223,6 +238,26 @@ running binary. The release workflow signs `SHA256SUMS` with the
 committed to `packages/cli-core/src/release-public-key.ts` and embedded
 in every binary at build time.
 
+```mermaid
+flowchart LR
+    Trigger(["engine --self-update<br/>or sk update"])
+    Fetch["Download new binary<br/>+ signed SHA256SUMS"]
+    Verify{"Ed25519 verify<br/>against embedded public key"}
+    Park["Park current → ~/.engine/versions/<v>/<br/>(keep last 3 with manifest.json)"]
+    Swap["Atomic binary swap<br/>+ systemctl restart"]
+    Audit[("audit_log:<br/>engine.update.completed")]
+    Fail[("audit_log:<br/>engine.update.failed")]
+    Rollback(["engine --rollback"])
+
+    Trigger --> Fetch --> Verify
+    Verify -- ok --> Park --> Swap --> Audit
+    Verify -- bad signature --> Fail
+    Swap -- crash --> Fail
+    Rollback -. re-hash retained binary .-> Swap
+```
+
+*Atomic swap; failure rolls back automatically; every transition lands in the audit log under the system tenant. Losing the private key bricks future updates for any binary that hasn't yet picked up a key rotation — treat it like the database master key.*
+
 ### Audit trail
 
 Every binary swap writes a pair of rows to `audit_log` under
@@ -305,7 +340,9 @@ key — back it up, rotate after operator handover.
 
 ---
 
-## What to Read Next
+## Further reading
 
-- [AGENTS.md](../AGENTS.md) — the canonical repo-wide contract for contributors: subsystem map, quality gates, and non-negotiables.
-- [docs/quickstart/operator.md](quickstart/operator.md) — step-by-step: engine up, admin key minted, first connector registered, in 10 minutes.
+- [AGENTS contract](../AGENTS.md) — canonical repo-wide contract for contributors: subsystem map, quality gates, and non-negotiables.
+- [Operator quickstart](./quickstart/operator.md) — step-by-step: engine up, admin key minted, first connector registered, in 10 minutes.
+- [cost attribution (R10)](./system-requirements.md#r10--cost-attribution-and-per-tenant-budget) — strategy-level requirement this operations layer realises.
+- [structural changes (positioning §7)](./positioning.md#7-part-2b--structural-changes-sk-specific-not-generic-outcomes) — what operators concretely experience after sk is in place.
