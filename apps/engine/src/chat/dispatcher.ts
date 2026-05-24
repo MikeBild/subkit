@@ -3,22 +3,30 @@
 // Responsibilities:
 //   1. Look up the chat_workspaces row by (platform, workspace_id)
 //      to find the tenant.
-//   2. Resolve a chat_identities row → subkit user_id. If none, auto-
-//      bind the platform user to the tenant's seeded admin user and
-//      audit it as kind: "auto_link". The chat surface treats every
-//      first message from an unknown platform user as implicit consent
-//      to act under the tenant's primary admin until an explicit
-//      identity-linking flow is added; the audit row is the forensic
-//      record of which platform identity got bound when.
+//   2. Resolve a chat_identities row → subkit user_id. An *explicit*
+//      link is required — no auto-link-to-admin. The installer's
+//      platform user is bound at install time via
+//      `POST /v1/chat/workspaces.installer_platform_user_id`; further
+//      users are linked via the admin `POST /v1/chat/identities`
+//      route. Unknown platform users receive an ephemeral "not linked"
+//      reply and run no turn; a `chat.message.denied` audit row records
+//      the rejection.
 //   3. Resolve (or create) a chat_sessions row → conversation_id.
 //   4. Route the event to the conversation layer:
 //        - mention / slash "chat <prompt>" → createConversation /
-//          appendUserMessage (aka runTurn)
-//        - interaction with action_id approve:* or reject:* →
-//          decideApproval
+//          appendUserMessage
+//        - "/new" / "reset" → drop the chat_sessions binding so the
+//          next message starts a fresh conversation
+//        - interaction (Block-Kit click / view_submission) →
+//          respondElicitation with the typed output the adapter
+//          extracted
+//        - "/subkit run <slug>" → createExecution + enqueueRun
 //        - anything else → ephemeral help text via adapter.send
-//   5. On an approval_request frame, send an approval card via the
-//      adapter so users can click Approve/Reject inline.
+//   5. On `awaiting_input`, render the elicitation natively when the
+//      adapter declares `capabilities.interactive.includes(kind)`,
+//      otherwise fall back to the legacy sendApproval card.
+//   6. On completion, post the assistant's reply (extracted from
+//      `RunLoopResult.events`) back into the originating thread.
 //
 // The dispatcher is intentionally free of adapter-specific types —
 // it takes a ChatAdapter at runtime so tests can plug in a fake.
@@ -254,7 +262,9 @@ function mapToolNameToKind(toolName: string): ElicitationKind {
 /** Parse a Block Kit action `value` JSON envelope produced by the
  *  native elicitation renderers. The envelope shape `{c, o}` carries
  *  the `conversation_id` (`c`) and the typed elicitation output (`o`);
- *  invalid / non-JSON values return null so the dispatcher can ignore. */
+ *  invalid / non-JSON values return null so the dispatcher can ignore.
+ *  Parse failures emit a warn so a renderer regression surfaces in
+ *  diagnostics rather than as an opaque `ignored` status. */
 function parseEnvelope(raw: string): { c: string; o?: unknown } | null {
   if (!raw) return null;
   try {
@@ -262,8 +272,18 @@ function parseEnvelope(raw: string): { c: string; o?: unknown } | null {
     if (parsed && typeof parsed === "object" && typeof parsed.c === "string") {
       return parsed as { c: string; o?: unknown };
     }
-  } catch {
-    /* fallthrough */
+    logger.warn({
+      module: "chat",
+      action: "interaction.envelope_malformed",
+      msg: "interaction value JSON-parsed but did not match the {c,o} envelope shape",
+    });
+  } catch (err) {
+    logger.warn({
+      module: "chat",
+      action: "interaction.envelope_parse_failed",
+      msg: "interaction value is not valid JSON — Block-Kit renderer regression?",
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
   return null;
 }
@@ -283,8 +303,18 @@ function parseViewMetadata(raw: string): { c: string; e: string; k: string } | n
     ) {
       return parsed as { c: string; e: string; k: string };
     }
-  } catch {
-    /* fallthrough */
+    logger.warn({
+      module: "chat",
+      action: "interaction.view_metadata_malformed",
+      msg: "view.private_metadata JSON-parsed but did not match the {c,e,k} shape",
+    });
+  } catch (err) {
+    logger.warn({
+      module: "chat",
+      action: "interaction.view_metadata_parse_failed",
+      msg: "view.private_metadata is not valid JSON — modal-view builder regression?",
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
   return null;
 }
@@ -642,9 +672,8 @@ export async function handleChatEvent(
     // Pass-2 C6: chat slash `/run` gates on `workflow:run`. The
     // dispatcher assembles a synthetic user principal out of the
     // resolved chat identity so the evaluator can walk the
-    // role/group/grant ladder. We preload the user's legacy enum role
-    // so the built-in admin short-circuit still fires for the seeded
-    // chat admin user that auto-linked on first message.
+    // role/group/grant ladder. Preload the linked user's enum role so
+    // the evaluator's admin short-circuit fires when applicable.
     const userRows = await db
       .select({ role: users.role })
       .from(users)

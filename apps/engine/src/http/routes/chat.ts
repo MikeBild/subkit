@@ -47,14 +47,16 @@ async function ingest(
   deps: ChatRoutesDeps,
   db?: Db,
 ): Promise<Response> {
-  if (!adapter) {
-    return new Response(JSON.stringify({ error: "adapter_not_registered" }), {
-      status: 503,
-      headers: { "content-type": "application/json" },
-    });
-  }
-  // Peek once to catch the Slack URL verification handshake without
-  // consuming the verifier's body read. Clone first.
+  // The Slack url_verification handshake is the FIRST thing Slack does
+  // when an Events API subscription URL is configured — and it MUST
+  // succeed BEFORE any workspace is installed (Slack won't let the
+  // operator complete app setup without a verified URL, and the
+  // operator can't install a workspace until app setup completes —
+  // chicken-and-egg). Short-circuit here, before the
+  // adapter-not-registered check, so a fresh engine answers the
+  // challenge without requiring a prior install. The handshake is a
+  // fixed protocol (echo the challenge string back) and carries no
+  // payload an attacker could exploit.
   const cloned = req.clone();
   const peekBody = await cloned.text();
   if (platform === "slack") {
@@ -69,6 +71,13 @@ async function ingest(
     } catch {
       // not JSON — slash commands etc.
     }
+  }
+
+  if (!adapter) {
+    return new Response(JSON.stringify({ error: "adapter_not_registered" }), {
+      status: 503,
+      headers: { "content-type": "application/json" },
+    });
   }
 
   const verified = await adapter.verify(req);

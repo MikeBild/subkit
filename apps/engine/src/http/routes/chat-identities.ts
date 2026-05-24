@@ -11,7 +11,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, audit } from "../../audit/index.ts";
-import { chatIdentities } from "../../db/schema/index.ts";
+import { chatIdentities, users } from "../../db/schema/index.ts";
 import { ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -139,6 +139,21 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const body = c.req.valid("json");
 
+    // Verify `body.user_id` exists in THIS tenant before linking. The
+    // `chat_identities.user_id` FK only constrains existence — not
+    // tenant — so without this check a T_A admin could insert a row
+    // binding a real Slack user to a T_B user_id. RBAC still closes
+    // the door at run time (`dispatcher.ts` preloads roles by
+    // `(tenant_id, user_id)` and finds nothing), but the audit trail
+    // would record the cross-tenant id as `actor_id` on every message
+    // — the wrong identity to log a denied audit against.
+    const [user] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.tenant_id, principal.tenant_id), eq(users.id, body.user_id)))
+      .limit(1);
+    if (!user) throw new NotFoundError("user");
+
     const insertResult = await db
       .insert(chatIdentities)
       .values({
@@ -200,11 +215,10 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         actor_type: "user",
         actor_id: principal.id,
-        action: AuditAction.CHAT_IDENTITY_LINKED,
+        action: AuditAction.CHAT_IDENTITY_UNLINKED,
         resource_type: "chat_identity",
         resource_id: row.user_id,
         result: "success",
-        reason: "unlinked",
         metadata: {
           kind: "manual_unlink",
           platform: row.platform,

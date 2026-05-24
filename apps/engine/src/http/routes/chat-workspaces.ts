@@ -181,65 +181,126 @@ export function registerChatWorkspaceRoutes(
     // Insert with a placeholder ciphertext, then re-encrypt with the
     // row-bound AAD now that we have the row id. Mirrors the webhooks/
     // inbound install flow which faces the same "AAD needs the row id"
-    // dance. The placeholder is overwritten in the same transaction so
-    // a crash between the two steps cannot leave a usable but unbound
-    // secret on disk.
+    // dance.
+    //
+    // Wrapped in `db.transaction((tx) => …)` so the
+    // INSERT(placeholder) → UPDATE(bound ciphertext) → INSERT(identity
+    // link) sequence commits atomically. Without the transaction, a
+    // crash between the placeholder insert and the bound update would
+    // leave a stranded chat_workspaces row whose ciphertext is
+    // undecryptable (placeholder AAD); the next install retry would
+    // hit the unique conflict on (tenant_id, platform, workspace_id)
+    // and 409, stranding the operator until a manual DELETE.
     const placeholder = encryptSecret("__placeholder__");
-    const insertResult = await db
-      .insert(chatWorkspaces)
-      .values({
-        tenant_id: principal.tenant_id,
-        platform: body.platform,
-        workspace_id: body.workspace_id,
-        default_channel: body.default_channel ?? null,
-        bot_ciphertext: placeholder.ciphertext,
-        bot_iv: placeholder.iv,
-        bot_auth_tag: placeholder.auth_tag,
-      })
-      .onConflictDoNothing({
-        target: [chatWorkspaces.tenant_id, chatWorkspaces.platform, chatWorkspaces.workspace_id],
-      })
-      .returning();
-    const row = insertResult[0];
-    if (!row) {
-      throw new ConflictError(
-        `${body.platform} workspace ${body.workspace_id} is already installed in this tenant`,
-      );
-    }
+    let row: typeof chatWorkspaces.$inferSelect | undefined;
+    let installerLinked = false;
+    await db.transaction(async (tx) => {
+      const insertResult = await tx
+        .insert(chatWorkspaces)
+        .values({
+          tenant_id: principal.tenant_id,
+          platform: body.platform,
+          workspace_id: body.workspace_id,
+          default_channel: body.default_channel ?? null,
+          bot_ciphertext: placeholder.ciphertext,
+          bot_iv: placeholder.iv,
+          bot_auth_tag: placeholder.auth_tag,
+        })
+        .onConflictDoNothing({
+          target: [chatWorkspaces.tenant_id, chatWorkspaces.platform, chatWorkspaces.workspace_id],
+        })
+        .returning();
+      row = insertResult[0];
+      if (!row) {
+        // The route returns 409 — abort the transaction by throwing; the
+        // catch outside re-throws as a typed ConflictError so the HTTP
+        // layer formats it correctly.
+        throw new ConflictError(
+          `${body.platform} workspace ${body.workspace_id} is already installed in this tenant`,
+        );
+      }
 
-    // Re-encrypt with the row-bound AAD, then update.
-    const bound = encryptSecret(body.bot_token, aadFor(row.tenant_id, row.id));
-    await db
-      .update(chatWorkspaces)
-      .set({
-        bot_ciphertext: bound.ciphertext,
-        bot_iv: bound.iv,
-        bot_auth_tag: bound.auth_tag,
-        updated_at: new Date(),
-      })
-      .where(eq(chatWorkspaces.id, row.id));
+      // Re-encrypt with the row-bound AAD, then update.
+      const bound = encryptSecret(body.bot_token, aadFor(row.tenant_id, row.id));
+      await tx
+        .update(chatWorkspaces)
+        .set({
+          bot_ciphertext: bound.ciphertext,
+          bot_iv: bound.iv,
+          bot_auth_tag: bound.auth_tag,
+          updated_at: new Date(),
+        })
+        .where(eq(chatWorkspaces.id, row.id));
 
-    // Link the installer's platform user → the authenticated subkit
-    // user so the operator's first chat message resolves to a real
-    // principal. `onConflictDoNothing` because the operator may
-    // already have linked themselves to another workspace under the
-    // same tenant.
-    await db
-      .insert(chatIdentities)
-      .values({
-        tenant_id: principal.tenant_id,
-        user_id: principal.id,
-        platform: body.platform,
-        workspace_id: body.workspace_id,
-        platform_user_id: body.installer_platform_user_id,
-      })
-      .onConflictDoNothing({
-        target: [
-          chatIdentities.platform,
-          chatIdentities.workspace_id,
-          chatIdentities.platform_user_id,
-        ],
-      });
+      // Link the installer's platform user → the authenticated subkit
+      // user so the operator's first chat message resolves to a real
+      // principal. Capture `.returning()` so we can distinguish three
+      // outcomes:
+      //   - new row → emit CHAT_IDENTITY_LINKED kind:install
+      //   - already linked to THIS user_id → emit a noop audit
+      //   - already linked to a DIFFERENT user_id → emit a deny audit
+      //     and surface a clear 409 so the operator knows the install
+      //     succeeded but their account isn't bound (without this they
+      //     would hit "your chat account isn't linked" on first message
+      //     with no clue why).
+      const linkResult = await tx
+        .insert(chatIdentities)
+        .values({
+          tenant_id: principal.tenant_id,
+          user_id: principal.id,
+          platform: body.platform,
+          workspace_id: body.workspace_id,
+          platform_user_id: body.installer_platform_user_id,
+        })
+        .onConflictDoNothing({
+          target: [
+            chatIdentities.platform,
+            chatIdentities.workspace_id,
+            chatIdentities.platform_user_id,
+          ],
+        })
+        .returning();
+      if (linkResult[0]) {
+        installerLinked = true;
+      } else {
+        // Look up the existing row so we can tell which case we're in.
+        // tenant-filter:exempt — the chat_identities row is keyed by
+        // the platform identity tuple (platform, workspace_id,
+        // platform_user_id) which is globally unique; a different-
+        // tenant binding for the same Slack id is exactly the
+        // conflict W-3 wants to surface, so a tenant_id predicate
+        // would HIDE the conflict and silently overwrite the
+        // operator's link state.
+        const [existing] = await tx
+          .select({ user_id: chatIdentities.user_id })
+          .from(chatIdentities)
+          .where(
+            and(
+              eq(chatIdentities.platform, body.platform),
+              eq(chatIdentities.workspace_id, body.workspace_id),
+              eq(chatIdentities.platform_user_id, body.installer_platform_user_id),
+            ),
+          )
+          .limit(1);
+        if (existing && existing.user_id !== principal.id) {
+          // The Slack user is bound to a different subkit user already.
+          // Rolling back the install is the right call: the operator
+          // explicitly asked for THIS subkit user to be linked, and
+          // shipping a workspace whose installer doesn't actually have
+          // a working identity is a silent-failure trap. Throw inside
+          // the tx → workspace insert + bot-token update both roll
+          // back, leaving a clean state to retry from.
+          // The 409 HTTP response (via the error middleware's standard
+          // request log) is the observability hook for SIEM/operators.
+          throw new ConflictError(
+            `slack user ${body.installer_platform_user_id} in workspace ` +
+              `${body.workspace_id} is already linked to a different subkit user; ` +
+              "unlink it via DELETE /v1/chat/identities/<id> and retry the install",
+          );
+        }
+      }
+    });
+    if (!row) throw new ConflictError("chat_workspace install transaction produced no row");
 
     audit(
       {
@@ -257,6 +318,13 @@ export function registerChatWorkspaceRoutes(
       },
       db,
     );
+    // Emit an audit row that reflects the actual identity-link
+    // outcome — not a misleading "linked" for every install. The
+    // conflict-with-different-user case is handled inside the
+    // transaction (throws ConflictError → 409, install rolls back, no
+    // audit emitted because no state changed). What reaches here is
+    // either a fresh link (`install`) or an idempotent reinstall
+    // (`install_noop` — same operator, same Slack id, already linked).
     audit(
       {
         tenant_id: principal.tenant_id,
@@ -266,8 +334,9 @@ export function registerChatWorkspaceRoutes(
         resource_type: "chat_identity",
         resource_id: principal.id,
         result: "success",
+        ...(installerLinked ? {} : { reason: "install_noop" }),
         metadata: {
-          kind: "install",
+          kind: installerLinked ? "install" : "install_noop",
           platform: body.platform,
           platform_user_id: body.installer_platform_user_id,
         },

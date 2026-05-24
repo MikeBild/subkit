@@ -9,9 +9,9 @@
 //     calls land on a local Hono server.
 
 import { WebClient } from "@slack/web-api";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { conversationElicitations } from "../../db/schema/index.ts";
+import { chatWorkspaces, conversationElicitations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import type { ChatAdapter } from "../adapter.ts";
 import type {
@@ -368,18 +368,58 @@ export class SlackAdapter implements ChatAdapter {
     }
 
     // Resolve the elicitation row to build a typed ChatElicitation for
-    // the modal. tenant-filter:exempt — `elicitation_id` is a globally
-    // unique UUID; the row carries `tenant_id` for downstream scoping.
+    // the modal.
+    //
+    // Tenant scoping is required here: the chat route uses ONE app-
+    // level signing secret across every installed workspace, so
+    // verify() succeeding only proves "this came from Slack to
+    // subkit's app" — not "from tenant T_X". An unscoped lookup by
+    // id would let a user in workspace W_A click an
+    // `open_elicit:<harvested-id>` button and see tenant T_B's
+    // elicitation `summary`/`body`/`options`/`fields` rendered into
+    // W_A's modal. We bind the lookup to the workspace's tenant first.
+    // tenant-filter:exempt — platform/workspace_id lookup pre-tenant
+    // (mirrors dispatcher.ts:handleChatEvent and chat-event handler).
+    const [workspace] = await db
+      .select({ tenant_id: chatWorkspaces.tenant_id })
+      .from(chatWorkspaces)
+      .where(
+        and(
+          eq(chatWorkspaces.platform, "slack"),
+          eq(chatWorkspaces.workspace_id, event.workspace_id),
+        ),
+      )
+      .limit(1);
+    if (!workspace) {
+      logger.warn({
+        module: "chat",
+        action: "slack.open_elicit.unknown_workspace",
+        msg: "open_elicit from a workspace with no chat_workspaces row",
+        platform_workspace_id: event.workspace_id,
+      });
+      return { handled: true };
+    }
+
     const [row] = await db
       .select()
       .from(conversationElicitations)
-      .where(eq(conversationElicitations.id, elicitation_id))
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, workspace.tenant_id),
+          eq(conversationElicitations.id, elicitation_id),
+        ),
+      )
       .limit(1);
     if (!row) {
+      // Either the id is unknown OR it exists in a different tenant —
+      // both produce the same "not found" outcome. We DO NOT log the
+      // elicitation_id at info level to avoid teaching a probing
+      // attacker which ids exist; warn-level is fine.
       logger.warn({
         module: "chat",
         action: "slack.open_elicit.not_found",
-        msg: "open_elicit references unknown elicitation",
+        msg: "open_elicit references unknown elicitation (or wrong tenant)",
+        tenant_id: workspace.tenant_id,
         elicitation_id,
       });
       return { handled: true };
