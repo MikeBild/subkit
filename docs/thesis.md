@@ -221,9 +221,9 @@ The vocabulary triad — *organisational agentic operationalisation* (theory ter
 ## Further reading
 
 - [system requirements](./system-requirements.md) — what such a system must do.
-- [positioning](./positioning.md) — how sk realises it.
+- [positioning](./positioning.md) — how this reference implementation realises it.
 - [glossary](./02-concepts.md) — every term used here, defined once.
-- [platform architecture](./01-platform.md) — developer-side architecture of sk.
+- [platform architecture](./01-platform.md) — developer-side architecture of this reference implementation.
 
 ---
 

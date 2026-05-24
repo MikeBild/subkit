@@ -8,7 +8,7 @@
 
 ## 1. Summary
 
-**sk is an operational AI execution layer** — the shared system that turns individual agentic productivity into organisational agentic operationalisation (see the [thesis](./thesis.md) for the platform theory behind that sentence). It is not a chat product, not a replacement for general AI assistants, not a universal AI-governance layer for an entire enterprise.
+**sk is a reference implementation of the operational AI execution layer** — a shared system that turns individual agentic productivity into organisational agentic operationalisation (see the [thesis](./thesis.md) for the platform theory behind that sentence). It is not a chat product, not a replacement for general AI assistants, not a universal AI-governance layer for an entire enterprise. This document positions the reference implementation against the [system requirements](./system-requirements.md); any candidate system can be evaluated against the same standard.
 
 The iconic short form, for conversations that need one sentence:
 
@@ -16,11 +16,11 @@ The iconic short form, for conversations that need one sentence:
 
 The strategic-management term *operating model* — until now a static description, a deck, a diagram — becomes executable software. The vocabulary triad is intentional: *organisational agentic operationalisation* (theory term), *operational AI execution layer* (market term), **The Operating Model** (iconic short term). See the [glossary](./02-concepts.md#group-0-strategy-vocabulary).
 
-**Scope decision (deliberate, GTM-critical).** sk addresses one sharp slice: the *governed execution of operationalised workflows* against production systems. Free exploration, IDE coding assistance, and employee chat stay outside — they are probabilistic by design and do not need execution governance. sk does *not* eliminate shadow AI; it draws the *operational* subset of AI usage into a governed lane.
+**Scope decision (deliberate, GTM-critical).** The reference implementation addresses one sharp slice: the *governed execution of operationalised workflows* against production systems. Free exploration, IDE coding assistance, and employee chat stay outside — they are probabilistic by design and do not need execution governance. The reference implementation does *not* eliminate shadow AI; it draws the *operational* subset of AI usage into a governed lane.
 
 ```mermaid
 flowchart TB
-    subgraph governed["Governed by sk"]
+    subgraph governed["Governed by the reference implementation"]
         Ops["Operational workflows<br/>against production systems"]
     end
     subgraph free["Intentionally outside scope"]
@@ -33,9 +33,9 @@ flowchart TB
     Bridge --> governed
 ```
 
-*What sk governs (governed operational workflows) vs. what stays outside (free exploration, IDE coding assistance, employee chat). The bridge between them is controlled operational delegation via the MCP OAuth endpoint.*
+*What the reference implementation governs (governed operational workflows) vs. what stays outside (free exploration, IDE coding assistance, employee chat). The bridge between them is controlled operational delegation via the MCP OAuth endpoint.*
 
-In one sentence: sk integrates three layers that organisations otherwise have to assemble themselves — **contextualised AI authoring**, **operational governance**, and **versioned, reproducible execution** — into a single product whose effect compounds per tenant over time. Context accumulation and the learning loop are the actual moat.
+In one sentence: the reference implementation integrates three layers that organisations otherwise have to assemble themselves — **contextualised AI authoring**, **operational governance**, and **versioned, reproducible execution** — into one running system whose effect compounds per tenant over time. Context accumulation and the learning loop are the actual moat.
 
 Two sentences that recur across the [thesis](./thesis.md) and ground this positioning:
 
@@ -56,7 +56,7 @@ The bold formulation, also carried from the thesis: *the next relevant software 
 
 ```mermaid
 flowchart TB
-    subgraph sk["One product — sk"]
+    subgraph sk["One running system — sk"]
         A1["Contextualised<br/>AI authoring"]
         A2["Operational<br/>governance"]
         A3["Versioned<br/>reproducible execution"]
@@ -74,7 +74,7 @@ flowchart TB
 
 *Three integrated layers as a single product, contrasted with a chain of five separate tools whose seams leak audit, identity, and context.*
 
-**What sk does in authoring.** sk runs a *contextualised* AI assistant in the authoring phase — technically a domain-specialised "agent harness" in the sense of recent agent literature (the interleaved reasoning + acting pattern of ReAct — Reasoning + Acting — Yao et al. 2023; a means, not the headline). The difference from a generic coding assistant is the **grounding on the tenant**: the assistant decides not from training knowledge alone but from this organisation's own context — conceptually retrieval-augmented generation (RAG, Lewis et al. 2020).
+**What the reference implementation does in authoring.** It runs a *contextualised* AI assistant in the authoring phase — technically a domain-specialised "agent harness" in the sense of recent agent literature (the interleaved reasoning + acting pattern of ReAct — Reasoning + Acting — Yao et al. 2023; a means, not the headline). The difference from a generic coding assistant is the **grounding on the tenant**: the assistant decides not from training knowledge alone but from this organisation's own context — conceptually retrieval-augmented generation (RAG, Lewis et al. 2020).
 
 Five context sources ground the assistant — Skills, Knowledge, Connectors, Workflows, Operational feedback. The full specification of why each is required lives in [context as authoring input](./system-requirements.md#r2--context-as-a-first-class-input-to-authoring) (R2):
 
@@ -110,7 +110,7 @@ The runtime being non-intelligent is *the point*: it makes execution auditable. 
 
 ## 3. The Build-It-Yourself Question, Tool by Tool
 
-The strongest sceptical attack: *"You are a workflow system with an LLM in front — I can build this from standard parts (LangGraph + Vault + OAuth + an approval workflow)."* The mechanic of sk really is buildable from standard parts. What is not buildable — and not trivially added on — is the actual moat:
+The strongest sceptical attack: *"You are a workflow system with an LLM in front — I can build this from standard parts (LangGraph + Vault + OAuth + an approval workflow)."* The mechanic of this reference implementation really is buildable from standard parts. What is not buildable — and not trivially added on — is the actual moat:
 
 - **Organisational context accumulation.** Per tenant, a curated context grows over time: Skills, Knowledge, versioned Workflows as reference cases. The next authoring run is visibly better grounded than the previous one. A self-assembled stack does not have this accumulation as a first-class concept.
 - **Drift-assisted remediation as a closed loop.** Schema and behaviour drift detected in production flows back as operator-reviewed Patch and Skill Candidates into authoring. The system learns from *real* production runs rather than generic training knowledge.
@@ -130,7 +130,7 @@ The irreducible core is not a single feature; it is the **integration**: context
 
 ---
 
-## 4. Part 1 — The Problem (how sk maps the symptoms)
+## 4. Part 1 — The Problem (how the reference implementation maps the symptoms)
 
 This is the compressed version; for the deeper framing of *why* ungoverned AI use becomes operational action, see the [Why Now? section](./thesis.md#4-why-now--the-urgency) and the [real-problem-domain section](./thesis.md#3-the-real-problem-domain--solo-leverage-vs-organisational-operationalisation) in the thesis.
 
@@ -188,7 +188,7 @@ flowchart TB
 - **Authoring-vs-execution split.** The approved workflow runs as approved; the control flow is fixed at authoring time and is not re-decided by inference at runtime. Step outputs may vary; the path does not. Every run is recorded as an immutable execution record; rollback by version change. ([R3](./system-requirements.md#r3--separation-of-authoring-probabilistic-from-execution-controlled), [R4](./system-requirements.md#r4--workflow-as-a-versioned-organisational-artefact))
 - **Policy before every external call.** Possible via a sandboxed, fail-closed hook for maintenance windows, approval gates, and data-residency rules. State-changing steps run only after explicit approval; Patch Candidates are never auto-applied.
 - **Tenant isolation.** Tenant boundary enforced at storage, query, and response layers; covered by regression tests. Structurally enforced, not absolutely guaranteed. ([R9](./system-requirements.md#r9--multi-tenant-isolation-as-a-structural-property))
-- **Audit-grade evidence, not compliance.** The append-only action log provides evidence and building blocks for a SOC2 / ISO27001 / GDPR programme; sk is not a compliance solution — compliance requires processes, operations, incident handling, vendor management. ([R11](./system-requirements.md#r11--audit-grade-evidence-not-compliance))
+- **Audit-grade evidence, not compliance.** The append-only action log provides evidence and building blocks for a SOC2 / ISO27001 / GDPR programme; the reference implementation is not a compliance solution — compliance requires processes, operations, incident handling, vendor management. ([R11](./system-requirements.md#r11--audit-grade-evidence-not-compliance))
 
 **5.2 Cost — principles.**
 
@@ -244,7 +244,7 @@ This section deliberately avoids the interchangeable enterprise outcomes ("less 
 
 ## 8. Part 3 — What sk Still Lacks (Honestly)
 
-The most important structural residual first, because it is GTM-critical: **sk does not eliminate shadow AI.** sk governs only what flows through its surfaces. What a developer does in Claude Code / Codex directly in the editor stays outside the sk audit boundary. A reader who expects an all-covering AI governance layer reads the wrong category into this document — the scope decision (operational execution layer, not universal governance layer) is deliberate. The honest answer is a clear category (sk is valuable for the *operational* part) plus the MCP OAuth endpoint that draws the operational portion of external AI clients into the governed lane. A story for raw coding assistance still needs to exist elsewhere in the organisation.
+The most important structural residual first, because it is GTM-critical: **the reference implementation does not eliminate shadow AI.** It governs only what flows through its surfaces. What a developer does in Claude Code / Codex directly in the editor stays outside the reference implementation's audit boundary. A reader who expects an all-covering AI governance layer reads the wrong category into this document — the scope decision (operational execution layer, not universal governance layer) is deliberate. The honest answer is a clear category (the reference implementation is valuable for the *operational* part) plus the MCP OAuth endpoint that draws the operational portion of external AI clients into the governed lane. A story for raw coding assistance still needs to exist elsewhere in the organisation.
 
 **P0 — critical for the enterprise story (blocks buyers):**
 
@@ -287,7 +287,7 @@ A reader can validate this document against the plan and the codebase:
 - [thesis](./thesis.md) — why this category exists.
 - [system requirements](./system-requirements.md) — what such a system must do.
 - [glossary](./02-concepts.md) — every term used here, defined once.
-- [platform architecture](./01-platform.md) — developer-side architecture of sk.
+- [platform architecture](./01-platform.md) — developer-side architecture of this reference implementation.
 - [agents contract](../AGENTS.md) — repository-wide developer contract.
 
 Bibliography is shared with [the thesis sources](./thesis.md#sources).

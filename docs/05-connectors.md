@@ -1,12 +1,12 @@
 # Connectors & Integration
 
 > **Reading time:** ~14 min
-> **Audience:** Engineers wiring sk to external systems, operators curating the catalogue
+> **Audience:** Engineers wiring the reference implementation to external systems, operators curating the catalogue
 > **Strategy context:** developer view of connectors as a governed integration layer ([positioning §5.3](./positioning.md#53-organisation--principles)) and [secrets isolation (R8)](./system-requirements.md#r8--secrets-isolation-from-the-ai-context). The point is not the *number* of templates but the integration behaviour: credentials isolated from the AI context, versioned per-endpoint behaviour, per-endpoint drift detection.
 
 Automation is only as valuable as the connectors it can reach. An AI that can propose a perfect workflow but cannot connect to your CRM, your billing platform, or your internal database is not useful to an enterprise.
 
-Connectors are the integration fabric of sk. They represent every external integration boundary the platform can reach — typed, authenticated, monitored, and secured. Understanding Connectors is essential to understanding how sk connects enterprise AI to real integrations.
+Connectors are the integration fabric of this reference implementation. They represent every external integration boundary the platform can reach — typed, authenticated, monitored, and secured. Understanding Connectors is essential to understanding how this reference implementation connects enterprise AI to real integrations.
 
 ```mermaid
 flowchart TB
@@ -38,7 +38,7 @@ This separation has practical consequences. Multiple Connectors can share the sa
 
 ## The Nine Drivers
 
-Drivers are the protocol layer. Every Connector in sk uses one of nine built-in drivers: `http`, `graphql`, `postgres`, `s3`, `ftp`, `sftp`, `smb`, `mssql`, and `redis`.
+Drivers are the protocol layer. Every Connector in this reference implementation uses one of nine built-in drivers: `http`, `graphql`, `postgres`, `s3`, `ftp`, `sftp`, `smb`, `mssql`, and `redis`.
 
 The **HTTP driver** handles REST APIs. It manages request construction, response parsing, pagination patterns, and error normalization. When a Step calls an HTTP Connector, the driver handles the protocol details so the workflow step only needs to describe what to call and what to do with the result.
 
@@ -50,7 +50,7 @@ The **S3 driver** handles object storage. It manages bucket operations, presigne
 
 The **Redis driver** handles key-value + pub/sub patterns for cache-backed workflows and lightweight inter-step coordination.
 
-Every Connector in sk uses one of these nine drivers. Custom drivers are not part of the platform.
+Every Connector in this reference implementation uses one of these nine drivers. Custom drivers are not part of it.
 
 ### GraphQL vs REST: when to pick which
 
@@ -68,7 +68,7 @@ The two connectors can coexist in a tenant — one `github` connector for writes
 
 Templates are what make the AI's proposals accurate. Without templates, the AI can suggest "use an HTTP connector to call Salesforce" — but it cannot propose the correct authentication pattern, suggest the right endpoints, or explain the connector target's specific behaviors and limitations.
 
-sk ships 90 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Microsoft Teams, Google services, AWS services, databases, and more.
+The reference implementation ships 90 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Microsoft Teams, Google services, AWS services, databases, and more.
 
 A Template is more than a configuration skeleton. It includes: the appropriate driver, the authentication configuration for that service (OAuth2 scopes, API key placement, basic auth conventions), links to documentation that the platform will index, setup guidance the AI presents when a user configures the Connector, and example Skill content the AI can draw on when proposing integrations.
 
@@ -78,7 +78,7 @@ Templates are the reason the AI can propose accurate integrations rather than ge
 
 ## Authentication and Credential Management
 
-sk supports the authentication patterns that enterprise systems actually use: API key, OAuth2 (both authorization code and client credentials flows), basic auth, and custom header schemes.
+The reference implementation supports the authentication patterns that enterprise systems actually use: API key, OAuth2 (both authorisation code and client credentials flows), basic auth, and custom header schemes.
 
 OAuth2 flows are managed entirely by the platform. The engine handles token refresh, expiry detection, and token rotation automatically. An operator configures an OAuth2 Connector once; the platform handles re-authentication as tokens expire. No workflow needs to manage token lifecycle.
 
@@ -92,7 +92,7 @@ End-User Credentials extend this model for multi-user scenarios. An individual u
 
 External APIs change. Fields are renamed, endpoints move, new error codes appear, response shapes evolve. A Connector that worked last month may not work the same way today.
 
-sk tracks schema versions for each Connector endpoint. As the engine executes Steps against a Connector, it observes the response shapes and compares them against the recorded schema. When a discrepancy appears — a field that was present is missing, a type that was a string is now an object — the engine classifies it as drift.
+The reference implementation tracks schema versions for each Connector endpoint. As the engine executes Steps against a Connector, it observes the response shapes and compares them against the recorded schema. When a discrepancy appears — a field that was present is missing, a type that was a string is now an object — the engine classifies it as drift.
 
 Drift is detected from actual execution results, not from periodic polling. The signal comes from real workflow runs encountering real changes in the connected boundary. When drift is detected, it becomes the trigger for the self-healing process described in the execution document.
 

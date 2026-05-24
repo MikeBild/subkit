@@ -4,7 +4,7 @@
 > **Read before:** [the thesis](./thesis.md)
 > **Audience:** CTO, Platform Owner, Buyer-side Architect
 
-Use this document to evaluate any candidate system against the same twelve-requirement standard — including a custom build assembled from existing components. Every requirement traces back to a specific section of the [thesis](./thesis.md), and forward to the section of the [positioning](./positioning.md) document that describes how sk realises it.
+Use this document to evaluate any candidate system against the same twelve-requirement standard — including a custom build assembled from existing components. Every requirement traces back to a specific section of the [thesis](./thesis.md), and forward to the section of the [positioning](./positioning.md) document that describes how the reference implementation realises it.
 
 The market term used throughout for this category is **operational AI execution layer**; the theory term is *organisational agentic operationalisation*. Both are kept; neither is mixed inside a single sentence.
 
@@ -86,7 +86,7 @@ The [central axiom](./02-concepts.md#group-0-strategy-vocabulary) compresses Ide
 
 ## Full specification
 
-The twelve requirements in detail, in the order they would naturally be evaluated. Each links back to a thesis section and forward to the positioning section that explains sk's realisation.
+The twelve requirements in detail, in the order they would naturally be evaluated. Each links back to a thesis section and forward to the positioning section that explains how the reference implementation realises it.
 
 ### R1 — A shared operational execution layer
 
@@ -95,7 +95,7 @@ The twelve requirements in detail, in the order they would naturally be evaluate
 Local per-team substrates do not aggregate. Operational learning, audit, and context accumulation only emerge when operational experience becomes visible inside one shared execution and review system. A candidate system must therefore provide *one* governance, audit, and version space — not a federation of per-team installations. Four properties enforce this: visibility across teams, inheritability of skills, reuse of workflows, and audit at the organisation level.
 
 *Derives from* the [shared-system argument](./thesis.md#7-why-a-shared-system--the-centralisation-argument) in the thesis.
-*Realised in sk:* see [positioning §1 (scope decision)](./positioning.md#1-summary) and [§2 (the core)](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution).
+*Realised in the reference implementation:* see [positioning §1 (scope decision)](./positioning.md#1-summary) and [§2 (the core)](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution).
 
 ---
 
@@ -114,7 +114,7 @@ Five context sources are required:
 - **Operational feedback** — drift and repair signals from real production runs flowing back into authoring (see also [R5](#r5--closed-learning-loop-with-operator-reviewed-remediation)).
 
 *Derives from* the [operational-context-as-infrastructure section](./thesis.md#52-operational-context-becomes-a-first-class-infrastructure-resource) in the thesis.
-*Realised in sk:* see [positioning §2 (five context sources)](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution).
+*Realised in the reference implementation:* see [positioning §2 (five context sources)](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution).
 
 ---
 
@@ -127,7 +127,7 @@ The authoring phase may be probabilistic; the execution phase must be policy-bou
 This is the structural answer to the "deterministic" claim that is often overstated: the system as a whole is not deterministic, but the control flow is — and that is what audit and reproducibility require.
 
 *Derives from* the [new-middleware-layer section](./thesis.md#54-a-new-middleware-layer-emerges-historically--not-by-accident) in the thesis.
-*Realised in sk:* see [positioning §5 (policy- and version-bound execution)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
+*Realised in the reference implementation:* see [positioning §5 (policy- and version-bound execution)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
 
 ---
 
@@ -140,7 +140,7 @@ The authoring output must be a *formal, reviewable, diffable, rollbackable artef
 This is the strongest structural change the system enables: operational logic enters the balance sheet of organisational software assets, for the first time at first-class.
 
 *Derives from* [Git for operational organisational logic](./thesis.md#53-operational-knowledge-becomes-accumulable-versionable-inheritable--git-for-operational-organisational-logic) in the thesis.
-*Realised in sk:* see [positioning §7 (structural changes)](./positioning.md#7-part-2b--structural-changes-sk-specific-not-generic-outcomes).
+*Realised in the reference implementation:* see [positioning §7 (structural changes)](./positioning.md#7-part-2b--structural-changes-sk-specific-not-generic-outcomes).
 
 ---
 
@@ -165,7 +165,7 @@ flowchart LR
 No autonomous repair in production. The loop runs through a human gate. The *compounding* effect — each run improving the next — is the actual moat.
 
 *Derives from* [Git for operational organisational logic](./thesis.md#53-operational-knowledge-becomes-accumulable-versionable-inheritable--git-for-operational-organisational-logic) and the [four platform effects](./thesis.md#8-four-platform-effects--over-context-not-over-users) in the thesis.
-*Realised in sk:* see [positioning §6 (worked example 1, drift stage)](./positioning.md#6-worked-examples--two-lifecycles-in-detail) and [§7 (drift becomes context accumulation)](./positioning.md#7-part-2b--structural-changes-sk-specific-not-generic-outcomes).
+*Realised in the reference implementation:* see [positioning §6 (worked example 1, drift stage)](./positioning.md#6-worked-examples--two-lifecycles-in-detail) and [§7 (drift becomes context accumulation)](./positioning.md#7-part-2b--structural-changes-sk-specific-not-generic-outcomes).
 
 ---
 
@@ -178,7 +178,7 @@ External AI clients — coding assistants, chat connectors, third-party agents �
 The market mechanic for this is OAuth 2.1 (Proof Key for Code Exchange — PKCE — by default) with dynamic client registration (DCR, RFC 7591), refresh-token rotation, and revocation; the business meaning is **controlled operational delegation**.
 
 *Derives from* the [Why Now? section](./thesis.md#4-why-now--the-urgency) and the [shared-system argument](./thesis.md#7-why-a-shared-system--the-centralisation-argument) in the thesis.
-*Realised in sk:* see [positioning §6 (worked example 2, external trigger)](./positioning.md#6-worked-examples--two-lifecycles-in-detail) and [§5 (controlled operational delegation)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
+*Realised in the reference implementation:* see [positioning §6 (worked example 2, external trigger)](./positioning.md#6-worked-examples--two-lifecycles-in-detail) and [§5 (controlled operational delegation)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
 
 ---
 
@@ -191,7 +191,7 @@ Authorisation must be expressible per *operational resource* and per *action* (e
 This is the structural answer to "RBAC light" in conversation-grade enterprise tariffs.
 
 *Derives from* the [Why Now? section](./thesis.md#4-why-now--the-urgency) and the [shared-system argument](./thesis.md#7-why-a-shared-system--the-centralisation-argument) in the thesis.
-*Realised in sk:* see [positioning §5 (fine-grained action-level identity)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
+*Realised in the reference implementation:* see [positioning §5 (fine-grained action-level identity)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
 
 ---
 
@@ -204,7 +204,7 @@ Credentials for external systems must be *authenticated-encrypted at rest* (AEAD
 This is non-negotiable: the moment a credential enters a model context, governance is already lost.
 
 *Derives from* the [Why Now? section](./thesis.md#4-why-now--the-urgency) — once AI acts against production systems, secrets must be isolated from the model.
-*Realised in sk:* see [positioning §5 (secrets outside the AI context)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
+*Realised in the reference implementation:* see [positioning §5 (secrets outside the AI context)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
 
 ---
 
@@ -215,7 +215,7 @@ This is non-negotiable: the moment a credential enters a model context, governan
 Multi-tenancy must be a structural property, not a configuration mode. Every record carries a tenant boundary; the boundary is enforced at storage, query, and response layers and is covered by regression tests. This is not an absolute guarantee — no isolation claim ever is — but it is structurally enforced, not conventional.
 
 *Derives from* the entire thesis: organisational accumulation only makes sense if each organisation's context stays its own.
-*Realised in sk:* see [positioning §5 (layered tenant isolation)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
+*Realised in the reference implementation:* see [positioning §5 (layered tenant isolation)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
 
 ---
 
@@ -228,7 +228,7 @@ Cost for AI usage must be attributable per tenant and per operational flow, and 
 The point is not "cheaper AI"; it is *cost as a tenant-level, vendor-decoupled property*. Tools can change; pricing can change; the operating model stays, and the cost stays attributable.
 
 *Derives from* the [shared-system argument](./thesis.md#7-why-a-shared-system--the-centralisation-argument) in the thesis.
-*Realised in sk:* see [positioning §5 (cost principles)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
+*Realised in the reference implementation:* see [positioning §5 (cost principles)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
 
 ---
 
@@ -241,7 +241,7 @@ The system must produce an *append-only, immutable action log* with enough detai
 **Explicitly: this is not a compliance solution.** Compliance is achieved by processes, documentation, operations, incident handling, and vendor management — never by architecture alone. A candidate system can provide the *evidence and building blocks* that make a compliance programme tractable; it cannot promise compliance.
 
 *Derives from* the [Why Now? section](./thesis.md#4-why-now--the-urgency) — governance shifts from conversation logs to action artefacts.
-*Realised in sk:* see [positioning §5 (traceability, not compliance)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
+*Realised in the reference implementation:* see [positioning §5 (traceability, not compliance)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
 
 ---
 
@@ -252,7 +252,7 @@ The system must produce an *append-only, immutable action log* with enough detai
 Operators must reach the system from multiple entry surfaces (CLI, REST/MCP, chat) and find the *same* governance gate and the *same* audit trail behind every one of them. A second entry that bypasses the gate is a hole in the layer.
 
 *Derives from* the [shared-system argument](./thesis.md#7-why-a-shared-system--the-centralisation-argument) in the thesis.
-*Realised in sk:* see [positioning §5 (multiple surfaces, one governance point)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
+*Realised in the reference implementation:* see [positioning §5 (multiple surfaces, one governance point)](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory).
 
 ---
 
@@ -272,7 +272,7 @@ A candidate system that *does* try to subsume any of these is making a different
 ## Further reading
 
 - [thesis](./thesis.md) — why this category exists.
-- [positioning](./positioning.md) — how sk realises it.
+- [positioning](./positioning.md) — how the reference implementation realises it.
 - [glossary](./02-concepts.md) — every term used here, defined once.
 
 ## Sources

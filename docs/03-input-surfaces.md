@@ -1,12 +1,12 @@
 # Input Surfaces
 
 > **Reading time:** ~12 min
-> **Audience:** Engineers integrating with sk, operators configuring surfaces
+> **Audience:** Engineers integrating with the reference implementation, operators configuring surfaces
 > **Strategy context:** developer view of [one governance gate (R12)](./system-requirements.md#r12--multiple-entry-surfaces-one-governance-point) and [delegated AI action (R6)](./system-requirements.md#r6--delegated-ai-action-with-scoped-time-bound-revocable-audited-authority); the principles for what flows across these surfaces live in [security and governance principles](./positioning.md#51-security-and-governance--principles).
 
 Automation that only works from one place does not fit how enterprise teams actually operate. A developer may prefer a terminal. An analyst may live in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant should be able to call a workflow directly.
 
-sk is designed around this reality. It has multiple entry points — the sk CLI, the REST API, the MCP server, chat platform integrations, webhooks, and scheduled triggers — and all of them lead to the same governed authoring and execution pipeline. The security model, the RBAC checks, and the Audit Log apply identically regardless of where a request originates.
+The reference implementation is designed around this reality. It has multiple entry points — the sk CLI, the REST API, the MCP server, chat platform integrations, webhooks, and scheduled triggers — and all of them lead to the same governed authoring and execution pipeline. The security model, the RBAC checks, and the Audit Log apply identically regardless of where a request originates.
 
 ```mermaid
 flowchart LR
@@ -86,7 +86,7 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 
 **Supported clients.** Any MCP-compatible client can connect: Claude Code, GitHub Copilot, Codex CLI, Gemini, and custom MCP clients built for specific workflows. The connection is a single configuration line pointing at the engine's MCP endpoint.
 
-**Three capability types.** The MCP server exposes sk's capabilities in three forms that match the MCP standard:
+**Three capability types.** The MCP server exposes the reference implementation's capabilities in three forms that match the MCP standard:
 
 - **Callable entries** expose Workflows as `wf.<slug>` functions. A workflow named `payment-sync` becomes a callable workflow entry that an MCP client can invoke directly. The client sees the workflow's input schema, can call it, and receives the result.
 - **Resources** expose Connectors as structured data access. A Stripe Connector might surface as a `stripe://customers` resource that an MCP client can read to understand available data shapes.
@@ -213,13 +213,13 @@ Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthent
 
 Enterprise teams spend much of their day in chat. The sk chat integrations bring the Conversation authoring loop into the surfaces teams already use, so workflow authoring does not require context switching.
 
-**How it works.** Each chat platform has a dedicated adapter that normalizes incoming messages — mentions, slash commands, interaction callbacks — into sk's Conversation model. The same AI authoring loop that runs in the sk CLI runs inside a Chat Session. Responses are rendered as native platform messages. A conversation started in Slack and continued the next day picks up exactly where it left off.
+**How it works.** Each chat platform has a dedicated adapter that normalises incoming messages — mentions, slash commands, interaction callbacks — into the reference implementation's Conversation model. The same AI authoring loop that runs in the sk CLI runs inside a Chat Session. Responses are rendered as native platform messages. A conversation started in Slack and continued the next day picks up exactly where it left off.
 
 **Approval flow.** When a Draft or Patch Candidate requires approval, the platform surfaces an interactive card in the relevant chat thread. Operators see an approve button and a reject button as native chat UI elements — no separate workflow call required. The approval decision is recorded in the Audit Log with the chat platform as the request source.
 
 **Identity linking.** A chat user's platform identity (their Slack user ID, Teams user principal, or Google Chat identity) is linked to their sk Tenant account through a user-initiated flow. Once linked, messages from that user carry their full sk identity, including role and permissions.
 
-**Notification routing.** Execution results, alerts, and approval requests can be routed to specific channels or users through Notification Rules. Operators configure which events go where, at what severity level, and with what quiet-hour constraints. Chat systems are the primary notification channel in sk — email notifications are not supported.
+**Notification routing.** Execution results, alerts, and approval requests can be routed to specific channels or users through Notification Rules. Operators configure which events go where, at what severity level, and with what quiet-hour constraints. Chat systems are the primary notification channel in this reference implementation — email notifications are not supported.
 
 ---
 
