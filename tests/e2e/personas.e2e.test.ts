@@ -37,18 +37,37 @@ let _workflowId: string;
 
 beforeAll(async () => {
   // Admin creates a workflow.
+  //
+  // `--skip-checks` bypasses the validate+preview pre-flight that
+  // `workflows create` runs by default. Without it the CLI would
+  // actually execute the workflow's `request` step against the wider
+  // internet — and a 503 from any external target makes the create
+  // exit 1 without ever persisting the workflow row, which then
+  // collapses the `[0].id` lookup below with an unhelpful nullish
+  // crash. This suite tests RBAC, not external reachability; the
+  // workflow only needs to *exist*.
   const wfDef = JSON.stringify({
     name: "persona-test-wf",
     slug: "persona-test-wf",
-    steps: [{ kind: "request", id: "step-1", method: "GET", url: "https://httpbin.org/get" }],
+    steps: [{ kind: "request", id: "step-1", method: "GET", url: `${env.baseUrl}/openapi.json` }],
   });
   const filePath = writeTempFile(env.personas.admin, "persona-wf.json", wfDef);
-  await cli(["workflows", "create", "--file", filePath], { env, persona: "admin" });
+  const createResult = await cli(["workflows", "create", "--file", filePath, "--skip-checks"], {
+    env,
+    persona: "admin",
+  });
+  expectSuccess(createResult, "personas beforeAll: workflows create");
   const wfs = await runJson<Array<{ id: string }>>(["workflows", "list"], {
     env,
     persona: "admin",
   });
-  _workflowId = (Array.isArray(wfs) ? wfs : [wfs])[0]!.id;
+  const list = Array.isArray(wfs) ? wfs : [wfs];
+  if (list.length === 0) {
+    throw new Error(
+      `personas beforeAll: expected at least one workflow after create, got 0 — workflows create exited ${createResult.exitCode}; stderr: ${createResult.stderr.slice(0, 500)}`,
+    );
+  }
+  _workflowId = list[0]!.id;
 }, 30_000);
 
 // ---------------------------------------------------------------------------

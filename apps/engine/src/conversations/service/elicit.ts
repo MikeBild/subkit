@@ -83,6 +83,29 @@ export class ElicitationActorMismatchError extends Error {
   }
 }
 
+/** Raised when the caller refers to a conversation that doesn't exist
+ *  in this tenant — used so chat callers can map "unknown conversation"
+ *  to a denied audit row + silent drop instead of a generic throw that
+ *  pg-boss would retry. A crafted Block-Kit click carrying another
+ *  tenant's UUID lands here. */
+export class ConversationNotFoundError extends Error {
+  readonly code = "CONVERSATION_NOT_FOUND";
+  constructor(public readonly conversation_id: string) {
+    super(`conversation ${conversation_id} not found in this tenant`);
+  }
+}
+
+/** Raised when the elicitation id doesn't resolve. Crafted clicks
+ *  carrying garbage or cross-tenant ids land here; chat callers map
+ *  this to a denied audit row + silent drop, identical reasoning to
+ *  ConversationNotFoundError. */
+export class ElicitationNotFoundError extends Error {
+  readonly code = "ELICITATION_NOT_FOUND";
+  constructor(public readonly elicitation_id: string) {
+    super(`elicitation ${elicitation_id} not found in this tenant`);
+  }
+}
+
 export async function respondElicitation(
   p: RespondElicitationParams,
   exec: Db,
@@ -95,7 +118,7 @@ export async function respondElicitation(
   // authorisation upstream via per-resource grants / token scopes.
   if (p.require_same_actor) {
     const detail = await getConversation(p.tenant_id, p.conversation_id, exec);
-    if (!detail) throw new Error("conversation not found");
+    if (!detail) throw new ConversationNotFoundError(p.conversation_id);
     if (detail.conversation.owner_id !== p.actor_id) {
       throw new ElicitationActorMismatchError(p.conversation_id, p.actor_id);
     }
@@ -112,7 +135,7 @@ export async function respondElicitation(
     },
     exec,
   );
-  if (resolveOutcome.kind === "not_found") throw new Error("elicitation not found");
+  if (resolveOutcome.kind === "not_found") throw new ElicitationNotFoundError(p.elicitation_id);
   if (resolveOutcome.kind === "already_resolved") {
     const status =
       resolveOutcome.existing.status === "pending" ? "resolved" : resolveOutcome.existing.status;

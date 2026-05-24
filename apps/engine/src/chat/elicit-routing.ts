@@ -14,7 +14,11 @@
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
-import { ElicitationActorMismatchError } from "../conversations/service/elicit.ts";
+import {
+  ConversationNotFoundError,
+  ElicitationActorMismatchError,
+  ElicitationNotFoundError,
+} from "../conversations/service/elicit.ts";
 import { respondElicitation } from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
@@ -25,6 +29,15 @@ import {
 } from "./api.ts";
 import type { DispatchOutcome } from "./dispatcher-types.ts";
 import type { ChatEvent, ElicitationKind } from "./types.ts";
+
+/** UUID v4-friendly shape check. Used before any string from an
+ *  attacker-controlled Block-Kit envelope or modal `private_metadata`
+ *  reaches a `uuid`-typed Postgres column — feeding `eq(uuid_col, "junk")`
+ *  through drizzle would throw `invalid input syntax for type uuid`,
+ *  which escapes the dispatcher → pg-boss retries the job 3× before
+ *  DLQ-ing, with no deny audit row. Bouncing the click here turns it
+ *  into one deterministic `ignored` outcome. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Parse a Block-Kit action `value` JSON envelope `{c, o}` carrying
  *  the conversation_id (`c`, UUID) and typed elicitation output (`o`).
@@ -154,14 +167,45 @@ export async function routeChatInteraction(
       });
       return { status: "ignored" };
     }
-    elicitation_id = legacy[2] ?? "";
+    const legacyElicId = legacy[2] ?? "";
+    // Crafted action_id (e.g. `approve:not-a-uuid`) or value would
+    // reach a `uuid`-typed Postgres column as raw text and throw
+    // `invalid input syntax for type uuid`, escaping into pg-boss
+    // (3× retry storm, no deny audit). Validate up front; ignore
+    // silently so SIEM sees the noise via the structured log alone.
+    if (!UUID_RE.test(legacyElicId) || !UUID_RE.test(actionValue)) {
+      logger.warn({
+        module: "chat",
+        action: "interaction.legacy_ids_malformed",
+        msg: "approve/reject action carries non-UUID ids — discarding",
+        action_id,
+      });
+      return { status: "ignored" };
+    }
+    elicitation_id = legacyElicId;
     conversation_id = actionValue;
     kind = "confirm";
+    // Invariant: rawOutput here is engine-constructed from the
+    // regex-validated `approve|reject` capture, NOT from any
+    // attacker-controlled payload field. If a future caller adds a
+    // new legacy action_id, it MUST keep `rawOutput` engine-constructed
+    // — the validateElicitationOutput pass below trusts the kind
+    // matches and would silently accept a maliciously-shaped output
+    // that happened to fit the confirm schema.
     rawOutput = { confirmed: legacy[1] === "approve" };
   } else {
     const elicit = /^elicit:([^:]+):(confirm|choice|multi:submit)$/.exec(action_id);
     if (elicit) {
       elicitation_id = elicit[1] ?? "";
+      // The conversation_id always rides in the envelope's `c` —
+      // including for `multi:submit`, where the typed selections come
+      // from `form_values` rather than the envelope's `o`. Renderer
+      // invariant (`chat/slack/block-kit.ts` Submit button): the
+      // Submit button's `value` is `envelope(conversation_id, {kind:
+      // "multi"})`, so production never emits a malformed envelope
+      // here. A malformed envelope on Submit therefore signals either
+      // a renderer regression or a crafted click — discarding it is
+      // safer than guessing the conversation from elsewhere.
       const envelope = parseEnvelope(actionValue);
       conversation_id = envelope?.c ?? "";
       // Map the action_id suffix to the elicitation kind so the per-
@@ -273,6 +317,35 @@ export async function routeChatInteraction(
           metadata: {
             conversation_id,
             kind,
+          },
+        },
+        db,
+      );
+      return { status: "ignored", conversation_id };
+    }
+    // Crafted click carrying a real UUID that belongs to another tenant
+    // (or a stale id that's been deleted). Bare-throwing would escape
+    // into pg-boss, which retries the job 3× before DLQ — wasted compute
+    // AND no deny audit row. Audit + silent drop is the right shape.
+    if (err instanceof ConversationNotFoundError || err instanceof ElicitationNotFoundError) {
+      const reason =
+        err instanceof ConversationNotFoundError
+          ? "conversation_not_found_for_actor"
+          : "elicitation_not_found";
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: "user",
+          actor_id: user_id,
+          action: AuditAction.CHAT_MESSAGE_DENIED,
+          resource_type: "conversation_elicitation",
+          resource_id: elicitation_id,
+          result: "denied",
+          reason,
+          metadata: {
+            conversation_id,
+            kind,
+            action_id,
           },
         },
         db,

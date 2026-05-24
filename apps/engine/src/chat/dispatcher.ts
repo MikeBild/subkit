@@ -140,7 +140,11 @@ async function sendTracked(
         per_minute: platformRate,
         retry_after_ms: gate.retryAfterMs,
       });
-      return { platform_message_id: `rate_limited_${Date.now()}` };
+      // Static sentinel — the recordChatDelivery success branch is the
+      // only consumer and doesn't need a unique id. Date.now() here
+      // would break tests that pin returned ids under a frozen clock
+      // and adds no operator value.
+      return { platform_message_id: "rate_limited" };
     }
   }
   try {

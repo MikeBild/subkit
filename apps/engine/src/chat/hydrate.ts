@@ -161,6 +161,31 @@ export async function hydrateChatRegistry(
         platform: row.platform,
         error: message,
       });
+      // Per-tenant audit row so a silent decryption failure — typical
+      // cause: MASTER_KEY rotated without re-encrypting bot tokens —
+      // surfaces in the tenant's SIEM, not just the engine's structured
+      // log. Mirrors the signing-secret-unset audit above; same action
+      // (CHAT_WORKSPACE_HYDRATE_SKIPPED) keeps the dashboard query
+      // surface flat ("show me workspaces that didn't come up this
+      // boot") and uses `reason` to discriminate causes.
+      await auditAwait(
+        {
+          tenant_id: row.tenant_id,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.CHAT_WORKSPACE_HYDRATE_SKIPPED,
+          resource_type: "chat_workspace",
+          resource_id: row.id,
+          result: "success",
+          reason: "hydrate_failed",
+          metadata: {
+            platform: row.platform,
+            workspace_id_native: row.workspace_id,
+            error: message,
+          },
+        },
+        db,
+      );
       outcome.skipped += 1;
     }
   }
