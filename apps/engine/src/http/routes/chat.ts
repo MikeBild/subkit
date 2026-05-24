@@ -22,7 +22,7 @@
 // catalog because the public payloads are platform-owned.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { AuditAction, audit } from "../../audit/index.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type {
   ChatAdapter,
   ChatAdapterRegistry,
@@ -83,7 +83,12 @@ async function ingest(
 
   const verified = await adapter.verify(req);
   if (!verified) {
-    audit(
+    // Durable audit (auditAwait): a bad signature is a security event
+    // and AGENTS.md forbids bypassing the audit log. Fire-and-forget
+    // `audit()` could otherwise drop the row on a process crash
+    // between the 401 send and the audit insert. Matches the
+    // `auditAwait` discipline the rest of the chat surface uses.
+    await auditAwait(
       {
         tenant_id: deps.systemTenantId ?? "00000000-0000-0000-0000-000000000000",
         actor_type: "system",

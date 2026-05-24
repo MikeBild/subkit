@@ -177,6 +177,50 @@ export function registerChatWorkspaceRoutes(
       }
     }
 
+    // Cross-tenant claim check: a real Slack `team_id` is globally
+    // unique (it belongs to exactly one Slack workspace), so two
+    // tenants installing the same one is always wrong. The DB
+    // enforces this via a unique index on (platform, workspace_id);
+    // catching it here lets us emit a meaningful 409 + denied audit
+    // row instead of bubbling a generic DB constraint violation.
+    // tenant-filter:exempt — global uniqueness check spans tenants by
+    // design; we never expose the foreign row, only the conflict.
+    const [foreignRow] = await db
+      .select({ tenant_id: chatWorkspaces.tenant_id })
+      .from(chatWorkspaces)
+      .where(
+        and(
+          eq(chatWorkspaces.platform, body.platform),
+          eq(chatWorkspaces.workspace_id, body.workspace_id),
+        ),
+      )
+      .limit(1);
+    if (foreignRow && foreignRow.tenant_id !== principal.tenant_id) {
+      // Audit the deny on the outer `db` (no tx to roll back into);
+      // do NOT include the foreign tenant_id in metadata — would leak
+      // across the isolation boundary.
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: "user",
+          actor_id: principal.id,
+          action: AuditAction.CHAT_WORKSPACE_INSTALLED,
+          resource_type: "chat_workspace",
+          resource_id: null,
+          result: "denied",
+          reason: "workspace_already_claimed",
+          metadata: {
+            platform: body.platform,
+            workspace_id: body.workspace_id,
+          },
+        },
+        db,
+      );
+      throw new ConflictError(
+        `${body.platform} workspace ${body.workspace_id} is already installed in another tenant`,
+      );
+    }
+
     // Insert with a placeholder ciphertext, then re-encrypt with the
     // row-bound AAD now that we have the row id. Mirrors the webhooks/
     // inbound install flow which faces the same "AAD needs the row id"
@@ -265,10 +309,10 @@ export function registerChatWorkspaceRoutes(
         // Look up the existing row so we can tell which case we're in.
         // tenant-filter:exempt — the chat_identities row is keyed by
         // the platform identity tuple (platform, workspace_id,
-        // platform_user_id) which is globally unique; a different-
-        // tenant binding for the same Slack id is exactly the
-        // conflict W-3 wants to surface, so a tenant_id predicate
-        // would HIDE the conflict and silently overwrite the
+        // platform_user_id) which is globally unique. A different-
+        // tenant binding for the same Slack id is the exact conflict
+        // this branch is designed to surface; adding a tenant_id
+        // predicate here would hide it and silently overwrite the
         // operator's link state.
         const [existing] = await tx
           .select({ user_id: chatIdentities.user_id })

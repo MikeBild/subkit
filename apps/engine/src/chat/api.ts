@@ -39,8 +39,11 @@ export const ChatPlatformZodEnum = z
  *  kind. The dispatcher branches on `capabilities.interactive`
  *  without knowing tool naming details; platform adapters use the
  *  same mapping when building a ChatElicitation from a persisted
- *  elicitation row. */
-export function mapToolNameToKind(toolName: string): ElicitationKind {
+ *  elicitation row. Returns null for an unknown tool name — the
+ *  caller should fall back to the legacy `sendApproval` path rather
+ *  than guess a kind (e.g. silently rendering Approve/Reject for a
+ *  newly-added ask_user_* tool would mis-shape the user's answer). */
+export function mapToolNameToKind(toolName: string): ElicitationKind | null {
   switch (toolName) {
     case "ask_user_confirm":
       return "confirm";
@@ -53,7 +56,7 @@ export function mapToolNameToKind(toolName: string): ElicitationKind {
     case "ask_user_form":
       return "form";
     default:
-      return "confirm";
+      return null;
   }
 }
 
@@ -63,4 +66,55 @@ export function mapToolNameToKind(toolName: string): ElicitationKind {
  *  row's ciphertext under a different identity. */
 export function chatWorkspaceAad(tenant_id: string, workspace_row_id: string): string {
   return `chat-workspace:${tenant_id}:${workspace_row_id}`;
+}
+
+// ---------------------------------------------------------------------
+// Elicitation-output schemas — per ElicitationKind.
+//
+// The dispatcher receives a Block-Kit `value` JSON envelope `{c, o}`
+// or a `view_submission.private_metadata` + `form_values` from
+// adapter `receive()`. Slack signs the outer payload so the user is
+// authenticated, but the SHAPE of `o` (and `form_values`) is still
+// attacker-controlled. These schemas validate the per-kind shape
+// before the dispatcher hands the output to `respondElicitation` so
+// a malformed envelope can't sneak deep into the conversation
+// pipeline (e.g. `output: {}` matching a "rejected" branch and
+// silently rejecting another user's elicitation).
+// ---------------------------------------------------------------------
+
+export const ConfirmOutputSchema = z.object({ confirmed: z.boolean() });
+export const ChoiceOutputSchema = z.object({ value: z.string().min(1) });
+export const MultiOutputSchema = z.object({ values: z.array(z.string()) });
+export const TextOutputSchema = z.object({ text: z.string() });
+/** form output is a flat field-name → primitive dict; we accept
+ *  any well-typed JSON primitive (string / number / boolean / null)
+ *  and reject deeply-nested or array-of-object shapes. */
+export const FormOutputSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())]),
+);
+
+/** Validate an elicitation output against its declared kind. Returns
+ *  the parsed typed value on success or null on failure (the caller
+ *  logs a warn and short-circuits). */
+export function validateElicitationOutput(
+  kind: ElicitationKind,
+  raw: unknown,
+): Record<string, unknown> | null {
+  const schema = (() => {
+    switch (kind) {
+      case "confirm":
+        return ConfirmOutputSchema;
+      case "choice":
+        return ChoiceOutputSchema;
+      case "multi":
+        return MultiOutputSchema;
+      case "text":
+        return TextOutputSchema;
+      case "form":
+        return FormOutputSchema;
+    }
+  })();
+  const parsed = schema.safeParse(raw);
+  return parsed.success ? (parsed.data as Record<string, unknown>) : null;
 }

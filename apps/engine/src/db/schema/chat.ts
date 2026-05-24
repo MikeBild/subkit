@@ -37,6 +37,17 @@ export const chatWorkspaces = pgTable(
       t.platform,
       t.workspace_id,
     ),
+    // GLOBAL uniqueness on (platform, workspace_id): a Slack `team_id`
+    // (and Teams/Google equivalents) is a real-world unique workspace
+    // that can belong to exactly ONE tenant. Without this constraint,
+    // tenant B could install the same workspace tenant A already
+    // installed, and dispatcher / queue / handleSyncInteraction lookups
+    // (which key on `(platform, workspace_id)` because they don't yet
+    // know the tenant) would pick non-deterministically between the
+    // two rows — every inbound event could land under either tenant.
+    // The per-tenant unique key above is kept for clarity; the global
+    // index is the actual tenant-isolation guarantee at the DB layer.
+    uniqueIndex("chat_workspaces_platform_workspace_global_key").on(t.platform, t.workspace_id),
   ],
 );
 

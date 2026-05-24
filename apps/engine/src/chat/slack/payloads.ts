@@ -108,7 +108,15 @@ const BlockActionsPayload = z
     actions: z.array(BlockAction).min(1),
     state: z.object({ values: StateValuesShape }).passthrough().optional(),
   })
-  .passthrough();
+  .passthrough()
+  // The adapter computes workspace_id = team?.id ?? team_id ?? ""; an
+  // empty workspace_id matches no chat_workspaces row and the queue
+  // worker drops the event. Reject at the parse boundary so the
+  // rejection surfaces in adapter-level metrics instead of slipping
+  // through as a silent dispatcher drop.
+  .refine((d) => Boolean(d.team?.id ?? d.team_id), {
+    message: "block_actions requires `team.id` or `team_id`",
+  });
 
 const ViewSubmissionPayload = z
   .object({
@@ -125,7 +133,10 @@ const ViewSubmissionPayload = z
       })
       .passthrough(),
   })
-  .passthrough();
+  .passthrough()
+  .refine((d) => Boolean(d.team?.id ?? d.team_id), {
+    message: "view_submission requires `team.id` or `team_id`",
+  });
 
 // ---------------------------------------------------------------------
 // Slash command (form-encoded; wrapped by the adapter)

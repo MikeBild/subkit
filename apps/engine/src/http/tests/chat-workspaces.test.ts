@@ -257,6 +257,58 @@ describe("GET /v1/chat/workspaces", () => {
   });
 });
 
+describe("Global uniqueness — a Slack team_id is one tenant's only", () => {
+  test("foreign-tenant install of the same workspace_id returns 409 and writes denied audit", async () => {
+    // Seed a row in the other tenant. The new global unique index on
+    // (platform, workspace_id) makes a second install in *this* tenant
+    // impossible; the install route catches the collision first and
+    // emits a clear 409 + denied audit before the DB throws.
+    await ctx.db.insert(chatWorkspaces).values({
+      tenant_id: otherTenantId,
+      platform: "slack",
+      workspace_id: "T_CLAIMED",
+      bot_ciphertext: Buffer.from([0]),
+      bot_iv: Buffer.from([0]),
+      bot_auth_tag: Buffer.from([0]),
+    });
+
+    const res = await fetch(`${ctx.baseUrl}/v1/chat/workspaces`, {
+      method: "POST",
+      headers: authedHeaders(),
+      body: JSON.stringify({
+        platform: "slack",
+        workspace_id: "T_CLAIMED",
+        bot_token: "xoxb-claim-attempt",
+        installer_platform_user_id: "U_CLAIMANT",
+      }),
+    });
+    expect(res.status).toBe(409);
+
+    // No row created in our tenant for that workspace_id.
+    const after = await ctx.db
+      .select()
+      .from(chatWorkspaces)
+      .where(eq(chatWorkspaces.workspace_id, "T_CLAIMED"));
+    expect(after).toHaveLength(1);
+    expect(after[0]?.tenant_id).toBe(otherTenantId);
+
+    // Denied audit recorded with the workspace_already_claimed reason;
+    // metadata does NOT include the foreign tenant_id (would leak
+    // across the isolation boundary).
+    const denied = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "chat_workspace.installed"));
+    const claim = denied.find((r) => r.result === "denied");
+    expect(claim).toBeTruthy();
+    expect(claim?.reason).toBe("workspace_already_claimed");
+    const meta = claim?.metadata as Record<string, unknown> | null;
+    expect(meta?.workspace_id).toBe("T_CLAIMED");
+    expect(meta?.tenant_id).toBeUndefined();
+    expect(meta?.existing_tenant_id).toBeUndefined();
+  });
+});
+
 describe("RBAC negative — non-admin lacks chat_workspace:write", () => {
   test("member POST /v1/chat/workspaces is denied with 403", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/chat/workspaces`, {

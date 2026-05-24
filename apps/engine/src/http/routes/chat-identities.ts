@@ -1,9 +1,10 @@
 // Chat identity link CRUD (admin route).
 //
 // The chat dispatcher requires an *explicit* `chat_identities` row to
-// map a platform user (Slack `U…`, Teams AAD id, …) to a subkit user
-// — the previous auto-link-to-admin shortcut is gone (see plan / Step
-// 8). The installing operator is linked at install via
+// map a platform user (Slack `U…`, Teams AAD id, …) to a subkit user.
+// Unknown chat senders are rejected with a `chat.message.denied`
+// audit row — there is no implicit elevation. The installing operator
+// is linked at workspace install via
 // `POST /v1/chat/workspaces.installer_platform_user_id`; every other
 // chat user is linked here.
 

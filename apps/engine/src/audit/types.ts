@@ -176,8 +176,9 @@ export const AuditAction = {
   CHAT_MESSAGE_SENT: "chat.message.sent",
   /** chat_events_seen retention sweep — keeps the replay-dedup table
    *  bounded. Emitted once per successful sweep with `deleted` and
-   *  `duration_ms` in metadata. */
-  CHAT_DEDUP_PRUNED: "chat.dedup_pruned",
+   *  `duration_ms` in metadata. Dotted segments match the
+   *  `chat.message.*` convention. */
+  CHAT_DEDUP_PRUNED: "chat.dedup.pruned",
 
   NOTIFICATION_CHANNEL_CREATED: "notification_channel.created",
   NOTIFICATION_CHANNEL_UPDATED: "notification_channel.updated",

@@ -22,6 +22,8 @@
 //     adapter by `(tenant, platform, workspace_id)` so the right bot
 //     token is used.
 
+import { auditAwait } from "../audit/audit.ts";
+import { AuditAction } from "../audit/types.ts";
 import { getConfig } from "../config/loader.ts";
 import { decryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db } from "../db/client.ts";
@@ -79,6 +81,28 @@ export async function hydrateChatRegistry(
             workspace_row_id: row.id,
             workspace_id_native: row.workspace_id,
           });
+          // Per-tenant audit row so a re-deployment with a wiped
+          // signing secret is visible in each tenant's SIEM, not just
+          // in the engine's structured log stream. A silent hydration
+          // skip would otherwise disable every Slack workspace
+          // unnoticed.
+          await auditAwait(
+            {
+              tenant_id: row.tenant_id,
+              actor_type: "system",
+              actor_id: null,
+              action: AuditAction.CHAT_WORKSPACE_INSTALLED,
+              resource_type: "chat_workspace",
+              resource_id: row.id,
+              result: "denied",
+              reason: "signing_secret_unset",
+              metadata: {
+                platform: row.platform,
+                workspace_id: row.workspace_id,
+              },
+            },
+            db,
+          );
           outcome.skipped += 1;
           continue;
         }
@@ -115,12 +139,13 @@ export async function hydrateChatRegistry(
         continue;
       }
 
-      // Teams + Google Chat adapters exist as files but are not
-      // activated by this implementation (see plan: separate later
-      // work). They are skipped silently here; their adapter classes
-      // satisfy the ChatAdapter interface (Step 7c reconciliation)
-      // and can be hydrated by extending this function when their
-      // own activation phase ships.
+      // Teams + Google Chat adapter classes satisfy the ChatAdapter
+      // interface but are not hydrated by this function: their
+      // outbound credentials (Teams bot framework, Google service
+      // account) are platform-specific and aren't yet wired through
+      // chat_workspaces. Skipping silently here keeps the registry
+      // free of half-installed adapters; activating either platform
+      // means extending this function to read its credential shape.
       outcome.skipped += 1;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -39,7 +39,6 @@ import type { RunLoopResult } from "../conversations/loop.ts";
 import {
   appendUserMessage,
   createConversation,
-  respondElicitation,
   runConversationTurn,
 } from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
@@ -59,6 +58,13 @@ import { can } from "../rbac/evaluator.ts";
 import { getWorkflow, getWorkflowBySlug } from "../workflows/service.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { mapToolNameToKind } from "./api.ts";
+
+// Re-export the shared types so existing callers (chat/index.ts barrel,
+// tests, the queue handler) keep importing them from `./dispatcher.ts`.
+export type { DispatchOutcome, DispatchRunEnqueue } from "./dispatcher-types.ts";
+
+import type { DispatchOutcome, DispatchRunEnqueue } from "./dispatcher-types.ts";
+import { routeChatInteraction } from "./elicit-routing.ts";
 import {
   type ApprovalCard,
   CHAT_RATES,
@@ -66,19 +72,6 @@ import {
   type ChatEvent,
   type ChatPlatform,
 } from "./types.ts";
-
-/** Envelope handed to the injected enqueue callback when a slash-run
- * fires. Mirrors the shape of `ExecutionRunJob` so callers can forward
- * it straight into pg-boss. Kept inline so the chat module doesn't
- * import from the queue layer. */
-export interface DispatchRunEnqueue {
-  tenant_id: string;
-  workflow_id: string;
-  execution_id: string;
-  input: Record<string, string>;
-  request_source: "chat";
-  trace_id: string | null;
-}
 
 export interface DispatcherDeps {
   db: Db;
@@ -88,16 +81,6 @@ export interface DispatcherDeps {
    * still creates the execution row but skips enqueue (and notes that
    * in the ack message). */
   enqueueRun?: (job: DispatchRunEnqueue) => Promise<void>;
-}
-
-export interface DispatchOutcome {
-  status: "ok" | "workspace_not_found" | "ignored" | "help" | "approved" | "rejected";
-  conversation_id?: string;
-  approval_sent?: boolean;
-  loop?: RunLoopResult;
-  /** Set when the dispatcher routed a `/subkit run` slash command. */
-  execution_id?: string;
-  workflow_id?: string;
 }
 
 interface SendOptions {
@@ -235,66 +218,6 @@ function parseSlashCommand(
   if (head === "help") {
     parts.shift();
     return { verb: "help", ...(parts[0] ? { topic: parts[0] } : {}) };
-  }
-  return null;
-}
-
-/** Parse a Block Kit action `value` JSON envelope produced by the
- *  native elicitation renderers. The envelope shape `{c, o}` carries
- *  the `conversation_id` (`c`) and the typed elicitation output (`o`);
- *  invalid / non-JSON values return null so the dispatcher can ignore.
- *  Parse failures emit a warn so a renderer regression surfaces in
- *  diagnostics rather than as an opaque `ignored` status. */
-function parseEnvelope(raw: string): { c: string; o?: unknown } | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && typeof parsed.c === "string") {
-      return parsed as { c: string; o?: unknown };
-    }
-    logger.warn({
-      module: "chat",
-      action: "interaction.envelope_malformed",
-      msg: "interaction value JSON-parsed but did not match the {c,o} envelope shape",
-    });
-  } catch (err) {
-    logger.warn({
-      module: "chat",
-      action: "interaction.envelope_parse_failed",
-      msg: "interaction value is not valid JSON — Block-Kit renderer regression?",
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-  return null;
-}
-
-/** Parse the Slack modal `private_metadata` JSON `{c, e, k}` carrying
- *  conversation_id, elicitation_id, and the elicitation kind. */
-function parseViewMetadata(raw: string): { c: string; e: string; k: string } | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      typeof parsed.c === "string" &&
-      typeof parsed.e === "string" &&
-      typeof parsed.k === "string"
-    ) {
-      return parsed as { c: string; e: string; k: string };
-    }
-    logger.warn({
-      module: "chat",
-      action: "interaction.view_metadata_malformed",
-      msg: "view.private_metadata JSON-parsed but did not match the {c,e,k} shape",
-    });
-  } catch (err) {
-    logger.warn({
-      module: "chat",
-      action: "interaction.view_metadata_parse_failed",
-      msg: "view.private_metadata is not valid JSON — modal-view builder regression?",
-      error: err instanceof Error ? err.message : String(err),
-    });
   }
   return null;
 }
@@ -451,133 +374,13 @@ export async function handleChatEvent(
     db,
   );
 
-  // Interactions short-circuit to elicitation resolution. We accept
-  // four action_id families:
-  //
-  //   approve:<elic_id> / reject:<elic_id>
-  //       Legacy ApprovalCard path (kept; the existing block-kit
-  //       Approve/Reject card is still a valid render).
-  //   elicit:<elic_id>:confirm | :choice | :multi:select | :multi:submit
-  //       Native elicitation rendering produced by
-  //       `adapter.renderElicitation`. Value carries a JSON envelope
-  //       `{c: conversation_id, o: <typed output>}`; `multi:select` is
-  //       the per-checkbox change event and is ignored — the dispatcher
-  //       acts on `multi:submit` only.
-  //   view_submission
-  //       Slack modal submission. `value` is the modal's
-  //       `private_metadata` JSON `{c, e, k}`; `form_values` is the
-  //       flat `{field_name: primitive}` dict the adapter assembled.
-  //       The dispatcher maps `form_values` to the right
-  //       `respondElicitation` output shape based on the kind in
-  //       private_metadata.
-  //   open_elicit:<elic_id>
-  //       Handled synchronously by the route's `handleSyncInteraction`
-  //       fast path before enqueue; should never reach the dispatcher.
-  //       Ignored defensively if it does.
+  // Interactions short-circuit to elicitation resolution. The parsing
+  // + per-kind validation + `respondElicitation` plumbing lives in
+  // `elicit-routing.ts` — it's self-contained (no closure over the
+  // rest of this turn's state) and large enough to merit its own
+  // module under the audit-invariant size cap.
   if (ev.kind === "interaction" && ev.interaction) {
-    const action_id = ev.interaction.action_id;
-    const actionValue = ev.interaction.value ?? "";
-
-    // No-op: per-checkbox change. We resolve on the submit click.
-    if (/^elicit:[^:]+:multi:select$/.test(action_id)) {
-      return { status: "ignored" };
-    }
-    // No-op: opener click handled by the sync fast path.
-    if (/^open_elicit:/.test(action_id)) {
-      return { status: "ignored" };
-    }
-
-    let conversation_id = "";
-    let elicitation_id = "";
-    let output: unknown = null;
-
-    const legacy = /^(approve|reject):(.+)$/.exec(action_id);
-    if (legacy) {
-      // Legacy ApprovalCard: value is the bare conversation_id (raw
-      // string, NOT JSON). A JSON-shaped value here means a renderer
-      // emitted the new `{c,o}` envelope under a legacy action_id —
-      // fail-closed log so the renderer regression surfaces before
-      // we feed a JSON string into `respondElicitation` as the
-      // conversation_id.
-      if (actionValue.startsWith("{")) {
-        logger.warn({
-          module: "chat",
-          action: "interaction.legacy_value_shape_mismatch",
-          msg: "approve/reject action carries an envelope-shaped value — renderer regression?",
-          action_id,
-        });
-        return { status: "ignored" };
-      }
-      elicitation_id = legacy[2] ?? "";
-      conversation_id = actionValue;
-      output = { confirmed: legacy[1] === "approve" };
-    } else {
-      const elicit = /^elicit:([^:]+):(confirm|choice|multi:submit)$/.exec(action_id);
-      if (elicit) {
-        elicitation_id = elicit[1] ?? "";
-        const envelope = parseEnvelope(actionValue);
-        conversation_id = envelope?.c ?? "";
-        // For `multi:submit` the typed selections come from form_values
-        // (the adapter re-encoded the checkbox state); for confirm /
-        // choice the typed output rides in the envelope's `o`.
-        if (elicit[2] === "multi:submit") {
-          output = ev.interaction.form_values ?? { values: [] };
-        } else {
-          output = envelope?.o ?? null;
-        }
-      } else if (action_id === "view_submission") {
-        const meta = parseViewMetadata(actionValue);
-        if (!meta) return { status: "ignored" };
-        conversation_id = meta.c;
-        elicitation_id = meta.e;
-        // form_values is the flat dict the adapter assembled from
-        // view.state.values; map it to the right output shape per
-        // elicitation kind.
-        const fv = ev.interaction.form_values ?? {};
-        if (meta.k === "text") {
-          // ask_user_text expects `{ text }`. The single-field modal
-          // stores the answer under the field name `answer` (see
-          // `buildElicitationModal`).
-          output = { text: typeof fv.answer === "string" ? fv.answer : "" };
-        } else {
-          // ask_user_form passes the whole field dict through.
-          output = fv;
-        }
-      } else {
-        return { status: "ignored" };
-      }
-    }
-
-    if (!conversation_id || !elicitation_id) {
-      return { status: "ignored" };
-    }
-
-    // #148 — every respondElicitation caller threads a controller.
-    const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
-    try {
-      await respondElicitation(
-        {
-          tenant_id,
-          conversation_id,
-          elicitation_id,
-          actor_id: user_id,
-          output: (output ?? {}) as Record<string, unknown>,
-          turn_abort_ctrl: turnAbortCtrl,
-        },
-        db,
-      );
-    } finally {
-      unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
-    }
-    const isApprove =
-      legacy?.[1] === "approve" ||
-      (typeof output === "object" &&
-        output !== null &&
-        (output as { confirmed?: boolean }).confirmed === true);
-    return {
-      status: isApprove ? "approved" : "rejected",
-      conversation_id,
-    };
+    return await routeChatInteraction({ ev, tenant_id, user_id, db });
   }
 
   // Parse command for mention + slash events.
@@ -887,8 +690,12 @@ export async function handleChatEvent(
     // its `capabilities`. Falls back to the legacy `sendApproval`
     // Approve/Reject card so adapters that haven't shipped native
     // rendering (Teams, Google in this phase) still surface
-    // *something* the user can act on.
+    // *something* the user can act on. An unknown `tool_name`
+    // (`kind === null`) also routes through the fallback path —
+    // mis-rendering a future ask_user_* tool as confirm would
+    // mis-shape the user's typed answer.
     const supportsNative =
+      kind !== null &&
       adapter.capabilities?.interactive?.includes(kind) === true &&
       typeof adapter.renderElicitation === "function";
 
@@ -959,7 +766,12 @@ export async function handleChatEvent(
         event_count: outcome.events.length,
       });
     }
-    const replyText = extracted ?? (outcome.status === "committed" ? "Committed." : "(no reply)");
+    // Soft fallback for the loop-regression branch (extracted === null
+    // AND status !== committed): the operator-facing warn above gets
+    // the alert; the user gets a neutral status instead of a literal
+    // "(no reply)" that trains them to ignore the bot.
+    const replyText =
+      extracted ?? (outcome.status === "committed" ? "Committed." : "Still thinking on this…");
     await sendTracked(adapter, ev.platform, {
       tenant_id,
       workspace_id: ev.workspace_id,

@@ -422,10 +422,21 @@ export class SlackAdapter implements ChatAdapter {
     }
 
     const input = (row.input as Record<string, unknown> | null) ?? {};
+    const kind = mapToolNameToKind(row.tool_name);
+    if (kind === null) {
+      logger.warn({
+        module: "chat",
+        action: "slack.open_elicit.unknown_tool",
+        msg: "open_elicit row references an unknown ask_user_* tool — skipping modal",
+        elicitation_id,
+        tool_name: row.tool_name,
+      });
+      return { handled: true };
+    }
     const elicitation: ChatElicitation = {
       id: row.id,
       conversation_id: row.conversation_id,
-      kind: mapToolNameToKind(row.tool_name),
+      kind,
       summary: (typeof input.summary === "string" && input.summary) || row.tool_name,
     };
     if (typeof input.body === "string") elicitation.body = input.body;
