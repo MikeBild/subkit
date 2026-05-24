@@ -18,13 +18,27 @@ productivity into organisational agentic operationalisation.
 
 ## Strategy & positioning
 
-Three short documents, in reading order:
+Three short documents plus the glossary. In reading order:
 
-| Document | What it covers |
-|----------|---------------|
-| [The Thesis](docs/thesis.md) | *Why this category exists.* Theory of organisational agentic operationalisation. |
-| [System Requirements](docs/system-requirements.md) | *What such a system must do.* Twelve vendor-agnostic requirements. |
-| [Positioning](docs/positioning.md) | *How sk realises it.* Worked examples, principles, honest gaps. |
+| Document | What it covers | Reading time |
+|----------|----------------|--------------|
+| [The Thesis](docs/thesis.md) | *Why this category exists.* Theory of organisational agentic operationalisation. | ~15 min |
+| [System Requirements](docs/system-requirements.md) | *What such a system must do.* Twelve vendor-agnostic requirements. | ~18 min |
+| [Positioning](docs/positioning.md) | *How sk realises it.* Worked examples, principles, honest gaps. | ~20 min |
+| [Glossary](docs/02-concepts.md) | Every term used across the stack, defined once. | reference |
+
+```mermaid
+flowchart LR
+    Thesis["thesis.md<br/>Why this category exists"]
+    Reqs["system-requirements.md<br/>What such a system must do"]
+    Pos["positioning.md<br/>How sk realises it"]
+    Concepts["02-concepts.md<br/>Glossary"]
+
+    Thesis --> Reqs --> Pos
+    Concepts -. cited by .- Thesis
+    Concepts -. cited by .- Reqs
+    Concepts -. cited by .- Pos
+```
 
 For developers, the platform/architecture entry point is
 [`docs/01-platform.md`](docs/01-platform.md); the canonical contract for coding agents

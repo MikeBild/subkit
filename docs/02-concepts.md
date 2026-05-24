@@ -26,19 +26,65 @@ sk's vocabulary for this category is a **triad** — three terms that say the sa
 
 > ***Your operating model used to live in PowerPoint. Now it runs.***
 
-**Central axiom** — *The operating model improves because the organisation learns — and that is the part the organisation can actually control.* Recurs verbatim across all strategy documents.
+**Central axiom** — recurs verbatim across all strategy documents:
+
+> ***The operating model improves because the organisation learns — and that is the part the organisation can actually control.***
 
 **The three core ideas** — *Idea 1 — Problem:* agentic productivity does not automatically scale organisationally. *Idea 2 — Category:* the bottleneck is not intelligence; it is operationalisation. *Idea 3 — Moat:* the moat emerges from organisational context accumulation, not from any single feature.
 
-**Contextual learning loop / compounding loop** — *Run → Drift → Patch Candidate → Skill Candidate → Better Authoring → Better Run.* The mechanism by which the operating model improves over time. (See [`thesis.md`](thesis.md) §5.3 and §8; [`system-requirements.md`](system-requirements.md) R5.)
+**Contextual learning loop** — also known as the *compounding loop*. *Run → Drift → Patch Candidate → Skill Candidate → Better Authoring → Better Run.* The mechanism by which the operating model improves over time. See [Git for operational organisational logic](thesis.md#53-operational-knowledge-becomes-accumulable-versionable-inheritable--git-for-operational-organisational-logic) and the [four platform effects](thesis.md#8-four-platform-effects--over-context-not-over-users) in the thesis, plus [closed learning loop](system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation) in the requirements.
 
-**Scaling cliff** — the point at which solo agentic productivity stops aggregating into organisational operationalisation without a shared system. *More solo actors means more variation, not more coherence.* (See [`thesis.md`](thesis.md) §3.)
+**Scaling cliff** — the point at which solo agentic productivity stops aggregating into organisational operationalisation without a shared system. *More solo actors means more variation, not more coherence.* See [the real problem domain](thesis.md#3-the-real-problem-domain--solo-leverage-vs-organisational-operationalisation) in the thesis.
 
-**Shadow AI scope decision** — sk does not eliminate shadow AI; it provides a governed lane for the operational subset that touches production systems. The rest stays free and that is the deliberate scope choice. (See [`positioning.md`](positioning.md) §1 and Part 3.)
+**Shadow AI scope decision** — sk does not eliminate shadow AI; it provides a governed lane for the operational subset that touches production systems. The rest stays free and that is the deliberate scope choice. See [scope decision](positioning.md#1-summary) and [what sk still lacks](positioning.md#8-part-3--what-sk-still-lacks-honestly) in positioning.
 
-**Drift-assisted repair suggestion / operator-reviewed remediation** — the external phrasing for the codebase's *self-healing* subsystem. Same concept, different audience.
+**Drift-assisted repair suggestion** — the external phrasing for the codebase's *self-healing* subsystem (also known as *operator-reviewed remediation* in governance contexts). Same concept, different audience.
 
 > **Dual-vocabulary note.** Strategy and external surfaces (`README.md`, `docs/thesis.md`, `docs/positioning.md`, public-facing docs) use the external phrasing above. The codebase keeps technical names (`apps/engine/src/self-healing/`, `rbac/`, `credentials/`, etc.) — those names are stable identifiers and must not be renamed for vocabulary alignment.
+
+### Acronyms used in the strategy stack
+
+These appear across the strategy docs. Listed here so every reader has the same expansion at hand.
+
+| Acronym | Expansion | One-line definition |
+|---|---|---|
+| AEAD | Authenticated Encryption with Associated Data | Encryption that also detects tampering of the ciphertext and the metadata it is bound to. |
+| BPMN | Business Process Model and Notation | Classical visual workflow language; cited as a contrast to AI-assisted authoring. |
+| DAG | Directed Acyclic Graph | The shape of a Workflow: steps flow forward, never loop back to themselves. |
+| DCR | Dynamic Client Registration | OAuth 2.1 mechanism that lets a new external client self-register with the server (RFC 7591). |
+| DLP | Data Loss Prevention | Policy layer that recognises sensitive fields (PII, secrets) and blocks them at the boundary. |
+| MCP | Model Context Protocol | The standard by which AI clients (Claude Code, Codex, Copilot) connect to external systems. |
+| OAuth 2.1 | — | The current consolidated OAuth standard (PKCE-by-default, refresh-token rotation, no implicit grant). |
+| OIDC | OpenID Connect | Identity layer on top of OAuth 2.x; how sk verifies who a user is. |
+| PII | Personally Identifiable Information | Data that identifies a natural person; subject to GDPR / SOC2 controls. |
+| PKCE | Proof Key for Code Exchange | OAuth extension that protects the authorization-code flow on public clients. |
+| RAG | Retrieval-Augmented Generation | LLM pattern: ground generation in retrieved tenant-specific context (Lewis et al. 2020). |
+| RBAC | Role-Based Access Control | Permission model that grants actions through roles rather than per-user grants. |
+| ReAct | Reasoning + Acting | Agent pattern that interleaves model reasoning and tool calls (Yao et al. 2023). |
+| RLS | Row-Level Security | PostgreSQL feature that enforces tenant boundaries at the database, not the application. |
+| RTO/RPO | Recovery Time / Point Objective | Disaster-recovery targets: how fast you recover, and how much data you may lose. |
+| SAML | Security Assertion Markup Language | Enterprise SSO standard, alternative to OIDC. |
+| SCIM | System for Cross-domain Identity Management | Standard for automated user provisioning and deprovisioning. |
+| SSO | Single Sign-On | One login session unlocks multiple applications. |
+
+### Requirement aliases (R1–R12)
+
+[`system-requirements.md`](system-requirements.md) numbers its twelve requirements R1–R12. The aliases below are the plain-language handle that the strategy docs use in running text; the R-number stays as a parenthetical anchor. **Single source of truth — if the alias changes, change it here first.**
+
+| R | Alias used in running text | One-line meaning | Full spec |
+|---|---|---|---|
+| R1 | shared substrate | One shared execution and review system per organisation, not n parallel installs. | [R1 in spec](system-requirements.md#r1--a-shared-operational-execution-layer) |
+| R2 | context as authoring input | Five tenant-curated context sources ground every authoring action. | [R2 in spec](system-requirements.md#r2--context-as-a-first-class-input-to-authoring) |
+| R3 | authoring-vs-execution split | Authoring may be probabilistic; execution is policy- and version-bound. | [R3 in spec](system-requirements.md#r3--separation-of-authoring-probabilistic-from-execution-controlled) |
+| R4 | workflow as artefact | The approved workflow is a formal, reviewable, diffable, rollbackable artefact. | [R4 in spec](system-requirements.md#r4--workflow-as-a-versioned-organisational-artefact) |
+| R5 | closed learning loop | Operator-reviewed drift repair plus skill promotion compound back into authoring. | [R5 in spec](system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation) |
+| R6 | delegated AI action | External AI clients act through scoped, time-bound, revocable, audited authority. | [R6 in spec](system-requirements.md#r6--delegated-ai-action-with-scoped-time-bound-revocable-audited-authority) |
+| R7 | action-level identity | Authorisation per resource and per action, uniformly across every entry surface. | [R7 in spec](system-requirements.md#r7--fine-grained-action-level-identity-and-authorisation) |
+| R8 | secrets isolation | Credentials AEAD-encrypted, tenant-bound, never in the model context, audited on access. | [R8 in spec](system-requirements.md#r8--secrets-isolation-from-the-ai-context) |
+| R9 | tenant isolation | Multi-tenancy as a structural property: storage, query, response — regression-tested. | [R9 in spec](system-requirements.md#r9--multi-tenant-isolation-as-a-structural-property) |
+| R10 | cost attribution | Per-tenant ceiling, per-flow attribution, invoice-matching usage ledger. | [R10 in spec](system-requirements.md#r10--cost-attribution-and-per-tenant-budget) |
+| R11 | audit-grade evidence | Append-only action log sufficient to feed a SOC2 / ISO27001 / GDPR programme. | [R11 in spec](system-requirements.md#r11--audit-grade-evidence-not-compliance) |
+| R12 | one governance gate | Same approval gate and audit trail behind every surface — CLI, API, MCP, chat. | [R12 in spec](system-requirements.md#r12--multiple-entry-surfaces-one-governance-point) |
 
 ---
 
@@ -72,7 +118,7 @@ sk's vocabulary for this category is a **triad** — three terms that say the sa
 
 ## Group 3: Integration
 
-**Connector** — a configured connection to an external integration boundary. A Connector is built from a template, a driver, and credentials. It represents a specific integration instance — for example, a Stripe production account or a GitHub organization. Connectors are tenant-scoped and versioned.
+**Connector** — a configured connection to an external integration boundary. A Connector is built from a template, a driver, and credentials. It represents a specific integration instance — for example, a Stripe production account or a GitHub organisation. Connectors are tenant-scoped and versioned.
 
 **Connector Template** — a pre-built blueprint for a well-known service. Templates include the driver type, authentication configuration, documentation ingestion setup, and guided setup instructions. sk ships 90 Connector Templates covering services across payments, CRM, DevOps, data, communication, and cloud infrastructure. Templates are the starting point for creating a Connector; they are not Connectors themselves.
 
@@ -86,11 +132,11 @@ sk's vocabulary for this category is a **triad** — three terms that say the sa
 
 **Workflow** — a versioned, directed acyclic graph (DAG) of Steps that produces a deterministic outcome. Workflows are authored through Conversations, approved by a human, and then committed as immutable versions. Each version is a complete snapshot of the workflow at the time of approval. Workflows are tenant-scoped and support a lifecycle of draft, active, and archived.
 
-**Step** — a single unit of work within a Workflow DAG. Step types are: request (call a Connector), transform (reshape data), branch (conditional routing), loop (iterate over a collection), parallel (run Steps concurrently), wait (introduce a delay), call (invoke another Workflow), and tool (run a sandboxed container step). Each Step declares retry policy, timeout, error handling behavior, and optional field masking for sensitive data.
+**Step** — a single unit of work within a Workflow DAG. Step types are: request (call a Connector), transform (reshape data), branch (conditional routing), loop (iterate over a collection), parallel (run Steps concurrently), wait (introduce a delay), call (invoke another Workflow), and tool (run a sandboxed container step). Each Step declares retry policy, timeout, error handling behaviour, and optional field masking for sensitive data.
 
 **Execution** — a single run of a Workflow. An Execution carries its own state, step-by-step results, logs, and final status. Executions are immutable records — they are never modified after completion. Each Execution records its request source (API, CLI, scheduler, webhook, MCP, or chat) and its environment (dev or prod). Executions are queryable and searchable after the fact.
 
-**Execution Fixture** — a recorded snapshot of a past Workflow execution, capturing the request and response at each Step. Fixtures serve as the dry-run corpus for Self-Healing proposals: before a Patch Candidate is presented to an operator for approval, it is validated against relevant Fixtures to confirm the repair does not break known-good behavior.
+**Execution Fixture** — a recorded snapshot of a past Workflow execution, capturing the request and response at each Step. Fixtures serve as the dry-run corpus for Self-Healing proposals: before a Patch Candidate is presented to an operator for approval, it is validated against relevant Fixtures to confirm the repair does not break known-good behaviour.
 
 **Schedule** — a cron expression or event trigger attached to a Workflow. The scheduler fires the Workflow at the configured time or in response to an inbound event. Schedules are reconciled at engine boot and on configuration changes. Scheduled fires are recorded in the Audit Log with source `scheduler`.
 
@@ -104,7 +150,7 @@ sk's vocabulary for this category is a **triad** — three terms that say the sa
 
 **Before-Request Hook** — a sandboxed script that runs before a Connector request executes. Hooks can inspect or modify the outbound request, enforce policy (such as blocking writes during maintenance windows), or abort execution entirely. Hooks run in an isolated sandbox with a strict CPU budget and no access to the host environment. Hook execution is audited. Any error or timeout fails closed and denies the request.
 
-**Self-Healing** — the platform's drift detection and bounded repair system. When a Connector's schema or behavior changes in a way that causes Step failures, the engine detects the drift, compares the new response against the last known Schema Version, proposes a repair using the AI within a narrow repair loop, and dry-runs the proposed repair against recorded Execution Fixtures. The result is a Patch Candidate presented to an operator for approval. Self-Healing never applies a repair automatically without operator approval.
+**Self-Healing** — the platform's drift detection and bounded repair system. When a Connector's schema or behaviour changes in a way that causes Step failures, the engine detects the drift, compares the new response against the last known Schema Version, proposes a repair using the AI within a narrow repair loop, and dry-runs the proposed repair against recorded Execution Fixtures. The result is a Patch Candidate presented to an operator for approval. Self-Healing never applies a repair automatically without operator approval.
 
 **Patch Candidate** — a proposed repair generated by the Self-Healing process. Each Patch Candidate carries the proposed change, a classification of safe or unsafe based on the scope and risk of the repair, the Execution Fixtures it was validated against, and a full audit trail. Patch Candidates require explicit operator approval before they are applied to a live Workflow.
 
