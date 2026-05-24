@@ -1,21 +1,18 @@
 # Security & Governance
 
-> *Strategy context: this doc is the developer view of requirements
-> [`system-requirements.md`](system-requirements.md) R6 (delegated AI action — scoped,
-> time-bound, revocable, audited), R7 (fine-grained action-level identity and
-> authorisation), R8 (secrets isolation from the AI context), R9 (layered multi-tenant
-> isolation), and R11 (audit-grade evidence — explicitly **not** compliance itself).
-> For the principles, see [`positioning.md`](positioning.md) §5.1.*
+> **Reading time:** ~12 min
+> **Audience:** Security engineers, compliance reviewers, operators wiring access
+> **Strategy context:** developer view of [delegated AI action (R6)](./system-requirements.md#r6--delegated-ai-action-with-scoped-time-bound-revocable-audited-authority), [action-level identity (R7)](./system-requirements.md#r7--fine-grained-action-level-identity-and-authorisation), [secrets isolation (R8)](./system-requirements.md#r8--secrets-isolation-from-the-ai-context), [tenant isolation (R9)](./system-requirements.md#r9--multi-tenant-isolation-as-a-structural-property), and [audit-grade evidence (R11)](./system-requirements.md#r11--audit-grade-evidence-not-compliance) — explicitly **not** compliance itself. The principles live in [§5.1 of positioning](./positioning.md#51-security-and-governance--principles).
 
 Enterprise AI requires enterprise-grade security from the start. A platform that touches production integrations, sensitive credentials, and automated business processes cannot treat security as a layer added later. It has to be the foundation.
 
-sk is designed so that the right security behavior is the default behavior. Every interaction is authorized, every action is auditable, and every secret is protected — by architecture, not by configuration.
+The reference implementation is designed so that the right security behaviour is the default behaviour. Every interaction is authorised, every action is auditable, and every secret is protected — by architecture, not by configuration.
 
 ---
 
 ## Multi-Tenancy as a First-Class Concern
 
-sk is multi-tenant from the ground up. Every resource in the platform — workflows, connectors, credentials, users, skills, conversations, audit log entries — belongs to exactly one Tenant. This is not a deployment mode or a configuration setting. It is the data model.
+The reference implementation is multi-tenant from the ground up. Every resource in the platform — workflows, connectors, credentials, users, skills, conversations, audit log entries — belongs to exactly one Tenant. This is not a deployment mode or a configuration setting. It is the data model.
 
 Tenant isolation is enforced at every layer. Database queries always filter by tenant identity. API responses never include cross-tenant data. The audit log is tenant-scoped. A single engine instance can serve multiple organizations with complete isolation between them.
 
@@ -25,7 +22,7 @@ This design means there is no "global" namespace to accidentally share, no confi
 
 ## Identity and Authentication
 
-sk supports multiple authentication methods in a pluggable chain. Organizations choose the combination that fits their security posture.
+The reference implementation supports multiple authentication methods in a pluggable chain. Organisations choose the combination that fits their security posture.
 
 **OIDC** enables enterprise SSO. Users log in with their organization's identity provider — Azure AD, Okta, Google Workspace, or any OIDC-compliant provider. The engine provisions tenant accounts from the claims in the identity token. For organizations with existing SSO infrastructure, this is the right path: users get seamless access through the same credential they use everywhere else, and the organization retains control over provisioning and deprovisioning.
 
@@ -39,7 +36,7 @@ sk supports multiple authentication methods in a pluggable chain. Organizations 
 
 Every API route, MCP call, and workflow trigger is protected by RBAC. The permission check happens before any resource is accessed or any action is taken. There is no path through the platform that bypasses authorization.
 
-sk ships four built-in roles: **admin** (full platform control), **member** (can author and trigger workflows), **end-user** (can trigger and view, cannot modify), and **service account** (programmatic access, no interactive surface). Operators can create custom roles for more granular control, define resource-level grants with expiration times, and group users for assignment.
+The reference implementation ships four built-in roles: **admin** (full platform control), **member** (can author and trigger workflows), **end-user** (can trigger and view, cannot modify), and **service account** (programmatic access, no interactive surface). Operators can create custom roles for more granular control, define resource-level grants with expiration times, and group users for assignment.
 
 **Before-Request Hooks** add a dynamic policy layer on top of static RBAC. A Before-Request Hook is a sandboxed script that runs before a Connector request executes. The hook receives the full request context — caller identity, target connector, operation type, request parameters — and can enforce policy that is impossible to express in static roles. Examples: blocking write operations during a maintenance window, requiring additional approval for specific production connectors, enforcing data residency constraints, or logging requests that match a specific pattern.
 
@@ -47,13 +44,43 @@ Hooks run in an isolated QuickJS-WASM sandbox with a strict CPU budget. They can
 
 **Policy evaluation order:** RBAC is evaluated first. If the caller has no permission for the action, the request is denied before the hook is consulted. If RBAC passes, the Before-Request Hook runs. If the hook aborts, the request is denied with the hook's reason. Only if both pass does the request proceed.
 
+```mermaid
+flowchart LR
+    Req(["Inbound request<br/>(any surface)"])
+    RBAC{{"RBAC<br/>can(actor, action, resource)?"}}
+    Hook{{"Before-Request Hook<br/>(sandboxed, fail-closed)"}}
+    Driver[/Connector driver/]
+    Deny["Deny + audit row<br/>(policy.denied)"]
+
+    Req --> RBAC
+    RBAC -- deny --> Deny
+    RBAC -- allow --> Hook
+    Hook -- abort --> Deny
+    Hook -- proceed --> Driver
+```
+
 ---
 
 ## The Credential Vault
 
 All integration secrets — API keys, OAuth2 access and refresh tokens, database passwords, connection strings — are stored in the credential vault, encrypted with AES-256-GCM.
 
-Secrets are never logged. They are never included in API responses. They are never visible to the AI during conversations. Connectors reference credentials by identifier; the credential vault resolves the identifier to the actual secret at the moment of use. Outside that moment, the raw value does not exist in memory or in any logged context.
+```mermaid
+flowchart LR
+    User["User / Operator"]
+    Form["ask_user_form<br/>(masked, sensitive: true)"]
+    Vault[("Credential Vault<br/>AES-256-GCM<br/>AAD = credential:tenant_id:cred_id")]
+    Conn["Connector"]
+    Driver["Driver"]
+    AI["AI context<br/>(never sees secret)"]
+
+    User --> Form --> Vault
+    Conn -- cred_id only --> Vault
+    Vault -- decrypt at use --> Driver
+    Vault -. blocked .-x AI
+```
+
+*Secrets are never logged, never returned in API responses, never visible to the AI during conversations. Connectors reference credentials by identifier; the vault resolves the identifier to the actual secret at the moment of use. Outside that moment, the raw value does not exist in memory or in any logged context.*
 
 OAuth2 token refresh is automatic. The engine manages the full OAuth2 lifecycle — access token expiry, refresh token rotation, re-authorization when needed. Connectors never deal with expired tokens; the vault handles it transparently.
 
@@ -63,7 +90,7 @@ End-user credential overrides are supported. Individual users can supply their o
 
 ## The Audit Trail
 
-Every state change in sk produces an immutable audit log entry. This is not selective logging — it is comprehensive.
+Every state change in this reference implementation produces an immutable audit log entry. This is not selective logging — it is comprehensive.
 
 The audit log captures: workflow creation, modification, approval, and deletion; connector operations; credential creation, rotation, and revocation; user provisioning and role changes; execution triggers and final results; approval events; skill promotions; patch candidate reviews; and more — over 100 distinct action types across all platform surfaces.
 
@@ -103,7 +130,7 @@ The following properties hold by construction — they are not optional configur
 
 ## Secret Hygiene at the Conversational Surface
 
-The conversational surface introduces additional pressure on secret handling: an LLM may attempt to type a credential into a tool argument, an operator may paste a token into the chat input, or a debug log may capture a verbose elicitation payload. sk applies multiple defences so any one of these doesn't propagate into a persistent surface.
+The conversational surface introduces additional pressure on secret handling: an LLM may attempt to type a credential into a tool argument, an operator may paste a token into the chat input, or a debug log may capture a verbose elicitation payload. The reference implementation applies multiple defences so any one of these doesn't propagate into a persistent surface.
 
 The `update_connector_draft` tool rejects any credential-shaped field in `config` with a structured `credential_must_use_form` envelope. The agent is steered, by both the tool contract and the seed skill content, toward the masked-form path: `ask_user_form(type: password, sensitive: true)` collects the value, the harness auto-persists the connector and credential atomically, and the LLM never sees the secret in any tool argument or transcript.
 
@@ -119,6 +146,8 @@ The `authenticate_oauth` flow surfaces an authorization URL that the sk CLI auto
 
 ---
 
-## What to Read Next
+## Further reading
 
-- [docs/08-operations.md](08-operations.md) — how sk is deployed, how operators monitor it in production, and how it handles failure gracefully.
+- [Deployment & operations](./08-operations.md) — how the reference implementation is deployed, how operators monitor it in production, and how it handles failure gracefully.
+- [glossary — governance terms](./02-concepts.md#group-5-governance) — Audit Log, RBAC, Before-Request Hook, Self-Healing, Patch Candidate.
+- [audit-grade evidence (R11)](./system-requirements.md#r11--audit-grade-evidence-not-compliance) — why audit is evidence, not compliance.

@@ -1,16 +1,15 @@
 # sk
 
-**sk — operational AI execution layer.** The shared system that turns individual agentic
-productivity into organisational agentic operationalisation.
+**sk — reference implementation of the operational AI execution layer.** A shared system that turns individual agentic productivity into organisational agentic operationalisation.
 
 > ***Your operating model used to live in PowerPoint. Now it runs.***
 
 > *Agentic productivity does not automatically scale organisationally. The bottleneck is
 > not model quality or workflow execution; it is the organisation's ability to make
-> operational AI work repeatable, reviewable, and learnable. sk integrates three
-> otherwise separately assembled layers — contextualised AI authoring, operational
-> governance, versioned reproducible execution — into one product whose effect
-> compounds per tenant over time.*
+> operational AI work repeatable, reviewable, and learnable. This reference implementation
+> integrates three otherwise separately assembled layers — contextualised AI authoring,
+> operational governance, versioned reproducible execution — into one running system whose
+> effect compounds per tenant over time.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -18,13 +17,27 @@ productivity into organisational agentic operationalisation.
 
 ## Strategy & positioning
 
-Three short documents, in reading order:
+Three short documents plus the glossary. In reading order:
 
-| Document | What it covers |
-|----------|---------------|
-| [The Thesis](docs/thesis.md) | *Why this category exists.* Theory of organisational agentic operationalisation. |
-| [System Requirements](docs/system-requirements.md) | *What such a system must do.* Twelve vendor-agnostic requirements. |
-| [Positioning](docs/positioning.md) | *How sk realises it.* Worked examples, principles, honest gaps. |
+| Document | What it covers | Reading time |
+|----------|----------------|--------------|
+| [The Thesis](docs/thesis.md) | *Why this category exists.* Theory of organisational agentic operationalisation. | ~15 min |
+| [System Requirements](docs/system-requirements.md) | *What such a system must do.* Twelve vendor-agnostic requirements. | ~18 min |
+| [Positioning](docs/positioning.md) | *How this reference implementation realises it.* Worked examples, principles, honest gaps. | ~20 min |
+| [Glossary](docs/02-concepts.md) | Every term used across the stack, defined once. | reference |
+
+```mermaid
+flowchart LR
+    Thesis["thesis.md<br/>Why this category exists"]
+    Reqs["system-requirements.md<br/>What such a system must do"]
+    Pos["positioning.md<br/>How this reference implementation realises it"]
+    Concepts["02-concepts.md<br/>Glossary"]
+
+    Thesis --> Reqs --> Pos
+    Concepts -. cited by .- Thesis
+    Concepts -. cited by .- Reqs
+    Concepts -. cited by .- Pos
+```
 
 For developers, the platform/architecture entry point is
 [`docs/01-platform.md`](docs/01-platform.md); the canonical contract for coding agents
@@ -34,35 +47,9 @@ is [`AGENTS.md`](AGENTS.md).
 
 ## How It Works
 
-```mermaid
-flowchart LR
-    subgraph Surfaces["Input Surfaces"]
-        direction TB
-        CLI["sk CLI"]
-        API["REST API / OpenAPI"]
-        MCP["MCP\n(Claude Code · Codex\nCopilot · Gemini)"]
-        Chat["Chat Systems\n(Slack · Teams\nGoogle Chat)"]
-        WH["Webhooks &\nScheduled Triggers"]
-    end
+![sk architecture at a glance — outside-the-bridge AI clients cross via the MCP OAuth bridge into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding moat.](docs/overview.png)
 
-    subgraph Authoring["AI-Assisted Authoring"]
-        direction TB
-        Conv["Conversation Engine"]
-        AI["Multi-AI Provider\n(Claude · OpenAI · Gemini)"]
-        Conn["90 Connector Templates\n& Credential Vault"]
-        Skills["Skills &\nKnowledge Sources"]
-    end
-
-    subgraph Execution["Governed, Versioned Execution"]
-        direction TB
-        WF["Workflow Engine"]
-        Gov["Audit & Governance"]
-        Heal["Drift-Assisted Repair"]
-        Sched["Scheduler &\nEvent Triggers"]
-    end
-
-    Surfaces --> Authoring --> Execution
-```
+*Outside-the-bridge clients (IDE assistants, employee chat) reach governed workflows only through the **MCP OAuth bridge**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`docs/overview.drawio`](docs/overview.drawio).*
 
 Every interaction — regardless of entry point — flows through the same governed pipeline.
 AI assists with authoring but never executes without human approval. Execution is
@@ -73,7 +60,7 @@ the control flow of an approved workflow is fixed; runtime does not re-decide it
 
 ## Input Surfaces
 
-sk meets users and systems where they already are.
+The reference implementation meets users and systems where they already are.
 
 | Surface | Who uses it | What it enables |
 |---------|-------------|-----------------|
@@ -167,7 +154,7 @@ Full conceptual documentation in [`docs/`](docs/):
 
 | Document | What it covers |
 |----------|---------------|
-| [The Platform](docs/01-platform.md) | Purpose, design principles, what sk is and is not |
+| [The Platform](docs/01-platform.md) | Purpose, design principles, what this reference implementation is and is not |
 | [Concepts](docs/02-concepts.md) | Authoritative glossary for every domain term |
 | [Input Surfaces](docs/03-input-surfaces.md) | CLI, API, MCP, Chat, Webhooks — in depth |
 | [AI-Assisted Authoring](docs/04-authoring.md) | Conversations, skills, knowledge, multi-provider |
@@ -181,7 +168,7 @@ Full conceptual documentation in [`docs/`](docs/):
 
 ## For Coding Agents
 
-sk is designed for agentic coding environments. Start with [`AGENTS.md`](AGENTS.md) —
+This reference implementation is designed for agentic coding environments. Start with [`AGENTS.md`](AGENTS.md) —
 the canonical repo-wide contract, subsystem map, and quality gate. See [`SKILLS.md`](SKILLS.md)
 for the skill index.
 

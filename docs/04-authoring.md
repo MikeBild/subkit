@@ -1,22 +1,20 @@
 # AI-Assisted Authoring
 
-> *Strategy context: this is the developer view of the **contextualised AI authoring**
-> layer of sk. For the economic argument behind AI-assisted authoring (vs. classical
-> builders / BPMN / low-code / engineering) and the closed authoring-/repair loop, see
-> [`positioning.md`](positioning.md) §2. The system requirement is
-> [`system-requirements.md`](system-requirements.md) R2 (context as a first-class input).*
+> **Reading time:** ~18 min
+> **Audience:** Engineers integrating with the reference implementation's authoring, operators curating Skills & Knowledge
+> **Strategy context:** developer view of contextualised AI authoring; the economic argument behind it (vs. classical builders / BPMN / low-code / engineering) lives in [§2 of positioning](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution), the system requirement is [context as authoring input (R2)](./system-requirements.md#r2--context-as-a-first-class-input-to-authoring).
 
 Traditional enterprise workflow tools put the burden of construction on the builder. You need to know the connector, understand the configuration syntax, and map it all onto a blank canvas. The result is a workflow that reflects what developers can build, not what the business actually needs.
 
-sk inverts that burden. The authoring layer is a conversational interface where a user describes a goal in natural language and the AI does the structural work: proposing steps, looking up connectors, validating the draft, and asking clarifying questions. The user's job is to review and approve — not to build.
+The reference implementation inverts that burden. The authoring layer is a conversational interface where a user describes a goal in natural language and the AI does the structural work: proposing steps, looking up connectors, validating the draft, and asking clarifying questions. The user's job is to review and approve — not to build.
 
-This is what separates sk from traditional workflow tools, and it is what this document explains: how Conversations produce governed, production-ready workflows, and why the human-in-the-loop model is the right architecture for enterprise AI.
+This is what separates this reference implementation from traditional workflow tools, and it is what this document explains: how Conversations produce governed, production-ready workflows, and why the human-in-the-loop model is the right architecture for enterprise AI.
 
 ---
 
 ## The Conversation Model
 
-A Conversation is the primary authoring interface in sk. When a user starts one, they describe what they want in natural language. The AI responds not with advice or summaries but with a structured proposal — a Draft workflow that can be inspected, modified, and eventually approved.
+A Conversation is the primary authoring interface in this reference implementation. When a user starts one, they describe what they want in natural language. The AI responds not with advice or summaries but with a structured proposal — a Draft workflow that can be inspected, modified, and eventually approved.
 
 Conversations are persistent and resumable. They survive page reloads, reconnects, and multi-day authoring sessions. A user can start a Conversation on Monday, return on Wednesday, and pick up exactly where they left off. The AI recalls the context, the draft state, and the pending questions.
 
@@ -30,20 +28,27 @@ For operators and scripted clients that already know the target definition, the 
 
 Conversations are no longer just a loose draft plus a few helper actions. The engine maintains an explicit Authoring State Machine for every conversation and uses it to decide which actions are visible, which moves are blocked, and what the next valid move is.
 
-The canonical progression is:
+The canonical progression:
 
-1. Connector drafting
-2. Connector inspection
-3. Connector validation
-4. Connector probe
-5. Connector persisted
-6. Workflow drafting
-7. Workflow inspection
-8. Workflow validation
-9. Workflow preview
-10. Workflow persisted
-11. Workflow executed
-12. Diagnosis and repair when needed
+```mermaid
+stateDiagram-v2
+    [*] --> ConnectorDraft
+    ConnectorDraft --> ConnectorInspected: inspect
+    ConnectorInspected --> ConnectorValidated: validate
+    ConnectorValidated --> ConnectorProbed: probe
+    ConnectorProbed --> ConnectorPersisted: green probe (auto)
+    ConnectorPersisted --> WorkflowDraft
+    WorkflowDraft --> WorkflowInspected: inspect
+    WorkflowInspected --> WorkflowValidated: validate
+    WorkflowValidated --> WorkflowPreviewed: preview / dry-run
+    WorkflowPreviewed --> WorkflowPersisted: green dry-run (auto)
+    WorkflowPersisted --> WorkflowExecuted: run
+    WorkflowExecuted --> Diagnosis: warnings / failure
+    Diagnosis --> WorkflowValidated: repair draft
+    WorkflowExecuted --> [*]: success
+```
+
+*Probe persists the connector inline; dry-run commits the workflow inline. There is no separate "save" step on the happy path — verification is persistence. Any draft mutation invalidates downstream checkpoints automatically.*
 
 This state is persisted in the conversation draft summary and exposed as:
 
@@ -68,7 +73,7 @@ When the user says they want to create a new workflow after inspecting or runnin
 
 ## The Human-in-the-Loop Approval Gate
 
-The most important architectural decision in sk is the approval gate.
+The most important architectural decision in this reference implementation is the approval gate.
 
 Nothing reaches the execution engine without an explicit human approval. When the AI finishes building a Draft, it does not automatically promote it to a live workflow. It pauses the authoring loop and presents the Draft for human review. The operator sees every Step, every connector reference, every parameter, and every branching condition. They can push back, ask for changes, and iterate. When they are satisfied, they explicitly approve.
 
@@ -186,7 +191,7 @@ This is one of the key reasons the authoring flow stays consistent across turns:
 
 ## Multi-AI Provider
 
-sk is not tied to a single AI model. The platform supports Claude (Anthropic), OpenAI GPT models, and Google Gemini. Providers are interchangeable: swapping models does not require changes to Connectors, workflows, or skills.
+The reference implementation is not tied to a single AI model. It supports Claude (Anthropic), OpenAI GPT models, and Google Gemini. Providers are interchangeable: swapping models does not require changes to Connectors, workflows, or skills.
 
 The platform routes to the best available provider based on operator configuration and task type. Token budgets are enforced per tenant and per Conversation to prevent runaway costs. An operator can set a monthly ceiling; the platform tracks consumption and surfaces usage in the audit log.
 
@@ -208,7 +213,7 @@ Skills are not auto-generated and not auto-promoted. The platform detects recurr
 
 ## Knowledge Sources: Enterprise Documents
 
-Skills are concise and curated. For richer, document-scale context — runbooks, API specifications, compliance frameworks, architecture diagrams — sk provides Knowledge Sources.
+Skills are concise and curated. For richer, document-scale context — runbooks, API specifications, compliance frameworks, architecture diagrams — the reference implementation provides Knowledge Sources.
 
 A Knowledge Source is a persistent document store. Operators upload PDFs, runbooks, API specs, compliance documents, and architecture diagrams. The platform chunks and indexes them for semantic search. During a Conversation, discovery pass, or diagnosis/repair loop, the AI searches Knowledge Sources to ground its proposals in organization-specific context. A workflow that correctly follows your GDPR compliance runbook is possible because the runbook is a Knowledge Source the AI can search.
 
@@ -221,25 +226,32 @@ authoring and repair quality; the runtime path stays deterministic once a workfl
 
 ## Context Assembly And Trimming
 
-For each AI-assisted authoring turn, the engine assembles prompt context in a fixed order:
+For each AI-assisted authoring turn, the engine assembles prompt context in a fixed order. Order matters twice — it shapes how the model sees context (top is most foundational) and it shapes how the trimmer drops it under pressure (top survives longest, bottom goes first):
 
-1. Base prompt plus runtime context (engine, tenant, actor, surface)
-2. Auto-loaded Skills (global → connector → workflow)
-3. Explicitly loaded Skills
-4. Knowledge Source chunks
-5. Connector documentation chunks
-6. Prior failures relevant to the current task
-7. User memory and authoring-context blocks
-8. The current turn history as user/assistant messages
+```mermaid
+flowchart TB
+    subgraph build["Assembly order (top = first written)"]
+        direction TB
+        B1["1. Base prompt + runtime envelope<br/>(engine · tenant · actor · surface)"]
+        B2["2. Auto-loaded Skills<br/>(global → connector → workflow)"]
+        B3["3. Explicitly loaded Skills"]
+        B4["4. Knowledge Source chunks"]
+        B5["5. Connector documentation chunks"]
+        B6["6. Prior failures for the current task"]
+        B7["7. User memory + authoring-context blocks"]
+        B8["8. Current turn history<br/>(user / assistant messages)"]
+        B1 --> B2 --> B3 --> B4 --> B5 --> B6 --> B7 --> B8
+    end
+    Trim{{"Trim order (top = dropped first)"}}
+    T1["failures → connector docs → knowledge<br/>→ user memory → authoring context<br/>→ explicit Skills → workflow Skills<br/>→ connector Skills → global Skills"]
+    Note["User turns are never trimmed"]
+    build --> Trim --> T1
+    T1 -. preserved .- Note
+```
 
-This order is part of the contract, not just an implementation detail. When the prompt is too
-large for the active model budget, the engine trims in a fixed order as well: failures →
-connector docs → knowledge → user memory → authoring context → explicitly loaded Skills →
-workflow Skills → connector Skills → global Skills. User turns are not trimmed away. This is why
+This order is part of the contract, not just an implementation detail. Operator-curated connector and workflow guidance survives longer than incidental historical context under tight budgets — so the AI's deep grounding in a tenant's own conventions is the *last* thing dropped, not the first.
 
 Conversation replay is still bounded. Tool results are truncated before they are fed back into later turns, explicit compaction markers suppress older replay, and oversized message histories are collapsed into a deterministic summary plus the recent tail. The model keeps the current task context without dragging every historical tool payload back through the prompt window.
-operator-curated connector and workflow guidance survives longer than incidental historical
-context under tight budgets.
 
 ---
 
@@ -247,7 +259,7 @@ context under tight budgets.
 
 When a user mentions an external connector boundary — "pull data from our Salesforce instance" or "post a message to Slack" — the AI needs accurate, connector-specific knowledge to propose a useful integration. Generic HTTP knowledge is not enough.
 
-sk ships 90 Connector Templates covering the most common enterprise services. When a user mentions a connector target, the AI draws on the matching template to propose an accurate integration. Templates include the driver type, authentication configuration, documentation references, and setup guidance. The AI understands the target API, not just the idea of it.
+The reference implementation ships 90 Connector Templates covering the most common enterprise services. When a user mentions a connector target, the AI draws on the matching template to propose an accurate integration. Templates include the driver type, authentication configuration, documentation references, and setup guidance. The AI understands the target API, not just the idea of it.
 
 Documentation Ingestion is part of Connector setup. OpenAPI specs, GraphQL schemas, and HTML documentation are automatically indexed and become part of the AI's context for that Connector. The AI can refer to specific endpoints, parameters, and error codes because the documentation is available to it.
 
@@ -257,7 +269,7 @@ The central Credential Vault means users never handle raw secrets during authori
 
 ## Discovery: From Files to Proposals
 
-Discovery is how sk accelerates onboarding new systems. Rather than requiring an operator to manually configure every connector and skill for a new integration, Discovery starts with the documentation that already exists.
+Discovery is how the reference implementation accelerates onboarding new systems. Rather than requiring an operator to manually configure every connector and skill for a new integration, Discovery starts with the documentation that already exists.
 
 An operator uploads files — API specs, data dictionaries, architecture diagrams, runbooks — and sk analyzes them to produce a set of structured proposals. Each Discovery Artifact is a proposed Connector, Skill, or Knowledge Source, with a confidence score and links to the specific evidence in the uploaded files. The operator reviews each proposal and decides what to approve.
 
@@ -269,7 +281,7 @@ Discovery is designed for the scenarios enterprises actually encounter: a new ve
 
 ## How Authoring Improves Over Time
 
-sk's authoring layer is not static. It improves as the platform accumulates execution history and operator feedback.
+The reference implementation's authoring layer is not static. It improves as the platform accumulates execution history and operator feedback.
 
 Skill Candidates surface patterns from production. When the platform detects that certain Connectors or step sequences are used together frequently — and that those combinations tend to succeed — it proposes a new Skill. The proposal includes confidence scores and links to the executions that support it. Operators review and promote or reject.
 
@@ -291,7 +303,9 @@ The conversational authoring layer is aware of the stdlib and proposes `sk.*` fo
 
 ---
 
-## What to Read Next
+## Further reading
 
-- [docs/05-connectors.md](05-connectors.md) — how Connectors, Drivers, and Credentials form the integration fabric that authoring draws on.
-- [docs/06-execution.md](06-execution.md) — how approved workflows run deterministically, what governance looks like at execution time, and how self-healing keeps workflows healthy.
+- [Connectors & integration](./05-connectors.md) — how Connectors, Drivers, and Credentials form the integration fabric that authoring draws on.
+- [Workflow execution](./06-execution.md) — how approved workflows run deterministically, what governance looks like at execution time, and how self-healing keeps workflows healthy.
+- [glossary — authoring terms](./02-concepts.md#group-2-authoring) — Conversation, Draft, Skill, Skill Candidate, Knowledge Source, Discovery.
+- [positioning §2](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution) — the economic argument for AI-assisted authoring.

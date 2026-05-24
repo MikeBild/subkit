@@ -1,27 +1,42 @@
 # Deployment & Operations
 
-> *Strategy context: this doc is the developer view of requirements
-> [`system-requirements.md`](system-requirements.md) R10 (per-tenant cost attribution
-> and budget), R12 (multiple entry surfaces, one governance point) and the
-> drift-assisted-repair side of R5 (closed learning loop, operator-reviewed). For the
-> structural changes operators can expect, see [`positioning.md`](positioning.md) §7
-> (Part 2b).*
+> **Reading time:** ~16 min
+> **Audience:** SREs, platform engineers, operators running the reference implementation in production
+> **Strategy context:** developer view of [cost attribution (R10)](./system-requirements.md#r10--cost-attribution-and-per-tenant-budget), [one governance gate (R12)](./system-requirements.md#r12--multiple-entry-surfaces-one-governance-point), and the drift-assisted-repair side of the [closed learning loop (R5)](./system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation). For the structural changes operators can expect, see [structural changes in positioning](./positioning.md#7-part-2b--structural-changes-sk-specific-not-generic-outcomes).
 
-sk is designed for enterprise deployment. That means it has to be reliable enough to run unattended, observable enough to diagnose problems quickly, and self-correcting enough to handle the inevitable drift that comes from running in a changing environment.
+The reference implementation is designed for enterprise deployment. That means it has to be reliable enough to run unattended, observable enough to diagnose problems quickly, and self-correcting enough to handle the inevitable drift that comes from running in a changing environment.
 
-This document explains how sk is deployed, how operators monitor it day-to-day, and how the platform handles failure — from a single connector going down to an external API changing its schema.
+This document explains how the reference implementation is deployed, how operators monitor it day-to-day, and how it handles failure — from a single connector going down to an external API changing its schema.
 
 ---
 
 ## Deployment Topology
 
-sk compiles to a single binary. The only stateful dependency is PostgreSQL.
+The reference implementation compiles to a single binary. The only stateful dependency is PostgreSQL.
 
 There is no separate message broker to manage, no distributed queue service to operate, and no coordination system to keep in sync. The job queue, the cron scheduler, and the pub/sub event bus all run within the engine process, using PostgreSQL as their durable backing store. This is a deliberate architectural choice: it reduces the operational footprint to a single dependency and eliminates an entire category of distributed systems failure modes.
 
 The standard deployment model is straightforward: one engine service and one PostgreSQL instance. For teams that need higher availability, the engine is horizontally scalable — run multiple instances behind a load balancer. The queue and scheduler subsystems are designed for concurrent execution across multiple engine instances without coordination overhead.
 
 ### Deployment layout
+
+```mermaid
+flowchart TB
+    Internet(("Internet"))
+    Caddy["Caddy<br/>(apt; Let's Encrypt TLS)"]
+    Engine["engine binary<br/>/usr/local/bin/engine<br/>(systemd: subkit-engine.service)"]
+    PG[("PostgreSQL 16<br/>apt package<br/>127.0.0.1:5432")]
+    LLM[("LLM Provider<br/>Anthropic / OpenAI / Google")]
+    S3[("S3 (optional)<br/>step-result spillover")]
+
+    Internet -- :443 --> Caddy
+    Caddy -- :3000 --> Engine
+    Engine --> PG
+    Engine -. outbound .-> LLM
+    Engine -. outbound .-> S3
+```
+
+*Single host, three apt-installed system services. No message broker, no distributed queue — pg-boss + outbox in PostgreSQL cover scheduling, queueing, and pub/sub. Horizontal scaling is multiple engine instances behind a load balancer against the same PostgreSQL.*
 
 4.2.0 retired the docker-compose production deploy. The engine is now a single `bun build --compile` binary deployed under systemd; postgres + caddy are apt-installed system services on the host.
 
@@ -36,7 +51,7 @@ On the host (`scripts/do-bootstrap.sh` provisions the layout), `scripts/release/
 
 ## Installation
 
-sk ships pre-compiled binaries for macOS (Intel and Apple Silicon), Linux (x64 and ARM64), and Windows (x64). The primary binaries are `sk` and the engine. Some release channels also publish a `subkit` compatibility alias for the CLI, but contributor docs and operator examples use `sk`.
+The reference implementation ships pre-compiled binaries for macOS (Intel and Apple Silicon), Linux (x64 and ARM64), and Windows (x64). The primary binaries are `sk` and the engine. Some release channels also publish a `subkit` compatibility alias for the CLI, but contributor docs and operator examples use `sk`.
 
 A one-line install script covers the common cases for bash and PowerShell environments. The engine is also published as a container image for Kubernetes and cloud-native deployments.
 
@@ -101,7 +116,7 @@ New metrics added in this revision:
 
 ## Resource Limits and Operational Safety
 
-sk enforces limits at multiple levels to protect overall system reliability.
+The reference implementation enforces limits at multiple levels to protect overall system reliability.
 
 Per-execution and per-step timeouts prevent runaway workflows from consuming resources indefinitely. Per-tenant token budgets cap AI usage costs. Rate limits on API endpoints prevent any single caller from monopolizing capacity. Circuit breakers on connector requests detect when an external connector boundary is degraded and fail fast — after a configurable number of consecutive failures, the circuit opens and requests fail immediately until the boundary recovers. Queue depth caps prevent unbounded work accumulation.
 
@@ -161,7 +176,7 @@ When a circuit breaker trips, the audit log records it and the event stream deli
 
 ## Self-Healing in Operations
 
-From an operational perspective, self-healing is how sk stays healthy as the external world changes.
+From an operational perspective, self-healing is how the reference implementation stays healthy as the external world changes.
 
 External APIs evolve. Fields are renamed. Endpoints move. Error codes change. New required parameters appear. Without a mechanism to detect and respond to these changes, workflows that were working yesterday fail silently or noisily today — and the operator has to diagnose and repair them manually.
 
@@ -175,7 +190,7 @@ Self-healing does not apply repairs automatically. The operator decides. But the
 
 ## Backup and Recovery
 
-sk's complete state lives in PostgreSQL. A standard PostgreSQL backup strategy — `pg_dump`, WAL archiving, or managed backup from a cloud database service — covers everything: workflows, connectors, credentials, executions, audit log, skills, and knowledge sources.
+The reference implementation's complete state lives in PostgreSQL. A standard PostgreSQL backup strategy — `pg_dump`, WAL archiving, or managed backup from a cloud database service — covers everything: workflows, connectors, credentials, executions, audit log, skills, and knowledge sources.
 
 The engine itself is stateless. It can be stopped, replaced with a new version, and restarted without data loss. All in-flight jobs are durably queued in PostgreSQL and resume automatically on restart. There is no in-memory state that needs to be preserved across restarts.
 
@@ -222,6 +237,26 @@ running binary. The release workflow signs `SHA256SUMS` with the
 `RELEASE_SIGNING_KEY` GitHub secret; the matching public key is
 committed to `packages/cli-core/src/release-public-key.ts` and embedded
 in every binary at build time.
+
+```mermaid
+flowchart LR
+    Trigger(["engine --self-update<br/>or sk update"])
+    Fetch["Download new binary<br/>+ signed SHA256SUMS"]
+    Verify{"Ed25519 verify<br/>against embedded public key"}
+    Park["Park current → ~/.engine/versions/<v>/<br/>(keep last 3 with manifest.json)"]
+    Swap["Atomic binary swap<br/>+ systemctl restart"]
+    Audit[("audit_log:<br/>engine.update.completed")]
+    Fail[("audit_log:<br/>engine.update.failed")]
+    Rollback(["engine --rollback"])
+
+    Trigger --> Fetch --> Verify
+    Verify -- ok --> Park --> Swap --> Audit
+    Verify -- bad signature --> Fail
+    Swap -- crash --> Fail
+    Rollback -. re-hash retained binary .-> Swap
+```
+
+*Atomic swap; failure rolls back automatically; every transition lands in the audit log under the system tenant. Losing the private key bricks future updates for any binary that hasn't yet picked up a key rotation — treat it like the database master key.*
 
 ### Audit trail
 
@@ -305,7 +340,9 @@ key — back it up, rotate after operator handover.
 
 ---
 
-## What to Read Next
+## Further reading
 
-- [AGENTS.md](../AGENTS.md) — the canonical repo-wide contract for contributors: subsystem map, quality gates, and non-negotiables.
-- [docs/quickstart/operator.md](quickstart/operator.md) — step-by-step: engine up, admin key minted, first connector registered, in 10 minutes.
+- [AGENTS contract](../AGENTS.md) — canonical repo-wide contract for contributors: subsystem map, quality gates, and non-negotiables.
+- [Operator quickstart](./quickstart/operator.md) — step-by-step: engine up, admin key minted, first connector registered, in 10 minutes.
+- [cost attribution (R10)](./system-requirements.md#r10--cost-attribution-and-per-tenant-budget) — strategy-level requirement this operations layer realises.
+- [structural changes (positioning §7)](./positioning.md#7-part-2b--structural-changes-sk-specific-not-generic-outcomes) — what operators concretely experience after the reference implementation is in place.

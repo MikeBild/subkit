@@ -1,15 +1,36 @@
 # Input Surfaces
 
-> *Strategy context: this doc is the developer view of the **multiple entry surfaces,
-> one governance point** requirement (see [`system-requirements.md`](system-requirements.md)
-> R12 and R6). For how sk realises it across CLI, API, MCP, and chat with the same
-> approval gate and audit trail, see [`positioning.md`](positioning.md) §5.*
+> **Reading time:** ~12 min
+> **Audience:** Engineers integrating with the reference implementation, operators configuring surfaces
+> **Strategy context:** developer view of [one governance gate (R12)](./system-requirements.md#r12--multiple-entry-surfaces-one-governance-point) and [delegated AI action (R6)](./system-requirements.md#r6--delegated-ai-action-with-scoped-time-bound-revocable-audited-authority); the principles for what flows across these surfaces live in [security and governance principles](./positioning.md#51-security-and-governance--principles).
 
 Automation that only works from one place does not fit how enterprise teams actually operate. A developer may prefer a terminal. An analyst may live in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant should be able to call a workflow directly.
 
-sk is designed around this reality. It has multiple entry points — the sk CLI, the REST API, the MCP server, chat platform integrations, webhooks, and scheduled triggers — and all of them lead to the same governed authoring and execution pipeline. The security model, the RBAC checks, and the Audit Log apply identically regardless of where a request originates.
+The reference implementation is designed around this reality. It has multiple entry points — the sk CLI, the REST API, the MCP server, chat platform integrations, webhooks, and scheduled triggers — and all of them lead to the same governed authoring and execution pipeline. The security model, the RBAC checks, and the Audit Log apply identically regardless of where a request originates.
 
-Many doors. One platform.
+![sk architecture overview — every inbound surface routes to the same engine; external AI clients cross the MCP OAuth bridge; other surfaces enter directly.](overview.png)
+
+*System-wide context for this document. The rest of it zooms in on each inbound surface; the diagram below sharpens the "one governance gate" principle. Source: [`overview.drawio`](overview.drawio).*
+
+```mermaid
+flowchart LR
+    CLI["sk CLI<br/>(Ink + citty)"]
+    HTTP["REST API<br/>/v1/* + OpenAPI"]
+    MCP["MCP Server<br/>(SSE + stdio)"]
+    Chat["Chat Adapters<br/>Slack · Teams · Google"]
+    Hook["Webhooks +<br/>Scheduled Triggers"]
+    Gate{{"can(actor, action, resource)<br/>+ audit on every call"}}
+    Engine[/"sk engine"/]
+
+    CLI --> Gate
+    HTTP --> Gate
+    MCP --> Gate
+    Chat --> Gate
+    Hook --> Gate
+    Gate --> Engine
+```
+
+*Many doors. One platform. The gate is the same callable; the audit row is the same shape; the identity envelope (`tenant_id`, `actor_id`, `request_source`, `trace_id`) is populated at every entry.*
 
 ---
 
@@ -69,7 +90,7 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 
 **Supported clients.** Any MCP-compatible client can connect: Claude Code, GitHub Copilot, Codex CLI, Gemini, and custom MCP clients built for specific workflows. The connection is a single configuration line pointing at the engine's MCP endpoint.
 
-**Three capability types.** The MCP server exposes sk's capabilities in three forms that match the MCP standard:
+**Three capability types.** The MCP server exposes the reference implementation's capabilities in three forms that match the MCP standard:
 
 - **Callable entries** expose Workflows as `wf.<slug>` functions. A workflow named `payment-sync` becomes a callable workflow entry that an MCP client can invoke directly. The client sees the workflow's input schema, can call it, and receives the result.
 - **Resources** expose Connectors as structured data access. A Stripe Connector might surface as a `stripe://customers` resource that an MCP client can read to understand available data shapes.
@@ -114,6 +135,29 @@ The sk engine is a full OAuth 2.1 authorization server and resource server for `
 | `GET /.well-known/oauth-authorization-server` | RFC 8414 | Authorization server metadata (endpoints, scopes, PKCE). |
 
 **OAuth flow.**
+
+```mermaid
+sequenceDiagram
+    participant C as MCP Client
+    participant E as sk engine
+    participant U as User browser
+
+    C->>E: GET /.well-known/oauth-protected-resource
+    E-->>C: { authorization_server }
+    C->>E: GET /.well-known/oauth-authorization-server
+    E-->>C: endpoints, scopes, PKCE required
+    C->>E: POST /v1/oauth/register (DCR, RFC 7591)
+    E-->>C: { client_id, client_secret? }
+    C->>U: 302 to /v1/oauth/authorize?code_challenge=...
+    U->>E: OIDC login + consent
+    E-->>U: 302 to redirect_uri?code=...&state=...
+    U-->>C: deliver code
+    C->>E: POST /v1/oauth/token (code + verifier)
+    E-->>C: { access_token: wf_mcp_*, refresh_token: wf_mcr_* }
+    C->>E: POST /mcp (Authorization: Bearer wf_mcp_*)
+    E-->>C: SSE stream
+    Note over C,E: Refresh rotates the chain; replay revokes it.
+```
 
 1. Client fetches `/.well-known/oauth-protected-resource` to discover the authorization server.
 2. Client fetches `/.well-known/oauth-authorization-server` to get all endpoints.
@@ -173,13 +217,13 @@ Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthent
 
 Enterprise teams spend much of their day in chat. The sk chat integrations bring the Conversation authoring loop into the surfaces teams already use, so workflow authoring does not require context switching.
 
-**How it works.** Each chat platform has a dedicated adapter that normalizes incoming messages — mentions, slash commands, interaction callbacks — into sk's Conversation model. The same AI authoring loop that runs in the sk CLI runs inside a Chat Session. Responses are rendered as native platform messages. A conversation started in Slack and continued the next day picks up exactly where it left off.
+**How it works.** Each chat platform has a dedicated adapter that normalises incoming messages — mentions, slash commands, interaction callbacks — into the reference implementation's Conversation model. The same AI authoring loop that runs in the sk CLI runs inside a Chat Session. Responses are rendered as native platform messages. A conversation started in Slack and continued the next day picks up exactly where it left off.
 
 **Approval flow.** When a Draft or Patch Candidate requires approval, the platform surfaces an interactive card in the relevant chat thread. Operators see an approve button and a reject button as native chat UI elements — no separate workflow call required. The approval decision is recorded in the Audit Log with the chat platform as the request source.
 
 **Identity linking.** A chat user's platform identity (their Slack user ID, Teams user principal, or Google Chat identity) is linked to their sk Tenant account through a user-initiated flow. Once linked, messages from that user carry their full sk identity, including role and permissions.
 
-**Notification routing.** Execution results, alerts, and approval requests can be routed to specific channels or users through Notification Rules. Operators configure which events go where, at what severity level, and with what quiet-hour constraints. Chat systems are the primary notification channel in sk — email notifications are not supported.
+**Notification routing.** Execution results, alerts, and approval requests can be routed to specific channels or users through Notification Rules. Operators configure which events go where, at what severity level, and with what quiet-hour constraints. Chat systems are the primary notification channel in this reference implementation — email notifications are not supported.
 
 ---
 
@@ -197,6 +241,8 @@ Not every workflow starts with a human. Scheduled triggers and inbound webhooks 
 
 ---
 
-## What to Read Next
+## Further reading
 
-- [docs/04-authoring.md](04-authoring.md) — How Conversations work, how the AI assembles Workflows, and how the approval gate turns a Draft into a committed, executable Workflow.
+- [AI-assisted authoring](./04-authoring.md) — how Conversations work, how the AI assembles Workflows, and how the approval gate turns a Draft into a committed, executable Workflow.
+- [glossary](./02-concepts.md#group-6-surfaces) — definitions for sk CLI, MCP Server, Chat Adapter, Notification Rule, Service Metadata.
+- [positioning §5](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory) — the strategy-level principles every surface implements.

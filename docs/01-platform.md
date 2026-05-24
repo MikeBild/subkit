@@ -21,6 +21,10 @@ Candidates → improved next authoring run). The AI lowers the cost of authoring
 platform guarantees that what runs in production is exactly what a human approved; the
 learning loop is what makes the operating model improve over time.
 
+![sk architecture overview — inbound surfaces, the MCP OAuth bridge, the six engine clusters (with Tenant Context highlighted as the moat), and the four outbound system categories.](overview.png)
+
+*The full architecture at a glance. Inbound surfaces (Chat · CLI · HTTP REST API · Inbound Webhooks · Scheduler) reach the engine directly; external AI clients cross the **MCP OAuth bridge** (yellow, dashed). The engine groups into six clusters: Authoring + Conversations, **Tenant Context — the moat** (green), Governance, Workflows + Execution, Connectors, Infrastructure. Source: [`overview.drawio`](overview.drawio).*
+
 ---
 
 ## What sk Is
