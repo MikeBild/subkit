@@ -30,6 +30,7 @@ import type {
   ChatPlatform,
 } from "../../chat/index.ts";
 import type { Db } from "../../db/client.ts";
+import { logger } from "../../logging/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
 export interface ChatRoutesDeps {
@@ -116,10 +117,20 @@ async function ingest(
           headers: { "content-type": "application/json" },
         });
       }
-    } catch {
-      // Fall through to normal enqueue path — the click click is at
-      // worst lost (modal won't open), but we still acknowledge to
-      // keep Slack happy. The adapter logs the underlying failure.
+    } catch (err) {
+      // Fall through to normal enqueue path — the click is at worst
+      // lost (modal won't open), but we still acknowledge to keep
+      // Slack happy. The adapter normally logs the underlying failure,
+      // but a sync throw above the adapter's own logger.warn (e.g. a
+      // TypeError on malformed event.raw) would otherwise bypass that;
+      // a bare `catch {}` is fragile observability so surface it here.
+      logger.warn({
+        module: "chat",
+        action: "ingest.sync_interaction_failed",
+        msg: "handleSyncInteraction threw; falling through to enqueue",
+        platform,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

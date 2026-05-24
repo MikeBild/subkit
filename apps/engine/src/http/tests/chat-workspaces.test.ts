@@ -14,15 +14,30 @@
 // second tenant's rows are invisible.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
-import { auditLog, chatIdentities, chatWorkspaces, tenants, users } from "../../db/schema/index.ts";
+import {
+  apiKeys,
+  auditLog,
+  chatIdentities,
+  chatWorkspaces,
+  tenants,
+  users,
+} from "../../db/schema/index.ts";
+import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
 let otherTenantId: string;
 let otherUserId: string;
+let memberKey = "";
 const SIGNING_SECRET = "test-slack-signing-secret-xyz";
+
+const apiKeyHex = createDeterministicHexFactory(0xcbbaaa1);
+function sha256Hex(v: string): string {
+  return createHash("sha256").update(v).digest("hex");
+}
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("chat-ws");
@@ -41,6 +56,24 @@ beforeAll(async () => {
     .returning();
   if (!u2) throw new Error("seed second user");
   otherUserId = u2.id;
+
+  // Provision a non-admin (`member`) user in the SAME tenant for RBAC
+  // negative tests. requirePermission("chat_workspace:write") rejects
+  // them with 403; admins (the default ctx.apiKey) pass.
+  const [member] = await ctx.db
+    .insert(users)
+    .values({ tenant_id: ctx.tenantId, email: "member-chatws@chat.test", role: "member" })
+    .returning();
+  if (!member) throw new Error("seed member user");
+  const plain = `wf_live_${apiKeyHex(24).slice(0, 32)}`;
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: ctx.tenantId,
+    user_id: member.id,
+    prefix: plain.slice(0, 12),
+    token_sha256: sha256Hex(plain),
+    scopes: ["*"],
+  });
+  memberKey = plain;
 });
 
 afterAll(async () => {
@@ -63,6 +96,13 @@ beforeEach(async () => {
 function authedHeaders(): Record<string, string> {
   return {
     authorization: `Bearer ${ctx.apiKey}`,
+    "content-type": "application/json",
+  };
+}
+
+function memberHeaders(): Record<string, string> {
+  return {
+    authorization: `Bearer ${memberKey}`,
     "content-type": "application/json",
   };
 }
@@ -214,6 +254,52 @@ describe("GET /v1/chat/workspaces", () => {
     const list = (await listRes.json()) as { items: Array<{ workspace_id: string }> };
     expect(list.items.find((w) => w.workspace_id === "T_MINE")).toBeDefined();
     expect(list.items.find((w) => w.workspace_id === "T_OTHER")).toBeUndefined();
+  });
+});
+
+describe("RBAC negative — non-admin lacks chat_workspace:write", () => {
+  test("member POST /v1/chat/workspaces is denied with 403", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/chat/workspaces`, {
+      method: "POST",
+      headers: memberHeaders(),
+      body: JSON.stringify({
+        platform: "slack",
+        workspace_id: "T_RBAC",
+        bot_token: "xoxb-test-rbac",
+        installer_platform_user_id: "U_RBAC",
+      }),
+    });
+    expect(res.status).toBe(403);
+    // No row was written.
+    const after = await ctx.db
+      .select()
+      .from(chatWorkspaces)
+      .where(eq(chatWorkspaces.workspace_id, "T_RBAC"));
+    expect(after).toHaveLength(0);
+  });
+
+  test("member DELETE /v1/chat/workspaces/{id} is denied with 403", async () => {
+    // Seed a workspace as admin to give member something to try deleting.
+    const [seed] = await ctx.db
+      .insert(chatWorkspaces)
+      .values({
+        tenant_id: ctx.tenantId,
+        platform: "slack",
+        workspace_id: "T_RBAC_DEL",
+        bot_ciphertext: Buffer.from([0]),
+        bot_iv: Buffer.from([0]),
+        bot_auth_tag: Buffer.from([0]),
+      })
+      .returning();
+    if (!seed) throw new Error("seed for rbac delete test");
+    const res = await fetch(`${ctx.baseUrl}/v1/chat/workspaces/${seed.id}`, {
+      method: "DELETE",
+      headers: memberHeaders(),
+    });
+    expect(res.status).toBe(403);
+    // Row is still there.
+    const after = await ctx.db.select().from(chatWorkspaces).where(eq(chatWorkspaces.id, seed.id));
+    expect(after).toHaveLength(1);
   });
 });
 

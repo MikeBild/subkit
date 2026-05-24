@@ -10927,15 +10927,13 @@ export interface components {
             tenant_id: string;
             /** Format: uuid */
             user_id: string;
-            platform: components["schemas"]["ChatPlatformIdent"];
+            platform: components["schemas"]["ChatPlatform"];
             workspace_id: string;
             platform_user_id: string;
             linked_at: string;
         };
-        /** @enum {string} */
-        ChatPlatformIdent: "slack" | "teams" | "google_chat";
         LinkChatIdentity: {
-            platform: components["schemas"]["ChatPlatformIdent"];
+            platform: components["schemas"]["ChatPlatform"];
             workspace_id: string;
             platform_user_id: string;
             /** Format: uuid */

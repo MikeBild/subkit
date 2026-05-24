@@ -4,12 +4,20 @@
 // rejects a body.user_id that belongs to another tenant).
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { auditLog, chatIdentities, tenants, users } from "../../db/schema/index.ts";
+import { apiKeys, auditLog, chatIdentities, tenants, users } from "../../db/schema/index.ts";
+import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
 let otherUserId: string;
+let memberKey = "";
+
+const apiKeyHex = createDeterministicHexFactory(0xcbb1101);
+function sha256Hex(v: string): string {
+  return createHash("sha256").update(v).digest("hex");
+}
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("chat-id");
@@ -28,6 +36,22 @@ beforeAll(async () => {
     .returning();
   if (!u2) throw new Error("seed second user");
   otherUserId = u2.id;
+
+  // Provision a non-admin member in the SAME tenant for RBAC-deny tests.
+  const [member] = await ctx.db
+    .insert(users)
+    .values({ tenant_id: ctx.tenantId, email: "member-chatid@chat.test", role: "member" })
+    .returning();
+  if (!member) throw new Error("seed member user");
+  const plain = `wf_live_${apiKeyHex(24).slice(0, 32)}`;
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: ctx.tenantId,
+    user_id: member.id,
+    prefix: plain.slice(0, 12),
+    token_sha256: sha256Hex(plain),
+    scopes: ["*"],
+  });
+  memberKey = plain;
 });
 
 afterAll(async () => {
@@ -43,6 +67,13 @@ beforeEach(async () => {
 function authedHeaders(): Record<string, string> {
   return {
     authorization: `Bearer ${ctx.apiKey}`,
+    "content-type": "application/json",
+  };
+}
+
+function memberHeaders(): Record<string, string> {
+  return {
+    authorization: `Bearer ${memberKey}`,
     "content-type": "application/json",
   };
 }
@@ -95,6 +126,48 @@ describe("POST /v1/chat/identities", () => {
       .where(eq(chatIdentities.platform_user_id, "U_OK"));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.user_id).toBe(ctx.userId);
+  });
+});
+
+describe("RBAC negative — non-admin lacks chat_identity:write", () => {
+  test("member POST /v1/chat/identities is denied with 403", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/chat/identities`, {
+      method: "POST",
+      headers: memberHeaders(),
+      body: JSON.stringify({
+        platform: "slack",
+        workspace_id: "T_RBAC",
+        platform_user_id: "U_RBAC",
+        user_id: ctx.userId,
+      }),
+    });
+    expect(res.status).toBe(403);
+    const rows = await ctx.db
+      .select()
+      .from(chatIdentities)
+      .where(eq(chatIdentities.platform_user_id, "U_RBAC"));
+    expect(rows).toHaveLength(0);
+  });
+
+  test("member DELETE /v1/chat/identities/{id} is denied with 403", async () => {
+    const [seed] = await ctx.db
+      .insert(chatIdentities)
+      .values({
+        tenant_id: ctx.tenantId,
+        user_id: ctx.userId,
+        platform: "slack",
+        workspace_id: "T_RBAC_DEL",
+        platform_user_id: "U_RBAC_DEL",
+      })
+      .returning();
+    if (!seed) throw new Error("seed for rbac delete test");
+    const res = await fetch(`${ctx.baseUrl}/v1/chat/identities/${seed.id}`, {
+      method: "DELETE",
+      headers: memberHeaders(),
+    });
+    expect(res.status).toBe(403);
+    const after = await ctx.db.select().from(chatIdentities).where(eq(chatIdentities.id, seed.id));
+    expect(after).toHaveLength(1);
   });
 });
 

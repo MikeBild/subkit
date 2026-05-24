@@ -10,21 +10,20 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { AuditAction, audit } from "../../audit/index.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { ChatPlatformZodEnum } from "../../chat/index.ts";
 import { chatIdentities, users } from "../../db/schema/index.ts";
 import { ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
-const ChatPlatformEnum = z.enum(["slack", "teams", "google_chat"]).openapi("ChatPlatformIdent");
-
 const ChatIdentitySchema = z
   .object({
     id: z.string().uuid(),
     tenant_id: z.string().uuid(),
     user_id: z.string().uuid(),
-    platform: ChatPlatformEnum,
+    platform: ChatPlatformZodEnum,
     workspace_id: z.string(),
     platform_user_id: z.string(),
     linked_at: z.string(),
@@ -37,7 +36,7 @@ const ChatIdentityListResponse = z
 
 const LinkChatIdentitySchema = z
   .object({
-    platform: ChatPlatformEnum,
+    platform: ChatPlatformZodEnum,
     workspace_id: z.string().min(1),
     platform_user_id: z.string().min(1),
     user_id: z.string().uuid(),
@@ -49,6 +48,8 @@ function rowToOutput(row: typeof chatIdentities.$inferSelect): z.infer<typeof Ch
     id: row.id,
     tenant_id: row.tenant_id,
     user_id: row.user_id,
+    // pgEnum already constrains the column to the three values; the
+    // narrowing cast is the documented contract, not a wildcard.
     platform: row.platform as "slack" | "teams" | "google_chat",
     workspace_id: row.workspace_id,
     platform_user_id: row.platform_user_id,
@@ -154,46 +155,53 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     if (!user) throw new NotFoundError("user");
 
-    const insertResult = await db
-      .insert(chatIdentities)
-      .values({
-        tenant_id: principal.tenant_id,
-        user_id: body.user_id,
-        platform: body.platform,
-        workspace_id: body.workspace_id,
-        platform_user_id: body.platform_user_id,
-      })
-      .onConflictDoNothing({
-        target: [
-          chatIdentities.platform,
-          chatIdentities.workspace_id,
-          chatIdentities.platform_user_id,
-        ],
-      })
-      .returning();
-    const row = insertResult[0];
-    if (!row) {
-      throw new ConflictError(
-        `chat user ${body.platform}:${body.workspace_id}:${body.platform_user_id} is already linked`,
-      );
-    }
-    audit(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: "user",
-        actor_id: principal.id,
-        action: AuditAction.CHAT_IDENTITY_LINKED,
-        resource_type: "chat_identity",
-        resource_id: body.user_id,
-        result: "success",
-        metadata: {
-          kind: "manual",
+    // Insert + audit inside a tx so a process crash between the link
+    // INSERT and the audit row can't strand a committed link with no
+    // forensic trail (AGENTS.md: "Never bypass the audit log").
+    let row: typeof chatIdentities.$inferSelect | undefined;
+    await db.transaction(async (tx) => {
+      const insertResult = await tx
+        .insert(chatIdentities)
+        .values({
+          tenant_id: principal.tenant_id,
+          user_id: body.user_id,
           platform: body.platform,
+          workspace_id: body.workspace_id,
           platform_user_id: body.platform_user_id,
+        })
+        .onConflictDoNothing({
+          target: [
+            chatIdentities.platform,
+            chatIdentities.workspace_id,
+            chatIdentities.platform_user_id,
+          ],
+        })
+        .returning();
+      row = insertResult[0];
+      if (!row) {
+        throw new ConflictError(
+          `chat user ${body.platform}:${body.workspace_id}:${body.platform_user_id} is already linked`,
+        );
+      }
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: "user",
+          actor_id: principal.id,
+          action: AuditAction.CHAT_IDENTITY_LINKED,
+          resource_type: "chat_identity",
+          resource_id: body.user_id,
+          result: "success",
+          metadata: {
+            kind: "manual",
+            platform: body.platform,
+            platform_user_id: body.platform_user_id,
+          },
         },
-      },
-      db,
-    );
+        tx,
+      );
+    });
+    if (!row) throw new ConflictError("chat_identity link transaction produced no row");
     return c.json(rowToOutput(row), 201);
   });
 
@@ -207,26 +215,30 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(chatIdentities.tenant_id, principal.tenant_id), eq(chatIdentities.id, id)))
       .limit(1);
     if (!row) throw new NotFoundError("chat_identity");
-    await db
-      .delete(chatIdentities)
-      .where(and(eq(chatIdentities.tenant_id, principal.tenant_id), eq(chatIdentities.id, id)));
-    audit(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: "user",
-        actor_id: principal.id,
-        action: AuditAction.CHAT_IDENTITY_UNLINKED,
-        resource_type: "chat_identity",
-        resource_id: row.user_id,
-        result: "success",
-        metadata: {
-          kind: "manual_unlink",
-          platform: row.platform,
-          platform_user_id: row.platform_user_id,
+    // DELETE + audit inside a tx so a crash between them can't leave
+    // a removed identity with no audit row.
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(chatIdentities)
+        .where(and(eq(chatIdentities.tenant_id, principal.tenant_id), eq(chatIdentities.id, id)));
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: "user",
+          actor_id: principal.id,
+          action: AuditAction.CHAT_IDENTITY_UNLINKED,
+          resource_type: "chat_identity",
+          resource_id: row.user_id,
+          result: "success",
+          metadata: {
+            kind: "manual_unlink",
+            platform: row.platform,
+            platform_user_id: row.platform_user_id,
+          },
         },
-      },
-      db,
-    );
+        tx,
+      );
+    });
     return c.json({ deleted: true as const }, 200);
   });
 }

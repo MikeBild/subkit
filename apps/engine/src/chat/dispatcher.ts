@@ -58,13 +58,13 @@ import { recordChatDelivery } from "../observability/instrumentation.ts";
 import { can } from "../rbac/evaluator.ts";
 import { getWorkflow, getWorkflowBySlug } from "../workflows/service.ts";
 import type { ChatAdapter } from "./adapter.ts";
+import { mapToolNameToKind } from "./api.ts";
 import {
   type ApprovalCard,
   CHAT_RATES,
   type ChatElicitation,
   type ChatEvent,
   type ChatPlatform,
-  type ElicitationKind,
 } from "./types.ts";
 
 /** Envelope handed to the injected enqueue callback when a slash-run
@@ -239,26 +239,6 @@ function parseSlashCommand(
   return null;
 }
 
-/** Map an `ask_user_*` tool name to a provider-neutral elicitation
- *  kind so the dispatcher can branch on `capabilities.interactive`
- *  without knowing tool naming details. */
-function mapToolNameToKind(toolName: string): ElicitationKind {
-  switch (toolName) {
-    case "ask_user_confirm":
-      return "confirm";
-    case "ask_user_choice":
-      return "choice";
-    case "ask_user_multi":
-      return "multi";
-    case "ask_user_text":
-      return "text";
-    case "ask_user_form":
-      return "form";
-    default:
-      return "confirm";
-  }
-}
-
 /** Parse a Block Kit action `value` JSON envelope produced by the
  *  native elicitation renderers. The envelope shape `{c, o}` carries
  *  the `conversation_id` (`c`) and the typed elicitation output (`o`);
@@ -326,25 +306,32 @@ function parseViewMetadata(raw: string): { c: string; e: string; k: string } | n
  * `content: { text: string }`; if for some reason the event sink is
  * empty (e.g. a path that bypassed `events.push`), fall back to the
  * concatenated `text_delta` stream which the loop always emits live.
+ *
+ * Single forward pass — keeps both candidates (last assistant message,
+ * concatenated deltas) and picks the assistant message first.
  */
 function extractAssistantText(outcome: RunLoopResult): string | null {
-  for (let i = outcome.events.length - 1; i >= 0; i--) {
-    const e = outcome.events[i]!;
+  let lastAssistant: string | null = null;
+  let deltas: string[] | null = null;
+  for (const e of outcome.events) {
     if (e.type === "message" && e.role === "assistant") {
       const content = e.content as { text?: unknown } | string | null | undefined;
-      if (typeof content === "string") return content.trim() || null;
-      if (content && typeof content === "object" && typeof content.text === "string") {
-        return (content.text as string).trim() || null;
+      if (typeof content === "string") {
+        lastAssistant = content.trim() || null;
+      } else if (content && typeof content === "object" && typeof content.text === "string") {
+        lastAssistant = (content.text as string).trim() || null;
       }
+    } else if (e.type === "text_delta" && typeof e.text === "string") {
+      if (deltas === null) deltas = [];
+      deltas.push(e.text);
     }
   }
-  // Fallback: concatenate text deltas.
-  const deltas: string[] = [];
-  for (const e of outcome.events) {
-    if (e.type === "text_delta" && typeof e.text === "string") deltas.push(e.text);
+  if (lastAssistant !== null) return lastAssistant;
+  if (deltas !== null) {
+    const joined = deltas.join("").trim();
+    return joined || null;
   }
-  const joined = deltas.join("").trim();
-  return joined || null;
+  return null;
 }
 
 export async function handleChatEvent(
@@ -489,7 +476,21 @@ export async function handleChatEvent(
 
     const legacy = /^(approve|reject):(.+)$/.exec(action_id);
     if (legacy) {
-      // Legacy ApprovalCard: value is the bare conversation_id.
+      // Legacy ApprovalCard: value is the bare conversation_id (raw
+      // string, NOT JSON). A JSON-shaped value here means a renderer
+      // emitted the new `{c,o}` envelope under a legacy action_id —
+      // fail-closed log so the renderer regression surfaces before
+      // we feed a JSON string into `respondElicitation` as the
+      // conversation_id.
+      if (actionValue.startsWith("{")) {
+        logger.warn({
+          module: "chat",
+          action: "interaction.legacy_value_shape_mismatch",
+          msg: "approve/reject action carries an envelope-shaped value — renderer regression?",
+          action_id,
+        });
+        return { status: "ignored" };
+      }
       elicitation_id = legacy[2] ?? "";
       conversation_id = actionValue;
       output = { confirmed: legacy[1] === "approve" };

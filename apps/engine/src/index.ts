@@ -241,9 +241,22 @@ async function runServer(): Promise<void> {
   // returns 503 adapter_not_registered. Failures per workspace log but
   // do not block boot (the workspace simply stays un-hydrated until
   // re-installed or the next boot).
+  //
+  // We log the per-workspace outcome at info so the boot tail tells
+  // operators at a glance how many workspaces hydrated — without this
+  // a chat misconfiguration is silent until the first inbound event.
   try {
     const { hydrateChatRegistry } = await import("./chat/hydrate.ts");
-    await hydrateChatRegistry(db, chatRegistry);
+    const outcome = await hydrateChatRegistry(db, chatRegistry);
+    logger.info({
+      module: "engine",
+      action: "chat.hydrate.summary",
+      msg: "chat-bridge hydration summary",
+      total: outcome.total,
+      slack: outcome.slack,
+      skipped: outcome.skipped,
+      fallback_registered_for: outcome.fallback_registered_for,
+    });
   } catch (err) {
     logger.warn({
       module: "engine",

@@ -14,6 +14,7 @@ import type { Db } from "../../db/client.ts";
 import { chatWorkspaces, conversationElicitations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import type { ChatAdapter } from "../adapter.ts";
+import { mapToolNameToKind } from "../api.ts";
 import type {
   ApprovalCard,
   ChatAdapterCapabilities,
@@ -21,7 +22,6 @@ import type {
   ChatElicitation,
   ChatEvent,
   ChatInteractionAction,
-  ElicitationKind,
   VerifiedEvent,
 } from "../types.ts";
 import {
@@ -454,29 +454,6 @@ export class SlackAdapter implements ChatAdapter {
     // queueing a duplicate chat.event would only re-trigger lookup work
     // for an action the dispatcher has no resolution for.
     return { handled: true };
-  }
-}
-
-/**
- * Map an `ask_user_*` tool name to a provider-neutral elicitation kind.
- * Kept here (rather than the dispatcher) so platform adapters can use
- * the same mapping when they need to instantiate a ChatElicitation from
- * a persisted elicitation row.
- */
-function mapToolNameToKind(toolName: string): ElicitationKind {
-  switch (toolName) {
-    case "ask_user_confirm":
-      return "confirm";
-    case "ask_user_choice":
-      return "choice";
-    case "ask_user_multi":
-      return "multi";
-    case "ask_user_text":
-      return "text";
-    case "ask_user_form":
-      return "form";
-    default:
-      return "confirm";
   }
 }
 

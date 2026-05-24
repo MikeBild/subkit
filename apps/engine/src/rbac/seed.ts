@@ -59,6 +59,13 @@ function memberPermissionFilter(name: string): boolean {
   // mcp_oauth_client:* is admin-only — these are platform-global rows
   // (no tenant_id) and must not be exposed to member-level principals.
   if (name.startsWith("mcp_oauth_client:")) return false;
+  // chat_workspace:write / :delete install or remove a tenant-wide
+  // Slack/Teams/Google app binding (with encrypted bot credentials).
+  // chat_identity:write / :delete bind external chat users to subkit
+  // principals across the tenant. Both are admin-only operations;
+  // members keep `:read` so ops dashboards still work.
+  if (name.startsWith("chat_workspace:") && name !== "chat_workspace:read") return false;
+  if (name.startsWith("chat_identity:") && name !== "chat_identity:read") return false;
   return true;
 }
 

@@ -27,14 +27,10 @@ import { decryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db } from "../db/client.ts";
 import { chatWorkspaces } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { chatWorkspaceAad } from "./api.ts";
 import type { ChatAdapterRegistry } from "./registry.ts";
 import { SlackAdapter } from "./slack/adapter.ts";
 import type { ChatPlatform } from "./types.ts";
-
-/** AAD shape — mirrors `webhooks/inbound/service.ts aadFor`. */
-function aadFor(tenant_id: string, workspace_row_id: string): string {
-  return `chat-workspace:${tenant_id}:${workspace_row_id}`;
-}
 
 export interface HydrateOutcome {
   total: number;
@@ -92,7 +88,7 @@ export async function hydrateChatRegistry(
             iv: row.bot_iv,
             auth_tag: row.bot_auth_tag,
           },
-          aadFor(row.tenant_id, row.id),
+          chatWorkspaceAad(row.tenant_id, row.id),
         );
         const adapter = new SlackAdapter({
           signingSecret: slackSigningSecret,

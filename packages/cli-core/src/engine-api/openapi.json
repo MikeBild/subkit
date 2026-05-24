@@ -9494,7 +9494,7 @@
             "format": "uuid"
           },
           "platform": {
-            "$ref": "#/components/schemas/ChatPlatformIdent"
+            "$ref": "#/components/schemas/ChatPlatform"
           },
           "workspace_id": {
             "type": "string"
@@ -9516,19 +9516,11 @@
           "linked_at"
         ]
       },
-      "ChatPlatformIdent": {
-        "type": "string",
-        "enum": [
-          "slack",
-          "teams",
-          "google_chat"
-        ]
-      },
       "LinkChatIdentity": {
         "type": "object",
         "properties": {
           "platform": {
-            "$ref": "#/components/schemas/ChatPlatformIdent"
+            "$ref": "#/components/schemas/ChatPlatform"
           },
           "workspace_id": {
             "type": "string",

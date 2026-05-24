@@ -19,8 +19,13 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { AuditAction, audit } from "../../audit/index.ts";
-import { type ChatAdapterRegistry, SlackAdapter } from "../../chat/index.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
+import {
+  type ChatAdapterRegistry,
+  ChatPlatformZodEnum,
+  chatWorkspaceAad,
+  SlackAdapter,
+} from "../../chat/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { encryptSecret } from "../../crypto/aes-gcm.ts";
 import { chatIdentities, chatWorkspaces } from "../../db/schema/index.ts";
@@ -29,13 +34,11 @@ import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
-const ChatPlatformEnum = z.enum(["slack", "teams", "google_chat"]).openapi("ChatPlatform");
-
 const ChatWorkspaceSchema = z
   .object({
     id: z.string().uuid(),
     tenant_id: z.string().uuid(),
-    platform: ChatPlatformEnum,
+    platform: ChatPlatformZodEnum,
     /** Platform-native id (Slack `team_id`, Teams `tenant_id`, etc.). */
     workspace_id: z.string(),
     default_channel: z.string().nullable(),
@@ -50,7 +53,7 @@ const ChatWorkspaceListResponse = z
 
 const InstallChatWorkspaceSchema = z
   .object({
-    platform: ChatPlatformEnum,
+    platform: ChatPlatformZodEnum,
     /** Platform-native workspace id. Slack: `team_id` (T…). */
     workspace_id: z.string().min(1),
     /** Bot User OAuth Token for Slack (`xoxb-…`). For Teams / Google
@@ -72,18 +75,14 @@ function rowToOutput(row: typeof chatWorkspaces.$inferSelect): z.infer<typeof Ch
   return {
     id: row.id,
     tenant_id: row.tenant_id,
+    // pgEnum already constrains the column to the three values; the
+    // narrowing cast is the documented contract, not a `any`.
     platform: row.platform as "slack" | "teams" | "google_chat",
     workspace_id: row.workspace_id,
     default_channel: row.default_channel,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
-}
-
-/** AAD shape — mirrors `webhooks/inbound/service.ts aadFor` and
- *  `chat/hydrate.ts`. */
-function aadFor(tenant_id: string, workspace_row_id: string): string {
-  return `chat-workspace:${tenant_id}:${workspace_row_id}`;
 }
 
 const installRoute = createRoute({
@@ -221,7 +220,7 @@ export function registerChatWorkspaceRoutes(
       }
 
       // Re-encrypt with the row-bound AAD, then update.
-      const bound = encryptSecret(body.bot_token, aadFor(row.tenant_id, row.id));
+      const bound = encryptSecret(body.bot_token, chatWorkspaceAad(row.tenant_id, row.id));
       await tx
         .update(chatWorkspaces)
         .set({
@@ -290,8 +289,31 @@ export function registerChatWorkspaceRoutes(
           // a working identity is a silent-failure trap. Throw inside
           // the tx → workspace insert + bot-token update both roll
           // back, leaving a clean state to retry from.
-          // The 409 HTTP response (via the error middleware's standard
-          // request log) is the observability hook for SIEM/operators.
+          //
+          // Write the deny audit on the OUTER `db` (not `tx`) so it
+          // survives the rollback — SIEM/forensics need the record of
+          // a tenant admin attempting to bind a Slack identity that's
+          // already claimed by another principal.
+          await auditAwait(
+            {
+              tenant_id: principal.tenant_id,
+              actor_type: "user",
+              actor_id: principal.id,
+              action: AuditAction.CHAT_IDENTITY_LINKED,
+              resource_type: "chat_identity",
+              resource_id: principal.id,
+              result: "denied",
+              reason: "platform_user_already_linked_to_other_subkit_user",
+              metadata: {
+                kind: "install",
+                platform: body.platform,
+                platform_user_id: body.installer_platform_user_id,
+                workspace_id: body.workspace_id,
+                existing_user_id: existing.user_id,
+              },
+            },
+            db,
+          );
           throw new ConflictError(
             `slack user ${body.installer_platform_user_id} in workspace ` +
               `${body.workspace_id} is already linked to a different subkit user; ` +
@@ -299,50 +321,49 @@ export function registerChatWorkspaceRoutes(
           );
         }
       }
+
+      // Both audits commit INSIDE the transaction — `auditAwait(..., tx)`
+      // ensures the install + the audit trail rise or fall together.
+      // Fire-and-forget `audit()` on a successful tx could otherwise
+      // strand a committed install with no audit row if the process
+      // dies between commit and the audit insert (AGENTS.md: "Never
+      // bypass the audit log").
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: "user",
+          actor_id: principal.id,
+          action: AuditAction.CHAT_WORKSPACE_INSTALLED,
+          resource_type: "chat_workspace",
+          resource_id: row.id,
+          result: "success",
+          metadata: {
+            platform: body.platform,
+            workspace_id: body.workspace_id,
+          },
+        },
+        tx,
+      );
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: "user",
+          actor_id: principal.id,
+          action: AuditAction.CHAT_IDENTITY_LINKED,
+          resource_type: "chat_identity",
+          resource_id: principal.id,
+          result: "success",
+          ...(installerLinked ? {} : { reason: "install_noop" }),
+          metadata: {
+            kind: installerLinked ? "install" : "install_noop",
+            platform: body.platform,
+            platform_user_id: body.installer_platform_user_id,
+          },
+        },
+        tx,
+      );
     });
     if (!row) throw new ConflictError("chat_workspace install transaction produced no row");
-
-    audit(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: "user",
-        actor_id: principal.id,
-        action: AuditAction.CHAT_WORKSPACE_INSTALLED,
-        resource_type: "chat_workspace",
-        resource_id: row.id,
-        result: "success",
-        metadata: {
-          platform: body.platform,
-          workspace_id: body.workspace_id,
-        },
-      },
-      db,
-    );
-    // Emit an audit row that reflects the actual identity-link
-    // outcome — not a misleading "linked" for every install. The
-    // conflict-with-different-user case is handled inside the
-    // transaction (throws ConflictError → 409, install rolls back, no
-    // audit emitted because no state changed). What reaches here is
-    // either a fresh link (`install`) or an idempotent reinstall
-    // (`install_noop` — same operator, same Slack id, already linked).
-    audit(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: "user",
-        actor_id: principal.id,
-        action: AuditAction.CHAT_IDENTITY_LINKED,
-        resource_type: "chat_identity",
-        resource_id: principal.id,
-        result: "success",
-        ...(installerLinked ? {} : { reason: "install_noop" }),
-        metadata: {
-          kind: installerLinked ? "install" : "install_noop",
-          platform: body.platform,
-          platform_user_id: body.installer_platform_user_id,
-        },
-      },
-      db,
-    );
 
     // Register the adapter live so the next inbound event finds it
     // without waiting for a reboot. Only Slack is hydrated today; the
@@ -395,29 +416,37 @@ export function registerChatWorkspaceRoutes(
       .limit(1);
     if (!row) throw new NotFoundError("chat_workspace");
 
-    await db
-      .delete(chatWorkspaces)
-      .where(and(eq(chatWorkspaces.tenant_id, principal.tenant_id), eq(chatWorkspaces.id, id)));
+    // Wrap the DELETE + audit in a tx so the route can't return 200
+    // for a removal that never produced an audit row (a process crash
+    // between the two would otherwise leave a removed workspace with
+    // no forensic record).
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(chatWorkspaces)
+        .where(and(eq(chatWorkspaces.tenant_id, principal.tenant_id), eq(chatWorkspaces.id, id)));
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: "user",
+          actor_id: principal.id,
+          action: AuditAction.CHAT_WORKSPACE_REMOVED,
+          resource_type: "chat_workspace",
+          resource_id: row.id,
+          result: "success",
+          metadata: { platform: row.platform, workspace_id: row.workspace_id },
+        },
+        tx,
+      );
+    });
 
+    // Registry eviction happens AFTER the durable transaction so the
+    // in-memory adapter outlives the DB removal only on a registry
+    // exception (acceptable — next boot's hydration will be authoritative).
     deps.registry.unregister({
       tenant_id: row.tenant_id,
       platform: row.platform as "slack" | "teams" | "google_chat",
       workspace_id: row.workspace_id,
     });
-
-    audit(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: "user",
-        actor_id: principal.id,
-        action: AuditAction.CHAT_WORKSPACE_REMOVED,
-        resource_type: "chat_workspace",
-        resource_id: row.id,
-        result: "success",
-        metadata: { platform: row.platform, workspace_id: row.workspace_id },
-      },
-      db,
-    );
 
     return c.json({ deleted: true as const }, 200);
   });
