@@ -28,17 +28,26 @@ afterAll(async () => {
 describe("admin create → member query", () => {
   test("workflow created by admin is visible to member via sk", async () => {
     // Step 1: Admin creates a workflow via sk CLI.
+    //
+    // `--skip-checks` bypasses the validate+preview pre-flight that
+    // `workflows create` runs by default. Without it the CLI would
+    // actually execute the workflow's `request` step against an
+    // external host at create time — a third-party 503 then makes
+    // create exit 1 without persisting, and the visibility assertion
+    // below would fail with an unhelpful "workflow not found" rather
+    // than a clear "external dependency flaked". This suite tests
+    // cross-persona visibility, not external reachability.
     const wfDef = JSON.stringify({
       name: "cross-cli-test",
       slug: "cross-cli-test",
       description: "A workflow created by admin for member to query",
       steps: [
-        { kind: "request", id: "fetch", method: "GET", url: "https://httpbin.org/get" },
-        { kind: "transform", id: "pluck", expression: "$.headers", language: "jsonata" },
+        { kind: "request", id: "fetch", method: "GET", url: `${env.baseUrl}/openapi.json` },
+        { kind: "transform", id: "pluck", expression: "$.info", language: "jsonata" },
       ],
     });
     const filePath = writeTempFile(env.personas.admin, "cross-cli-wf.json", wfDef);
-    const createResult = await cli(["workflows", "create", "--file", filePath], {
+    const createResult = await cli(["workflows", "create", "--file", filePath, "--skip-checks"], {
       env,
       persona: "admin",
     });

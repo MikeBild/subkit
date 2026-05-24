@@ -235,6 +235,43 @@ async function runServer(): Promise<void> {
   recordBootConsumer("queue");
   await registerAllHandlers({ boss, db, chatRegistry });
 
+  // Hydrate the chat adapter registry from `chat_workspaces` BEFORE the
+  // HTTP listener accepts traffic. Without this, the first Slack POST
+  // arrives at a route that can't find an adapter to verify with and
+  // returns 503 adapter_not_registered. Failures per workspace log but
+  // do not block boot (the workspace simply stays un-hydrated until
+  // re-installed or the next boot).
+  //
+  // We log the per-workspace outcome at info so the boot tail tells
+  // operators at a glance how many workspaces hydrated — without this
+  // a chat misconfiguration is silent until the first inbound event.
+  try {
+    // Dynamic import keeps hydration failures isolated from
+    // module-load time. A static `import` at file head would surface a
+    // hydrate.ts parse / circular-dep error during the engine entry
+    // module's eval phase — long before this try/catch could mask it —
+    // and crash boot before the operator-friendly warn fires. The
+    // dynamic import lets the warn-then-continue contract above hold.
+    const { hydrateChatRegistry } = await import("./chat/hydrate.ts");
+    const outcome = await hydrateChatRegistry(db, chatRegistry);
+    logger.info({
+      module: "engine",
+      action: "chat.hydrate.summary",
+      msg: "chat-bridge hydration summary",
+      total: outcome.total,
+      slack: outcome.slack,
+      skipped: outcome.skipped,
+      fallback_registered_for: outcome.fallback_registered_for,
+    });
+  } catch (err) {
+    logger.warn({
+      module: "engine",
+      action: "chat.hydrate.failed",
+      msg: "chat-bridge hydration failed at boot; chat ingestion will return 503 until fixed",
+      ...errorFields(err),
+    });
+  }
+
   // Crash-recovery sweep: promote any execution stuck in `running` past
   // its workflow's `timeout_ms × 1.5` grace window into `timed_out`.
   // Wrapped in try/catch so a sweep failure (e.g. transient DB blip)

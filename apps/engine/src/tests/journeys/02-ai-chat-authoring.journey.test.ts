@@ -109,7 +109,17 @@ beforeAll(async () => {
   chatRegistry.registerFallback("slack", slackAdapter);
 
   const registry = buildDefaultRegistry(testDb.db);
-  const app = createApp({ db: testDb.db, registry, chatRegistry });
+  // The chat HTTP route's default enqueue resolves pg-boss via `getBoss()`,
+  // which throws when no boss is started — this journey only validates
+  // the route's HMAC verify + URL-verification path (no agentic turn),
+  // so we pass a no-op enqueue stub. The escape hatch exists exactly
+  // for tests of the route surface that don't run the worker.
+  const app = createApp({
+    db: testDb.db,
+    registry,
+    chatRegistry,
+    chatEnqueue: async () => {},
+  });
   const server: ServerType = serve({ fetch: app.fetch, port: 0 });
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr) throw new Error("no addr");

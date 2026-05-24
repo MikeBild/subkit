@@ -3,22 +3,30 @@
 // Responsibilities:
 //   1. Look up the chat_workspaces row by (platform, workspace_id)
 //      to find the tenant.
-//   2. Resolve a chat_identities row → subkit user_id. If none, auto-
-//      bind the platform user to the tenant's seeded admin user and
-//      audit it as kind: "auto_link". The chat surface treats every
-//      first message from an unknown platform user as implicit consent
-//      to act under the tenant's primary admin until an explicit
-//      identity-linking flow is added; the audit row is the forensic
-//      record of which platform identity got bound when.
+//   2. Resolve a chat_identities row → subkit user_id. An *explicit*
+//      link is required — no auto-link-to-admin. The installer's
+//      platform user is bound at install time via
+//      `POST /v1/chat/workspaces.installer_platform_user_id`; further
+//      users are linked via the admin `POST /v1/chat/identities`
+//      route. Unknown platform users receive an ephemeral "not linked"
+//      reply and run no turn; a `chat.message.denied` audit row records
+//      the rejection.
 //   3. Resolve (or create) a chat_sessions row → conversation_id.
 //   4. Route the event to the conversation layer:
 //        - mention / slash "chat <prompt>" → createConversation /
-//          appendUserMessage (aka runTurn)
-//        - interaction with action_id approve:* or reject:* →
-//          decideApproval
+//          appendUserMessage
+//        - "/new" / "reset" → drop the chat_sessions binding so the
+//          next message starts a fresh conversation
+//        - interaction (Block-Kit click / view_submission) →
+//          respondElicitation with the typed output the adapter
+//          extracted
+//        - "/subkit run <slug>" → createExecution + enqueueRun
 //        - anything else → ephemeral help text via adapter.send
-//   5. On an approval_request frame, send an approval card via the
-//      adapter so users can click Approve/Reject inline.
+//   5. On `awaiting_input`, render the elicitation natively when the
+//      adapter declares `capabilities.interactive.includes(kind)`,
+//      otherwise fall back to the legacy sendApproval card.
+//   6. On completion, post the assistant's reply (extracted from
+//      `RunLoopResult.events`) back into the originating thread.
 //
 // The dispatcher is intentionally free of adapter-specific types —
 // it takes a ChatAdapter at runtime so tests can plug in a fake.
@@ -31,7 +39,6 @@ import type { RunLoopResult } from "../conversations/loop.ts";
 import {
   appendUserMessage,
   createConversation,
-  respondElicitation,
   runConversationTurn,
 } from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
@@ -50,20 +57,27 @@ import { recordChatDelivery } from "../observability/instrumentation.ts";
 import { can } from "../rbac/evaluator.ts";
 import { getWorkflow, getWorkflowBySlug } from "../workflows/service.ts";
 import type { ChatAdapter } from "./adapter.ts";
-import { type ApprovalCard, CHAT_RATES, type ChatEvent, type ChatPlatform } from "./types.ts";
+import { mapToolNameToKind } from "./api.ts";
 
-/** Envelope handed to the injected enqueue callback when a slash-run
- * fires. Mirrors the shape of `ExecutionRunJob` so callers can forward
- * it straight into pg-boss. Kept inline so the chat module doesn't
- * import from the queue layer. */
-export interface DispatchRunEnqueue {
-  tenant_id: string;
-  workflow_id: string;
-  execution_id: string;
-  input: Record<string, string>;
-  request_source: "chat";
-  trace_id: string | null;
-}
+// Backward-compat re-export: `DispatchOutcome` and `DispatchRunEnqueue`
+// moved to `./dispatcher-types.ts` (extracted to break a circular dep
+// with `elicit-routing.ts`), but the chat/index.ts barrel, the queue
+// handler, and existing tests all import these names from
+// `./dispatcher.ts`. Re-exporting keeps those call sites working
+// without churn. The duplicate local import below is the value-side
+// of the re-export — TypeScript requires both shapes when the names
+// are used in this file's own type annotations.
+export type { DispatchOutcome, DispatchRunEnqueue } from "./dispatcher-types.ts";
+
+import type { DispatchOutcome, DispatchRunEnqueue } from "./dispatcher-types.ts";
+import { routeChatInteraction } from "./elicit-routing.ts";
+import {
+  type ApprovalCard,
+  CHAT_RATES,
+  type ChatElicitation,
+  type ChatEvent,
+  type ChatPlatform,
+} from "./types.ts";
 
 export interface DispatcherDeps {
   db: Db;
@@ -73,16 +87,6 @@ export interface DispatcherDeps {
    * still creates the execution row but skips enqueue (and notes that
    * in the ack message). */
   enqueueRun?: (job: DispatchRunEnqueue) => Promise<void>;
-}
-
-export interface DispatchOutcome {
-  status: "ok" | "workspace_not_found" | "ignored" | "help" | "approved" | "rejected";
-  conversation_id?: string;
-  approval_sent?: boolean;
-  loop?: RunLoopResult;
-  /** Set when the dispatcher routed a `/subkit run` slash command. */
-  execution_id?: string;
-  workflow_id?: string;
 }
 
 interface SendOptions {
@@ -136,7 +140,11 @@ async function sendTracked(
         per_minute: platformRate,
         retry_after_ms: gate.retryAfterMs,
       });
-      return { platform_message_id: `rate_limited_${Date.now()}` };
+      // Static sentinel — the recordChatDelivery success branch is the
+      // only consumer and doesn't need a unique id. Date.now() here
+      // would break tests that pin returned ids under a frozen clock
+      // and adds no operator value.
+      return { platform_message_id: "rate_limited" };
     }
   }
   try {
@@ -184,6 +192,7 @@ function parseSlashCommand(
   | { verb: "chat"; prompt: string }
   | { verb: "run"; workflow: string; args: Record<string, string> }
   | { verb: "help"; topic?: string }
+  | { verb: "new" }
   | null {
   const trimmed = text.trim();
   // Accept: "/subkit chat ...", "/subkit run ...", "@bot chat ..." etc.
@@ -195,6 +204,12 @@ function parseSlashCommand(
   if (head === "/subkit" || head === "subkit") {
     parts.shift();
     head = parts[0];
+  }
+  // "/new" / "/reset" / "new" / "reset" resets the thread→conversation
+  // binding so the next message starts a fresh turn. Useful for long
+  // DMs that have collected a lot of context.
+  if (head === "/new" || head === "/reset" || head === "new" || head === "reset") {
+    return { verb: "new" };
   }
   if (head === "chat") {
     parts.shift();
@@ -213,6 +228,41 @@ function parseSlashCommand(
   if (head === "help") {
     parts.shift();
     return { verb: "help", ...(parts[0] ? { topic: parts[0] } : {}) };
+  }
+  return null;
+}
+
+/**
+ * Extract the final assistant reply text from a completed turn so the
+ * chat adapter can post it back into the originating thread. The loop
+ * emits an assistant `message` TurnEvent at the end of every turn with
+ * `content: { text: string }`; if for some reason the event sink is
+ * empty (e.g. a path that bypassed `events.push`), fall back to the
+ * concatenated `text_delta` stream which the loop always emits live.
+ *
+ * Single forward pass — keeps both candidates (last assistant message,
+ * concatenated deltas) and picks the assistant message first.
+ */
+export function extractAssistantText(outcome: RunLoopResult): string | null {
+  let lastAssistant: string | null = null;
+  let deltas: string[] | null = null;
+  for (const e of outcome.events) {
+    if (e.type === "message" && e.role === "assistant") {
+      const content = e.content as { text?: unknown } | string | null | undefined;
+      if (typeof content === "string") {
+        lastAssistant = content.trim() || null;
+      } else if (content && typeof content === "object" && typeof content.text === "string") {
+        lastAssistant = (content.text as string).trim() || null;
+      }
+    } else if (e.type === "text_delta" && typeof e.text === "string") {
+      if (deltas === null) deltas = [];
+      deltas.push(e.text);
+    }
+  }
+  if (lastAssistant !== null) return lastAssistant;
+  if (deltas !== null) {
+    const joined = deltas.join("").trim();
+    return joined || null;
   }
   return null;
 }
@@ -237,7 +287,15 @@ export async function handleChatEvent(
   if (!workspace) return { status: "workspace_not_found" };
   const tenant_id = workspace.tenant_id;
 
-  // Resolve identity → subkit user.
+  // Resolve identity → subkit user. The previous auto-link-to-admin
+  // shortcut is gone: it silently elevated any chat user who could
+  // message the bot to tenant admin (every conversation tool, including
+  // credential access and workflow commits). Now we require an
+  // *explicit* link — created at install for the operator via
+  // `POST /v1/chat/workspaces.installer_platform_user_id`, and for
+  // everyone else via the `POST /v1/chat/identities` admin route. An
+  // unknown sender is rejected politely; the dispatcher does no further
+  // work for that event.
   // tenant-filter:exempt — platform user-identity lookup pre-tenant
   const [identity] = await db
     .select()
@@ -250,42 +308,63 @@ export async function handleChatEvent(
       ),
     )
     .limit(1);
-  let user_id: string;
-  if (identity) {
-    user_id = identity.user_id;
-  } else {
-    const [fallbackUser] = await db
-      .select()
-      .from(users)
-      .where(and(eq(users.tenant_id, tenant_id), eq(users.role, "admin")))
-      .limit(1);
-    if (!fallbackUser) throw new Error("dispatcher: no seeded admin user to auto-bind");
-    user_id = fallbackUser.id;
-    await db.insert(chatIdentities).values({
-      tenant_id,
-      user_id,
-      platform: ev.platform,
-      workspace_id: ev.workspace_id,
-      platform_user_id: ev.user_id,
-    });
+  // Two reject paths share the same outbound + audit shape: unknown
+  // identity, and an identity row whose tenant_id doesn't match the
+  // workspace's tenant_id. The latter is defense-in-depth — even with
+  // the link route's workspace-tenant check (chat-identities.ts), a
+  // pre-existing mismatched row (seeded before the fix, hand-inserted)
+  // would otherwise bridge tenants because the chat_identities lookup
+  // above is keyed only on the global identity tuple.
+  const denyReason =
+    identity === undefined
+      ? "identity_not_linked"
+      : identity.tenant_id !== tenant_id
+        ? "identity_tenant_mismatch"
+        : null;
+  if (denyReason !== null) {
+    // Surface the rejection so the unknown user knows what's wrong;
+    // ephemeral so it doesn't pollute a channel.
+    try {
+      await sendTracked(adapter, ev.platform, {
+        tenant_id,
+        workspace_id: ev.workspace_id,
+        channel_id: ev.channel_id,
+        ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+        kind: "ephemeral",
+        text:
+          "Your chat account isn't linked to a subkit user. Ask a tenant admin " +
+          "to link it via `POST /v1/chat/identities`.",
+      });
+    } catch {
+      // Don't let a rate-limit / outbound failure mask the rejection
+      // in audit; we still record the deny below.
+    }
     await auditAwait(
       {
         tenant_id,
         actor_type: "system",
         actor_id: null,
-        action: AuditAction.CHAT_IDENTITY_LINKED,
-        resource_type: "chat_identity",
-        resource_id: user_id,
-        result: "success",
+        action: AuditAction.CHAT_MESSAGE_DENIED,
+        resource_type: "chat_message",
+        resource_id: null,
+        result: "denied",
+        reason: denyReason,
         metadata: {
-          kind: "auto_link",
           platform: ev.platform,
+          workspace_id: ev.workspace_id,
           platform_user_id: ev.user_id,
+          kind: ev.kind,
         },
       },
       db,
     );
+    return { status: "ignored" };
   }
+  // `identity` is defined here because `denyReason === null` requires
+  // identity !== undefined; TS's narrowing across the intermediate
+  // local variable would otherwise lose this fact.
+  if (!identity) throw new Error("dispatcher: identity is unexpectedly undefined after deny check");
+  const user_id = identity.user_id;
 
   await auditAwait(
     {
@@ -305,40 +384,45 @@ export async function handleChatEvent(
     db,
   );
 
-  // Interactions short-circuit to elicitation resolution.
+  // Interactions short-circuit to elicitation resolution. The parsing
+  // + per-kind validation + `respondElicitation` plumbing lives in
+  // `elicit-routing.ts` — it's self-contained (no closure over the
+  // rest of this turn's state) and large enough to merit its own
+  // module under the audit-invariant size cap.
   if (ev.kind === "interaction" && ev.interaction) {
-    const { action_id, value: actionValue } = ev.interaction;
-    const m = /^(approve|reject):(.+)$/.exec(action_id);
-    if (!m) return { status: "ignored" };
-    const confirmed = m[1] === "approve";
-    const elicitation_id = m[2] ?? "";
-    const conversation_id = actionValue ?? "";
-    // #148 — every respondElicitation caller threads a controller.
-    const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
-    try {
-      await respondElicitation(
-        {
-          tenant_id,
-          conversation_id,
-          elicitation_id,
-          actor_id: user_id,
-          output: { confirmed },
-          turn_abort_ctrl: turnAbortCtrl,
-        },
-        db,
-      );
-    } finally {
-      unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
-    }
-    return {
-      status: confirmed ? "approved" : "rejected",
-      conversation_id,
-    };
+    return await routeChatInteraction({ ev, tenant_id, user_id, db });
   }
 
   // Parse command for mention + slash events.
   const rawText = ev.text ?? "";
   const parsed = parseSlashCommand(rawText);
+
+  // `/new` (or `reset`) — drop the thread→conversation binding so the
+  // very next message starts a fresh `createConversation` turn. The
+  // existing conversation row is left untouched (audit trail) — only
+  // the `chat_sessions` mapping is removed.
+  if (parsed && parsed.verb === "new") {
+    const threadKey = ev.thread_id ?? `${ev.channel_id}:root`;
+    await db
+      .delete(chatSessions)
+      .where(
+        and(
+          eq(chatSessions.tenant_id, tenant_id),
+          eq(chatSessions.workspace_id, workspace.id),
+          eq(chatSessions.thread_id, threadKey),
+        ),
+      );
+    await sendTracked(adapter, ev.platform, {
+      tenant_id,
+      workspace_id: ev.workspace_id,
+      channel_id: ev.channel_id,
+      ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+      kind: "ephemeral",
+      text: "Conversation reset — the next message starts a fresh turn.",
+    });
+    return { status: "ok" };
+  }
+
   let prompt: string | null = null;
   if (parsed && parsed.verb === "chat") {
     prompt = parsed.prompt;
@@ -419,9 +503,8 @@ export async function handleChatEvent(
     // Pass-2 C6: chat slash `/run` gates on `workflow:run`. The
     // dispatcher assembles a synthetic user principal out of the
     // resolved chat identity so the evaluator can walk the
-    // role/group/grant ladder. We preload the user's legacy enum role
-    // so the built-in admin short-circuit still fires for the seeded
-    // chat admin user that auto-linked on first message.
+    // role/group/grant ladder. Preload the linked user's enum role so
+    // the evaluator's admin short-circuit fires when applicable.
     const userRows = await db
       .select({ role: users.role })
       .from(users)
@@ -606,37 +689,106 @@ export async function handleChatEvent(
 
   let approval_sent = false;
   if (outcome.status === "awaiting_input" && outcome.pending_elicitation_id) {
-    const summaryEvent = outcome.events.find((e) => e.type === "elicit_request");
-    const summary =
-      summaryEvent && summaryEvent.type === "elicit_request"
-        ? summaryEvent.summary
-        : "Input required";
-    const card: ApprovalCard = {
-      tenant_id,
-      workspace_id: ev.workspace_id,
-      channel_id: ev.channel_id,
-      ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
-      conversation_id,
-      approval_id: outcome.pending_elicitation_id,
-      summary,
-    };
-    try {
-      await adapter.sendApproval(card);
-      recordChatDelivery({ platform: ev.platform, status: "delivered" });
-    } catch (err) {
-      recordChatDelivery({ platform: ev.platform, status: "failed" });
-      throw err;
+    const elicitEvent = outcome.events.find(
+      (e): e is Extract<typeof e, { type: "elicit_request" }> => e.type === "elicit_request",
+    );
+    const summary = elicitEvent?.summary ?? "Input required";
+    const toolName = elicitEvent?.tool_name ?? "ask_user_confirm";
+    const kind = mapToolNameToKind(toolName);
+
+    // Prefer native rendering when the adapter declares the kind in
+    // its `capabilities`. Falls back to the legacy `sendApproval`
+    // Approve/Reject card so adapters that haven't shipped native
+    // rendering (Teams, Google in this phase) still surface
+    // *something* the user can act on. An unknown `tool_name`
+    // (`kind === null`) also routes through the fallback path —
+    // mis-rendering a future ask_user_* tool as confirm would
+    // mis-shape the user's typed answer.
+    const supportsNative =
+      kind !== null &&
+      adapter.capabilities?.interactive?.includes(kind) === true &&
+      typeof adapter.renderElicitation === "function";
+
+    if (supportsNative) {
+      const input = (elicitEvent?.input as Record<string, unknown> | undefined) ?? {};
+      const elicitation: ChatElicitation = {
+        id: outcome.pending_elicitation_id,
+        conversation_id,
+        kind,
+        summary,
+      };
+      if (typeof input.body === "string") elicitation.body = input.body;
+      if (Array.isArray(input.options))
+        elicitation.options = input.options as NonNullable<ChatElicitation["options"]>;
+      if (Array.isArray(input.fields))
+        elicitation.fields = input.fields as NonNullable<ChatElicitation["fields"]>;
+      const renderElicitation = adapter.renderElicitation;
+      if (!renderElicitation)
+        throw new Error("dispatcher: renderElicitation gone after capability check");
+      try {
+        await renderElicitation.call(adapter, elicitation, {
+          tenant_id,
+          workspace_id: ev.workspace_id,
+          channel_id: ev.channel_id,
+          ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+        });
+        recordChatDelivery({ platform: ev.platform, status: "delivered" });
+      } catch (err) {
+        recordChatDelivery({ platform: ev.platform, status: "failed" });
+        throw err;
+      }
+    } else {
+      const card: ApprovalCard = {
+        tenant_id,
+        workspace_id: ev.workspace_id,
+        channel_id: ev.channel_id,
+        ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+        conversation_id,
+        approval_id: outcome.pending_elicitation_id,
+        summary,
+      };
+      try {
+        await adapter.sendApproval(card);
+        recordChatDelivery({ platform: ev.platform, status: "delivered" });
+      } catch (err) {
+        recordChatDelivery({ platform: ev.platform, status: "failed" });
+        throw err;
+      }
     }
     approval_sent = true;
   } else {
-    // Post a short acknowledgement so the user knows we picked it up.
+    // Post the actual assistant reply into the thread. Falls back to a
+    // status line if the turn somehow produced no text (commit-only
+    // turn, or an event-sink path we don't recognise) so the user
+    // always sees *something* from the bot.
+    const extracted = extractAssistantText(outcome);
+    if (extracted === null && outcome.status !== "committed") {
+      // No assistant text AND not a normal commit-only turn — this
+      // is a systematic loop regression the operator wants to see,
+      // not a silent "(no reply)" the user just stares at.
+      logger.warn({
+        module: "chat",
+        action: "dispatcher.no_reply_text",
+        msg: "turn produced no assistant text and no `text_delta` events — likely loop regression",
+        tenant_id,
+        conversation_id,
+        outcome_status: outcome.status,
+        event_count: outcome.events.length,
+      });
+    }
+    // Soft fallback for the loop-regression branch (extracted === null
+    // AND status !== committed): the operator-facing warn above gets
+    // the alert; the user gets a neutral status instead of a literal
+    // "(no reply)" that trains them to ignore the bot.
+    const replyText =
+      extracted ?? (outcome.status === "committed" ? "Committed." : "Still thinking on this…");
     await sendTracked(adapter, ev.platform, {
       tenant_id,
       workspace_id: ev.workspace_id,
       channel_id: ev.channel_id,
       ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
       kind: "message",
-      text: outcome.status === "committed" ? "Committed." : "Working on it...",
+      text: replyText,
     });
   }
 

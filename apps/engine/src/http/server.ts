@@ -20,6 +20,8 @@ import { logger } from "../logging/logger.ts";
 import { registerMcpHttpRoutes } from "../mcp/transports/streamable-http.ts";
 import { errorRing } from "../observability/error-ring.ts";
 import { metricsMiddleware } from "../observability/middleware.ts";
+import { getBoss } from "../queue/boss.ts";
+import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queue/queues.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { errorMiddleware, mapKnownErrorResponse } from "./middleware/error.ts";
 import { loggingMiddleware } from "./middleware/logging.ts";
@@ -32,6 +34,8 @@ import { registerAiRepairRoute } from "./routes/ai/repair.ts";
 import { registerAiSummarizeRoute } from "./routes/ai/summarize.ts";
 import { registerAuditLogRoutes } from "./routes/audit-log.ts";
 import { registerChatRoutes } from "./routes/chat.ts";
+import { registerChatIdentityRoutes } from "./routes/chat-identities.ts";
+import { registerChatWorkspaceRoutes } from "./routes/chat-workspaces.ts";
 import { registerConnectorDiscoveryRoutes } from "./routes/connector-discovery.ts";
 import { registerConnectorDocsRoutes } from "./routes/connector-docs.ts";
 import { registerConnectorTemplateRoutes } from "./routes/connector-templates/index.ts";
@@ -80,6 +84,11 @@ export interface CreateAppOptions {
   db?: Db;
   registry?: AuthProviderRegistry;
   chatRegistry?: ChatAdapterRegistry;
+  /** Override for the chat-route enqueue callback. Default forwards to
+   *  pg-boss via `getBoss().send(CHAT_EVENT_QUEUE, …)`, mirroring the
+   *  hooks-inbound pattern. Tests that exercise the chat HTTP surface
+   *  without running a real boss can pass a stub here. */
+  chatEnqueue?: (job: ChatEventJob) => Promise<void>;
   /** Override the in-memory rate limiter (default 100 req / 60s). Used
    *  by the http test scaffold to bump the ceiling so per-leaf sweep
    *  tests fit under the budget even as the schema grows. */
@@ -237,7 +246,20 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerSelfHealingRoutes(app);
   registerHooksInboundRoutes(app);
   registerRequestHookRoutes(app);
-  registerChatRoutes(app, { registry: opts.chatRegistry ?? new ChatAdapterRegistry() });
+  const chatRegistry = opts.chatRegistry ?? new ChatAdapterRegistry();
+  registerChatRoutes(app, {
+    registry: chatRegistry,
+    enqueue:
+      opts.chatEnqueue ??
+      (async (job: ChatEventJob) => {
+        // getBoss() is resolved lazily at request time so the engine
+        // boot order (boss start → migrations → http listen) stays
+        // intact; tests that don't start a boss don't hit this path.
+        await getBoss().send(CHAT_EVENT_QUEUE, job);
+      }),
+  });
+  registerChatWorkspaceRoutes(app, { registry: chatRegistry });
+  registerChatIdentityRoutes(app);
   registerSubscriptionRoutes(app);
   registerNotificationRoutes(app);
   registerEventRoutes(app);

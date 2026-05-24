@@ -3,10 +3,14 @@
 // route_layering check at apps/engine/scripts/audit-invariants.ts.
 
 export * from "./adapter.ts";
+export * from "./api.ts";
 // `dispatcher.ts` carries the `handleChatEvent` entry point used by
 // `http/routes/chat.ts`. Re-exported here so a future second caller
 // (e.g. an MCP capability or a webhook handler) can reach it through
 // the barrel without tripping the route_layering FAIL gate.
 export * from "./dispatcher.ts";
+export * from "./hydrate.ts";
 export * from "./registry.ts";
+export type { SlackAdapterOptions } from "./slack/adapter.ts";
+export { SlackAdapter } from "./slack/adapter.ts";
 export * from "./types.ts";

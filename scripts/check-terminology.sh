@@ -111,7 +111,7 @@ ticket_hits=$(grep -REn "$ticket_pattern" apps/ docs/ packages/ README.md \
     --exclude-dir=fixtures --exclude-dir=__tests__ --exclude-dir=out \
     --exclude-dir=seed --exclude=CHANGELOG.md 2>/dev/null \
     | grep -vE '\.audit-loop-policy\.md:[0-9]+:.*issue #66' \
-    | grep -vE 'docs/(positioning|system-requirements|thesis)\.md:[0-9]+:.*\(R[0-9]+(, R[0-9]+)*\)' \
+    | grep -vE 'docs/(positioning|system-requirements|thesis|0[0-9]+-[a-z-]+)\.md:[0-9]+:.*\(R[0-9]+(, R[0-9]+)*\)' \
     || true)
 if [ -n "$ticket_hits" ]; then
   echo "ERROR: ticket-coupling references found. Replace with present-tense invariants." >&2

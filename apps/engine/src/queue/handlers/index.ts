@@ -5,6 +5,7 @@ import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { registerOAuth2RefreshHandler } from "../../credentials/oauth2/refresh-worker.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
+import { registerChatEventHandler } from "./chat-event.ts";
 import { registerConversationRunTurnHandler } from "./conversation-run-turn.ts";
 import { registerConversationRunTurnDlqHandler } from "./conversation-run-turn-dlq.ts";
 import { registerEventFanoutHandler } from "./event-fanout.ts";
@@ -34,6 +35,10 @@ export interface RegisteredHandlers {
   workflowRepairWorkerId: string;
   webhookDeliverWorkerId: string | null;
   eventFanoutWorkerId: string;
+  /** Null when the boot path didn't pass a `chatRegistry` (e.g. some
+   *  test harnesses). The `chat.event` queue still exists; without a
+   *  consumer, enqueued jobs would simply wait. */
+  chatEventWorkerId: string | null;
 }
 
 export async function registerAllHandlers(
@@ -84,6 +89,15 @@ export async function registerAllHandlers(
     db: opts.db,
     ...(opts.chatRegistry ? { chatRegistry: opts.chatRegistry } : {}),
   });
+  // Chat-bridge ingestion worker — only registered when a chat registry
+  // is wired through. Tests that don't exercise chat skip this.
+  const chatEventWorkerId = opts.chatRegistry
+    ? await registerChatEventHandler({
+        boss: opts.boss,
+        db: opts.db,
+        chatRegistry: opts.chatRegistry,
+      })
+    : null;
   // Boot summary — single line operators can grep for to confirm the
   // queue layer is fully up. Each handler also emits its own
   // `<queue>.registered` line above; this is the aggregate signal.
@@ -101,6 +115,7 @@ export async function registerAllHandlers(
     workflow_repair_worker_id: workflowRepairWorkerId,
     webhook_deliver_worker_id: webhookDeliverWorkerId,
     event_fanout_worker_id: eventFanoutWorkerId,
+    chat_event_worker_id: chatEventWorkerId,
     chat_registry: opts.chatRegistry ? "present" : "absent",
   });
   return {
@@ -114,5 +129,6 @@ export async function registerAllHandlers(
     workflowRepairWorkerId,
     webhookDeliverWorkerId,
     eventFanoutWorkerId,
+    chatEventWorkerId,
   };
 }

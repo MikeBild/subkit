@@ -32,6 +32,36 @@ export class ChatAdapterRegistry {
     this.fallbackByPlatform.set(platform, adapter);
   }
 
+  /** Remove a workspace-specific adapter (used by the workspace-DELETE
+   *  route so the in-memory adapter doesn't outlive its DB row, which
+   *  would otherwise let outbound traffic continue against a removed
+   *  installation). Returns true if a row was removed. */
+  unregister(k: AdapterKey): boolean {
+    const key = keyOf(k);
+    const removed = this.adapters.delete(key);
+    // If the removed adapter happened to be the per-platform fallback,
+    // promote any remaining adapter of the same platform to fallback
+    // so verify still works for that platform. If none remain, drop
+    // the fallback too — the route layer will return 503 on the next
+    // request, which is correct (nothing installed).
+    const fallback = this.fallbackByPlatform.get(k.platform) ?? null;
+    if (removed && fallback) {
+      // We don't track identity by key, but a freshly-removed adapter
+      // would no longer appear in `this.adapters`. If the current
+      // fallback can no longer be found among remaining adapters,
+      // re-derive.
+      const stillRegistered = Array.from(this.adapters.values()).some((a) => a === fallback);
+      if (!stillRegistered) {
+        const replacement = Array.from(this.adapters.values()).find(
+          (a) => a.platform === k.platform,
+        );
+        if (replacement) this.fallbackByPlatform.set(k.platform, replacement);
+        else this.fallbackByPlatform.delete(k.platform);
+      }
+    }
+    return removed;
+  }
+
   get(k: AdapterKey): ChatAdapter | null {
     return this.adapters.get(keyOf(k)) ?? null;
   }

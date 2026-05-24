@@ -22,7 +22,7 @@
 // catalog because the public payloads are platform-owned.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { AuditAction, audit } from "../../audit/index.ts";
+import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import type {
   ChatAdapter,
   ChatAdapterRegistry,
@@ -30,6 +30,7 @@ import type {
   ChatPlatform,
 } from "../../chat/index.ts";
 import type { Db } from "../../db/client.ts";
+import { logger } from "../../logging/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
 export interface ChatRoutesDeps {
@@ -47,17 +48,24 @@ async function ingest(
   deps: ChatRoutesDeps,
   db?: Db,
 ): Promise<Response> {
-  if (!adapter) {
-    return new Response(JSON.stringify({ error: "adapter_not_registered" }), {
-      status: 503,
-      headers: { "content-type": "application/json" },
-    });
-  }
-  // Peek once to catch the Slack URL verification handshake without
-  // consuming the verifier's body read. Clone first.
+  // The Slack url_verification handshake is the FIRST thing Slack does
+  // when an Events API subscription URL is configured — and it MUST
+  // succeed BEFORE any workspace is installed (Slack won't let the
+  // operator complete app setup without a verified URL, and the
+  // operator can't install a workspace until app setup completes —
+  // chicken-and-egg). Short-circuit here, before the
+  // adapter-not-registered check, so a fresh engine answers the
+  // challenge without requiring a prior install. The handshake is a
+  // fixed protocol (echo the challenge string back) and carries no
+  // payload an attacker could exploit.
   const cloned = req.clone();
   const peekBody = await cloned.text();
-  if (platform === "slack") {
+  // 8KB peek cap. The legitimate handshake is ~100 bytes; capping
+  // before JSON.parse protects against a pathologically large body
+  // crashing the parse stage. Real chat events route past this peek
+  // through the adapter's verify() which has its own bounds.
+  const PEEK_CAP = 8192;
+  if (platform === "slack" && peekBody.length <= PEEK_CAP) {
     try {
       const maybe = JSON.parse(peekBody);
       if (maybe && maybe.type === "url_verification" && typeof maybe.challenge === "string") {
@@ -71,11 +79,23 @@ async function ingest(
     }
   }
 
+  if (!adapter) {
+    return new Response(JSON.stringify({ error: "adapter_not_registered" }), {
+      status: 503,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   const verified = await adapter.verify(req);
   if (!verified) {
-    audit(
+    // Durable audit (auditAwait): a bad signature is a security event
+    // and AGENTS.md forbids bypassing the audit log. Fire-and-forget
+    // `audit()` could otherwise drop the row on a process crash
+    // between the 401 send and the audit insert. Matches the
+    // `auditAwait` discipline the rest of the chat surface uses.
+    await auditAwait(
       {
-        tenant_id: deps.systemTenantId ?? "00000000-0000-0000-0000-000000000000",
+        tenant_id: deps.systemTenantId ?? SYSTEM_TENANT_ID,
         actor_type: "system",
         action: AuditAction.CHAT_MESSAGE_DENIED,
         resource_type: "chat_message",
@@ -91,6 +111,64 @@ async function ingest(
   }
 
   const event = await adapter.receive(verified);
+
+  // Synchronous platform-specific fast path. Slack uses this to call
+  // `views.open` on an "Antworten" button click within the ~3 s
+  // `trigger_id` window — the modal would never open if this hop went
+  // through the chat.event queue. Adapters that don't need a fast
+  // path (Teams Adaptive Cards are inline; Google dialogs open from
+  // card actions in-band) omit `handleSyncInteraction`.
+  if (typeof adapter.handleSyncInteraction === "function" && db) {
+    try {
+      const sync = await adapter.handleSyncInteraction({ event, db });
+      if (sync.handled) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+    } catch (err) {
+      // The click is past the `trigger_id` window by the time the
+      // queue dequeues, so the modal will never open and the user
+      // sees nothing — and the queued `open_elicit:*` is deliberately
+      // dropped by `routeChatInteraction`. Without an audit row the
+      // failure is invisible to the tenant. Emit a denied row so
+      // SIEM sees it; the structured log captures the throw details.
+      logger.warn({
+        module: "chat",
+        action: "ingest.sync_interaction_failed",
+        msg: "handleSyncInteraction threw; falling through to enqueue",
+        platform,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      if (db) {
+        try {
+          await auditAwait(
+            {
+              tenant_id: deps.systemTenantId ?? SYSTEM_TENANT_ID,
+              actor_type: "system",
+              actor_id: null,
+              action: AuditAction.CHAT_MESSAGE_DENIED,
+              resource_type: "chat_message",
+              resource_id: null,
+              result: "denied",
+              reason: "sync_interaction_failed",
+              metadata: {
+                platform,
+                workspace_id_native: event.workspace_id,
+                kind: event.kind,
+                error: err instanceof Error ? err.message : String(err),
+              },
+            },
+            db,
+          );
+        } catch {
+          // audit write itself failed — log already captured the trigger
+        }
+      }
+    }
+  }
+
   if (deps.enqueue) {
     await deps.enqueue({ event });
   }

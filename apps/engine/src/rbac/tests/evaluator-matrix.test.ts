@@ -63,6 +63,13 @@ function memberAllows(name: string): boolean {
   if (name === "discovery:approve") return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;
+  // chat_workspace:write / chat_identity:write install/remove tenant-wide
+  // Slack/Teams/Google bindings (with encrypted bot credentials) and
+  // bind external chat users to subkit principals — admin-only ops.
+  // The DELETE route gates on `:write` per project convention, so no
+  // separate `:delete` permission exists.
+  if (name.startsWith("chat_workspace:") && name !== "chat_workspace:read") return false;
+  if (name.startsWith("chat_identity:") && name !== "chat_identity:read") return false;
   return true;
 }
 

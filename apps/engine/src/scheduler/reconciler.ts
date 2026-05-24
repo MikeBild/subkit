@@ -27,6 +27,7 @@ import {
   INGEST_KNOWLEDGE_QUEUE,
 } from "../queue/handlers/ingest-knowledge.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
+import { runChatDedupCleanup } from "./chat-dedup-cleanup-runner.ts";
 import { parseCronExpression } from "./cron.ts";
 import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
@@ -49,6 +50,12 @@ const FILES_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
  *  matches the files-cleanup cadence — the sweeps are filtered by
  *  `now() - interval ...` so a second concurrent instance is a no-op. */
 const MCP_OAUTH_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
+
+/** Fixed cadence for the chat_events_seen retention sweep. Slack
+ *  retries arrive within minutes, so a 24h grace is plenty; sweeping
+ *  hourly keeps growth bounded and the cadence in line with the other
+ *  retention sweeps. */
+const CHAT_DEDUP_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
 export interface ReconcilerOptions {
   boss: PgBoss;
@@ -252,6 +259,9 @@ export class SchedulerReconciler {
    *  throttle as `lastFilesCleanupAt`. */
   private lastMcpOAuthCleanupAt: Date | null = null;
 
+  /** Last instant the chat_events_seen retention sweep ran. */
+  private lastChatDedupCleanupAt: Date | null = null;
+
   constructor(private readonly opts: ReconcilerOptions) {}
 
   async start(): Promise<void> {
@@ -357,6 +367,16 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "mcp_oauth_cleanup_failed",
         msg: "scheduler MCP OAuth cleanup pass failed",
+        ...errorFields(err),
+      });
+    });
+    // chat_events_seen retention sweep. Same hour-throttle pattern;
+    // bounds the replay-dedup table as inbound Slack volume grows.
+    await this.reconcileChatDedupCleanup().catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "chat_dedup_cleanup_failed",
+        msg: "scheduler chat-dedup cleanup pass failed",
         ...errorFields(err),
       });
     });
@@ -692,6 +712,20 @@ export class SchedulerReconciler {
     }
     this.lastMcpOAuthCleanupAt = now;
     await runMcpOAuthCleanup(now, this.opts.db);
+  }
+
+  /**
+   * Throttle the chat_events_seen retention sweep. Same semantics as
+   * `reconcileMcpOAuthCleanup` — multi-instance overlap is safe
+   * because the sweep filters by `now() - interval '24h'`.
+   */
+  async reconcileChatDedupCleanup(now: Date = new Date()): Promise<void> {
+    if (this.lastChatDedupCleanupAt !== null) {
+      const elapsed = now.getTime() - this.lastChatDedupCleanupAt.getTime();
+      if (elapsed < CHAT_DEDUP_CLEANUP_CADENCE_MS) return;
+    }
+    this.lastChatDedupCleanupAt = now;
+    await runChatDedupCleanup(now, this.opts.db);
   }
 
   private async fireWorkflowSchedule(
