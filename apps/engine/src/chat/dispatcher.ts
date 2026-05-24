@@ -50,7 +50,14 @@ import { recordChatDelivery } from "../observability/instrumentation.ts";
 import { can } from "../rbac/evaluator.ts";
 import { getWorkflow, getWorkflowBySlug } from "../workflows/service.ts";
 import type { ChatAdapter } from "./adapter.ts";
-import { type ApprovalCard, CHAT_RATES, type ChatEvent, type ChatPlatform } from "./types.ts";
+import {
+  type ApprovalCard,
+  CHAT_RATES,
+  type ChatElicitation,
+  type ChatEvent,
+  type ChatPlatform,
+  type ElicitationKind,
+} from "./types.ts";
 
 /** Envelope handed to the injected enqueue callback when a slash-run
  * fires. Mirrors the shape of `ExecutionRunJob` so callers can forward
@@ -184,6 +191,7 @@ function parseSlashCommand(
   | { verb: "chat"; prompt: string }
   | { verb: "run"; workflow: string; args: Record<string, string> }
   | { verb: "help"; topic?: string }
+  | { verb: "new" }
   | null {
   const trimmed = text.trim();
   // Accept: "/subkit chat ...", "/subkit run ...", "@bot chat ..." etc.
@@ -195,6 +203,12 @@ function parseSlashCommand(
   if (head === "/subkit" || head === "subkit") {
     parts.shift();
     head = parts[0];
+  }
+  // "/new" / "/reset" / "new" / "reset" resets the thread→conversation
+  // binding so the next message starts a fresh turn. Useful for long
+  // DMs that have collected a lot of context.
+  if (head === "/new" || head === "/reset" || head === "new" || head === "reset") {
+    return { verb: "new" };
   }
   if (head === "chat") {
     parts.shift();
@@ -217,6 +231,92 @@ function parseSlashCommand(
   return null;
 }
 
+/** Map an `ask_user_*` tool name to a provider-neutral elicitation
+ *  kind so the dispatcher can branch on `capabilities.interactive`
+ *  without knowing tool naming details. */
+function mapToolNameToKind(toolName: string): ElicitationKind {
+  switch (toolName) {
+    case "ask_user_confirm":
+      return "confirm";
+    case "ask_user_choice":
+      return "choice";
+    case "ask_user_multi":
+      return "multi";
+    case "ask_user_text":
+      return "text";
+    case "ask_user_form":
+      return "form";
+    default:
+      return "confirm";
+  }
+}
+
+/** Parse a Block Kit action `value` JSON envelope produced by the
+ *  native elicitation renderers. The envelope shape `{c, o}` carries
+ *  the `conversation_id` (`c`) and the typed elicitation output (`o`);
+ *  invalid / non-JSON values return null so the dispatcher can ignore. */
+function parseEnvelope(raw: string): { c: string; o?: unknown } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && typeof parsed.c === "string") {
+      return parsed as { c: string; o?: unknown };
+    }
+  } catch {
+    /* fallthrough */
+  }
+  return null;
+}
+
+/** Parse the Slack modal `private_metadata` JSON `{c, e, k}` carrying
+ *  conversation_id, elicitation_id, and the elicitation kind. */
+function parseViewMetadata(raw: string): { c: string; e: string; k: string } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof parsed.c === "string" &&
+      typeof parsed.e === "string" &&
+      typeof parsed.k === "string"
+    ) {
+      return parsed as { c: string; e: string; k: string };
+    }
+  } catch {
+    /* fallthrough */
+  }
+  return null;
+}
+
+/**
+ * Extract the final assistant reply text from a completed turn so the
+ * chat adapter can post it back into the originating thread. The loop
+ * emits an assistant `message` TurnEvent at the end of every turn with
+ * `content: { text: string }`; if for some reason the event sink is
+ * empty (e.g. a path that bypassed `events.push`), fall back to the
+ * concatenated `text_delta` stream which the loop always emits live.
+ */
+function extractAssistantText(outcome: RunLoopResult): string | null {
+  for (let i = outcome.events.length - 1; i >= 0; i--) {
+    const e = outcome.events[i]!;
+    if (e.type === "message" && e.role === "assistant") {
+      const content = e.content as { text?: unknown } | string | null | undefined;
+      if (typeof content === "string") return content.trim() || null;
+      if (content && typeof content === "object" && typeof content.text === "string") {
+        return (content.text as string).trim() || null;
+      }
+    }
+  }
+  // Fallback: concatenate text deltas.
+  const deltas: string[] = [];
+  for (const e of outcome.events) {
+    if (e.type === "text_delta" && typeof e.text === "string") deltas.push(e.text);
+  }
+  const joined = deltas.join("").trim();
+  return joined || null;
+}
+
 export async function handleChatEvent(
   deps: DispatcherDeps,
   ev: ChatEvent,
@@ -237,7 +337,15 @@ export async function handleChatEvent(
   if (!workspace) return { status: "workspace_not_found" };
   const tenant_id = workspace.tenant_id;
 
-  // Resolve identity → subkit user.
+  // Resolve identity → subkit user. The previous auto-link-to-admin
+  // shortcut is gone: it silently elevated any chat user who could
+  // message the bot to tenant admin (every conversation tool, including
+  // credential access and workflow commits). Now we require an
+  // *explicit* link — created at install for the operator via
+  // `POST /v1/chat/workspaces.installer_platform_user_id`, and for
+  // everyone else via the `POST /v1/chat/identities` admin route. An
+  // unknown sender is rejected politely; the dispatcher does no further
+  // work for that event.
   // tenant-filter:exempt — platform user-identity lookup pre-tenant
   const [identity] = await db
     .select()
@@ -250,42 +358,46 @@ export async function handleChatEvent(
       ),
     )
     .limit(1);
-  let user_id: string;
-  if (identity) {
-    user_id = identity.user_id;
-  } else {
-    const [fallbackUser] = await db
-      .select()
-      .from(users)
-      .where(and(eq(users.tenant_id, tenant_id), eq(users.role, "admin")))
-      .limit(1);
-    if (!fallbackUser) throw new Error("dispatcher: no seeded admin user to auto-bind");
-    user_id = fallbackUser.id;
-    await db.insert(chatIdentities).values({
-      tenant_id,
-      user_id,
-      platform: ev.platform,
-      workspace_id: ev.workspace_id,
-      platform_user_id: ev.user_id,
-    });
+  if (!identity) {
+    // Surface the rejection so the unknown user knows what's wrong;
+    // ephemeral so it doesn't pollute a channel.
+    try {
+      await sendTracked(adapter, ev.platform, {
+        tenant_id,
+        workspace_id: ev.workspace_id,
+        channel_id: ev.channel_id,
+        ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+        kind: "ephemeral",
+        text:
+          "Your chat account isn't linked to a subkit user. Ask a tenant admin " +
+          "to link it via `POST /v1/chat/identities`.",
+      });
+    } catch {
+      // Don't let a rate-limit / outbound failure mask the rejection
+      // in audit; we still record the deny below.
+    }
     await auditAwait(
       {
         tenant_id,
         actor_type: "system",
         actor_id: null,
-        action: AuditAction.CHAT_IDENTITY_LINKED,
-        resource_type: "chat_identity",
-        resource_id: user_id,
-        result: "success",
+        action: AuditAction.CHAT_MESSAGE_DENIED,
+        resource_type: "chat_message",
+        resource_id: null,
+        result: "denied",
+        reason: "identity_not_linked",
         metadata: {
-          kind: "auto_link",
           platform: ev.platform,
+          workspace_id: ev.workspace_id,
           platform_user_id: ev.user_id,
+          kind: ev.kind,
         },
       },
       db,
     );
+    return { status: "ignored" };
   }
+  const user_id = identity.user_id;
 
   await auditAwait(
     {
@@ -305,14 +417,93 @@ export async function handleChatEvent(
     db,
   );
 
-  // Interactions short-circuit to elicitation resolution.
+  // Interactions short-circuit to elicitation resolution. We accept
+  // four action_id families:
+  //
+  //   approve:<elic_id> / reject:<elic_id>
+  //       Legacy ApprovalCard path (kept; the existing block-kit
+  //       Approve/Reject card is still a valid render).
+  //   elicit:<elic_id>:confirm | :choice | :multi:select | :multi:submit
+  //       Native elicitation rendering produced by
+  //       `adapter.renderElicitation`. Value carries a JSON envelope
+  //       `{c: conversation_id, o: <typed output>}`; `multi:select` is
+  //       the per-checkbox change event and is ignored — the dispatcher
+  //       acts on `multi:submit` only.
+  //   view_submission
+  //       Slack modal submission. `value` is the modal's
+  //       `private_metadata` JSON `{c, e, k}`; `form_values` is the
+  //       flat `{field_name: primitive}` dict the adapter assembled.
+  //       The dispatcher maps `form_values` to the right
+  //       `respondElicitation` output shape based on the kind in
+  //       private_metadata.
+  //   open_elicit:<elic_id>
+  //       Handled synchronously by the route's `handleSyncInteraction`
+  //       fast path before enqueue; should never reach the dispatcher.
+  //       Ignored defensively if it does.
   if (ev.kind === "interaction" && ev.interaction) {
-    const { action_id, value: actionValue } = ev.interaction;
-    const m = /^(approve|reject):(.+)$/.exec(action_id);
-    if (!m) return { status: "ignored" };
-    const confirmed = m[1] === "approve";
-    const elicitation_id = m[2] ?? "";
-    const conversation_id = actionValue ?? "";
+    const action_id = ev.interaction.action_id;
+    const actionValue = ev.interaction.value ?? "";
+
+    // No-op: per-checkbox change. We resolve on the submit click.
+    if (/^elicit:[^:]+:multi:select$/.test(action_id)) {
+      return { status: "ignored" };
+    }
+    // No-op: opener click handled by the sync fast path.
+    if (/^open_elicit:/.test(action_id)) {
+      return { status: "ignored" };
+    }
+
+    let conversation_id = "";
+    let elicitation_id = "";
+    let output: unknown = null;
+
+    const legacy = /^(approve|reject):(.+)$/.exec(action_id);
+    if (legacy) {
+      // Legacy ApprovalCard: value is the bare conversation_id.
+      elicitation_id = legacy[2] ?? "";
+      conversation_id = actionValue;
+      output = { confirmed: legacy[1] === "approve" };
+    } else {
+      const elicit = /^elicit:([^:]+):(confirm|choice|multi:submit)$/.exec(action_id);
+      if (elicit) {
+        elicitation_id = elicit[1] ?? "";
+        const envelope = parseEnvelope(actionValue);
+        conversation_id = envelope?.c ?? "";
+        // For `multi:submit` the typed selections come from form_values
+        // (the adapter re-encoded the checkbox state); for confirm /
+        // choice the typed output rides in the envelope's `o`.
+        if (elicit[2] === "multi:submit") {
+          output = ev.interaction.form_values ?? { values: [] };
+        } else {
+          output = envelope?.o ?? null;
+        }
+      } else if (action_id === "view_submission") {
+        const meta = parseViewMetadata(actionValue);
+        if (!meta) return { status: "ignored" };
+        conversation_id = meta.c;
+        elicitation_id = meta.e;
+        // form_values is the flat dict the adapter assembled from
+        // view.state.values; map it to the right output shape per
+        // elicitation kind.
+        const fv = ev.interaction.form_values ?? {};
+        if (meta.k === "text") {
+          // ask_user_text expects `{ text }`. The single-field modal
+          // stores the answer under the field name `answer` (see
+          // `buildElicitationModal`).
+          output = { text: typeof fv.answer === "string" ? fv.answer : "" };
+        } else {
+          // ask_user_form passes the whole field dict through.
+          output = fv;
+        }
+      } else {
+        return { status: "ignored" };
+      }
+    }
+
+    if (!conversation_id || !elicitation_id) {
+      return { status: "ignored" };
+    }
+
     // #148 — every respondElicitation caller threads a controller.
     const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
     try {
@@ -322,7 +513,7 @@ export async function handleChatEvent(
           conversation_id,
           elicitation_id,
           actor_id: user_id,
-          output: { confirmed },
+          output: (output ?? {}) as Record<string, unknown>,
           turn_abort_ctrl: turnAbortCtrl,
         },
         db,
@@ -330,8 +521,13 @@ export async function handleChatEvent(
     } finally {
       unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
     }
+    const isApprove =
+      legacy?.[1] === "approve" ||
+      (typeof output === "object" &&
+        output !== null &&
+        (output as { confirmed?: boolean }).confirmed === true);
     return {
-      status: confirmed ? "approved" : "rejected",
+      status: isApprove ? "approved" : "rejected",
       conversation_id,
     };
   }
@@ -339,6 +535,33 @@ export async function handleChatEvent(
   // Parse command for mention + slash events.
   const rawText = ev.text ?? "";
   const parsed = parseSlashCommand(rawText);
+
+  // `/new` (or `reset`) — drop the thread→conversation binding so the
+  // very next message starts a fresh `createConversation` turn. The
+  // existing conversation row is left untouched (audit trail) — only
+  // the `chat_sessions` mapping is removed.
+  if (parsed && parsed.verb === "new") {
+    const threadKey = ev.thread_id ?? `${ev.channel_id}:root`;
+    await db
+      .delete(chatSessions)
+      .where(
+        and(
+          eq(chatSessions.tenant_id, tenant_id),
+          eq(chatSessions.workspace_id, workspace.id),
+          eq(chatSessions.thread_id, threadKey),
+        ),
+      );
+    await sendTracked(adapter, ev.platform, {
+      tenant_id,
+      workspace_id: ev.workspace_id,
+      channel_id: ev.channel_id,
+      ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+      kind: "ephemeral",
+      text: "Conversation reset — the next message starts a fresh turn.",
+    });
+    return { status: "ok" };
+  }
+
   let prompt: string | null = null;
   if (parsed && parsed.verb === "chat") {
     prompt = parsed.prompt;
@@ -606,37 +829,84 @@ export async function handleChatEvent(
 
   let approval_sent = false;
   if (outcome.status === "awaiting_input" && outcome.pending_elicitation_id) {
-    const summaryEvent = outcome.events.find((e) => e.type === "elicit_request");
-    const summary =
-      summaryEvent && summaryEvent.type === "elicit_request"
-        ? summaryEvent.summary
-        : "Input required";
-    const card: ApprovalCard = {
-      tenant_id,
-      workspace_id: ev.workspace_id,
-      channel_id: ev.channel_id,
-      ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
-      conversation_id,
-      approval_id: outcome.pending_elicitation_id,
-      summary,
-    };
-    try {
-      await adapter.sendApproval(card);
-      recordChatDelivery({ platform: ev.platform, status: "delivered" });
-    } catch (err) {
-      recordChatDelivery({ platform: ev.platform, status: "failed" });
-      throw err;
+    const elicitEvent = outcome.events.find(
+      (e): e is Extract<typeof e, { type: "elicit_request" }> => e.type === "elicit_request",
+    );
+    const summary = elicitEvent?.summary ?? "Input required";
+    const toolName = elicitEvent?.tool_name ?? "ask_user_confirm";
+    const kind = mapToolNameToKind(toolName);
+
+    // Prefer native rendering when the adapter declares the kind in
+    // its `capabilities`. Falls back to the legacy `sendApproval`
+    // Approve/Reject card so adapters that haven't shipped native
+    // rendering (Teams, Google in this phase) still surface
+    // *something* the user can act on.
+    const supportsNative =
+      adapter.capabilities?.interactive?.includes(kind) === true &&
+      typeof adapter.renderElicitation === "function";
+
+    if (supportsNative) {
+      const input = (elicitEvent?.input as Record<string, unknown> | undefined) ?? {};
+      const elicitation: ChatElicitation = {
+        id: outcome.pending_elicitation_id,
+        conversation_id,
+        kind,
+        summary,
+      };
+      if (typeof input.body === "string") elicitation.body = input.body;
+      if (Array.isArray(input.options))
+        elicitation.options = input.options as NonNullable<ChatElicitation["options"]>;
+      if (Array.isArray(input.fields))
+        elicitation.fields = input.fields as NonNullable<ChatElicitation["fields"]>;
+      const renderElicitation = adapter.renderElicitation;
+      if (!renderElicitation)
+        throw new Error("dispatcher: renderElicitation gone after capability check");
+      try {
+        await renderElicitation.call(adapter, elicitation, {
+          tenant_id,
+          workspace_id: ev.workspace_id,
+          channel_id: ev.channel_id,
+          ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+        });
+        recordChatDelivery({ platform: ev.platform, status: "delivered" });
+      } catch (err) {
+        recordChatDelivery({ platform: ev.platform, status: "failed" });
+        throw err;
+      }
+    } else {
+      const card: ApprovalCard = {
+        tenant_id,
+        workspace_id: ev.workspace_id,
+        channel_id: ev.channel_id,
+        ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+        conversation_id,
+        approval_id: outcome.pending_elicitation_id,
+        summary,
+      };
+      try {
+        await adapter.sendApproval(card);
+        recordChatDelivery({ platform: ev.platform, status: "delivered" });
+      } catch (err) {
+        recordChatDelivery({ platform: ev.platform, status: "failed" });
+        throw err;
+      }
     }
     approval_sent = true;
   } else {
-    // Post a short acknowledgement so the user knows we picked it up.
+    // Post the actual assistant reply into the thread. Falls back to a
+    // status line if the turn somehow produced no text (commit-only
+    // turn, or an event-sink path we don't recognise) so the user
+    // always sees *something* from the bot.
+    const replyText =
+      extractAssistantText(outcome) ??
+      (outcome.status === "committed" ? "Committed." : "(no reply)");
     await sendTracked(adapter, ev.platform, {
       tenant_id,
       workspace_id: ev.workspace_id,
       channel_id: ev.channel_id,
       ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
       kind: "message",
-      text: outcome.status === "committed" ? "Committed." : "Working on it...",
+      text: replyText,
     });
   }
 

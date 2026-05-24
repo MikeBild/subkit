@@ -91,6 +91,29 @@ async function ingest(
   }
 
   const event = await adapter.receive(verified);
+
+  // Synchronous platform-specific fast path. Slack uses this to call
+  // `views.open` on an "Antworten" button click within the ~3 s
+  // `trigger_id` window — the modal would never open if this hop went
+  // through the chat.event queue. Adapters that don't need a fast
+  // path (Teams Adaptive Cards are inline; Google dialogs open from
+  // card actions in-band) omit `handleSyncInteraction`.
+  if (typeof adapter.handleSyncInteraction === "function" && db) {
+    try {
+      const sync = await adapter.handleSyncInteraction({ event, db });
+      if (sync.handled) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+    } catch {
+      // Fall through to normal enqueue path — the click click is at
+      // worst lost (modal won't open), but we still acknowledge to
+      // keep Slack happy. The adapter logs the underlying failure.
+    }
+  }
+
   if (deps.enqueue) {
     await deps.enqueue({ event });
   }

@@ -44,6 +44,7 @@ import sql0023CredentialsUniquePerMode from "./0023_credentials_unique_per_mode.
 import sql0024McpOauth from "./0024_mcp_oauth.sql" with { type: "text" };
 import sql0025ElicitationProtocolNative from "./0025_elicitation_protocol_native.sql" with { type: "text" };
 import sql0026McpTasks from "./0026_mcp_tasks.sql" with { type: "text" };
+import sql0027ChatEventsSeen from "./0027_chat_events_seen.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -95,6 +96,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0024_mcp_oauth": sql0024McpOauth,
   "0025_elicitation_protocol_native": sql0025ElicitationProtocolNative,
   "0026_mcp_tasks": sql0026McpTasks,
+  "0027_chat_events_seen": sql0027ChatEventsSeen,
 };
 
 const journal = journalMeta as unknown as Journal;

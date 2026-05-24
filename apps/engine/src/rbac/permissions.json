@@ -329,5 +329,26 @@
     "name": "mcp_oauth_client:revoke",
     "description": "Disable a registered MCP OAuth client",
     "resource_type": "mcp_oauth_client"
+  },
+
+  {
+    "name": "chat_workspace:read",
+    "description": "List chat workspaces installed in this tenant",
+    "resource_type": "chat_workspace"
+  },
+  {
+    "name": "chat_workspace:write",
+    "description": "Install or remove a chat workspace (Slack/Teams/Google Chat)",
+    "resource_type": "chat_workspace"
+  },
+  {
+    "name": "chat_identity:read",
+    "description": "List chat-identity links (platform user → subkit user)",
+    "resource_type": "chat_identity"
+  },
+  {
+    "name": "chat_identity:write",
+    "description": "Link or unlink a chat user to a subkit user",
+    "resource_type": "chat_identity"
   }
 ]

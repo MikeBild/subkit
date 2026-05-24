@@ -8,5 +8,8 @@ export * from "./adapter.ts";
 // (e.g. an MCP capability or a webhook handler) can reach it through
 // the barrel without tripping the route_layering FAIL gate.
 export * from "./dispatcher.ts";
+export * from "./hydrate.ts";
 export * from "./registry.ts";
+export type { SlackAdapterOptions } from "./slack/adapter.ts";
+export { SlackAdapter } from "./slack/adapter.ts";
 export * from "./types.ts";

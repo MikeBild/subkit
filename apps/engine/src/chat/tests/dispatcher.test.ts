@@ -8,22 +8,30 @@
 //   → conversation ends up status = 'committed'
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import {
   type ConversationTestCtx,
   createConversationTestCtx,
 } from "../../conversations/tests/setup.ts";
 import {
+  chatIdentities,
   chatWorkspaces,
   conversations,
   executions,
   workflows as workflowsTable,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import type { ChatAdapter } from "../adapter.ts";
 import { type DispatchRunEnqueue, handleChatEvent } from "../dispatcher.ts";
 import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../types.ts";
+
+const nextHex = createDeterministicHexFactory(0xc4a7d15);
+/** Deterministic stand-in for `randomBytes(n)` in tests — bytea
+ *  columns just need *some* bytes; the deterministic-tests gate forbids
+ *  Math.random / crypto.randomBytes so the test suite stays
+ *  bit-for-bit reproducible. */
+const detBytes = (n: number): Buffer => Buffer.from(nextHex(n), "hex");
 
 class FakeSlackAdapter implements ChatAdapter {
   readonly platform = "slack" as const;
@@ -63,12 +71,23 @@ describe("chat dispatcher", () => {
         tenant_id: ctx.tenant_id,
         platform: "slack",
         workspace_id: "T123",
-        bot_ciphertext: randomBytes(1), // allow-random: legacy; review before changing
-        bot_iv: randomBytes(1),
-        bot_auth_tag: randomBytes(1),
+        bot_ciphertext: detBytes(1),
+        bot_iv: detBytes(1),
+        bot_auth_tag: detBytes(1),
       })
       .returning();
     expect(ws[0]).toBeTruthy();
+
+    // The auto-link-to-admin shortcut is gone: the dispatcher rejects
+    // unknown chat users. Pre-link the test user → the seeded subkit
+    // user so the turn actually runs.
+    await ctx.testDb.db.insert(chatIdentities).values({
+      tenant_id: ctx.tenant_id,
+      user_id: ctx.user_id,
+      platform: "slack",
+      workspace_id: "T123",
+      platform_user_id: "U_ALICE",
+    });
 
     const adapter = new FakeSlackAdapter();
 
@@ -125,9 +144,9 @@ describe("chat dispatcher", () => {
       tenant_id: ctx.tenant_id,
       platform: "slack",
       workspace_id: "T_RUN",
-      bot_ciphertext: randomBytes(1), // allow-random: legacy; review before changing
-      bot_iv: randomBytes(1),
-      bot_auth_tag: randomBytes(1),
+      bot_ciphertext: detBytes(1),
+      bot_iv: detBytes(1),
+      bot_auth_tag: detBytes(1),
     });
 
     // Seed a workflow + version so the dispatcher can resolve it.
@@ -164,6 +183,15 @@ describe("chat dispatcher", () => {
       .update(workflowsTable)
       .set({ current_version_id: ver.id })
       .where(eq(workflowsTable.id, wf.id));
+
+    // Pre-link runner — auto-link-to-admin is gone.
+    await ctx.testDb.db.insert(chatIdentities).values({
+      tenant_id: ctx.tenant_id,
+      user_id: ctx.user_id,
+      platform: "slack",
+      workspace_id: "T_RUN",
+      platform_user_id: "U_RUNNER",
+    });
 
     const adapter = new FakeSlackAdapter();
     const captured: DispatchRunEnqueue[] = [];
@@ -207,5 +235,67 @@ describe("chat dispatcher", () => {
     const last = adapter.sends[adapter.sends.length - 1];
     expect(last?.kind).toBe("ephemeral");
     expect(last?.text).toContain("execution started");
+  });
+
+  // -------------------------------------------------------------------
+  // Step 8 — explicit identity linking. Auto-link-to-admin is gone.
+  // -------------------------------------------------------------------
+  test("rejects an unknown chat user with a polite ephemeral; runs no turn", async () => {
+    // Seed an installed workspace but DO NOT link any platform user.
+    const [ws] = await ctx.testDb.db
+      .insert(chatWorkspaces)
+      .values({
+        tenant_id: ctx.tenant_id,
+        platform: "slack",
+        workspace_id: "T_UNKNOWN",
+        bot_ciphertext: detBytes(1),
+        bot_iv: detBytes(1),
+        bot_auth_tag: detBytes(1),
+      })
+      .returning();
+    expect(ws).toBeTruthy();
+
+    const adapter = new FakeSlackAdapter();
+    const ev: ChatEvent = {
+      platform: "slack",
+      workspace_id: "T_UNKNOWN",
+      channel_id: "C_X",
+      user_id: "U_STRANGER",
+      kind: "mention",
+      text: "<@BOT> hi",
+      raw: {},
+    };
+    const out = await handleChatEvent({ db: ctx.testDb.db, adapter }, ev);
+    expect(out.status).toBe("ignored");
+    expect(adapter.sends.length).toBe(1);
+    expect(adapter.sends[0]?.kind).toBe("ephemeral");
+    expect(adapter.sends[0]?.text).toContain("isn't linked");
+    expect(adapter.approvals.length).toBe(0);
+    // No conversation was created.
+    expect(out.conversation_id).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------
+  // /new reset — drops the chat_sessions row for the thread so the
+  // next message starts a fresh `createConversation` turn.
+  // -------------------------------------------------------------------
+  test("/new clears chat_sessions for the thread and posts an ephemeral ack", async () => {
+    // Re-use the workspace seeded by the first test (T123) and its
+    // U_ALICE identity link.
+    const adapter = new FakeSlackAdapter();
+    const ev: ChatEvent = {
+      platform: "slack",
+      workspace_id: "T123",
+      channel_id: "C_RESET",
+      thread_id: "1700000000.000999",
+      user_id: "U_ALICE",
+      kind: "slash_command",
+      text: "/new",
+      raw: {},
+    };
+    const out = await handleChatEvent({ db: ctx.testDb.db, adapter }, ev);
+    expect(out.status).toBe("ok");
+    expect(adapter.sends[adapter.sends.length - 1]?.kind).toBe("ephemeral");
+    expect(adapter.sends[adapter.sends.length - 1]?.text).toMatch(/reset/i);
   });
 });

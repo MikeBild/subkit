@@ -4,11 +4,18 @@
 // when creating the queue and when sending jobs into it. Every queue listed
 // here MUST have a registered handler in `queue/handlers/index.ts`. Past
 // cleanup passes have removed several dead declarations (e.g.
-// `execution.notify`, `workflow.generate`, `schema.extract`, `chat.event`,
+// `execution.notify`, `workflow.generate`, `schema.extract`,
 // `chat.deliver`, `conversation.tool-call`) that pg-boss was creating but
 // nothing ever enqueued or consumed. Re-add as needed when the consumer ships.
+//
+// `chat.event` is re-added here as part of activating the chat-bridge
+// subsystem: the HTTP ingestion route at `/v1/chat/<platform>/*` enqueues
+// one job per verified inbound event so the dispatcher (an agentic
+// conversation turn that can take minutes) runs out-of-band. Slack requires
+// a <3 s ack on Events API posts, which the queue ack satisfies.
 
 import type { Queue, SendOptions } from "pg-boss";
+import type { ChatEvent } from "../chat/types.ts";
 
 export type QueueName =
   | "execution.run"
@@ -19,7 +26,8 @@ export type QueueName =
   | "skill-candidate.analyze"
   | "workflow.repair"
   | "webhook.deliver"
-  | "event.fanout";
+  | "event.fanout"
+  | "chat.event";
 
 export const QUEUE_NAMES: QueueName[] = [
   "execution.run",
@@ -31,6 +39,7 @@ export const QUEUE_NAMES: QueueName[] = [
   "workflow.repair",
   "webhook.deliver",
   "event.fanout",
+  "chat.event",
 ];
 
 export interface QueueConfig {
@@ -140,6 +149,22 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
       retryBackoff: true,
     },
   },
+  // Chat-bridge ingestion → dispatcher. Turns can take minutes (full
+  // agentic loop), so visibility is generous; retries are bounded —
+  // a duplicate inbound is suppressed by `chat/dedup.ts` keyed on the
+  // platform-native event id (`event_id` / `view.id` / hash of slash
+  // command). Dead-letter captures terminal failures for inspection.
+  "chat.event": {
+    name: "chat.event",
+    queue: {
+      retryLimit: 3,
+      retryDelay: 5,
+      retryBackoff: true,
+      expireInSeconds: 10 * 60,
+      deadLetter: "chat.event.dlq",
+      retentionSeconds: DEFAULT_RETENTION_SECONDS,
+    },
+  },
 };
 
 export const EXECUTION_RUN_QUEUE: QueueName = "execution.run";
@@ -147,6 +172,22 @@ export const EXECUTION_RUN_DLQ: string = "execution.run.dlq";
 
 export const CONVERSATION_RUN_TURN_QUEUE: QueueName = "conversation.run-turn";
 export const CONVERSATION_RUN_TURN_DLQ: string = "conversation.run-turn.dlq";
+
+export const CHAT_EVENT_QUEUE: QueueName = "chat.event";
+export const CHAT_EVENT_DLQ: string = "chat.event.dlq";
+
+/**
+ * Envelope a `chat.event` job carries. A whole `ChatEvent` is small (a
+ * handful of ids + the message text or interaction payload), well under
+ * pg-boss' 8 KB cap. We carry the full event inline so the worker does
+ * not need a separate persistence hop just to round-trip the payload —
+ * unlike `conversation.run-turn`, an `ask_user_form` answer never rides
+ * inside a `ChatEvent` (the form submission is delivered separately as
+ * its own interaction event).
+ */
+export interface ChatEventJob {
+  event: ChatEvent;
+}
 
 /**
  * Envelope a `conversation.run-turn` job carries. TINY by design — only

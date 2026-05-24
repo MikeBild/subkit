@@ -7073,6 +7073,244 @@ export interface paths {
         };
         trace?: never;
     };
+    "/v1/chat/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List chat workspaces installed in this tenant */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatWorkspaceListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Install a chat workspace (Slack / Teams / Google Chat) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["InstallChatWorkspace"];
+                };
+            };
+            responses: {
+                /** @description Installed */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatWorkspace"];
+                    };
+                };
+                /** @description Validation error or duplicate install */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chat/workspaces/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a chat workspace install */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {boolean} */
+                            deleted: true;
+                        };
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chat/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List chat-user → subkit-user identity links in this tenant */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatIdentityListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Link a platform chat user to a subkit user */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["LinkChatIdentity"];
+                };
+            };
+            responses: {
+                /** @description Linked */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatIdentity"];
+                    };
+                };
+                /** @description Already linked */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chat/identities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unlink a chat identity */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Unlinked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {boolean} */
+                            deleted: true;
+                        };
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/subscriptions": {
         parameters: {
             query?: never;
@@ -10655,6 +10893,53 @@ export interface components {
             code?: string;
             description?: string;
             enabled?: boolean;
+        };
+        ChatWorkspace: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenant_id: string;
+            platform: components["schemas"]["ChatPlatform"];
+            workspace_id: string;
+            default_channel: string | null;
+            created_at: string;
+            updated_at: string;
+        };
+        /** @enum {string} */
+        ChatPlatform: "slack" | "teams" | "google_chat";
+        InstallChatWorkspace: {
+            platform: components["schemas"]["ChatPlatform"];
+            workspace_id: string;
+            bot_token: string;
+            installer_platform_user_id: string;
+            default_channel?: string | null;
+        };
+        ChatWorkspaceListResponse: {
+            items: components["schemas"]["ChatWorkspace"][];
+        };
+        ChatIdentityListResponse: {
+            items: components["schemas"]["ChatIdentity"][];
+        };
+        ChatIdentity: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenant_id: string;
+            /** Format: uuid */
+            user_id: string;
+            platform: components["schemas"]["ChatPlatformIdent"];
+            workspace_id: string;
+            platform_user_id: string;
+            linked_at: string;
+        };
+        /** @enum {string} */
+        ChatPlatformIdent: "slack" | "teams" | "google_chat";
+        LinkChatIdentity: {
+            platform: components["schemas"]["ChatPlatformIdent"];
+            workspace_id: string;
+            platform_user_id: string;
+            /** Format: uuid */
+            user_id: string;
         };
         SubscriptionListResponse: {
             items: components["schemas"]["Subscription"][];

@@ -235,6 +235,24 @@ async function runServer(): Promise<void> {
   recordBootConsumer("queue");
   await registerAllHandlers({ boss, db, chatRegistry });
 
+  // Hydrate the chat adapter registry from `chat_workspaces` BEFORE the
+  // HTTP listener accepts traffic. Without this, the first Slack POST
+  // arrives at a route that can't find an adapter to verify with and
+  // returns 503 adapter_not_registered. Failures per workspace log but
+  // do not block boot (the workspace simply stays un-hydrated until
+  // re-installed or the next boot).
+  try {
+    const { hydrateChatRegistry } = await import("./chat/hydrate.ts");
+    await hydrateChatRegistry(db, chatRegistry);
+  } catch (err) {
+    logger.warn({
+      module: "engine",
+      action: "chat.hydrate.failed",
+      msg: "chat-bridge hydration failed at boot; chat ingestion will return 503 until fixed",
+      ...errorFields(err),
+    });
+  }
+
   // Crash-recovery sweep: promote any execution stuck in `running` past
   // its workflow's `timeout_ms × 1.5` grace window into `timed_out`.
   // Wrapped in try/catch so a sweep failure (e.g. transient DB blip)
