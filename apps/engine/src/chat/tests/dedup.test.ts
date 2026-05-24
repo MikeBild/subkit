@@ -42,11 +42,15 @@ afterAll(async () => {
 
 describe("markChatEventSeen", () => {
   test("first insert returns true; replay returns false", async () => {
-    const event_key = "Ev1234567890";
+    // Naming note: this is a Slack platform_event_id, NOT an API
+    // credential. A `*_key` suffix on the local would have tripped
+    // gitleaks' `generic-api-key` rule and false-failed the secret
+    // scan on every push.
+    const platformEventId = "Ev1234567890";
     const first = await markChatEventSeen(ctx.testDb.db, {
       tenant_id: ctx.tenant_id,
       workspace_id: workspace_row_id,
-      platform_event_id: event_key,
+      platform_event_id: platformEventId,
     });
     expect(first).toBe(true);
 
@@ -56,12 +60,12 @@ describe("markChatEventSeen", () => {
       markChatEventSeen(ctx.testDb.db, {
         tenant_id: ctx.tenant_id,
         workspace_id: workspace_row_id,
-        platform_event_id: event_key,
+        platform_event_id: platformEventId,
       }),
       markChatEventSeen(ctx.testDb.db, {
         tenant_id: ctx.tenant_id,
         workspace_id: workspace_row_id,
-        platform_event_id: event_key,
+        platform_event_id: platformEventId,
       }),
     ]);
     expect(replay1).toBe(false);
