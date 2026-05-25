@@ -13,6 +13,7 @@ import { and, eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/identity.ts";
 import { skillCandidateEvidence, skillCandidates } from "../../db/schema/skills.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { listProposedForAuthoring } from "../service.ts";
 import type { SkillCandidateView } from "../types.ts";
 
@@ -42,7 +43,7 @@ interface SeedOptions {
 }
 
 async function seedCandidate(opts: SeedOptions): Promise<SkillCandidateView> {
-  const createdAt = new Date(Date.now() + (opts.created_at_offset_ms ?? 0));
+  const createdAt = new Date(FROZEN_NOW + (opts.created_at_offset_ms ?? 0));
   const [row] = await ctx.db
     .insert(skillCandidates)
     .values({
