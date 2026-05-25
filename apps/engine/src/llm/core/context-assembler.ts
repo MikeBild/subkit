@@ -232,9 +232,9 @@ export interface BudgetReport {
     knowledge: number;
     docs: number;
     failures: number;
-    /** Count of rendered recipe-body items (issue #204). */
+    /** Count of recipe-body items rendered into the prompt. */
     recipes_bodies: number;
-    /** Count of rendered Skill-Candidate items (issue #201). */
+    /** Count of proposed Skill Candidates rendered into the prompt. */
     candidates: number;
   };
   /** Sections dropped by the trimmer, in order. Empty = fit comfortably. */
