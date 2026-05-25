@@ -33,6 +33,7 @@
 // `detectIntentSkills`, and the `AssembledContext` / `BudgetReport`
 // types from this barrel.
 
+import { createHash } from "node:crypto";
 import { getConnector } from "../../connectors/service.ts";
 import { generateMainAgentSystemPrompt } from "../../conversations/agent/context.ts";
 import { getDb } from "../../db/client.ts";
@@ -217,6 +218,10 @@ export interface BudgetReport {
     knowledge: number;
     docs: number;
     failures: number;
+    /** Count of rendered recipe-body items (issue #204). */
+    recipes_bodies: number;
+    /** Count of rendered Skill-Candidate items (issue #201). */
+    candidates: number;
   };
   /** Sections dropped by the trimmer, in order. Empty = fit comfortably. */
   dropped_sections: string[];
@@ -238,7 +243,17 @@ export interface AssembledContext {
 export async function assembleEnhancedPrompt(
   p: AssembleContextParams & { surface?: ConversationSurface },
   exec?: Executor,
-): Promise<EnhancedPrompt & { dropped_sections: string[] }> {
+): Promise<
+  EnhancedPrompt & {
+    dropped_sections: string[];
+    /** Recipe slugs whose rich body survived BOTH the intra-section
+     *  trim AND the global trimmer — fed verbatim to the observability
+     *  hash list in `assembleContext`. */
+    included_recipe_slugs: string[];
+    /** Candidate ids likewise. Empty when the section was dropped. */
+    included_candidate_ids: string[];
+  }
+> {
   const db = exec ?? getDb();
   const cap = Math.min(p.max_tokens, contextCapFor(p.model ?? "default"));
 
@@ -432,6 +447,7 @@ export async function assembleEnhancedPrompt(
   // assembly.
   let skillCandidatesBlock: string | null = null;
   let skillCandidatesOversizedItemId: string | null = null;
+  let skillCandidateSurvivorIds: string[] = [];
   if (p.flow === "converse") {
     const candidates = await loadProposedCandidates(
       p.tenant_id,
@@ -445,6 +461,7 @@ export async function assembleEnhancedPrompt(
       const trimmed = trimCandidatesToBudget(candidates);
       skillCandidatesBlock = trimmed.section;
       skillCandidatesOversizedItemId = trimmed.oversized_item_id;
+      skillCandidateSurvivorIds = trimmed.survivors.map((c) => c.id);
     }
   }
 
@@ -710,6 +727,14 @@ export async function assembleEnhancedPrompt(
     connectorRecipeBodiesBlock !== null ? countTokens(connectorRecipeBodiesBlock) : 0;
   const skillCandidatesTokens =
     skillCandidatesBlock !== null ? countTokens(skillCandidatesBlock) : 0;
+  // Survivor lists: only items in blocks the global trimmer kept count.
+  // When the section was dropped above, the ids zero out — so the
+  // observability hashes report exactly what the LLM actually saw.
+  const includedRecipeSlugs =
+    connectorRecipeBodiesBlock !== null
+      ? connectorRecipeBodiesSurvivors.map((r) => r.recipe_slug)
+      : [];
+  const includedCandidateIds = skillCandidatesBlock !== null ? skillCandidateSurvivorIds : [];
   return {
     system,
     messages: p.user_turns,
@@ -734,6 +759,8 @@ export async function assembleEnhancedPrompt(
     included_chunks: chunks,
     included_knowledge_chunks: knowledgeChunks,
     dropped_sections: trimmed,
+    included_recipe_slugs: includedRecipeSlugs,
+    included_candidate_ids: includedCandidateIds,
   };
 }
 
@@ -753,7 +780,12 @@ export async function assembleContext(
     ? 0
     : (params.prior_failures ?? []).length;
 
-  const { dropped_sections, ...promptWithoutDropped } = prompt;
+  const {
+    dropped_sections,
+    included_recipe_slugs,
+    included_candidate_ids,
+    ...promptWithoutDropped
+  } = prompt;
 
   const budget_report = {
     cap_tokens: effectiveCap,
@@ -766,9 +798,22 @@ export async function assembleContext(
       knowledge: prompt.included_knowledge_chunk_ids.length,
       docs: prompt.included_chunk_ids.length,
       failures: includedFailureCount,
+      // Counts that survived BOTH the per-section pre-trim AND the
+      // global trimmer — what the LLM actually saw on this turn.
+      recipes_bodies: included_recipe_slugs.length,
+      candidates: included_candidate_ids.length,
     },
     dropped_sections,
   };
+
+  // Per-id 8-char SHA-256 hashes — capped at 12 entries per category
+  // (top-N selection cap plus headroom). Operators can grep "did this
+  // turn see X?" by hashing X locally and looking for the 8-char prefix.
+  // No metric labels carry hashes — keeps cardinality bounded. See
+  // plan §4 privacy framing: correlation-grade obfuscation, NOT a
+  // security boundary.
+  const idHashes = (ids: string[]): string[] =>
+    ids.slice(0, 12).map((id) => createHash("sha256").update(id).digest("hex").slice(0, 8));
 
   // Surface every assembly as a structured event. The metric and the
   // log line let operators see at a glance which flows are running
@@ -784,6 +829,9 @@ export async function assembleContext(
     volatile_tokens: budget_report.volatile_tokens,
     messages_tokens: budget_report.messages_tokens,
     included: budget_report.included,
+    included_skill_id_hashes: idHashes(prompt.included_skill_ids),
+    included_candidate_id_hashes: idHashes(included_candidate_ids),
+    included_recipe_slug_hashes: idHashes(included_recipe_slugs),
     dropped_sections: budget_report.dropped_sections,
   });
 
