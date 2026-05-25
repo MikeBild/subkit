@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.1](https://github.com/MikeBild/subkit/compare/subkit-v6.1.0...subkit-v6.1.1) (2026-05-25)
+
+
+### Bug Fixes
+
+* **mcp:** stable resources/subscribe test — dispatch-in-poll-loop ([#209](https://github.com/MikeBild/subkit/issues/209)) ([60cda72](https://github.com/MikeBild/subkit/commit/60cda72e1a85ea404a34310b93e02a2b12641498))
+
 ## [6.1.0](https://github.com/MikeBild/subkit/compare/subkit-v6.0.0...subkit-v6.1.0) (2026-05-24)
 
 
