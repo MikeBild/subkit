@@ -69,6 +69,7 @@ import {
   formatSkill,
   formatSkillIndex,
   formatUserMemory,
+  type RecipeBodyView,
   selectOperatorQuirkCategories,
 } from "./context-assembler/formatters.ts";
 import {
@@ -79,6 +80,9 @@ import {
   loadInteractionLog,
   loadKnowledgeChunks,
   loadLatestPreview,
+  loadTopRecipeBodies,
+  logRecipeBodyFallbacks,
+  trimRecipeBodiesToBudget,
 } from "./context-assembler/loaders.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
@@ -353,6 +357,9 @@ export async function assembleEnhancedPrompt(
   // scratch on the next turn.
   let connectorOperatorQuirksBlock: string | null = null;
   let connectorRecipesBlock: string | null = null;
+  let connectorRecipeBodiesBlock: string | null = null;
+  let connectorRecipeBodiesSurvivors: RecipeBodyView[] = [];
+  let connectorRecipeBodiesTemplateSlug: string | null = null;
   if (p.connector_id) {
     try {
       const connector = await getConnector(p.tenant_id, p.connector_id, db);
@@ -370,10 +377,21 @@ export async function assembleEnhancedPrompt(
         );
       }
       if (connector?.template_snapshot) {
-        connectorRecipesBlock = formatConnectorRecipes(
-          connector.slug,
-          connector.template_snapshot as Record<string, unknown>,
-        );
+        const snapshot = connector.template_snapshot as Record<string, unknown>;
+        connectorRecipesBlock = formatConnectorRecipes(connector.slug, snapshot);
+        // Recipe bodies — rich payload for the top-K ranked recipes so
+        // the LLM can clone via start_workflow_from_recipe in one turn
+        // (no inspect_recipe round-trip). Pure ranking over the already-
+        // loaded snapshot — no second getConnector. Section is bounded
+        // by `trimRecipeBodiesToBudget` to 2 KB; rendered string already
+        // carries the elision notice when something was dropped.
+        const recipeBodies = loadTopRecipeBodies(snapshot, p.authoring_hint, query, 3);
+        if (recipeBodies.length > 0) {
+          const trimmed = trimRecipeBodiesToBudget(connector.slug, recipeBodies);
+          connectorRecipeBodiesBlock = trimmed.section;
+          connectorRecipeBodiesSurvivors = trimmed.survivors;
+          connectorRecipeBodiesTemplateSlug = connector.slug;
+        }
       }
     } catch (err) {
       logger.debug({
@@ -385,6 +403,18 @@ export async function assembleEnhancedPrompt(
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  // R1 fallback log — one warning per surviving recipe that fell back to
+  // the hybrid (workflow JSON elided) path. Emitted exactly once per
+  // assembly, after the trim loop decided the final set, so the
+  // render-and-count loop never produces duplicate warnings.
+  if (connectorRecipeBodiesTemplateSlug && connectorRecipeBodiesSurvivors.length > 0) {
+    logRecipeBodyFallbacks(
+      connectorRecipeBodiesTemplateSlug,
+      p.tenant_id,
+      connectorRecipeBodiesSurvivors,
+    );
   }
 
   const runtimeBlock = p.runtime_context
@@ -432,6 +462,12 @@ export async function assembleEnhancedPrompt(
     if (globalIndexBlock) sections.push(globalIndexBlock);
     if (connectorOperatorQuirksBlock) sections.push(connectorOperatorQuirksBlock);
     if (connectorRecipesBlock) sections.push(connectorRecipesBlock);
+    // Rich recipe bodies sit next to the slim recipe roster so the LLM
+    // reads "here's the slug list" → "here's the workflow JSON for the
+    // top picks" together. Drops before the index above when the global
+    // trimmer needs room (the slim roster keeps the LLM able to call
+    // inspect_recipe for anything that fell off).
+    if (connectorRecipeBodiesBlock) sections.push(connectorRecipeBodiesBlock);
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
     // Loaded skills carry the full body — the LLM explicitly opted
@@ -545,6 +581,14 @@ export async function assembleEnhancedPrompt(
     } else if (connectorSkills.length > 0) {
       connectorSkills.length = 0;
       trimmed.push("connector_skill_index");
+    } else if (connectorRecipeBodiesBlock) {
+      // Rich recipe bodies drop BEFORE the slim recipe roster: the
+      // index is the navigational signal (the LLM can still call
+      // inspect_recipe to recover any body), the bodies are the
+      // first-turn-clone payload. When the global budget is tight,
+      // surrender the heavy section first.
+      connectorRecipeBodiesBlock = null;
+      trimmed.push("connector_recipe_bodies");
     } else if (connectorRecipesBlock) {
       // Recipes are a navigation aid — dropping them just means the
       // LLM falls back to authoring from scratch. Trim before quirks
@@ -595,6 +639,14 @@ export async function assembleEnhancedPrompt(
   }
 
   const includedSkills = [...globalSkills, ...connectorSkills, ...workflowSkills, ...loadedSkills];
+  // Post-trim per-section token accounting. recipe_bodies reads the
+  // rendered (already-trimmed) block when it survived the global
+  // trimmer; reads 0 when dropped. skill_candidates is wired in
+  // commit 3 — see §6 of the plan; the bucket stays in the type
+  // shape now so every consumer compiles in one slice.
+  const recipeBodiesTokens =
+    connectorRecipeBodiesBlock !== null ? countTokens(connectorRecipeBodiesBlock) : 0;
+  const skillCandidatesTokens = 0;
   return {
     system,
     messages: p.user_turns,
@@ -609,6 +661,8 @@ export async function assembleEnhancedPrompt(
       failures: failures.reduce((t, f) => t + countTokens(formatFailure(f)), 0),
       messages: messagesTokens,
       total,
+      recipe_bodies: recipeBodiesTokens,
+      skill_candidates: skillCandidatesTokens,
     },
     included_skill_ids: includedSkills.map((s) => s.id),
     included_chunk_ids: chunks.map((c) => c.id),

@@ -5,6 +5,7 @@
 // orchestrator and `loaders.ts`.
 
 import type { OperatorQuirkCategory, OperatorQuirks } from "../../../connectors/types.ts";
+import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
 import type { Skill } from "../../../skills/types.ts";
 import { countTokens } from "../../accounting/index.ts";
 import type {
@@ -331,6 +332,154 @@ export function formatLatestPreview(entries: LatestPreviewEntry[]): string {
     ...lines,
   ].join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// Recipe bodies + Skill candidates — R5 loop closure
+// ---------------------------------------------------------------------------
+
+/**
+ * Module-private section caps. Tuning these is a source change — not a
+ * runtime knob, not an env flag, not a config knob. Mirrors the existing
+ * `RECIPE_LINES_BUDGET` discipline. Per `feedback_no_env_feature_flags`.
+ */
+const recipeBodiesSectionCap = 2000;
+const skillCandidatesSectionCap = 1200;
+
+/** Soft per-item cap before the full workflow JSON is elided in favor
+ *  of the hybrid (description + prerequisites + required_connectors +
+ *  sample_input) payload. Chosen because the p90 recipe workflow in
+ *  `templates.json` is ~600 tokens; `required_connectors` is ≤ 80 tokens
+ *  even for 5-connector recipes. See plan §4 decision 3. */
+const recipeBodyHybridSoftCap = 800;
+
+/** Compact view of a connector recipe ready for the rich body block.
+ *  Built by `loadTopRecipeBodies` (loaders.ts) — pure over the snapshot
+ *  the assembler already loaded. Workflow stays as `unknown` because
+ *  `connectors/templates.ts` exposes it as `WorkflowDef` via a refine —
+ *  we serialize via JSON.stringify, never read individual fields. */
+export interface RecipeBodyView {
+  template_slug: string;
+  recipe_slug: string;
+  title: string;
+  description: string;
+  prerequisites: string[];
+  required_connectors: Array<{ placeholder: string; template: string }>;
+  sample_input: unknown;
+  workflow: unknown;
+}
+
+/** Render a single recipe body as a markdown fragment. Returns the
+ *  rendered string AND a `fellBack` flag so the caller can emit the
+ *  `llm.context.recipe_body_fallback` warning log when the hybrid path
+ *  triggered. Pure — no logging happens here so trim loops in loaders.ts
+ *  can render-and-count freely without emitting duplicate warnings. */
+export function renderRecipeBody(view: RecipeBodyView): { text: string; fellBack: boolean } {
+  const prereqLines =
+    view.prerequisites.length > 0
+      ? `Prerequisites: ${view.prerequisites.join("; ")}`
+      : "Prerequisites: (none)";
+  const reqConnLines =
+    view.required_connectors.length > 0
+      ? `Required connectors: ${view.required_connectors
+          .map((rc) => `${rc.template} (placeholder ${rc.placeholder})`)
+          .join("; ")}`
+      : "Required connectors: single-connector recipe";
+  const sampleInputBlock =
+    view.sample_input == null
+      ? "Sample input: (none)"
+      : `Sample input:\n\`\`\`json\n${JSON.stringify(view.sample_input, null, 2)}\n\`\`\``;
+
+  const workflowJson = JSON.stringify(view.workflow);
+  const fullCandidate = [
+    `## Recipe \`${view.recipe_slug}\` — ${view.title}`,
+    view.description,
+    prereqLines,
+    reqConnLines,
+    sampleInputBlock,
+    `Workflow:\n\`\`\`json\n${workflowJson}\n\`\`\``,
+  ].join("\n");
+
+  if (countTokens(fullCandidate) <= recipeBodyHybridSoftCap) {
+    return { text: fullCandidate, fellBack: false };
+  }
+
+  // Hybrid fallback — drop the workflow JSON but keep
+  // required_connectors (load-bearing for multi-connector recipes).
+  const hybrid = [
+    `## Recipe \`${view.recipe_slug}\` — ${view.title}`,
+    view.description,
+    prereqLines,
+    reqConnLines,
+    sampleInputBlock,
+    `_workflow body elided — call inspect_recipe("${view.template_slug}", "${view.recipe_slug}") for full shape_`,
+  ].join("\n");
+  return { text: hybrid, fellBack: true };
+}
+
+/** Format the recipe-bodies section. Returns null on empty input so the
+ *  assembler can omit the dead header (mirrors `formatConnectorRecipes`).
+ *
+ *  Pure — no logging happens here. The trim loop in loaders.ts may
+ *  call this repeatedly during render-and-count, so the
+ *  `llm.context.recipe_body_fallback` warning is emitted by the loader
+ *  exactly once per survivor in the final set. */
+export function formatConnectorRecipeBodies(
+  templateSlug: string,
+  bodies: RecipeBodyView[],
+): string | null {
+  if (bodies.length === 0) return null;
+  const rendered = bodies.map((body) => renderRecipeBody(body).text);
+  return [
+    `# Recipe bodies — connector \`${templateSlug}\``,
+    "Top-K rich payloads for likely recipes. Clone via `start_workflow_from_recipe(template_slug, recipe_slug)` — no inspect_recipe round-trip needed when the workflow JSON is present below. Fall back to `inspect_recipe` only for elided bodies.",
+    ...rendered,
+  ].join("\n\n");
+}
+
+/** Format a single skill-candidate body. */
+function renderSkillCandidate(c: SkillCandidateView): string {
+  const meta: string[] = [`scope=${c.scope}`, `confidence=${c.confidence}`];
+  if (c.connector_id) meta.push(`connector_id=${c.connector_id}`);
+  if (c.workflow_id) meta.push(`workflow_id=${c.workflow_id}`);
+  meta.push(`evidence=${c.evidence_count}`);
+  meta.push(`pattern=${c.pattern_kind}`);
+  const header = `## ${c.title} [pending approval]`;
+  const metaLine = `_${meta.join(" · ")}_`;
+  const parts: string[] = [header, metaLine, c.body];
+  if (c.best_practices.length > 0) {
+    parts.push(`Best practices: ${c.best_practices.join("; ")}`);
+  }
+  if (c.pitfalls.length > 0) {
+    parts.push(`Pitfalls: ${c.pitfalls.join("; ")}`);
+  }
+  if (c.doc_refs.length > 0) {
+    parts.push(`Doc refs: ${c.doc_refs.join(", ")}`);
+  }
+  if (c.examples.length > 0) {
+    parts.push(`Examples:\n- ${c.examples.join("\n- ")}`);
+  }
+  return parts.join("\n");
+}
+
+/** Format the skill-candidates section. Returns null on empty input. */
+export function formatSkillCandidates(candidates: SkillCandidateView[]): string | null {
+  if (candidates.length === 0) return null;
+  const rendered = candidates.map(renderSkillCandidate);
+  return [
+    "# Skill candidates — proposed (pending operator approval)",
+    "These are patterns the system detected from prior runs. Treat as hints, not authoritative rules. Operators promote them via `approve_skill_candidate` — until then they MAY be wrong.",
+    ...rendered,
+  ].join("\n\n");
+}
+
+// Re-export so loaders + assembler can read the same cap constants
+// without hard-coding magic numbers. Tuning these is a source change —
+// per `feedback_no_env_feature_flags`.
+export {
+  recipeBodiesSectionCap as _recipeBodiesSectionCapForTrim,
+  recipeBodyHybridSoftCap as _recipeBodyHybridSoftCap,
+  skillCandidatesSectionCap as _skillCandidatesSectionCapForTrim,
+};
 
 /**
  * Render the interaction log as a markdown section. Mirrors the

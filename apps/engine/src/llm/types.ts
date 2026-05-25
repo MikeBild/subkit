@@ -186,6 +186,17 @@ export interface EnhancedPrompt {
     failures: number;
     messages: number;
     total: number;
+    /**
+     * Tokens spent on the recipe-bodies section (rendered hybrid payload
+     * for top-K connector recipes). Bounded by the assembler's intra-
+     * section pre-trim cap.
+     */
+    recipe_bodies: number;
+    /**
+     * Tokens spent on the skill-candidates section (proposed candidates
+     * surfaced for authoring). Bounded by the same intra-section trim.
+     */
+    skill_candidates: number;
   };
   included_skill_ids: string[];
   included_chunk_ids: string[];
