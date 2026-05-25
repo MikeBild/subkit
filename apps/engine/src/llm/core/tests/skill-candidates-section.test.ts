@@ -3,7 +3,6 @@
 // from formatters.ts/loaders.ts directly.
 
 import { describe, expect, test } from "bun:test";
-import { logRing } from "../../../observability/log-ring.ts";
 import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
 import { countTokens } from "../../accounting/index.ts";
 import {
@@ -164,7 +163,6 @@ describe("trimCandidatesToBudget — oversized single survivor", () => {
     const hugeBody = "x ".repeat(2000); // ~4000 tokens worth of text
     const c = makeCandidate({ id: "oversized-1", title: "Oversized Candidate", body: hugeBody });
 
-    logRing.clear();
     const result = trimCandidatesToBudget([c]);
 
     // Should have triggered the oversized path
@@ -191,7 +189,7 @@ describe("trimCandidatesToBudget — oversized single survivor", () => {
     }
   });
 
-  test("oversized item warning log emitted by assembler caller (oversized_item_id exposed)", () => {
+  test("trim helper exposes oversized_item_id so the assembler can emit the warning", () => {
     const hugeBody = "The long body. ".repeat(500);
     const c = makeCandidate({ id: "warn-test-1", body: hugeBody });
     const result = trimCandidatesToBudget([c]);

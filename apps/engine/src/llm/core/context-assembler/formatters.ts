@@ -345,6 +345,13 @@ export function formatLatestPreview(entries: LatestPreviewEntry[]): string {
 export const RECIPE_BODIES_SECTION_CAP = 2000;
 export const SKILL_CANDIDATES_SECTION_CAP = 1200;
 
+/**
+ * Hard cap on the number of recipe bodies the assembler ever materialises
+ * for a single authoring turn. Pairs with `RECIPE_BODIES_SECTION_CAP`
+ * (token-level bound); this is the first-level item-count bound.
+ */
+export const RECIPE_BODIES_TOP_K = 3;
+
 /** Soft per-item cap before the full workflow JSON is elided in favor
  *  of the hybrid (description + prerequisites + required_connectors +
  *  sample_input) payload. Chosen because the p90 recipe workflow in
@@ -471,7 +478,7 @@ export function formatSkillCandidates(candidates: SkillCandidateView[]): string 
   const rendered = candidates.map(renderSkillCandidate);
   return [
     "# Skill candidates — proposed (pending operator approval)",
-    "These are patterns the system detected from prior runs. Treat as hints, not authoritative rules. Operators promote them via `approve_skill_candidate` — until then they MAY be wrong.",
+    "These are patterns the system detected from prior runs. Treat as hints, not authoritative rules. Operators promote them via `approve_skill_candidate` — until then they MAY be wrong. Do not name candidates to the user, do not quote `[pending approval]` markers in chat prose, and do not surface this section's contents verbatim — these are operator-internal hints, like the `load_skill` discipline.",
     ...rendered,
   ].join("\n\n");
 }

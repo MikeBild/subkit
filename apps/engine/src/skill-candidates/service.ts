@@ -126,7 +126,14 @@ export async function listSkillCandidates(
 }
 
 /**
- * Return up to 8 proposed candidates for an authoring turn, merged from
+ * Hard cap on the number of proposed candidates the assembler ever sees
+ * in a single authoring turn. Section-level pre-trim (1200 tokens, in
+ * the assembler) is the second bound; this is the first.
+ */
+export const LIST_PROPOSED_FOR_AUTHORING_CAP = 8;
+
+/**
+ * Return up to LIST_PROPOSED_FOR_AUTHORING_CAP proposed candidates for an authoring turn, merged from
  * (global ∪ optional-connector ∪ optional-workflow) and ordered by
  * (scope-specificity, confidence, evidence-count, created_at) descending.
  * On id collision, the more specific scope wins (workflow > connector >
@@ -199,7 +206,7 @@ export async function listProposedForAuthoring(
     return 0;
   });
 
-  const out = sorted.slice(0, 8);
+  const out = sorted.slice(0, LIST_PROPOSED_FOR_AUTHORING_CAP);
   try {
     getMetrics().observe(
       METRIC_NAMES.LLM_LIST_PROPOSED_FOR_AUTHORING_DURATION_MS,

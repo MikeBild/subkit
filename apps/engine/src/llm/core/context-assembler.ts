@@ -378,6 +378,7 @@ export async function assembleEnhancedPrompt(
   let connectorRecipeBodiesBlock: string | null = null;
   let connectorRecipeBodiesSurvivors: RecipeBodyView[] = [];
   let connectorRecipeBodiesTemplateSlug: string | null = null;
+  let connectorRecipeBodiesFallbackSlugs: string[] = [];
   if (p.connector_id) {
     try {
       const connector = await getConnector(p.tenant_id, p.connector_id, db);
@@ -403,12 +404,13 @@ export async function assembleEnhancedPrompt(
         // loaded snapshot — no second getConnector. Section is bounded
         // by `trimRecipeBodiesToBudget` to 2 KB; rendered string already
         // carries the elision notice when something was dropped.
-        const recipeBodies = loadTopRecipeBodies(snapshot, p.authoring_hint, query, 3);
+        const recipeBodies = loadTopRecipeBodies(snapshot, p.authoring_hint, query);
         if (recipeBodies.length > 0) {
           const trimmed = trimRecipeBodiesToBudget(connector.slug, recipeBodies);
           connectorRecipeBodiesBlock = trimmed.section;
           connectorRecipeBodiesSurvivors = trimmed.survivors;
           connectorRecipeBodiesTemplateSlug = connector.slug;
+          connectorRecipeBodiesFallbackSlugs = trimmed.fallback_recipe_slugs;
         }
       }
     } catch (err) {
@@ -427,11 +429,12 @@ export async function assembleEnhancedPrompt(
   // without its workflow JSON (per-body soft-cap exceeded). Emitted
   // exactly once per assembly, after the trim loop decided the final
   // set, so the render-and-count loop never produces duplicate warnings.
-  if (connectorRecipeBodiesTemplateSlug && connectorRecipeBodiesSurvivors.length > 0) {
+  if (connectorRecipeBodiesTemplateSlug && connectorRecipeBodiesFallbackSlugs.length > 0) {
     logRecipeBodyFallbacks(
       connectorRecipeBodiesTemplateSlug,
       p.tenant_id,
       connectorRecipeBodiesSurvivors,
+      connectorRecipeBodiesFallbackSlugs,
     );
   }
 
@@ -440,8 +443,13 @@ export async function assembleEnhancedPrompt(
   // waiting for operator promotion. Sibling block to the connector
   // load above: lives OUTSIDE the `if (p.connector_id)` so global
   // candidates render even when no connector is in scope; workflow-
-  // scoped candidates render whenever `p.workflow_id` is set. The
-  // contract is "scope hint present ⇒ rendered".
+  // scoped candidates render whenever `p.workflow_id` is set.
+  //
+  // Gate: converse flow only. Non-converse flows (`generate`, `repair`,
+  // `extract`, `summarize`, `discover`) skip this load entirely — they
+  // do not steer the authoring loop, so injecting candidate hints
+  // would burn tokens for no behavioural payoff. Effective contract:
+  // "converse flow AND (global OR scope-hint matches)".
   // `listProposedForAuthoring` makes 1-3 indexed queries; best-effort
   // try/catch matches the existing pattern — a DB blip never blocks
   // assembly.
@@ -833,6 +841,12 @@ export async function assembleContext(
     // connector templates; hashing them would force operators to
     // round-trip through sha256sum to read the log line. Emit the raw
     // slugs (still capped at 12 — the same headroom as the hash lists).
+    //
+    // Cardinality assumption: `template_snapshot.recipes[].slug` stays
+    // operator-curated and bounded. If recipes ever become user-authorable
+    // (each tenant defines its own), this becomes a log-line cardinality
+    // problem and the slugs should switch to hashed via `idHashes` like
+    // the other id arrays.
     included_recipe_slugs: included_recipe_slugs.slice(0, 12),
     dropped_sections: budget_report.dropped_sections,
   });

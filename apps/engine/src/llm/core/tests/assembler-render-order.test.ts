@@ -11,7 +11,7 @@
 //  - Workflow-scope contract: with workflow_id unset, workflow-scoped candidates are ABSENT
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors, skillCandidates, tenants } from "../../../db/schema/index.ts";
+import { connectors, skillCandidates, tenants, workflows } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { logger } from "../../../logging/logger.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
@@ -115,8 +115,19 @@ beforeAll(async () => {
     .returning();
   connector_id = c!.id;
 
-  // A fixed UUID to use as workflow_id in tests that need it.
-  workflow_id = "aaaabbbb-cccc-dddd-eeee-ffffffffffff";
+  // Seed a real workflow row so future FK tightening (e.g. a JOIN in
+  // listSkillCandidates) doesn't silently disable the workflow-scope
+  // assertions in this file.
+  const [wf] = await ctx.db
+    .insert(workflows)
+    .values({
+      tenant_id,
+      slug: "render-order-test-workflow",
+      name: "Render Order Test Workflow",
+      lifecycle: "draft",
+    })
+    .returning();
+  workflow_id = wf!.id;
 
   // Seed a connector-scoped proposed skill candidate.
   await ctx.db.insert(skillCandidates).values({

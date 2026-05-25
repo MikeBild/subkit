@@ -22,6 +22,7 @@ import {
   formatConnectorRecipeBodies,
   formatSkillCandidates,
   RECIPE_BODIES_SECTION_CAP,
+  RECIPE_BODIES_TOP_K,
   RECIPE_BODY_HYBRID_SOFT_CAP,
   type RecipeBodyView,
   renderRecipeBody,
@@ -321,7 +322,7 @@ export function loadTopRecipeBodies(
   snapshot: Record<string, unknown> | null | undefined,
   authoringHint: AuthoringPromptHint | undefined,
   query: string,
-  max = 3,
+  max = RECIPE_BODIES_TOP_K,
 ): RecipeBodyView[] {
   if (!snapshot) return [];
   const raw = snapshot.recipes;
@@ -425,16 +426,34 @@ export function loadTopRecipeBodies(
 export function trimRecipeBodiesToBudget(
   templateSlug: string,
   bodies: RecipeBodyView[],
-): { survivors: RecipeBodyView[]; section: string | null; trimmed: number } {
-  if (bodies.length === 0) return { survivors: [], section: null, trimmed: 0 };
+): {
+  survivors: RecipeBodyView[];
+  section: string | null;
+  trimmed: number;
+  /** Recipe slugs that rendered via the hybrid (workflow-JSON-elided)
+   *  path. Threaded through so `logRecipeBodyFallbacks` doesn't have to
+   *  re-render — the "exactly once per survivor" invariant becomes a
+   *  type guarantee, not just a comment. */
+  fallback_recipe_slugs: string[];
+} {
+  if (bodies.length === 0) {
+    return { survivors: [], section: null, trimmed: 0, fallback_recipe_slugs: [] };
+  }
   const cap = RECIPE_BODIES_SECTION_CAP;
-  const survivors = [...bodies];
+
+  // Pre-render once per body. Renders are deterministic, so a
+  // pop-based trim loop can reuse the rendered text and the fellBack
+  // flag without re-invoking renderRecipeBody for each survivor on
+  // each iteration.
+  type Rendered = { view: RecipeBodyView; text: string; fellBack: boolean };
+  const rendered: Rendered[] = bodies.map((view) => ({ view, ...renderRecipeBody(view) }));
   let trimmed = 0;
 
-  // Render-and-count: try the full set first, pop the lowest-ranked
-  // body if it overflows, repeat until fit or empty.
-  while (survivors.length > 0) {
-    const sectionBase = formatConnectorRecipeBodies(templateSlug, survivors);
+  while (rendered.length > 0) {
+    const sectionBase = formatConnectorRecipeBodiesFromTexts(
+      templateSlug,
+      rendered.map((r) => r.text),
+    );
     if (sectionBase === null) break;
     const notice =
       trimmed > 0
@@ -442,31 +461,51 @@ export function trimRecipeBodiesToBudget(
         : "";
     const candidate = `${sectionBase}${notice}`;
     if (countTokens(candidate) <= cap) {
-      return { survivors, section: candidate, trimmed };
+      return {
+        survivors: rendered.map((r) => r.view),
+        section: candidate,
+        trimmed,
+        fallback_recipe_slugs: rendered.filter((r) => r.fellBack).map((r) => r.view.recipe_slug),
+      };
     }
-    survivors.pop();
+    rendered.pop();
     trimmed += 1;
   }
-  return { survivors: [], section: null, trimmed };
+  return { survivors: [], section: null, trimmed, fallback_recipe_slugs: [] };
+}
+
+/** Assemble the recipe-bodies section from already-rendered per-body
+ *  strings. Mirrors `formatConnectorRecipeBodies` but takes the
+ *  rendered text so the trim loop can avoid re-rendering each survivor
+ *  on every iteration. */
+function formatConnectorRecipeBodiesFromTexts(
+  templateSlug: string,
+  texts: string[],
+): string | null {
+  if (texts.length === 0) return null;
+  return [
+    `# Recipe bodies — connector \`${templateSlug}\``,
+    "Top-K rich payloads for likely recipes. Clone via `start_workflow_from_recipe(template_slug, recipe_slug)` — no inspect_recipe round-trip needed when the workflow JSON is present below. Fall back to `inspect_recipe` only for elided bodies.",
+    ...texts,
+  ].join("\n\n");
 }
 
 /** Emit the hybrid-fallback warning log for each surviving recipe whose
  *  body rendered without its workflow JSON (per-body soft-cap exceeded).
  *  Called by the assembler exactly once per assembly, after the trim
- *  loop decides the final set — so a render-and-count trim never emits
- *  a duplicate
- *  warning. */
+ *  loop decided the final set. The trim loop pre-renders each body
+ *  exactly once and threads the slugs of fallback survivors back, so
+ *  this function reads from that list instead of re-rendering. */
 export function logRecipeBodyFallbacks(
   templateSlug: string,
   tenant_id: string,
   bodies: RecipeBodyView[],
+  fallbackSlugs: string[],
 ): void {
+  if (fallbackSlugs.length === 0) return;
+  const fallbackSet = new Set(fallbackSlugs);
   for (const body of bodies) {
-    // Recompute on demand — N ≤ top-K = 3 and renderRecipeBody is
-    // deterministic, so the bounded extra renders are not worth a
-    // caller-mutating cache.
-    const { fellBack } = renderRecipeBody(body);
-    if (!fellBack) continue;
+    if (!fallbackSet.has(body.recipe_slug)) continue;
     logger.warn({
       module: "llm",
       action: "llm.context.recipe_body_fallback",
@@ -513,12 +552,24 @@ function reportMalformedRecipe(): void {
 // the section_load_failures counter (so dashboards/alerts see them) but
 // stay at debug-level on the log stream so a flapping DB doesn't drown
 // it. A new tenant's first failure still surfaces at warn — operator
-// visibility per tenant is preserved. Wrapped in a const-object so
-// tests (or a future reset helper) can clear it without ESM live-binding
-// gymnastics.
+// visibility per tenant is preserved.
+//
+// Bounded LRU rather than an unbounded Set: tenant-failure throttling
+// does not need full-history fidelity, and an unbounded set in a
+// long-running engine with a flapping DB and many tenants would leak.
+// Cap of 256 is comfortably above realistic tenant counts per droplet;
+// when the cap is hit, the oldest "already warned" entry is evicted
+// and the next failure for that tenant will warn again — acceptable.
+const WARNED_TENANTS_LRU_CAP = 256;
 const proposedCandidatesFailureState = {
   warnedTenants: new Set<string>(),
 };
+
+/** Internal helper used by tests to reset the per-tenant warning
+ *  tracker between cases. Production code never calls this. */
+export function __resetProposedCandidatesFailureStateForTests(): void {
+  proposedCandidatesFailureState.warnedTenants.clear();
+}
 
 export async function loadProposedCandidates(
   tenant_id: string,
@@ -552,6 +603,16 @@ export async function loadProposedCandidates(
     if (proposedCandidatesFailureState.warnedTenants.has(tenant_id)) {
       logger.debug(payload);
     } else {
+      // LRU eviction: when the cap is reached, drop the oldest known
+      // tenant (Sets preserve insertion order in JS) before adding the
+      // new one. A re-evicted tenant's next failure will warn again,
+      // which is the correct semantics for a bounded throttle.
+      if (proposedCandidatesFailureState.warnedTenants.size >= WARNED_TENANTS_LRU_CAP) {
+        const oldest = proposedCandidatesFailureState.warnedTenants.values().next().value;
+        if (oldest !== undefined) {
+          proposedCandidatesFailureState.warnedTenants.delete(oldest);
+        }
+      }
       proposedCandidatesFailureState.warnedTenants.add(tenant_id);
       logger.warn(payload);
     }
