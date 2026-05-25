@@ -10,6 +10,7 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
 import { log } from "../logging/logger.ts";
+import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { createSkill } from "../skills/service.ts";
 import {
   detectFailurePatterns,
@@ -125,21 +126,13 @@ export async function listSkillCandidates(
 }
 
 /**
- * Authoring-time helper: return the top proposed candidates the LLM
- * should see this turn, merged across (global ∪ optional-connector ∪
- * optional-workflow) scopes and ranked by scope-specificity, confidence,
- * evidence count, recency.
- *
- * Implemented as ≤ 3 calls to `listSkillCandidates` so the existing
- * AND-exact SQL semantics + tenant guards stay the only DB contract.
- * Each scoped call overfetches to the service's hard ceiling (500) — the
- * underlying `listSkillCandidates` orders by `created_at DESC`, so a
- * smaller page would silently drop older high-confidence candidates
- * before the in-memory rank runs.
- *
- * Dedupe priority on tie-id: `workflow > connector > global` (more
- * specific scope wins, matching the rank order). Cap is 8 — the
- * intra-section pre-trim in the assembler enforces token budget on top.
+ * Return up to 8 proposed candidates for an authoring turn, merged from
+ * (global ∪ optional-connector ∪ optional-workflow) and ordered by
+ * (scope-specificity, confidence, evidence-count, created_at) descending.
+ * On id collision, the more specific scope wins (workflow > connector >
+ * global). Each per-scope page overfetches to the service ceiling so
+ * older high-confidence candidates aren't dropped by the underlying
+ * `created_at DESC` paging before ranking.
  */
 export async function listProposedForAuthoring(
   tenant_id: string,
@@ -147,6 +140,12 @@ export async function listProposedForAuthoring(
   exec?: Executor,
 ): Promise<SkillCandidateView[]> {
   const db = exec ?? getDb();
+  const start = Date.now();
+  const scopeHint = scope_hints.workflow_id
+    ? "workflow"
+    : scope_hints.connector_id
+      ? "connector"
+      : "global";
 
   const [globalRows, connectorRows, workflowRows] = await Promise.all([
     listSkillCandidates({ tenant_id, status: "proposed", scope: "global", limit: 500 }, db),
@@ -203,7 +202,17 @@ export async function listProposedForAuthoring(
     return 0;
   });
 
-  return sorted.slice(0, 8);
+  const out = sorted.slice(0, 8);
+  try {
+    getMetrics().observe(
+      METRIC_NAMES.LLM_LIST_PROPOSED_FOR_AUTHORING_DURATION_MS,
+      Date.now() - start,
+      { scope_hint: scopeHint },
+    );
+  } catch {
+    // Metrics emission is best-effort — never fail the authoring path.
+  }
+  return out;
 }
 
 export async function getSkillCandidate(

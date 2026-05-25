@@ -92,6 +92,16 @@ function loadBaseline(): BaselineFixture {
 
 const skip = process.env.REQUIRES_PG === "0";
 
+// Load-bearing budget regression — if a CI run trips REQUIRES_PG=0, the
+// four-guard regression net (G1-G4) is the only thing that catches a
+// silent prompt-size blow-up. Surface the skip on stderr so a green
+// "0 failures" line isn't mistaken for "the budget contract still holds".
+if (skip) {
+  console.warn(
+    "[assembler-budget-baseline] REQUIRES_PG=0 — skipping G1-G4 budget regression guards. Run with Postgres to re-enable.",
+  );
+}
+
 let ctx: TestDb;
 let tenant_id: string;
 // Map from connector slug → id, populated during beforeAll

@@ -342,15 +342,15 @@ export function formatLatestPreview(entries: LatestPreviewEntry[]): string {
  * runtime knob, not an env flag, not a config knob. Mirrors the existing
  * `RECIPE_LINES_BUDGET` discipline.
  */
-const recipeBodiesSectionCap = 2000;
-const skillCandidatesSectionCap = 1200;
+export const RECIPE_BODIES_SECTION_CAP = 2000;
+export const SKILL_CANDIDATES_SECTION_CAP = 1200;
 
 /** Soft per-item cap before the full workflow JSON is elided in favor
  *  of the hybrid (description + prerequisites + required_connectors +
  *  sample_input) payload. Chosen because the p90 recipe workflow in
  *  `templates.json` is ~600 tokens; `required_connectors` is ≤ 80 tokens
  *  even for 5-connector recipes. */
-const recipeBodyHybridSoftCap = 800;
+export const RECIPE_BODY_HYBRID_SOFT_CAP = 800;
 
 /** Compact view of a connector recipe ready for the rich body block.
  *  Built by `loadTopRecipeBodies` (loaders.ts) — pure over the snapshot
@@ -366,15 +366,6 @@ export interface RecipeBodyView {
   required_connectors: Array<{ placeholder: string; template: string }>;
   sample_input: unknown;
   workflow: unknown;
-  /**
-   * Cache of `renderRecipeBody(this).fellBack`. Populated by
-   * `formatConnectorRecipeBodies` during render-and-count so
-   * `logRecipeBodyFallbacks` can read the flag instead of re-rendering
-   * each survivor (saves up to N extra renders, where N ≤ top-K = 3).
-   * Pure function semantics: the value is deterministic per-body and
-   * idempotent across renders.
-   */
-  fellBack?: boolean;
 }
 
 /** Render a single recipe body as a markdown fragment. Returns the
@@ -408,7 +399,7 @@ export function renderRecipeBody(view: RecipeBodyView): { text: string; fellBack
     `Workflow:\n\`\`\`json\n${workflowJson}\n\`\`\``,
   ].join("\n");
 
-  if (countTokens(fullCandidate) <= recipeBodyHybridSoftCap) {
+  if (countTokens(fullCandidate) <= RECIPE_BODY_HYBRID_SOFT_CAP) {
     return { text: fullCandidate, fellBack: false };
   }
 
@@ -437,16 +428,11 @@ export function formatConnectorRecipeBodies(
   bodies: RecipeBodyView[],
 ): string | null {
   if (bodies.length === 0) return null;
-  // Render-and-cache: `body.fellBack` is mutated so logRecipeBodyFallbacks
-  // (called once post-trim by the assembler) reads the flag instead of
-  // re-rendering each survivor. Pure function semantics: renderRecipeBody
-  // is deterministic, so repeated calls during render-and-count trim
-  // converge on the same flag value.
-  const rendered = bodies.map((body) => {
-    const r = renderRecipeBody(body);
-    body.fellBack = r.fellBack;
-    return r.text;
-  });
+  // Pure: no mutation of input. logRecipeBodyFallbacks re-invokes
+  // renderRecipeBody for each survivor at the end of assembly — the
+  // cost is bounded (N ≤ top-K = 3) and renderRecipeBody is
+  // deterministic.
+  const rendered = bodies.map((body) => renderRecipeBody(body).text);
   return [
     `# Recipe bodies — connector \`${templateSlug}\``,
     "Top-K rich payloads for likely recipes. Clone via `start_workflow_from_recipe(template_slug, recipe_slug)` — no inspect_recipe round-trip needed when the workflow JSON is present below. Fall back to `inspect_recipe` only for elided bodies.",
@@ -490,14 +476,8 @@ export function formatSkillCandidates(candidates: SkillCandidateView[]): string 
   ].join("\n\n");
 }
 
-// Re-export so loaders + assembler can read the same cap constants
-// without hard-coding magic numbers. Tuning is a source change — no
-// env, no config, no CLI flag.
-export {
-  recipeBodiesSectionCap as _recipeBodiesSectionCapForTrim,
-  recipeBodyHybridSoftCap as _recipeBodyHybridSoftCap,
-  skillCandidatesSectionCap as _skillCandidatesSectionCapForTrim,
-};
+// (Constants exported above so loaders + assembler + tests can read
+//  the same cap values without hard-coding magic numbers.)
 
 /**
  * Render the interaction log as a markdown section. Mirrors the

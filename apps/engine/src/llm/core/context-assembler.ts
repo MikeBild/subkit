@@ -33,11 +33,11 @@
 // `detectIntentSkills`, and the `AssembledContext` / `BudgetReport`
 // types from this barrel.
 
-import { createHash } from "node:crypto";
 import { getConnector } from "../../connectors/service.ts";
 import { generateMainAgentSystemPrompt } from "../../conversations/agent/context.ts";
 import { getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
+import { idHashesCapped } from "../../observability/id-hashes.ts";
 import { recordLlmContextAssembled } from "../../observability/instrumentation.ts";
 import {
   getSkill,
@@ -60,7 +60,6 @@ import type {
 } from "../types.ts";
 import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
 import {
-  _skillCandidatesSectionCapForTrim,
   formatChunk,
   formatConnectorRecipes,
   formatFailure,
@@ -72,6 +71,7 @@ import {
   formatSkillIndex,
   formatUserMemory,
   type RecipeBodyView,
+  SKILL_CANDIDATES_SECTION_CAP,
   selectOperatorQuirkCategories,
 } from "./context-assembler/formatters.ts";
 import {
@@ -91,20 +91,6 @@ import {
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
 export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web";
-
-/**
- * Cap a string-id list to `cap` entries (default 12, matching the per-list
- * cap the assembler uses for the three `included_*_hashes` log arrays) and
- * map each survivor to an 8-char sha256 hex prefix. Operators correlate
- * "did this turn see X?" by hashing X locally and grepping the log line.
- * Privacy framing: correlation-grade obfuscation, NOT a security boundary.
- *
- * Exported so the cap can be unit-tested without driving the full
- * assembler.
- */
-export function idHashesCapped(ids: string[], cap = 12): string[] {
-  return ids.slice(0, cap).map((id) => createHash("sha256").update(id).digest("hex").slice(0, 8));
-}
 
 export {
   applyRuntimeTemplate,
@@ -491,7 +477,7 @@ export async function assembleEnhancedPrompt(
       tenant_id: p.tenant_id,
       section: "skill_candidates",
       item_id: skillCandidatesOversizedItemId,
-      cap_tokens: _skillCandidatesSectionCapForTrim,
+      cap_tokens: SKILL_CANDIDATES_SECTION_CAP,
     });
   }
 

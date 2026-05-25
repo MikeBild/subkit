@@ -7,8 +7,8 @@ import { logRing } from "../../../observability/log-ring.ts";
 import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
 import { countTokens } from "../../accounting/index.ts";
 import {
-  _skillCandidatesSectionCapForTrim,
   formatSkillCandidates,
+  SKILL_CANDIDATES_SECTION_CAP,
 } from "../context-assembler/formatters.ts";
 import { trimCandidatesToBudget } from "../context-assembler/loaders.ts";
 
@@ -110,7 +110,7 @@ describe("trimCandidatesToBudget — 1200-token cap", () => {
     expect(result.trimmed).toBe(0);
     expect(result.section).not.toBeNull();
     const tokens = countTokens(result.section!);
-    expect(tokens).toBeLessThanOrEqual(_skillCandidatesSectionCapForTrim);
+    expect(tokens).toBeLessThanOrEqual(SKILL_CANDIDATES_SECTION_CAP);
   });
 
   test("50 candidates → section ≤ 1200 tokens with elision notice", () => {
@@ -125,7 +125,7 @@ describe("trimCandidatesToBudget — 1200-token cap", () => {
     const result = trimCandidatesToBudget(candidates);
     if (result.section !== null) {
       const tokens = countTokens(result.section);
-      expect(tokens).toBeLessThanOrEqual(_skillCandidatesSectionCapForTrim);
+      expect(tokens).toBeLessThanOrEqual(SKILL_CANDIDATES_SECTION_CAP);
       if (result.trimmed > 0) {
         expect(result.section).toContain("elided — token budget");
       }
@@ -177,15 +177,15 @@ describe("trimCandidatesToBudget — oversized single survivor", () => {
     expect(survivorBody).toContain("candidate body truncated for section cap");
 
     // The final section must be within 90% of the cap (approximately)
-    const targetTokens = Math.ceil(_skillCandidatesSectionCapForTrim * 0.9);
+    const targetTokens = Math.ceil(SKILL_CANDIDATES_SECTION_CAP * 0.9);
     if (result.section !== null) {
       const tokens = countTokens(result.section);
-      expect(tokens).toBeLessThanOrEqual(_skillCandidatesSectionCapForTrim);
+      expect(tokens).toBeLessThanOrEqual(SKILL_CANDIDATES_SECTION_CAP);
       // The truncated version must be at least somewhat substantial
       // (binary search found a fit at targetTokens)
       expect(tokens).toBeGreaterThan(10);
       // Should be near the target (within the section cap)
-      expect(tokens).toBeLessThanOrEqual(_skillCandidatesSectionCapForTrim);
+      expect(tokens).toBeLessThanOrEqual(SKILL_CANDIDATES_SECTION_CAP);
       // The target for binary search
       expect(targetTokens).toBe(Math.ceil(1200 * 0.9));
     }
@@ -202,11 +202,11 @@ describe("trimCandidatesToBudget — oversized single survivor", () => {
     }
     // Regardless, no section overflow
     if (result.section !== null) {
-      expect(countTokens(result.section)).toBeLessThanOrEqual(_skillCandidatesSectionCapForTrim);
+      expect(countTokens(result.section)).toBeLessThanOrEqual(SKILL_CANDIDATES_SECTION_CAP);
     }
   });
 
   test("section cap constant is 1200", () => {
-    expect(_skillCandidatesSectionCapForTrim).toBe(1200);
+    expect(SKILL_CANDIDATES_SECTION_CAP).toBe(1200);
   });
 });

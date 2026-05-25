@@ -8,6 +8,7 @@ import { conversationElicitations, conversations } from "../../../db/schema/inde
 import { searchDocs } from "../../../docs-ingestion/service.ts";
 import { searchKnowledge } from "../../../knowledge/service.ts";
 import { logger } from "../../../logging/logger.ts";
+import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
 import { listProposedForAuthoring } from "../../../skill-candidates/service.ts";
 import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
 import { countTokens } from "../../accounting/index.ts";
@@ -18,13 +19,13 @@ import type {
   UserTurn,
 } from "../../types.ts";
 import {
-  _recipeBodiesSectionCapForTrim,
-  _recipeBodyHybridSoftCap,
-  _skillCandidatesSectionCapForTrim,
   formatConnectorRecipeBodies,
   formatSkillCandidates,
+  RECIPE_BODIES_SECTION_CAP,
+  RECIPE_BODY_HYBRID_SOFT_CAP,
   type RecipeBodyView,
   renderRecipeBody,
+  SKILL_CANDIDATES_SECTION_CAP,
 } from "./formatters.ts";
 
 export type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -419,7 +420,7 @@ export function trimRecipeBodiesToBudget(
   bodies: RecipeBodyView[],
 ): { survivors: RecipeBodyView[]; section: string | null; trimmed: number } {
   if (bodies.length === 0) return { survivors: [], section: null, trimmed: 0 };
-  const cap = _recipeBodiesSectionCapForTrim;
+  const cap = RECIPE_BODIES_SECTION_CAP;
   const survivors = [...bodies];
   let trimmed = 0;
 
@@ -454,11 +455,10 @@ export function logRecipeBodyFallbacks(
   bodies: RecipeBodyView[],
 ): void {
   for (const body of bodies) {
-    // Read the cached `fellBack` flag populated by
-    // `formatConnectorRecipeBodies` during the trim loop. Falls back to a
-    // fresh render only when the cache is missing (defensive — the
-    // assembler always calls the formatter at least once before this).
-    const fellBack = body.fellBack ?? renderRecipeBody(body).fellBack;
+    // Recompute on demand — N ≤ top-K = 3 and renderRecipeBody is
+    // deterministic, so the bounded extra renders are not worth a
+    // caller-mutating cache.
+    const { fellBack } = renderRecipeBody(body);
     if (!fellBack) continue;
     logger.warn({
       module: "llm",
@@ -468,7 +468,7 @@ export function logRecipeBodyFallbacks(
       template_slug: templateSlug,
       recipe_slug: body.recipe_slug,
       body_tokens: countTokens(JSON.stringify(body.workflow)),
-      soft_cap_tokens: _recipeBodyHybridSoftCap,
+      soft_cap_tokens: RECIPE_BODY_HYBRID_SOFT_CAP,
     });
   }
 }
@@ -485,29 +485,45 @@ export function logRecipeBodyFallbacks(
  * `listProposedForAuthoring` validates that the service helper is
  * exported from `skill-candidates/index.ts`.
  */
+// Tracks whether `loadProposedCandidates` has already logged a load
+// failure in this process. Subsequent failures still increment the
+// counter (for dashboards/alerts) but suppress duplicate warnings on
+// the log stream so a flapping DB doesn't paper over the surface.
+let proposedCandidatesFailureLogged = false;
+
 export async function loadProposedCandidates(
   tenant_id: string,
-  scope_hints: { connector_id?: string | undefined; workflow_id?: string | undefined },
+  scope_hints: { connector_id?: string; workflow_id?: string },
   exec: Executor,
 ): Promise<SkillCandidateView[]> {
   try {
-    // Strip explicit undefineds so the service signature (which uses
-    // optional-but-not-undefinable fields under exactOptionalPropertyTypes)
-    // accepts the call cleanly.
-    const hints: { connector_id?: string; workflow_id?: string } = {};
-    if (scope_hints.connector_id) hints.connector_id = scope_hints.connector_id;
-    if (scope_hints.workflow_id) hints.workflow_id = scope_hints.workflow_id;
-    return await listProposedForAuthoring(tenant_id, hints, exec);
+    return await listProposedForAuthoring(tenant_id, scope_hints, exec);
   } catch (err) {
-    logger.debug({
+    try {
+      getMetrics().inc(METRIC_NAMES.LLM_CONTEXT_SECTION_LOAD_FAILURES_TOTAL, {
+        section: "skill_candidates",
+      });
+    } catch {
+      // Metrics emission is best-effort.
+    }
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const payload = {
       module: "llm",
       action: "llm.context.proposed_candidates_skipped",
       msg: "proposed-candidate load failed during context assembly",
       tenant_id,
       ...(scope_hints.connector_id ? { connector_id: scope_hints.connector_id } : {}),
       ...(scope_hints.workflow_id ? { workflow_id: scope_hints.workflow_id } : {}),
-      error: err instanceof Error ? err.message : String(err),
-    });
+      error: errorMessage,
+    };
+    // First failure per process: warn (operationally visible).
+    // Subsequent: debug, so flapping doesn't drown the log stream.
+    if (proposedCandidatesFailureLogged) {
+      logger.debug(payload);
+    } else {
+      proposedCandidatesFailureLogged = true;
+      logger.warn(payload);
+    }
     return [];
   }
 }
@@ -528,7 +544,7 @@ export function trimCandidatesToBudget(candidates: SkillCandidateView[]): {
   if (candidates.length === 0) {
     return { survivors: [], section: null, trimmed: 0, oversized_item_id: null };
   }
-  const cap = _skillCandidatesSectionCapForTrim;
+  const cap = SKILL_CANDIDATES_SECTION_CAP;
   const survivors = [...candidates];
   let trimmed = 0;
 

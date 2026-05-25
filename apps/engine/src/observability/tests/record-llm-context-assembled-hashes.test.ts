@@ -7,7 +7,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { idHashesCapped } from "../../llm/core/context-assembler.ts";
+import { idHashesCapped } from "../id-hashes.ts";
 import { recordLlmContextAssembled } from "../instrumentation.ts";
 import { logRing } from "../log-ring.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "../metrics.ts";

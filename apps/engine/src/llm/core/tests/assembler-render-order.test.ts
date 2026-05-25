@@ -24,6 +24,15 @@ const SECTION_CONNECTOR_RECIPES = "connector_recipes";
 // Skip guard for environments without Postgres.
 const skip = process.env.REQUIRES_PG === "0";
 
+// Load-bearing assembler contract — drop-ladder ordering + workflow-scope
+// contract live only in this file's DB-backed describes. Surface the skip
+// so a green "0 failures" line isn't mistaken for "the ladder still holds".
+if (skip) {
+  console.warn(
+    "[assembler-render-order] REQUIRES_PG=0 — skipping render-order + drop-ladder verification. Run with Postgres to re-enable.",
+  );
+}
+
 let ctx: TestDb;
 let tenant_id: string;
 let connector_id: string;

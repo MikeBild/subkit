@@ -5,9 +5,9 @@
 import { describe, expect, test } from "bun:test";
 import { countTokens } from "../../accounting/index.ts";
 import {
-  _recipeBodiesSectionCapForTrim,
-  _recipeBodyHybridSoftCap,
   formatConnectorRecipeBodies,
+  RECIPE_BODIES_SECTION_CAP,
+  RECIPE_BODY_HYBRID_SOFT_CAP,
   type RecipeBodyView,
   renderRecipeBody,
 } from "../context-assembler/formatters.ts";
@@ -113,7 +113,7 @@ describe("trimRecipeBodiesToBudget — 2000-token cap", () => {
     expect(result.trimmed).toBe(0);
     expect(result.section).not.toBeNull();
     const tokens = countTokens(result.section!);
-    expect(tokens).toBeLessThanOrEqual(_recipeBodiesSectionCapForTrim);
+    expect(tokens).toBeLessThanOrEqual(RECIPE_BODIES_SECTION_CAP);
   });
 
   test("AC2: 50 large recipes → section ≤ 2000 tokens with elision notice", () => {
@@ -134,7 +134,7 @@ describe("trimRecipeBodiesToBudget — 2000-token cap", () => {
     const result = trimRecipeBodiesToBudget("stripe", recipes);
     if (result.section !== null) {
       const tokens = countTokens(result.section);
-      expect(tokens).toBeLessThanOrEqual(_recipeBodiesSectionCapForTrim);
+      expect(tokens).toBeLessThanOrEqual(RECIPE_BODIES_SECTION_CAP);
       // When something was trimmed, the elision notice must be present.
       if (result.trimmed > 0) {
         expect(result.section).toContain("elided — token budget");
@@ -229,9 +229,9 @@ describe("renderRecipeBody — 800-token hybrid fallback", () => {
     // If it didn't fall back the full path was used — also valid.
   });
 
-  test("D3: hybrid fallback cap is _recipeBodyHybridSoftCap", () => {
+  test("D3: hybrid fallback cap is RECIPE_BODY_HYBRID_SOFT_CAP", () => {
     // Sanity: the exported constant matches what renderRecipeBody uses.
-    expect(_recipeBodyHybridSoftCap).toBe(800);
+    expect(RECIPE_BODY_HYBRID_SOFT_CAP).toBe(800);
   });
 });
 
