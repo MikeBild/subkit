@@ -124,6 +124,88 @@ export async function listSkillCandidates(
   return rows.map((r) => toView(r, counts.get(r.id) ?? 0));
 }
 
+/**
+ * Authoring-time helper: return the top proposed candidates the LLM
+ * should see this turn, merged across (global ∪ optional-connector ∪
+ * optional-workflow) scopes and ranked by scope-specificity, confidence,
+ * evidence count, recency.
+ *
+ * Implemented as ≤ 3 calls to `listSkillCandidates` so the existing
+ * AND-exact SQL semantics + tenant guards stay the only DB contract.
+ * Each scoped call overfetches to the service's hard ceiling (500) — the
+ * underlying `listSkillCandidates` orders by `created_at DESC`, so a
+ * smaller page would silently drop older high-confidence candidates
+ * before the in-memory rank runs.
+ *
+ * Dedupe priority on tie-id: `workflow > connector > global` (more
+ * specific scope wins, matching the rank order). Cap is 8 — the
+ * intra-section pre-trim in the assembler enforces token budget on top.
+ */
+export async function listProposedForAuthoring(
+  tenant_id: string,
+  scope_hints: { connector_id?: string; workflow_id?: string },
+  exec?: Executor,
+): Promise<SkillCandidateView[]> {
+  const db = exec ?? getDb();
+
+  const [globalRows, connectorRows, workflowRows] = await Promise.all([
+    listSkillCandidates({ tenant_id, status: "proposed", scope: "global", limit: 500 }, db),
+    scope_hints.connector_id
+      ? listSkillCandidates(
+          {
+            tenant_id,
+            status: "proposed",
+            scope: "connector",
+            connector_id: scope_hints.connector_id,
+            limit: 500,
+          },
+          db,
+        )
+      : Promise.resolve<SkillCandidateView[]>([]),
+    scope_hints.workflow_id
+      ? listSkillCandidates(
+          {
+            tenant_id,
+            status: "proposed",
+            scope: "workflow",
+            workflow_id: scope_hints.workflow_id,
+            limit: 500,
+          },
+          db,
+        )
+      : Promise.resolve<SkillCandidateView[]>([]),
+  ]);
+
+  // Dedupe by id with priority workflow > connector > global. We add the
+  // higher-priority entries last so the Map's set overwrites the
+  // lower-priority duplicate.
+  const dedup = new Map<string, SkillCandidateView>();
+  for (const c of globalRows) dedup.set(c.id, c);
+  for (const c of connectorRows) dedup.set(c.id, c);
+  for (const c of workflowRows) dedup.set(c.id, c);
+
+  const scopeSpecificity = (scope: SkillCandidateView["scope"]): number =>
+    scope === "workflow" ? 3 : scope === "connector" ? 2 : 1;
+  const confidenceRank = (c: SkillCandidateView["confidence"]): number =>
+    c === "high" ? 3 : c === "medium" ? 2 : 1;
+
+  const sorted = Array.from(dedup.values()).sort((a, b) => {
+    const ds = scopeSpecificity(b.scope) - scopeSpecificity(a.scope);
+    if (ds !== 0) return ds;
+    const dc = confidenceRank(b.confidence) - confidenceRank(a.confidence);
+    if (dc !== 0) return dc;
+    const de = b.evidence_count - a.evidence_count;
+    if (de !== 0) return de;
+    // created_at is an ISO-8601 string — lexicographic compare matches
+    // chronological order. Descending: newest first.
+    if (a.created_at < b.created_at) return 1;
+    if (a.created_at > b.created_at) return -1;
+    return 0;
+  });
+
+  return sorted.slice(0, 8);
+}
+
 export async function getSkillCandidate(
   tenant_id: string,
   id: string,
