@@ -1808,6 +1808,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         docs: prompt.token_counts.docs,
         failures: prompt.token_counts.failures,
         messages: prompt.token_counts.messages,
+        recipe_bodies: prompt.token_counts.recipe_bodies,
+        skill_candidates: prompt.token_counts.skill_candidates,
         total: prompt.token_counts.total,
       }
     : undefined;
@@ -1938,6 +1940,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           breakdown_docs: breakdown.docs,
           breakdown_failures: breakdown.failures,
           breakdown_messages: breakdown.messages,
+          breakdown_recipe_bodies: breakdown.recipe_bodies,
+          breakdown_skill_candidates: breakdown.skill_candidates,
           breakdown_total: breakdown.total,
         }
       : {}),
