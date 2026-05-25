@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.2.0](https://github.com/MikeBild/subkit/compare/subkit-v6.1.1...subkit-v6.2.0) (2026-05-25)
+
+
+### Features
+
+* **authoring:** close R5 loop — recipe bodies + skill candidates in prompt ([#204](https://github.com/MikeBild/subkit/issues/204), [#201](https://github.com/MikeBild/subkit/issues/201)) ([#211](https://github.com/MikeBild/subkit/issues/211)) ([7dbdc3a](https://github.com/MikeBild/subkit/commit/7dbdc3a357b1b63b1d87ee2b2204ffdda682bbae))
+
 ## [6.1.1](https://github.com/MikeBild/subkit/compare/subkit-v6.1.0...subkit-v6.1.1) (2026-05-25)
 
 
