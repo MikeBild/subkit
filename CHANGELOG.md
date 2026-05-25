@@ -1,5 +1,33 @@
 # Changelog
 
+## [6.1.0](https://github.com/MikeBild/subkit/compare/subkit-v6.0.0...subkit-v6.1.0) (2026-05-24)
+
+
+### Features
+
+* **chat:** activate Slack chat bridge — native elicitations, explicit identity linking, dedup ([#206](https://github.com/MikeBild/subkit/issues/206)) ([5262f13](https://github.com/MikeBild/subkit/commit/5262f13b023195b1501adda741f06991bd4d9060))
+* **mcp:** background conversation turns via MCP async Tasks (SEP-1686) ([d8c31c1](https://github.com/MikeBild/subkit/commit/d8c31c1d7daaddd7e03a23e5fce75452c389842d))
+
+
+### Bug Fixes
+
+* **chat:** rename event_key test local to dodge gitleaks false positive ([#207](https://github.com/MikeBild/subkit/issues/207)) ([54cc588](https://github.com/MikeBild/subkit/commit/54cc588606ce188c4b591a418bc565fca92c4cb4))
+* **ci:** carve out strategy-stack r-id anchors from the ticket-coupling gate ([1866b8b](https://github.com/MikeBild/subkit/commit/1866b8bd009b55fa880dcc8324a27eb9656c8c65))
+* **conversations:** authorize workflow commit on commit_intent.kind, not the cosmetic confirm kind ([94e8eed](https://github.com/MikeBild/subkit/commit/94e8eed0ca256ca1e15d55ce56f40febe9a701a4))
+* **conversations:** gate persisted-workflow tools and seed authoring on sonnet 4.6 ([57a02bf](https://github.com/MikeBild/subkit/commit/57a02bf678beb7ca28b10e70bae1da07ebe0793d))
+
+
+### Documentation
+
+* embed overview architecture diagram in README and key docs ([e3a6118](https://github.com/MikeBild/subkit/commit/e3a6118f4041bd836b48bee0a8b12c791ee68b58))
+* more docs ([e74d2b2](https://github.com/MikeBild/subkit/commit/e74d2b22d01d7cc443b7888cd79bc6385563f2ac))
+* **reference:** human-readable pass on docs/03–08 — frontmatter + inline mermaid ([9dfbb47](https://github.com/MikeBild/subkit/commit/9dfbb4790a143572f98ef8e82169cdde168689b4))
+* reframe sk-as-product as reference implementation across all docs ([a4a974e](https://github.com/MikeBild/subkit/commit/a4a974e0279cc8ea6dc9b5fc74e00072cc92b57f))
+* **strategy:** claim hierarchy, deeper shared-system, accumulation implications, two-layer R-spec ([e019cad](https://github.com/MikeBild/subkit/commit/e019cadd105eb9a11e18cac08cafcbc886525f96))
+* **strategy:** human-readable pass — inline mermaid, drop document-codes, R-aliases in glossary ([bd99aac](https://github.com/MikeBild/subkit/commit/bd99aac298ea70668b60e13544b08c30fc999794))
+* **strategy:** introduce "The Operating Model" as iconic short term ([742affe](https://github.com/MikeBild/subkit/commit/742affe3376fb02eaf37b8083f245614ef628c8e))
+* **strategy:** introduce three-doc strategy stack and align repo vocabulary ([cf5b1bc](https://github.com/MikeBild/subkit/commit/cf5b1bc58230150e7668247617c916f3a80e7bda))
+
 ## [6.0.3](https://github.com/MikeBild/subkit/compare/subkit-v6.0.2...subkit-v6.0.3) (2026-05-23)
 
 
