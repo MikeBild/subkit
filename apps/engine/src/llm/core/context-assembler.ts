@@ -59,6 +59,7 @@ import type {
 } from "../types.ts";
 import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
 import {
+  _skillCandidatesSectionCapForTrim,
   formatChunk,
   formatConnectorRecipes,
   formatFailure,
@@ -80,8 +81,10 @@ import {
   loadInteractionLog,
   loadKnowledgeChunks,
   loadLatestPreview,
+  loadProposedCandidates,
   loadTopRecipeBodies,
   logRecipeBodyFallbacks,
+  trimCandidatesToBudget,
   trimRecipeBodiesToBudget,
 } from "./context-assembler/loaders.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
@@ -417,6 +420,50 @@ export async function assembleEnhancedPrompt(
     );
   }
 
+  // Skill candidates — proposed (status=proposed) candidates the LLM
+  // should see this turn so detected patterns reach the prompt without
+  // waiting for operator promotion. Sibling block to the connector
+  // load above: lives OUTSIDE the `if (p.connector_id)` so global
+  // candidates render even when no connector is in scope (workflow-
+  // scoped candidates render whenever `p.workflow_id` is set, per
+  // R4 — the only contract is "scope hint present ⇒ rendered").
+  // `listProposedForAuthoring` makes 1-3 indexed queries; best-effort
+  // try/catch matches the existing pattern — a DB blip never blocks
+  // assembly.
+  let skillCandidatesBlock: string | null = null;
+  let skillCandidatesOversizedItemId: string | null = null;
+  if (p.flow === "converse") {
+    const candidates = await loadProposedCandidates(
+      p.tenant_id,
+      {
+        ...(p.connector_id ? { connector_id: p.connector_id } : {}),
+        ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
+      },
+      db,
+    );
+    if (candidates.length > 0) {
+      const trimmed = trimCandidatesToBudget(candidates);
+      skillCandidatesBlock = trimmed.section;
+      skillCandidatesOversizedItemId = trimmed.oversized_item_id;
+    }
+  }
+
+  // R6 oversized-body warning — emitted exactly once when the trim
+  // loop ended with a single survivor still over cap (body was
+  // token-truncated to ceil(cap * 0.9)). Operators grep this to find
+  // self-healing detectors emitting oversized candidate bodies.
+  if (skillCandidatesOversizedItemId !== null) {
+    logger.warn({
+      module: "llm",
+      action: "llm.context.section_oversized_item",
+      msg: "candidate body exceeded section cap; body truncated for fit",
+      tenant_id: p.tenant_id,
+      section: "skill_candidates",
+      item_id: skillCandidatesOversizedItemId,
+      cap_tokens: _skillCandidatesSectionCapForTrim,
+    });
+  }
+
   const runtimeBlock = p.runtime_context
     ? renderRuntimeContextBlock({
         ...(p.runtime_context.engine_url ? { engine_url: p.runtime_context.engine_url } : {}),
@@ -473,6 +520,13 @@ export async function assembleEnhancedPrompt(
     // Loaded skills carry the full body — the LLM explicitly opted
     // in via load_skill, so the cost is justified.
     for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));
+    // Proposed skill candidates render next to loaded skills — same
+    // shape (full prose body, scope, best practices, pitfalls), lower
+    // confidence. Marked `[pending approval]` so the LLM treats them as
+    // hints, not authoritative rules. Drops BEFORE recipe bodies in the
+    // ladder (promoted skills are the durable surface; candidates are
+    // the cheapest section to lose without breaking authoring).
+    if (skillCandidatesBlock) sections.push(skillCandidatesBlock);
     for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
     if (userMemory) sections.push(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
@@ -581,6 +635,15 @@ export async function assembleEnhancedPrompt(
     } else if (connectorSkills.length > 0) {
       connectorSkills.length = 0;
       trimmed.push("connector_skill_index");
+    } else if (skillCandidatesBlock) {
+      // Skill candidates drop BEFORE recipe bodies: promoted skills
+      // (those that survived approval and now live in the global /
+      // connector / workflow skill scope) are the durable surface; a
+      // candidate is by construction speculative. Losing it just means
+      // the LLM can't see a pattern the self-healer detected but the
+      // operator hasn't yet promoted — recoverable on the next turn.
+      skillCandidatesBlock = null;
+      trimmed.push("skill_candidates");
     } else if (connectorRecipeBodiesBlock) {
       // Rich recipe bodies drop BEFORE the slim recipe roster: the
       // index is the navigational signal (the LLM can still call
@@ -639,14 +702,14 @@ export async function assembleEnhancedPrompt(
   }
 
   const includedSkills = [...globalSkills, ...connectorSkills, ...workflowSkills, ...loadedSkills];
-  // Post-trim per-section token accounting. recipe_bodies reads the
-  // rendered (already-trimmed) block when it survived the global
-  // trimmer; reads 0 when dropped. skill_candidates is wired in
-  // commit 3 — see §6 of the plan; the bucket stays in the type
-  // shape now so every consumer compiles in one slice.
+  // Post-trim per-section token accounting. Each bucket reads the
+  // rendered (already trimmed) block when it survived the global
+  // trimmer; reads 0 when dropped. The producer (this function)
+  // populates every key — consumers never default with `?? 0`.
   const recipeBodiesTokens =
     connectorRecipeBodiesBlock !== null ? countTokens(connectorRecipeBodiesBlock) : 0;
-  const skillCandidatesTokens = 0;
+  const skillCandidatesTokens =
+    skillCandidatesBlock !== null ? countTokens(skillCandidatesBlock) : 0;
   return {
     system,
     messages: p.user_turns,
