@@ -22,6 +22,8 @@ function makePrompt(stableHead: string, quirkSlot: "auth" | "schema" | "general"
       failures: 0,
       messages: 0,
       total: 0,
+      recipe_bodies: 0,
+      skill_candidates: 0,
     },
     included_skill_ids: [],
     included_chunk_ids: [],

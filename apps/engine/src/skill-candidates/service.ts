@@ -10,6 +10,7 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
 import { log } from "../logging/logger.ts";
+import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { createSkill } from "../skills/service.ts";
 import {
   detectFailurePatterns,
@@ -122,6 +123,100 @@ export async function listSkillCandidates(
     db,
   );
   return rows.map((r) => toView(r, counts.get(r.id) ?? 0));
+}
+
+/**
+ * Hard cap on the number of proposed candidates the assembler ever sees
+ * in a single authoring turn. Section-level pre-trim (1200 tokens, in
+ * the assembler) is the second bound; this is the first.
+ */
+export const LIST_PROPOSED_FOR_AUTHORING_CAP = 8;
+
+/**
+ * Return up to LIST_PROPOSED_FOR_AUTHORING_CAP proposed candidates for an authoring turn, merged from
+ * (global ∪ optional-connector ∪ optional-workflow) and ordered by
+ * (scope-specificity, confidence, evidence-count, created_at) descending.
+ * On id collision, the more specific scope wins (workflow > connector >
+ * global). Each per-scope page overfetches to the service ceiling so
+ * older high-confidence candidates aren't dropped by the underlying
+ * `created_at DESC` paging before ranking.
+ */
+export async function listProposedForAuthoring(
+  tenant_id: string,
+  scope_hints: { connector_id?: string; workflow_id?: string },
+  exec?: Executor,
+): Promise<SkillCandidateView[]> {
+  const db = exec ?? getDb();
+  const start = Date.now();
+  const scopeHint = scope_hints.workflow_id
+    ? "workflow"
+    : scope_hints.connector_id
+      ? "connector"
+      : "global";
+
+  const [globalRows, connectorRows, workflowRows] = await Promise.all([
+    listSkillCandidates({ tenant_id, status: "proposed", scope: "global", limit: 500 }, db),
+    scope_hints.connector_id
+      ? listSkillCandidates(
+          {
+            tenant_id,
+            status: "proposed",
+            scope: "connector",
+            connector_id: scope_hints.connector_id,
+            limit: 500,
+          },
+          db,
+        )
+      : Promise.resolve<SkillCandidateView[]>([]),
+    scope_hints.workflow_id
+      ? listSkillCandidates(
+          {
+            tenant_id,
+            status: "proposed",
+            scope: "workflow",
+            workflow_id: scope_hints.workflow_id,
+            limit: 500,
+          },
+          db,
+        )
+      : Promise.resolve<SkillCandidateView[]>([]),
+  ]);
+
+  // The three queries are AND-exact-match on disjoint `scope` values
+  // (global / connector / workflow), so a single row cannot appear in
+  // more than one result set — no dedup needed.
+  const merged: SkillCandidateView[] = [...globalRows, ...connectorRows, ...workflowRows];
+
+  const scopeSpecificity = (scope: SkillCandidateView["scope"]): number =>
+    scope === "workflow" ? 3 : scope === "connector" ? 2 : 1;
+  const confidenceRank = (c: SkillCandidateView["confidence"]): number =>
+    c === "high" ? 3 : c === "medium" ? 2 : 1;
+
+  const sorted = merged.sort((a, b) => {
+    const ds = scopeSpecificity(b.scope) - scopeSpecificity(a.scope);
+    if (ds !== 0) return ds;
+    const dc = confidenceRank(b.confidence) - confidenceRank(a.confidence);
+    if (dc !== 0) return dc;
+    const de = b.evidence_count - a.evidence_count;
+    if (de !== 0) return de;
+    // created_at is an ISO-8601 string — lexicographic compare matches
+    // chronological order. Descending: newest first.
+    if (a.created_at < b.created_at) return 1;
+    if (a.created_at > b.created_at) return -1;
+    return 0;
+  });
+
+  const out = sorted.slice(0, LIST_PROPOSED_FOR_AUTHORING_CAP);
+  try {
+    getMetrics().observe(
+      METRIC_NAMES.LLM_LIST_PROPOSED_FOR_AUTHORING_DURATION_MS,
+      Date.now() - start,
+      { scope_hint: scopeHint },
+    );
+  } catch {
+    // Metrics emission is best-effort — never fail the authoring path.
+  }
+  return out;
 }
 
 export async function getSkillCandidate(

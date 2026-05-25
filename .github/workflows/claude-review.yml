@@ -27,42 +27,38 @@ name: claude-review
 #   * skipped if the PR title contains "[skip-review]"
 #   * --max-budget-usd 15.00 caps API spend per run
 #
-# DISABLED on every-PR auto-run (2026-05-22): after six review rounds
-# against PR #206 the loop crossed into diminishing returns — round 6
-# logged "CRITICAL: None" and only optional/cosmetic findings. The
-# workflow is kept in tree (not deleted) for two reasons:
-#   1. Manual one-off runs are still useful on large refactors —
-#      trigger via `workflow_dispatch` from the Actions tab.
-#   2. The trust-boundary scrubber + scrub-review-comment.ts pipeline
-#      is exercised by tests that import this workflow's scripts;
-#      removing the YAML would orphan those tests.
-# Re-enable by restoring the `pull_request:` trigger block (commented
-# out below) and removing the `workflow_dispatch:` only block.
+# RE-ENABLED on every-PR auto-run (2026-05-25): a prior disable on
+# 2026-05-22 was rolled back. `workflow_dispatch` stays for manual
+# one-off runs on large refactors; `pull_request` fires the standard
+# advisory review on every non-draft, non-fork, non-[skip-review] PR.
 on:
   workflow_dispatch:
-  # pull_request:
-  #   types: [opened, synchronize, reopened]
-  #   branches: [main]
-  #   paths-ignore:
-  #     - "docs/**"
-  #     - "**/*.md"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: claude-review-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   review:
     name: Claude review
     runs-on: ubuntu-24.04
+    # On pull_request: skip drafts, fork PRs (no secrets), and [skip-review] titles.
+    # On workflow_dispatch: always run (operator opted in via the Actions UI button).
     if: >-
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      !contains(github.event.pull_request.title, '[skip-review]')
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       !contains(github.event.pull_request.title, '[skip-review]'))
     steps:
       - name: Checkout (full history for diff)
         uses: actions/checkout@v4

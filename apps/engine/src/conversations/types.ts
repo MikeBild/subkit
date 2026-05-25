@@ -66,6 +66,8 @@ export interface TurnUsage {
     docs: number;
     failures: number;
     messages: number;
+    recipe_bodies: number;
+    skill_candidates: number;
     total: number;
   };
 }

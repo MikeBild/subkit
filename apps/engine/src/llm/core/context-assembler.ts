@@ -37,6 +37,7 @@ import { getConnector } from "../../connectors/service.ts";
 import { generateMainAgentSystemPrompt } from "../../conversations/agent/context.ts";
 import { getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
+import { idHashesCapped } from "../../observability/id-hashes.ts";
 import { recordLlmContextAssembled } from "../../observability/instrumentation.ts";
 import {
   getSkill,
@@ -69,6 +70,8 @@ import {
   formatSkill,
   formatSkillIndex,
   formatUserMemory,
+  type RecipeBodyView,
+  SKILL_CANDIDATES_SECTION_CAP,
   selectOperatorQuirkCategories,
 } from "./context-assembler/formatters.ts";
 import {
@@ -79,6 +82,11 @@ import {
   loadInteractionLog,
   loadKnowledgeChunks,
   loadLatestPreview,
+  loadProposedCandidates,
+  loadTopRecipeBodies,
+  logRecipeBodyFallbacks,
+  trimCandidatesToBudget,
+  trimRecipeBodiesToBudget,
 } from "./context-assembler/loaders.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
@@ -210,6 +218,10 @@ export interface BudgetReport {
     knowledge: number;
     docs: number;
     failures: number;
+    /** Count of recipe-body items rendered into the prompt. */
+    recipe_bodies: number;
+    /** Count of proposed Skill Candidates rendered into the prompt. */
+    candidates: number;
   };
   /** Sections dropped by the trimmer, in order. Empty = fit comfortably. */
   dropped_sections: string[];
@@ -231,7 +243,17 @@ export interface AssembledContext {
 export async function assembleEnhancedPrompt(
   p: AssembleContextParams & { surface?: ConversationSurface },
   exec?: Executor,
-): Promise<EnhancedPrompt & { dropped_sections: string[] }> {
+): Promise<
+  EnhancedPrompt & {
+    dropped_sections: string[];
+    /** Recipe slugs whose rich body survived BOTH the intra-section
+     *  trim AND the global trimmer — fed verbatim to the observability
+     *  hash list in `assembleContext`. */
+    included_recipe_slugs: string[];
+    /** Candidate ids likewise. Empty when the section was dropped. */
+    included_candidate_ids: string[];
+  }
+> {
   const db = exec ?? getDb();
   const cap = Math.min(p.max_tokens, contextCapFor(p.model ?? "default"));
 
@@ -353,6 +375,10 @@ export async function assembleEnhancedPrompt(
   // scratch on the next turn.
   let connectorOperatorQuirksBlock: string | null = null;
   let connectorRecipesBlock: string | null = null;
+  let connectorRecipeBodiesBlock: string | null = null;
+  let connectorRecipeBodiesSurvivors: RecipeBodyView[] = [];
+  let connectorRecipeBodiesTemplateSlug: string | null = null;
+  let connectorRecipeBodiesFallbackSlugs: string[] = [];
   if (p.connector_id) {
     try {
       const connector = await getConnector(p.tenant_id, p.connector_id, db);
@@ -370,10 +396,22 @@ export async function assembleEnhancedPrompt(
         );
       }
       if (connector?.template_snapshot) {
-        connectorRecipesBlock = formatConnectorRecipes(
-          connector.slug,
-          connector.template_snapshot as Record<string, unknown>,
-        );
+        const snapshot = connector.template_snapshot as Record<string, unknown>;
+        connectorRecipesBlock = formatConnectorRecipes(connector.slug, snapshot);
+        // Recipe bodies — rich payload for the top-K ranked recipes so
+        // the LLM can clone via start_workflow_from_recipe in one turn
+        // (no inspect_recipe round-trip). Pure ranking over the already-
+        // loaded snapshot — no second getConnector. Section is bounded
+        // by `trimRecipeBodiesToBudget` to 2 KB; rendered string already
+        // carries the elision notice when something was dropped.
+        const recipeBodies = loadTopRecipeBodies(snapshot, p.authoring_hint, query);
+        if (recipeBodies.length > 0) {
+          const trimmed = trimRecipeBodiesToBudget(connector.slug, recipeBodies);
+          connectorRecipeBodiesBlock = trimmed.section;
+          connectorRecipeBodiesSurvivors = trimmed.survivors;
+          connectorRecipeBodiesTemplateSlug = connector.slug;
+          connectorRecipeBodiesFallbackSlugs = trimmed.fallback_recipe_slugs;
+        }
       }
     } catch (err) {
       logger.debug({
@@ -385,6 +423,70 @@ export async function assembleEnhancedPrompt(
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  // Hybrid-fallback log — one warning per surviving recipe that rendered
+  // without its workflow JSON (per-body soft-cap exceeded). Emitted
+  // exactly once per assembly, after the trim loop decided the final
+  // set, so the render-and-count loop never produces duplicate warnings.
+  if (connectorRecipeBodiesTemplateSlug && connectorRecipeBodiesFallbackSlugs.length > 0) {
+    logRecipeBodyFallbacks(
+      connectorRecipeBodiesTemplateSlug,
+      p.tenant_id,
+      connectorRecipeBodiesSurvivors,
+      connectorRecipeBodiesFallbackSlugs,
+    );
+  }
+
+  // Skill candidates — proposed (status=proposed) candidates the LLM
+  // should see this turn so detected patterns reach the prompt without
+  // waiting for operator promotion. Sibling block to the connector
+  // load above: lives OUTSIDE the `if (p.connector_id)` so global
+  // candidates render even when no connector is in scope; workflow-
+  // scoped candidates render whenever `p.workflow_id` is set.
+  //
+  // Gate: converse flow only. Non-converse flows (`generate`, `repair`,
+  // `extract`, `summarize`, `discover`) skip this load entirely — they
+  // do not steer the authoring loop, so injecting candidate hints
+  // would burn tokens for no behavioural payoff. Effective contract:
+  // "converse flow AND (global OR scope-hint matches)".
+  // `listProposedForAuthoring` makes 1-3 indexed queries; best-effort
+  // try/catch matches the existing pattern — a DB blip never blocks
+  // assembly.
+  let skillCandidatesBlock: string | null = null;
+  let skillCandidatesOversizedItemId: string | null = null;
+  let skillCandidateSurvivorIds: string[] = [];
+  if (p.flow === "converse") {
+    const candidates = await loadProposedCandidates(
+      p.tenant_id,
+      {
+        ...(p.connector_id ? { connector_id: p.connector_id } : {}),
+        ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
+      },
+      db,
+    );
+    if (candidates.length > 0) {
+      const trimmed = trimCandidatesToBudget(candidates);
+      skillCandidatesBlock = trimmed.section;
+      skillCandidatesOversizedItemId = trimmed.oversized_item_id;
+      skillCandidateSurvivorIds = trimmed.survivors.map((c) => c.id);
+    }
+  }
+
+  // Oversized-survivor warning — emitted exactly once when the trim
+  // loop ended with a single survivor still over cap (body was
+  // token-truncated to ceil(cap * 0.9)). Operators grep this to find
+  // self-healing detectors emitting oversized candidate bodies.
+  if (skillCandidatesOversizedItemId !== null) {
+    logger.warn({
+      module: "llm",
+      action: "llm.context.section_oversized_item",
+      msg: "candidate body exceeded section cap; body truncated for fit",
+      tenant_id: p.tenant_id,
+      section: "skill_candidates",
+      item_id: skillCandidatesOversizedItemId,
+      cap_tokens: SKILL_CANDIDATES_SECTION_CAP,
+    });
   }
 
   const runtimeBlock = p.runtime_context
@@ -432,11 +534,24 @@ export async function assembleEnhancedPrompt(
     if (globalIndexBlock) sections.push(globalIndexBlock);
     if (connectorOperatorQuirksBlock) sections.push(connectorOperatorQuirksBlock);
     if (connectorRecipesBlock) sections.push(connectorRecipesBlock);
+    // Rich recipe bodies sit next to the slim recipe roster so the LLM
+    // reads "here's the slug list" → "here's the workflow JSON for the
+    // top picks" together. Drops before the index above when the global
+    // trimmer needs room (the slim roster keeps the LLM able to call
+    // inspect_recipe for anything that fell off).
+    if (connectorRecipeBodiesBlock) sections.push(connectorRecipeBodiesBlock);
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
     // Loaded skills carry the full body — the LLM explicitly opted
     // in via load_skill, so the cost is justified.
     for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));
+    // Proposed skill candidates render next to loaded skills — same
+    // shape (full prose body, scope, best practices, pitfalls), lower
+    // confidence. Marked `[pending approval]` so the LLM treats them as
+    // hints, not authoritative rules. Drops BEFORE recipe bodies in the
+    // ladder (promoted skills are the durable surface; candidates are
+    // the cheapest section to lose without breaking authoring).
+    if (skillCandidatesBlock) sections.push(skillCandidatesBlock);
     for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
     if (userMemory) sections.push(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
@@ -545,6 +660,23 @@ export async function assembleEnhancedPrompt(
     } else if (connectorSkills.length > 0) {
       connectorSkills.length = 0;
       trimmed.push("connector_skill_index");
+    } else if (skillCandidatesBlock) {
+      // Skill candidates drop BEFORE recipe bodies: promoted skills
+      // (those that survived approval and now live in the global /
+      // connector / workflow skill scope) are the durable surface; a
+      // candidate is by construction speculative. Losing it just means
+      // the LLM can't see a pattern the self-healer detected but the
+      // operator hasn't yet promoted — recoverable on the next turn.
+      skillCandidatesBlock = null;
+      trimmed.push("skill_candidates");
+    } else if (connectorRecipeBodiesBlock) {
+      // Rich recipe bodies drop BEFORE the slim recipe roster: the
+      // index is the navigational signal (the LLM can still call
+      // inspect_recipe to recover any body), the bodies are the
+      // first-turn-clone payload. When the global budget is tight,
+      // surrender the heavy section first.
+      connectorRecipeBodiesBlock = null;
+      trimmed.push("connector_recipe_bodies");
     } else if (connectorRecipesBlock) {
       // Recipes are a navigation aid — dropping them just means the
       // LLM falls back to authoring from scratch. Trim before quirks
@@ -595,6 +727,22 @@ export async function assembleEnhancedPrompt(
   }
 
   const includedSkills = [...globalSkills, ...connectorSkills, ...workflowSkills, ...loadedSkills];
+  // Post-trim per-section token accounting. Each bucket reads the
+  // rendered (already trimmed) block when it survived the global
+  // trimmer; reads 0 when dropped. The producer (this function)
+  // populates every key — consumers never default with `?? 0`.
+  const recipeBodiesTokens =
+    connectorRecipeBodiesBlock !== null ? countTokens(connectorRecipeBodiesBlock) : 0;
+  const skillCandidatesTokens =
+    skillCandidatesBlock !== null ? countTokens(skillCandidatesBlock) : 0;
+  // Survivor lists: only items in blocks the global trimmer kept count.
+  // When the section was dropped above, the ids zero out — so the
+  // observability hashes report exactly what the LLM actually saw.
+  const includedRecipeSlugs =
+    connectorRecipeBodiesBlock !== null
+      ? connectorRecipeBodiesSurvivors.map((r) => r.recipe_slug)
+      : [];
+  const includedCandidateIds = skillCandidatesBlock !== null ? skillCandidateSurvivorIds : [];
   return {
     system,
     messages: p.user_turns,
@@ -609,6 +757,8 @@ export async function assembleEnhancedPrompt(
       failures: failures.reduce((t, f) => t + countTokens(formatFailure(f)), 0),
       messages: messagesTokens,
       total,
+      recipe_bodies: recipeBodiesTokens,
+      skill_candidates: skillCandidatesTokens,
     },
     included_skill_ids: includedSkills.map((s) => s.id),
     included_chunk_ids: chunks.map((c) => c.id),
@@ -617,6 +767,8 @@ export async function assembleEnhancedPrompt(
     included_chunks: chunks,
     included_knowledge_chunks: knowledgeChunks,
     dropped_sections: trimmed,
+    included_recipe_slugs: includedRecipeSlugs,
+    included_candidate_ids: includedCandidateIds,
   };
 }
 
@@ -636,7 +788,12 @@ export async function assembleContext(
     ? 0
     : (params.prior_failures ?? []).length;
 
-  const { dropped_sections, ...promptWithoutDropped } = prompt;
+  const {
+    dropped_sections,
+    included_recipe_slugs,
+    included_candidate_ids,
+    ...promptWithoutDropped
+  } = prompt;
 
   const budget_report = {
     cap_tokens: effectiveCap,
@@ -649,9 +806,20 @@ export async function assembleContext(
       knowledge: prompt.included_knowledge_chunk_ids.length,
       docs: prompt.included_chunk_ids.length,
       failures: includedFailureCount,
+      // Counts that survived BOTH the per-section pre-trim AND the
+      // global trimmer — what the LLM actually saw on this turn.
+      recipe_bodies: included_recipe_slugs.length,
+      candidates: included_candidate_ids.length,
     },
     dropped_sections,
   };
+
+  // Per-id 8-char SHA-256 hashes — capped at 12 entries per category
+  // (top-N selection cap plus headroom). Operators can grep "did this
+  // turn see X?" by hashing X locally and looking for the 8-char prefix.
+  // No metric labels carry hashes — keeps cardinality bounded.
+  // Correlation-grade obfuscation only, NOT a security boundary.
+  const idHashes = (ids: string[]): string[] => idHashesCapped(ids);
 
   // Surface every assembly as a structured event. The metric and the
   // log line let operators see at a glance which flows are running
@@ -667,6 +835,19 @@ export async function assembleContext(
     volatile_tokens: budget_report.volatile_tokens,
     messages_tokens: budget_report.messages_tokens,
     included: budget_report.included,
+    included_skill_id_hashes: idHashes(prompt.included_skill_ids),
+    included_candidate_id_hashes: idHashes(included_candidate_ids),
+    // Recipe slugs are low-cardinality + already operator-visible in
+    // connector templates; hashing them would force operators to
+    // round-trip through sha256sum to read the log line. Emit the raw
+    // slugs (still capped at 12 — the same headroom as the hash lists).
+    //
+    // Cardinality assumption: `template_snapshot.recipes[].slug` stays
+    // operator-curated and bounded. If recipes ever become user-authorable
+    // (each tenant defines its own), this becomes a log-line cardinality
+    // problem and the slugs should switch to hashed via `idHashes` like
+    // the other id arrays.
+    included_recipe_slugs: included_recipe_slugs.slice(0, 12),
     dropped_sections: budget_report.dropped_sections,
   });
 

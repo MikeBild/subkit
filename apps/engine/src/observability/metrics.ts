@@ -334,6 +334,21 @@ export const METRIC_NAMES = {
   LLM_CONTEXT_ASSEMBLED_TOTAL: "llm_context_assembled_total",
   LLM_CONTEXT_DROPPED_SECTIONS_TOTAL: "llm_context_dropped_sections_total",
   LLM_CONTEXT_TOTAL_TOKENS: "llm_context_total_tokens",
+  /**
+   * Wall-clock duration (ms) of `listProposedForAuthoring` — the
+   * authoring-time fan-out that loads proposed Skill Candidates for
+   * the assembler. Up to three indexed queries + `getEvidenceCounts`
+   * batch per converse turn; this histogram surfaces the cost so a
+   * future fan-out → single-query refactor has measured ground truth.
+   */
+  LLM_LIST_PROPOSED_FOR_AUTHORING_DURATION_MS: "llm_list_proposed_for_authoring_duration_ms",
+  /**
+   * Section-load failures during context assembly, partitioned by
+   * section name. Currently emitted by the proposed-candidates loader
+   * when the DB fan-out throws. A non-zero rate is operational signal:
+   * candidates have silently vanished from the prompt.
+   */
+  LLM_CONTEXT_SECTION_LOAD_FAILURES_TOTAL: "llm_context_section_load_failures_total",
   AUTHORING_GATE_BLOCKS_TOTAL: "subkit_authoring_gate_blocks_total",
   // Per-tool circuit-breaker open events. Fired when the
   // sdk-wrap layer short-circuits a tool call due to repeated
@@ -755,6 +770,17 @@ function buildRegistry(): MetricsRegistry {
     help: "Total prompt tokens emitted from context-assembly per call (pre-completion).",
     labels: ["flow"],
     buckets: HISTOGRAM_DURATION_BUCKETS_MS,
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.LLM_LIST_PROPOSED_FOR_AUTHORING_DURATION_MS,
+    help: "Wall-clock duration of the authoring-time proposed-candidate fan-out (up to 3 indexed queries + evidence batch).",
+    labels: ["scope_hint"],
+    buckets: HISTOGRAM_DURATION_BUCKETS_MS,
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LLM_CONTEXT_SECTION_LOAD_FAILURES_TOTAL,
+    help: "Context-assembly section-load failures partitioned by section name.",
+    labels: ["section"],
   });
   reg.registerHistogram({
     name: METRIC_NAMES.LLM_TOKEN_DRIFT_PCT,
