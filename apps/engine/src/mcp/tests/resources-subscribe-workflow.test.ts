@@ -46,24 +46,31 @@ describe("issue #169 — mcp resources/subscribe workflow:// updates", () => {
 
     await client.subscribeResource({ uri: `workflow://${id}` });
 
-    await globalEmitter.dispatch({
-      id: 1,
-      tenant_id: suite.http.tenantId,
-      channel: "workflow.lifecycle",
-      type: "workflow.updated",
-      payload: { workflow_id: id, slug: "w169-probe", version: 2 },
-      created_at: new Date(TEST_NOW_MS),
-    });
-
+    // Re-dispatch every poll iteration rather than fire-once-and-pray;
+    // see the matching comment in resources-subscribe.test.ts. MCP's
+    // StreamableHTTPClientTransport opens the server-initiated SSE
+    // notification stream LAZILY, and on a saturated CI runner the GET
+    // /mcp request can land after the first sendResourceUpdated has
+    // already fired (notification dropped — MCP is at-most-once on
+    // this channel). Forwarder is idempotent, assertion is `>= 1`.
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
-    const deadline = Date.now() + 5_000;
-    // allow-wall-clock: this test exercises real-time polling or freshness windows.
+    const deadline = Date.now() + 15_000;
+    let dispatchAttempt = 0;
     while (received.length === 0 && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: MCP resource subscription propagation cadence
+      dispatchAttempt++;
+      await globalEmitter.dispatch({
+        id: dispatchAttempt,
+        tenant_id: suite.http.tenantId,
+        channel: "workflow.lifecycle",
+        type: "workflow.updated",
+        payload: { workflow_id: id, slug: "w169-probe", version: 2 },
+        created_at: new Date(TEST_NOW_MS),
+      });
+      await new Promise((r) => setTimeout(r, 200)); // allow-wall-clock: MCP resource subscription propagation cadence
     }
     expect(received.length).toBeGreaterThanOrEqual(1);
     expect(received[0]?.uri).toBe(`workflow://${id}`);
-  });
+  }, 20_000);
 
   test("events for non-subscribed workflows are ignored", async () => {
     const { id: subscribedId } = await suite.seedWorkflow({
