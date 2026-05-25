@@ -366,6 +366,15 @@ export interface RecipeBodyView {
   required_connectors: Array<{ placeholder: string; template: string }>;
   sample_input: unknown;
   workflow: unknown;
+  /**
+   * Cache of `renderRecipeBody(this).fellBack`. Populated by
+   * `formatConnectorRecipeBodies` during render-and-count so
+   * `logRecipeBodyFallbacks` can read the flag instead of re-rendering
+   * each survivor (saves up to N extra renders, where N ≤ top-K = 3).
+   * Pure function semantics: the value is deterministic per-body and
+   * idempotent across renders.
+   */
+  fellBack?: boolean;
 }
 
 /** Render a single recipe body as a markdown fragment. Returns the
@@ -428,7 +437,16 @@ export function formatConnectorRecipeBodies(
   bodies: RecipeBodyView[],
 ): string | null {
   if (bodies.length === 0) return null;
-  const rendered = bodies.map((body) => renderRecipeBody(body).text);
+  // Render-and-cache: `body.fellBack` is mutated so logRecipeBodyFallbacks
+  // (called once post-trim by the assembler) reads the flag instead of
+  // re-rendering each survivor. Pure function semantics: renderRecipeBody
+  // is deterministic, so repeated calls during render-and-count trim
+  // converge on the same flag value.
+  const rendered = bodies.map((body) => {
+    const r = renderRecipeBody(body);
+    body.fellBack = r.fellBack;
+    return r.text;
+  });
   return [
     `# Recipe bodies — connector \`${templateSlug}\``,
     "Top-K rich payloads for likely recipes. Clone via `start_workflow_from_recipe(template_slug, recipe_slug)` — no inspect_recipe round-trip needed when the workflow JSON is present below. Fall back to `inspect_recipe` only for elided bodies.",

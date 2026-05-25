@@ -453,8 +453,12 @@ export function logRecipeBodyFallbacks(
   bodies: RecipeBodyView[],
 ): void {
   for (const body of bodies) {
-    const r = renderRecipeBody(body);
-    if (!r.fellBack) continue;
+    // Read the cached `fellBack` flag populated by
+    // `formatConnectorRecipeBodies` during the trim loop. Falls back to a
+    // fresh render only when the cache is missing (defensive — the
+    // assembler always calls the formatter at least once before this).
+    const fellBack = body.fellBack ?? renderRecipeBody(body).fellBack;
+    if (!fellBack) continue;
     logger.warn({
       module: "llm",
       action: "llm.context.recipe_body_fallback",

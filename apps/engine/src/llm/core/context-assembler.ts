@@ -92,6 +92,20 @@ import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts
 
 export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web";
 
+/**
+ * Cap a string-id list to `cap` entries (default 12, matching the per-list
+ * cap the assembler uses for the three `included_*_hashes` log arrays) and
+ * map each survivor to an 8-char sha256 hex prefix. Operators correlate
+ * "did this turn see X?" by hashing X locally and grepping the log line.
+ * Privacy framing: correlation-grade obfuscation, NOT a security boundary.
+ *
+ * Exported so the cap can be unit-tested without driving the full
+ * assembler.
+ */
+export function idHashesCapped(ids: string[], cap = 12): string[] {
+  return ids.slice(0, cap).map((id) => createHash("sha256").update(id).digest("hex").slice(0, 8));
+}
+
 export {
   applyRuntimeTemplate,
   countSkillTokens,
@@ -812,8 +826,7 @@ export async function assembleContext(
   // No metric labels carry hashes — keeps cardinality bounded. See
   // plan §4 privacy framing: correlation-grade obfuscation, NOT a
   // security boundary.
-  const idHashes = (ids: string[]): string[] =>
-    ids.slice(0, 12).map((id) => createHash("sha256").update(id).digest("hex").slice(0, 8));
+  const idHashes = (ids: string[]): string[] => idHashesCapped(ids);
 
   // Surface every assembly as a structured event. The metric and the
   // log line let operators see at a glance which flows are running

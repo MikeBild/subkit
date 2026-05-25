@@ -7,6 +7,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { idHashesCapped } from "../../llm/core/context-assembler.ts";
 import { recordLlmContextAssembled } from "../instrumentation.ts";
 import { logRing } from "../log-ring.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "../metrics.ts";
@@ -248,5 +249,50 @@ describe("recordLlmContextAssembled — structured log line", () => {
     expect(last.fields.stable_tokens).toBe(3000);
     expect(last.fields.volatile_tokens).toBe(2000);
     expect(last.fields.messages_tokens).toBe(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// idHashesCapped — boundary behaviour (cap at 12)
+// ---------------------------------------------------------------------------
+
+describe("idHashesCapped — list capped at 12 regardless of input size", () => {
+  test("input ≤ 12 ids: every id is hashed; output length matches input", () => {
+    const ids = Array.from({ length: 5 }, (_, i) => `id-${i}`);
+    const hashes = idHashesCapped(ids);
+    expect(hashes).toHaveLength(5);
+    for (let i = 0; i < ids.length; i++) {
+      expect(hashes[i]).toBe(hashId(ids[i]!));
+    }
+  });
+
+  test("input = 12 ids: every id is hashed (boundary)", () => {
+    const ids = Array.from({ length: 12 }, (_, i) => `id-${i}`);
+    const hashes = idHashesCapped(ids);
+    expect(hashes).toHaveLength(12);
+    for (let i = 0; i < 12; i++) {
+      expect(hashes[i]).toBe(hashId(ids[i]!));
+    }
+  });
+
+  test("input > 12 ids: output truncated to 12; only the first 12 ids hashed", () => {
+    const ids = Array.from({ length: 20 }, (_, i) => `id-${i}`);
+    const hashes = idHashesCapped(ids);
+    expect(hashes).toHaveLength(12);
+    // First 12 ids' hashes appear in order
+    for (let i = 0; i < 12; i++) {
+      expect(hashes[i]).toBe(hashId(ids[i]!));
+    }
+    // Ids 12-19 must NOT appear in the output
+    for (let i = 12; i < 20; i++) {
+      expect(hashes).not.toContain(hashId(ids[i]!));
+    }
+  });
+
+  test("custom cap parameter is honored", () => {
+    const ids = Array.from({ length: 10 }, (_, i) => `id-${i}`);
+    expect(idHashesCapped(ids, 3)).toHaveLength(3);
+    expect(idHashesCapped(ids, 100)).toHaveLength(10);
+    expect(idHashesCapped([], 12)).toHaveLength(0);
   });
 });
