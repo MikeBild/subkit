@@ -7,7 +7,7 @@
  * `regen/budget-baseline` change documents why. Never wired into
  * package.json scripts. Never runs in CI.
  *
- * Run protocol (per plan §5 decision 5 + R5 mitigation):
+ * Run protocol (capture against pre-bundle main; never run in CI):
  *
  *   git worktree add /tmp/sk-baseline-worktree bae45172
  *   cp scripts/capture-budget-baseline.ts /tmp/sk-baseline-worktree/scripts/

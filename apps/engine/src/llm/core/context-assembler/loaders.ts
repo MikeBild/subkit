@@ -269,7 +269,7 @@ export async function loadKnowledgeChunks(
 }
 
 // ---------------------------------------------------------------------------
-// Recipe bodies + Skill candidates — R5 loop closure
+// Recipe bodies + Skill candidates — context for in-flight authoring
 // ---------------------------------------------------------------------------
 
 /** Normalise a token for case-folded, punctuation-stripped comparison.
@@ -408,7 +408,7 @@ export function loadTopRecipeBodies(
  *
  * The trim helpers MUST call the formatter on each iteration — the cap
  * applies to the final rendered section string (heading + per-item
- * bodies + fences), not raw per-body tokens (risk callout #4).
+ * bodies + fences), not raw per-body tokens.
  *
  * Returns the surviving list and the rendered section (or null if
  * everything was dropped). When at least one body was trimmed, an
@@ -442,10 +442,11 @@ export function trimRecipeBodiesToBudget(
   return { survivors: [], section: null, trimmed };
 }
 
-/** Emit the R1 fallback warning log for each surviving recipe whose
- *  body rendered via the hybrid path (workflow JSON elided). Called by
- *  the assembler exactly once per assembly, after the trim loop decides
- *  the final set — so a render-and-count trim never emits a duplicate
+/** Emit the hybrid-fallback warning log for each surviving recipe whose
+ *  body rendered without its workflow JSON (per-body soft-cap exceeded).
+ *  Called by the assembler exactly once per assembly, after the trim
+ *  loop decides the final set — so a render-and-count trim never emits
+ *  a duplicate
  *  warning. */
 export function logRecipeBodyFallbacks(
   templateSlug: string,
@@ -479,10 +480,10 @@ export function logRecipeBodyFallbacks(
  * maybe-workflow. Service-level merge / rank / cap (=8) happens inside
  * `listProposedForAuthoring`.
  *
- * Wired into the assembler in commit 3 (skill-candidates section). Lives
- * in this commit so the loaders/formatters pair compiles as one slice;
- * importing `listProposedForAuthoring` validates the index.ts export
- * (added in this commit — see PR body).
+ * Wired into the assembler alongside the recipe-bodies loader so the
+ * loaders/formatters pair compiles as one slice. Importing
+ * `listProposedForAuthoring` validates that the service helper is
+ * exported from `skill-candidates/index.ts`.
  */
 export async function loadProposedCandidates(
   tenant_id: string,
@@ -542,10 +543,10 @@ export function trimCandidatesToBudget(candidates: SkillCandidateView[]): {
     if (countTokens(candidate) <= cap) {
       return { survivors, section: candidate, trimmed, oversized_item_id: null };
     }
-    // R6 (oversized single body): one survivor left and still over cap.
-    // Truncate the body to ≤ ceil(cap * 0.9) re-counted tokens via a
-    // bounded binary search (~15 iterations max). The 0.9 leaves
-    // headroom for the section heading + meta + truncation notice.
+    // Single survivor still over cap: truncate the body to
+    // ≤ ceil(cap * 0.9) re-counted tokens via a bounded binary search
+    // (~15 iterations max). The 0.9 leaves headroom for the section
+    // heading + meta + truncation notice.
     if (survivors.length === 1) {
       const only = survivors[0];
       if (!only) break;

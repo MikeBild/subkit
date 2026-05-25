@@ -437,10 +437,10 @@ export async function assembleEnhancedPrompt(
     }
   }
 
-  // R1 fallback log — one warning per surviving recipe that fell back to
-  // the hybrid (workflow JSON elided) path. Emitted exactly once per
-  // assembly, after the trim loop decided the final set, so the
-  // render-and-count loop never produces duplicate warnings.
+  // Hybrid-fallback log — one warning per surviving recipe that rendered
+  // without its workflow JSON (per-body soft-cap exceeded). Emitted
+  // exactly once per assembly, after the trim loop decided the final
+  // set, so the render-and-count loop never produces duplicate warnings.
   if (connectorRecipeBodiesTemplateSlug && connectorRecipeBodiesSurvivors.length > 0) {
     logRecipeBodyFallbacks(
       connectorRecipeBodiesTemplateSlug,
@@ -453,9 +453,9 @@ export async function assembleEnhancedPrompt(
   // should see this turn so detected patterns reach the prompt without
   // waiting for operator promotion. Sibling block to the connector
   // load above: lives OUTSIDE the `if (p.connector_id)` so global
-  // candidates render even when no connector is in scope (workflow-
-  // scoped candidates render whenever `p.workflow_id` is set, per
-  // R4 — the only contract is "scope hint present ⇒ rendered").
+  // candidates render even when no connector is in scope; workflow-
+  // scoped candidates render whenever `p.workflow_id` is set. The
+  // contract is "scope hint present ⇒ rendered".
   // `listProposedForAuthoring` makes 1-3 indexed queries; best-effort
   // try/catch matches the existing pattern — a DB blip never blocks
   // assembly.
@@ -479,7 +479,7 @@ export async function assembleEnhancedPrompt(
     }
   }
 
-  // R6 oversized-body warning — emitted exactly once when the trim
+  // Oversized-survivor warning — emitted exactly once when the trim
   // loop ended with a single survivor still over cap (body was
   // token-truncated to ceil(cap * 0.9)). Operators grep this to find
   // self-healing detectors emitting oversized candidate bodies.
@@ -823,9 +823,8 @@ export async function assembleContext(
   // Per-id 8-char SHA-256 hashes — capped at 12 entries per category
   // (top-N selection cap plus headroom). Operators can grep "did this
   // turn see X?" by hashing X locally and looking for the 8-char prefix.
-  // No metric labels carry hashes — keeps cardinality bounded. See
-  // plan §4 privacy framing: correlation-grade obfuscation, NOT a
-  // security boundary.
+  // No metric labels carry hashes — keeps cardinality bounded.
+  // Correlation-grade obfuscation only, NOT a security boundary.
   const idHashes = (ids: string[]): string[] => idHashesCapped(ids);
 
   // Surface every assembly as a structured event. The metric and the

@@ -8,7 +8,7 @@
 //    knowledge chunks
 //  - Drop ladder: under synthetic overflow, skill_candidates drops before
 //    connector_recipe_bodies which drops before connector_recipes
-//  - R4 contract: with workflow_id unset, workflow-scoped candidates are ABSENT
+//  - Workflow-scope contract: with workflow_id unset, workflow-scoped candidates are ABSENT
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, skillCandidates, tenants } from "../../../db/schema/index.ts";
@@ -199,68 +199,6 @@ describe.skipIf(skip)("assembler render order — recipe bodies + skill candidat
     }
   });
 
-  test("drop ladder — skill_candidates drops before connector_recipe_bodies under tight budget", async () => {
-    // At this test's seed scale the new sections render thin (~150-500
-    // tokens) and the irreducible base (system + tenant snapshot + global
-    // skills index) dominates at ~8278 tokens. Setting cap below ~8000
-    // would throw LlmContextTooLarge after the ladder exhausts. We pick
-    // a cap above natural total so the test verifies the drop ORDER
-    // contract only when overflow actually occurs (conditional assertion);
-    // when nothing is dropped the assertion is silently skipped — the
-    // first render-order test in this describe block does the load-bearing
-    // verification of slot placement.
-    const prompt = await assembleEnhancedPrompt(
-      {
-        tenant_id,
-        flow: "converse",
-        connector_id,
-        user_turns: [{ role: "user", content: "stripe charge" }],
-        max_tokens: 9000,
-        model: "mock",
-      },
-      ctx.db,
-    );
-
-    // Under tight budget, skill_candidates drops before connector_recipe_bodies.
-    // If both were dropped, skill_candidates must appear first in the dropped list.
-    const dropped = prompt.dropped_sections;
-    const skillCandIdx = dropped.indexOf(SECTION_SKILL_CANDIDATES);
-    const recipeBodiesIdx = dropped.indexOf(SECTION_CONNECTOR_RECIPE_BODIES);
-
-    if (skillCandIdx > -1 && recipeBodiesIdx > -1) {
-      expect(skillCandIdx).toBeLessThan(recipeBodiesIdx);
-    }
-    // If only skill_candidates was dropped, that's also correct.
-    // If neither was dropped, the budget was big enough — valid pass.
-  });
-
-  test("drop ladder — connector_recipe_bodies drops before connector_recipes", async () => {
-    // Same constraint as the prior test — the irreducible base dominates
-    // at this seed scale. Setting cap below ~8000 throws LlmContextTooLarge.
-    // The assertion is conditional on both being in dropped[]; when
-    // neither overflows, the test passes silently.
-    const prompt = await assembleEnhancedPrompt(
-      {
-        tenant_id,
-        flow: "converse",
-        connector_id,
-        user_turns: [{ role: "user", content: "stripe charge" }],
-        max_tokens: 9000,
-        model: "mock",
-      },
-      ctx.db,
-    );
-
-    const dropped = prompt.dropped_sections;
-    const recipeBodiesIdx = dropped.indexOf(SECTION_CONNECTOR_RECIPE_BODIES);
-    const recipesIdx = dropped.indexOf(SECTION_CONNECTOR_RECIPES);
-
-    if (recipeBodiesIdx > -1 && recipesIdx > -1) {
-      expect(recipeBodiesIdx).toBeLessThan(recipesIdx);
-    }
-    // If only bodies was dropped, that's correct (recipes kept for navigation).
-  });
-
   test("drop ladder contains section names as string constants, not magic values", () => {
     // Verify the module-level constants match the strings the assembler uses.
     expect(SECTION_SKILL_CANDIDATES).toBe("skill_candidates");
@@ -270,46 +208,182 @@ describe.skipIf(skip)("assembler render order — recipe bodies + skill candidat
 });
 
 // ---------------------------------------------------------------------------
-// R4 contract: workflow_id unset → workflow-scoped candidates absent
+// Workflow-scope contract: workflow_id unset → workflow-scoped candidates absent
 // ---------------------------------------------------------------------------
 
-describe.skipIf(skip)("R4 contract — workflow_id unset means no workflow-scoped candidates", () => {
-  test("workflow-scoped candidates are ABSENT when workflow_id is not provided", async () => {
+describe.skipIf(skip)(
+  "workflow-scope contract — workflow_id unset means no workflow-scoped candidates",
+  () => {
+    test("workflow-scoped candidates are ABSENT when workflow_id is not provided", async () => {
+      const prompt = await assembleEnhancedPrompt(
+        {
+          tenant_id,
+          flow: "converse",
+          connector_id,
+          // workflow_id intentionally absent
+          user_turns: [{ role: "user", content: "stripe rate limit" }],
+          max_tokens: 50_000,
+          model: "mock",
+        },
+        ctx.db,
+      );
+
+      // The workflow-scoped candidate title must NOT appear in the prompt
+      expect(prompt.system).not.toContain("Workflow scope candidate");
+
+      // The connector-scoped candidate SHOULD appear (scoped to this connector)
+      expect(prompt.system).toContain("Stripe rate limit backoff");
+    });
+
+    test("workflow-scoped candidates ARE present when workflow_id matches", async () => {
+      const prompt = await assembleEnhancedPrompt(
+        {
+          tenant_id,
+          flow: "converse",
+          connector_id,
+          workflow_id,
+          user_turns: [{ role: "user", content: "stripe charge" }],
+          max_tokens: 50_000,
+          model: "mock",
+        },
+        ctx.db,
+      );
+
+      // When workflow_id is provided, the workflow-scoped candidate must appear
+      expect(prompt.system).toContain("Workflow scope candidate");
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Drop ladder — deterministic overflow (heavy seed)
+// ---------------------------------------------------------------------------
+//
+// The render-order describe block above uses a light seed (1 candidate, 2
+// recipes) so the natural prompt total sits just above the irreducible
+// base. At that scale, dropping the new sections shaves only ~150-500
+// tokens — too thin to reliably force the drop ladder past the cap.
+//
+// This block sets up a dedicated tenant + heavy seed (3 large recipes,
+// 30 proposed candidates) so the new sections collectively contribute
+// 3000+ tokens. A 9000-token cap then DETERMINISTICALLY forces the
+// trimmer to drop skill_candidates first, then connector_recipe_bodies.
+// Assertions are unconditional — the test fails loudly if the ladder
+// ever flips ordering.
+
+const SECTION_SKILL_CANDIDATES_HEAVY = "skill_candidates";
+const SECTION_CONNECTOR_RECIPE_BODIES_HEAVY = "connector_recipe_bodies";
+
+const HEAVY_RECIPE_SNAPSHOT: Record<string, unknown> = {
+  slug: "stripe",
+  recipes: Array.from({ length: 3 }, (_, i) => ({
+    slug: `stripe-heavy-${i}`,
+    title: `Heavy recipe ${i}`,
+    description:
+      "A workflow that pushes stripe charge data through several transforms before posting to a downstream sink. " +
+      "Realistic-looking description so the rendered body has real content. ".repeat(2),
+    category: "webhooks",
+    difficulty: "easy",
+    intent_keywords: ["charge", "payment", "webhook", "heavy"],
+    tags: ["billing", "stripe", "heavy"],
+    prerequisites: ["Stripe connector set up", "Downstream sink configured"],
+    required_connectors: [{ placeholder: "stripe", template: "stripe" }],
+    sample_input: { event: `charge.succeeded.${i}`, amount: 5000 + i, currency: "usd" },
+    // Workflow large enough that even the full-body path (no fallback)
+    // contributes ~600-800 tokens per recipe → 3 recipes × ~700 = ~2100
+    // before the 2000-token section cap kicks in.
+    workflow: {
+      name: `stripe-heavy-${i}`,
+      steps: Array.from({ length: 8 }, (_, j) => ({
+        id: `step-${j}`,
+        kind: "request",
+        connector_id: "${stripe}",
+        path: `/v1/items/${i}/${j}`,
+        params: { key: `value-${i}-${j}-${"data".repeat(4)}` },
+      })),
+    },
+  })),
+};
+
+describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () => {
+  let heavyCtx: TestDb;
+  let heavyTenantId: string;
+  let heavyConnectorId: string;
+
+  beforeAll(async () => {
+    if (skip) return;
+    heavyCtx = await createTestDb("assembler_drop_ladder_heavy");
+    const [t] = await heavyCtx.db
+      .insert(tenants)
+      .values({ slug: "t-aro-heavy", display_name: "Drop Ladder Heavy Test" })
+      .returning();
+    heavyTenantId = t!.id;
+
+    const [c] = await heavyCtx.db
+      .insert(connectors)
+      .values({
+        tenant_id: heavyTenantId,
+        slug: "stripe",
+        display_name: "Stripe",
+        driver: "http",
+        environment: "dev",
+        auth_type: "bearer",
+        base_url: "https://api.stripe.com",
+        config: {},
+        template_snapshot: HEAVY_RECIPE_SNAPSHOT,
+      })
+      .returning();
+    heavyConnectorId = c!.id;
+
+    // 30 proposed candidates with ~200 token bodies. After the 1200-token
+    // section cap is enforced by trimCandidatesToBudget, the rendered
+    // section is at most ~1200 tokens — but the seed guarantees the
+    // section is non-empty and substantial.
+    const rows = Array.from({ length: 30 }, (_, i) => ({
+      tenant_id: heavyTenantId,
+      scope: "connector" as const,
+      connector_id: heavyConnectorId,
+      pattern_kind: "repair_pattern" as const,
+      title: `Heavy candidate ${i}`,
+      body:
+        "When the upstream API returns an unexpected envelope, apply this remediation. " +
+        "Real-world example: detect the malformed shape, branch to the fallback transform, ".repeat(
+          2,
+        ) +
+        `(candidate ${i})`,
+      evidence: [],
+      confidence: "medium" as const,
+      fingerprint: `fp-heavy-${i}`,
+    }));
+    await heavyCtx.db.insert(skillCandidates).values(rows);
+  }, 60_000);
+
+  afterAll(async () => {
+    if (!skip && heavyCtx) await heavyCtx.cleanup();
+  }, 30_000);
+
+  test("under tight budget, skill_candidates drops BEFORE connector_recipe_bodies (unconditional)", async () => {
     const prompt = await assembleEnhancedPrompt(
       {
-        tenant_id,
+        tenant_id: heavyTenantId,
         flow: "converse",
-        connector_id,
-        // workflow_id intentionally absent
-        user_turns: [{ role: "user", content: "stripe rate limit" }],
-        max_tokens: 50_000,
+        connector_id: heavyConnectorId,
+        user_turns: [{ role: "user", content: "stripe charge heavy" }],
+        max_tokens: 9000,
         model: "mock",
       },
-      ctx.db,
+      heavyCtx.db,
     );
 
-    // The workflow-scoped candidate title must NOT appear in the prompt
-    expect(prompt.system).not.toContain("Workflow scope candidate");
+    const dropped = prompt.dropped_sections;
+    const skillCandIdx = dropped.indexOf(SECTION_SKILL_CANDIDATES_HEAVY);
+    const recipeBodiesIdx = dropped.indexOf(SECTION_CONNECTOR_RECIPE_BODIES_HEAVY);
 
-    // The connector-scoped candidate SHOULD appear (scoped to this connector)
-    expect(prompt.system).toContain("Stripe rate limit backoff");
-  });
-
-  test("workflow-scoped candidates ARE present when workflow_id matches", async () => {
-    const prompt = await assembleEnhancedPrompt(
-      {
-        tenant_id,
-        flow: "converse",
-        connector_id,
-        workflow_id,
-        user_turns: [{ role: "user", content: "stripe charge" }],
-        max_tokens: 50_000,
-        model: "mock",
-      },
-      ctx.db,
-    );
-
-    // When workflow_id is provided, the workflow-scoped candidate must appear
-    expect(prompt.system).toContain("Workflow scope candidate");
+    // Deterministic seed: natural total > cap, so BOTH sections must drop.
+    expect(skillCandIdx).toBeGreaterThan(-1);
+    expect(recipeBodiesIdx).toBeGreaterThan(-1);
+    // Drop ORDER: skill_candidates (lower priority) appears first in the
+    // dropped list, then connector_recipe_bodies.
+    expect(skillCandIdx).toBeLessThan(recipeBodiesIdx);
   });
 });

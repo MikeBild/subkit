@@ -155,10 +155,10 @@ describe("trimCandidatesToBudget — 1200-token cap", () => {
 });
 
 // ---------------------------------------------------------------------------
-// R6: single oversized body — binary search truncation + warning log
+// Single oversized survivor — binary-search body truncation + warning log
 // ---------------------------------------------------------------------------
 
-describe("trimCandidatesToBudget — R6 oversized single body", () => {
+describe("trimCandidatesToBudget — oversized single survivor", () => {
   test("single candidate with oversized body is truncated to ≤ ceil(cap × 0.9) tokens with notice", () => {
     // Create a candidate with a very large body that exceeds the 1200-token cap on its own.
     const hugeBody = "x ".repeat(2000); // ~4000 tokens worth of text
@@ -191,7 +191,7 @@ describe("trimCandidatesToBudget — R6 oversized single body", () => {
     }
   });
 
-  test("R6: oversized item warning log emitted by assembler caller (oversized_item_id exposed)", () => {
+  test("oversized item warning log emitted by assembler caller (oversized_item_id exposed)", () => {
     const hugeBody = "The long body. ".repeat(500);
     const c = makeCandidate({ id: "warn-test-1", body: hugeBody });
     const result = trimCandidatesToBudget([c]);

@@ -334,13 +334,13 @@ export function formatLatestPreview(entries: LatestPreviewEntry[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Recipe bodies + Skill candidates — R5 loop closure
+// Recipe bodies + Skill candidates — context for in-flight authoring
 // ---------------------------------------------------------------------------
 
 /**
  * Module-private section caps. Tuning these is a source change — not a
  * runtime knob, not an env flag, not a config knob. Mirrors the existing
- * `RECIPE_LINES_BUDGET` discipline. Per `feedback_no_env_feature_flags`.
+ * `RECIPE_LINES_BUDGET` discipline.
  */
 const recipeBodiesSectionCap = 2000;
 const skillCandidatesSectionCap = 1200;
@@ -349,7 +349,7 @@ const skillCandidatesSectionCap = 1200;
  *  of the hybrid (description + prerequisites + required_connectors +
  *  sample_input) payload. Chosen because the p90 recipe workflow in
  *  `templates.json` is ~600 tokens; `required_connectors` is ≤ 80 tokens
- *  even for 5-connector recipes. See plan §4 decision 3. */
+ *  even for 5-connector recipes. */
 const recipeBodyHybridSoftCap = 800;
 
 /** Compact view of a connector recipe ready for the rich body block.
@@ -491,8 +491,8 @@ export function formatSkillCandidates(candidates: SkillCandidateView[]): string 
 }
 
 // Re-export so loaders + assembler can read the same cap constants
-// without hard-coding magic numbers. Tuning these is a source change —
-// per `feedback_no_env_feature_flags`.
+// without hard-coding magic numbers. Tuning is a source change — no
+// env, no config, no CLI flag.
 export {
   recipeBodiesSectionCap as _recipeBodiesSectionCapForTrim,
   recipeBodyHybridSoftCap as _recipeBodyHybridSoftCap,

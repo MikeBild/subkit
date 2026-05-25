@@ -545,7 +545,7 @@ export function recordConversationTurnDuration(args: {
  *  at 12 entries upstream (top-N selection cap + headroom) so the log
  *  line stays bounded; no metric labels carry hashes — keeps cardinality
  *  bounded. The hashes are correlation-grade obfuscation, NOT a security
- *  boundary (see the plan's §4 privacy framing). */
+ *  boundary. */
 export function recordLlmContextAssembled(args: {
   tenant_id: string;
   flow: string;
