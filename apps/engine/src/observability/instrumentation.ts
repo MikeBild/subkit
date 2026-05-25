@@ -538,14 +538,16 @@ export function recordConversationTurnDuration(args: {
  *  (token counts per section, included ids, dropped section names) so the
  *  same record can be searched in log storage.
  *
- *  Per-id 8-char id hashes (`included_skill_id_hashes`,
- *  `included_candidate_id_hashes`, `included_recipe_slug_hashes`) let an
- *  operator grep "did this turn see X?" by hashing X locally and looking
- *  for the resulting 8-char prefix in the log line. Each list is capped
- *  at 12 entries upstream (top-N selection cap + headroom) so the log
+ *  Per-id 8-char hashes (`included_skill_id_hashes`,
+ *  `included_candidate_id_hashes`) let an operator grep "did this turn
+ *  see X?" by hashing X locally and looking for the resulting 8-char
+ *  prefix. Each hash list is capped at 12 entries upstream so the log
  *  line stays bounded; no metric labels carry hashes — keeps cardinality
  *  bounded. The hashes are correlation-grade obfuscation, NOT a security
- *  boundary. */
+ *  boundary. Recipe slugs are low-cardinality and already
+ *  operator-visible in connector templates, so `included_recipe_slugs`
+ *  is logged in raw form (also capped at 12) to save the
+ *  hash-and-grep round trip. */
 export function recordLlmContextAssembled(args: {
   tenant_id: string;
   flow: string;
@@ -562,12 +564,12 @@ export function recordLlmContextAssembled(args: {
     knowledge: number;
     docs: number;
     failures: number;
-    recipes_bodies: number;
+    recipe_bodies: number;
     candidates: number;
   };
   included_skill_id_hashes: string[];
   included_candidate_id_hashes: string[];
-  included_recipe_slug_hashes: string[];
+  included_recipe_slugs: string[];
   dropped_sections: string[];
 }): void {
   safe(() => {
@@ -606,11 +608,11 @@ export function recordLlmContextAssembled(args: {
       included_knowledge: args.included.knowledge,
       included_docs: args.included.docs,
       included_failures: args.included.failures,
-      included_recipes_bodies: args.included.recipes_bodies,
+      included_recipe_bodies: args.included.recipe_bodies,
       included_candidates: args.included.candidates,
       included_skill_id_hashes: args.included_skill_id_hashes,
       included_candidate_id_hashes: args.included_candidate_id_hashes,
-      included_recipe_slug_hashes: args.included_recipe_slug_hashes,
+      included_recipe_slugs: args.included_recipe_slugs,
       dropped_sections: args.dropped_sections,
     });
   });

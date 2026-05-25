@@ -175,20 +175,17 @@ export async function listProposedForAuthoring(
       : Promise.resolve<SkillCandidateView[]>([]),
   ]);
 
-  // Dedupe by id with priority workflow > connector > global. We add the
-  // higher-priority entries last so the Map's set overwrites the
-  // lower-priority duplicate.
-  const dedup = new Map<string, SkillCandidateView>();
-  for (const c of globalRows) dedup.set(c.id, c);
-  for (const c of connectorRows) dedup.set(c.id, c);
-  for (const c of workflowRows) dedup.set(c.id, c);
+  // The three queries are AND-exact-match on disjoint `scope` values
+  // (global / connector / workflow), so a single row cannot appear in
+  // more than one result set — no dedup needed.
+  const merged: SkillCandidateView[] = [...globalRows, ...connectorRows, ...workflowRows];
 
   const scopeSpecificity = (scope: SkillCandidateView["scope"]): number =>
     scope === "workflow" ? 3 : scope === "connector" ? 2 : 1;
   const confidenceRank = (c: SkillCandidateView["confidence"]): number =>
     c === "high" ? 3 : c === "medium" ? 2 : 1;
 
-  const sorted = Array.from(dedup.values()).sort((a, b) => {
+  const sorted = merged.sort((a, b) => {
     const ds = scopeSpecificity(b.scope) - scopeSpecificity(a.scope);
     if (ds !== 0) return ds;
     const dc = confidenceRank(b.confidence) - confidenceRank(a.confidence);

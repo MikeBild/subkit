@@ -23,13 +23,13 @@ function hashId(id: string): string {
 function callRecordLlmContextAssembled(overrides: {
   included_skill_id_hashes?: string[];
   included_candidate_id_hashes?: string[];
-  included_recipe_slug_hashes?: string[];
+  included_recipe_slugs?: string[];
   included?: {
     skills?: number;
     knowledge?: number;
     docs?: number;
     failures?: number;
-    recipes_bodies?: number;
+    recipe_bodies?: number;
     candidates?: number;
   };
 }): void {
@@ -47,12 +47,12 @@ function callRecordLlmContextAssembled(overrides: {
       knowledge: overrides.included?.knowledge ?? 0,
       docs: overrides.included?.docs ?? 0,
       failures: overrides.included?.failures ?? 0,
-      recipes_bodies: overrides.included?.recipes_bodies ?? 0,
+      recipe_bodies: overrides.included?.recipe_bodies ?? 0,
       candidates: overrides.included?.candidates ?? 0,
     },
     included_skill_id_hashes: overrides.included_skill_id_hashes ?? [],
     included_candidate_id_hashes: overrides.included_candidate_id_hashes ?? [],
-    included_recipe_slug_hashes: overrides.included_recipe_slug_hashes ?? [],
+    included_recipe_slugs: overrides.included_recipe_slugs ?? [],
     dropped_sections: [],
   });
 }
@@ -142,33 +142,35 @@ describe("recordLlmContextAssembled — log line hash arrays capped at 12", () =
     expect(fieldHashes).toContain(hashId("cand-a"));
   });
 
-  test("recipe slug hashes appear in log entry", () => {
-    const hashes = [hashId("stripe-charge-succeeded"), hashId("slack-notify")];
+  test("recipe slugs appear in log entry as raw values (not hashes)", () => {
+    const slugs = ["stripe-charge-succeeded", "slack-notify"];
     callRecordLlmContextAssembled({
-      included_recipe_slug_hashes: hashes,
-      included: { recipes_bodies: 2 },
+      included_recipe_slugs: slugs,
+      included: { recipe_bodies: 2 },
     });
 
     const entries = logRing.tail({ action: "context.assembled", limit: 5 });
     const lastEntry = entries[0]!;
-    const fieldHashes = lastEntry.fields.included_recipe_slug_hashes as string[];
-    expect(fieldHashes).toHaveLength(2);
-    expect(fieldHashes).toContain(hashId("stripe-charge-succeeded"));
+    const fieldSlugs = lastEntry.fields.included_recipe_slugs as string[];
+    expect(fieldSlugs).toHaveLength(2);
+    expect(fieldSlugs).toContain("stripe-charge-succeeded");
+    // Raw, not hashed — operators grep slugs directly.
+    expect(fieldSlugs).not.toContain(hashId("stripe-charge-succeeded"));
   });
 
-  test("all three hash arrays + new counts present in log line", () => {
+  test("skill/candidate hashes + raw recipe slugs + new counts present in log line", () => {
     const skillHashes = [hashId("skill-1"), hashId("skill-2")];
     const candidateHashes = [hashId("cand-1")];
-    const recipeHashes = [hashId("recipe-1"), hashId("recipe-2"), hashId("recipe-3")];
+    const recipeSlugs = ["recipe-1", "recipe-2", "recipe-3"];
 
     callRecordLlmContextAssembled({
       included_skill_id_hashes: skillHashes,
       included_candidate_id_hashes: candidateHashes,
-      included_recipe_slug_hashes: recipeHashes,
+      included_recipe_slugs: recipeSlugs,
       included: {
         skills: 2,
         candidates: 1,
-        recipes_bodies: 3,
+        recipe_bodies: 3,
         knowledge: 4,
         docs: 2,
         failures: 0,
@@ -180,13 +182,16 @@ describe("recordLlmContextAssembled — log line hash arrays capped at 12", () =
     const lastEntry = entries[0]!;
     const f = lastEntry.fields;
 
-    // All three hash arrays
+    // Two hash arrays (skill ids, candidate ids) + one raw-slug array.
     expect(Array.isArray(f.included_skill_id_hashes)).toBe(true);
     expect(Array.isArray(f.included_candidate_id_hashes)).toBe(true);
-    expect(Array.isArray(f.included_recipe_slug_hashes)).toBe(true);
+    expect(Array.isArray(f.included_recipe_slugs)).toBe(true);
+    expect(f.included_recipe_slugs).toContain("recipe-1");
 
     // New included counts
-    expect(f.included_recipes_bodies).toBe(3);
+    expect(f.included_recipe_bodies).toBe(3);
+    // Verify the log line uses the singular form (W1 fix).
+    expect(f.included_recipes_bodies).toBeUndefined();
     expect(f.included_candidates).toBe(1);
   });
 
@@ -289,10 +294,7 @@ describe("idHashesCapped — list capped at 12 regardless of input size", () => 
     }
   });
 
-  test("custom cap parameter is honored", () => {
-    const ids = Array.from({ length: 10 }, (_, i) => `id-${i}`);
-    expect(idHashesCapped(ids, 3)).toHaveLength(3);
-    expect(idHashesCapped(ids, 100)).toHaveLength(10);
-    expect(idHashesCapped([], 12)).toHaveLength(0);
+  test("empty input returns an empty array", () => {
+    expect(idHashesCapped([])).toHaveLength(0);
   });
 });

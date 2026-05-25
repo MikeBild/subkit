@@ -219,7 +219,7 @@ export interface BudgetReport {
     docs: number;
     failures: number;
     /** Count of recipe-body items rendered into the prompt. */
-    recipes_bodies: number;
+    recipe_bodies: number;
     /** Count of proposed Skill Candidates rendered into the prompt. */
     candidates: number;
   };
@@ -800,7 +800,7 @@ export async function assembleContext(
       failures: includedFailureCount,
       // Counts that survived BOTH the per-section pre-trim AND the
       // global trimmer — what the LLM actually saw on this turn.
-      recipes_bodies: included_recipe_slugs.length,
+      recipe_bodies: included_recipe_slugs.length,
       candidates: included_candidate_ids.length,
     },
     dropped_sections,
@@ -829,7 +829,11 @@ export async function assembleContext(
     included: budget_report.included,
     included_skill_id_hashes: idHashes(prompt.included_skill_ids),
     included_candidate_id_hashes: idHashes(included_candidate_ids),
-    included_recipe_slug_hashes: idHashes(included_recipe_slugs),
+    // Recipe slugs are low-cardinality + already operator-visible in
+    // connector templates; hashing them would force operators to
+    // round-trip through sha256sum to read the log line. Emit the raw
+    // slugs (still capped at 12 — the same headroom as the hash lists).
+    included_recipe_slugs: included_recipe_slugs.slice(0, 12),
     dropped_sections: budget_report.dropped_sections,
   });
 

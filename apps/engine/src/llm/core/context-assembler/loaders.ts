@@ -274,10 +274,11 @@ export async function loadKnowledgeChunks(
 // ---------------------------------------------------------------------------
 
 /** Normalise a token for case-folded, punctuation-stripped comparison.
- *  Local helper because the existing keyword normaliser in
- *  `connector-template-intelligence` lowercases but keeps punctuation —
- *  the ranking score needs aggressive normalisation to match operator-typed
- *  intent like "list customers!" against a `list-customers` keyword. */
+ *  Used by the recipe-body ranking score to match operator-typed intent
+ *  like "list customers!" against a `list-customers` keyword. If a
+ *  sibling normaliser with different rules (e.g. punctuation-preserving)
+ *  is ever introduced, document the divergence inline — silently
+ *  unifying them would change the ranking output. */
 function normalizeToken(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
@@ -339,12 +340,18 @@ export function loadTopRecipeBodies(
   const scored: Scored[] = [];
 
   for (const r of raw) {
-    if (!r || typeof r !== "object") continue;
+    if (!r || typeof r !== "object") {
+      reportMalformedRecipe();
+      continue;
+    }
     const rec = r as Record<string, unknown>;
     const slug = typeof rec.slug === "string" ? rec.slug : null;
     const title = typeof rec.title === "string" ? rec.title : null;
     const workflow = rec.workflow;
-    if (!slug || !title || workflow === undefined || workflow === null) continue;
+    if (!slug || !title || workflow === undefined || workflow === null) {
+      reportMalformedRecipe();
+      continue;
+    }
 
     const description = typeof rec.description === "string" ? rec.description : "";
     const prerequisites = Array.isArray(rec.prerequisites)
@@ -485,11 +492,33 @@ export function logRecipeBodyFallbacks(
  * `listProposedForAuthoring` validates that the service helper is
  * exported from `skill-candidates/index.ts`.
  */
-// Tracks whether `loadProposedCandidates` has already logged a load
-// failure in this process. Subsequent failures still increment the
-// counter (for dashboards/alerts) but suppress duplicate warnings on
-// the log stream so a flapping DB doesn't paper over the surface.
-let proposedCandidatesFailureLogged = false;
+/** Increment the section-load-failures counter when a recipe entry in
+ *  the connector's `template_snapshot.recipes` is missing required fields
+ *  (slug / title / workflow) or has the wrong shape. Today this should
+ *  not happen — template ingestion is operator-curated — but if a
+ *  future ingestion bug ever lands, the counter gives operators a
+ *  signal before "no bodies rendered" turns into a silent regression. */
+function reportMalformedRecipe(): void {
+  try {
+    getMetrics().inc(METRIC_NAMES.LLM_CONTEXT_SECTION_LOAD_FAILURES_TOTAL, {
+      section: "recipe_bodies",
+    });
+  } catch {
+    // Metrics emission is best-effort.
+  }
+}
+
+// Per-tenant tracker for the first proposed-candidate load failure in
+// this process. Subsequent failures for the same tenant still increment
+// the section_load_failures counter (so dashboards/alerts see them) but
+// stay at debug-level on the log stream so a flapping DB doesn't drown
+// it. A new tenant's first failure still surfaces at warn — operator
+// visibility per tenant is preserved. Wrapped in a const-object so
+// tests (or a future reset helper) can clear it without ESM live-binding
+// gymnastics.
+const proposedCandidatesFailureState = {
+  warnedTenants: new Set<string>(),
+};
 
 export async function loadProposedCandidates(
   tenant_id: string,
@@ -516,12 +545,14 @@ export async function loadProposedCandidates(
       ...(scope_hints.workflow_id ? { workflow_id: scope_hints.workflow_id } : {}),
       error: errorMessage,
     };
-    // First failure per process: warn (operationally visible).
-    // Subsequent: debug, so flapping doesn't drown the log stream.
-    if (proposedCandidatesFailureLogged) {
+    // First failure per (tenant, process): warn (operationally visible).
+    // Subsequent failures for the same tenant: debug, so flapping
+    // doesn't drown the log stream. A new tenant's first failure still
+    // warns.
+    if (proposedCandidatesFailureState.warnedTenants.has(tenant_id)) {
       logger.debug(payload);
     } else {
-      proposedCandidatesFailureLogged = true;
+      proposedCandidatesFailureState.warnedTenants.add(tenant_id);
       logger.warn(payload);
     }
     return [];

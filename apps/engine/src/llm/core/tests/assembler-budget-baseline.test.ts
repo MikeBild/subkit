@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { connectors, skillCandidates, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { logger } from "../../../logging/logger.ts";
 import { contextCapFor } from "../../accounting/index.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
 import { assembleEnhancedPrompt } from "../context-assembler.ts";
@@ -97,9 +98,12 @@ const skip = process.env.REQUIRES_PG === "0";
 // silent prompt-size blow-up. Surface the skip on stderr so a green
 // "0 failures" line isn't mistaken for "the budget contract still holds".
 if (skip) {
-  console.warn(
-    "[assembler-budget-baseline] REQUIRES_PG=0 — skipping G1-G4 budget regression guards. Run with Postgres to re-enable.",
-  );
+  logger.warn({
+    module: "test",
+    action: "test.suite.skipped",
+    msg: "REQUIRES_PG=0 — skipping G1-G4 budget regression guards. Run with Postgres to re-enable.",
+    suite: "assembler-budget-baseline",
+  });
 }
 
 let ctx: TestDb;

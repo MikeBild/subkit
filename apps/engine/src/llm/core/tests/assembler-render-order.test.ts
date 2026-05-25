@@ -13,6 +13,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, skillCandidates, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { logger } from "../../../logging/logger.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
 import { assembleEnhancedPrompt } from "../context-assembler.ts";
 
@@ -28,9 +29,12 @@ const skip = process.env.REQUIRES_PG === "0";
 // contract live only in this file's DB-backed describes. Surface the skip
 // so a green "0 failures" line isn't mistaken for "the ladder still holds".
 if (skip) {
-  console.warn(
-    "[assembler-render-order] REQUIRES_PG=0 — skipping render-order + drop-ladder verification. Run with Postgres to re-enable.",
-  );
+  logger.warn({
+    module: "test",
+    action: "test.suite.skipped",
+    msg: "REQUIRES_PG=0 — skipping render-order + drop-ladder verification. Run with Postgres to re-enable.",
+    suite: "assembler-render-order",
+  });
 }
 
 let ctx: TestDb;

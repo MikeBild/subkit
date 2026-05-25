@@ -12,10 +12,17 @@
 
 import { createHash } from "node:crypto";
 
+/** Bounded list of survivors that may appear in a single log line. */
+const LOG_LIST_CAP = 12;
+
 /**
- * Cap a string-id list to `cap` entries (default 12) and map each
- * survivor to an 8-char sha256 hex prefix.
+ * Cap a string-id list to 12 entries and map each survivor to an 8-char
+ * sha256 hex prefix. The cap mirrors the top-N selection cap in the
+ * assembler plus headroom — keeping log lines bounded and metric labels
+ * collision-free.
  */
-export function idHashesCapped(ids: string[], cap = 12): string[] {
-  return ids.slice(0, cap).map((id) => createHash("sha256").update(id).digest("hex").slice(0, 8));
+export function idHashesCapped(ids: string[]): string[] {
+  return ids
+    .slice(0, LOG_LIST_CAP)
+    .map((id) => createHash("sha256").update(id).digest("hex").slice(0, 8));
 }

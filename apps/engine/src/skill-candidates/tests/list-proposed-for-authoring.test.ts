@@ -215,34 +215,6 @@ describe("listProposedForAuthoring — status filter", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Deduplication on id: workflow > connector > global
-// ---------------------------------------------------------------------------
-
-describe("listProposedForAuthoring — deduplication tiebreak", () => {
-  test("workflow scope wins over connector and global for same fingerprint is not needed — ids are unique, but a row can appear in multiple fetch lists when scoped to different hints", async () => {
-    // A global candidate is returned regardless of scope hints.
-    // A connector candidate can only appear if connector_id hint matches.
-    // These are different rows by design — the dedup is about the Map key (id).
-    // We can only test the tiebreak if the SAME id somehow appears in two scope lists.
-    // In practice this cannot happen because listSkillCandidates is AND-exact-match
-    // and scope is a column — a row has one scope. The dedup guard is defensive.
-    // We verify here that we get distinct results with no duplicates.
-    await seedCandidate({ scope: "global", title: "G1" });
-    await seedCandidate({ scope: "connector", connector_id: CONNECTOR_ID, title: "C1" });
-    await seedCandidate({ scope: "workflow", workflow_id: WORKFLOW_ID, title: "W1" });
-
-    const result = await listProposedForAuthoring(
-      tenant_id,
-      { connector_id: CONNECTOR_ID, workflow_id: WORKFLOW_ID },
-      ctx.db,
-    );
-    const ids = result.map((c) => c.id);
-    const uniqueIds = new Set(ids);
-    expect(uniqueIds.size).toBe(ids.length);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Sort order: scope_specificity desc, confidence_rank desc, evidence_count desc, created_at desc
 // ---------------------------------------------------------------------------
 
