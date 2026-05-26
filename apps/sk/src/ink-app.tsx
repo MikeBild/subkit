@@ -46,6 +46,7 @@ import { uploadPath } from "./commands/files.ts";
 import { debugLog, serializeDebugError } from "./debug.ts";
 import { looksLikeAssistantConfirmRequest } from "./elicitation-intent.ts";
 import type { EngineClient, SetupValidationResponse, StatusSummary } from "./engine-client.ts";
+import { renderSuspiciousCodepoints, sanitizePathInput } from "./lib/path-input.ts";
 import {
   detectSecretShape,
   REQUEST_CREDENTIAL_FORM_FALLBACK,
@@ -1931,7 +1932,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       }
       if (name === "attach" || name === "file" || name === "upload") {
         if (mutatePending("attach")) return true;
-        const raw = rest.join(" ").trim();
+        const raw = sanitizePathInput(rest.join(" "));
         if (raw.length === 0) {
           showError(`/${name}: needs a path — e.g. \`/${name} ./invoice.pdf\``);
           return true;
@@ -1944,7 +1945,9 @@ export const InkApp: React.FC<InkAppProps> = ({
         const { resolve: res } = await import("node:path");
         const abs = res(cwd ?? process.cwd(), raw);
         if (!exists(abs)) {
-          showError(`/${name}: not found: ${raw}`);
+          showError(
+            `/${name}: not found: ${raw} (resolved to ${abs})${renderSuspiciousCodepoints(raw)}`,
+          );
           return true;
         }
         const st = statSync(abs);
@@ -2009,7 +2012,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         const flagStart = rest.findIndex((t) => t.startsWith("--"));
         const pathTokens = flagStart === -1 ? rest : rest.slice(0, flagStart);
         const flagTokens = flagStart === -1 ? [] : rest.slice(flagStart);
-        const rawPath = pathTokens.join(" ").trim();
+        const rawPath = sanitizePathInput(pathTokens.join(" "));
         if (rawPath.length === 0) {
           showError(
             `/${name}: needs a path — e.g. \`/${name} ./ocpp.md --name OCPP-2.0.1 --scope global\``,
@@ -2049,7 +2052,9 @@ export const InkApp: React.FC<InkAppProps> = ({
         const { resolve: res, basename: pathBasename } = await import("node:path");
         const abs = res(cwd ?? process.cwd(), rawPath);
         if (!exists(abs)) {
-          showError(`/${name}: not found: ${rawPath}`);
+          showError(
+            `/${name}: not found: ${rawPath} (resolved to ${abs})${renderSuspiciousCodepoints(rawPath)}`,
+          );
           return true;
         }
         const st = statSync(abs);
@@ -2520,8 +2525,21 @@ export const InkApp: React.FC<InkAppProps> = ({
         // queue, history). Short-circuit so the host's `onSlash`
         // doesn't see them.
         if (await handleBuiltinSlash(trimmed)) return;
-        const cmd = findSlashCommand(trimmed.split(/\s+/)[0] ?? "");
+        const head = trimmed.split(/\s+/)[0] ?? "";
+        const cmd = findSlashCommand(head);
         if (!cmd) {
+          // Heuristic: `head` like `/Users/...`, `/home/...`, `/tmp/...`
+          // is a Unix path, not a slash command. `~/foo` and `./foo`
+          // also count. Built-in slash names never contain `/`, so the
+          // tail check cannot accidentally match `/help`, `/attach`, …
+          const looksLikePath =
+            head.slice(1).includes("/") || head.startsWith("~/") || head.startsWith("./");
+          if (looksLikePath) {
+            showError(
+              `Looks like a file path, not a slash command. Did you mean \`/knowledge ${head}\` to ingest as a knowledge source, or \`/attach ${head}\` to upload as an attachment?`,
+            );
+            return;
+          }
           showError(`unknown slash: ${trimmed}`);
           return;
         }

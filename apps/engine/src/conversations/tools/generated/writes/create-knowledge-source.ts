@@ -175,9 +175,9 @@ function defaultNameFromFilename(filename: string): string {
 export const createKnowledgeSourceTool: ConversationTool = {
   name: "create_knowledge_source",
   description:
-    "Ingest content as a tenant Knowledge Source. Accepts inline markdown/text/JSON (mode='inline' with name + content) or an existing conversation attachment (mode='from_attachment' with file_id from /attach). Supported file types: markdown, plaintext, JSON, YAML, XML, CSV, PDF, DOCX, XLSX, PPTX.",
+    "Ingest content as a tenant Knowledge Source. Accepts inline markdown/text/JSON (mode='inline' with name + content) or an existing conversation attachment (mode='from_attachment' with file_id from /attach). Supported file types: markdown, plaintext, JSON, YAML, XML, CSV, PDF, DOCX, XLSX, PPTX. For local files, prefer the sk slash `/knowledge <path>` (one-shot upload + ingest, no model turn). Only call this tool when you already have a fid_… (from /attach) or inline content the user pasted into chat.",
   use_case:
-    "Use when the user asks to add a file, document, or pasted content as searchable knowledge. If the user just uploaded an attachment with /attach, use mode='from_attachment' with that file_id. For pasted text or LLM-generated content, use mode='inline'.",
+    "Use when the user asks to add a file, document, or pasted content as searchable knowledge. If the user just uploaded an attachment with /attach, use mode='from_attachment' with that file_id. For pasted text or LLM-generated content, use mode='inline'. If the user provided a local filesystem path string (starts with /, ~, or ./) and you don't already have a fid_…, do NOT call this tool — direct them to run `/knowledge <path>` in sk instead.",
   important_notes: [
     "Re-runs with identical content are idempotent at the chunk level — the engine deduplicates.",
     "scope='workflow' requires workflow_id; omit both to default to global scope.",

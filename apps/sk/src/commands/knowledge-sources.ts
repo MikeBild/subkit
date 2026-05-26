@@ -5,6 +5,7 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { sanitizePathInput } from "../lib/path-input.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { KnowledgeSourceIntent, KnowledgeSourceSummary, PlanStep } from "../render/types.ts";
 import { detectMime } from "../utils/mime.ts";
@@ -107,7 +108,7 @@ const createCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     const jsonMode = Boolean(args.json);
     try {
-      const filePath = args.file;
+      const filePath = sanitizePathInput(args.file);
       const fileBuffer = readFileSync(filePath);
       const size_bytes = statSync(filePath).size;
       const mime_type = detectMime(filePath);

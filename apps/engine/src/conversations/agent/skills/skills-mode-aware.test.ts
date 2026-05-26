@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test";
 import {
   ALL_AGENT_SKILLS,
   ALWAYS_LOADED_AGENT_SKILLS,
+  loadAgentSkills,
   MODE_SPECIFIC_AGENT_SKILLS,
   resolveAgentSkillsForMode,
 } from "./index.ts";
@@ -73,5 +74,26 @@ describe("resolveAgentSkillsForMode", () => {
     for (let i = 1; i < indices.length; i++) {
       expect(indices[i]).toBeGreaterThan(indices[i - 1]!);
     }
+  });
+});
+
+describe("attachment-handling skill content", () => {
+  // Pins the regression fix for the "create a knowledge source using
+  // /Users/...md" flow: the agent was hallucinating a paperclip UI and
+  // pointing at the half-right /attach path. The skill must teach the
+  // /knowledge slash and forbid invented UI affordances.
+  const bundle = loadAgentSkills(ALWAYS_LOADED_AGENT_SKILLS);
+
+  test("loaded bundle teaches the /knowledge <path> slash", () => {
+    expect(bundle).toContain("/knowledge <path>");
+  });
+
+  test("loaded bundle forbids inventing a paperclip / drag-drop UI", () => {
+    expect(bundle).toContain("paperclip");
+    expect(bundle).toMatch(/no paperclip/i);
+  });
+
+  test("loaded bundle says the engine cannot read local filesystem paths", () => {
+    expect(bundle).toContain("cannot read local filesystem paths");
   });
 });

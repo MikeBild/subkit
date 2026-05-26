@@ -199,4 +199,29 @@ describe("upload-paths parity", () => {
     expect(typeof row.size_bytes).toBe("number");
     expect(typeof row.created_at).toBe("string");
   });
+
+  test("uploadPath strips invisible Unicode (ZWSP) so pasted paths still resolve", async () => {
+    // Real-world repro: a path copied from a Markdown renderer or
+    // Notion doc often carries a U+200B that makes `existsSync` fail
+    // even though the visible string is identical to a clean path.
+    const fid = "fid_00000000-0000-0000-0000-000000000107";
+    const { client } = makeInlineClient(fid, "zwsp.txt");
+    const fp = join(tmpDir, "zwsp.txt");
+    writeFileSync(fp, "hello");
+
+    // Inject a ZWSP between path segments — sanitization must remove it.
+    const dirty = `${fp.slice(0, -8)}\u200Bzwsp.txt`;
+    const row = await uploadPath(client, dirty, { quiet: true });
+    expect(row.id).toBe(fid);
+  });
+
+  test("uploadPath surfaces codepoints when raw path had invisibles but file still missing", async () => {
+    const { client } = makeInlineClient("fid_xxx", "ghost.txt");
+    // Raw path has a U+200B (ZWSP) — sanitize strips it — but the
+    // stripped form still doesn't exist on disk. The error keeps the
+    // raw path and lists the offending codepoints so the user can see
+    // the invisible character that broke their paste.
+    const dirty = `${tmpDir}/missing\u200B.txt`;
+    await expect(uploadPath(client, dirty, { quiet: true })).rejects.toThrow(/codepoints/);
+  });
 });

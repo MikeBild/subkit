@@ -21,6 +21,7 @@ import {
   type FileWire,
   MAX_INLINE_BYTES,
 } from "../engine-client.ts";
+import { renderSuspiciousCodepoints, sanitizePathInput } from "../lib/path-input.ts";
 import { detectMime } from "../utils/mime.ts";
 import {
   readableFromBytes,
@@ -118,7 +119,7 @@ function finishProgress(opts: UploadProgressOpts): void {
  *  having stderr scribbled on. */
 export async function uploadPath(
   client: EngineClient,
-  filePath: string,
+  rawFilePath: string,
   opts: {
     content_type?: string;
     dedup?: boolean;
@@ -127,8 +128,15 @@ export async function uploadPath(
     onProgress?: (ev: UploadProgressEvent) => void;
   } = {},
 ): Promise<FileWire> {
+  // Single chokepoint for *every* file-upload surface (Ink `/attach`,
+  // Ink `/knowledge`, `sk file upload`, `sk file attach`, `sk
+  // knowledge-sources create`). Stripping invisible Unicode here means
+  // copy-paste from any source (Slack, Markdown, browser) survives —
+  // see lib/path-input.ts for the offending codepoints. The original
+  // string is preserved in errors via `renderSuspiciousCodepoints`.
+  const filePath = sanitizePathInput(rawFilePath);
   if (!existsSync(filePath)) {
-    throw new Error(`file not found: ${filePath}`);
+    throw new Error(`file not found: ${rawFilePath}${renderSuspiciousCodepoints(rawFilePath)}`);
   }
   const st = statSync(filePath);
   if (!st.isFile()) {

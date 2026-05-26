@@ -265,14 +265,30 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
     try {
       // Slash dispatch.
       if (input.startsWith("/")) {
-        const cmd = findSlashCommand(input.split(/\s+/)[0] ?? "");
+        const slashHead = input.split(/\s+/)[0] ?? "";
+        const cmd = findSlashCommand(slashHead);
         if (!cmd) {
+          // Heuristic: `slashHead` like `/Users/...`, `/home/...` is a
+          // Unix path, not a slash command. Built-in slash names never
+          // contain `/`. Mirrors the Ink-app hint in ink-app.tsx.
+          const looksLikePath =
+            slashHead.slice(1).includes("/") ||
+            slashHead.startsWith("~/") ||
+            slashHead.startsWith("./");
           debugLog(
             "dialog.error",
             { input_kind, error: { message: "unknown slash command" } },
             traceContext(),
           );
-          writeErr(`sk: unknown slash command '${input}'. Try /help.\n`);
+          if (looksLikePath) {
+            writeErr(
+              `sk: '${slashHead}' looks like a file path, not a slash command. ` +
+                `Did you mean \`/knowledge ${slashHead}\` (ingest as a knowledge source) ` +
+                `or \`/attach ${slashHead}\` (upload as an attachment)?\n`,
+            );
+          } else {
+            writeErr(`sk: unknown slash command '${input}'. Try /help.\n`);
+          }
           return;
         }
         if (cmd.requires && !persona.probe.allows(cmd.requires)) {
