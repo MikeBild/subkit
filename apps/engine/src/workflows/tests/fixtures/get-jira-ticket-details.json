@@ -1,0 +1,24 @@
+{
+  "name": "Get Jira Ticket Details",
+  "slug": "get-jira-ticket-details",
+  "steps": [
+    {
+      "id": "fetch_ticket_details",
+      "kind": "request",
+      "path": "/rest/api/3/issue/${input.ticket_key}",
+      "query": {
+        "expand": "changelog,transitions"
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "format_ticket",
+      "kind": "transform",
+      "language": "jsonata",
+      "on_error": "fail",
+      "expression": "$scope.fetch_ticket_details.data.{ \"key\": key, \"summary\": fields.summary, \"description\": fields.description.content[0].content[0].text, \"assignee\": fields.assignee.displayName, \"status\": fields.status.name, \"priority\": fields.priority.name, \"type\": fields.issuetype.name, \"components\": fields.components.name, \"created\": fields.created, \"updated\": fields.updated }"
+    }
+  ]
+}

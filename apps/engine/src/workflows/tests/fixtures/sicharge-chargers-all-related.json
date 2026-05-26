@@ -1,0 +1,26 @@
+{
+  "name": "SICharge Chargers with All Related Data",
+  "slug": "sicharge-chargers-all-related",
+  "steps": [
+    {
+      "id": "fetch_chargers",
+      "kind": "request",
+      "method": "GET",
+      "graphql": {
+        "query": "query ListChargers($limit: Int, $nextToken: String) { chargersList(limit: $limit, nextToken: $nextToken) { items { id localId serialNumber tenant customer location description comment geolocation state isConnected isMarkedForDeletion healthState osVersion customerOrderNumber terminalSerialNumber terminalId code createdAt updatedAt configuration { id localId tenant chargerId payload s3Key presignedUrl updatedAt } alert { id chargerId tenant alertsEnabled tags { id tagId name teamsChannel } updatedAt } screenSaver { id localId tenant name customer location imageDuration randomImageOrder updatedAt } thing { id thingName thingTypeName thingArn attributes version } shadow { thingName shadowName state metadata version timestamp } } nextToken } }",
+        "variables": {
+          "limit": "${input.limit}",
+          "nextToken": null
+        }
+      },
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    }
+  ],
+  "input_schema": {
+    "limit": {
+      "type": "integer",
+      "default": 100
+    }
+  }
+}

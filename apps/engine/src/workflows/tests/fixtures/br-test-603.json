@@ -1,0 +1,28 @@
+{
+  "name": "br-test-603",
+  "slug": "br-test-603",
+  "steps": [
+    {
+      "id": "list_private_repos",
+      "kind": "request",
+      "path": "/user/repos",
+      "query": {
+        "per_page": "100",
+        "visibility": "private",
+        "affiliation": "owner"
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "pagination": {
+        "strategy": "page",
+        "page_size": 100,
+        "page_param": "page",
+        "start_page": 1,
+        "limit_param": "page_size"
+      },
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    }
+  ],
+  "description": "Lists all private GitHub repositories owned by the authenticated user (MikeBild).",
+  "output_transform": "$scope.list_private_repos.data"
+}

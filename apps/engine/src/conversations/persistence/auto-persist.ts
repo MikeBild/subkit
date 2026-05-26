@@ -49,9 +49,11 @@
 // `translateAutoPersistError`, `ErrorTranslationContext`, and
 // `SyntheticToolResult` from this barrel.
 
+import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
+import { conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
@@ -262,28 +264,104 @@ export async function maybeAutoPersistFromElicitation(
         break;
       }
       case "oauth_completed": {
-        // G8 (runtime-logs review plan): the OAuth flow's
+        // G8 / H2 (runtime-logs review plan): the OAuth flow's
         // "Have you completed the authorization in your browser?"
-        // elicitation now carries this commit_intent. When the
-        // operator confirms, the dispatcher injects a synthetic
-        // tool result naming the saved credential — the LLM's
-        // next turn sees explicit confirmation instead of having
-        // to infer from chat history that authenticate_oauth
-        // succeeded. The credential write happened earlier on the
-        // OAuth callback path; this case is observability +
-        // signal-injection only, no DB mutation.
+        // elicitation carries this commit_intent. When the operator
+        // confirms, the dispatcher injects a synthetic tool result
+        // naming the saved credential AND — H2 enrichment — the
+        // exact tool call that was blocked on the missing credential,
+        // so the LLM has a deterministic next step instead of having
+        // to scan chat history to figure out what to retry.
         toolName = "authenticate_oauth";
         const connectorId =
           typeof intent.payload.connector_id === "string" ? intent.payload.connector_id : null;
         const connectorSlug =
           typeof intent.payload.connector_slug === "string" ? intent.payload.connector_slug : null;
+        // H2: find the most recent tool call in this conversation
+        // that targeted this connector AND returned an auth-failed
+        // envelope. Best-effort: a DB blip or no match returns no
+        // `blocked_call_to_retry` field; the existing free-text note
+        // remains the fallback. We scan only the recent 25 rows to
+        // bound query cost and to avoid pulling in a stale failure
+        // from much earlier in the conversation.
+        let blockedCallToRetry: { tool: string; input: unknown } | null = null;
+        if (connectorId) {
+          try {
+            const recent = await p.db
+              .select({
+                tool: conversationToolCalls.tool,
+                input: conversationToolCalls.input,
+                output: conversationToolCalls.output,
+              })
+              .from(conversationToolCalls)
+              .where(
+                and(
+                  eq(conversationToolCalls.tenant_id, p.tenant_id),
+                  eq(conversationToolCalls.conversation_id, p.conversation_id),
+                ),
+              )
+              .orderBy(desc(conversationToolCalls.created_at))
+              .limit(25);
+            const RETRYABLE_TOOLS = new Set([
+              "call_connector",
+              "dry_run_workflow",
+              "run_workflow",
+              "probe_connector",
+              "test_connector",
+            ]);
+            for (const row of recent) {
+              if (!RETRYABLE_TOOLS.has(row.tool)) continue;
+              const inputObj =
+                row.input && typeof row.input === "object"
+                  ? (row.input as Record<string, unknown>)
+                  : null;
+              const sameConnector = inputObj?.connector_id === connectorId;
+              const outputObj =
+                row.output && typeof row.output === "object"
+                  ? (row.output as Record<string, unknown>)
+                  : null;
+              const errorCode = outputObj?.error_code;
+              const status = outputObj?.status;
+              // Auth-failure signals we accept as "this call was
+              // blocked on the OAuth credential":
+              //   - structured error_code mentions auth/credential
+              //   - the result envelope status === "auth_failed"
+              //     (run_workflow / dry_run_workflow surface this)
+              //   - HTTP 401 surfaced via the typed G10 enum
+              const isAuthFailure =
+                (typeof errorCode === "string" &&
+                  /^(?:auth_failed|credential_(?:missing|invalid|expired))$/.test(errorCode)) ||
+                status === "auth_failed";
+              if (sameConnector && isAuthFailure) {
+                blockedCallToRetry = { tool: row.tool, input: row.input };
+                break;
+              }
+            }
+          } catch (err) {
+            logger.warn({
+              module: "auto-persist",
+              action: "oauth_completed.blocked_call_lookup_failed",
+              msg: "could not scan tool calls for blocked retry target; falling back to generic note",
+              tenant_id: p.tenant_id,
+              conversation_id: p.conversation_id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
         result = {
           ok: true,
           data: {
             authenticated: true,
             ...(connectorId ? { connector_id: connectorId } : {}),
             ...(connectorSlug ? { connector_slug: connectorSlug } : {}),
-            note: "OAuth flow completed. The saved credential is now active; retry the call_connector / dry_run_workflow / run_workflow that was blocked on this connector.",
+            ...(blockedCallToRetry
+              ? {
+                  blocked_call_to_retry: blockedCallToRetry,
+                  note: `OAuth flow completed. The saved credential is now active. Retry the call that was blocked on this connector: ${blockedCallToRetry.tool}(...). The same input shape is in blocked_call_to_retry.input — re-issue verbatim.`,
+                }
+              : {
+                  note: "OAuth flow completed. The saved credential is now active; retry the call_connector / dry_run_workflow / run_workflow that was blocked on this connector.",
+                }),
           },
         };
         break;

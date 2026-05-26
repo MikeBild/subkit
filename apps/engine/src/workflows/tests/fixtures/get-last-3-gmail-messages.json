@@ -1,0 +1,45 @@
+{
+  "name": "Get Last 3 Gmail Messages",
+  "slug": "get-last-3-gmail-messages",
+  "steps": [
+    {
+      "id": "list_messages",
+      "kind": "request",
+      "path": "/gmail/v1/users/me/messages",
+      "query": {
+        "maxResults": 3
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "fetch_each",
+      "body": ["get_message"],
+      "kind": "loop",
+      "over": "$scope.list_messages.data.messages",
+      "item_var": "msg",
+      "on_error": "fail"
+    },
+    {
+      "id": "get_message",
+      "kind": "request",
+      "path": "/gmail/v1/users/me/messages/${item.id}",
+      "query": {
+        "format": "full",
+        "metadataHeaders": "Subject,From,Date"
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "transform_output",
+      "kind": "transform",
+      "language": "jsonata",
+      "on_error": "fail",
+      "expression": "$scope.fetch_each.data.get_message.data.{ \"id\": id, \"from\": payload.headers[name=\"From\"].value, \"subject\": payload.headers[name=\"Subject\"].value, \"date\": payload.headers[name=\"Date\"].value, \"snippet\": snippet }"
+    }
+  ],
+  "description": "Fetch the last 3 Gmail messages with human-readable subject, sender, date, and snippet."
+}

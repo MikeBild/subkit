@@ -912,28 +912,93 @@ export interface HttpProbeResult {
 }
 
 /**
- * G10: classify an HTTP probe failure into a typed error_code given
- * the status code and the connector. Conservative — only assigns a
- * specific code when the status alone is unambiguous. The 403 case is
- * deliberately `scope_insufficient` rather than `remote_api_disabled`
- * because distinguishing the two needs the response body (e.g.
- * Google's `accessNotConfigured` reason), which the current probe
- * path does not surface. A follow-up can extend this to read the body
- * for known providers (Google APIs return JSON with `error.errors[].reason`)
- * and upgrade `scope_insufficient` → `remote_api_disabled` when matched.
+ * G10 / H3: classify an HTTP probe failure into a typed error_code
+ * given the status code, the connector, and (when available) the
+ * response body. Body-aware upgrades win over status-only buckets:
+ *
+ *   - Google APIs return JSON with `error.errors[].reason === "accessNotConfigured"`
+ *     when an API has not been enabled in the GCP project. Status is
+ *     usually 403; the body is the only signal that distinguishes
+ *     this from a true permission denial (a `scope_insufficient`
+ *     grant). H3 upgrades the classification to `remote_api_disabled`
+ *     and synthesises the GCP console deep-link the operator can
+ *     click to enable the API. Pre-H3 the model spent ~10 min of
+ *     session ed20f48d chasing wrong hypotheses because the engine
+ *     classified the failure as `scope_insufficient`.
+ *
+ *   - Atlassian / GitHub / Stripe equivalents are TODO — the H3 shape
+ *     leaves room for them by accepting the body and dispatching
+ *     per-provider; the catalog below grows as we observe new
+ *     production signals.
  */
+function detectAccessNotConfiguredBody(body: unknown): {
+  matched: boolean;
+  api_name?: string;
+} {
+  if (!body || typeof body !== "object") return { matched: false };
+  const err = (body as { error?: unknown }).error;
+  if (!err || typeof err !== "object") return { matched: false };
+  const errors = (err as { errors?: unknown }).errors;
+  const reasonMatches = (val: unknown): boolean =>
+    typeof val === "object" &&
+    val !== null &&
+    (val as { reason?: unknown }).reason === "accessNotConfigured";
+  if (Array.isArray(errors) && errors.some(reasonMatches)) {
+    // Google's message is typically "Access Not Configured. <ApiName>
+    // API has not been used in project <id> before or it is disabled."
+    const message = (err as { message?: unknown }).message;
+    const apiNameMatch =
+      typeof message === "string" ? /\b([A-Z][A-Za-z]*?)\s+API\b/.exec(message) : null;
+    const api_name = apiNameMatch?.[1];
+    return api_name !== undefined ? { matched: true, api_name } : { matched: true };
+  }
+  return { matched: false };
+}
+
+function googleEnableApiDeepLink(connector: ConnectorView, api_name?: string): string | undefined {
+  // Best-effort: the Google API library page uses lowercase service
+  // names like `drive.googleapis.com`. Pre-fix the LLM had to
+  // reconstruct this from training data — surfacing the deep link
+  // here removes a guessing step. We synthesise from the connector
+  // slug when the body did not name the API explicitly.
+  const baseUrl =
+    typeof connector.base_url === "string" && connector.base_url.length > 0
+      ? connector.base_url
+      : null;
+  let service: string | undefined;
+  if (api_name) {
+    service = `${api_name.toLowerCase()}.googleapis.com`;
+  } else if (baseUrl && /googleapis\.com/.test(baseUrl)) {
+    const hostMatch = /https?:\/\/([a-z0-9-]+\.googleapis\.com)/i.exec(baseUrl);
+    service = hostMatch?.[1];
+  }
+  if (!service) return undefined;
+  return `https://console.cloud.google.com/apis/library/${service}`;
+}
+
 export function classifyHttpProbeStatus(
   status: number,
   connector: ConnectorView,
+  body?: unknown,
 ): { code: HttpProbeResult["error_code"]; provider_action_url?: string } {
+  // H3: body-aware upgrade BEFORE the status-only fallback. Google
+  // emits `accessNotConfigured` on 403 (occasionally 404 in older
+  // APIs) — both should classify as `remote_api_disabled`.
+  if ((status === 403 || status === 404 || status === 400) && body !== undefined) {
+    const ancBody = detectAccessNotConfiguredBody(body);
+    if (ancBody.matched) {
+      const deepLink = googleEnableApiDeepLink(connector, ancBody.api_name);
+      return {
+        code: "remote_api_disabled",
+        ...(deepLink ? { provider_action_url: deepLink } : {}),
+      };
+    }
+  }
   if (status === 401) return { code: "credential_invalid" };
   if (status === 403) return { code: "scope_insufficient" };
   if (status === 404) return { code: "remote_resource_not_found" };
   if (status >= 500) return { code: "unknown_upstream_error" };
-  // 4xx outside the above buckets — generic unknown.
   if (status >= 400) return { code: "unknown_upstream_error" };
-  // Should not happen — the caller invokes this only on probe failure.
-  void connector;
   return { code: "unknown_upstream_error" };
 }
 
@@ -1049,7 +1114,7 @@ export async function probeHttpConnector(p: {
     // advisory, not an error). Authoritative-probe failures and
     // fallback-probe non-404/405 failures both pass through.
     if (!ok) {
-      const classification = classifyHttpProbeStatus(res.status, p.connector);
+      const classification = classifyHttpProbeStatus(res.status, p.connector, res.body);
       if (classification.code) {
         result.error_code = classification.code;
       }

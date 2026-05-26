@@ -1,0 +1,72 @@
+{
+  "name": "Daily DigitalOcean Resources Email",
+  "slug": "daily-do-resources-email",
+  "steps": [
+    {
+      "id": "fetch_projects",
+      "kind": "request",
+      "path": "/v2/projects",
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "projects_loop",
+      "body": ["fetch_resources", "collect_project"],
+      "kind": "loop",
+      "over": "$scope.fetch_projects.data.projects",
+      "item_var": "project",
+      "on_error": "fail"
+    },
+    {
+      "id": "fetch_resources",
+      "kind": "request",
+      "path": "/v2/projects/${item.id}/resources",
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "collect_project",
+      "kind": "transform",
+      "language": "jsonata",
+      "on_error": "fail",
+      "expression": "{ \"name\": $item.name, \"purpose\": $item.purpose, \"environment\": $item.environment, \"resources\": $scope.fetch_resources.data.resources }"
+    },
+    {
+      "id": "format_email_html",
+      "kind": "transform",
+      "language": "jsonata",
+      "on_error": "fail",
+      "expression": "(\n  $blocks := $scope.projects_loop.data.collect_project.data;\n  $body := '<html><body><h2>Daily DigitalOcean Resources Summary</h2><p>Date: ' & $now() & '</p>' & $join($blocks.(\n    '<h3>Project: ' & $.name & '</h3>' &\n    '<ul>' &\n    '<li>Environment: ' & ($.environment != '' ? $.environment : 'n/a') & '</li>' &\n    '<li>Purpose: ' & $.purpose & '</li>' &\n    '<li>Resource count: ' & $string($count($.resources)) & '</li>' &\n    '</ul>' &\n    ($count($.resources) > 0 ? '<ul>' & $join($.resources.('<li>' & $.urn & ' (' & $.status & ')</li>')) & '</ul>' : '<p><em>No resources</em></p>')\n  )) & '</body></html>';\n  { \"html\": $body, \"subject\": 'Daily DigitalOcean Resources Summary' }\n)"
+    },
+    {
+      "id": "encode_email",
+      "kind": "transform",
+      "language": "jsonata",
+      "on_error": "fail",
+      "expression": "( $msg := 'To: ' & $input.recipient_email & '\\r\\nSubject: ' & $scope.format_email_html.data.subject & '\\r\\nMIME-Version: 1.0\\r\\nContent-Type: text/html; charset=utf-8\\r\\n\\r\\n' & $scope.format_email_html.data.html; { \"raw\": $replace($replace($base64encode($msg), '+', '-'), '/', '_') } )"
+    },
+    {
+      "id": "send_email",
+      "body": "${scope.encode_email.data}",
+      "kind": "request",
+      "path": "/gmail/v1/users/me/messages/send",
+      "method": "POST",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000002"
+    }
+  ],
+  "description": "Sends a daily email at 7pm with all DigitalOcean resources organized by project",
+  "input_schema": {
+    "type": "object",
+    "required": ["recipient_email"],
+    "properties": {
+      "recipient_email": {
+        "type": "string",
+        "format": "email",
+        "description": "Email address to send the daily summary to"
+      }
+    }
+  }
+}

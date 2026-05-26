@@ -1,0 +1,37 @@
+{
+  "name": "DigitalOcean Resources by Project",
+  "slug": "digitalocean-resources-by-project",
+  "steps": [
+    {
+      "id": "list_projects",
+      "kind": "request",
+      "path": "/v2/projects",
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "projects_loop",
+      "body": ["fetch_resources"],
+      "kind": "loop",
+      "over": "$scope.list_projects.data.projects",
+      "item_var": "project",
+      "on_error": "fail"
+    },
+    {
+      "id": "fetch_resources",
+      "kind": "request",
+      "path": "/v2/projects/${item.id}/resources",
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "format_output",
+      "kind": "transform",
+      "language": "jsonata",
+      "on_error": "fail",
+      "expression": "$scope.projects_loop.data ~> $map(function($loop_item, $idx) { { \"project\": $scope.list_projects.data.projects[$idx].name, \"id\": $scope.list_projects.data.projects[$idx].id, \"resource_count\": $count($loop_item.fetch_resources.data.resources), \"resources\": $loop_item.fetch_resources.data.resources.urn } })"
+    }
+  ]
+}

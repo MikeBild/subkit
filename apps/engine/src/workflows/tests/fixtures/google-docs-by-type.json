@@ -1,0 +1,22 @@
+{
+  "name": "Google Workspace Documents by Type",
+  "slug": "google-docs-by-type",
+  "steps": [
+    {
+      "id": "list_files",
+      "kind": "request",
+      "path": "/drive/v3/files",
+      "query": {
+        "q": "trashed=false",
+        "fields": "files(id,name,mimeType,createdTime,modifiedTime,webViewLink)",
+        "orderBy": "modifiedTime desc",
+        "pageSize": "100"
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    }
+  ],
+  "description": "List all documents in Google Workspace",
+  "output_transform": "$scope.list_files.data.files"
+}

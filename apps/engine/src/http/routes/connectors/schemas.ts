@@ -47,12 +47,42 @@ export const ConnectorListResponse = z
   .object({ items: z.array(ConnectorSchema) })
   .openapi("ConnectorListResponse");
 
+// H1: full probe envelope shape, matching the conversation-tool
+// `test_connector` result. REST + MCP + conversation surfaces now
+// carry the same fields so OpenAPI clients can branch on the typed
+// signals (error_code, partial_grant) without out-of-band knowledge.
+export const ProbeErrorCodeEnum = z
+  .enum([
+    "credential_missing",
+    "credential_invalid",
+    "credential_expired",
+    "scope_insufficient",
+    "remote_api_disabled",
+    "remote_resource_not_found",
+    "unknown_upstream_error",
+  ])
+  .openapi("ProbeErrorCode");
+
 export const ProbeResultSchema = z
   .object({
     ok: z.boolean(),
     latency_ms: z.number(),
     status: z.number().optional(),
     detail: z.string().optional(),
+    // G10: typed failure classification + provider deep link.
+    error_code: ProbeErrorCodeEnum.optional(),
+    provider_action_url: z.string().optional(),
+    // G6: OAuth scope diff. Present only for oauth2 connectors with
+    // both expected and granted scopes known. `partial_grant` may
+    // also take the literal "unknown" when the credential row predates
+    // the 6.2.4 migration and never recorded a granted_scopes value
+    // (H4) — lets the LLM tell "we know it's fine" from "we have no
+    // data".
+    partial_grant: z.union([z.boolean(), z.literal("unknown")]).optional(),
+    granted_scopes: z.array(z.string()).optional(),
+    expected_scopes: z.array(z.string()).optional(),
+    missing_scopes: z.array(z.string()).optional(),
+    partial_grant_note: z.string().optional(),
   })
   .openapi("ConnectorProbeResult");
 

@@ -1,0 +1,27 @@
+{
+  "name": "My Private GitHub Repos",
+  "slug": "my-private-github-repos",
+  "steps": [
+    {
+      "id": "fetch_repos",
+      "kind": "request",
+      "path": "/user/repos",
+      "query": {
+        "per_page": "100",
+        "visibility": "private",
+        "affiliation": "owner"
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "filter_by_owner",
+      "kind": "transform",
+      "language": "jsonata",
+      "on_error": "fail",
+      "expression": "$scope.fetch_repos.data[owner.login = 'MikeBild'].{ \"name\": name, \"full_name\": full_name, \"private\": private, \"html_url\": html_url, \"description\": description, \"updated_at\": updated_at }"
+    }
+  ],
+  "description": "List private GitHub repos owned by MikeBild"
+}
