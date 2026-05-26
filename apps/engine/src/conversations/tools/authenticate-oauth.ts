@@ -107,7 +107,14 @@ const inputSchema = z
  */
 function openOAuthApprovalElicitation(
   ctx: ToolContext,
-  p: { connectorLabel: string; authorizationUrl: string; redirectUri: string; message: string },
+  p: {
+    connectorLabel: string;
+    authorizationUrl: string;
+    redirectUri: string;
+    message: string;
+    connectorId: string;
+    connectorSlug: string;
+  },
 ): Promise<import("../elicitations.ts").ElicitationRecord> {
   return createNativeElicitation(
     {
@@ -119,7 +126,13 @@ function openOAuthApprovalElicitation(
       summary: `Authorize OAuth access for ${p.connectorLabel}.`,
       // Source the carrier payload from the single `oauthApprovalInput`
       // builder so the bridge (oob/form) and DB-pause paths cannot drift.
-      input: oauthApprovalInput(p.authorizationUrl, p.redirectUri, p.message),
+      input: oauthApprovalInput(
+        p.authorizationUrl,
+        p.redirectUri,
+        p.message,
+        p.connectorId,
+        p.connectorSlug,
+      ),
       actor_id: ctx.actor_id,
     },
     ctx.db,
@@ -389,6 +402,8 @@ export const authenticateOAuthTool: ConversationTool = {
         authorizationUrl: started.authorization_url,
         redirectUri: redirect_uri,
         message,
+        connectorId,
+        connectorSlug: connector.slug,
       });
       // Start the shared-budget clock before the bridge round-trip so its
       // cost is subtracted from the `waitForOAuthCredential` timeout.
@@ -432,6 +447,8 @@ export const authenticateOAuthTool: ConversationTool = {
             started.authorization_url,
             redirect_uri,
             message,
+            connectorId,
+            connector.slug,
           );
         }
         // A transport/timeout failure with the bridge present. Do NOT
@@ -476,6 +493,8 @@ export const authenticateOAuthTool: ConversationTool = {
         authorizationUrl: started.authorization_url,
         redirectUri: redirect_uri,
         message,
+        connectorId,
+        connectorSlug: connector.slug,
       });
       // Start the shared-budget clock before the bridge round-trip so its
       // cost is subtracted from the `waitForOAuthCredential` timeout.
@@ -534,6 +553,8 @@ export const authenticateOAuthTool: ConversationTool = {
             started.authorization_url,
             redirect_uri,
             message,
+            connectorId,
+            connector.slug,
           );
         }
         // Transport/timeout failure with the bridge present — do NOT
@@ -569,7 +590,14 @@ export const authenticateOAuthTool: ConversationTool = {
     }
 
     // ── No bridge — DB-pause via ask_user_confirm ─────────────────────
-    return dbPauseForOAuth(ctx, started.authorization_url, redirect_uri, message);
+    return dbPauseForOAuth(
+      ctx,
+      started.authorization_url,
+      redirect_uri,
+      message,
+      connectorId,
+      connector.slug,
+    );
   },
 };
 
@@ -589,17 +617,34 @@ function oauthApprovalInput(
   authorizationUrl: string,
   redirectUri: string,
   message: string,
+  connectorId: string,
+  connectorSlug: string,
 ): Record<string, unknown> {
   // Build THROUGH the shared `OAuthApprovalInputSchema` so the carrier
   // shape the CLI consumer (`extractOAuthUrl`) parses cannot drift from
   // what this producer emits — a Zod-checked contract end to end.
-  return OAuthApprovalInputSchema.parse({
+  const parsed = OAuthApprovalInputSchema.parse({
     kind: "external_write",
     question: "Have you completed the authorization in your browser?",
     summary: message,
     [OAUTH_AUTHORIZATION_URL_FIELD]: authorizationUrl,
     redirect_uri: redirectUri,
   });
+  // G8: stamp the deterministic-resume commit_intent so when the
+  // operator confirms, the auto-persist dispatcher (oauth_completed
+  // case) injects a synthetic tool result naming the saved credential.
+  // The LLM's next turn sees "authenticated: true, connector_id: ..."
+  // and can immediately retry the originally-blocked tool call.
+  // Spread into a fresh object so the strict-parsed payload stays
+  // intact for the CLI URL extractor.
+  return {
+    ...parsed,
+    commit_intent: {
+      kind: "oauth_completed",
+      payload: { connector_id: connectorId, connector_slug: connectorSlug },
+      description: `Resume work that was blocked on ${connectorSlug}: the credential is now active.`,
+    },
+  };
 }
 
 /** DB-pause path: surface the authorization URL via `ask_user_confirm`. */
@@ -608,11 +653,13 @@ function dbPauseForOAuth(
   authorizationUrl: string,
   redirectUri: string,
   message: string,
+  connectorId: string,
+  connectorSlug: string,
 ): Promise<ToolResult> {
   return pauseForUserInput(ctx, {
     tool_name: "ask_user_confirm",
     summary: message,
-    input: oauthApprovalInput(authorizationUrl, redirectUri, message),
+    input: oauthApprovalInput(authorizationUrl, redirectUri, message, connectorId, connectorSlug),
   });
 }
 
@@ -641,6 +688,8 @@ async function demoteOAuthApprovalToPortal(
   authorizationUrl: string,
   redirectUri: string,
   message: string,
+  connectorId: string,
+  connectorSlug: string,
 ): Promise<ToolResult> {
   await demoteElicitationToPortal(ctx.tenant_id, rowId, ctx.db);
   return {
@@ -650,7 +699,7 @@ async function demoteOAuthApprovalToPortal(
       tool_name: "ask_user_confirm",
       summary: message,
       elicitation_id: rowId,
-      input: oauthApprovalInput(authorizationUrl, redirectUri, message),
+      input: oauthApprovalInput(authorizationUrl, redirectUri, message, connectorId, connectorSlug),
     },
   };
 }

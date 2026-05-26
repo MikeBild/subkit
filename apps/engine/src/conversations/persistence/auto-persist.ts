@@ -261,6 +261,33 @@ export async function maybeAutoPersistFromElicitation(
         result = await dispatchRollbackSkipped(ctx, intent);
         break;
       }
+      case "oauth_completed": {
+        // G8 (runtime-logs review plan): the OAuth flow's
+        // "Have you completed the authorization in your browser?"
+        // elicitation now carries this commit_intent. When the
+        // operator confirms, the dispatcher injects a synthetic
+        // tool result naming the saved credential — the LLM's
+        // next turn sees explicit confirmation instead of having
+        // to infer from chat history that authenticate_oauth
+        // succeeded. The credential write happened earlier on the
+        // OAuth callback path; this case is observability +
+        // signal-injection only, no DB mutation.
+        toolName = "authenticate_oauth";
+        const connectorId =
+          typeof intent.payload.connector_id === "string" ? intent.payload.connector_id : null;
+        const connectorSlug =
+          typeof intent.payload.connector_slug === "string" ? intent.payload.connector_slug : null;
+        result = {
+          ok: true,
+          data: {
+            authenticated: true,
+            ...(connectorId ? { connector_id: connectorId } : {}),
+            ...(connectorSlug ? { connector_slug: connectorSlug } : {}),
+            note: "OAuth flow completed. The saved credential is now active; retry the call_connector / dry_run_workflow / run_workflow that was blocked on this connector.",
+          },
+        };
+        break;
+      }
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

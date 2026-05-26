@@ -19,6 +19,15 @@ export const COMMIT_INTENT_KINDS = [
   "delete_connector",
   "delete_workflow",
   "rollback_after_execute",
+  // G8 (runtime-logs review plan): OAuth elicitations now carry a
+  // commit_intent so when the operator resolves the
+  // "Have you completed the authorization in your browser?" confirm,
+  // the dispatcher injects a synthetic tool result naming the saved
+  // credential. Pre-fix the LLM had to scan chat history to figure
+  // out the OAuth flow had completed and which tool to retry; the
+  // engine logged `auto_persist.skipped: elicitation resolved without
+  // commit_intent` on every OAuth approval (session ed20f48d).
+  "oauth_completed",
 ] as const;
 
 export type CommitIntentKind = (typeof COMMIT_INTENT_KINDS)[number];

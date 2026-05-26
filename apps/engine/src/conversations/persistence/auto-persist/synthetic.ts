@@ -89,6 +89,10 @@ export function intentToolName(kind: CommitIntent["kind"]): string {
       return "delete_workflow";
     case "rollback_after_execute":
       return "rollback_after_execute";
+    case "oauth_completed":
+      // G8: the OAuth flow's commit_intent maps to the tool whose
+      // result the dispatcher injects — authenticate_oauth.
+      return "authenticate_oauth";
   }
 }
 
