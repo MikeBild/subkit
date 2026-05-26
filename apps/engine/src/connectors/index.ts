@@ -5,6 +5,7 @@
 export * from "./discovery/service.ts";
 export * from "./discovery/types.ts";
 export * from "./drivers/index.ts";
+export * from "./oauth-scope-diff.ts";
 export * from "./service.ts";
 export * from "./services/call-connector.ts";
 export * from "./template-binding.ts";
