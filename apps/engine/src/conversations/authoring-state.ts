@@ -411,6 +411,26 @@ export function withLatestPreview(
     preview?.ok ?? false,
     preview?.summary ?? "Workflow preview recorded.",
   );
+  // G5 (runtime-logs review plan): a clean end-to-end preview IS
+  // validation — every step ran against real data with real
+  // credentials and returned a real response. Pre-fix the
+  // `workflow_validated` checkpoint was only set by step-level
+  // `validate_draft` / `dry_run_step`, so an auto-persist driven by
+  // a green `dry_run_workflow` left `validated_step_count` at 0 and
+  // the critic later logged `verdict: fail failed_checks:
+  // [validated_step_present]` 15 s after the commit row was already
+  // written (session ed20f48d). Recording `workflow_validated` here
+  // when the preview is clean closes that false-fail without
+  // restructuring the turn loop's critic-after-commit ordering.
+  if (preview?.ok === true) {
+    state = recordCheckpoint(
+      state,
+      "workflow_validated",
+      tool_name,
+      true,
+      "End-to-end dry-run completed without errors — counts as validation.",
+    );
+  }
   return refreshDraftSummary({
     ...normalized,
     mode: "workflow_authoring",

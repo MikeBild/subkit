@@ -894,6 +894,47 @@ export interface HttpProbeResult {
   // When true the probe is advisory only — callers should not block on it.
   warning_only: boolean;
   warnings: Array<{ code: string; message: string }>;
+  /**
+   * G10 (runtime-logs review plan): typed error classification so the
+   * LLM can branch on a discrete code instead of regex-matching
+   * `detail`. Populated on every ok:false result.
+   */
+  error_code?:
+    | "credential_missing"
+    | "credential_invalid"
+    | "credential_expired"
+    | "scope_insufficient"
+    | "remote_api_disabled"
+    | "remote_resource_not_found"
+    | "unknown_upstream_error";
+  /** Optional provider-console deep link the operator can click. */
+  provider_action_url?: string;
+}
+
+/**
+ * G10: classify an HTTP probe failure into a typed error_code given
+ * the status code and the connector. Conservative — only assigns a
+ * specific code when the status alone is unambiguous. The 403 case is
+ * deliberately `scope_insufficient` rather than `remote_api_disabled`
+ * because distinguishing the two needs the response body (e.g.
+ * Google's `accessNotConfigured` reason), which the current probe
+ * path does not surface. A follow-up can extend this to read the body
+ * for known providers (Google APIs return JSON with `error.errors[].reason`)
+ * and upgrade `scope_insufficient` → `remote_api_disabled` when matched.
+ */
+export function classifyHttpProbeStatus(
+  status: number,
+  connector: ConnectorView,
+): { code: HttpProbeResult["error_code"]; provider_action_url?: string } {
+  if (status === 401) return { code: "credential_invalid" };
+  if (status === 403) return { code: "scope_insufficient" };
+  if (status === 404) return { code: "remote_resource_not_found" };
+  if (status >= 500) return { code: "unknown_upstream_error" };
+  // 4xx outside the above buckets — generic unknown.
+  if (status >= 400) return { code: "unknown_upstream_error" };
+  // Should not happen — the caller invokes this only on probe failure.
+  void connector;
+  return { code: "unknown_upstream_error" };
 }
 
 // Shape stored in connector.config.probe_endpoint (mirrors ProbeEndpointSchema).
@@ -958,6 +999,7 @@ export async function probeHttpConnector(p: {
               message: "draft has no attached credential; cannot probe",
             },
           ],
+          error_code: "credential_missing",
         };
       }
     }
@@ -1002,6 +1044,19 @@ export async function probeHttpConnector(p: {
     }
 
     const result: HttpProbeResult = { ok, latency_ms, status: res.status, warning_only, warnings };
+    // G10: typed classification on failure. Only assigned when the
+    // probe truly failed (warning_only stays unclassified — it's
+    // advisory, not an error). Authoritative-probe failures and
+    // fallback-probe non-404/405 failures both pass through.
+    if (!ok) {
+      const classification = classifyHttpProbeStatus(res.status, p.connector);
+      if (classification.code) {
+        result.error_code = classification.code;
+      }
+      if (classification.provider_action_url) {
+        result.provider_action_url = classification.provider_action_url;
+      }
+    }
     log.connector.probe.completed({
       connector_id: p.connector.id,
       ok: result.ok,

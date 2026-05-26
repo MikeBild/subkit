@@ -166,6 +166,61 @@ export const runWorkflowTool: ConversationTool = {
     }
     const wf = await ctx.engineClient.workflows.get(workflowId);
     if (!wf) return { ok: false, data: withStatus({ error: "workflow_not_found" }, "failed") };
+    // G1 (runtime-logs review plan): surface the workflow's input_schema
+    // contract to the LLM in the SAME turn. Pre-fix the user asked
+    // "run it for tomorrow" and the workflow returned byte-identical
+    // output because the date was hardcoded in the request URL — no
+    // input parameter existed but the model never told the user that.
+    // Two arms:
+    //   (a) workflow declares input_schema but caller passed empty
+    //       input — refuse with `input_required` so the LLM prompts
+    //       the user before executing.
+    //   (b) workflow declares NO input_schema but caller passed
+    //       non-empty input — execute, but include `input_ignored:
+    //       true` in the success envelope so the LLM knows to tell
+    //       the user the value was discarded.
+    // Both arms read `wf.definition.input_schema` (a JSON Schema
+    // object) without additional DB round-trips.
+    const wfInputSchema =
+      wf.definition && typeof wf.definition === "object" && "input_schema" in wf.definition
+        ? ((wf.definition as { input_schema?: unknown }).input_schema as
+            | Record<string, unknown>
+            | null
+            | undefined)
+        : undefined;
+    const wfHasInputContract =
+      wfInputSchema !== undefined &&
+      wfInputSchema !== null &&
+      typeof wfInputSchema === "object" &&
+      Object.keys(wfInputSchema).length > 0;
+    const suppliedInput = args.input;
+    const suppliedInputIsEmpty =
+      suppliedInput === null ||
+      suppliedInput === undefined ||
+      (typeof suppliedInput === "object" &&
+        !Array.isArray(suppliedInput) &&
+        Object.keys(suppliedInput as Record<string, unknown>).length === 0) ||
+      (typeof suppliedInput === "string" && suppliedInput.trim().length === 0);
+    if (wfHasInputContract && suppliedInputIsEmpty) {
+      return {
+        ok: false,
+        data: withStatus(
+          {
+            error_code: "input_required",
+            message: `workflow "${wf.slug}" declares input_schema but the run was started with no input. Surface the required fields to the user via ask_user_form (or ask_user_text for a single field) and re-issue run_workflow with the answers.`,
+            input_schema: wfInputSchema,
+            workflow_slug: wf.slug,
+            next_best_actions: ["ask_user_form", "ask_user_text"],
+          },
+          "failed",
+        ),
+      };
+    }
+    const inputIgnored =
+      !wfHasInputContract &&
+      !suppliedInputIsEmpty &&
+      typeof suppliedInput === "object" &&
+      suppliedInput !== null;
     if (
       activeTarget?.kind === "workflow" &&
       activeTarget.lifecycle_state === "draft_only" &&
@@ -564,6 +619,14 @@ export const runWorkflowTool: ConversationTool = {
             workflow_version: wf.current_version,
             ...(failureStepKey ? { failure_step_key: failureStepKey } : {}),
             ...(failureReason ? { failure_reason: failureReason } : {}),
+            // G1: tell the LLM the run accepted no inputs so the next
+            // assistant turn does not pretend the parameter was honoured.
+            ...(inputIgnored
+              ? {
+                  input_ignored: true,
+                  input_ignored_note: `workflow "${wf.slug}" does not declare an input_schema; the supplied input was discarded. Tell the user the workflow accepts no inputs (or edit the workflow to bind one).`,
+                }
+              : {}),
             status: payloadStatus,
             output: result.output,
             error: result.error,

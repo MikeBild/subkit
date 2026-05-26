@@ -13,11 +13,48 @@ import { probeS3Connector } from "./s3.ts";
 import { probeSftpConnector } from "./sftp.ts";
 import { probeSmbConnector } from "./smb.ts";
 
+/**
+ * G10 (runtime-logs review plan): typed enumeration of probe-failure
+ * shapes so the LLM has a deterministic next-action mapping instead of
+ * having to interpret a free-text `detail` string.
+ *
+ * Pre-fix a Google Drive 404 looked identical to a "credentials
+ * invalid" 401 looked identical to "Drive API not enabled in Google
+ * Cloud" — the model spent ~10 minutes of session ed20f48d chasing
+ * the wrong hypotheses (HTTPS vs HTTP, callback URL allowlist, OAuth
+ * scopes) before the user volunteered the Gmail-works comparison
+ * that unlocked the answer.
+ *
+ * Classification is per-driver: HTTP can populate `credential_invalid`
+ * (401) / `scope_insufficient` (403) / `remote_resource_not_found`
+ * (404 from an explicit probe endpoint) / `unknown_upstream_error`
+ * (5xx). Provider-aware mapping (e.g. Google `accessNotConfigured`
+ * body → `remote_api_disabled`) is layered on top in
+ * `classifyHttpProbeError` once the response body is in scope.
+ */
+export type ProbeErrorCode =
+  | "credential_missing"
+  | "credential_invalid"
+  | "credential_expired"
+  | "scope_insufficient"
+  | "remote_api_disabled"
+  | "remote_resource_not_found"
+  | "unknown_upstream_error";
+
 export interface ProbeResult {
   ok: boolean;
   latency_ms: number;
   status?: number;
   detail?: string;
+  /** Typed error class — present on every ok:false result. */
+  error_code?: ProbeErrorCode;
+  /**
+   * Optional deep link to the provider console page that resolves
+   * the failure (e.g. Google Cloud "Enable API" page when
+   * `error_code === "remote_api_disabled"`). The LLM surfaces this
+   * verbatim so the user can click rather than search.
+   */
+  provider_action_url?: string;
 }
 
 export async function probeConnector(p: {

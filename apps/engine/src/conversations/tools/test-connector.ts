@@ -97,6 +97,16 @@ export const testConnectorTool: ConversationTool = {
         latency_ms: result.latency_ms,
         ...(result.status !== undefined ? { status: result.status } : {}),
         ...(result.detail !== undefined ? { detail: result.detail } : {}),
+        // G10: typed probe-error classification + provider deep link.
+        // Surfaces from the driver layer when a 4xx/5xx response can
+        // be reduced to a discrete error_code (credential_invalid,
+        // scope_insufficient, remote_resource_not_found,
+        // remote_api_disabled, credential_missing, ...). The LLM
+        // branches on this code instead of regex-matching `detail`.
+        ...(result.error_code !== undefined ? { error_code: result.error_code } : {}),
+        ...(result.provider_action_url !== undefined
+          ? { provider_action_url: result.provider_action_url }
+          : {}),
       },
     };
   },

@@ -236,4 +236,104 @@ describe("run_workflow tool", () => {
     expect((result.data as { status: string }).status).toBe("failed");
     expect((result.data as { error_code: string }).error_code).toBe("workflow_not_persisted");
   });
+
+  test("G1: refuses with input_required when workflow declares input_schema and caller passes no input", async () => {
+    // Pre-fix calling run_workflow with empty/missing input on a
+    // workflow that declares input_schema ran the workflow anyway and
+    // produced byte-identical output regardless of what the user
+    // asked for (session ed20f48d: "run it for tomorrow" returned the
+    // same 2026-05-27 forecast because the date was hardcoded in the
+    // request URL and the model had no signal that an input was
+    // ignored). Post-fix the tool refuses with a structured
+    // `input_required` envelope carrying the schema so the LLM can
+    // prompt the user via ask_user_form.
+    //
+    // Seed a dedicated workflow with a unique slug to avoid colliding
+    // with other tests' berlin-weather row in the shared test tenant.
+    const [workflow] = await ctx.testDb.db
+      .insert(workflows)
+      .values({
+        tenant_id: ctx.tenant_id,
+        slug: "g1-input-required",
+        name: "G1 Input Required",
+        lifecycle: "active",
+      })
+      .returning();
+    if (!workflow) throw new Error("workflow insert failed");
+    const [version] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id: workflow.id,
+        version: 1,
+        dag: {
+          name: "G1 Input Required",
+          slug: "g1-input-required",
+          input_schema: {
+            type: "object",
+            required: ["date"],
+            properties: { date: { type: "string" } },
+          },
+          steps: [
+            {
+              id: "shape",
+              kind: "transform",
+              expression: '{ "date": $input.date }',
+              language: "jsonata",
+            },
+          ],
+        },
+      })
+      .returning();
+    if (!version) throw new Error("version insert failed");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ current_version_id: version.id })
+      .where(eq(workflows.id, workflow.id));
+    const workflow_id = workflow.id;
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        draft: {
+          workflow: { name: "new-workflow", steps: [] },
+          state: {
+            mode: "execution",
+            stage: "workflow_executed",
+            connector_mutation_seq: 0,
+            workflow_mutation_seq: 0,
+            checkpoints: {},
+            persisted_resources: [],
+            latest_execution: null,
+            latest_diagnosis: null,
+          },
+        },
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft: conversation.draft as DraftDocument,
+        setDraft: async () => {},
+      }),
+      { workflow_id, environment: "dev" /* no input */ },
+    );
+    expect(result.ok).toBe(false);
+    const data = result.data as {
+      status: string;
+      error_code: string;
+      input_schema: Record<string, unknown>;
+      workflow_slug: string;
+    };
+    expect(data.status).toBe("failed");
+    expect(data.error_code).toBe("input_required");
+    expect(data.workflow_slug).toBe("g1-input-required");
+    expect(data.input_schema).toMatchObject({
+      type: "object",
+      required: ["date"],
+    });
+  });
 });
