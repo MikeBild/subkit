@@ -13,6 +13,7 @@ import { SummaryCard } from "../render/summary-card.tsx";
 import type {
   ConnectorIntent,
   ConnectorSummary,
+  KnowledgeSourceSummary,
   WorkflowIntent,
   WorkflowSummary,
   WorkflowTrigger,
@@ -797,6 +798,38 @@ const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
 });
 WorkflowDraftCard.displayName = "WorkflowDraftCard";
 
+// Generic milestone fallback — used when a tool fires a milestone card
+// but its result shape didn't match the dedicated extractor. Renders
+// a single tone-aware line plus a short preview of the result so the
+// chat conversation always has *something* to say instead of going
+// silent on a shape regression.
+const GenericMilestoneCard: React.FC<CardProps & { label: string }> = memo(({ call, label }) => {
+  const tone = statusTone(call);
+  const d = unwrapData(call);
+  const errorCode = typeof d?.error === "string" ? d.error : null;
+  const message = typeof d?.message === "string" ? d.message : null;
+  const headline =
+    tone === "fail"
+      ? `${label} failed`
+      : tone === "pending"
+        ? `${label} in progress`
+        : tone === "warn"
+          ? `${label} returned a warning`
+          : `${label} ready`;
+  const detail = errorCode ?? message ?? previewLine(d, 100);
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>{badge(tone, headline)}</Box>
+      {detail ? (
+        <Box marginLeft={2}>
+          <Text dimColor>{detail}</Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+});
+GenericMilestoneCard.displayName = "GenericMilestoneCard";
+
 // Approval card — renders ask_user_confirm / ask_user_choice elicitation
 // *requests* inline (while the user is answering) and their resolved
 // outcome afterwards. The kind tells the user what they're approving.
@@ -857,6 +890,7 @@ const CHAT_MILESTONE_TOOLS = new Set([
   "start_workflow_from_goal",
   "run_workflow",
   "diagnose_latest_execution",
+  "create_knowledge_source",
 ]);
 
 // Tools we always render an in-flight card for (running/pending) —
@@ -881,6 +915,7 @@ const IN_FLIGHT_VISIBLE_TOOLS = new Set([
   "search_knowledge",
   "load_skill",
   "list_skill_suggestions",
+  "create_knowledge_source",
 ]);
 
 function shouldRenderInChat(call: ToolCallState): boolean {
@@ -1048,6 +1083,39 @@ export function extractConnectorSummary(call: ToolCallState): ConnectorSummary |
   return { id, slug, template_slug: templateSlug };
 }
 
+// create_knowledge_source returns
+//   { created: true, knowledge_source: { id, name, slug, scope, status,
+//     chunk_count, bytes_total }, audit_log_id }
+// The tool intentionally does NOT echo back mime_type or file_id —
+// those are inputs. We recover what we can from `call.args`
+// (`mime_type` for inline mode, `file_id` for from_attachment) so the
+// card matches the existing `KnowledgeSourceSummary` rendering used by
+// the CLI `sk knowledge-sources create` command.
+export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSourceSummary | null {
+  const d = unwrapData(call);
+  if (!d) return null;
+  const ks = asRecord(d.knowledge_source);
+  if (!ks) return null;
+  const id = typeof ks.id === "string" ? ks.id : null;
+  const name = typeof ks.name === "string" ? ks.name : null;
+  if (!id || !name) return null;
+  const bytes_total = typeof ks.bytes_total === "number" ? ks.bytes_total : 0;
+  const args = asRecord(call.args) ?? {};
+  const argMime = typeof args.mime_type === "string" ? args.mime_type : null;
+  const argFileId = typeof args.file_id === "string" ? args.file_id : null;
+  // Default inline mode is text/markdown per the tool implementation;
+  // fall back to that when args didn't carry one.
+  const mime_type =
+    argMime ?? (args.mode === "inline" ? "text/markdown" : "application/octet-stream");
+  return {
+    id,
+    name,
+    mime_type,
+    size_bytes: bytes_total,
+    ...(argFileId ? { file_id: argFileId } : {}),
+  };
+}
+
 // Dispatcher — returns a custom card for known authoring tools, or null
 // so the caller falls back to the generic ToolCard.
 export function renderAuthoringCard(
@@ -1077,6 +1145,13 @@ export function renderAuthoringCard(
       const summary = extractWorkflowSummary(call);
       if (summary) return <SummaryCard key={`acc-${call.id}`} summary={summary} />;
       return <CommitResultCard key={`acc-${call.id}`} call={call} />;
+    }
+    case "create_knowledge_source": {
+      const summary = extractKnowledgeSourceSummary(call);
+      if (summary) return <SummaryCard key={`acc-${call.id}`} summary={summary} />;
+      // Fall back to a compact one-liner when the result shape didn't
+      // match — keeps the chat narration alive instead of vanishing.
+      return <GenericMilestoneCard key={`acc-${call.id}`} call={call} label="Knowledge source" />;
     }
     case "run_workflow":
     case "diagnose_latest_execution":

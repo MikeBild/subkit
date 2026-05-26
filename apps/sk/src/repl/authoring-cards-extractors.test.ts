@@ -6,6 +6,7 @@ import type { ToolCallState } from "@cli-core/index.ts";
 import {
   extractConnectorIntent,
   extractConnectorSummary,
+  extractKnowledgeSourceSummary,
   extractWorkflowIntent,
   extractWorkflowSummary,
 } from "./authoring-cards.tsx";
@@ -458,5 +459,124 @@ describe("extractConnectorSummary", () => {
       result: { ok: true, data: [{ connector: {} }] },
     });
     expect(extractConnectorSummary(call)).toBeNull();
+  });
+});
+
+// ============================================================
+// extractKnowledgeSourceSummary
+// ============================================================
+
+describe("extractKnowledgeSourceSummary", () => {
+  // Mirrors the engine create_knowledge_source success payload at
+  // apps/engine/src/conversations/tools/generated/writes/create-knowledge-source.ts.
+  const validKsData = {
+    created: true,
+    knowledge_source: {
+      id: "ks-001",
+      name: "OCPP 2.0.1 Protocol Reference",
+      slug: "ocpp-2-0-1-protocol-reference",
+      scope: "global",
+      status: "ready",
+      chunk_count: 42,
+      bytes_total: 123456,
+    },
+    audit_log_id: "audit-001",
+  };
+
+  test("valid payload + inline args returns KnowledgeSourceSummary with mime from args", () => {
+    const call: ToolCallState = {
+      id: "tc-ks",
+      name: "create_knowledge_source",
+      args: { mode: "inline", name: "X", content: "y", mime_type: "text/markdown" },
+      status: "done",
+      result: { ok: true, data: validKsData },
+    };
+    const result = extractKnowledgeSourceSummary(call);
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe("ks-001");
+    expect(result?.name).toBe("OCPP 2.0.1 Protocol Reference");
+    expect(result?.mime_type).toBe("text/markdown");
+    expect(result?.size_bytes).toBe(123456);
+    expect(result?.file_id).toBeUndefined();
+  });
+
+  test("from_attachment args adds file_id and falls back to octet-stream mime", () => {
+    const call: ToolCallState = {
+      id: "tc-ks-att",
+      name: "create_knowledge_source",
+      args: { mode: "from_attachment", file_id: "fid_abc-123" },
+      status: "done",
+      result: { ok: true, data: validKsData },
+    };
+    const result = extractKnowledgeSourceSummary(call);
+    expect(result?.file_id).toBe("fid_abc-123");
+    expect(result?.mime_type).toBe("application/octet-stream");
+  });
+
+  test("inline mode without explicit mime_type falls back to text/markdown", () => {
+    const call: ToolCallState = {
+      id: "tc-ks-inline-default",
+      name: "create_knowledge_source",
+      args: { mode: "inline", name: "X", content: "y" },
+      status: "done",
+      result: { ok: true, data: validKsData },
+    };
+    const result = extractKnowledgeSourceSummary(call);
+    expect(result?.mime_type).toBe("text/markdown");
+  });
+
+  test("missing knowledge_source key → returns null", () => {
+    const call = withResult("create_knowledge_source", { created: true });
+    expect(extractKnowledgeSourceSummary(call)).toBeNull();
+  });
+
+  test("knowledge_source missing id → returns null", () => {
+    const call = withResult("create_knowledge_source", {
+      knowledge_source: { name: "X", bytes_total: 0 },
+    });
+    expect(extractKnowledgeSourceSummary(call)).toBeNull();
+  });
+
+  test("knowledge_source missing name → returns null", () => {
+    const call = withResult("create_knowledge_source", {
+      knowledge_source: { id: "ks-x", bytes_total: 0 },
+    });
+    expect(extractKnowledgeSourceSummary(call)).toBeNull();
+  });
+
+  test("bytes_total absent → size_bytes defaults to 0", () => {
+    const call = withResult("create_knowledge_source", {
+      knowledge_source: { id: "ks-no-bytes", name: "n" },
+    });
+    const result = extractKnowledgeSourceSummary(call);
+    expect(result?.size_bytes).toBe(0);
+  });
+
+  test("bytes_total is a string → defaults to 0", () => {
+    const call = withResult("create_knowledge_source", {
+      knowledge_source: { id: "ks-bad-bytes", name: "n", bytes_total: "lots" },
+    });
+    const result = extractKnowledgeSourceSummary(call);
+    expect(result?.size_bytes).toBe(0);
+  });
+
+  test("result.data is null → returns null", () => {
+    const call = makeCall({
+      name: "create_knowledge_source",
+      result: { ok: true, data: null },
+    });
+    expect(extractKnowledgeSourceSummary(call)).toBeNull();
+  });
+
+  test("result is undefined → returns null", () => {
+    const call = makeCall({ name: "create_knowledge_source" });
+    expect(extractKnowledgeSourceSummary(call)).toBeNull();
+  });
+
+  test("id is a number → returns null", () => {
+    const call = withResult("create_knowledge_source", {
+      knowledge_source: { id: 7, name: "n", bytes_total: 1 },
+    });
+    expect(extractKnowledgeSourceSummary(call)).toBeNull();
   });
 });
