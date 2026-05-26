@@ -4952,11 +4952,63 @@
           },
           "detail": {
             "type": "string"
+          },
+          "error_code": {
+            "$ref": "#/components/schemas/ProbeErrorCode"
+          },
+          "provider_action_url": {
+            "type": "string"
+          },
+          "partial_grant": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "unknown"
+                ]
+              }
+            ]
+          },
+          "granted_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expected_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missing_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "partial_grant_note": {
+            "type": "string"
           }
         },
         "required": [
           "ok",
           "latency_ms"
+        ]
+      },
+      "ProbeErrorCode": {
+        "type": "string",
+        "enum": [
+          "credential_missing",
+          "credential_invalid",
+          "credential_expired",
+          "scope_insufficient",
+          "remote_api_disabled",
+          "remote_resource_not_found",
+          "unknown_upstream_error"
         ]
       },
       "ConnectorCallResponse": {

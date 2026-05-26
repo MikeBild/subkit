@@ -9769,7 +9769,16 @@ export interface components {
             latency_ms: number;
             status?: number;
             detail?: string;
+            error_code?: components["schemas"]["ProbeErrorCode"];
+            provider_action_url?: string;
+            partial_grant?: boolean | "unknown";
+            granted_scopes?: string[];
+            expected_scopes?: string[];
+            missing_scopes?: string[];
+            partial_grant_note?: string;
         };
+        /** @enum {string} */
+        ProbeErrorCode: "credential_missing" | "credential_invalid" | "credential_expired" | "scope_insufficient" | "remote_api_disabled" | "remote_resource_not_found" | "unknown_upstream_error";
         ConnectorCallResponse: {
             status: number;
             headers: {
