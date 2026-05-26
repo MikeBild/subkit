@@ -211,6 +211,15 @@ export interface UpsertCredentialInput {
   value: CredentialPlaintext;
   oauth2_refresh_token?: string | null;
   oauth2_expires_at?: Date | null;
+  /**
+   * G6 (runtime-logs review plan): scopes the IdP actually granted on
+   * the most recent OAuth flow, as the raw space-separated string from
+   * the token-exchange response. Persisted on the credential row so
+   * probe / test can diff against the connector template's expected
+   * scopes and surface a `partial_grant` warning to the LLM. Optional
+   * because non-oauth2 credentials and pre-G6 callers leave it null.
+   */
+  oauth2_granted_scopes?: string | null;
   actor_id: string | null;
   /** Provenance tag stamped into the audit metadata so operators can
    *  distinguish callback-triggered writes (`oauth_callback`) from
@@ -319,6 +328,11 @@ export async function upsertCredential(
         oauth2_refresh_iv: refreshPayload ? toBuf(refreshPayload.iv) : null,
         oauth2_refresh_auth_tag: refreshPayload ? toBuf(refreshPayload.auth_tag) : null,
         oauth2_expires_at: input.oauth2_expires_at ?? null,
+        // G6: stash the IdP-granted scope string on the credential row
+        // so probe / test can compute partial_grant without re-fetching
+        // the OAuth bundle. Null for non-oauth2 modes (refresh-worker
+        // and conversation-tool callers pass through).
+        granted_scopes: input.oauth2_granted_scopes ?? null,
         updated_at: new Date(),
       })
       .where(eq(credentials.id, id));

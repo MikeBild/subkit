@@ -329,6 +329,28 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         code_verifier: stateRow.code_verifier,
         state: stateRow.state,
       });
+      // G6 (runtime-logs review plan): compute the requested-vs-granted
+      // scope diff so the credential row carries an authoritative
+      // record of what the IdP actually approved. Pre-fix the engine
+      // only knew the GRANTED scope (`bundle.scope`) and discarded it;
+      // a partial-grant flow (user clicks consent but only ticks some
+      // boxes; IdP returns a narrower scope than requested) silently
+      // wrote a "looks healthy" credential row that later 401'd from
+      // every API call against the un-granted resources.
+      const requestedScopes = stateRow.requested_scopes
+        ? stateRow.requested_scopes
+            .split(/\s+/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0)
+        : [];
+      const grantedScopes = bundle.scope
+        ? bundle.scope
+            .split(/\s+/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0)
+        : [];
+      const missingScopes = requestedScopes.filter((s) => !grantedScopes.includes(s));
+      const isPartialGrant = requestedScopes.length > 0 && missingScopes.length > 0;
       await credsvc.upsertCredential(
         {
           tenant_id: stateRow.tenant_id,
@@ -343,6 +365,10 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
           },
           oauth2_refresh_token: bundle.refresh_token ?? null,
           oauth2_expires_at: bundle.expires_at,
+          // G6: stash the granted scope string on the credential row
+          // so probe_connector / test_connector can surface a
+          // `partial_grant` warning without re-fetching the bundle.
+          oauth2_granted_scopes: bundle.scope ?? null,
           // Anonymous browser hit — no operator principal. The
           // state-row tenant scope is the auth proof; the credential
           // service writes `actor_type: "system"` for null actor_id.
@@ -362,7 +388,23 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id: stateRow.connector_id,
         state_prefix: stateRow.state.slice(0, 8),
         has_refresh_token: bundle.refresh_token != null,
+        requested_scopes_count: requestedScopes.length,
+        granted_scopes_count: grantedScopes.length,
+        partial_grant: isPartialGrant,
+        ...(isPartialGrant ? { missing_scopes: missingScopes } : {}),
       });
+      if (isPartialGrant) {
+        logger.warn({
+          module: "oauth",
+          action: "oauth.callback.partial_grant",
+          msg: "user granted a strict subset of the requested OAuth scopes — calls against missing scopes will 401",
+          tenant_id: stateRow.tenant_id,
+          connector_id: stateRow.connector_id,
+          missing_scopes: missingScopes,
+          requested_scopes: requestedScopes,
+          granted_scopes: grantedScopes,
+        });
+      }
       // Publish a `connector.oauth.callback_succeeded` event so any
       // active sk-cli conversation tailing `/v1/events/stream?channel=
       // connector.oauth&type=connector.oauth.callback_succeeded` can

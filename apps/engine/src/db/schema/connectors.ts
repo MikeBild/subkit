@@ -101,6 +101,12 @@ export const connectorOauthStates = pgTable(
     redirect_uri: text("redirect_uri").notNull(),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    // G6 (runtime-logs review plan): scopes the engine asked the IdP
+    // to grant on this authorization round. Space-separated, raw from
+    // the OAuth2 `scope` parameter. The callback handler diffs this
+    // against the bundle.scope (the granted set) and marks the
+    // resulting credential `partial_grant` if non-empty.
+    requested_scopes: text("requested_scopes"),
   },
   (t) => [uniqueIndex("connector_oauth_states_state_key").on(t.state)],
 );
@@ -144,6 +150,13 @@ export const credentials = pgTable(
     oauth2_refresh_iv: bytea("oauth2_refresh_iv"),
     oauth2_refresh_auth_tag: bytea("oauth2_refresh_auth_tag"),
     oauth2_expires_at: timestamp("oauth2_expires_at", { withTimezone: true }),
+    // G6 (runtime-logs review plan): scopes the IdP actually granted
+    // on the most recent OAuth flow. Space-separated, raw from the
+    // token-exchange response's `scope` field. Diffed against the
+    // matching `connector_oauth_states.requested_scopes` at callback
+    // time; when granted ⊊ requested, the credential is `partial_grant`
+    // and probe / test surface the missing scopes to the LLM.
+    granted_scopes: text("granted_scopes"),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

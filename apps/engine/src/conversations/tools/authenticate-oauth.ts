@@ -364,6 +364,12 @@ export const authenticateOAuthTool: ConversationTool = {
       code_verifier: started.code_verifier,
       redirect_uri,
       expires_at: expires,
+      // G6: persist the scopes we ASKED the IdP to grant so the
+      // callback handler can diff them against the IdP's response.
+      // `cfgWithScope.scope` is the space-separated string passed to
+      // the authorization endpoint; null when no scope param was sent
+      // (the IdP applies its default consent set).
+      requested_scopes: cfgWithScope.scope ?? null,
     });
 
     const connectorLabel = connector.display_name ?? connector.slug;
