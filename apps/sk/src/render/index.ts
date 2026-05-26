@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import pc from "picocolors";
 import { STATUS_GLYPH } from "../repl/plan-cell.tsx";
-import type { AnyIntent } from "./intent-card.tsx";
+import { type AnyIntent, humanBytes } from "./intent-card.tsx";
 import type { AnySummary } from "./summary-card.tsx";
 import type {
   ConnectorIntent,
@@ -31,19 +31,6 @@ async function mountInk(node: import("react").ReactElement): Promise<void> {
   const instance = render(node, { stdout: process.stderr });
   await instance.waitUntilExit();
   instance.unmount();
-}
-
-function humanBytes(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return `${n}B`;
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0;
-  let v = n;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  const s = v >= 10 || i === 0 ? v.toFixed(0) : v.toFixed(1);
-  return `${s}${units[i]}`;
 }
 
 function triggerLine(trigger: WorkflowTrigger): string {
