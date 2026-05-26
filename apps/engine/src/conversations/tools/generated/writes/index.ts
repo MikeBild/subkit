@@ -7,6 +7,7 @@ import type { ConversationTool } from "../../index.ts";
 import { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";
 import { cleanupWriteTools } from "./cleanup.ts";
 import { createApiKeyTool } from "./create-api-key.ts";
+import { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
 import { runWorkflowTool } from "./run-workflow.ts";
 import { scheduleTools } from "./schedules.ts";
 import { updateConnectorTool } from "./update-connector.ts";
@@ -24,6 +25,7 @@ export {
   revokePortalTokenTool,
 } from "./cleanup.ts";
 export { createApiKeyTool } from "./create-api-key.ts";
+export { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
 export { runWorkflowTool } from "./run-workflow.ts";
 export {
   createScheduleTool,
@@ -41,6 +43,7 @@ export const ALL_GENERATED_WRITE_TOOLS: ConversationTool[] = [
   approveSkillCandidateTool,
   approvePatchCandidateTool,
   createApiKeyTool,
+  createKnowledgeSourceTool,
   updateWorkflowTool,
   updateConnectorTool,
   updateKnowledgeSourceTool,

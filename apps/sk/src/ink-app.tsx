@@ -1988,6 +1988,122 @@ export const InkApp: React.FC<InkAppProps> = ({
         }
         return true;
       }
+      if (name === "knowledge" || name === "ks") {
+        // Upload a local file AND ingest it as a Knowledge Source in one
+        // step. Same upload chokepoint as `/attach` (so the file shows
+        // up in /files), then POSTs to /v1/knowledge-sources with the
+        // metadata derived from --name / --scope / --workflow-id flags.
+        // Direct HTTP — no LLM round-trip — for deterministic, instant
+        // UX. The natural-language path (chat agent calling the
+        // `create_knowledge_source` tool) is the conversational
+        // alternative for when the user wants to discuss metadata
+        // before committing.
+        if (!engineClient) {
+          showError(`/${name}: no engine client — restart sk to wire the upload path`);
+          return true;
+        }
+        // Split rest into path tokens (everything before the first
+        // --flag) and flag tokens. Flag values are single tokens —
+        // multi-word names should use the natural-language path or
+        // `/knowledge ./file.md` then `sk knowledge-sources patch`.
+        const flagStart = rest.findIndex((t) => t.startsWith("--"));
+        const pathTokens = flagStart === -1 ? rest : rest.slice(0, flagStart);
+        const flagTokens = flagStart === -1 ? [] : rest.slice(flagStart);
+        const rawPath = pathTokens.join(" ").trim();
+        if (rawPath.length === 0) {
+          showError(
+            `/${name}: needs a path — e.g. \`/${name} ./ocpp.md --name OCPP-2.0.1 --scope global\``,
+          );
+          return true;
+        }
+        const flagMap: Record<string, string> = {};
+        for (let i = 0; i < flagTokens.length; i++) {
+          const tok = flagTokens[i] ?? "";
+          if (!tok.startsWith("--")) continue;
+          const eq = tok.indexOf("=");
+          if (eq >= 0) {
+            flagMap[tok.slice(2, eq)] = tok.slice(eq + 1);
+          } else {
+            const key = tok.slice(2);
+            const next = flagTokens[i + 1];
+            if (next !== undefined && !next.startsWith("--")) {
+              flagMap[key] = next;
+              i += 1;
+            } else {
+              flagMap[key] = "true";
+            }
+          }
+        }
+        const overrideName = flagMap.name;
+        const scope = flagMap.scope;
+        const workflow_id = flagMap["workflow-id"];
+        if (scope && scope !== "global" && scope !== "workflow") {
+          showError(`/${name}: --scope must be 'global' or 'workflow' (got '${scope}')`);
+          return true;
+        }
+        if (scope === "workflow" && !workflow_id) {
+          showError(`/${name}: --scope workflow requires --workflow-id <uuid>`);
+          return true;
+        }
+        const { statSync, existsSync: exists, readFileSync } = await import("node:fs");
+        const { resolve: res, basename: pathBasename } = await import("node:path");
+        const abs = res(cwd ?? process.cwd(), rawPath);
+        if (!exists(abs)) {
+          showError(`/${name}: not found: ${rawPath}`);
+          return true;
+        }
+        const st = statSync(abs);
+        if (!st.isFile()) {
+          showError(`/${name}: not a file: ${rawPath}`);
+          return true;
+        }
+        const onProgress = (ev: UploadProgressEvent): void => {
+          setTransientStatus(renderProgressLine(ev));
+        };
+        try {
+          // Upload to the unified Files store first — same as /attach —
+          // so the bytes are deduped, audited, and linkable.
+          const row = await uploadPath(engineClient, abs, {
+            quiet: true,
+            onProgress,
+          });
+          const { detectMime } = await import("./utils/mime.ts");
+          const bytes = readFileSync(abs);
+          const filename = pathBasename(abs);
+          const mime_type = detectMime(abs);
+          const ksName = overrideName ?? (filename.replace(/\.[^.]+$/, "") || filename);
+          const metadata: Record<string, unknown> = { name: ksName };
+          if (scope) metadata.scope = scope;
+          if (workflow_id) metadata.workflow_id = workflow_id;
+          const ks = (await engineClient.createKnowledgeSource(
+            { name: filename, content: bytes, mime_type },
+            metadata,
+          )) as { id?: string; chunk_count?: number; scope?: string; name?: string };
+          // Best-effort link to the active conversation so /files shows
+          // the upload alongside other attachments.
+          if (session.conversationId) {
+            try {
+              await engineClient.linkFile(row.id, {
+                resource_type: "conversation",
+                resource_id: session.conversationId,
+                role: "attachment",
+              });
+            } catch {
+              /* link is best-effort */
+            }
+          }
+          const ksId = ks.id ?? "?";
+          const chunks = ks.chunk_count ?? 0;
+          const reportedScope = ks.scope ?? scope ?? "global";
+          const reportedName = ks.name ?? ksName;
+          showInfo(`✓ ingested ${ksId} — ${chunks} chunks, ${reportedScope} (${reportedName})`);
+        } catch (err) {
+          showError(`/${name}: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+          setTransientStatus(null);
+        }
+        return true;
+      }
       if (name === "queue") {
         const items = [...queueRef.current.items];
         if (items.length === 0) showInfo("/queue: empty");

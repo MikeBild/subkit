@@ -29,7 +29,7 @@ import {
 } from "../db/schema/index.ts";
 import * as identitySvc from "../identity/service.ts";
 import * as knowledgeSvc from "../knowledge/service.ts";
-import type { UpdateKnowledgeSourceInput } from "../knowledge/types.ts";
+import type { CreateKnowledgeSourceInput, UpdateKnowledgeSourceInput } from "../knowledge/types.ts";
 import { currentMonthBucket, monthlyUsage } from "../llm/accounting/index.ts";
 import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import * as rbacRoles from "../rbac/roles.ts";
@@ -198,6 +198,27 @@ export class EngineClient {
     get: (id: string) => knowledgeSvc.getKnowledgeSource(this.tenant_id, id, this.db),
     delete: (id: string) =>
       knowledgeSvc.deleteKnowledgeSource(this.tenant_id, id, this.actor_id, this.db),
+    create: (params: {
+      input: CreateKnowledgeSourceInput;
+      upload: { buffer: Buffer | Uint8Array; filename: string; mime?: string };
+      source_type_override?: "file_upload" | "inline" | "url";
+      source_uri_override?: string;
+    }) =>
+      knowledgeSvc.createKnowledgeSource(
+        {
+          tenant_id: this.tenant_id,
+          input: params.input,
+          upload: params.upload,
+          actor_id: this.actor_id,
+          ...(params.source_type_override
+            ? { source_type_override: params.source_type_override }
+            : {}),
+          ...(params.source_uri_override
+            ? { source_uri_override: params.source_uri_override }
+            : {}),
+        },
+        this.db,
+      ),
     update: (id: string, patch: UpdateKnowledgeSourceInput) =>
       knowledgeSvc.updateKnowledgeSource(
         { tenant_id: this.tenant_id, id, patch, actor_id: this.actor_id },
