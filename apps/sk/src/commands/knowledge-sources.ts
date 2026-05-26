@@ -1,22 +1,34 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
+import { exitCodeFor } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
-import type { KnowledgeSourceIntent, KnowledgeSourceSummary } from "../render/types.ts";
-import type { PlanStep } from "../repl/plan-cell.tsx";
+import type { KnowledgeSourceIntent, KnowledgeSourceSummary, PlanStep } from "../render/types.ts";
 import { detectMime } from "../utils/mime.ts";
 import { uploadPath } from "./files.ts";
 
-// Subcommand handlers never call `process.exit`; they throw the error
-// and rely on the top-level `sk` dispatcher (apps/sk/src/index.ts) to
-// translate it to an exit code via `exitCodeFor`. This keeps Citty's
-// runCommand composable from test harnesses and preserves the original
-// error for the catch chain instead of swallowing it behind a synthetic
-// "process.exit(N)" Error.
+// Read/list/search/delete handlers still throw rather than calling
+// process.exit — the top-level `sk` dispatcher renders the error and
+// sets `process.exitCode`, which keeps Citty's runCommand composable
+// from test harnesses.
+//
+// The `create` flow honors the `--json` contract: on jsonMode the error
+// is emitted as `{ "error": <msg> }` on stdout (so a downstream `jq`
+// always reads valid JSON), stderr stays silent, and we exit directly
+// to bypass the dispatcher's stderr line.
+function reportCreateError(err: unknown, jsonMode: boolean): never {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (jsonMode) {
+    process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
+  } else {
+    process.stderr.write(`${pc.red("error")}: ${msg}\n`);
+  }
+  process.exit(exitCodeFor(err));
+}
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List knowledge sources" },
@@ -176,10 +188,7 @@ const createCommand = defineCommand({
       };
       await renderSummary(summary, { jsonMode });
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      throw err;
+      reportCreateError(err, jsonMode);
     }
   },
 });

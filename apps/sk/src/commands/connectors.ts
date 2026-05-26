@@ -2,11 +2,23 @@ import * as prompts from "@clack/prompts";
 import { exitCodeFor } from "@cli-core/errors";
 import { emitList, printJson, printTable } from "@cli-core/format";
 import { defineCommand } from "citty";
+import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
-import type { ConnectorIntent, ConnectorSummary } from "../render/types.ts";
-import type { PlanStep } from "../repl/plan-cell.tsx";
+import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/types.ts";
+
+// See workflows.ts:reportError — same contract: jsonMode keeps stderr
+// silent so callers can pipe `sk connectors create --json` into jq.
+function reportError(err: unknown, jsonMode: boolean): never {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (jsonMode) {
+    process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
+  } else {
+    process.stderr.write(`${msg}\n`);
+  }
+  process.exit(exitCodeFor(err));
+}
 
 function makeClient() {
   const profile = resolveProfile();
@@ -117,7 +129,13 @@ const createCommand = defineCommand({
               },
             ];
             await renderTaskList(phases, { jsonMode });
-            process.exit(1);
+            // EX_DATAERR (sysexits.h 64): "the input data was incorrect in
+            // some way". The connector exists but its driver probe came
+            // back not-ok — distinct from a transport/auth failure (which
+            // exitCodeFor maps to 2) and a hard usage error (1). Pinning
+            // a stable code here lets CI scripts branch reliably on
+            // "probe-said-no" without parsing stderr.
+            process.exit(64);
           }
         } catch (err) {
           const phases: PlanStep[] = [
@@ -132,6 +150,13 @@ const createCommand = defineCommand({
           await renderTaskList(phases, { jsonMode });
           process.exit(exitCodeFor(err));
         }
+      } else if (skip && !jsonMode) {
+        // Mirror the workflows.ts skip-checks reminder so the operator
+        // sees the same warning at both authoring surfaces. Gated on
+        // !jsonMode so the --json contract stays "stderr silent".
+        process.stderr.write(
+          `${pc.yellow("warning:")} --skip-checks active; no driver probe was run\n`,
+        );
       }
 
       const summary: ConnectorSummary = {
@@ -143,8 +168,7 @@ const createCommand = defineCommand({
       };
       await renderSummary(summary, { jsonMode });
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportError(err, jsonMode);
     }
   },
 });

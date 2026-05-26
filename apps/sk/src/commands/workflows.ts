@@ -5,8 +5,12 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient, type RunExecutionResponse } from "../engine-client.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
-import type { WorkflowIntent, WorkflowSummary, WorkflowTrigger } from "../render/types.ts";
-import type { PlanStep } from "../repl/plan-cell.tsx";
+import type {
+  PlanStep,
+  WorkflowIntent,
+  WorkflowSummary,
+  WorkflowTrigger,
+} from "../render/types.ts";
 import { formatFileRef } from "../utils/file-ref.ts";
 import { uploadPath } from "./files.ts";
 
@@ -80,6 +84,21 @@ function printRunResult(result: RunExecutionResponse): void {
       `  ${pc.cyan(r.step_key)}  ${r.connector_slug} (${r.driver})  ${env}  ${pc.yellow(r.auth_method)}\n`,
     );
   }
+}
+
+// In jsonMode the contract is "stdout = JSON, stderr = silent" so a
+// downstream consumer can pipe the create command into jq or another
+// script. The error path must therefore route the failure message to
+// stdout as `{ "error": <msg> }` and keep stderr empty; otherwise the
+// pipe sees a JSON body on success and unparseable text on failure.
+function reportError(err: unknown, jsonMode: boolean): never {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (jsonMode) {
+    process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
+  } else {
+    process.stderr.write(`${msg}\n`);
+  }
+  process.exit(exitCodeFor(err));
 }
 
 function makeClient() {
@@ -536,7 +555,7 @@ const createCommand = defineCommand({
         }
 
         previewExecutionId = preview.execution_id;
-      } else {
+      } else if (!jsonMode) {
         process.stderr.write(
           `${pc.yellow("warning:")} --skip-checks active; no validate or preview was run\n`,
         );
@@ -559,8 +578,7 @@ const createCommand = defineCommand({
       };
       await renderSummary(summary, { jsonMode });
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportError(err, jsonMode);
     }
   },
 });
