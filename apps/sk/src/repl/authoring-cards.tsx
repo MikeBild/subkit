@@ -955,7 +955,7 @@ function extractTrigger(raw: unknown): WorkflowTrigger {
   return { kind: "request" };
 }
 
-function extractWorkflowIntent(call: ToolCallState): WorkflowIntent | null {
+export function extractWorkflowIntent(call: ToolCallState): WorkflowIntent | null {
   const d = unwrapData(call);
   if (!d) return null;
   const workflow = asRecord(d.workflow) ?? d;
@@ -989,7 +989,7 @@ function extractWorkflowIntent(call: ToolCallState): WorkflowIntent | null {
   };
 }
 
-function extractConnectorIntent(call: ToolCallState): ConnectorIntent | null {
+export function extractConnectorIntent(call: ToolCallState): ConnectorIntent | null {
   const d = unwrapData(call);
   if (!d) return null;
   const connector = asRecord(d.connector) ?? d;
@@ -1012,7 +1012,7 @@ function extractConnectorIntent(call: ToolCallState): ConnectorIntent | null {
   };
 }
 
-function extractWorkflowSummary(call: ToolCallState): WorkflowSummary | null {
+export function extractWorkflowSummary(call: ToolCallState): WorkflowSummary | null {
   const d = unwrapData(call);
   if (!d) return null;
   const id = typeof d.workflow_id === "string" ? d.workflow_id : null;
@@ -1036,7 +1036,7 @@ function extractWorkflowSummary(call: ToolCallState): WorkflowSummary | null {
   };
 }
 
-function extractConnectorSummary(call: ToolCallState): ConnectorSummary | null {
+export function extractConnectorSummary(call: ToolCallState): ConnectorSummary | null {
   const d = unwrapData(call);
   if (!d) return null;
   const connector = asRecord(d.connector);

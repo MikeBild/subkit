@@ -39,7 +39,7 @@ export function humanBytes(n: number): string {
     v /= 1024;
     i++;
   }
-  const s = v >= 10 || i === 0 ? v.toFixed(0) : v.toFixed(1);
+  const s = v >= 10 || i === 0 || Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1);
   return `${s}${units[i]}`;
 }
 
