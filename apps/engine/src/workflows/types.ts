@@ -667,55 +667,60 @@ export const TransformStepSchema = z
       });
     }
     // G4 (runtime-logs review plan): catch the JSONata-vs-JavaScript
-    // mix-up at schema-validation time instead of at JSONata-parse
-    // time. Pre-fix the LLM wrote a JS body into an expression still
-    // tagged `language: "jsonata"`; the runtime parser produced
-    // `JSONata error: Syntax error: "files"` and the engine burned a
-    // Sonnet retry. Same in reverse — JSONata syntax (`~>`, `$append`,
-    // `$scope.x`) under `language: "javascript"` fails at JS parse
-    // time. Detecting the language↔body mismatch here returns a
-    // structured `language_mismatch` Zod issue carrying the suggested
-    // language, so the LLM can correct without burning a retry.
+    // mix-up at schema-validation time. Pre-fix the LLM wrote a JS
+    // body into an expression still tagged `language: "jsonata"`; the
+    // runtime parser produced `JSONata error: Syntax error: "files"`
+    // and the engine burned a Sonnet retry.
+    //
+    // CRITICAL: this superRefine runs on BOTH save-time and on-load
+    // parsing of historical rows. The heuristic MUST be conservative
+    // enough that no valid historical JSONata expression trips it.
+    // The 6.2.6 regression was caused by an overly-broad heuristic
+    // (`;\s*$` matched every JSONata block statement ending in `;`)
+    // that made `daily-do-resources-email` unloadable and 500'd
+    // `/v1/workflows`. Stick to markers that are unambiguous JS AND
+    // have no syntactic role in JSONata:
+    //   - `=>` arrow function (JSONata has no arrow syntax; uses
+    //     `function($x){...}` instead — `function` alone is NOT a
+    //     reliable JS signal because JSONata uses it too).
+    //   - `(const|let|var) <name> =` declaration with assignment
+    //     (JSONata uses `:=` for assignment; `const/let/var` keywords
+    //     have no JSONata role).
     if (
       (language === "jsonata" || s.language === undefined) &&
       typeof s.expression === "string" &&
       s.expression.length > 0
     ) {
       const js = s.expression;
-      // Tokens that are syntactically valid JavaScript but parse-errors
-      // in JSONata. Each must match outside string literals to avoid
-      // false positives — JSONata strings use single quotes; JS uses
-      // double or single or backtick. Stripping quoted regions first
-      // keeps the heuristic robust against e.g. `'const'` inside prose.
+      // Strip quoted literals so JS markers inside prose don't trip.
       const stripped = js
         .replace(/'([^'\\]|\\.)*'/g, "''")
         .replace(/"([^"\\]|\\.)*"/g, '""')
         .replace(/`([^`\\]|\\.)*`/g, "``");
-      const jsMarker = /\b(?:const|let|var|function)\b|=>|;\s*$|;\s*(?:const|let|var|return|if)\b/m;
-      if (jsMarker.test(stripped)) {
+      const arrowFn = /=>/;
+      const jsDeclaration = /\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=(?!=)/;
+      if (arrowFn.test(stripped) || jsDeclaration.test(stripped)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["expression"],
           message:
-            'expression looks like JavaScript (uses const/let/var/=>/; markers) but language is jsonata. Set language="javascript" or rewrite the body in JSONata syntax.',
+            'expression looks like JavaScript (uses `=>` arrow or `const|let|var <name> =` declaration) but language is jsonata. Set language="javascript" or rewrite the body in JSONata syntax.',
           params: { error_code: "language_mismatch", suggested_language: "javascript" },
         });
       }
     }
     if (language === "javascript" && typeof s.expression === "string" && s.expression.length > 0) {
       const ja = s.expression;
-      // JSONata-only markers: chained pipe `~>`, dollar-prefixed
-      // builtins ($append/$count/$reduce/etc.), `$scope.x` resolver.
-      // Each is a parse-error in JavaScript so a JS-tagged body
-      // containing them is unambiguously mis-tagged.
-      const jsonataMarker =
-        /~>|\$(?:append|count|map|reduce|filter|sum|scope|distinct|sort|each|merge|keys|values|exists|type|string|number)\b/;
+      // JSONata-only marker: chained pipe `~>` is a parse-error in JS.
+      // (The earlier `$builtin` set was over-broad — JS code may
+      // legitimately reference identifiers starting with `$`.)
+      const jsonataMarker = /~>/;
       if (jsonataMarker.test(ja)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["expression"],
           message:
-            'expression uses JSONata pipes (`~>`) or `$builtin` calls but language is javascript. Set language="jsonata" or rewrite the body in JavaScript.',
+            'expression uses the JSONata pipe operator (`~>`) but language is javascript. Set language="jsonata" or rewrite the body in JavaScript.',
           params: { error_code: "language_mismatch", suggested_language: "jsonata" },
         });
       }

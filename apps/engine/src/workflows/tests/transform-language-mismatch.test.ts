@@ -64,7 +64,7 @@ return Object.keys(grouped).map(type => ({ type, count: grouped[type].length }))
       (i) =>
         i.path.join(".") === "expression" &&
         typeof i.message === "string" &&
-        i.message.includes("JSONata pipes"),
+        i.message.includes("JSONata pipe operator"),
     );
     expect(issue).toBeDefined();
     expect(
@@ -101,6 +101,72 @@ return Object.keys(grouped).map(type => ({ type, count: grouped[type].length }))
       id: "shape",
       language: "jsonata",
       expression: '$scope.docs[type = "const-handler"]',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  // 6.2.7 REGRESSION GUARD: the 6.2.6 hotfix introduced an
+  // over-broad heuristic (`;\s*$`) that matched every JSONata block
+  // statement ending in `;`. The production workflow
+  // `daily-do-resources-email` has 12+ such lines (assignments,
+  // chained `&` concatenations); parsing the row threw a ZodError
+  // on EVERY `GET /v1/workflows` call and 500'd the endpoint.
+  //
+  // This test pins a verbatim slice of that workflow's transform
+  // body so any future heuristic change that re-introduces the
+  // regression fails LOUDLY here instead of in production.
+  test("REGRESSION: real-world JSONata block expression with many `;` separators parses cleanly", () => {
+    const result = TransformStepSchema.safeParse({
+      kind: "transform",
+      id: "format_email",
+      language: "jsonata",
+      // Verbatim from the daily-do-resources-email workflow that
+      // 500'd /v1/workflows after the 6.2.6 deploy. Every line ends
+      // with `;` (JSONata block-expression statement separator).
+      expression: `(
+  $blocks := $scope.projects_loop.data.collect_project.data;
+  $body := '<html><body><h2>Daily DigitalOcean Resources Summary</h2><p>Date: ' & $now() & '</p>' & $join($blocks.(
+    '<h3>Project: ' & $.name & '</h3>' &
+    '<ul>' &
+    '<li>Environment: ' & ($.environment != '' ? $.environment : 'n/a') & '</li>' &
+    '<li>Purpose: ' & $.purpose & '</li>' &
+    '<li>Resource count: ' & $string($count($.resources)) & '</li>' &
+    '</ul>' &
+    ($count($.resources) > 0 ? '<ul>' & $join($.resources.('<li>' & $.urn & ' (' & $.status & ')</li>')) & '</ul>' : '<p><em>No resources</em></p>')
+  )) & '</body></html>';
+  { "html": $body, "subject": 'Daily DigitalOcean Resources Summary' }
+)`,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("REGRESSION: JSONata using `function($x) { ... }` anonymous form parses cleanly", () => {
+    // JSONata's anonymous-function builtin uses the literal keyword
+    // `function`; the original 6.2.6 heuristic matched on `function`
+    // alone and would have rejected this. The tightened heuristic
+    // requires `=>` arrow OR `const|let|var <name> =` declaration —
+    // neither is present in a JSONata `function($x)` body.
+    const result = TransformStepSchema.safeParse({
+      kind: "transform",
+      id: "group_by_mime",
+      language: "jsonata",
+      expression:
+        "$scope.list_files.data.files ~> $map(function($f) { { 'name': $f.name, 'type': $f.mimeType } })",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("REGRESSION: JSONata using `$let` and `;`-separated chained expressions parses", () => {
+    // Another shape that triggered the over-broad heuristic.
+    const result = TransformStepSchema.safeParse({
+      kind: "transform",
+      id: "summary",
+      language: "jsonata",
+      expression: `(
+  $count_done := $count($scope.tickets.data[status = 'done']);
+  $count_open := $count($scope.tickets.data[status != 'done']);
+  { 'done': $count_done, 'open': $count_open }
+)`,
     });
     expect(result.success).toBe(true);
   });
