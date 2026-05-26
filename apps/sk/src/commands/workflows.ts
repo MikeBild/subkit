@@ -4,8 +4,9 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient, type RunExecutionResponse } from "../engine-client.ts";
-import { renderIntent, renderSummary, renderTaskFailure } from "../render/index.ts";
-import type { Phase, WorkflowIntent, WorkflowSummary, WorkflowTrigger } from "../render/types.ts";
+import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
+import type { WorkflowIntent, WorkflowSummary, WorkflowTrigger } from "../render/types.ts";
+import type { PlanStep } from "../repl/plan-cell.tsx";
 import { formatFileRef } from "../utils/file-ref.ts";
 import { uploadPath } from "./files.ts";
 
@@ -41,6 +42,7 @@ function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
     };
   });
   return {
+    kind: "workflow",
     name: typeof body.name === "string" ? body.name : "(workflow)",
     ...(typeof body.slug === "string" ? { slug: body.slug } : {}),
     trigger: parseTrigger(definition.trigger),
@@ -439,7 +441,8 @@ const createCommand = defineCommand({
     file: { type: "string", required: true, description: "Path to WorkflowDef JSON" },
     "skip-checks": {
       type: "boolean",
-      description: "Skip the validate+preview pre-flight (NOT recommended).",
+      description:
+        "Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.",
     },
     input: {
       type: "string",
@@ -464,12 +467,12 @@ const createCommand = defineCommand({
         if (!validation.ok) {
           const firstErr = (validation.errors ?? [])[0];
           const detail = firstErr ? `${firstErr.path}: ${firstErr.message}` : "validation failed";
-          const phases: Phase[] = [
-            { name: "Validate", status: "failed", detail },
-            { name: "Preview", status: "pending" },
-            { name: "Save", status: "pending" },
+          const phases: PlanStep[] = [
+            { id: "validate", label: "Validate", status: "failed", detail },
+            { id: "preview", label: "Preview", status: "pending" },
+            { id: "save", label: "Save", status: "pending" },
           ];
-          await renderTaskFailure(phases, { jsonMode });
+          await renderTaskList(phases, { jsonMode });
           process.exit(1);
         }
 
@@ -496,25 +499,40 @@ const createCommand = defineCommand({
           message?: string;
         }>;
 
-        if (preview.status !== "succeeded" || previewWarnings.length > 0) {
-          const previewFailed = preview.status !== "succeeded";
-          const detail = previewFailed
-            ? `status=${preview.status}`
-            : previewWarnings
-                .slice(0, 1)
-                .map((w) => `${w.step_key ?? "(run)"} ${w.code ?? ""} ${w.message ?? ""}`.trim())
-                .join("; ");
-          const phases: Phase[] = [
-            { name: "Validate", status: "succeeded" },
+        // Preview failure is a hard stop. Warnings are informational —
+        // they print but the create proceeds. This decouples the
+        // earlier conflated predicate ("warnings present ⇒ fail").
+        if (preview.status !== "succeeded") {
+          const phases: PlanStep[] = [
+            { id: "validate", label: "Validate", status: "succeeded" },
             {
-              name: "Preview",
-              status: previewFailed ? "failed" : "warning",
-              detail,
+              id: "preview",
+              label: "Preview",
+              status: "failed",
+              detail: `status=${preview.status}`,
             },
-            { name: "Save", status: "pending" },
+            { id: "save", label: "Save", status: "pending" },
           ];
-          await renderTaskFailure(phases, { jsonMode });
+          await renderTaskList(phases, { jsonMode });
           process.exit(1);
+        }
+
+        if (previewWarnings.length > 0) {
+          const codes = previewWarnings
+            .map((w) => w.code)
+            .filter((c): c is string => typeof c === "string" && c.length > 0);
+          const codeList = codes.length > 0 ? codes.join(", ") : "(no code)";
+          const phases: PlanStep[] = [
+            { id: "validate", label: "Validate", status: "succeeded" },
+            {
+              id: "preview",
+              label: "Preview",
+              status: "warning",
+              detail: `${previewWarnings.length} warning(s): ${codeList}`,
+            },
+            { id: "save", label: "Save", status: "pending" },
+          ];
+          await renderTaskList(phases, { jsonMode });
         }
 
         previewExecutionId = preview.execution_id;
@@ -532,6 +550,7 @@ const createCommand = defineCommand({
       printJson(created);
 
       const summary: WorkflowSummary = {
+        kind: "workflow",
         id: typeof created.id === "string" ? created.id : "(unknown)",
         version: typeof created.version === "number" ? created.version : 1,
         name: typeof created.name === "string" ? created.name : intent.name,
