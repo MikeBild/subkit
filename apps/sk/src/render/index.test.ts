@@ -267,45 +267,8 @@ describe("jsonMode short-circuits before TTY detection", () => {
   });
 });
 
-// ---- TTY mount path ----
-// Ink's render() + waitUntilExit() requires a real PTY to exit cleanly.
-// In the bun test runner (no PTY), mountInk hangs indefinitely.
-// These tests are skipped at the unit layer; the e2e layer (real terminal)
-// covers the TTY Ink path end-to-end.
-//
-// We do verify the ttyAllowed() logic via the jsonMode guard test above:
-// jsonMode:true + isTTY:true → still silent, confirming jsonMode is checked first.
-
-describe("renderIntent · TTY mount path", () => {
-  test.skip("workflow intent resolves and writes something [PTY required — skipped in unit layer]", async () => {
-    setTTY(true);
-    const { renderIntent } = await importDispatcher();
-    await renderIntent(wfIntent as AnyIntent);
-    expect(stderrBuf.length).toBeGreaterThan(0);
-  });
-
-  test.skip("connector intent resolves and writes something [PTY required — skipped in unit layer]", async () => {
-    setTTY(true);
-    const { renderIntent } = await importDispatcher();
-    await renderIntent(connIntent as AnyIntent);
-    expect(stderrBuf.length).toBeGreaterThan(0);
-  });
-});
-
-describe("renderSummary · TTY mount path", () => {
-  test.skip("workflow summary resolves and writes something [PTY required — skipped in unit layer]", async () => {
-    setTTY(true);
-    const { renderSummary } = await importDispatcher();
-    await renderSummary(wfSummary as AnySummary);
-    expect(stderrBuf.length).toBeGreaterThan(0);
-  });
-});
-
-describe("renderTaskFailure · TTY mount path", () => {
-  test.skip("phases resolves and writes something [PTY required — skipped in unit layer]", async () => {
-    setTTY(true);
-    const { renderTaskFailure } = await importDispatcher();
-    await renderTaskFailure(phases);
-    expect(stderrBuf.length).toBeGreaterThan(0);
-  });
-});
+// The TTY mount path uses Ink's render() + waitUntilExit(), which needs a
+// real PTY to exit. The bun test runner has no PTY, so that path is verified
+// at the e2e layer (real terminal) rather than here. ttyAllowed() is still
+// covered: the jsonMode tests above run with isTTY=true to confirm jsonMode
+// short-circuits before TTY detection.
