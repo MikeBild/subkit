@@ -470,7 +470,7 @@ const createCommand = defineCommand({
             { name: "Save", status: "pending" },
           ];
           await renderTaskFailure(phases, { jsonMode });
-          process.exit(exitCodeFor(new Error("validation_failed")));
+          process.exit(1);
         }
 
         let input: unknown = null;
@@ -490,7 +490,7 @@ const createCommand = defineCommand({
           request_source: "cli",
         });
 
-        const previewWarnings = (preview.warnings ?? []) as Array<{
+        const previewWarnings = (preview.warnings ?? []) as ReadonlyArray<{
           step_key?: string;
           code?: string;
           message?: string;
@@ -514,7 +514,7 @@ const createCommand = defineCommand({
             { name: "Save", status: "pending" },
           ];
           await renderTaskFailure(phases, { jsonMode });
-          process.exit(exitCodeFor(new Error("preview_failed")));
+          process.exit(1);
         }
 
         previewExecutionId = preview.execution_id;

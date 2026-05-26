@@ -1,33 +1,15 @@
 import { Box, Text } from "ink";
 import type React from "react";
+import {
+  isConnectorSummary,
+  isKnowledgeSourceSummary,
+  isWorkflowSummary,
+  triggerLine,
+} from "./helpers.ts";
 import { humanBytes } from "./intent-card.tsx";
-import type {
-  ConnectorSummary,
-  KnowledgeSourceSummary,
-  WorkflowSummary,
-  WorkflowTrigger,
-} from "./types.ts";
+import type { ConnectorSummary, KnowledgeSourceSummary, WorkflowSummary } from "./types.ts";
 
 export type AnySummary = WorkflowSummary | ConnectorSummary | KnowledgeSourceSummary;
-
-function isWorkflowSummary(s: AnySummary): s is WorkflowSummary {
-  return typeof (s as WorkflowSummary).version === "number";
-}
-function isKnowledgeSourceSummary(s: AnySummary): s is KnowledgeSourceSummary {
-  return typeof (s as KnowledgeSourceSummary).mime_type === "string";
-}
-function isConnectorSummary(s: AnySummary): s is ConnectorSummary {
-  return typeof (s as ConnectorSummary).template_slug === "string";
-}
-
-function triggerLine(trigger: WorkflowTrigger): string {
-  if (trigger.kind === "schedule") return `schedule cron=${trigger.cron} tz=${trigger.tz}`;
-  if (trigger.kind === "webhook") {
-    const evs = trigger.events.length > 0 ? trigger.events.join(",") : "*";
-    return `webhook source=${trigger.source} events=${evs}`;
-  }
-  return "request";
-}
 
 const NextBlock: React.FC<{ commands: string[] }> = ({ commands }) => (
   <Box flexDirection="column" marginTop={1}>

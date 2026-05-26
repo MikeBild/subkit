@@ -2,33 +2,15 @@ import { basename } from "node:path";
 import { Box, Text } from "ink";
 import type React from "react";
 import { PlanCard, type PlanStep } from "../repl/plan-cell.tsx";
-import type {
-  ConnectorIntent,
-  KnowledgeSourceIntent,
-  WorkflowIntent,
-  WorkflowTrigger,
-} from "./types.ts";
+import {
+  isConnectorIntent,
+  isKnowledgeSourceIntent,
+  isWorkflowIntent,
+  triggerLine,
+} from "./helpers.ts";
+import type { ConnectorIntent, KnowledgeSourceIntent, WorkflowIntent } from "./types.ts";
 
 export type AnyIntent = WorkflowIntent | ConnectorIntent | KnowledgeSourceIntent;
-
-function isWorkflow(intent: AnyIntent): intent is WorkflowIntent {
-  return Array.isArray((intent as WorkflowIntent).steps);
-}
-function isConnector(intent: AnyIntent): intent is ConnectorIntent {
-  return typeof (intent as ConnectorIntent).template_slug === "string";
-}
-function isKnowledgeSource(intent: AnyIntent): intent is KnowledgeSourceIntent {
-  return typeof (intent as KnowledgeSourceIntent).file_path === "string";
-}
-
-function triggerLine(trigger: WorkflowTrigger): string {
-  if (trigger.kind === "schedule") return `schedule cron=${trigger.cron} tz=${trigger.tz}`;
-  if (trigger.kind === "webhook") {
-    const evs = trigger.events.length > 0 ? trigger.events.join(",") : "*";
-    return `webhook source=${trigger.source} events=${evs}`;
-  }
-  return "request";
-}
 
 export function humanBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return `${n}B`;
@@ -121,8 +103,8 @@ const KnowledgeSourceIntentCard: React.FC<{ intent: KnowledgeSourceIntent }> = (
 };
 
 export const IntentCard: React.FC<{ intent: AnyIntent }> = ({ intent }) => {
-  if (isWorkflow(intent)) return <WorkflowIntentCard intent={intent} />;
-  if (isKnowledgeSource(intent)) return <KnowledgeSourceIntentCard intent={intent} />;
-  if (isConnector(intent)) return <ConnectorIntentCard intent={intent} />;
+  if (isWorkflowIntent(intent)) return <WorkflowIntentCard intent={intent} />;
+  if (isKnowledgeSourceIntent(intent)) return <KnowledgeSourceIntentCard intent={intent} />;
+  if (isConnectorIntent(intent)) return <ConnectorIntentCard intent={intent} />;
   return null;
 };
