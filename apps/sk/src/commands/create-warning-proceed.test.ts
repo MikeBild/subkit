@@ -9,10 +9,22 @@
 // renderTaskList to be called with a phase whose status is "warning"
 // and whose detail names the warning code.
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+// Capture real module shapes BEFORE we override them so we can restore
+// them in afterAll. `mock.restore()` does NOT undo `mock.module()`
+// (see Bun docs); without an explicit re-mock these stubs would leak
+// into every other sk test file in the same worker process.
+const realEngineClient = await import("../engine-client.ts");
+const realConfig = await import("../config.ts");
+const realRenderIndex = await import("../render/index.ts");
+
+const ORIGINAL_ENGINE_CLIENT = { ...realEngineClient };
+const ORIGINAL_CONFIG = { ...realConfig };
+const ORIGINAL_RENDER_INDEX = { ...realRenderIndex };
 
 const renderIntentMock = mock(async (_intent: unknown, _opts?: unknown) => undefined);
 const renderSummaryMock = mock(async (_summary: unknown, _opts?: unknown) => undefined);
@@ -32,6 +44,7 @@ const createWorkflowSpy = mock(async () => ({
 }));
 
 mock.module("../engine-client.ts", () => ({
+  ...ORIGINAL_ENGINE_CLIENT,
   EngineClient: class StubEngineClient {
     async validateWorkflowDraft() {
       return { ok: true, errors: [] };
@@ -48,6 +61,7 @@ mock.module("../engine-client.ts", () => ({
 }));
 
 mock.module("../config.ts", () => ({
+  ...ORIGINAL_CONFIG,
   resolveProfile: () => ({
     engine_url: "http://stub.test",
     api_key: "stub-key",
@@ -88,6 +102,16 @@ beforeEach(() => {
 afterEach(() => {
   process.stdout.write = origStdoutWrite;
   process.stderr.write = origStderrWrite;
+});
+
+// Restore module mocks so they don't leak into other files when Bun
+// runs files in parallel under --max-concurrency. `mock.restore()`
+// alone does NOT undo `mock.module()`, so we re-mock with the
+// originals captured at the top of this file.
+afterAll(() => {
+  mock.module("../engine-client.ts", () => ORIGINAL_ENGINE_CLIENT);
+  mock.module("../config.ts", () => ORIGINAL_CONFIG);
+  mock.module("../render/index.ts", () => ORIGINAL_RENDER_INDEX);
 });
 
 function tmpFile(name: string, content: string): string {

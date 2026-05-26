@@ -91,6 +91,10 @@ function printRunResult(result: RunExecutionResponse): void {
 // script. The error path must therefore route the failure message to
 // stdout as `{ "error": <msg> }` and keep stderr empty; otherwise the
 // pipe sees a JSON body on success and unparseable text on failure.
+// After writing the error envelope, the function re-throws so the
+// top-level `sk` dispatcher sets `process.exitCode` — handlers must
+// never short-circuit via process.exit (see the discipline test in
+// `tests/commands/knowledge-sources-error-discipline.test.ts`).
 function reportError(err: unknown, jsonMode: boolean): never {
   const msg = err instanceof Error ? err.message : String(err);
   if (jsonMode) {
@@ -98,7 +102,7 @@ function reportError(err: unknown, jsonMode: boolean): never {
   } else {
     process.stderr.write(`${msg}\n`);
   }
-  process.exit(exitCodeFor(err));
+  throw err instanceof Error ? err : new Error(msg);
 }
 
 function makeClient() {

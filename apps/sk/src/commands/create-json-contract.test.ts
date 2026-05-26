@@ -8,10 +8,31 @@
 // covered by render/index.test.ts. This test covers the wiring layer
 // the dispatcher tests cannot reach.
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+// Capture the real module shapes BEFORE we override them. `mock.module()`
+// updates the module cache for the whole worker process, and `mock.restore()`
+// does NOT undo `mock.module()` (see Bun docs). So when multiple test files
+// run in the same worker via `--max-concurrency`, the stubs installed here
+// would leak into every subsequent file that imports the same module.
+//
+// The fix is to re-mock with the originals in `afterAll`, which restores
+// the real implementations for the remaining files in the worker. The
+// dynamic imports below evaluate the real modules; we then copy their
+// exports into fresh objects so the references won't be mutated by the
+// upcoming `mock.module()` calls (Bun mocked ESM keeps live bindings).
+const realEngineClient = await import("../engine-client.ts");
+const realConfig = await import("../config.ts");
+const realRenderIndex = await import("../render/index.ts");
+const realFiles = await import("./files.ts");
+
+const ORIGINAL_ENGINE_CLIENT = { ...realEngineClient };
+const ORIGINAL_CONFIG = { ...realConfig };
+const ORIGINAL_RENDER_INDEX = { ...realRenderIndex };
+const ORIGINAL_FILES = { ...realFiles };
 
 // Mock the render module with stub functions we can inspect for call shape.
 // All three commands import from "../render/index.ts" so this single
@@ -30,6 +51,7 @@ mock.module("../render/index.ts", () => ({
 // stub only the methods each create flow actually calls; the constructor
 // is replaced with a no-op.
 mock.module("../engine-client.ts", () => ({
+  ...ORIGINAL_ENGINE_CLIENT,
   EngineClient: class StubEngineClient {
     async validateWorkflowDraft() {
       return { ok: true, errors: [] };
@@ -57,6 +79,7 @@ mock.module("../engine-client.ts", () => ({
 
 // Mock resolveProfile so config does not touch ~/.sk/config.json.
 mock.module("../config.ts", () => ({
+  ...ORIGINAL_CONFIG,
   resolveProfile: () => ({
     engine_url: "http://stub.test",
     api_key: "stub-key",
@@ -67,6 +90,7 @@ mock.module("../config.ts", () => ({
 // uploadPath is used by knowledge-sources create. Stub it to return a fake
 // FileWire so the test never goes near a real upload pipeline.
 mock.module("./files.ts", () => ({
+  ...ORIGINAL_FILES,
   uploadPath: async () => ({ id: "fid-test" }),
 }));
 
@@ -115,6 +139,19 @@ beforeEach(() => {
 afterEach(() => {
   process.stderr.write = origStderrWrite;
   process.stdout.write = origStdoutWrite;
+});
+
+// Bun runs multiple test files in the same worker process when
+// --max-concurrency > 1. The `mock.module(...)` calls at the top of
+// this file install module-level mocks that would otherwise leak into
+// every subsequent file in the worker (e.g. `files.test.ts`, the
+// attach-flow integrations, etc.). `mock.restore()` does NOT undo
+// `mock.module()`, so we re-mock with the originals captured above.
+afterAll(() => {
+  mock.module("../engine-client.ts", () => ORIGINAL_ENGINE_CLIENT);
+  mock.module("../config.ts", () => ORIGINAL_CONFIG);
+  mock.module("../render/index.ts", () => ORIGINAL_RENDER_INDEX);
+  mock.module("./files.ts", () => ORIGINAL_FILES);
 });
 
 // Tempdir helpers — the workflow + knowledge-source create commands

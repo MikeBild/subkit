@@ -10,6 +10,11 @@ import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/type
 
 // See workflows.ts:reportError — same contract: jsonMode keeps stderr
 // silent so callers can pipe `sk connectors create --json` into jq.
+// The function then re-throws so the top-level `sk` dispatcher (not
+// this handler) sets `process.exitCode`. Handlers must NEVER call
+// `process.exit` directly — the discipline test in
+// `tests/commands/knowledge-sources-error-discipline.test.ts` enforces
+// the same contract across all create surfaces.
 function reportError(err: unknown, jsonMode: boolean): never {
   const msg = err instanceof Error ? err.message : String(err);
   if (jsonMode) {
@@ -17,7 +22,7 @@ function reportError(err: unknown, jsonMode: boolean): never {
   } else {
     process.stderr.write(`${msg}\n`);
   }
-  process.exit(exitCodeFor(err));
+  throw err instanceof Error ? err : new Error(msg);
 }
 
 function makeClient() {
