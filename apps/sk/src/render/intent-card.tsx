@@ -1,29 +1,17 @@
 import { basename } from "node:path";
 import { Box, Text } from "ink";
 import type React from "react";
-import { PlanCard, type PlanStep } from "../repl/plan-cell.tsx";
+import { PlanCard } from "../repl/plan-cell.tsx";
 import {
+  humanBytes,
   isConnectorIntent,
   isKnowledgeSourceIntent,
   isWorkflowIntent,
   triggerLine,
 } from "./helpers.ts";
-import type { ConnectorIntent, KnowledgeSourceIntent, WorkflowIntent } from "./types.ts";
+import type { ConnectorIntent, KnowledgeSourceIntent, PlanStep, WorkflowIntent } from "./types.ts";
 
 export type AnyIntent = WorkflowIntent | ConnectorIntent | KnowledgeSourceIntent;
-
-export function humanBytes(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return `${n}B`;
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0;
-  let v = n;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  const s = v >= 10 || i === 0 || Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1);
-  return `${s}${units[i]}`;
-}
 
 const WorkflowIntentCard: React.FC<{ intent: WorkflowIntent }> = ({ intent }) => {
   const steps: PlanStep[] = intent.steps.map((s) => ({

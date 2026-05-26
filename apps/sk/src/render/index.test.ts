@@ -2,7 +2,6 @@
 // Three code paths: jsonMode (silent), non-TTY (plain ASCII), TTY (Ink mount).
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { PlanStep } from "../repl/plan-cell.tsx";
 import type { AnyIntent } from "./intent-card.tsx";
 import type { AnySummary } from "./summary-card.tsx";
 import type {
@@ -10,6 +9,7 @@ import type {
   ConnectorSummary,
   KnowledgeSourceIntent,
   KnowledgeSourceSummary,
+  PlanStep,
   WorkflowIntent,
   WorkflowSummary,
 } from "./types.ts";

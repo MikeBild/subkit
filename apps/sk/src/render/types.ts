@@ -1,3 +1,10 @@
+// Re-export the plan-step types from the REPL so call sites that only
+// touch the render module don't need to dip into `../repl/plan-cell.tsx`
+// for the structural shape. The actual runtime renderer (PlanCard) and
+// the heuristic detector still live with the REPL because they are
+// codex/Ink-specific.
+export type { PlanStep, PlanStepStatus } from "../repl/plan-cell.tsx";
+
 export type WorkflowTrigger =
   | { kind: "schedule"; cron: string; tz: string }
   | { kind: "webhook"; source: string; events: string[] }

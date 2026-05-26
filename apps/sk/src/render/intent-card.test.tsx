@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
-import { humanBytes, IntentCard } from "./intent-card.tsx";
+import { humanBytes } from "./helpers.ts";
+import { IntentCard } from "./intent-card.tsx";
 import type { ConnectorIntent, KnowledgeSourceIntent, WorkflowIntent } from "./types.ts";
 
 function snapshot(ui: ReturnType<typeof render>): string {

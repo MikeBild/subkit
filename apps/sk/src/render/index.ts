@@ -1,20 +1,24 @@
 import { basename } from "node:path";
 import pc from "picocolors";
-import { type PlanStep, STATUS_GLYPH } from "../repl/plan-cell.tsx";
+import { STATUS_GLYPH } from "../repl/plan-cell.tsx";
 import {
+  humanBytes,
   isConnectorIntent,
   isConnectorSummary,
   isKnowledgeSourceIntent,
   isKnowledgeSourceSummary,
   isWorkflowIntent,
   isWorkflowSummary,
+  SEPARATOR,
   triggerLine,
 } from "./helpers.ts";
-import { type AnyIntent, humanBytes } from "./intent-card.tsx";
+import type { AnyIntent } from "./intent-card.tsx";
 import type { AnySummary } from "./summary-card.tsx";
+import type { PlanStep } from "./types.ts";
 
 export type { AnyIntent } from "./intent-card.tsx";
 export type { AnySummary } from "./summary-card.tsx";
+export type { PlanStep, PlanStepStatus } from "./types.ts";
 
 export interface RenderOptions {
   jsonMode?: boolean;
@@ -120,7 +124,7 @@ function plainSummary(summary: AnySummary): string {
 }
 
 function plainTaskList(phases: ReadonlyArray<PlanStep>): string {
-  const out: string[] = ["─────────────────────────────"];
+  const out: string[] = [SEPARATOR];
   for (const p of phases) {
     const glyph = STATUS_GLYPH[p.status];
     const color =

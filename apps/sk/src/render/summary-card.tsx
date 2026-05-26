@@ -1,12 +1,12 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import {
+  humanBytes,
   isConnectorSummary,
   isKnowledgeSourceSummary,
   isWorkflowSummary,
   triggerLine,
 } from "./helpers.ts";
-import { humanBytes } from "./intent-card.tsx";
 import type { ConnectorSummary, KnowledgeSourceSummary, WorkflowSummary } from "./types.ts";
 
 export type AnySummary = WorkflowSummary | ConnectorSummary | KnowledgeSourceSummary;

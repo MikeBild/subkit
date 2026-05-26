@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
-import { type PlanStep, STATUS_GLYPH } from "../repl/plan-cell.tsx";
+import { STATUS_GLYPH } from "../repl/plan-cell.tsx";
 import { TaskList } from "./task-list.tsx";
+import type { PlanStep } from "./types.ts";
 
 function snapshot(ui: ReturnType<typeof render>): string {
   return (ui.lastFrame() ?? "").replace(/\[[0-9;]*m/g, "");

@@ -1049,6 +1049,15 @@ export function extractConnectorIntent(call: ToolCallState): ConnectorIntent | n
   };
 }
 
+// Dual-shape fallback: `save_workflow_draft` returns `{ workflow_id,
+// workflow: { name, version, definition } }` (the canonical wrapper),
+// but several engine paths — older save-result payloads and the
+// commit-result card lifecycle — emit `name`/`version` flat on the
+// top-level data object alongside `workflow_id`. We accept both so the
+// REPL renders a Summary card from either; the wrapper is preferred
+// when present. See `extractWorkflowIntent` for the matching read of
+// `definition.steps` vs `workflow.steps`. Until the engine narrows to
+// a single shape across all call sites, this dual read is intentional.
 export function extractWorkflowSummary(call: ToolCallState): WorkflowSummary | null {
   const d = unwrapData(call);
   if (!d) return null;
