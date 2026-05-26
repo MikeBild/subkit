@@ -460,8 +460,12 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     const frame = instance.lastFrame() ?? "";
     // ConfirmPrompt renders `confirm: <kind>` as the title line; the
     // full diff body follows. Lines up with the ElicitRouter dispatch
-    // in @chat-ui.
-    expect(frame).toContain("Waiting for input: confirmation required");
+    // in @chat-ui. The top-of-screen "Waiting for input" banner is
+    // intentionally suppressed for every ask_user_* tool — the typed
+    // prompt is the single source of truth (G12 dedupe in the runtime-
+    // logs review plan; pre-fix the same OAuth prose was rendered twice
+    // in two differently-styled boxes).
+    expect(frame).not.toContain("Waiting for input: confirmation required");
     expect(frame).toContain("confirm: save_workflow_draft");
     expect(frame).toContain("commit 2-step workflow");
     expect(frame).toContain("invoice-digest");

@@ -194,3 +194,58 @@ describe("ConfirmPrompt — decision metadata", () => {
     expect(frame).toContain("no");
   });
 });
+
+describe("ConfirmPrompt — URL hyperlinks in summary (G11)", () => {
+  // Pre-fix the OAuth approval summary printed authorize URLs as plain
+  // prose; Terminal.app's URL auto-detect cannot reassemble a wrapped
+  // URL across multiple visual lines, so the user had to copy-paste
+  // line fragments by hand. Modern terminals support OSC 8 hyperlinks
+  // (\x1b]8;;URL\x07TEXT\x1b]8;;\x07); when the summary contains a URL
+  // the renderer wraps it so the visible text remains the URL itself
+  // but the terminal turns the token into a clickable target.
+  test("wraps a URL in the summary with OSC 8 escapes", () => {
+    const url =
+      "https://accounts.google.com/o/oauth2/v2/auth?client_id=abc&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=xyz";
+    const instance = render(
+      <ConfirmPrompt
+        question="Authorize?"
+        summary={`Authorize Google Workspace in your browser:\n${url}`}
+        onResponse={mock()}
+      />,
+    );
+    const frame = instance.lastFrame() ?? "";
+    // OSC 8 prefix + URL + BEL terminator (visible URL) + closing OSC 8.
+    expect(frame).toContain(`\x1b]8;;${url}\x07`);
+    expect(frame).toContain(url);
+    expect(frame).toContain("\x1b]8;;\x07");
+  });
+
+  test("leaves plain prose without URLs untouched", () => {
+    const instance = render(
+      <ConfirmPrompt
+        question="Save?"
+        summary="No links here — just prose about the workflow."
+        onResponse={mock()}
+      />,
+    );
+    const frame = instance.lastFrame() ?? "";
+    // No OSC 8 escape sequence at all.
+    expect(frame).not.toContain("\x1b]8;;");
+    expect(frame).toContain("No links here");
+  });
+
+  test("trims trailing sentence punctuation from the link target", () => {
+    const instance = render(
+      <ConfirmPrompt
+        question="Approve?"
+        summary="See https://example.com/path."
+        onResponse={mock()}
+      />,
+    );
+    const frame = instance.lastFrame() ?? "";
+    // The trailing `.` is part of the prose, not the URL — must stay
+    // outside the OSC 8 hyperlink target.
+    expect(frame).toContain("\x1b]8;;https://example.com/path\x07");
+    expect(frame).not.toContain("\x1b]8;;https://example.com/path.\x07");
+  });
+});

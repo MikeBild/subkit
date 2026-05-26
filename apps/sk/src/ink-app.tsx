@@ -396,20 +396,28 @@ export function renderElicitAnswer(output: unknown, input?: unknown, reason?: st
   return `(answered)${suffix}`;
 }
 
-function pendingNoticeMessage(elicitation: PendingElicitation): string {
-  const summary = elicitation.summary.trim();
+function pendingNoticeMessage(elicitation: PendingElicitation): string | null {
+  // All ask_user_* elicitations have a dedicated typed prompt component
+  // (ConfirmPrompt, ChoicePrompt, MultiChoicePrompt, FormPrompt,
+  // TextPrompt) that renders the full question + summary + options
+  // below. Adding a top-of-screen "Waiting for input" banner here too
+  // produces a back-to-back duplicate render — the user sees the same
+  // prose twice in two differently-styled boxes (G12 in the runtime-
+  // logs review plan; reproduced in screenshot of OAuth approval).
+  //
+  // The banner exists only as a fallback for elicitations whose tool
+  // name the CLI does not recognise — those have no typed prompt and
+  // would otherwise pause the loop silently. For everything we know
+  // how to render, the typed prompt is the single source of truth.
   switch (elicitation.tool_name) {
     case "ask_user_form":
-      return `${PENDING_NOTICE_PREFIX} secure form required: ${summary}. Fill the form below and press Enter to submit.`;
     case "ask_user_confirm":
-      return `${PENDING_NOTICE_PREFIX} confirmation required: ${summary}. Use the prompt below or /approve and /reject.`;
     case "ask_user_choice":
     case "ask_user_multi":
-      return `${PENDING_NOTICE_PREFIX} selection required: ${summary}. Choose from the prompt below to continue.`;
     case "ask_user_text":
-      return `${PENDING_NOTICE_PREFIX} text input required: ${summary}. Answer in the prompt below and press Enter.`;
+      return null;
     default:
-      return `${PENDING_NOTICE_PREFIX} ${summary}.`;
+      return `${PENDING_NOTICE_PREFIX} ${elicitation.summary.trim()}.`;
   }
 }
 
