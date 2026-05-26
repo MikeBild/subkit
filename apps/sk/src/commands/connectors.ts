@@ -4,8 +4,9 @@ import { emitList, printJson, printTable } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
-import { renderIntent, renderSummary, renderTaskFailure } from "../render/index.ts";
-import type { ConnectorIntent, ConnectorSummary, Phase } from "../render/types.ts";
+import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
+import type { ConnectorIntent, ConnectorSummary } from "../render/types.ts";
+import type { PlanStep } from "../repl/plan-cell.tsx";
 
 function makeClient() {
   const profile = resolveProfile();
@@ -74,6 +75,7 @@ const createCommand = defineCommand({
     const jsonMode = Boolean(args.json);
     try {
       const intent: ConnectorIntent = {
+        kind: "connector",
         template_slug: args.template as string,
         ...(args.name ? { name: args.name } : {}),
       };
@@ -102,10 +104,11 @@ const createCommand = defineCommand({
             ...(typeof result.duration_ms === "number" ? { duration_ms: result.duration_ms } : {}),
           };
           if (!result.ok) {
-            const phases: Phase[] = [
-              { name: "Create", status: "succeeded" },
+            const phases: PlanStep[] = [
+              { id: "create", label: "Create", status: "succeeded" },
               {
-                name: "Probe",
+                id: "probe",
+                label: "Probe",
                 status: "failed",
                 detail:
                   typeof result.error === "string"
@@ -113,24 +116,26 @@ const createCommand = defineCommand({
                     : `status=${result.status_code ?? "?"}`,
               },
             ];
-            await renderTaskFailure(phases, { jsonMode });
+            await renderTaskList(phases, { jsonMode });
             process.exit(1);
           }
         } catch (err) {
-          const phases: Phase[] = [
-            { name: "Create", status: "succeeded" },
+          const phases: PlanStep[] = [
+            { id: "create", label: "Create", status: "succeeded" },
             {
-              name: "Probe",
+              id: "probe",
+              label: "Probe",
               status: "failed",
               detail: err instanceof Error ? err.message : String(err),
             },
           ];
-          await renderTaskFailure(phases, { jsonMode });
+          await renderTaskList(phases, { jsonMode });
           process.exit(exitCodeFor(err));
         }
       }
 
       const summary: ConnectorSummary = {
+        kind: "connector",
         id: typeof created.id === "string" ? created.id : "(unknown)",
         slug: typeof created.slug === "string" ? created.slug : (args.template as string),
         template_slug: args.template as string,

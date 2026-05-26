@@ -26,21 +26,21 @@ export function triggerLine(trigger: WorkflowTrigger): string {
 }
 
 export function isWorkflowIntent(i: AnyIntent): i is WorkflowIntent {
-  return Array.isArray((i as WorkflowIntent).steps);
+  return i.kind === "workflow";
 }
 export function isKnowledgeSourceIntent(i: AnyIntent): i is KnowledgeSourceIntent {
-  return typeof (i as KnowledgeSourceIntent).file_path === "string";
+  return i.kind === "knowledge_source";
 }
 export function isConnectorIntent(i: AnyIntent): i is ConnectorIntent {
-  return typeof (i as ConnectorIntent).template_slug === "string";
+  return i.kind === "connector";
 }
 
 export function isWorkflowSummary(s: AnySummary): s is WorkflowSummary {
-  return typeof (s as WorkflowSummary).version === "number";
+  return s.kind === "workflow";
 }
 export function isKnowledgeSourceSummary(s: AnySummary): s is KnowledgeSourceSummary {
-  return typeof (s as KnowledgeSourceSummary).mime_type === "string";
+  return s.kind === "knowledge_source";
 }
 export function isConnectorSummary(s: AnySummary): s is ConnectorSummary {
-  return typeof (s as ConnectorSummary).template_slug === "string";
+  return s.kind === "connector";
 }

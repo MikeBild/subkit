@@ -5,8 +5,9 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
-import { renderIntent, renderSummary, renderTaskFailure } from "../render/index.ts";
-import type { KnowledgeSourceIntent, KnowledgeSourceSummary, Phase } from "../render/types.ts";
+import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
+import type { KnowledgeSourceIntent, KnowledgeSourceSummary } from "../render/types.ts";
+import type { PlanStep } from "../repl/plan-cell.tsx";
 import { detectMime } from "../utils/mime.ts";
 import { uploadPath } from "./files.ts";
 
@@ -99,6 +100,7 @@ const createCommand = defineCommand({
       const title = args.title ?? basename(filePath);
 
       const intent: KnowledgeSourceIntent = {
+        kind: "knowledge_source",
         file_path: filePath,
         title,
         mime_type,
@@ -112,16 +114,17 @@ const createCommand = defineCommand({
       try {
         file = await uploadPath(client, filePath, { quiet: true });
       } catch (err) {
-        const phases: Phase[] = [
+        const phases: PlanStep[] = [
           {
-            name: "Upload",
+            id: "upload",
+            label: "Upload",
             status: "failed",
             detail: err instanceof Error ? err.message : String(err),
           },
-          { name: "Create", status: "pending" },
-          { name: "Link", status: "pending" },
+          { id: "create", label: "Create", status: "pending" },
+          { id: "link", label: "Link", status: "pending" },
         ];
-        await renderTaskFailure(phases, { jsonMode });
+        await renderTaskList(phases, { jsonMode });
         throw err;
       }
       try {
@@ -131,16 +134,17 @@ const createCommand = defineCommand({
           mime_type,
         })) as Record<string, unknown>;
       } catch (err) {
-        const phases: Phase[] = [
-          { name: "Upload", status: "succeeded" },
+        const phases: PlanStep[] = [
+          { id: "upload", label: "Upload", status: "succeeded" },
           {
-            name: "Create",
+            id: "create",
+            label: "Create",
             status: "failed",
             detail: err instanceof Error ? err.message : String(err),
           },
-          { name: "Link", status: "pending" },
+          { id: "link", label: "Link", status: "pending" },
         ];
-        await renderTaskFailure(phases, { jsonMode });
+        await renderTaskList(phases, { jsonMode });
         throw err;
       }
 
@@ -162,6 +166,7 @@ const createCommand = defineCommand({
       printJson(ks);
 
       const summary: KnowledgeSourceSummary = {
+        kind: "knowledge_source",
         id: ksId ?? "(unknown)",
         name: typeof ks.name === "string" ? ks.name : title,
         mime_type,

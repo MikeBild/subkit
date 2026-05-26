@@ -50,6 +50,7 @@ describe("extractWorkflowIntent", () => {
     const call = withResult("build_workflow", validWorkflowData);
     const result = extractWorkflowIntent(call);
     expect(result).not.toBeNull();
+    expect(result?.kind).toBe("workflow");
     expect(result?.name).toBe("Nightly Sync");
     expect(result?.slug).toBe("nightly-sync");
     expect(result?.trigger).toMatchObject({ kind: "schedule", cron: "0 0 * * *", tz: "UTC" });
@@ -210,6 +211,7 @@ describe("extractConnectorIntent", () => {
     const call = withResult("start_connector_from_template", validConnectorData);
     const result = extractConnectorIntent(call);
     expect(result).not.toBeNull();
+    expect(result?.kind).toBe("connector");
     expect(result?.template_slug).toBe("stripe-api");
     expect(result?.name).toBe("Stripe Prod");
     expect(result?.environment).toBe("prod");
@@ -311,6 +313,7 @@ describe("extractWorkflowSummary", () => {
     const call = withResult("save_workflow_draft", validSummaryData);
     const result = extractWorkflowSummary(call);
     expect(result).not.toBeNull();
+    expect(result?.kind).toBe("workflow");
     expect(result?.id).toBe("wf-001");
     expect(result?.name).toBe("Nightly Sync");
     expect(result?.version).toBe(3);
@@ -393,6 +396,7 @@ describe("extractConnectorSummary", () => {
     const call = withResult("save_connector_draft", validConnSummaryData);
     const result = extractConnectorSummary(call);
     expect(result).not.toBeNull();
+    expect(result?.kind).toBe("connector");
     expect(result?.id).toBe("con-001");
     expect(result?.slug).toBe("stripe-prod");
     expect(result?.template_slug).toBe("stripe-api");
@@ -493,6 +497,7 @@ describe("extractKnowledgeSourceSummary", () => {
     };
     const result = extractKnowledgeSourceSummary(call);
     expect(result).not.toBeNull();
+    expect(result?.kind).toBe("knowledge_source");
     expect(result?.id).toBe("ks-001");
     expect(result?.name).toBe("OCPP 2.0.1 Protocol Reference");
     expect(result?.mime_type).toBe("text/markdown");

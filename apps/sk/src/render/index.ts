@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import pc from "picocolors";
-import { STATUS_GLYPH } from "../repl/plan-cell.tsx";
+import { type PlanStep, STATUS_GLYPH } from "../repl/plan-cell.tsx";
 import {
   isConnectorIntent,
   isConnectorSummary,
@@ -12,7 +12,6 @@ import {
 } from "./helpers.ts";
 import { type AnyIntent, humanBytes } from "./intent-card.tsx";
 import type { AnySummary } from "./summary-card.tsx";
-import type { Phase } from "./types.ts";
 
 export type { AnyIntent } from "./intent-card.tsx";
 export type { AnySummary } from "./summary-card.tsx";
@@ -120,7 +119,7 @@ function plainSummary(summary: AnySummary): string {
   return `${out.join("\n")}\n`;
 }
 
-function plainTaskList(phases: ReadonlyArray<Phase>): string {
+function plainTaskList(phases: ReadonlyArray<PlanStep>): string {
   const out: string[] = ["─────────────────────────────"];
   for (const p of phases) {
     const glyph = STATUS_GLYPH[p.status];
@@ -135,7 +134,7 @@ function plainTaskList(phases: ReadonlyArray<Phase>): string {
               ? pc.yellow
               : pc.dim;
     const tail = p.detail ? pc.dim(` · ${p.detail}`) : "";
-    out.push(`${color(glyph)} ${p.name}${tail}`);
+    out.push(`${color(glyph)} ${p.label}${tail}`);
   }
   return `${out.join("\n")}\n`;
 }
@@ -162,8 +161,13 @@ export async function renderSummary(summary: AnySummary, opts: RenderOptions = {
   process.stderr.write(plainSummary(summary));
 }
 
-export async function renderTaskFailure(
-  phases: ReadonlyArray<Phase>,
+// Renders an ordered list of pre-flight phases — used both for the
+// hard-failure path (one phase = failed, the rest = pending) and the
+// warnings-but-proceed path (preview = warning, save = pending then
+// succeeded). The renderer takes whatever status mix it is given; the
+// caller decides whether to also `process.exit(1)`.
+export async function renderTaskList(
+  phases: ReadonlyArray<PlanStep>,
   opts: RenderOptions = {},
 ): Promise<void> {
   if (opts.jsonMode) return;

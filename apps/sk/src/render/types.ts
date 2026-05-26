@@ -1,11 +1,10 @@
-import type { PlanStepStatus } from "../repl/plan-cell.tsx";
-
 export type WorkflowTrigger =
   | { kind: "schedule"; cron: string; tz: string }
   | { kind: "webhook"; source: string; events: string[] }
   | { kind: "request" };
 
 export interface WorkflowIntent {
+  kind: "workflow";
   name: string;
   slug?: string;
   trigger: WorkflowTrigger;
@@ -13,6 +12,7 @@ export interface WorkflowIntent {
 }
 
 export interface ConnectorIntent {
+  kind: "connector";
   template_slug: string;
   name?: string;
   environment?: "dev" | "prod";
@@ -21,6 +21,7 @@ export interface ConnectorIntent {
 }
 
 export interface KnowledgeSourceIntent {
+  kind: "knowledge_source";
   file_path: string;
   title: string;
   mime_type: string;
@@ -28,6 +29,7 @@ export interface KnowledgeSourceIntent {
 }
 
 export interface WorkflowSummary {
+  kind: "workflow";
   id: string;
   version: number;
   name: string;
@@ -36,6 +38,7 @@ export interface WorkflowSummary {
 }
 
 export interface ConnectorSummary {
+  kind: "connector";
   id: string;
   slug: string;
   template_slug: string;
@@ -43,16 +46,11 @@ export interface ConnectorSummary {
 }
 
 export interface KnowledgeSourceSummary {
+  kind: "knowledge_source";
   id: string;
   name: string;
   mime_type: string;
   size_bytes: number;
   file_id?: string;
   link_failed?: boolean;
-}
-
-export interface Phase {
-  name: string;
-  status: PlanStepStatus;
-  detail?: string;
 }

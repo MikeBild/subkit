@@ -1,37 +1,19 @@
 import { Box, Text } from "ink";
 import type React from "react";
-import { STATUS_COLOR, STATUS_GLYPH } from "../repl/plan-cell.tsx";
-import type { Phase } from "./types.ts";
+import { PlanCard, type PlanStep } from "../repl/plan-cell.tsx";
 
-export const TaskList: React.FC<{ phases: ReadonlyArray<Phase> }> = ({ phases }) => {
+// Wraps the shared `PlanCard` with the dashed separator the workflow
+// `create` flow uses to delimit the pre-flight phases from the
+// surrounding JSON / narration. `PlanCard` already owns the row
+// rendering (status glyph + label + optional detail) so this stays a
+// thin wrapper instead of a parallel renderer.
+export const TaskList: React.FC<{ phases: ReadonlyArray<PlanStep> }> = ({ phases }) => {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
         <Text color="gray">─────────────────────────────</Text>
       </Box>
-      {phases.map((p, i) => {
-        const glyph = STATUS_GLYPH[p.status];
-        const color = STATUS_COLOR[p.status];
-        const isDim = p.status === "skipped" || p.status === "succeeded" || p.status === "pending";
-        return (
-          <Box key={`phase-${i}`}>
-            <Text
-              color={color}
-              dimColor={isDim}
-              bold={p.status === "running" || p.status === "in_progress" || p.status === "failed"}
-            >
-              {glyph}
-            </Text>
-            <Text> {p.name}</Text>
-            {p.detail ? (
-              <Text color="gray" dimColor>
-                {" · "}
-                {p.detail}
-              </Text>
-            ) : null}
-          </Box>
-        );
-      })}
+      <PlanCard steps={phases} />
     </Box>
   );
 };

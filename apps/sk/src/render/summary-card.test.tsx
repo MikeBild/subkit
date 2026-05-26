@@ -15,6 +15,7 @@ function renderSummary(summary: WorkflowSummary | ConnectorSummary | KnowledgeSo
 // --- WorkflowSummary ---
 describe("SummaryCard · workflow", () => {
   const base: WorkflowSummary = {
+    kind: "workflow",
     id: "wf-001",
     version: 1,
     name: "Nightly Sync",
@@ -85,6 +86,7 @@ describe("SummaryCard · workflow", () => {
 // --- ConnectorSummary ---
 describe("SummaryCard · connector", () => {
   const base: ConnectorSummary = {
+    kind: "connector",
     id: "con-001",
     slug: "stripe-prod",
     template_slug: "stripe-api",
@@ -154,6 +156,7 @@ describe("SummaryCard · connector", () => {
 // --- KnowledgeSourceSummary ---
 describe("SummaryCard · knowledge source", () => {
   const base: KnowledgeSourceSummary = {
+    kind: "knowledge_source",
     id: "ks-001",
     name: "API Spec",
     mime_type: "application/pdf",

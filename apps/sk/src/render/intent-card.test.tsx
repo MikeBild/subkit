@@ -28,6 +28,7 @@ describe("humanBytes", () => {
 // --- WorkflowIntent ---
 describe("IntentCard · workflow", () => {
   const base: WorkflowIntent = {
+    kind: "workflow",
     name: "Nightly Sync",
     slug: "nightly-sync",
     trigger: { kind: "schedule", cron: "0 0 * * *", tz: "UTC" },
@@ -44,6 +45,7 @@ describe("IntentCard · workflow", () => {
 
   test("webhook trigger shows source and events", () => {
     const intent: WorkflowIntent = {
+      kind: "workflow",
       name: "PR Notifier",
       trigger: { kind: "webhook", source: "github", events: ["push", "pull_request"] },
       steps: [],
@@ -57,6 +59,7 @@ describe("IntentCard · workflow", () => {
 
   test("webhook trigger with no events shows wildcard", () => {
     const intent: WorkflowIntent = {
+      kind: "workflow",
       name: "Any Event",
       trigger: { kind: "webhook", source: "stripe", events: [] },
       steps: [],
@@ -69,6 +72,7 @@ describe("IntentCard · workflow", () => {
 
   test("request trigger shows 'request'", () => {
     const intent: WorkflowIntent = {
+      kind: "workflow",
       name: "On Demand",
       trigger: { kind: "request" },
       steps: [],
@@ -117,7 +121,7 @@ describe("IntentCard · workflow", () => {
 
   test("no slug omits parenthetical in heading", () => {
     const { slug: _omit, ...baseWithoutSlug } = base;
-    const intent: WorkflowIntent = baseWithoutSlug;
+    const intent: WorkflowIntent = baseWithoutSlug as WorkflowIntent;
     const ui = renderIntent(intent);
     const out = snapshot(ui);
     expect(out).toContain("Create workflow Nightly Sync");
@@ -128,7 +132,7 @@ describe("IntentCard · workflow", () => {
 
 // --- ConnectorIntent ---
 describe("IntentCard · connector", () => {
-  const base: ConnectorIntent = { template_slug: "stripe-api" };
+  const base: ConnectorIntent = { kind: "connector", template_slug: "stripe-api" };
 
   test("minimal connector shows template_slug", () => {
     const ui = renderIntent(base);
@@ -140,6 +144,7 @@ describe("IntentCard · connector", () => {
 
   test("full connector shows name, environment, auth, base_url", () => {
     const intent: ConnectorIntent = {
+      kind: "connector",
       template_slug: "stripe-api",
       name: "Stripe Prod",
       environment: "prod",
@@ -169,6 +174,7 @@ describe("IntentCard · connector", () => {
 describe("IntentCard · knowledge source", () => {
   test("shows basename, human-readable size, and mime type", () => {
     const intent: KnowledgeSourceIntent = {
+      kind: "knowledge_source",
       file_path: "/home/user/docs/spec.pdf",
       title: "API Spec",
       mime_type: "application/pdf",
@@ -187,6 +193,7 @@ describe("IntentCard · knowledge source", () => {
 
   test("sub-1KB file shows bytes", () => {
     const intent: KnowledgeSourceIntent = {
+      kind: "knowledge_source",
       file_path: "/tmp/tiny.txt",
       title: "Tiny",
       mime_type: "text/plain",

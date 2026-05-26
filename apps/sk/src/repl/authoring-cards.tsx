@@ -1017,6 +1017,7 @@ export function extractWorkflowIntent(call: ToolCallState): WorkflowIntent | nul
     })
     .filter((s): s is { key: string; kind: string; connector_slug?: string } => s !== null);
   return {
+    kind: "workflow",
     name,
     ...(typeof workflow.slug === "string" ? { slug: workflow.slug as string } : {}),
     trigger: extractTrigger(definition?.trigger ?? workflow.trigger),
@@ -1037,6 +1038,7 @@ export function extractConnectorIntent(call: ToolCallState): ConnectorIntent | n
   if (!templateSlug) return null;
   const env = connector.environment;
   return {
+    kind: "connector",
     template_slug: templateSlug,
     ...(typeof connector.name === "string" ? { name: connector.name as string } : {}),
     ...(env === "dev" || env === "prod" ? { environment: env } : {}),
@@ -1064,6 +1066,7 @@ export function extractWorkflowSummary(call: ToolCallState): WorkflowSummary | n
   if (!name || version === null) return null;
   const definition = asRecord(workflow.definition) ?? asRecord(d.definition) ?? {};
   return {
+    kind: "workflow",
     id,
     version,
     name,
@@ -1080,7 +1083,7 @@ export function extractConnectorSummary(call: ToolCallState): ConnectorSummary |
   const slug = typeof connector.slug === "string" ? connector.slug : null;
   const templateSlug = typeof connector.template_slug === "string" ? connector.template_slug : null;
   if (!id || !slug || !templateSlug) return null;
-  return { id, slug, template_slug: templateSlug };
+  return { kind: "connector", id, slug, template_slug: templateSlug };
 }
 
 // create_knowledge_source returns
@@ -1108,6 +1111,7 @@ export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSou
   const mime_type =
     argMime ?? (args.mode === "inline" ? "text/markdown" : "application/octet-stream");
   return {
+    kind: "knowledge_source",
     id,
     name,
     mime_type,
