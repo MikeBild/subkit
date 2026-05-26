@@ -8,6 +8,16 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
 import { debugLog } from "../debug.ts";
+import { IntentCard } from "../render/intent-card.tsx";
+import { SummaryCard } from "../render/summary-card.tsx";
+import type {
+  ConnectorIntent,
+  ConnectorSummary,
+  KnowledgeSourceSummary,
+  WorkflowIntent,
+  WorkflowSummary,
+  WorkflowTrigger,
+} from "../render/types.ts";
 import { describeConfirmationPayload } from "./approval/describe-confirmation.ts";
 
 type CardTone = "ok" | "warn" | "fail" | "pending" | "info";
@@ -788,6 +798,38 @@ const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
 });
 WorkflowDraftCard.displayName = "WorkflowDraftCard";
 
+// Generic milestone fallback — used when a tool fires a milestone card
+// but its result shape didn't match the dedicated extractor. Renders
+// a single tone-aware line plus a short preview of the result so the
+// chat conversation always has *something* to say instead of going
+// silent on a shape regression.
+const GenericMilestoneCard: React.FC<CardProps & { label: string }> = memo(({ call, label }) => {
+  const tone = statusTone(call);
+  const d = unwrapData(call);
+  const errorCode = typeof d?.error === "string" ? d.error : null;
+  const message = typeof d?.message === "string" ? d.message : null;
+  const headline =
+    tone === "fail"
+      ? `${label} failed`
+      : tone === "pending"
+        ? `${label} in progress`
+        : tone === "warn"
+          ? `${label} returned a warning`
+          : `${label} ready`;
+  const detail = errorCode ?? message ?? previewLine(d, 100);
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>{badge(tone, headline)}</Box>
+      {detail ? (
+        <Box marginLeft={2}>
+          <Text dimColor>{detail}</Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+});
+GenericMilestoneCard.displayName = "GenericMilestoneCard";
+
 // Approval card — renders ask_user_confirm / ask_user_choice elicitation
 // *requests* inline (while the user is answering) and their resolved
 // outcome afterwards. The kind tells the user what they're approving.
@@ -848,6 +890,7 @@ const CHAT_MILESTONE_TOOLS = new Set([
   "start_workflow_from_goal",
   "run_workflow",
   "diagnose_latest_execution",
+  "create_knowledge_source",
 ]);
 
 // Tools we always render an in-flight card for (running/pending) —
@@ -872,6 +915,7 @@ const IN_FLIGHT_VISIBLE_TOOLS = new Set([
   "search_knowledge",
   "load_skill",
   "list_skill_suggestions",
+  "create_knowledge_source",
 ]);
 
 function shouldRenderInChat(call: ToolCallState): boolean {
@@ -921,6 +965,170 @@ const InFlightToolCard: React.FC<CardProps> = memo(({ call }) => {
 });
 InFlightToolCard.displayName = "InFlightToolCard";
 
+// Safe extractors — return a typed Intent/Summary built from the tool
+// payload, or null when the shape doesn't match. Callers fall back to
+// the legacy compact cards on null, so engine response evolution
+// doesn't break the REPL.
+function extractTrigger(raw: unknown): WorkflowTrigger {
+  const r = asRecord(raw);
+  if (r) {
+    if (r.kind === "schedule") {
+      return {
+        kind: "schedule",
+        cron: typeof r.cron === "string" ? r.cron : "?",
+        tz: typeof r.tz === "string" ? r.tz : "UTC",
+      };
+    }
+    if (r.kind === "webhook") {
+      return {
+        kind: "webhook",
+        source: typeof r.source === "string" ? r.source : "?",
+        events: Array.isArray(r.events) ? r.events.filter((e) => typeof e === "string") : [],
+      };
+    }
+  }
+  return { kind: "request" };
+}
+
+export function extractWorkflowIntent(call: ToolCallState): WorkflowIntent | null {
+  const d = unwrapData(call);
+  if (!d) return null;
+  const workflow = asRecord(d.workflow) ?? d;
+  const definition = asRecord(workflow.definition) ?? asRecord(d.definition);
+  const rawSteps =
+    (Array.isArray(definition?.steps) && definition?.steps) ||
+    (Array.isArray(workflow.steps) && (workflow.steps as unknown[])) ||
+    null;
+  if (!rawSteps) return null;
+  const name =
+    typeof workflow.name === "string" ? workflow.name : typeof d.name === "string" ? d.name : null;
+  if (!name) return null;
+  const steps = rawSteps
+    .map((s) => {
+      const r = asRecord(s);
+      if (!r) return null;
+      return {
+        key: typeof r.key === "string" ? r.key : typeof r.id === "string" ? r.id : "(step)",
+        kind: typeof r.kind === "string" ? r.kind : "step",
+        ...(typeof r.connector_slug === "string"
+          ? { connector_slug: r.connector_slug as string }
+          : {}),
+      };
+    })
+    .filter((s): s is { key: string; kind: string; connector_slug?: string } => s !== null);
+  return {
+    kind: "workflow",
+    name,
+    ...(typeof workflow.slug === "string" ? { slug: workflow.slug as string } : {}),
+    trigger: extractTrigger(definition?.trigger ?? workflow.trigger),
+    steps,
+  };
+}
+
+export function extractConnectorIntent(call: ToolCallState): ConnectorIntent | null {
+  const d = unwrapData(call);
+  if (!d) return null;
+  const connector = asRecord(d.connector) ?? d;
+  const templateSlug =
+    typeof connector.template_slug === "string"
+      ? connector.template_slug
+      : typeof d.template_slug === "string"
+        ? d.template_slug
+        : null;
+  if (!templateSlug) return null;
+  const env = connector.environment;
+  return {
+    kind: "connector",
+    template_slug: templateSlug,
+    ...(typeof connector.name === "string" ? { name: connector.name as string } : {}),
+    ...(env === "dev" || env === "prod" ? { environment: env } : {}),
+    ...(typeof connector.auth_type === "string"
+      ? { auth_type: connector.auth_type as string }
+      : {}),
+    ...(typeof connector.base_url === "string" ? { base_url: connector.base_url as string } : {}),
+  };
+}
+
+// Dual-shape fallback: `save_workflow_draft` returns `{ workflow_id,
+// workflow: { name, version, definition } }` (the canonical wrapper),
+// but several engine paths — older save-result payloads and the
+// commit-result card lifecycle — emit `name`/`version` flat on the
+// top-level data object alongside `workflow_id`. We accept both so the
+// REPL renders a Summary card from either; the wrapper is preferred
+// when present. See `extractWorkflowIntent` for the matching read of
+// `definition.steps` vs `workflow.steps`. Until the engine narrows to
+// a single shape across all call sites, this dual read is intentional.
+export function extractWorkflowSummary(call: ToolCallState): WorkflowSummary | null {
+  const d = unwrapData(call);
+  if (!d) return null;
+  const id = typeof d.workflow_id === "string" ? d.workflow_id : null;
+  if (!id) return null;
+  const workflow = asRecord(d.workflow) ?? {};
+  const name =
+    typeof workflow.name === "string" ? workflow.name : typeof d.name === "string" ? d.name : null;
+  const version =
+    typeof d.version === "number"
+      ? d.version
+      : typeof workflow.version === "number"
+        ? workflow.version
+        : null;
+  if (!name || version === null) return null;
+  const definition = asRecord(workflow.definition) ?? asRecord(d.definition) ?? {};
+  return {
+    kind: "workflow",
+    id,
+    version,
+    name,
+    trigger: extractTrigger(definition.trigger),
+  };
+}
+
+export function extractConnectorSummary(call: ToolCallState): ConnectorSummary | null {
+  const d = unwrapData(call);
+  if (!d) return null;
+  const connector = asRecord(d.connector);
+  if (!connector) return null;
+  const id = typeof connector.id === "string" ? connector.id : null;
+  const slug = typeof connector.slug === "string" ? connector.slug : null;
+  const templateSlug = typeof connector.template_slug === "string" ? connector.template_slug : null;
+  if (!id || !slug || !templateSlug) return null;
+  return { kind: "connector", id, slug, template_slug: templateSlug };
+}
+
+// create_knowledge_source returns
+//   { created: true, knowledge_source: { id, name, slug, scope, status,
+//     chunk_count, bytes_total }, audit_log_id }
+// The tool intentionally does NOT echo back mime_type or file_id —
+// those are inputs. We recover what we can from `call.args`
+// (`mime_type` for inline mode, `file_id` for from_attachment) so the
+// card matches the existing `KnowledgeSourceSummary` rendering used by
+// the CLI `sk knowledge-sources create` command.
+export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSourceSummary | null {
+  const d = unwrapData(call);
+  if (!d) return null;
+  const ks = asRecord(d.knowledge_source);
+  if (!ks) return null;
+  const id = typeof ks.id === "string" ? ks.id : null;
+  const name = typeof ks.name === "string" ? ks.name : null;
+  if (!id || !name) return null;
+  const bytes_total = typeof ks.bytes_total === "number" ? ks.bytes_total : 0;
+  const args = asRecord(call.args) ?? {};
+  const argMime = typeof args.mime_type === "string" ? args.mime_type : null;
+  const argFileId = typeof args.file_id === "string" ? args.file_id : null;
+  // Default inline mode is text/markdown per the tool implementation;
+  // fall back to that when args didn't carry one.
+  const mime_type =
+    argMime ?? (args.mode === "inline" ? "text/markdown" : "application/octet-stream");
+  return {
+    kind: "knowledge_source",
+    id,
+    name,
+    mime_type,
+    size_bytes: bytes_total,
+    ...(argFileId ? { file_id: argFileId } : {}),
+  };
+}
+
 // Dispatcher — returns a custom card for known authoring tools, or null
 // so the caller falls back to the generic ToolCard.
 export function renderAuthoringCard(
@@ -941,21 +1149,42 @@ export function renderAuthoringCard(
     case "dry_run_step":
     case "dry_run_workflow":
       return <StepPreviewCard key={`acc-${call.id}`} call={call} />;
-    case "save_connector_draft":
+    case "save_connector_draft": {
+      const summary = extractConnectorSummary(call);
+      if (summary) return <SummaryCard key={`acc-${call.id}`} summary={summary} />;
       return <SaveResultCard key={`acc-${call.id}`} call={call} />;
-    case "save_workflow_draft":
+    }
+    case "save_workflow_draft": {
+      const summary = extractWorkflowSummary(call);
+      if (summary) return <SummaryCard key={`acc-${call.id}`} summary={summary} />;
       return <CommitResultCard key={`acc-${call.id}`} call={call} />;
+    }
+    case "create_knowledge_source": {
+      const summary = extractKnowledgeSourceSummary(call);
+      if (summary) return <SummaryCard key={`acc-${call.id}`} summary={summary} />;
+      // Fall back to a compact one-liner when the result shape didn't
+      // match — keeps the chat narration alive instead of vanishing.
+      return <GenericMilestoneCard key={`acc-${call.id}`} call={call} label="Knowledge source" />;
+    }
     case "run_workflow":
     case "diagnose_latest_execution":
       return <ExecutionDiagnosisCard key={`acc-${call.id}`} call={call} />;
     case "start_connector_from_description":
-    case "start_connector_from_template":
+    case "start_connector_from_template": {
+      const intent = extractConnectorIntent(call);
+      if (intent) return <IntentCard key={`acc-${call.id}`} intent={intent} />;
+      return <ConnectorDraftCard key={`acc-${call.id}`} call={call} />;
+    }
     case "update_connector_draft":
     case "validate_connector_draft":
     case "inspect_connector_draft":
       return <ConnectorDraftCard key={`acc-${call.id}`} call={call} />;
     case "start_workflow_from_goal":
-    case "build_workflow":
+    case "build_workflow": {
+      const intent = extractWorkflowIntent(call);
+      if (intent) return <IntentCard key={`acc-${call.id}`} intent={intent} />;
+      return <WorkflowDraftCard key={`acc-${call.id}`} call={call} />;
+    }
     case "propose_step":
     case "update_param":
     case "connect_steps":

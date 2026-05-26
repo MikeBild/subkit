@@ -44,7 +44,7 @@ export interface PlanCardProps {
   steps: ReadonlyArray<PlanStep>;
 }
 
-const STATUS_GLYPH: Record<PlanStepStatus, string> = {
+export const STATUS_GLYPH: Record<PlanStepStatus, string> = {
   succeeded: "✔",
   running: "⬢",
   in_progress: "⬢",
@@ -56,7 +56,7 @@ const STATUS_GLYPH: Record<PlanStepStatus, string> = {
   unknown: "·",
 };
 
-const STATUS_COLOR: Record<PlanStepStatus, "green" | "cyan" | "gray" | "red" | "yellow"> = {
+export const STATUS_COLOR: Record<PlanStepStatus, "green" | "cyan" | "gray" | "red" | "yellow"> = {
   succeeded: "green",
   running: "cyan",
   in_progress: "cyan",

@@ -1,19 +1,36 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
+import type { KnowledgeSourceIntent, KnowledgeSourceSummary, PlanStep } from "../render/types.ts";
 import { detectMime } from "../utils/mime.ts";
 import { uploadPath } from "./files.ts";
 
-// Subcommand handlers never call `process.exit`; they throw the error
-// and rely on the top-level `sk` dispatcher (apps/sk/src/index.ts) to
-// translate it to an exit code via `exitCodeFor`. This keeps Citty's
-// runCommand composable from test harnesses and preserves the original
-// error for the catch chain instead of swallowing it behind a synthetic
-// "process.exit(N)" Error.
+// Read/list/search/delete handlers throw rather than calling
+// process.exit — the top-level `sk` dispatcher renders the error and
+// sets `process.exitCode`, which keeps Citty's runCommand composable
+// from test harnesses.
+//
+// The `create` flow honors the `--json` contract: on jsonMode the error
+// is emitted as `{ "error": <msg> }` on stdout (so a downstream `jq`
+// always reads valid JSON), stderr stays silent. The function then
+// re-throws so the dispatcher (not this handler) decides the exit code
+// — the discipline test in
+// `tests/commands/knowledge-sources-error-discipline.test.ts` enforces
+// that handlers never short-circuit via process.exit.
+function reportCreateError(err: unknown, jsonMode: boolean): never {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (jsonMode) {
+    process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
+  } else {
+    process.stderr.write(`${pc.red("error")}: ${msg}\n`);
+  }
+  throw err instanceof Error ? err : new Error(msg);
+}
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List knowledge sources" },
@@ -83,28 +100,71 @@ const createCommand = defineCommand({
   args: {
     file: { type: "string", required: true, description: "Path to file" },
     title: { type: "string", description: "Override title (defaults to filename)" },
+    json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
   },
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    const jsonMode = Boolean(args.json);
     try {
       const filePath = args.file;
-      // First register the bytes in the unified `files` table. Every
-      // CLI surface that ingests a local path funnels through
-      // `uploadPath` so the file is dedup-able + auditable. The
-      // resulting fid is linked to the knowledge_source after creation
-      // — until the engine route accepts `file_id` directly, the
-      // legacy multipart call is still the persistence path, but the
-      // file row makes the audit trail honest.
-      const file = await uploadPath(client, filePath, { quiet: true });
       const fileBuffer = readFileSync(filePath);
+      const size_bytes = statSync(filePath).size;
       const mime_type = detectMime(filePath);
-      const name = args.title ?? basename(filePath);
-      const ks = (await client.createKnowledgeSource({
-        name,
-        content: fileBuffer,
+      const title = args.title ?? basename(filePath);
+
+      const intent: KnowledgeSourceIntent = {
+        kind: "knowledge_source",
+        file_path: filePath,
+        title,
         mime_type,
-      })) as Record<string, unknown>;
+        size_bytes,
+      };
+      await renderIntent(intent, { jsonMode });
+
+      // Upload + create are required; link is best-effort.
+      let file: Awaited<ReturnType<typeof uploadPath>>;
+      let ks: Record<string, unknown>;
+      try {
+        file = await uploadPath(client, filePath, { quiet: true });
+      } catch (err) {
+        const phases: PlanStep[] = [
+          {
+            id: "upload",
+            label: "Upload",
+            status: "failed",
+            detail: err instanceof Error ? err.message : String(err),
+          },
+          { id: "create", label: "Create", status: "pending" },
+          { id: "link", label: "Link", status: "pending" },
+        ];
+        await renderTaskList(phases, { jsonMode });
+        throw err;
+      }
+      try {
+        ks = (await client.createKnowledgeSource({
+          name: title,
+          content: fileBuffer,
+          mime_type,
+        })) as Record<string, unknown>;
+      } catch (err) {
+        const phases: PlanStep[] = [
+          { id: "upload", label: "Upload", status: "succeeded" },
+          {
+            id: "create",
+            label: "Create",
+            status: "failed",
+            detail: err instanceof Error ? err.message : String(err),
+          },
+          { id: "link", label: "Link", status: "pending" },
+        ];
+        await renderTaskList(phases, { jsonMode });
+        throw err;
+      }
+
+      // Link is best-effort: the knowledge source already owns its
+      // bytes; the file_link is a cross-reference for provenance.
+      let linkFailed = false;
       const ksId = typeof ks.id === "string" ? ks.id : null;
       if (ksId) {
         try {
@@ -113,17 +173,24 @@ const createCommand = defineCommand({
             resource_id: ksId,
           });
         } catch {
-          // Linking is best-effort — the knowledge source already
-          // owns its bytes; the file_link is a cross-reference for
-          // future provenance queries.
+          linkFailed = true;
         }
       }
+
       printJson(ks);
+
+      const summary: KnowledgeSourceSummary = {
+        kind: "knowledge_source",
+        id: ksId ?? "(unknown)",
+        name: typeof ks.name === "string" ? ks.name : title,
+        mime_type,
+        size_bytes,
+        ...(file.id ? { file_id: file.id } : {}),
+        ...(linkFailed ? { link_failed: true } : {}),
+      };
+      await renderSummary(summary, { jsonMode });
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      throw err;
+      reportCreateError(err, jsonMode);
     }
   },
 });

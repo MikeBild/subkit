@@ -24,6 +24,29 @@ import { KnowledgeBudgetExceededError } from "../../../../knowledge/budgets.ts";
 import { can } from "../../../../rbac/evaluator.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../../index.ts";
 
+// Output shape on success — exported so downstream consumers (sk REPL
+// authoring-cards extractor) can build structural-overlap fixtures and
+// catch shape drift at compile time. The Zod definition is the single
+// source of truth; behaviour is unchanged.
+const CreateKnowledgeSourceOutputData = z.object({
+  created: z.literal(true),
+  knowledge_source: z.object({
+    id: z.string(),
+    name: z.string(),
+    slug: z.string(),
+    scope: z.string(),
+    status: z.string(),
+    chunk_count: z.number(),
+    bytes_total: z.number(),
+  }),
+  audit_log_id: z.string(),
+});
+export type CreateKnowledgeSourceOutputData = z.infer<typeof CreateKnowledgeSourceOutputData>;
+export type CreateKnowledgeSourceOutput = {
+  ok: true;
+  data: CreateKnowledgeSourceOutputData;
+};
+
 const CreateKnowledgeSourceInput = z
   .object({
     mode: z.enum(["inline", "from_attachment"]),

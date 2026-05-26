@@ -4,8 +4,55 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient, type RunExecutionResponse } from "../engine-client.ts";
+import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
+import type {
+  PlanStep,
+  WorkflowIntent,
+  WorkflowSummary,
+  WorkflowTrigger,
+} from "../render/types.ts";
 import { formatFileRef } from "../utils/file-ref.ts";
 import { uploadPath } from "./files.ts";
+
+function parseTrigger(raw: unknown): WorkflowTrigger {
+  if (raw && typeof raw === "object") {
+    const t = raw as Record<string, unknown>;
+    if (t.kind === "schedule") {
+      return {
+        kind: "schedule",
+        cron: typeof t.cron === "string" ? t.cron : "?",
+        tz: typeof t.tz === "string" ? t.tz : "UTC",
+      };
+    }
+    if (t.kind === "webhook") {
+      return {
+        kind: "webhook",
+        source: typeof t.source === "string" ? t.source : "?",
+        events: Array.isArray(t.events) ? t.events.filter((e) => typeof e === "string") : [],
+      };
+    }
+  }
+  return { kind: "request" };
+}
+
+function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
+  const definition = (body.definition as Record<string, unknown>) ?? {};
+  const rawSteps = Array.isArray(definition.steps) ? definition.steps : [];
+  const steps = rawSteps.map((s) => {
+    const r = (s ?? {}) as Record<string, unknown>;
+    return {
+      key: typeof r.key === "string" ? r.key : typeof r.id === "string" ? r.id : "(step)",
+      kind: typeof r.kind === "string" ? r.kind : "step",
+    };
+  });
+  return {
+    kind: "workflow",
+    name: typeof body.name === "string" ? body.name : "(workflow)",
+    ...(typeof body.slug === "string" ? { slug: body.slug } : {}),
+    trigger: parseTrigger(definition.trigger),
+    steps,
+  };
+}
 
 /** Print the workflow run JSON, then — when connector_resolutions or
  *  warnings are present — a compact summary to stderr so humans can
@@ -37,6 +84,25 @@ function printRunResult(result: RunExecutionResponse): void {
       `  ${pc.cyan(r.step_key)}  ${r.connector_slug} (${r.driver})  ${env}  ${pc.yellow(r.auth_method)}\n`,
     );
   }
+}
+
+// In jsonMode the contract is "stdout = JSON, stderr = silent" so a
+// downstream consumer can pipe the create command into jq or another
+// script. The error path must therefore route the failure message to
+// stdout as `{ "error": <msg> }` and keep stderr empty; otherwise the
+// pipe sees a JSON body on success and unparseable text on failure.
+// After writing the error envelope, the function re-throws so the
+// top-level `sk` dispatcher sets `process.exitCode` — handlers must
+// never short-circuit via process.exit (see the discipline test in
+// `tests/commands/knowledge-sources-error-discipline.test.ts`).
+function reportError(err: unknown, jsonMode: boolean): never {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (jsonMode) {
+    process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
+  } else {
+    process.stderr.write(`${msg}\n`);
+  }
+  throw err instanceof Error ? err : new Error(msg);
 }
 
 function makeClient() {
@@ -398,31 +464,41 @@ const createCommand = defineCommand({
     file: { type: "string", required: true, description: "Path to WorkflowDef JSON" },
     "skip-checks": {
       type: "boolean",
-      description: "Skip the validate+preview pre-flight (NOT recommended).",
+      description:
+        "Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.",
     },
     input: {
       type: "string",
       description: "Input JSON string passed to the preview dry-run.",
     },
+    json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
   },
   async run({ args }) {
     const { readFileSync } = await import("node:fs");
     const client = makeClient();
+    const jsonMode = Boolean(args.json);
     try {
       const body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
       const skip = Boolean((args as Record<string, unknown>)["skip-checks"]);
+      const intent = intentFromBody(body);
+      await renderIntent(intent, { jsonMode });
+
+      let previewExecutionId: string | undefined;
+
       if (!skip) {
         const validation = await client.validateWorkflowDraft(body);
         if (!validation.ok) {
-          process.stderr.write(`${pc.red("invalid")}  workflow draft:\n`);
-          for (const e of validation.errors ?? []) {
-            process.stderr.write(`  ${pc.yellow(e.path)}  ${e.message}\n`);
-          }
-          process.stderr.write(
-            `Re-run with --skip-checks to force, or fix the errors above and try again.\n`,
-          );
+          const firstErr = (validation.errors ?? [])[0];
+          const detail = firstErr ? `${firstErr.path}: ${firstErr.message}` : "validation failed";
+          const phases: PlanStep[] = [
+            { id: "validate", label: "Validate", status: "failed", detail },
+            { id: "preview", label: "Preview", status: "pending" },
+            { id: "save", label: "Save", status: "pending" },
+          ];
+          await renderTaskList(phases, { jsonMode });
           process.exit(1);
         }
+
         let input: unknown = null;
         if (args.input) {
           try {
@@ -432,36 +508,81 @@ const createCommand = defineCommand({
             process.exit(1);
           }
         }
-        const preview = await client.runExecution({
+
+        const preview: RunExecutionResponse = await client.runExecution({
           source: "draft",
           definition: body,
           ...(input !== null ? { input } : {}),
           request_source: "cli",
         });
-        if ((preview.warnings ?? []).length > 0) {
-          process.stderr.write(`${pc.yellow("preview warnings:")}\n`);
-          for (const w of preview.warnings ?? []) {
-            const ww = w as { step_key?: string; code?: string; message?: string };
-            process.stderr.write(
-              `  ${pc.yellow("WARN")} step=${ww.step_key ?? "(run)"} code=${ww.code ?? "unknown"} msg=${ww.message ?? ""}\n`,
-            );
-          }
-        }
+
+        const previewWarnings = (preview.warnings ?? []) as ReadonlyArray<{
+          step_key?: string;
+          code?: string;
+          message?: string;
+        }>;
+
+        // Preview failure is a hard stop. Warnings are informational —
+        // they print but the create proceeds. This decouples the
+        // earlier conflated predicate ("warnings present ⇒ fail").
         if (preview.status !== "succeeded") {
-          process.stderr.write(
-            `preview did not succeed (status=${preview.status}). Re-run with --skip-checks to force.\n`,
-          );
+          const phases: PlanStep[] = [
+            { id: "validate", label: "Validate", status: "succeeded" },
+            {
+              id: "preview",
+              label: "Preview",
+              status: "failed",
+              detail: `status=${preview.status}`,
+            },
+            { id: "save", label: "Save", status: "pending" },
+          ];
+          await renderTaskList(phases, { jsonMode });
           process.exit(1);
         }
-      } else {
+
+        if (previewWarnings.length > 0) {
+          const codes = previewWarnings
+            .map((w) => w.code)
+            .filter((c): c is string => typeof c === "string" && c.length > 0);
+          const codeList = codes.length > 0 ? codes.join(", ") : "(no code)";
+          const phases: PlanStep[] = [
+            { id: "validate", label: "Validate", status: "succeeded" },
+            {
+              id: "preview",
+              label: "Preview",
+              status: "warning",
+              detail: `${previewWarnings.length} warning(s): ${codeList}`,
+            },
+            { id: "save", label: "Save", status: "pending" },
+          ];
+          await renderTaskList(phases, { jsonMode });
+        }
+
+        previewExecutionId = preview.execution_id;
+      } else if (!jsonMode) {
         process.stderr.write(
           `${pc.yellow("warning:")} --skip-checks active; no validate or preview was run\n`,
         );
       }
-      printJson(await client.createWorkflow(body));
+
+      const created = (await client.createWorkflow(body)) as Record<string, unknown> & {
+        id?: string;
+        version?: number;
+        name?: string;
+      };
+      printJson(created);
+
+      const summary: WorkflowSummary = {
+        kind: "workflow",
+        id: typeof created.id === "string" ? created.id : "(unknown)",
+        version: typeof created.version === "number" ? created.version : 1,
+        name: typeof created.name === "string" ? created.name : intent.name,
+        trigger: intent.trigger,
+        ...(previewExecutionId ? { preview_execution_id: previewExecutionId } : {}),
+      };
+      await renderSummary(summary, { jsonMode });
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportError(err, jsonMode);
     }
   },
 });

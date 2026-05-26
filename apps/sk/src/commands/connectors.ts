@@ -2,8 +2,28 @@ import * as prompts from "@clack/prompts";
 import { exitCodeFor } from "@cli-core/errors";
 import { emitList, printJson, printTable } from "@cli-core/format";
 import { defineCommand } from "citty";
+import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
+import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/types.ts";
+
+// See workflows.ts:reportError — same contract: jsonMode keeps stderr
+// silent so callers can pipe `sk connectors create --json` into jq.
+// The function then re-throws so the top-level `sk` dispatcher (not
+// this handler) sets `process.exitCode`. Handlers must NEVER call
+// `process.exit` directly — the discipline test in
+// `tests/commands/knowledge-sources-error-discipline.test.ts` enforces
+// the same contract across all create surfaces.
+function reportError(err: unknown, jsonMode: boolean): never {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (jsonMode) {
+    process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
+  } else {
+    process.stderr.write(`${msg}\n`);
+  }
+  throw err instanceof Error ? err : new Error(msg);
+}
 
 function makeClient() {
   const profile = resolveProfile();
@@ -65,47 +85,95 @@ const createCommand = defineCommand({
       type: "boolean",
       description: "Skip the post-create driver probe (NOT recommended).",
     },
+    json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
   },
   async run({ args }) {
     const client = makeClient();
+    const jsonMode = Boolean(args.json);
     try {
+      const intent: ConnectorIntent = {
+        kind: "connector",
+        template_slug: args.template as string,
+        ...(args.name ? { name: args.name } : {}),
+      };
+      await renderIntent(intent, { jsonMode });
+
       const body: Record<string, unknown> = {};
       if (args.name) body.name = args.name;
       const created = (await client.createConnectorFromTemplate(
         args.template as string,
         body,
-      )) as Record<string, unknown> & { id?: string };
+      )) as Record<string, unknown> & { id?: string; slug?: string };
       printJson(created);
+
       const skip = Boolean((args as Record<string, unknown>)["skip-checks"]);
+      let probe: ConnectorSummary["probe"];
       if (!skip && typeof created.id === "string") {
         try {
-          const probe = await client.testConnector(created.id);
-          process.stderr.write(
-            `post-create probe: ${probe.ok ? "ok" : "FAILED"} (connector=${created.id})\n`,
-          );
-          if (!probe.ok) {
-            process.stderr.write(
-              "re-run `sk connectors probe <id>` after fixing credentials, or use --skip-checks on create to defer.\n",
-            );
-            process.exit(1);
+          const result = (await client.testConnector(created.id)) as Record<string, unknown> & {
+            ok?: boolean;
+            status_code?: number;
+            duration_ms?: number;
+          };
+          probe = {
+            ok: Boolean(result.ok),
+            ...(typeof result.status_code === "number" ? { status_code: result.status_code } : {}),
+            ...(typeof result.duration_ms === "number" ? { duration_ms: result.duration_ms } : {}),
+          };
+          if (!result.ok) {
+            const phases: PlanStep[] = [
+              { id: "create", label: "Create", status: "succeeded" },
+              {
+                id: "probe",
+                label: "Probe",
+                status: "failed",
+                detail:
+                  typeof result.error === "string"
+                    ? result.error
+                    : `status=${result.status_code ?? "?"}`,
+              },
+            ];
+            await renderTaskList(phases, { jsonMode });
+            // EX_DATAERR (sysexits.h 64): "the input data was incorrect in
+            // some way". The connector exists but its driver probe came
+            // back not-ok — distinct from a transport/auth failure (which
+            // exitCodeFor maps to 2) and a hard usage error (1). Pinning
+            // a stable code here lets CI scripts branch reliably on
+            // "probe-said-no" without parsing stderr.
+            process.exit(64);
           }
         } catch (err) {
-          process.stderr.write(
-            `post-create probe failed: ${err instanceof Error ? err.message : String(err)}\n`,
-          );
-          process.stderr.write(
-            "re-run `sk connectors probe <id>` after fixing credentials, or use --skip-checks on create to defer.\n",
-          );
-          process.exit(1);
+          const phases: PlanStep[] = [
+            { id: "create", label: "Create", status: "succeeded" },
+            {
+              id: "probe",
+              label: "Probe",
+              status: "failed",
+              detail: err instanceof Error ? err.message : String(err),
+            },
+          ];
+          await renderTaskList(phases, { jsonMode });
+          process.exit(exitCodeFor(err));
         }
-      } else if (skip) {
+      } else if (skip && !jsonMode) {
+        // Mirror the workflows.ts skip-checks reminder so the operator
+        // sees the same warning at both authoring surfaces. Gated on
+        // !jsonMode so the --json contract stays "stderr silent".
         process.stderr.write(
-          "warning: --skip-checks active; no post-create probe was run. Run `sk connectors probe <id>` manually.\n",
+          `${pc.yellow("warning:")} --skip-checks active; no driver probe was run\n`,
         );
       }
+
+      const summary: ConnectorSummary = {
+        kind: "connector",
+        id: typeof created.id === "string" ? created.id : "(unknown)",
+        slug: typeof created.slug === "string" ? created.slug : (args.template as string),
+        template_slug: args.template as string,
+        ...(probe ? { probe } : {}),
+      };
+      await renderSummary(summary, { jsonMode });
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportError(err, jsonMode);
     }
   },
 });
