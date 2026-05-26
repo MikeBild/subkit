@@ -4,6 +4,8 @@ import { emitList, printJson, printTable } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { renderIntent, renderSummary, renderTaskFailure } from "../render/index.ts";
+import type { ConnectorIntent, ConnectorSummary, Phase } from "../render/types.ts";
 
 function makeClient() {
   const profile = resolveProfile();
@@ -65,44 +67,76 @@ const createCommand = defineCommand({
       type: "boolean",
       description: "Skip the post-create driver probe (NOT recommended).",
     },
+    json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
   },
   async run({ args }) {
     const client = makeClient();
+    const jsonMode = Boolean(args.json);
     try {
+      const intent: ConnectorIntent = {
+        template_slug: args.template as string,
+        ...(args.name ? { name: args.name } : {}),
+      };
+      await renderIntent(intent, { jsonMode });
+
       const body: Record<string, unknown> = {};
       if (args.name) body.name = args.name;
       const created = (await client.createConnectorFromTemplate(
         args.template as string,
         body,
-      )) as Record<string, unknown> & { id?: string };
+      )) as Record<string, unknown> & { id?: string; slug?: string };
       printJson(created);
+
       const skip = Boolean((args as Record<string, unknown>)["skip-checks"]);
+      let probe: ConnectorSummary["probe"];
       if (!skip && typeof created.id === "string") {
         try {
-          const probe = await client.testConnector(created.id);
-          process.stderr.write(
-            `post-create probe: ${probe.ok ? "ok" : "FAILED"} (connector=${created.id})\n`,
-          );
-          if (!probe.ok) {
-            process.stderr.write(
-              "re-run `sk connectors probe <id>` after fixing credentials, or use --skip-checks on create to defer.\n",
-            );
+          const result = (await client.testConnector(created.id)) as Record<string, unknown> & {
+            ok?: boolean;
+            status_code?: number;
+            duration_ms?: number;
+          };
+          probe = {
+            ok: Boolean(result.ok),
+            ...(typeof result.status_code === "number" ? { status_code: result.status_code } : {}),
+            ...(typeof result.duration_ms === "number" ? { duration_ms: result.duration_ms } : {}),
+          };
+          if (!result.ok) {
+            const phases: Phase[] = [
+              { name: "Create", status: "succeeded" },
+              {
+                name: "Probe",
+                status: "failed",
+                detail:
+                  typeof result.error === "string"
+                    ? result.error
+                    : `status=${result.status_code ?? "?"}`,
+              },
+            ];
+            await renderTaskFailure(phases, { jsonMode });
             process.exit(1);
           }
         } catch (err) {
-          process.stderr.write(
-            `post-create probe failed: ${err instanceof Error ? err.message : String(err)}\n`,
-          );
-          process.stderr.write(
-            "re-run `sk connectors probe <id>` after fixing credentials, or use --skip-checks on create to defer.\n",
-          );
-          process.exit(1);
+          const phases: Phase[] = [
+            { name: "Create", status: "succeeded" },
+            {
+              name: "Probe",
+              status: "failed",
+              detail: err instanceof Error ? err.message : String(err),
+            },
+          ];
+          await renderTaskFailure(phases, { jsonMode });
+          process.exit(exitCodeFor(err));
         }
-      } else if (skip) {
-        process.stderr.write(
-          "warning: --skip-checks active; no post-create probe was run. Run `sk connectors probe <id>` manually.\n",
-        );
       }
+
+      const summary: ConnectorSummary = {
+        id: typeof created.id === "string" ? created.id : "(unknown)",
+        slug: typeof created.slug === "string" ? created.slug : (args.template as string),
+        template_slug: args.template as string,
+        ...(probe ? { probe } : {}),
+      };
+      await renderSummary(summary, { jsonMode });
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));

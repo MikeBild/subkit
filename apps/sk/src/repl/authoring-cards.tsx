@@ -8,6 +8,15 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
 import { debugLog } from "../debug.ts";
+import { IntentCard } from "../render/intent-card.tsx";
+import { SummaryCard } from "../render/summary-card.tsx";
+import type {
+  ConnectorIntent,
+  ConnectorSummary,
+  WorkflowIntent,
+  WorkflowSummary,
+  WorkflowTrigger,
+} from "../render/types.ts";
 import { describeConfirmationPayload } from "./approval/describe-confirmation.ts";
 
 type CardTone = "ok" | "warn" | "fail" | "pending" | "info";
@@ -921,6 +930,124 @@ const InFlightToolCard: React.FC<CardProps> = memo(({ call }) => {
 });
 InFlightToolCard.displayName = "InFlightToolCard";
 
+// Safe extractors — return a typed Intent/Summary built from the tool
+// payload, or null when the shape doesn't match. Callers fall back to
+// the legacy compact cards on null, so engine response evolution
+// doesn't break the REPL.
+function extractTrigger(raw: unknown): WorkflowTrigger {
+  const r = asRecord(raw);
+  if (r) {
+    if (r.kind === "schedule") {
+      return {
+        kind: "schedule",
+        cron: typeof r.cron === "string" ? r.cron : "?",
+        tz: typeof r.tz === "string" ? r.tz : "UTC",
+      };
+    }
+    if (r.kind === "webhook") {
+      return {
+        kind: "webhook",
+        source: typeof r.source === "string" ? r.source : "?",
+        events: Array.isArray(r.events) ? r.events.filter((e) => typeof e === "string") : [],
+      };
+    }
+  }
+  return { kind: "request" };
+}
+
+function extractWorkflowIntent(call: ToolCallState): WorkflowIntent | null {
+  const d = unwrapData(call);
+  if (!d) return null;
+  const workflow = asRecord(d.workflow) ?? d;
+  const definition = asRecord(workflow.definition) ?? asRecord(d.definition);
+  const rawSteps =
+    (Array.isArray(definition?.steps) && definition?.steps) ||
+    (Array.isArray(workflow.steps) && (workflow.steps as unknown[])) ||
+    null;
+  if (!rawSteps) return null;
+  const name =
+    typeof workflow.name === "string" ? workflow.name : typeof d.name === "string" ? d.name : null;
+  if (!name) return null;
+  const steps = rawSteps
+    .map((s) => {
+      const r = asRecord(s);
+      if (!r) return null;
+      return {
+        key: typeof r.key === "string" ? r.key : typeof r.id === "string" ? r.id : "(step)",
+        kind: typeof r.kind === "string" ? r.kind : "step",
+        ...(typeof r.connector_slug === "string"
+          ? { connector_slug: r.connector_slug as string }
+          : {}),
+      };
+    })
+    .filter((s): s is { key: string; kind: string; connector_slug?: string } => s !== null);
+  return {
+    name,
+    ...(typeof workflow.slug === "string" ? { slug: workflow.slug as string } : {}),
+    trigger: extractTrigger(definition?.trigger ?? workflow.trigger),
+    steps,
+  };
+}
+
+function extractConnectorIntent(call: ToolCallState): ConnectorIntent | null {
+  const d = unwrapData(call);
+  if (!d) return null;
+  const connector = asRecord(d.connector) ?? d;
+  const templateSlug =
+    typeof connector.template_slug === "string"
+      ? connector.template_slug
+      : typeof d.template_slug === "string"
+        ? d.template_slug
+        : null;
+  if (!templateSlug) return null;
+  const env = connector.environment;
+  return {
+    template_slug: templateSlug,
+    ...(typeof connector.name === "string" ? { name: connector.name as string } : {}),
+    ...(env === "dev" || env === "prod" ? { environment: env } : {}),
+    ...(typeof connector.auth_type === "string"
+      ? { auth_type: connector.auth_type as string }
+      : {}),
+    ...(typeof connector.base_url === "string" ? { base_url: connector.base_url as string } : {}),
+  };
+}
+
+function extractWorkflowSummary(call: ToolCallState): WorkflowSummary | null {
+  const d = unwrapData(call);
+  if (!d) return null;
+  const id = typeof d.workflow_id === "string" ? d.workflow_id : null;
+  if (!id) return null;
+  const workflow = asRecord(d.workflow) ?? {};
+  const name =
+    typeof workflow.name === "string" ? workflow.name : typeof d.name === "string" ? d.name : null;
+  const version =
+    typeof d.version === "number"
+      ? d.version
+      : typeof workflow.version === "number"
+        ? workflow.version
+        : null;
+  if (!name || version === null) return null;
+  const definition = asRecord(workflow.definition) ?? asRecord(d.definition) ?? {};
+  return {
+    id,
+    version,
+    name,
+    trigger: extractTrigger(definition.trigger),
+  };
+}
+
+function extractConnectorSummary(call: ToolCallState): ConnectorSummary | null {
+  const d = unwrapData(call);
+  if (!d) return null;
+  const connector = asRecord(d.connector);
+  if (!connector) return null;
+  const id = typeof connector.id === "string" ? connector.id : null;
+  const slug = typeof connector.slug === "string" ? connector.slug : null;
+  const templateSlug = typeof connector.template_slug === "string" ? connector.template_slug : null;
+  if (!id || !slug || !templateSlug) return null;
+  return { id, slug, template_slug: templateSlug };
+}
+
 // Dispatcher — returns a custom card for known authoring tools, or null
 // so the caller falls back to the generic ToolCard.
 export function renderAuthoringCard(
@@ -941,21 +1068,35 @@ export function renderAuthoringCard(
     case "dry_run_step":
     case "dry_run_workflow":
       return <StepPreviewCard key={`acc-${call.id}`} call={call} />;
-    case "save_connector_draft":
+    case "save_connector_draft": {
+      const summary = extractConnectorSummary(call);
+      if (summary) return <SummaryCard key={`acc-${call.id}`} summary={summary} />;
       return <SaveResultCard key={`acc-${call.id}`} call={call} />;
-    case "save_workflow_draft":
+    }
+    case "save_workflow_draft": {
+      const summary = extractWorkflowSummary(call);
+      if (summary) return <SummaryCard key={`acc-${call.id}`} summary={summary} />;
       return <CommitResultCard key={`acc-${call.id}`} call={call} />;
+    }
     case "run_workflow":
     case "diagnose_latest_execution":
       return <ExecutionDiagnosisCard key={`acc-${call.id}`} call={call} />;
     case "start_connector_from_description":
-    case "start_connector_from_template":
+    case "start_connector_from_template": {
+      const intent = extractConnectorIntent(call);
+      if (intent) return <IntentCard key={`acc-${call.id}`} intent={intent} />;
+      return <ConnectorDraftCard key={`acc-${call.id}`} call={call} />;
+    }
     case "update_connector_draft":
     case "validate_connector_draft":
     case "inspect_connector_draft":
       return <ConnectorDraftCard key={`acc-${call.id}`} call={call} />;
     case "start_workflow_from_goal":
-    case "build_workflow":
+    case "build_workflow": {
+      const intent = extractWorkflowIntent(call);
+      if (intent) return <IntentCard key={`acc-${call.id}`} intent={intent} />;
+      return <WorkflowDraftCard key={`acc-${call.id}`} call={call} />;
+    }
     case "propose_step":
     case "update_param":
     case "connect_steps":
