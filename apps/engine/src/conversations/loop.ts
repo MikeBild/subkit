@@ -1050,6 +1050,20 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           model: resolvedModel,
           onRepair: () => {
             stepRouterSignals.hadRepairThisTurn = true;
+            // G7: capture which tool's repair drove the upgrade so the
+            // model_swapped log line below can attribute it. Pre-fix
+            // the log said `reason: repair_in_prior_step` but did not
+            // name the failing tool — operators had to bisect adjacent
+            // log lines for the matching `repair_tool_call.started`
+            // entry to find out.
+            const errKind =
+              error && typeof error === "object" && "name" in (error as object)
+                ? String((error as { name?: unknown }).name)
+                : undefined;
+            stepRouterSignals.repairAttribution = {
+              tool: toolCall.toolName,
+              ...(errKind ? { error_kind: errKind } : {}),
+            };
           },
         });
       },
@@ -1106,6 +1120,14 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               prior_critic_fail: stepRouterSignals.priorCriticFail === true,
               strong_run_intent: stepRouterSignals.strongRunIntent === true,
               reason: decision.reason ?? null,
+              ...(stepRouterSignals.repairAttribution
+                ? {
+                    repair_tool: stepRouterSignals.repairAttribution.tool,
+                    ...(stepRouterSignals.repairAttribution.error_kind
+                      ? { repair_error_kind: stepRouterSignals.repairAttribution.error_kind }
+                      : {}),
+                  }
+                : {}),
             });
           } catch (err) {
             logger.warn({

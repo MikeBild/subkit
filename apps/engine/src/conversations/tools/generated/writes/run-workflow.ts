@@ -534,6 +534,26 @@ export const runWorkflowTool: ConversationTool = {
         ...(requiresRepair ? { requires_repair: true } : {}),
       });
       await ctx.setDraft(nextDraft);
+      // G9: surface the first failing step's key + message at the
+      // envelope top level so the LLM can react in the same turn
+      // instead of issuing a follow-up inspect_execution. Pre-fix the
+      // failed envelope carried only `error` (engine-level) + `output`;
+      // the LLM had to scan `result.steps[]` to identify WHICH step
+      // failed, and the transcript showed it just shrugging and
+      // retrying with a different workflow_id (session ed20f48d).
+      const firstFailedStep =
+        payloadStatus === "failed"
+          ? result.steps.find((s) => s.status === "failed" || s.status === "timed_out")
+          : undefined;
+      const failureStepKey = firstFailedStep?.step_key;
+      const failureReason =
+        firstFailedStep?.error &&
+        typeof firstFailedStep.error === "object" &&
+        firstFailedStep.error !== null
+          ? typeof (firstFailedStep.error as { message?: unknown }).message === "string"
+            ? ((firstFailedStep.error as { message: string }).message ?? null)
+            : null
+          : null;
       return {
         ok: result.status === "succeeded" && !isPartialSuccess,
         data: withStatus(
@@ -542,6 +562,8 @@ export const runWorkflowTool: ConversationTool = {
             workflow_id: workflowId,
             workflow_version_id: wf.current_version_id,
             workflow_version: wf.current_version,
+            ...(failureStepKey ? { failure_step_key: failureStepKey } : {}),
+            ...(failureReason ? { failure_reason: failureReason } : {}),
             status: payloadStatus,
             output: result.output,
             error: result.error,

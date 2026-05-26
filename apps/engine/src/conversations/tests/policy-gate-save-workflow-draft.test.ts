@@ -271,6 +271,65 @@ describe("save_workflow_draft — policy gate", () => {
     const data = result.data as Record<string, unknown>;
     expect(data.workflow_id).toBeDefined();
   });
+
+  test('LLM-issued save_workflow_draft with __policy_confirmed: "true" (string) is coerced and skips the gate (G2)', async () => {
+    // Root cause of G2 in the runtime-logs review plan: Anthropic's
+    // tool-call serialiser sometimes round-trips the boolean as
+    // `"true"` (string). Pre-fix the AI SDK Zod boundary rejected
+    // with `expected boolean, received string`, the model emitted
+    // `repair_tool_call.started`, and the engine spent ~8s asking the
+    // model to fix the type — on EVERY OAuth call (4 separate
+    // instances logged in session ed20f48d). The wrapper now accepts
+    // both representations and coerces; downstream semantics unchanged.
+    const conversation_id = await freshConversation();
+    const events: TurnEvent[] = [];
+    const signals = freshSignals();
+    const engineClient = new EngineClient({
+      tenant_id: ctx.tenant_id,
+      actor_id: null,
+      actor_type: "system",
+      db: ctx.testDb.db,
+    });
+    await ctx.testDb.db.insert(conversationElicitations).values({
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      summary: "commit",
+      input: {
+        kind: "save_workflow_draft",
+        summary: "commit",
+        commit_intent: { kind: "save_workflow_draft", payload: {}, description: "commit" },
+      },
+      output: { confirmed: true },
+      status: "resolved",
+    });
+    const draft = readyWorkflowDraft("policy-gate-2-coerce");
+    const toolCtx: ToolContext = {
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      actor_id: null,
+      connector_id: null,
+      workflow_id: null,
+      engineClient,
+      getDraft: () => draft,
+      setDraft: async () => {},
+    };
+
+    const wrapped = wrapTools(toolCtx, signals, events, ctx.testDb.db, ["workflow-authoring"], {});
+
+    // String-form marker — exactly what the SDK produced in production.
+    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    const result = await (wrapped.save_workflow_draft!.execute as any)(
+      { __policy_confirmed: "true" },
+      { toolCallId: "reissue-call-id-string", messages: [] },
+    );
+
+    expect(result.pause).toBeUndefined();
+    expect(result.ok).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.workflow_id).toBeDefined();
+  });
 });
 
 describe("save_workflow_draft — auto-persist via commit_intent", () => {

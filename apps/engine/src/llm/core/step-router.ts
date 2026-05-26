@@ -45,6 +45,15 @@ export interface StepRouterSignals {
   hasPersistedWorkflow?: boolean;
   /** Set by the loop after a tool-call repair fired in the prior step. */
   hadRepairThisTurn?: boolean;
+  /**
+   * G7 (runtime-logs review plan): which tool's repair triggered the
+   * upgrade. Lets post-hoc auditing answer "WHY did this turn run on
+   * Sonnet?" without bisecting the journal — the operator reads the
+   * tool name straight off the `step_router.model_swapped` log line.
+   * Optional because not every turn has a repair, and the prior-step
+   * read happens after the upgrade has already been decided.
+   */
+  repairAttribution?: { tool: string; error_kind?: string | undefined };
   /** Set when the intent detector flagged a strong run-intent verb. */
   strongRunIntent?: boolean;
   /**

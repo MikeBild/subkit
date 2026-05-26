@@ -113,9 +113,26 @@ export function wrapOne(
   const baseInputSchema = inner.inputSchema as unknown as z.ZodType<Record<string, unknown>> & {
     extend?: (shape: Record<string, z.ZodTypeAny>) => z.ZodType<Record<string, unknown>>;
   };
+  // `__policy_confirmed` is the LLM-facing marker the model re-issues
+  // after a policy-gate elicitation resolves. Strictly typed as boolean
+  // here would be correct — except Anthropic's tool-call serialiser
+  // sometimes round-trips the boolean as a JSON-encoded string
+  // (`"true"`) when the schema description nests it inside a wider
+  // object. The AI SDK's Zod boundary then rejects with
+  // `expected boolean, received string`, the model emits
+  // `repair_tool_call.started`, the engine spends ~8s asking the model
+  // to fix the type, and the cycle repeats on EVERY OAuth flow (G2 in
+  // the runtime-logs review plan — 4 separate repair instances in one
+  // session). Accepting both representations and coercing eliminates
+  // the loop without changing downstream semantics; the boolean read
+  // at the policy gate (`policyMarker` below) still sees a real bool.
+  const policyMarkerSchema = z
+    .union([z.boolean(), z.literal("true"), z.literal("false")])
+    .transform((v) => v === true || v === "true")
+    .optional();
   const inputSchema =
     typeof baseInputSchema.extend === "function"
-      ? baseInputSchema.extend({ __policy_confirmed: z.boolean().optional() })
+      ? baseInputSchema.extend({ __policy_confirmed: policyMarkerSchema })
       : baseInputSchema;
   return tool<Record<string, unknown>, WrappedToolOutput>({
     description: compileDescription(inner),
@@ -189,13 +206,36 @@ export function wrapOne(
             consecutive_failures: signals.consecutiveFailures,
           });
           const alternatives = buildCapAlternatives(signals.toolLastErrorHash);
+          // G3 (runtime-logs review plan): give the model a ready-made
+          // option set to drop straight into `ask_user_choice`. Pre-fix
+          // the cap envelope told the model "emit ask_user_choice with
+          // concrete options" but offered no concrete options — the
+          // model fell back to prose ("I hit the consecutive failure
+          // cap. Let me ask how you'd like to proceed.") and the user
+          // typed "restart_simple" as a free-text guess (session
+          // ed20f48d). Promoting the three universal recovery actions
+          // to first-class options here means the model has a typed
+          // drop-in even when the per-error hints in `alternatives`
+          // are empty.
+          const recommendedOptions = [
+            {
+              value: "restart_simple",
+              label: "Abandon the current draft and start over with a simpler design",
+            },
+            {
+              value: "inspect_failures",
+              label: "Show me the recent error traces before I decide",
+            },
+            { value: "abort", label: "Stop here — I'll come back to this later" },
+          ];
           return {
             ok: false,
             data: {
               error_code: "consecutive_failures_cap",
-              message: `${signals.consecutiveFailures} tool calls have failed in a row — stop patching and emit ask_user_choice with concrete options derived from the most recent failure (e.g. "commit anyway", "revert the last patch", "hand-edit the workflow JSON"). The cap resets on the first successful tool call.${alternatives}`,
+              message: `${signals.consecutiveFailures} tool calls have failed in a row — stop patching and emit ask_user_choice with the recommended_options below (or derive your own from the most recent failure). The cap resets on the first successful tool call.${alternatives}`,
               reason: "consecutive_failures_cap",
               consecutive_failures: signals.consecutiveFailures,
+              recommended_options: recommendedOptions,
               next_best_actions: ["ask_user_choice", "ask_user_text", "inspect_workflow"],
             },
           };

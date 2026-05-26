@@ -666,6 +666,60 @@ export const TransformStepSchema = z
         message: 'structured_data config is only valid when language="structured-data"',
       });
     }
+    // G4 (runtime-logs review plan): catch the JSONata-vs-JavaScript
+    // mix-up at schema-validation time instead of at JSONata-parse
+    // time. Pre-fix the LLM wrote a JS body into an expression still
+    // tagged `language: "jsonata"`; the runtime parser produced
+    // `JSONata error: Syntax error: "files"` and the engine burned a
+    // Sonnet retry. Same in reverse — JSONata syntax (`~>`, `$append`,
+    // `$scope.x`) under `language: "javascript"` fails at JS parse
+    // time. Detecting the language↔body mismatch here returns a
+    // structured `language_mismatch` Zod issue carrying the suggested
+    // language, so the LLM can correct without burning a retry.
+    if (
+      (language === "jsonata" || s.language === undefined) &&
+      typeof s.expression === "string" &&
+      s.expression.length > 0
+    ) {
+      const js = s.expression;
+      // Tokens that are syntactically valid JavaScript but parse-errors
+      // in JSONata. Each must match outside string literals to avoid
+      // false positives — JSONata strings use single quotes; JS uses
+      // double or single or backtick. Stripping quoted regions first
+      // keeps the heuristic robust against e.g. `'const'` inside prose.
+      const stripped = js
+        .replace(/'([^'\\]|\\.)*'/g, "''")
+        .replace(/"([^"\\]|\\.)*"/g, '""')
+        .replace(/`([^`\\]|\\.)*`/g, "``");
+      const jsMarker = /\b(?:const|let|var|function)\b|=>|;\s*$|;\s*(?:const|let|var|return|if)\b/m;
+      if (jsMarker.test(stripped)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["expression"],
+          message:
+            'expression looks like JavaScript (uses const/let/var/=>/; markers) but language is jsonata. Set language="javascript" or rewrite the body in JSONata syntax.',
+          params: { error_code: "language_mismatch", suggested_language: "javascript" },
+        });
+      }
+    }
+    if (language === "javascript" && typeof s.expression === "string" && s.expression.length > 0) {
+      const ja = s.expression;
+      // JSONata-only markers: chained pipe `~>`, dollar-prefixed
+      // builtins ($append/$count/$reduce/etc.), `$scope.x` resolver.
+      // Each is a parse-error in JavaScript so a JS-tagged body
+      // containing them is unambiguously mis-tagged.
+      const jsonataMarker =
+        /~>|\$(?:append|count|map|reduce|filter|sum|scope|distinct|sort|each|merge|keys|values|exists|type|string|number)\b/;
+      if (jsonataMarker.test(ja)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["expression"],
+          message:
+            'expression uses JSONata pipes (`~>`) or `$builtin` calls but language is javascript. Set language="jsonata" or rewrite the body in JavaScript.',
+          params: { error_code: "language_mismatch", suggested_language: "jsonata" },
+        });
+      }
+    }
   })
   .openapi("TransformStep");
 
