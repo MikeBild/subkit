@@ -3,6 +3,11 @@
 
 import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
+// Engine-side output type imported directly so the structural-overlap
+// test at the bottom of this file detects shape drift at compile time:
+// if the engine renames a field or drops one, the fixture below stops
+// matching the type and TypeScript refuses to compile this test.
+import type { CreateKnowledgeSourceOutputData } from "@engine/conversations/tools/generated/writes/create-knowledge-source.ts";
 import {
   extractConnectorIntent,
   extractConnectorSummary,
@@ -320,6 +325,11 @@ describe("extractWorkflowSummary", () => {
     expect(result?.trigger).toMatchObject({ kind: "schedule" });
   });
 
+  // Dual-shape fallback — see the explanatory header on
+  // `extractWorkflowSummary` in `authoring-cards.tsx`. The next two
+  // tests pin the FLAT shape (top-level name/version alongside
+  // workflow_id) and the WRAPPED shape (everything inside `workflow`).
+  // Both are produced by different engine call sites today.
   test("name falls back to top-level d.name when workflow.name is missing", () => {
     const call = withResult("save_workflow_draft", {
       workflow_id: "wf-002",
@@ -583,5 +593,52 @@ describe("extractKnowledgeSourceSummary", () => {
       knowledge_source: { id: 7, name: "n", bytes_total: 1 },
     });
     expect(extractKnowledgeSourceSummary(call)).toBeNull();
+  });
+});
+
+// ============================================================
+// Structural-overlap test — engine→sk shape contract
+// ============================================================
+//
+// The extractor reads engine tool results via ad-hoc `typeof x ===
+// "string"` guards. A pure-runtime test passes any time the guards
+// don't crash; it cannot catch the case where the engine renames a
+// field or drops one. This test ties the extractor to the engine's
+// exported output type at compile time: the fixture's static type
+// MUST be assignable to `CreateKnowledgeSourceOutputData`, and the
+// runtime assertion verifies that fixture still produces a
+// non-null Summary. Drift on either side breaks one or the other.
+//
+// Acceptable follow-up: replicate the same pattern for
+// `save_workflow_draft` and `save_connector_draft`. Those output
+// shapes are wider and scattered (see `save-workflow-draft.ts` /
+// `save-connector-draft.ts`); exporting them at the engine site
+// is a separate, non-behaviour change to schedule next.
+describe("extractKnowledgeSourceSummary · engine→sk shape overlap", () => {
+  test("fixture typed as engine output produces a non-null summary", () => {
+    const engineOutput: CreateKnowledgeSourceOutputData = {
+      created: true,
+      knowledge_source: {
+        id: "ks-overlap",
+        name: "Overlap KS",
+        slug: "overlap-ks",
+        scope: "global",
+        status: "ready",
+        chunk_count: 1,
+        bytes_total: 42,
+      },
+      audit_log_id: "audit-overlap",
+    };
+    const call: ToolCallState = {
+      id: "tc-overlap",
+      name: "create_knowledge_source",
+      args: { mode: "inline", name: "Overlap KS", content: "x", mime_type: "text/markdown" },
+      status: "done",
+      result: { ok: true, data: engineOutput },
+    };
+    const summary = extractKnowledgeSourceSummary(call);
+    expect(summary).not.toBeNull();
+    expect(summary?.id).toBe("ks-overlap");
+    expect(summary?.size_bytes).toBe(42);
   });
 });
