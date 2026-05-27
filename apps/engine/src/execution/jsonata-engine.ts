@@ -219,7 +219,15 @@ export function _resetCacheForTests(): void {
   cache.clear();
 }
 
-function formatError(err: unknown, source: string): JSONataError {
+/**
+ * Wrap a raw JSONata throwable into a `JSONataError` with caret-pointed
+ * source location. Exported so step drivers can apply the same treatment
+ * to runtime evaluation failures — historically only `compile()` failures
+ * were wrapped, so runtime failures surfaced as plain `{ message, position
+ * }` objects, hit `String(err)` in catch blocks, and rendered as
+ * `[object Object]` to the LLM author.
+ */
+export function formatError(err: unknown, source: string): JSONataError {
   const e = err as
     | {
         position?: number;

@@ -108,9 +108,45 @@ export function buildGateError(
   };
 }
 
+/**
+ * Slim down `summary` for read-only tool results (`dry_run_workflow`,
+ * `inspect_workflow_draft`, etc.). Pre-fix every preview echoed the full
+ * checkpoint array + persisted_resources + latest_execution + latest_
+ * diagnosis on every call — accumulating ~1.5 KB per tool result. In a
+ * session that loops on a JSONata transform that's 10–20 calls of pure
+ * envelope cost per turn. The author only needs `next_required_action`,
+ * `blocked_by`, `active_target`, and `last_action` to decide what to do
+ * next. The heavier sub-fields stay on *mutation* paths
+ * (`update_param`, `save_workflow_draft`) where the author actually
+ * needs to know which resources persisted and what's verified.
+ */
+function slimSummaryForReadOnly(
+  summary: ReturnType<typeof getAuthoringSnapshot>["summary"],
+): ReturnType<typeof getAuthoringSnapshot>["summary"] {
+  if (!summary) return summary;
+  const asRecord = summary as unknown as Record<string, unknown>;
+  const { checkpoints, persisted_resources, latest_execution, latest_diagnosis, ...rest } =
+    asRecord;
+  // Reference the dropped fields so the linter does not flag them.
+  void checkpoints;
+  void persisted_resources;
+  void latest_execution;
+  void latest_diagnosis;
+  return rest as unknown as ReturnType<typeof getAuthoringSnapshot>["summary"];
+}
+
+export interface BuildLifecyclePayloadOptions {
+  /** When true, omit `checkpoints[]`, `persisted_resources[]`,
+   *  `latest_execution`, and `latest_diagnosis` from `summary` —
+   *  appropriate for read-only tool results where these fields just
+   *  inflate token cost without driving the next decision. */
+  readOnly?: boolean;
+}
+
 export function buildLifecyclePayload(
   draft: DraftDocument,
   extra?: Record<string, unknown>,
+  options?: BuildLifecyclePayloadOptions,
 ): Record<string, unknown> {
   const snapshot = getAuthoringSnapshot(draft);
   const activeTarget = snapshot.summary?.active_target ?? null;
@@ -120,6 +156,7 @@ export function buildLifecyclePayload(
           (item) => item.kind === activeTarget.kind && item.id === activeTarget.id,
         ) ?? null)
       : null;
+  const summary = options?.readOnly ? slimSummaryForReadOnly(snapshot.summary) : snapshot.summary;
   return {
     mode: snapshot.mode,
     stage: snapshot.stage,
@@ -133,7 +170,7 @@ export function buildLifecyclePayload(
     target_ref: activeTarget,
     next_required_action: snapshot.summary?.next_required_action ?? null,
     blocking_reasons: snapshot.summary?.blocked_by ?? [],
-    summary: snapshot.summary,
+    summary,
     ...(extra ?? {}),
   };
 }

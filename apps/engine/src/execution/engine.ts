@@ -253,6 +253,32 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       });
       continue;
     }
+    // Step-output fixture short-circuit. Used by the dry-run cache so
+    // re-previewing a draft where only a downstream transform changed
+    // skips the unchanged upstream request entirely (session fb930dcb's
+    // 12 identical Jira fetches). The caller is responsible for
+    // selecting only deterministic steps (GETs, transforms, query-only
+    // GraphQL); the engine writes the supplied envelope verbatim into
+    // scope and records a synthetic step summary marked
+    // `replayed_from_fixture: true` so consumers can tell.
+    const fixtureEnvelope = opts.step_output_fixtures?.[step.id];
+    if (fixtureEnvelope !== undefined) {
+      const envObj = fixtureEnvelope as Record<string, unknown>;
+      const fixtureData = (envObj as { data?: unknown }).data;
+      scope[step.id] = fixtureEnvelope;
+      lastOutput = fixtureData;
+      stepSummaries.push({
+        step_key: step.id,
+        step_index: i,
+        kind: step.kind,
+        status: "succeeded",
+        duration_ms: 0,
+        retry_count: 0,
+        error: null,
+        output_preview: fixtureEnvelope,
+      });
+      continue;
+    }
     const step_row_id = await insertStepRow(db, {
       tenant_id,
       execution_id,

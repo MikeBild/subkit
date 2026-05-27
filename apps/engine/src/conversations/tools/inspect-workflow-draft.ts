@@ -30,49 +30,53 @@ export const inspectWorkflowDraftTool: ConversationTool = {
 
     return {
       ok: true,
-      data: buildLifecyclePayload(nextDraft, {
-        name: workflow.name,
-        steps: workflow.steps.length,
-        last_step_id: workflow.steps[workflow.steps.length - 1]?.id ?? null,
-        step_type:
-          typeof workflow.steps[workflow.steps.length - 1]?.kind === "string"
-            ? (workflow.steps[workflow.steps.length - 1]?.kind as string)
-            : null,
-        workflow: {
+      data: buildLifecyclePayload(
+        nextDraft,
+        {
           name: workflow.name,
-          slug: workflow.slug ?? null,
-          description: workflow.description ?? null,
-          step_count: workflow.steps.length,
-          steps: workflow.steps.map((step, index) => {
-            const id = typeof step.id === "string" ? step.id : `step-${index + 1}`;
-            const trace = traceById.get(id);
-            return {
-              index,
-              id,
-              kind: typeof step.kind === "string" ? step.kind : "unknown",
-              fields: Object.keys(step).sort(),
-              ...(trace
-                ? {
-                    latest_preview: {
-                      status: trace.status,
-                      ...(trace.duration_ms != null ? { duration_ms: trace.duration_ms } : {}),
-                      ...(trace.output_preview !== undefined
-                        ? { output_preview: trace.output_preview }
-                        : {}),
-                      ...(trace.raw_preview !== undefined
-                        ? { raw_preview: trace.raw_preview }
-                        : {}),
-                      ...(trace.scope_at_step ? { scope_at_step: trace.scope_at_step } : {}),
-                      ...(trace.error_code ? { error_code: trace.error_code } : {}),
-                    },
-                  }
-                : { latest_preview: { status: "no_result" } }),
-            };
-          }),
-          edges: workflow.edges ?? [],
+          steps: workflow.steps.length,
+          last_step_id: workflow.steps[workflow.steps.length - 1]?.id ?? null,
+          step_type:
+            typeof workflow.steps[workflow.steps.length - 1]?.kind === "string"
+              ? (workflow.steps[workflow.steps.length - 1]?.kind as string)
+              : null,
+          workflow: {
+            name: workflow.name,
+            slug: workflow.slug ?? null,
+            description: workflow.description ?? null,
+            step_count: workflow.steps.length,
+            steps: workflow.steps.map((step, index) => {
+              const id = typeof step.id === "string" ? step.id : `step-${index + 1}`;
+              const trace = traceById.get(id);
+              return {
+                index,
+                id,
+                kind: typeof step.kind === "string" ? step.kind : "unknown",
+                fields: Object.keys(step).sort(),
+                ...(trace
+                  ? {
+                      latest_preview: {
+                        status: trace.status,
+                        ...(trace.duration_ms != null ? { duration_ms: trace.duration_ms } : {}),
+                        ...(trace.output_preview !== undefined
+                          ? { output_preview: trace.output_preview }
+                          : {}),
+                        ...(trace.raw_preview !== undefined
+                          ? { raw_preview: trace.raw_preview }
+                          : {}),
+                        ...(trace.scope_at_step ? { scope_at_step: trace.scope_at_step } : {}),
+                        ...(trace.error_code ? { error_code: trace.error_code } : {}),
+                      },
+                    }
+                  : { latest_preview: { status: "no_result" } }),
+              };
+            }),
+            edges: workflow.edges ?? [],
+          },
+          latest_preview: nextDraft.latest_preview ?? null,
         },
-        latest_preview: nextDraft.latest_preview ?? null,
-      }),
+        { readOnly: true },
+      ),
     };
   },
 };

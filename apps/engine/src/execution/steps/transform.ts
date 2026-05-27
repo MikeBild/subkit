@@ -21,7 +21,11 @@ import { enumerateScopePaths } from "../../workflows/scope-shape.ts";
 import type { TransformStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
 import { buildJsonataBindings, resolveScopeForJsonata } from "../jsonata-bindings.ts";
-import { compile as compileJsonata, extractAst } from "../jsonata-engine.ts";
+import {
+  compile as compileJsonata,
+  extractAst,
+  formatError as formatJsonataError,
+} from "../jsonata-engine.ts";
 import { TRANSFORM_TIMEOUT_DEFAULT_MS } from "../timeouts.ts";
 import type { StepResult, StepRunContext, StepWarning } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
@@ -468,8 +472,14 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
       p.scope,
       bindings,
     );
-    // race jsonata.evaluate against the abort signal
-    const evalPromise = expr.evaluate(p.scope, bindings);
+    // race jsonata.evaluate against the abort signal. Wrap any runtime
+    // failure in `JSONataError` so it carries `.message` + caret pointer
+    // — without this the JSONata library throws plain `{ position, token,
+    // message }` objects that the catch block at the bottom would
+    // stringify to `"[object Object]"`.
+    const evalPromise = expr.evaluate(p.scope, bindings).catch((err: unknown) => {
+      throw formatJsonataError(err, p.step.expression as string);
+    });
     const result = await Promise.race([
       evalPromise,
       new Promise((_, reject) => {
@@ -698,7 +708,13 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
     return out;
   } catch (err) {
     const duration_ms = Date.now() - start;
-    const message = err instanceof Error ? err.message : String(err);
+    // Derive the user-facing message via `buildStepErrorDetail.safeMessage`
+    // — JSONata runtime failures are plain objects (`{ message, position,
+    // token }`), so `String(err)` would emit `"[object Object]"` and hide
+    // the actual diagnostic. The detail is reused on the failed-return
+    // path below so the logger and the LLM see the same message.
+    const detail = buildStepErrorDetail({ code: "transform_error", err });
+    const message = detail.message;
     if (err instanceof SandboxTimeoutError || err instanceof SandboxInterruptError) {
       logger.warn({
         module: "execution",
@@ -767,7 +783,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
       status: "failed",
       retry_count: 0,
       duration_ms,
-      error: buildStepErrorDetail({ code: "transform_error", err, message }),
+      error: detail,
     };
   } finally {
     clearTimeout(timer);

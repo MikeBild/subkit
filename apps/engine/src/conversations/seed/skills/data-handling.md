@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, transforms, jsonata]
-version: 4
+version: 5
 ---
 
 # Data Handling Between Steps
@@ -117,6 +117,81 @@ across two upstream steps.
 $scope.fetch.data.items ? $scope.fetch.data.items : []
 $exists($scope.fetch.data.cursor) ? $scope.fetch.data.cursor : null
 ```
+
+### Sorting / order-by
+
+JSONata's sort operator is `^( … )`. Prefix the key with `>` for descending,
+`<` for ascending (the default).
+
+```
+$scope.issues.data^(>created)                  -> newest first
+$scope.issues.data^(<priority, >created)       -> low-priority first, newest within ties
+$scope.tasks.data^(>fields.priority.order)     -> nested key
+```
+
+For conditional ordering use the function form `$sort($, fn)`:
+
+```
+$sort($scope.issues.data, function($a, $b){ $a.score < $b.score })
+```
+
+**Slicing AFTER a sort:** wrap the sort in parens, then slice. Without
+parens the sort applies inside the slice — almost always wrong.
+
+```
+($scope.issues.data^(>created))[[0..9]]        -> top 10 newest
+```
+
+### Regex / pattern matching
+
+JSONata uses regex **literals** (`/pattern/`) the same way JavaScript does.
+The two functions you reach for most:
+
+```
+$contains(s, 'SiD')                            -> true if 'SiD' is a substring
+$contains(s, /SiD_FW v[0-9]+\.[0-9]+/)         -> true if the regex matches
+$match(s, /v([0-9]+)\.([0-9]+)/).groups[0]     -> first capture group, e.g. '9'
+$match(s, /v([0-9]+)/)                         -> { match, start, end, groups } or undefined
+```
+
+Filter rows whose `summary` looks like a `SiD_FW vX.Y` version:
+
+```
+$scope.issues.data[$contains(summary, /SiD_FW v[0-9]/)]
+```
+
+**Syntax that does NOT exist in JSONata:**
+
+- `summary =~ /pattern/` — `=~` is a Perl/Ruby operator. Use
+  `$contains(summary, /pattern/)`.
+- `$index(s, p)`, `s.indexOf(p)` — no method calls; use `$contains`.
+
+### Object-constructor null thinning (the optional-field trap)
+
+When you build a row with `{ ... }` and reference a path that does **not
+exist** on a particular item, JSONata collapses that whole row to `null`.
+The result is a list with `null` interspersed between real rows — looks
+like every other row is missing.
+
+```jsonata
+$scope.issues.data.issues.{
+  "key": key,
+  "assignee": fields.assignee.displayName          -- null if assignee absent → row becomes null
+}
+```
+
+Fix: guard the optional path with `$exists(…)` or a ternary default.
+
+```jsonata
+$scope.issues.data.issues.{
+  "key": key,
+  "assignee": $exists(fields.assignee) ? fields.assignee.displayName : null
+}
+```
+
+The same trap fires on nested optional chains — `fields.parent.key` will
+thin the row when the issue has no `parent`. Guard the *first* optional
+hop in the chain, not the leaf.
 
 ### Array slicing & limiting (first N)
 

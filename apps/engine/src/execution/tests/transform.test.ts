@@ -155,6 +155,97 @@ describe("request + transform", () => {
     expect(empty?.message).toContain("$scope.source.data.chargers.edges");
   });
 
+  test("step_output_fixtures short-circuits the upstream and feeds downstream from cached envelope", async () => {
+    // Regression: session fb930dcb burned 12 identical 128 KB Jira
+    // fetches because there was no way to skip an unchanged upstream
+    // step when iterating a downstream transform. `step_output_fixtures`
+    // lets the dry-run wrapper feed a recorded envelope back into the
+    // engine so the same request never fires twice.
+    let fetchCount = 0;
+    const counterMock = await createMockServer((_, res) => {
+      fetchCount++;
+      return jsonResponse(res, 200, [
+        { id: "X", name: "from_origin" },
+        { id: "Y", name: "second_row" },
+      ]);
+    });
+    try {
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: "fixture-replay",
+        steps: [
+          { kind: "request", id: "users", method: "GET", url: `${counterMock.baseUrl}/users` },
+          { kind: "transform", id: "names", expression: "users.data.name" },
+        ],
+      });
+      // First run: real fetch.
+      const r1 = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+      });
+      expect(r1.status).toBe("succeeded");
+      expect(fetchCount).toBe(1);
+      // Build an envelope from the step summary. `output_preview` is
+      // the raw step output; the dry-run wrapper has to wrap it with
+      // `{ data, status_code?, headers? }` before handing it to the
+      // engine via `step_output_fixtures`.
+      const usersStep = r1.steps.find((s) => s.step_key === "users");
+      expect(usersStep?.output_preview).toBeDefined();
+      const rm = usersStep?.request_meta as { status?: number } | null | undefined;
+      const envelope = {
+        data: usersStep?.output_preview,
+        duration_ms: usersStep?.duration_ms ?? 0,
+        error: usersStep?.error ?? null,
+        ...(typeof rm?.status === "number" ? { status_code: rm.status } : {}),
+      };
+      // Second run: with the fixture, the engine must NOT hit the mock.
+      const r2 = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+        options: { step_output_fixtures: { users: envelope } },
+      });
+      expect(r2.status).toBe("succeeded");
+      // Downstream transform must still see the fixture data.
+      expect(r2.output).toEqual(["from_origin", "second_row"]);
+      // No new upstream call.
+      expect(fetchCount).toBe(1);
+    } finally {
+      await counterMock.close();
+    }
+  });
+
+  test("JSONata runtime failure surfaces a real message, never `[object Object]`", async () => {
+    // Regression: session fb930dcb spent 4 dry-runs on a transform that
+    // failed at JSONata *runtime* (not parse). The library throws plain
+    // objects (`{ message, position, token }`); the engine's catch block
+    // used to `String(err)` them, yielding `"[object Object]"`. With the
+    // fix at execution/steps/transform.ts the runtime evaluate is wrapped
+    // in `formatError` so the diagnostic carries `.message` + caret.
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "jsonata-runtime-fail",
+      steps: [
+        // `$match`'s second argument must be a regex literal; passing a
+        // string triggers a JSONata runtime (T2003-class) error.
+        { kind: "transform", id: "boom", expression: "$match('hello', 'world')" },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("failed");
+    const err = result.error as { code?: string; message?: string } | null;
+    expect(err?.code).toBe("transform_error");
+    expect(err?.message).toBeTruthy();
+    expect(err?.message).not.toBe("[object Object]");
+    expect(err?.message).toContain("JSONata error");
+  });
+
   test("loop with at least one productive iteration does not emit loop_body_empty", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "productive-loop-body",

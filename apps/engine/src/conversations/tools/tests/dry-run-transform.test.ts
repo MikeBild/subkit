@@ -7,6 +7,7 @@ import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { dryRunTransformTool } from "../dry-run-transform.ts";
 import type { ToolContext } from "../index.ts";
+import { __resetLastPreviewStoreForTest, recordLastPreview } from "../last-preview-store.ts";
 
 let ctx: TestDb;
 let tenant_id: string;
@@ -158,6 +159,84 @@ describe("dry_run_transform — template dialect", () => {
     const err = (result.data as { error: { code: string; message: string } }).error;
     expect(err.code).toBe("placeholder_unresolved");
     expect(err.message).toContain(`\${cred.stripe.token}`);
+  });
+});
+
+// Regression: session fb930dcb burned 12 identical Jira fetches because
+// the only way to iterate on a JSONata transform was `dry_run_workflow`
+// (which re-hits the upstream). `dry_run_transform` now resolves
+// `$scope` / `$scope.<step_id>` / `$input` from the per-conversation
+// preview store so authoring a transform costs zero upstream calls.
+describe("dry_run_transform — scope reference resolution", () => {
+  test("resolves `$scope.<step_id>` from the last cached preview", async () => {
+    const toolCtx = makeCtx();
+    recordLastPreview({
+      tenant_id,
+      conversation_id: toolCtx.conversation_id,
+      scope: {
+        fetch_issues: {
+          data: {
+            issues: [
+              { key: "EMOBXP-1", fields: { assignee: { displayName: "Ada" } } },
+              { key: "EMOBXP-2", fields: { assignee: null } },
+            ],
+          },
+          status_code: 200,
+        },
+      },
+      input: null,
+    });
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression:
+        "$scope.fetch_issues.data.issues.{ 'key': key, 'assignee': $exists(fields.assignee) ? fields.assignee.displayName : null }",
+      sample_data: "$scope.fetch_issues",
+      dialect: "jsonata",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      value: Array<{ key: string; assignee?: string | null }>;
+      metadata: { resolved_from_preview?: string };
+    };
+    // The critical assertion: both rows are present (no null-thinning).
+    // JSONata's object constructor elides keys whose value is `null`, so
+    // the second row carries only `key` — `$exists(...)` still prevents
+    // the whole row from collapsing, which is the session-fb930dcb fix.
+    expect(data.value).toHaveLength(2);
+    expect(data.value[0]).toEqual({ key: "EMOBXP-1", assignee: "Ada" });
+    expect(data.value[1]?.key).toBe("EMOBXP-2");
+    expect(data.metadata.resolved_from_preview).toBe("$scope.fetch_issues");
+  });
+
+  test("missing preview returns an actionable hint", async () => {
+    __resetLastPreviewStoreForTest();
+    const toolCtx = makeCtx();
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression: "$scope.x.data",
+      sample_data: "$scope",
+      dialect: "jsonata",
+    });
+    expect(result.ok).toBe(false);
+    const err = (result.data as { error: { code: string; message: string } }).error;
+    expect(err.code).toBe("runtime_error");
+    expect(err.message).toContain("no cached dry-run preview");
+  });
+
+  test("unknown step id surfaces available scope keys", async () => {
+    const toolCtx = makeCtx();
+    recordLastPreview({
+      tenant_id,
+      conversation_id: toolCtx.conversation_id,
+      scope: { fetch_issues: { data: [] } },
+      input: null,
+    });
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression: "$scope.wrong_step.data",
+      sample_data: "$scope.wrong_step",
+      dialect: "jsonata",
+    });
+    expect(result.ok).toBe(false);
+    const err = (result.data as { error: { message: string } }).error;
+    expect(err.message).toContain("$scope.fetch_issues");
   });
 });
 

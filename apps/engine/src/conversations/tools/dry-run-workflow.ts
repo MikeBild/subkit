@@ -26,8 +26,17 @@ import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
-import { buildDryRunCacheKey, readDryRunCache, writeDryRunCache } from "./dry-run-cache.ts";
+import {
+  buildDryRunCacheKey,
+  buildStepPrefixHash,
+  isStepKindCacheable,
+  readDryRunCache,
+  readStepFixture,
+  writeDryRunCache,
+  writeStepFixture,
+} from "./dry-run-cache.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { recordLastPreview } from "./last-preview-store.ts";
 import { truncateStepPreviewForLlm } from "./truncate.ts";
 
 const inputSchema = z
@@ -288,6 +297,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     });
     const cached = readDryRunCache(cacheKey);
     let run: Awaited<ReturnType<typeof runExecution>>;
+    let prefixReplayCount = 0;
     if (cached) {
       ctx.onLog?.(
         "info",
@@ -295,6 +305,35 @@ export const dryRunWorkflowTool: ConversationTool = {
       );
       run = cached;
     } else {
+      // Per-step prefix fixtures. Walk the draft from the top while
+      // each step's prefix hash matches a cached envelope; feed those
+      // envelopes into runExecution via `step_output_fixtures` so the
+      // engine skips re-executing them. The first miss stops the
+      // prefix walk — downstream steps execute normally and their
+      // envelopes get written back to the prefix cache on success.
+      const stepOutputFixtures: Record<string, unknown> = {};
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i] as { id?: unknown; kind?: unknown };
+        if (!step || typeof step.id !== "string") break;
+        if (!isStepKindCacheable(step.kind, step)) break;
+        const prefixHash = buildStepPrefixHash({
+          tenant_id: ctx.tenant_id,
+          execution_mode: args.environment ?? "dev",
+          draft: { steps, ...(draft.name ? { name: draft.name } : {}) },
+          input: args.input ?? null,
+          stepIndex: i,
+        });
+        const fixture = readStepFixture(prefixHash);
+        if (fixture === null) break;
+        stepOutputFixtures[step.id] = fixture;
+        prefixReplayCount++;
+      }
+      if (prefixReplayCount > 0) {
+        ctx.onLog?.(
+          "info",
+          `prefix cache hit · replaying ${prefixReplayCount} upstream step(s) from fixture`,
+        );
+      }
       try {
         run = await runExecution({
           db: ctx.db,
@@ -309,6 +348,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             request_source: "chat",
             execution_mode: args.environment ?? "dev",
             ...(signal ? { signal } : {}),
+            ...(prefixReplayCount > 0 ? { step_output_fixtures: stepOutputFixtures } : {}),
           },
         });
       } catch (err) {
@@ -322,6 +362,68 @@ export const dryRunWorkflowTool: ConversationTool = {
         };
       }
       writeDryRunCache(cacheKey, run);
+      // Write back per-step envelopes for the next iteration. We only
+      // cache successful steps that are kind-safe; failures bypass so
+      // the next edit doesn't replay a broken result. The cached value
+      // is a reconstructed `ScopeEnvelope` ({ data, duration_ms, error,
+      // status_code?, headers? }) — the same shape `envelopeFor`
+      // produces internally — so the engine can write it into `scope`
+      // verbatim on a future fixture hit and downstream `$scope.<id>.
+      // data` keeps working.
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i] as { id?: unknown; kind?: unknown };
+        if (!step || typeof step.id !== "string") continue;
+        if (!isStepKindCacheable(step.kind, step)) continue;
+        const summary = run.steps.find((s) => s.step_key === step.id);
+        if (!summary || summary.status !== "succeeded" || summary.output_preview === undefined) {
+          continue;
+        }
+        const envelope: Record<string, unknown> = {
+          data: summary.output_preview,
+          duration_ms: summary.duration_ms ?? 0,
+          error: summary.error ?? null,
+        };
+        const rm = (summary.request_meta ?? null) as {
+          status?: unknown;
+          headers?: unknown;
+        } | null;
+        if (rm) {
+          if (typeof rm.status === "number") envelope.status_code = rm.status;
+          if (rm.headers && typeof rm.headers === "object") {
+            envelope.headers = rm.headers as Record<string, string>;
+          }
+        }
+        const prefixHash = buildStepPrefixHash({
+          tenant_id: ctx.tenant_id,
+          execution_mode: args.environment ?? "dev",
+          draft: { steps, ...(draft.name ? { name: draft.name } : {}) },
+          input: args.input ?? null,
+          stepIndex: i,
+        });
+        writeStepFixture(prefixHash, envelope);
+      }
+    }
+
+    // Stash this preview's scope on the per-conversation slot so
+    // `dry_run_transform` can resolve `$scope.<step_id>` references
+    // without re-running the upstream. The store keeps only the
+    // succeeded-step envelopes — failed steps would just confuse a
+    // JSONata-only iteration loop.
+    if (run.status === "succeeded" || run.steps.some((s) => s.status === "succeeded")) {
+      const scope: Record<string, unknown> = {};
+      for (const s of run.steps) {
+        if (s.status === "succeeded" && s.output_preview !== undefined) {
+          scope[s.step_key] = s.output_preview;
+        }
+      }
+      if (Object.keys(scope).length > 0) {
+        recordLastPreview({
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          scope,
+          input: args.input ?? null,
+        });
+      }
     }
 
     // Per-step progress feed — same as run_workflow. Lets the user see
@@ -690,58 +792,62 @@ export const dryRunWorkflowTool: ConversationTool = {
     const repairCount = repairWarnings.length;
     return {
       ok: cleanPreview,
-      data: buildLifecyclePayload(nextDraft, {
-        steps_ran: run.steps.length,
-        duration_ms: run.steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0),
-        classification: dryRunRequiresRepair
-          ? "needs_repair"
-          : (lastStep?.classification ?? (run.status === "succeeded" ? "ok" : "driver_error")),
-        stopped_at_step_id: stoppedId,
-        summary:
-          run.status !== "succeeded"
-            ? `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`
-            : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`,
-        execution_id: run.execution_id,
-        next_best_actions: previewNextActions,
-        next_prompt: previewNextPrompt,
-        ...(warningSummary ? { warning_summary: warningSummary } : {}),
-        // Top-level banner so the LLM can't miss warnings on first
-        // read. `warnings` (legacy field) stays for back-compat
-        // consumers but the banner is the canonical surface.
-        ...(warningsBanner ? { warnings_banner: warningsBanner } : {}),
-        ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
-        step_trace: stepTrace,
-        ...(lastStep
-          ? (() => {
-              // Same per-step LLM cap as the step_trace assembler
-              // above. Without this, last_step.output_preview is the
-              // second LLM-visible copy of the final step's full
-              // output and would re-introduce the same envelope-bloat
-              // path step_trace just stopped causing.
-              const lastPreviewForLlm =
-                lastStep.output_preview !== undefined && lastStep.output_preview !== null
-                  ? truncateStepPreviewForLlm(lastStep.output_preview)
-                  : null;
-              return {
-                last_step: {
-                  step_id: lastStep.step_id,
-                  kind: lastStep.kind,
-                  classification: lastStep.classification,
-                  duration_ms: lastStep.duration_ms,
-                  ...(lastPreviewForLlm
-                    ? {
-                        output_preview: lastPreviewForLlm.data,
-                        ...(lastPreviewForLlm.raw_ref
-                          ? { output_preview_ref: lastPreviewForLlm.raw_ref }
-                          : {}),
-                      }
-                    : {}),
-                  ...(lastStep.error ? { error: lastStep.error } : {}),
-                },
-              };
-            })()
-          : {}),
-      }),
+      data: buildLifecyclePayload(
+        nextDraft,
+        {
+          steps_ran: run.steps.length,
+          duration_ms: run.steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0),
+          classification: dryRunRequiresRepair
+            ? "needs_repair"
+            : (lastStep?.classification ?? (run.status === "succeeded" ? "ok" : "driver_error")),
+          stopped_at_step_id: stoppedId,
+          summary:
+            run.status !== "succeeded"
+              ? `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`
+              : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`,
+          execution_id: run.execution_id,
+          next_best_actions: previewNextActions,
+          next_prompt: previewNextPrompt,
+          ...(warningSummary ? { warning_summary: warningSummary } : {}),
+          // Top-level banner so the LLM can't miss warnings on first
+          // read. `warnings` (legacy field) stays for back-compat
+          // consumers but the banner is the canonical surface.
+          ...(warningsBanner ? { warnings_banner: warningsBanner } : {}),
+          ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
+          step_trace: stepTrace,
+          ...(lastStep
+            ? (() => {
+                // Same per-step LLM cap as the step_trace assembler
+                // above. Without this, last_step.output_preview is the
+                // second LLM-visible copy of the final step's full
+                // output and would re-introduce the same envelope-bloat
+                // path step_trace just stopped causing.
+                const lastPreviewForLlm =
+                  lastStep.output_preview !== undefined && lastStep.output_preview !== null
+                    ? truncateStepPreviewForLlm(lastStep.output_preview)
+                    : null;
+                return {
+                  last_step: {
+                    step_id: lastStep.step_id,
+                    kind: lastStep.kind,
+                    classification: lastStep.classification,
+                    duration_ms: lastStep.duration_ms,
+                    ...(lastPreviewForLlm
+                      ? {
+                          output_preview: lastPreviewForLlm.data,
+                          ...(lastPreviewForLlm.raw_ref
+                            ? { output_preview_ref: lastPreviewForLlm.raw_ref }
+                            : {}),
+                        }
+                      : {}),
+                    ...(lastStep.error ? { error: lastStep.error } : {}),
+                  },
+                };
+              })()
+            : {}),
+        },
+        { readOnly: true },
+      ),
     };
   },
 };

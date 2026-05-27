@@ -227,6 +227,19 @@ strings (`"item 1"`, `"unknown"`) as JSONata defaults to dodge the
 gate is forbidden — that's how the "succeeded with garbage output"
 transcript happened (`get-last-3-gmail-messages with human output`).
 
+**Iterating on a transform — prefer `dry_run_transform`.** Once a green
+`dry_run_workflow` has recorded the upstream step's `output_preview`,
+further edits that only touch a transform's `expression` should call
+`dry_run_transform` — *not* `dry_run_workflow`. `dry_run_transform`
+evaluates JSONata against the recorded sample without re-hitting the
+network, so a transform debug loop costs O(1) ms per iteration instead
+of O(s) and avoids burning vendor rate-limit on the same upstream call
+twelve times in a row. Pass the previewed scope path (e.g.
+`$scope.fetch_issues`) as `sample_data`; the tool resolves it from the
+latest cached dry-run. Only fall back to `dry_run_workflow` when you
+actually change a request/connector/loop step, or after several green
+transform iterations to confirm end-to-end.
+
 **Validation is auto-surfaced; you rarely need `validate_draft`.**
 Every authoring turn's context block already includes a
 `- Validation: N errors` section with the field paths. Calling

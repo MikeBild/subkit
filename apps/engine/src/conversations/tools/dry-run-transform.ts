@@ -26,11 +26,15 @@ import { z } from "@hono/zod-openapi";
 import type { Expression } from "jsonata";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { compile as compileJsonata } from "../../execution/jsonata-engine.ts";
+import {
+  compile as compileJsonata,
+  formatError as formatJsonataError,
+} from "../../execution/jsonata-engine.ts";
 import { applySelector } from "../../execution/selectors.ts";
 import { resolveStringPlaceholders } from "../../llm/substitution/resolver.ts";
 import { recordExecutionDryRun } from "../../observability/instrumentation.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { getLastPreview } from "./last-preview-store.ts";
 
 const Dialect = z.enum(["jsonata", "jsonpath", "template"]);
 
@@ -63,6 +67,7 @@ async function evalJsonata(
   expression: string,
   sample: unknown,
   timeout_ms: number,
+  bindings?: Record<string, unknown>,
 ): Promise<{ ok: true; value: unknown } | { ok: false; error: EvalError }> {
   let expr: Expression;
   try {
@@ -81,8 +86,15 @@ async function evalJsonata(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort("timeout"), timeout_ms);
   try {
+    const evalPromise = bindings
+      ? expr.evaluate(sample, bindings).catch((err: unknown) => {
+          throw formatJsonataError(err, expression);
+        })
+      : expr.evaluate(sample).catch((err: unknown) => {
+          throw formatJsonataError(err, expression);
+        });
     const value = await Promise.race<unknown>([
-      expr.evaluate(sample),
+      evalPromise,
       new Promise((_, reject) => {
         ctrl.signal.addEventListener("abort", () => reject(new Error("timeout")), {
           once: true,
@@ -141,7 +153,7 @@ export const dryRunTransformTool: ConversationTool = {
     `Template dialect resolves \${input.*} and \${scope.*} only; \${cred.*}/\${connector.*} are not looked up and produce placeholder_unresolved.`,
     "Expression is timed out at 1s by default (max 2s) to keep authoring UX responsive.",
     "Audit metadata records only an expression hash + dialect — the raw expression may contain PII and is never written.",
-    "IMPORTANT: `sample_data` must be the LITERAL data the expression runs against (a real JSON value — array, object, number, string). Passing a reference string like `$scope.fetch_repos.data` sends the string itself into the evaluator, not the data it points to. Use `inspect_authoring_context` or `dry_run_step` to capture real step output, then paste the actual JSON here.",
+    "`sample_data` is normally a LITERAL JSON value (array, object, etc.). As a shortcut for transform-only iteration, you can also pass `$scope`, `$scope.<step_id>`, or `$input` — the tool resolves these from the latest cached dry_run_workflow preview for this conversation, so you can debug JSONata against real upstream data without rerunning the workflow.",
   ],
   requires_skill: "data-handling",
   example_input: {
@@ -170,44 +182,112 @@ export const dryRunTransformTool: ConversationTool = {
     }
     const args = parsed.data;
 
-    // Guardrail: if `sample_data` is a string that looks like a scope /
-    // placeholder reference (e.g. `$scope.fetch_repos.data` or
-    // `${scope.x}`), the caller almost certainly meant to pass the
-    // pointed-to data — not the reference string itself. Refuse
-    // early with an actionable hint instead of evaluating against a
-    // literal string and returning a confusing zero.
-    if (
-      typeof args.sample_data === "string" &&
-      /^\s*(\$scope\.|\$input\.|\$\.|\$\{)/.test(args.sample_data)
-    ) {
-      return {
-        ok: false,
-        data: {
-          persistence: "none" as const,
-          error: {
-            code: "runtime_error" as const,
-            message: `sample_data is a reference string (${args.sample_data.slice(
-              0,
-              80,
-            )}) — pass the actual JSON payload instead. Use dry_run_step or inspect_authoring_context to capture real step output, then paste the value here.`,
+    // Scope-reference resolution. When the caller passes a reference
+    // string like `$scope`, `$scope.<step_id>`, or `$input` (typical
+    // mistake: they're testing a JSONata transform against the last
+    // dry-run's data), look up the cached scope for this conversation
+    // and substitute. This is the path the "iterate on a transform
+    // without re-hitting the upstream" workflow takes — without it,
+    // sessions burn live API calls iterating JSONata.
+    let resolvedSampleData: unknown = args.sample_data;
+    let resolvedFromPreview: string | null = null;
+    let evalBindings: Record<string, unknown> | undefined;
+    if (typeof args.sample_data === "string") {
+      const trimmed = args.sample_data.trim();
+      const scopeRefMatch = /^\$scope(?:\.([A-Za-z_][\w]*))?$/.exec(trimmed);
+      const isInputRef = trimmed === "$input";
+      if (scopeRefMatch || isInputRef) {
+        const preview = getLastPreview({
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+        });
+        if (!preview) {
+          return {
+            ok: false,
+            data: {
+              persistence: "none" as const,
+              error: {
+                code: "runtime_error" as const,
+                message: `sample_data references ${trimmed} but no cached dry-run preview exists for this conversation. Run dry_run_workflow once first, then iterate on the transform expression here.`,
+              },
+              metadata: { dialect: args.dialect, duration_ms: 0 },
+            },
+          };
+        }
+        if (isInputRef) {
+          resolvedSampleData = preview.input;
+          resolvedFromPreview = "$input";
+        } else if (scopeRefMatch) {
+          const stepId = scopeRefMatch[1];
+          if (stepId) {
+            if (!(stepId in preview.scope)) {
+              return {
+                ok: false,
+                data: {
+                  persistence: "none" as const,
+                  error: {
+                    code: "runtime_error" as const,
+                    message: `sample_data references $scope.${stepId} but the cached preview has no step with that id. Available: ${Object.keys(
+                      preview.scope,
+                    )
+                      .map((k) => `$scope.${k}`)
+                      .join(", ")}`,
+                  },
+                  metadata: { dialect: args.dialect, duration_ms: 0 },
+                },
+              };
+            }
+            // Build a single-step sub-scope so the expression can use
+            // either bare paths (`<step_id>.data`) or scoped paths
+            // (`$scope.<step_id>.data`) against the same root.
+            const singleScope: Record<string, unknown> = {
+              [stepId]: preview.scope[stepId],
+            };
+            resolvedSampleData = singleScope;
+            evalBindings = { scope: singleScope, input: preview.input };
+            resolvedFromPreview = `$scope.${stepId}`;
+          } else {
+            resolvedSampleData = preview.scope;
+            evalBindings = { scope: preview.scope, input: preview.input };
+            resolvedFromPreview = "$scope";
+          }
+        }
+      } else if (/^\s*(\$\.|\$\{)/.test(args.sample_data)) {
+        // Other placeholder shapes — refuse with the original guidance.
+        return {
+          ok: false,
+          data: {
+            persistence: "none" as const,
+            error: {
+              code: "runtime_error" as const,
+              message: `sample_data is a reference string (${args.sample_data.slice(
+                0,
+                80,
+              )}) — pass the actual JSON payload instead. Use dry_run_step or inspect_authoring_context to capture real step output, then paste the value here.`,
+            },
+            metadata: { dialect: args.dialect, duration_ms: 0 },
           },
-          metadata: { dialect: args.dialect, duration_ms: 0 },
-        },
-      };
+        };
+      }
     }
 
     const started = Date.now();
     let outcome: { ok: true; value: unknown } | { ok: false; error: EvalError };
 
     if (args.dialect === "jsonata") {
-      outcome = await evalJsonata(args.expression, args.sample_data, args.timeout_ms);
+      outcome = await evalJsonata(
+        args.expression,
+        resolvedSampleData,
+        args.timeout_ms,
+        evalBindings,
+      );
     } else if (args.dialect === "jsonpath") {
-      outcome = evalJsonPath(args.expression, args.sample_data);
+      outcome = evalJsonPath(args.expression, resolvedSampleData);
     } else {
       // template: resolve ${input.*}/${scope.*} placeholders using the
       // resolver, but with `tenant_id` stubbed out so cred/connector
       // lookups return path_empty (no DB call).
-      const sample = (args.sample_data ?? {}) as Record<string, unknown>;
+      const sample = (resolvedSampleData ?? {}) as Record<string, unknown>;
       const r = await resolveStringPlaceholders(args.expression, {
         tenant_id: ctx.tenant_id,
         environment: "dev",
@@ -262,7 +342,11 @@ export const dryRunTransformTool: ConversationTool = {
         data: {
           persistence: "none" as const,
           error: outcome.error,
-          metadata: { dialect: args.dialect, duration_ms },
+          metadata: {
+            dialect: args.dialect,
+            duration_ms,
+            ...(resolvedFromPreview ? { resolved_from_preview: resolvedFromPreview } : {}),
+          },
         },
       };
     }
@@ -271,7 +355,11 @@ export const dryRunTransformTool: ConversationTool = {
       data: {
         persistence: "none" as const,
         value: outcome.value,
-        metadata: { dialect: args.dialect, duration_ms },
+        metadata: {
+          dialect: args.dialect,
+          duration_ms,
+          ...(resolvedFromPreview ? { resolved_from_preview: resolvedFromPreview } : {}),
+        },
       },
     };
   },

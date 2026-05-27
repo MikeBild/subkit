@@ -318,6 +318,26 @@ export interface RunOptions {
    * drift detection.
    */
   self_healing?: { enabled: boolean };
+  /**
+   * Per-step output fixtures. When set, the engine skips executing any
+   * step whose id appears in this map and uses the cached envelope
+   * instead. Used by the dry-run cache to avoid re-hitting an unchanged
+   * upstream when only a downstream transform was edited. The cached
+   * envelope must already include the documented `{ data, status_code?,
+   * headers?, duration_ms, error? }` shape that `envelopeFor` produces;
+   * the engine writes it verbatim into the scope object.
+   *
+   * Restrictions:
+   *  - Only safe for deterministic step kinds (`request` GETs,
+   *    `graphql` queries, `transform`). Callers are responsible for
+   *    excluding side-effectful steps (POST/PUT/DELETE, write-mode
+   *    queries) — the engine does NOT introspect step config to decide.
+   *  - The map is consulted before each step in linear walk order. A
+   *    miss falls through to normal execution; subsequent hits keep
+   *    working. This makes partial-prefix replay correct by
+   *    construction.
+   */
+  step_output_fixtures?: Record<string, unknown>;
 }
 
 /** Auth method actually applied at request time. Distinguishes a static

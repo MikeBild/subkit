@@ -124,4 +124,23 @@ describe("buildStepErrorDetail", () => {
     expect(buildStepErrorDetail({ code: "x", err: null }).message).toBeTruthy();
     expect(buildStepErrorDetail({ code: "x", err: undefined }).message).toBeTruthy();
   });
+
+  // Regression: in session fb930dcb the transform step driver caught a
+  // JSONata *runtime* failure (the library throws a plain object, not an
+  // Error instance) and stringified it as `[object Object]`, sending that
+  // string back to the LLM author. The author then spent 4 dry-runs
+  // guessing what the real error was. `buildStepErrorDetail` must
+  // extract `.message` from JSONata's runtime shape verbatim.
+  test("extracts .message from JSONata runtime-shape throwables (plain object, no Error proto)", () => {
+    const jsonataRuntimeErr = {
+      code: "T2001",
+      position: 42,
+      token: "$match",
+      message:
+        "The second argument of the $match function must be a function that returns an object",
+    };
+    const detail = buildStepErrorDetail({ code: "transform_error", err: jsonataRuntimeErr });
+    expect(detail.message).not.toBe("[object Object]");
+    expect(detail.message).toContain("$match");
+  });
 });
