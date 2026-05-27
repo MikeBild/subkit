@@ -242,6 +242,67 @@ describe("isPolicyGatePending", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Fix #8 — meta-authoring tools suppressed in chat (6.2.13)
+// ---------------------------------------------------------------------------
+
+describe("renderAuthoringCard — meta-authoring tools suppressed in chat (Fix #8, 6.2.13)", () => {
+  // validate_draft, inspect_workflow_draft, inspect_connector_draft were
+  // removed from IN_FLIGHT_VISIBLE_TOOLS. In chat mode the operator should
+  // never see their in-flight or completion cards — the assistant's text
+  // narrative is what surfaces instead.
+
+  const META_TOOLS = [
+    "validate_draft",
+    "inspect_workflow_draft",
+    "inspect_connector_draft",
+  ] as const;
+
+  for (const name of META_TOOLS) {
+    test(`${name}: returns null in chat mode when status=running`, () => {
+      const call: ToolCallState = {
+        id: `call-${name}`,
+        name,
+        args: {},
+        status: "running",
+      };
+      expect(renderAuthoringCard(call, "chat")).toBeNull();
+    });
+
+    test(`${name}: returns null in chat mode when status=done`, () => {
+      const call: ToolCallState = {
+        id: `call-${name}`,
+        name,
+        args: {},
+        status: "done",
+        result: { ok: true, data: {} },
+      };
+      expect(renderAuthoringCard(call, "chat")).toBeNull();
+    });
+
+    test(`${name}: returns non-null in inspect mode (diagnostic visibility preserved)`, () => {
+      const call: ToolCallState = {
+        id: `call-${name}`,
+        name,
+        args: {},
+        status: "done",
+        result: { ok: true, data: {} },
+      };
+      expect(renderAuthoringCard(call, "inspect")).not.toBeNull();
+    });
+  }
+
+  test("propose_step still renders in chat mode while running (positive control — must not be over-suppressed)", () => {
+    const call: ToolCallState = {
+      id: "call-propose_step",
+      name: "propose_step",
+      args: {},
+      status: "running",
+    };
+    expect(renderAuthoringCard(call, "chat")).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Fix #4 — renderAuthoringCard dispatcher with policy-pending
 // ---------------------------------------------------------------------------
 

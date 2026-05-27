@@ -9808,7 +9808,173 @@
     },
     "aws_service": null,
     "aws_region": null,
-    "verified_at": null
+    "verified_at": null,
+    "recipes": [
+      {
+        "slug": "list-open-issues",
+        "title": "List my open Jira issues",
+        "description": "Fetch issues assigned to the current user whose lifecycle is not Done, sorted by most recent update. Uses statusCategory (locale-invariant) so workspaces in any language are covered.",
+        "intent_keywords": [
+          "list my open jira tickets",
+          "list my open issues",
+          "show my jira tickets",
+          "my open jira",
+          "open tickets",
+          "open issues",
+          "jira tickets to do",
+          "what jira tickets do i have"
+        ],
+        "derived_from_skill": "jira-basics",
+        "category": "project-management",
+        "tags": ["jira", "jql", "open-issues"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "jira-list-open-issues",
+          "description": "List Jira issues assigned to the current user that are not in a Done lifecycle.",
+          "steps": [
+            {
+              "kind": "request",
+              "id": "search",
+              "method": "GET",
+              "url": "${connector.jira.base_url}/search",
+              "query": {
+                "jql": "assignee = currentUser() AND statusCategory != \"Done\" ORDER BY updated DESC",
+                "fields": "summary,status,priority,updated,issuetype",
+                "maxResults": 50
+              },
+              "pagination": {
+                "strategy": "offset",
+                "offset_param": "startAt",
+                "limit_param": "maxResults",
+                "page_size": 50,
+                "items_path": "issues",
+                "total_path": "total"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "slug": "list-my-issues",
+        "title": "List all my Jira issues",
+        "description": "Fetch every issue assigned to the current user regardless of status.",
+        "intent_keywords": [
+          "list my jira tickets",
+          "all my jira tickets",
+          "every jira ticket assigned to me",
+          "my issues"
+        ],
+        "derived_from_skill": "jira-basics",
+        "category": "project-management",
+        "tags": ["jira", "jql"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "jira-list-my-issues",
+          "description": "List every Jira issue assigned to the current user.",
+          "steps": [
+            {
+              "kind": "request",
+              "id": "search",
+              "method": "GET",
+              "url": "${connector.jira.base_url}/search",
+              "query": {
+                "jql": "assignee = currentUser() ORDER BY updated DESC",
+                "fields": "summary,status,priority,updated,issuetype",
+                "maxResults": 50
+              },
+              "pagination": {
+                "strategy": "offset",
+                "offset_param": "startAt",
+                "limit_param": "maxResults",
+                "page_size": 50,
+                "items_path": "issues",
+                "total_path": "total"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "slug": "search-issues-by-jql",
+        "title": "Search Jira issues by JQL",
+        "description": "Run an arbitrary JQL query against the Jira /search endpoint. Caller supplies the JQL fragment — prefer statusCategory over status.name for lifecycle filters so localized workspaces don't leak.",
+        "intent_keywords": [
+          "search jira",
+          "jira jql",
+          "filter jira tickets",
+          "jql search",
+          "jira query"
+        ],
+        "derived_from_skill": "jira-basics",
+        "category": "project-management",
+        "tags": ["jira", "jql", "search"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "jira-search-issues-by-jql",
+          "description": "Search Jira issues with a caller-supplied JQL query.",
+          "input_schema": {
+            "type": "object",
+            "required": ["jql"],
+            "properties": {
+              "jql": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "string"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "search",
+              "method": "GET",
+              "url": "${connector.jira.base_url}/search",
+              "query": {
+                "jql": "${input.jql}",
+                "fields": "${input.fields}",
+                "maxResults": 50
+              },
+              "pagination": {
+                "strategy": "offset",
+                "offset_param": "startAt",
+                "limit_param": "maxResults",
+                "page_size": 50,
+                "items_path": "issues",
+                "total_path": "total"
+              }
+            }
+          ]
+        }
+      }
+    ]
   },
   {
     "version": 1,

@@ -130,14 +130,17 @@
     "body": "Authenticate via OAuth 2.0 (3LO) or Basic Auth with an API token. OAuth requires the audience=api.atlassian.com param and uses a Cloud ID in the base URL. Basic Auth uses a different base URL ({domain}.atlassian.net). Use JQL for issue queries via /search. Rate limits are 100 GET/s burst and 65K points/hr.",
     "examples": [
       "GET /rest/api/3/search?jql=project=PROJ+ORDER+BY+created — search issues with JQL",
+      "GET /rest/api/3/search?jql=assignee=currentUser()+AND+statusCategory!=\"Done\"+ORDER+BY+updated+DESC — list open issues (locale-invariant)",
       "POST /rest/api/3/issue — create an issue"
     ],
     "best_practices": [
       "Use JQL via /search endpoint for filtered queries instead of listing all issues",
-      "Use startAt + maxResults for offset pagination on search results"
+      "Use startAt + maxResults for offset pagination on search results",
+      "Filter by lifecycle state with statusCategory (`new` | `indeterminate` | `done`) — these three values are locale-invariant and stable across workspace customisations. `status.name` (Done, Closed, Erledigt, Fertig, Outdated, Resolved, …) varies per language and per project workflow and will silently leak issues when used as a `NOT IN` exclude list."
     ],
     "pitfalls": [
-      "OAuth and Basic Auth use different base URLs — OAuth requires the cloudId path, Basic Auth uses {domain}.atlassian.net directly"
+      "OAuth and Basic Auth use different base URLs — OAuth requires the cloudId path, Basic Auth uses {domain}.atlassian.net directly",
+      "`status in (Done, Closed)` and `status NOT IN (Done, Closed)` only cover the English-default workflow — German (Fertig, Erledigt), French (Terminé), and custom statuses (Outdated, Won't Fix, Resolved) bypass the filter. Always use `statusCategory != \"Done\"` for an open/closed split."
     ],
     "doc_refs": ["https://developer.atlassian.com/cloud/jira/platform/rest/v3/"]
   },

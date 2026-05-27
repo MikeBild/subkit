@@ -4,7 +4,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { WorkflowDefSchema } from "../workflows/types.ts";
-import { getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
+import templateSkillsJson from "./template-skills.json" with { type: "json" };
+import { ConnectorRecipeSchema, getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
 
 describe("Stripe recipes — clone semantics", () => {
   const stripe = getBuiltinTemplate("stripe")!;
@@ -126,6 +127,60 @@ describe("GraphQL and AWS recipe coverage", () => {
     const structured = openai.recipes.find((r) => r.slug === "structured-extraction")!;
     expect(JSON.stringify(structured.workflow)).toContain("json_schema");
     expect(structured.workflow.output_schema).toBeDefined();
+  });
+});
+
+describe("Jira recipes (Fix #7)", () => {
+  const jira = getBuiltinTemplate("jira")!;
+
+  test("template is loadable and has the three new recipe slugs", () => {
+    const slugs = jira.recipes.map((r) => r.slug);
+    expect(slugs).toContain("list-open-issues");
+    expect(slugs).toContain("list-my-issues");
+    expect(slugs).toContain("search-issues-by-jql");
+  });
+
+  test("all three Jira recipes declare derived_from_skill === 'jira-basics'", () => {
+    for (const slug of ["list-open-issues", "list-my-issues", "search-issues-by-jql"]) {
+      const r = jira.recipes.find((x) => x.slug === slug)!;
+      expect(r).toBeDefined();
+      expect(r.derived_from_skill).toBe("jira-basics");
+    }
+  });
+
+  test("list-open-issues JQL uses statusCategory != 'Done' (locale-invariant filter)", () => {
+    const r = jira.recipes.find((x) => x.slug === "list-open-issues")!;
+    const step = r.workflow.steps[0]! as { query?: { jql?: string } };
+    expect(step.query?.jql).toContain('statusCategory != "Done"');
+  });
+
+  test("list-open-issues JQL is scoped to assignee = currentUser()", () => {
+    const r = jira.recipes.find((x) => x.slug === "list-open-issues")!;
+    const step = r.workflow.steps[0]! as { query?: { jql?: string } };
+    expect(step.query?.jql).toContain("assignee = currentUser()");
+  });
+
+  test("search-issues-by-jql input_schema.required includes 'jql'", () => {
+    const r = jira.recipes.find((x) => x.slug === "search-issues-by-jql")!;
+    expect(r.workflow.input_schema).toBeDefined();
+    const required = (r.workflow.input_schema as { required?: string[] }).required ?? [];
+    expect(required).toContain("jql");
+  });
+
+  test("every Jira recipe parses standalone through ConnectorRecipeSchema", () => {
+    // Mirrors the existing global loop — ensures the new recipes satisfy
+    // the same schema contract that every other recipe must meet.
+    for (const r of jira.recipes) {
+      const cloned = JSON.parse(JSON.stringify(r));
+      expect(ConnectorRecipeSchema.safeParse(cloned).success).toBe(true);
+    }
+  });
+
+  test("jira-basics skill body contains statusCategory guidance", () => {
+    const skills = templateSkillsJson as Record<string, unknown>;
+    const jiraSkill = skills["jira-basics"];
+    expect(jiraSkill).toBeDefined();
+    expect(JSON.stringify(jiraSkill)).toContain("statusCategory");
   });
 });
 

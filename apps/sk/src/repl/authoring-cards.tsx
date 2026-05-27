@@ -922,21 +922,26 @@ const CHAT_MILESTONE_TOOLS = new Set([
   "create_knowledge_source",
 ]);
 
-// Tools we always render an in-flight card for (running/pending) —
-// even in chat mode — so the user sees what the engine is doing. The
+// Tools we render an in-flight card for (running/pending) — even in
+// chat mode — so the operator sees what the engine is doing. The
 // `IN_FLIGHT_VISIBLE_TOOLS` set is broader than `CHAT_MILESTONE_TOOLS`
-// because almost every authoring tool benefits from a "started" line
-// while it's running. The reference codebase shows a shimmer for every
-// tool call; we mirror that here with a single one-line indicator.
+// because authoring tools that *substantively edit* state benefit from
+// a "started" line while running. Pure-introspection / pre-flight
+// tools are EXCLUDED so the operator doesn't see the LLM's plumbing:
+// `validate_draft`, `inspect_workflow_draft`, `inspect_connector_draft`
+// load state for the LLM, never produce a result the operator needs to
+// see; the assistant's `text_delta` narrative is what surfaces. The
+// May 2026 OCPP review session showed 8+ cards for one workflow edit
+// because every meta-tool got its own in-flight card.
 const IN_FLIGHT_VISIBLE_TOOLS = new Set([
   ...CHAT_MILESTONE_TOOLS,
   "propose_step",
   "build_workflow",
   "update_param",
   "connect_steps",
-  "validate_draft",
-  "inspect_workflow_draft",
-  "inspect_connector_draft",
+  // Excluded as of 6.2.13 — informational reads, not edits. They run
+  // silently; the assistant narrates any salient outcome via text:
+  //   "validate_draft", "inspect_workflow_draft", "inspect_connector_draft"
   "discover_connector_endpoints",
   "fetch_connector_docs",
   "list_connector_endpoints",
