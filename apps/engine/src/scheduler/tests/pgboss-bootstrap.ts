@@ -22,14 +22,39 @@ import type { Db } from "../../db/client.ts";
  *  the three tables the cleanup runner queries with the columns it
  *  references (`name`, `state`, `data`). Idempotent — `IF NOT EXISTS`
  *  on every statement. Cheap: no indexes, no functions, no triggers,
- *  unlike `createBoss(...)`'s full `schemaInstall()`. */
+ *  unlike `createBoss(...)`'s full `schemaInstall()`.
+ *
+ *  The `state` column is the real `pgboss.job_state` ENUM, mirrored
+ *  from `node_modules/pg-boss/dist/plans.js` JOB_STATES:
+ *  `created | retry | active | completed | cancelled | failed`. Tests
+ *  that query against it then fail-fast when a query references a
+ *  state pg-boss does not have. Pre-fix the column was plain `text`
+ *  and the `'scheduled'` regression in `loadInFlightFidStrings` only
+ *  surfaced in production (`invalid input value for enum
+ *  pgboss.job_state: "scheduled"`). Don't widen this enum without
+ *  also widening pg-boss's own definition. */
 export async function bootstrapMinimalPgbossSchema(db: Db): Promise<void> {
   await db.execute(sql`CREATE SCHEMA IF NOT EXISTS pgboss`);
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE n.nspname = 'pgboss' AND t.typname = 'job_state'
+      ) THEN
+        CREATE TYPE pgboss.job_state AS ENUM (
+          'created', 'retry', 'active', 'completed', 'cancelled', 'failed'
+        );
+      END IF;
+    END
+    $$
+  `);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS pgboss.job (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       name text NOT NULL,
-      state text NOT NULL,
+      state pgboss.job_state NOT NULL,
       data jsonb
     )
   `);
@@ -43,7 +68,7 @@ export async function bootstrapMinimalPgbossSchema(db: Db): Promise<void> {
     CREATE TABLE IF NOT EXISTS pgboss.archive (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       name text NOT NULL,
-      state text NOT NULL,
+      state pgboss.job_state NOT NULL,
       data jsonb
     )
   `);

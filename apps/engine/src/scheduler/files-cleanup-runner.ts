@@ -34,9 +34,11 @@
 //        - `execution_steps.input_preview` joined to running executions
 //          (saved runs' runtime trail)
 //        - `pgboss.job.data` for `execution.run` jobs in states
-//          (created, active, retry, scheduled) — covers the
-//          dispatch-but-not-yet-running window AND long-horizon
-//          scheduled jobs
+//          (created, active, retry) — covers the dispatch-but-not-
+//          yet-running window AND long-horizon jobs (pg-boss keeps
+//          long-horizon jobs in `created` with a future `start_after`
+//          timestamp; there is no `scheduled` state in pg-boss's
+//          `job_state` enum)
 //        - `pgboss.schedule.data` — recurring schedule definitions that
 //          embed a `$file` ref in their input template
 //        - `pgboss.archive.data` for jobs in states (active, retry)
@@ -303,10 +305,21 @@ async function loadInFlightFidStrings(db: Db): Promise<InFlightFidScan> {
   // round-trip to keep the per-tick query count bounded on large
   // queues. Three contributors share the `data::text` column:
   //
-  //   - `pgboss.job`      (state ∈ created|active|retry|scheduled
-  //                        for queue `execution.run`): live or
+  //   - `pgboss.job`      (state ∈ created|active|retry for queue
+  //                        `execution.run`): live or
   //                        soon-to-run envelopes carrying
-  //                        `ExecutionRunJob.input`.
+  //                        `ExecutionRunJob.input`. `created` covers
+  //                        long-horizon jobs too: pg-boss stores a
+  //                        future `start_after` on rows in state
+  //                        `created`, then flips them to `active`
+  //                        when the worker picks them up. There is
+  //                        no `scheduled` value in the pg-boss
+  //                        `job_state` enum — a previous version of
+  //                        this query included it under the wrong
+  //                        assumption and triggered an enum-cast
+  //                        error in prod (`invalid input value for
+  //                        enum pgboss.job_state: "scheduled"`),
+  //                        skipping the soft-delete pass every tick.
   //   - `pgboss.schedule` (all rows): recurring schedule definitions
   //     replayed into `pgboss.job` on each cron tick.
   //   - `pgboss.archive`  (state ∈ active|retry for queue
@@ -314,16 +327,16 @@ async function loadInFlightFidStrings(db: Db): Promise<InFlightFidScan> {
   //                        flight that the engine might resume after
   //                        a redeploy / replay.
   //
-  // Excluded states (`completed`, `failed`, `expired`, `cancelled`)
-  // genuinely cannot resume so their fids are fair game. Outer
-  // try/catch degrades to "pg-boss not present" — the executions +
+  // Excluded states (`completed`, `failed`, `cancelled`) genuinely
+  // cannot resume so their fids are fair game. Outer try/catch
+  // degrades to "pg-boss not present" — the executions +
   // execution_steps scans above still protect the dominant paths.
   try {
     const pgbossRows = await db.execute<{ data: string | null }>(sql`
       SELECT data::text AS data
       FROM pgboss.job
       WHERE name = ${EXECUTION_RUN_QUEUE}
-        AND state IN ('created', 'active', 'retry', 'scheduled')
+        AND state IN ('created', 'active', 'retry')
       UNION ALL
       SELECT data::text AS data
       FROM pgboss.schedule
