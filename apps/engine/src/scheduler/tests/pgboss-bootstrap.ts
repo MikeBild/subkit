@@ -5,8 +5,11 @@
 // `createBoss` performs a full pg-boss `schemaInstall()` which creates
 // every queue table + indexes + functions. That is overkill (and slow)
 // for tests that don't actually enqueue jobs — they just need the
-// SELECTs against `pgboss.job` / `pgboss.schedule` / `pgboss.archive`
-// to return zero rows instead of throwing `relation does not exist`.
+// SELECTs against `pgboss.job` / `pgboss.schedule` to return zero rows
+// instead of throwing `relation does not exist`. pg-boss 12.x does NOT
+// ship a separate `pgboss.archive` table — completed/failed jobs stay
+// in `pgboss.job` until the maintenance routine deletes them — so the
+// minimal bootstrap is just two tables + the job_state enum.
 //
 // W5: the files-cleanup runner now treats a failed pg-boss scan as a
 // deploy regression (not a benign warning) and skips the unlinked-TTL
@@ -64,12 +67,10 @@ export async function bootstrapMinimalPgbossSchema(db: Db): Promise<void> {
       data jsonb
     )
   `);
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS pgboss.archive (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      name text NOT NULL,
-      state pgboss.job_state NOT NULL,
-      data jsonb
-    )
-  `);
+  // No pgboss.archive — pg-boss 12.x merged it back into pgboss.job.
+  // A previous version of this bootstrap created the table and the
+  // production code happily SELECTed from it; prod doesn't have the
+  // table and the cleanup cron threw `relation "pgboss.archive" does
+  // not exist` until the engine-side query was fixed. Keep this in
+  // lockstep with `node_modules/pg-boss/dist/plans.js`.
 }

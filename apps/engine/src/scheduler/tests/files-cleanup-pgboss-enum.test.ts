@@ -97,12 +97,15 @@ describe("pgboss.job_state enum — production parity", () => {
 
   test("the in-flight fid scan query runs without an enum-cast error", async () => {
     // Mirror of the production SELECT in
-    // `apps/engine/src/scheduler/files-cleanup-runner.ts:322-335`.
+    // `apps/engine/src/scheduler/files-cleanup-runner.ts`.
     // Pre-fix this query included `'scheduled'` in the state list
     // and threw `invalid input value for enum pgboss.job_state:
     // "scheduled"`. Post-fix it must run clean against the strict
     // enum. The literal queue name is irrelevant — the table is
     // empty in this test; we only care that the cast succeeds.
+    // Also note: the UNION no longer reads `pgboss.archive` — that
+    // table is gone in pg-boss 12.x. See the "pgboss.archive table
+    // is gone" test below for the regression guard.
     const queueName = "execution.run";
     const result = await srv.db.execute(sql`
       SELECT data::text AS data
@@ -112,14 +115,24 @@ describe("pgboss.job_state enum — production parity", () => {
       UNION ALL
       SELECT data::text AS data
       FROM pgboss.schedule
-      UNION ALL
-      SELECT data::text AS data
-      FROM pgboss.archive
-      WHERE name = ${queueName}
-        AND state IN ('active', 'retry')
     `);
     // Empty tables — just assert the query ran (no enum-cast throw).
     expect(rowsOf(result).length).toBe(0);
+  });
+
+  test("pgboss.archive table is gone in pg-boss 12.x (regression guard)", async () => {
+    // pg-boss 12.x merged the old `archive` table back into
+    // `pgboss.job`. A previous version of `loadInFlightFidStrings`
+    // unioned `pgboss.archive` and threw
+    // `relation "pgboss.archive" does not exist` in prod once the
+    // enum fix unblocked the broader scan path. Pin the absence
+    // here so a future bootstrap helper edit cannot re-introduce
+    // the bug by silently re-creating the table.
+    const result = await srv.db.execute(sql`
+      SELECT to_regclass('pgboss.archive')::text AS rel
+    `);
+    const row = rowsOf<{ rel: string | null }>(result)[0];
+    expect(row?.rel ?? null).toBeNull();
   });
 
   test("inserting + selecting each valid state round-trips through the enum", async () => {

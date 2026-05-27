@@ -41,10 +41,9 @@
 //          `job_state` enum)
 //        - `pgboss.schedule.data` — recurring schedule definitions that
 //          embed a `$file` ref in their input template
-//        - `pgboss.archive.data` for jobs in states (active, retry)
-//          at the archive boundary — pg-boss archives jobs to keep the
-//          live `job` table small; an in-flight job that just got
-//          archived shouldn't have its fid reaped before it resumes.
+//      pg-boss 12.x does NOT ship a separate `pgboss.archive` table —
+//      completed and failed jobs live in `pgboss.job` until the
+//      maintenance routine hard-deletes them.
 //      The soft-delete + 7-day grace bounds the cost of a missed-link.
 //
 // Audit `actor_type` convention: every row emitted from this cron
@@ -258,12 +257,12 @@ async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_sca
  * (reap a file the workflow is reading).
  */
 /** Shape returned by `loadInFlightFidStrings`. `pgboss_scan_failed` is
- *  `true` when ANY of the three pg-boss scans (job / schedule / archive)
- *  threw — typically because the `pgboss` schema is absent (deploy
- *  regression). When set, the caller MUST skip the soft-delete pass
- *  for the tick: a file referenced by an in-flight job that is
- *  unreachable through the failed scan path would otherwise be reaped
- *  while the workflow holds it. */
+ *  `true` when the unioned pg-boss scan (job / schedule) threw —
+ *  typically because the `pgboss` schema is absent (deploy regression).
+ *  When set, the caller MUST skip the soft-delete pass for the tick:
+ *  a file referenced by an in-flight job that is unreachable through
+ *  the failed scan path would otherwise be reaped while the workflow
+ *  holds it. */
 interface InFlightFidScan {
   haystack: string;
   pgboss_scan_failed: boolean;
@@ -301,9 +300,9 @@ async function loadInFlightFidStrings(db: Db): Promise<InFlightFidScan> {
     if (r.input_preview != null) parts.push(JSON.stringify(r.input_preview));
   }
 
-  // Sources 3 / 4 / 5 — pg-boss state, unioned into a single
-  // round-trip to keep the per-tick query count bounded on large
-  // queues. Three contributors share the `data::text` column:
+  // Sources 3 / 4 — pg-boss state, unioned into a single round-trip
+  // to keep the per-tick query count bounded on large queues. Two
+  // contributors share the `data::text` column:
   //
   //   - `pgboss.job`      (state ∈ created|active|retry for queue
   //                        `execution.run`): live or
@@ -322,15 +321,18 @@ async function loadInFlightFidStrings(db: Db): Promise<InFlightFidScan> {
   //                        skipping the soft-delete pass every tick.
   //   - `pgboss.schedule` (all rows): recurring schedule definitions
   //     replayed into `pgboss.job` on each cron tick.
-  //   - `pgboss.archive`  (state ∈ active|retry for queue
-  //                        `execution.run`): rows archived mid-
-  //                        flight that the engine might resume after
-  //                        a redeploy / replay.
   //
   // Excluded states (`completed`, `failed`, `cancelled`) genuinely
-  // cannot resume so their fids are fair game. Outer try/catch
-  // degrades to "pg-boss not present" — the executions +
-  // execution_steps scans above still protect the dominant paths.
+  // cannot resume so their fids are fair game. pg-boss 12.x does NOT
+  // ship a separate `pgboss.archive` table — completed and failed
+  // rows live in `pgboss.job` with the corresponding state until the
+  // maintenance routine hard-deletes them. A previous version of
+  // this query unioned `pgboss.archive` and produced
+  // `relation "pgboss.archive" does not exist` in prod.
+  //
+  // Outer try/catch degrades to "pg-boss not present" — the
+  // executions + execution_steps scans above still protect the
+  // dominant paths.
   try {
     const pgbossRows = await db.execute<{ data: string | null }>(sql`
       SELECT data::text AS data
@@ -340,11 +342,6 @@ async function loadInFlightFidStrings(db: Db): Promise<InFlightFidScan> {
       UNION ALL
       SELECT data::text AS data
       FROM pgboss.schedule
-      UNION ALL
-      SELECT data::text AS data
-      FROM pgboss.archive
-      WHERE name = ${EXECUTION_RUN_QUEUE}
-        AND state IN ('active', 'retry')
     `);
     // drizzle's `execute()` return shape varies by driver; normalise.
     const rows: Array<{ data: string | null }> = Array.isArray(pgbossRows)
@@ -354,20 +351,19 @@ async function loadInFlightFidStrings(db: Db): Promise<InFlightFidScan> {
       if (r.data != null) parts.push(r.data);
     }
   } catch (err) {
-    // The unioned scan covers three pg-boss tables (`job`,
-    // `schedule`, `archive`); a missing `pgboss` schema fails them
-    // all at once. We record one increment per source so an alert
-    // can fire on the counter regardless of which table the SQL
-    // engine reported first, and escalate to `error` (was `warn`):
-    // in production this is a deploy regression — the queue
-    // substrate is unreachable. The caller (sweepUnlinkedTtl) reads
-    // the `pgboss_scan_failed` flag and skips the soft-delete pass
-    // for the tick so a file referenced by an unreachable in-flight
-    // job is NOT reaped while the workflow holds it.
+    // The unioned scan covers two pg-boss tables (`job`, `schedule`);
+    // a missing `pgboss` schema fails them at once. We record one
+    // increment per source so an alert can fire on the counter
+    // regardless of which table the SQL engine reported first, and
+    // escalate to `error` (was `warn`): in production this is a
+    // deploy regression — the queue substrate is unreachable. The
+    // caller (sweepUnlinkedTtl) reads the `pgboss_scan_failed` flag
+    // and skips the soft-delete pass for the tick so a file
+    // referenced by an unreachable in-flight job is NOT reaped while
+    // the workflow holds it.
     pgboss_scan_failed = true;
     recordFilesCleanupPgbossScanMissing({ source: "job" });
     recordFilesCleanupPgbossScanMissing({ source: "schedule" });
-    recordFilesCleanupPgbossScanMissing({ source: "archive" });
     logger.error({
       module: "scheduler",
       action: "files_cleanup.pgboss_scan_failed",
