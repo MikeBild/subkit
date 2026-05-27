@@ -47,6 +47,7 @@ import { debugLog, serializeDebugError } from "./debug.ts";
 import { looksLikeAssistantConfirmRequest } from "./elicitation-intent.ts";
 import type { EngineClient, SetupValidationResponse, StatusSummary } from "./engine-client.ts";
 import { renderSuspiciousCodepoints, sanitizePathInput } from "./lib/path-input.ts";
+import { autoUploadLocalPaths } from "./lib/path-preprocessor.ts";
 import {
   detectSecretShape,
   REQUEST_CREDENTIAL_FORM_FALLBACK,
@@ -2764,6 +2765,49 @@ export const InkApp: React.FC<InkAppProps> = ({
       busyRef.current = true;
       setBusy(true);
 
+      // Auto-ingest local filesystem paths the user wrote into the
+      // natural-language prompt (e.g. "create a knowledge source from
+      // /Users/.../OCPP-2.0.1.md"). Each existing absolute / home /
+      // dot-relative path is uploaded via the same chokepoint
+      // `/attach` uses and the raw token is replaced with an
+      // `@file:fid_…` mention that `rewriteFileMentions` (inside
+      // `expandRefs`) turns into the canonical `{"$file":"fid_…"}`
+      // leaf. Result: the agent receives a normal attachment ref and
+      // can call `create_knowledge_source` directly, instead of
+      // bouncing the user to `/knowledge <path>`. Slash commands run
+      // before this point (handleBuiltinSlash short-circuits at line
+      // ~2527) so `/attach` / `/knowledge` payloads are not double-
+      // processed.
+      let preprocessed = trimmed;
+      if (engineClient) {
+        try {
+          const result = await autoUploadLocalPaths(
+            trimmed,
+            engineClient,
+            cwd ?? process.cwd(),
+            session.conversationId,
+          );
+          preprocessed = result.rewritten;
+          for (const u of result.uploaded) {
+            showInfo(`auto-uploaded ${u.filename} → ${u.fid} (${u.bytes} bytes)`);
+          }
+          for (const s of result.skipped) {
+            // not_found / not_file are silent: the extraction regex
+            // is permissive on purpose; false positives are expected
+            // and shouldn't spam the operator's notice stack.
+            if (s.reason === "upload_failed") {
+              showError(`auto-upload failed for ${s.raw}: ${s.detail ?? ""}`);
+            }
+          }
+        } catch (err) {
+          // Preprocessor errors must never block submit. Surface and
+          // continue with the original prompt.
+          showError(
+            `auto-upload preprocessor: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+
       // Expand paste-store refs back inline, fan out image / file
       // refs as `@path` mentions so the existing mention resolver
       // can attach their contents.
@@ -2771,7 +2815,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         prompt: expanded,
         attachmentPaths,
         consumedIds,
-      } = expandRefs(trimmed, pasteStoreRef.current);
+      } = expandRefs(preprocessed, pasteStoreRef.current);
       const finalPrompt =
         attachmentPaths.length > 0
           ? `${expanded}${attachmentPaths.map((p) => ` @${p}`).join("")}`

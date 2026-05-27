@@ -79,12 +79,15 @@ describe("resolveAgentSkillsForMode", () => {
 
 describe("attachment-handling skill content", () => {
   // Pins the regression fix for the "create a knowledge source using
-  // /Users/...md" flow: the agent was hallucinating a paperclip UI and
-  // pointing at the half-right /attach path. The skill must teach the
-  // /knowledge slash and forbid invented UI affordances.
+  // /Users/...md" flow: the agent was hallucinating a paperclip UI,
+  // pointing at the half-right /attach path, and bouncing users to a
+  // slash command they then had to copy-paste. sk now auto-uploads
+  // any absolute local path mentioned in a natural-language prompt;
+  // the skill must teach the agent to expect a {"$file":"fid_…"}
+  // leaf in those prompts and call `mode='from_attachment'` directly.
   const bundle = loadAgentSkills(ALWAYS_LOADED_AGENT_SKILLS);
 
-  test("loaded bundle teaches the /knowledge <path> slash", () => {
+  test("loaded bundle still references the /knowledge <path> slash as the explicit surface", () => {
     expect(bundle).toContain("/knowledge <path>");
   });
 
@@ -95,5 +98,16 @@ describe("attachment-handling skill content", () => {
 
   test("loaded bundle says the engine cannot read local filesystem paths", () => {
     expect(bundle).toContain("cannot read local filesystem paths");
+  });
+
+  test("loaded bundle teaches that sk auto-uploads local paths before the agent reads them", () => {
+    // The prose may say "auto-uploads" or "auto-upload" — both mean
+    // the preprocessor in apps/sk/src/lib/path-preprocessor.ts ran
+    // before the agent saw the prompt.
+    expect(bundle).toMatch(/auto-uploads?/i);
+  });
+
+  test("loaded bundle teaches mode='from_attachment' when a $file leaf is present", () => {
+    expect(bundle).toContain("mode='from_attachment'");
   });
 });

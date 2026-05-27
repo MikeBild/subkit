@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { uploadPath } from "../../commands/files.ts";
 import { EngineClient } from "../../engine-client.ts";
+import { autoUploadLocalPaths } from "../../lib/path-preprocessor.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
@@ -223,5 +224,59 @@ describe("upload-paths parity", () => {
     // the invisible character that broke their paste.
     const dirty = `${tmpDir}/missing\u200B.txt`;
     await expect(uploadPath(client, dirty, { quiet: true })).rejects.toThrow(/codepoints/);
+  });
+
+  test("chat-prompt preprocessor uploads an absolute local path and rewrites the token", async () => {
+    // The reported regression: typing "create a knowledge source
+    // using /Users/.../OCPP-2.0.1.md" should auto-upload the file
+    // (same chokepoint as `/attach`) and produce a `@file:fid_\u2026`
+    // mention the engine resolves to a `$file` leaf \u2014 no slash
+    // command, no copy-paste bounce.
+    const fid = "fid_00000000-0000-0000-0000-000000000108";
+    const { client, paths } = makeInlineClient(fid, "ocpp.md");
+    const fp = join(tmpDir, "ocpp.md");
+    writeFileSync(fp, "OCPP 2.0.1 reference");
+
+    const result = await autoUploadLocalPaths(
+      `create a knowledge source from ${fp}`,
+      client,
+      "/",
+      "conv-1",
+    );
+
+    expect(result.uploaded).toHaveLength(1);
+    expect(result.uploaded[0]?.fid).toBe(fid);
+    expect(result.rewritten).toContain(`@file:${fid}`);
+    expect(result.rewritten).not.toContain(fp);
+    // Same chokepoint as the explicit `/attach` slash: hits
+    // /v1/files/inline and best-effort /links the conversation.
+    expect(paths.some((p) => p.includes("/v1/files/inline"))).toBe(true);
+    expect(paths.some((p) => p.includes("/links"))).toBe(true);
+  });
+
+  test("preprocessor keeps `.md` directory components intact (the original repro)", async () => {
+    // The exact failure shape: a path whose intermediate directory
+    // ends in `.md` plus a file that also ends in `.md`. The slash
+    // command's tokenization mangled this; the preprocessor's regex
+    // must keep the full path together so existsSync + uploadPath
+    // see the real file.
+    const fid = "fid_00000000-0000-0000-0000-000000000109";
+    const { client } = makeInlineClient(fid, "OCPP-2.0.1.md");
+    const { mkdirSync } = await import("node:fs");
+    const nested = join(tmpDir, "ocpp.md", "docs");
+    mkdirSync(nested, { recursive: true });
+    const fp = join(nested, "OCPP-2.0.1.md");
+    writeFileSync(fp, "spec");
+
+    const result = await autoUploadLocalPaths(
+      `ingest ${fp} as a knowledge source`,
+      client,
+      "/",
+      "conv-1",
+    );
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.uploaded).toHaveLength(1);
+    expect(result.uploaded[0]?.fid).toBe(fid);
   });
 });
