@@ -4,6 +4,12 @@
 // that propose_step rejects, causing self-reinforcing tool failures.
 // Without the cleanup section the model falls back to "this isn't
 // supported" prose for delete_workflow / revoke_api_key requests.
+//
+// `workflow-step-kinds` and `placeholder-rules` are mode-specific
+// since the chat execution-UX unification — they ship in workflow /
+// connector / diagnosis mode (where the LLM proposes / repairs steps)
+// and stay out of execution-mode turns (where the LLM only dispatches
+// already-saved workflows). The assertions below cover both code paths.
 
 import { describe, expect, it } from "bun:test";
 import { basePromptFor } from "../context-assembler.ts";
@@ -13,8 +19,19 @@ import { basePromptFor } from "../context-assembler.ts";
 const ALL_KINDS = ["request", "transform", "call", "wait", "branch", "parallel", "loop"] as const;
 
 describe("base prompts — step-kind enumeration + cleanup facts", () => {
-  it("converse prompt (sk_interactive) lists all 7 kinds", async () => {
-    const p = await basePromptFor("converse", "sk_interactive");
+  it("converse prompt (sk_interactive, workflow mode) lists all 7 kinds", async () => {
+    const p = await basePromptFor("converse", "sk_interactive", {
+      mode: "workflow",
+      stage: "workflow_draft_started" as const,
+      lifecycle_state: "draft_only" as const,
+      active_target: { kind: "workflow" as const, lifecycle_state: "draft_only" as const },
+      blocked_by: [],
+      next_required_action: null,
+      next_suggested_tool: null,
+      checkpoints: [],
+      latest_execution: null,
+      latest_diagnosis: null,
+    });
     for (const k of ALL_KINDS) {
       expect(p).toContain(`\`${k}\``);
     }
@@ -22,9 +39,36 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
     expect(p).toContain("propose_step");
   });
 
-  it("converse prompt (mcp) lists all 7 kinds", async () => {
-    const p = await basePromptFor("converse", "mcp");
+  it("converse prompt (mcp, connector mode) lists all 7 kinds", async () => {
+    const p = await basePromptFor("converse", "mcp", {
+      mode: "connector",
+      stage: "connector_draft_started" as const,
+      lifecycle_state: "draft_only" as const,
+      active_target: { kind: "connector" as const, lifecycle_state: "draft_only" as const },
+      blocked_by: [],
+      next_required_action: null,
+      next_suggested_tool: null,
+      checkpoints: [],
+      latest_execution: null,
+      latest_diagnosis: null,
+    });
     for (const k of ALL_KINDS) expect(p).toContain(`\`${k}\``);
+  });
+
+  it("converse prompt (execution mode) does NOT inline the step-kinds skill", async () => {
+    const p = await basePromptFor("converse", "sk_interactive", {
+      mode: "execution",
+      stage: "workflow_persisted" as const,
+      lifecycle_state: "persisted" as const,
+      active_target: { kind: "workflow" as const, lifecycle_state: "persisted" as const },
+      blocked_by: [],
+      next_required_action: null,
+      next_suggested_tool: null,
+      checkpoints: [],
+      latest_execution: null,
+      latest_diagnosis: null,
+    });
+    expect(p).not.toContain("WORKFLOW STEP KINDS");
   });
 
   it("generate prompt lists all 7 kinds", async () => {
@@ -39,12 +83,23 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
     expect(p).not.toContain("loop, tool");
   });
 
-  it("converse prompt warns against the wrong discriminator key", async () => {
-    const p = await basePromptFor("converse", "sk_interactive");
+  it("converse prompt (workflow mode) warns against the wrong discriminator key", async () => {
+    const p = await basePromptFor("converse", "sk_interactive", {
+      mode: "workflow",
+      stage: "workflow_draft_started" as const,
+      lifecycle_state: "draft_only" as const,
+      active_target: { kind: "workflow" as const, lifecycle_state: "draft_only" as const },
+      blocked_by: [],
+      next_required_action: null,
+      next_suggested_tool: null,
+      checkpoints: [],
+      latest_execution: null,
+      latest_diagnosis: null,
+    });
     expect(p).toContain("never `type`");
   });
 
-  it("converse prompt grounds cleanup actions to explicit tools only", async () => {
+  it("converse prompt (any mode) grounds cleanup actions to explicit tools only", async () => {
     const p = await basePromptFor("converse", "sk_interactive");
     expect(p).toContain("delete_workflow");
     expect(p).toContain("revoke_api_key");
@@ -52,7 +107,7 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
     expect(p).toContain("There is no generic Subkit web UI/dashboard");
   });
 
-  it("converse prompt includes sk-first product-help facts", async () => {
+  it("converse prompt (any mode) includes sk-first product-help facts", async () => {
     const p = await basePromptFor("converse", "sk_interactive");
     expect(p).toContain("/openapi.json");
     expect(p).toContain("/docs");

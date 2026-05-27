@@ -13,10 +13,14 @@ export function confirmationMetadataForTool(
 } {
   const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const slug = typeof obj.slug === "string" ? obj.slug : null;
+  // `run_workflow` accepts `workflow` (slug or uuid); legacy state-write
+  // tools (delete_workflow, update_workflow) carry `workflow_id`. Either
+  // is a useful target label when surfacing the risk envelope.
+  const workflow = typeof obj.workflow === "string" ? obj.workflow : null;
   const workflowId = typeof obj.workflow_id === "string" ? obj.workflow_id : null;
   const connectorId = typeof obj.connector_id === "string" ? obj.connector_id : null;
   const environment = typeof obj.environment === "string" ? obj.environment : null;
-  const target = slug ?? workflowId ?? connectorId ?? null;
+  const target = slug ?? workflow ?? workflowId ?? connectorId ?? null;
   const isDelete = toolName.startsWith("delete_") || toolName.startsWith("revoke_");
   const isProd = environment === "prod";
   const riskLevel = isDelete ? "critical" : isProd ? "high" : "medium";

@@ -127,7 +127,14 @@ describe("save_workflow_draft — policy gate", () => {
       setDraft: async () => {},
     };
 
-    const wrapped = wrapTools(toolCtx, signals, events, ctx.testDb.db, ["workflow-authoring"], {});
+    const wrapped = await wrapTools(
+      toolCtx,
+      signals,
+      events,
+      ctx.testDb.db,
+      ["workflow-authoring"],
+      {},
+    );
 
     const saveWorkflowDraft = wrapped.save_workflow_draft;
     expect(saveWorkflowDraft).toBeDefined();
@@ -255,7 +262,14 @@ describe("save_workflow_draft — policy gate", () => {
       setDraft: async () => {},
     };
 
-    const wrapped = wrapTools(toolCtx, signals, events, ctx.testDb.db, ["workflow-authoring"], {});
+    const wrapped = await wrapTools(
+      toolCtx,
+      signals,
+      events,
+      ctx.testDb.db,
+      ["workflow-authoring"],
+      {},
+    );
 
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (wrapped.save_workflow_draft!.execute as any)(
@@ -316,7 +330,14 @@ describe("save_workflow_draft — policy gate", () => {
       setDraft: async () => {},
     };
 
-    const wrapped = wrapTools(toolCtx, signals, events, ctx.testDb.db, ["workflow-authoring"], {});
+    const wrapped = await wrapTools(
+      toolCtx,
+      signals,
+      events,
+      ctx.testDb.db,
+      ["workflow-authoring"],
+      {},
+    );
 
     // String-form marker — exactly what the SDK produced in production.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
@@ -581,7 +602,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
         getDraft: () => ({ workflow: { name: "", steps: [] } }),
         setDraft: async () => {},
       };
-      const wrapped = wrapTools(
+      const wrapped = await wrapTools(
         toolCtx,
         signals,
         events,
@@ -642,7 +663,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
         getDraft: () => ({ workflow: { name: "", steps: [] } }),
         setDraft: async () => {},
       };
-      const wrapped = wrapTools(
+      const wrapped = await wrapTools(
         toolCtx,
         signals,
         events,

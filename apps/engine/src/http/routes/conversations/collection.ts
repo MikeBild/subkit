@@ -163,6 +163,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
             tenant_id: principal.tenant_id,
             conversation_id: created.conversation.id,
             actor_id: principal.id,
+            principal,
             user_message: created.initial_message ?? "",
             user_memory: created.user_memory,
             turn_abort_ctrl: turnAbortCtrl,

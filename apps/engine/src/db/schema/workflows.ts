@@ -36,6 +36,13 @@ export const workflows = pgTable(
     // catalog as a first-class product tool. Authoring-only workflows can
     // flip this to false to hide from the product surface.
     is_tool: boolean("is_tool").notNull().default(true),
+    // Last `runExecution({ source: { kind: "saved", workflow_id } })`
+    // timestamp. Drives the LRU cap on the `wf_<slug>` tool catalog
+    // exposed to chat + MCP — tenants with hundreds of workflows ship
+    // their 40 most-recently-used to the LLM palette; the rest are
+    // reachable via the always-available `run_workflow(workflow=<slug>)`
+    // fallback. Null until the first run lands.
+    last_executed_at: timestamp("last_executed_at", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

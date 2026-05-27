@@ -174,6 +174,45 @@ const abortCommand = defineCommand({
   },
 });
 
+const rerunCommand = defineCommand({
+  meta: {
+    name: "rerun",
+    description:
+      "Re-run a previous execution against the workflow + input it carried. Useful after diagnose/repair.",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "Execution id to rerun" },
+  },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    try {
+      const prior = (await client.getExecution(args.id)) as Record<string, unknown>;
+      const workflow_id = typeof prior.workflow_id === "string" ? prior.workflow_id : undefined;
+      if (!workflow_id) {
+        process.stderr.write(
+          `execution ${args.id} is not bound to a saved workflow (source_kind=${prior.source_kind ?? "unknown"}); rerun requires a saved workflow.\n`,
+        );
+        process.exit(1);
+      }
+      const sourceRef = (prior.source_ref ?? null) as Record<string, unknown> | null;
+      const priorInput = sourceRef?.input;
+      const body = {
+        source: "saved" as const,
+        workflow_id,
+        ...(priorInput !== undefined ? { input: priorInput } : {}),
+        request_source: "cli" as const,
+      };
+      printJson(await client.runExecution(body));
+    } catch (err) {
+      process.stderr.write(
+        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(exitCodeFor(err));
+    }
+  },
+});
+
 const tailCommand = defineCommand({
   meta: { name: "tail", description: "Stream live output from an execution" },
   args: {
@@ -208,5 +247,6 @@ export const executionsCommand = defineCommand({
     steps: stepsCommand,
     abort: abortCommand,
     tail: tailCommand,
+    rerun: rerunCommand,
   },
 });

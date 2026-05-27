@@ -12,6 +12,7 @@
 import { hasToolCall, stepCountIs, streamText } from "ai";
 import { and, desc, eq } from "drizzle-orm";
 import { recordToolPolicyConfirmationRequired } from "../audit/recorders/index.ts";
+import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import {
   connectorEndpointSchemas,
@@ -102,6 +103,13 @@ export interface RunLoopParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  /**
+   * Resolved principal — threaded so synthetic `wf_<slug>` tools in the
+   * chat palette can apply the same `gateTenantToolCall` / RBAC check
+   * MCP uses. Absent on the chat-adapter and MCP-worker resume paths;
+   * the synthetic tools are omitted from the palette in that case.
+   */
+  principal?: ResolvedPrincipal | null;
   connector_id: string | null;
   workflow_id: string | null;
   user_message: string | null;
@@ -477,9 +485,24 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     user_message: currentUserText,
     document_analysis: documentAnalysisSummary,
   });
+  // Run-verb bias: a message like "run emobxp-jira-test-plans" or
+  // "starte foo" tilts the prompt's authoring_hint.mode to `execution`
+  // even when no draft summary exists yet, so EXECUTION_PERSONA fires
+  // for that turn and the tenant snapshot's HARD RULE about
+  // `wf_<slug>` wins over the default authoring-leaning persona. The
+  // fast-path matcher in `fast-path.ts` usually intercepts these
+  // intents before the LLM runs at all; this bias is for the genuinely-
+  // ambiguous LLM-routed cases ("run X if Y else Z").
+  const runVerbBiasFires = (() => {
+    if (!currentUserText) return false;
+    return /^\s*(run|execute|starte|führe\s+aus)\s+\S/i.test(currentUserText);
+  })();
   const authoringHint = draft.summary
     ? {
-        mode: draft.summary.mode,
+        mode:
+          runVerbBiasFires && draft.summary.mode === "workflow"
+            ? ("execution" as const)
+            : draft.summary.mode,
         stage: draft.summary.stage,
         lifecycle_state: draft.summary.lifecycle_state,
         active_target: {
@@ -724,7 +747,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     consecutiveFailures: 0,
     lastAssistantText: "",
   };
-  const wrappedTools = wrapTools(
+  const wrappedTools = await wrapTools(
     ctx,
     signals,
     events,
@@ -732,6 +755,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     loadedSkills,
     loopToolPolicies,
     p.permission_mode ?? null,
+    p.principal ?? null,
   );
   logger.debug({
     module: "conversation_palette",

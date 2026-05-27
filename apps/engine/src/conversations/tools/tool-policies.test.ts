@@ -257,13 +257,13 @@ describe("resolveExecutionMode — table coverage", () => {
 
   it("run_workflow in dev → auto", () => {
     expect(
-      resolveExecutionMode("run_workflow", { workflow_id: "x", environment: "dev" }, CTX).mode,
+      resolveExecutionMode("run_workflow", { workflow: "x", environment: "dev" }, CTX).mode,
     ).toBe("auto");
   });
 
   it("run_workflow in prod → confirm_before", () => {
     expect(
-      resolveExecutionMode("run_workflow", { workflow_id: "x", environment: "prod" }, CTX).mode,
+      resolveExecutionMode("run_workflow", { workflow: "x", environment: "prod" }, CTX).mode,
     ).toBe("confirm_before_execution");
   });
 
@@ -271,7 +271,7 @@ describe("resolveExecutionMode — table coverage", () => {
     expect(
       resolveExecutionMode(
         "run_workflow",
-        { workflow_id: "x" },
+        { workflow: "x" },
         { tenant_id: "t", environment: "stage" },
       ).mode,
     ).toBe("confirm_before_execution");

@@ -42,7 +42,7 @@ import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
-import { synthesizeInputSchema } from "../../workflows/input-schema-synth.ts";
+import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
@@ -61,97 +61,19 @@ import { buildWorkflowToolMeta } from "./tool-meta.ts";
 const TOOL_PREFIX = "wf_";
 const PROGRESS_POLL_MS = 250;
 
-function emptyObjectSchema(): Tool["inputSchema"] {
-  return { type: "object", properties: {} };
-}
-
-function toInputSchema(raw: unknown): Tool["inputSchema"] {
-  // The workflow `input_schema` field is persisted as-is (raw JSON
-  // Schema). When it already looks like an object schema, pass it
-  // through; otherwise fall back to the empty shape so the SDK's zod
-  // validator keeps smiling.
-  if (
-    raw &&
-    typeof raw === "object" &&
-    !Array.isArray(raw) &&
-    (raw as { type?: unknown }).type === "object"
-  ) {
-    return raw as Tool["inputSchema"];
-  }
-  return emptyObjectSchema();
-}
-
 interface ListToolsParams {
   db: Db;
   principal: ResolvedPrincipal;
 }
 
 async function listWorkflowTools({ db, principal }: ListToolsParams): Promise<Tool[]> {
-  // Product-catalog rule: only workflows flagged `is_tool=true` are
-  // exposed as MCP tools. Drafts (no current_version_id) never show up,
-  // regardless of the flag.
-  const rows = await db
-    .select({
-      id: workflows.id,
-      slug: workflows.slug,
-      name: workflows.name,
-      current_version_id: workflows.current_version_id,
-      is_tool: workflows.is_tool,
-    })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, principal.tenant_id),
-        isNull(workflows.deleted_at),
-        eq(workflows.is_tool, true),
-      ),
-    )
-    .orderBy(asc(workflows.created_at));
-
-  const out: Tool[] = [];
-  for (const row of rows) {
-    if (!row.current_version_id) continue;
-    // Respect per-key allowed_workflows scope when set.
-    if (
-      principal.allowed_workflows &&
-      principal.allowed_workflows !== "all" &&
-      !principal.allowed_workflows.includes(row.id)
-    ) {
-      continue;
-    }
-    let description = row.name;
-    let inputSchema: Tool["inputSchema"] = emptyObjectSchema();
-    const versionRows = await db
-      .select({ dag: workflowVersions.dag })
-      .from(workflowVersions)
-      .where(
-        and(
-          eq(workflowVersions.tenant_id, principal.tenant_id),
-          eq(workflowVersions.id, row.current_version_id),
-        ),
-      )
-      .limit(1);
-    const dag = versionRows[0]?.dag;
-    if (dag) {
-      const parsed = WorkflowDefSchema.safeParse(dag);
-      if (parsed.success) {
-        if (parsed.data.description) description = parsed.data.description;
-        if (parsed.data.input_schema) {
-          inputSchema = toInputSchema(parsed.data.input_schema);
-        } else {
-          const synth = synthesizeInputSchema(parsed.data);
-          if (synth) inputSchema = synth as Tool["inputSchema"];
-        }
-      }
-    }
-    out.push({
-      name: `${TOOL_PREFIX}${row.slug}`,
-      description,
-      inputSchema,
-      _meta: buildWorkflowToolMeta(),
-    });
-  }
-  return out;
+  const catalog = await listWorkflowToolsForTenant({ db, principal });
+  return catalog.map((entry) => ({
+    name: `${TOOL_PREFIX}${entry.slug}`,
+    description: entry.description,
+    inputSchema: entry.inputSchema as Tool["inputSchema"],
+    _meta: buildWorkflowToolMeta(),
+  }));
 }
 
 async function resolveWorkflowBySlug(

@@ -12,6 +12,7 @@ import {
 import { runExecution } from "../../../../execution/engine.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
+import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
 import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
 import {
   bindPersistedWorkflow,
@@ -98,7 +99,7 @@ async function detectRepairLoop(
 
 const Input = z
   .object({
-    workflow_id: z.string().uuid().optional(),
+    workflow: z.string().optional(),
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).default("dev"),
     /**
@@ -137,7 +138,7 @@ function withStatus(
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
-    "Execute a workflow synchronously by id. Records an audit entry. Default environment is `dev`.",
+    "FALLBACK for executing a saved workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. Never call `dry_run_workflow` on a saved workflow — that is for drafts only.",
   inputSchema: Input,
   category: "tenant_write",
   requires_persisted_workflow: true,
@@ -145,11 +146,26 @@ export const runWorkflowTool: ConversationTool = {
     const args = Input.parse(rawArgs);
     const currentDraft = ctx.getDraft();
     const activeTarget = currentDraft.summary?.active_target ?? null;
-    const workflowId =
-      args.workflow_id ??
-      (activeTarget?.kind === "workflow" && activeTarget.lifecycle_state === "persisted"
-        ? activeTarget.id
-        : null);
+    let workflowId: string | null = null;
+    if (args.workflow) {
+      const resolved = await resolveWorkflowByIdOrSlug(ctx.db, ctx.tenant_id, args.workflow);
+      if (!resolved) {
+        return {
+          ok: false,
+          data: withStatus(
+            {
+              error_code: "workflow_not_found",
+              message: `no workflow matched the reference '${args.workflow}' — pass a slug or UUID from the TENANT SNAPSHOT block`,
+              next_best_actions: ["list_workflows", "find_workflow"],
+            },
+            "failed",
+          ),
+        };
+      }
+      workflowId = resolved.id;
+    } else if (activeTarget?.kind === "workflow" && activeTarget.lifecycle_state === "persisted") {
+      workflowId = activeTarget.id;
+    }
     if (!workflowId) {
       return {
         ok: false,
@@ -224,7 +240,7 @@ export const runWorkflowTool: ConversationTool = {
     if (
       activeTarget?.kind === "workflow" &&
       activeTarget.lifecycle_state === "draft_only" &&
-      !args.workflow_id
+      !args.workflow
     ) {
       return {
         ok: false,
@@ -677,6 +693,9 @@ export const runWorkflowTool: ConversationTool = {
               : {}),
             ...(hasWarnings ? { warnings: result.warnings } : {}),
             ...(includeStepTrace ? { step_trace: stepTraceEntries } : {}),
+            // Teach the keystroke route: every successful chat run carries
+            // the slash-equivalent the REPL chip strip will offer the user.
+            suggested_command: `/workflows run ${wf.slug}`,
           }),
           // payloadStatus is one of the three terminal values (already
           // narrowed above), but withStatus is a no-op when the inner

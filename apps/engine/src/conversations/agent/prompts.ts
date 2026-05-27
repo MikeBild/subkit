@@ -35,6 +35,8 @@ ${PERSONA_OUTRO}`;
  *  about a recent or in-flight execution. Discourages implicit edits. */
 export const EXECUTION_PERSONA = `${PERSONA_ANCHOR}
 
+Running a saved workflow is one tool call: prefer \`wf_<slug>\` directly, fall back to \`run_workflow(workflow=<slug>)\`. Slug comes from the TENANT SNAPSHOT block. \`dry_run_workflow\` is for drafts only.
+
 In execution mode the workflow is already persisted. Prefer reading state — get_workflow, get_execution, list_executions — over composing patches. If the user asks for a code-shape change, route them through diagnosis mode (diagnose → edit → preview → commit) rather than blind-editing.
 
 ${PERSONA_DUTIES}

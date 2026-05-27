@@ -1,9 +1,11 @@
-// Mode-aware agent skill loading helper. The 9-skill always-loaded
-// core is pinned by base-prompt-step-kinds + the registry test as a
-// minimal anti-Zapier-namespace floor. `conversational-authoring` is
-// the only body large enough (~7.3KB) and authoring-specific enough
-// to be loaded on demand — workflow / connector authoring modes
-// include it; execution / diagnosis / default modes do not.
+// Mode-aware agent skill loading helper. Three behaviour bodies are
+// mode-specific: `conversational-authoring` (the ideal-flow narrative),
+// `workflow-step-kinds` (the anti-Zapier-namespace step kind floor),
+// `placeholder-rules` (the `${cred|connector|input|scope.*}` grammar).
+// Execution-mode turns ("run <slug>") reach for `wf_<slug>` /
+// `run_workflow` and never propose steps, so trimming the latter two
+// saves ~750 tokens per turn. Authoring (workflow / connector) and
+// diagnosis modes re-add them.
 
 import { describe, expect, test } from "bun:test";
 import {
@@ -14,12 +16,19 @@ import {
   resolveAgentSkillsForMode,
 } from "./index.ts";
 
+const MODE_GATED = [
+  "conversational-authoring",
+  "workflow-step-kinds",
+  "placeholder-rules",
+] as const;
+
 describe("resolveAgentSkillsForMode", () => {
-  test("ALWAYS_LOADED_AGENT_SKILLS excludes conversational-authoring", () => {
-    expect(ALWAYS_LOADED_AGENT_SKILLS).not.toContain("conversational-authoring");
-    // Every other named skill stays universal.
+  test("ALWAYS_LOADED_AGENT_SKILLS excludes mode-gated skills", () => {
+    for (const gated of MODE_GATED) {
+      expect(ALWAYS_LOADED_AGENT_SKILLS).not.toContain(gated);
+    }
     for (const name of ALL_AGENT_SKILLS) {
-      if (name === "conversational-authoring") continue;
+      if ((MODE_GATED as ReadonlyArray<string>).includes(name)) continue;
       expect(ALWAYS_LOADED_AGENT_SKILLS).toContain(name);
     }
   });
@@ -27,7 +36,7 @@ describe("resolveAgentSkillsForMode", () => {
   test("null mode returns exactly the always-loaded core", () => {
     const skills = resolveAgentSkillsForMode(null);
     expect(skills.length).toBe(ALWAYS_LOADED_AGENT_SKILLS.length);
-    expect(skills).not.toContain("conversational-authoring");
+    for (const gated of MODE_GATED) expect(skills).not.toContain(gated);
     for (const s of ALWAYS_LOADED_AGENT_SKILLS) expect(skills).toContain(s);
   });
 
@@ -35,28 +44,29 @@ describe("resolveAgentSkillsForMode", () => {
     expect(resolveAgentSkillsForMode(undefined)).toEqual(resolveAgentSkillsForMode(null));
   });
 
-  test("workflow mode adds conversational-authoring", () => {
+  test("workflow mode adds conversational-authoring + step-kinds + placeholders", () => {
     const skills = resolveAgentSkillsForMode("workflow");
-    expect(skills).toContain("conversational-authoring");
-    // workflow-step-kinds + placeholder-rules stay in the always-loaded
-    // core (anti-Zapier-namespace floor) so they appear here too.
+    for (const gated of MODE_GATED) expect(skills).toContain(gated);
+    for (const s of ALWAYS_LOADED_AGENT_SKILLS) expect(skills).toContain(s);
+  });
+
+  test("connector mode adds conversational-authoring + step-kinds + placeholders", () => {
+    const skills = resolveAgentSkillsForMode("connector");
+    for (const gated of MODE_GATED) expect(skills).toContain(gated);
+    for (const s of ALWAYS_LOADED_AGENT_SKILLS) expect(skills).toContain(s);
+  });
+
+  test("diagnosis mode adds step-kinds + placeholders but not conversational-authoring", () => {
+    const skills = resolveAgentSkillsForMode("diagnosis");
     expect(skills).toContain("workflow-step-kinds");
     expect(skills).toContain("placeholder-rules");
-    for (const s of ALWAYS_LOADED_AGENT_SKILLS) expect(skills).toContain(s);
+    expect(skills).not.toContain("conversational-authoring");
   });
 
-  test("connector mode adds conversational-authoring", () => {
-    const skills = resolveAgentSkillsForMode("connector");
-    expect(skills).toContain("conversational-authoring");
-    for (const s of ALWAYS_LOADED_AGENT_SKILLS) expect(skills).toContain(s);
-  });
-
-  test("execution / diagnosis modes do not add conversational-authoring", () => {
-    for (const mode of ["execution", "diagnosis"]) {
-      const skills = resolveAgentSkillsForMode(mode);
-      expect(skills).not.toContain("conversational-authoring");
-      expect([...skills].sort()).toEqual([...ALWAYS_LOADED_AGENT_SKILLS].sort());
-    }
+  test("execution mode loads exactly the always-loaded core (no mode-gated skills)", () => {
+    const skills = resolveAgentSkillsForMode("execution");
+    for (const gated of MODE_GATED) expect(skills).not.toContain(gated);
+    expect([...skills].sort()).toEqual([...ALWAYS_LOADED_AGENT_SKILLS].sort());
   });
 
   test("MODE_SPECIFIC_AGENT_SKILLS lookup keys cover every authoring mode", () => {

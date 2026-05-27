@@ -116,7 +116,7 @@ describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", (
     );
     const signals = freshSignals();
     const events: TurnEvent[] = [];
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       makeToolCtx(conversation_id),
       signals,
       events,
@@ -150,7 +150,7 @@ describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", (
     );
     const signals = freshSignals();
     const events: TurnEvent[] = [];
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       makeToolCtx(conversation_id),
       signals,
       events,
@@ -178,7 +178,7 @@ describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", (
     );
     const signals = freshSignals();
     const events: TurnEvent[] = [];
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       makeToolCtx(conversation_id),
       signals,
       events,
@@ -207,7 +207,7 @@ describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", (
     );
     const signals = freshSignals();
     const events: TurnEvent[] = [];
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       makeToolCtx(conversation_id),
       signals,
       events,
@@ -227,7 +227,7 @@ describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", (
     const conversation_id = await freshConversation();
     const signals = freshSignals();
     const events: TurnEvent[] = [];
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       makeToolCtx(conversation_id),
       signals,
       events,

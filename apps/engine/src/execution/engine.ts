@@ -929,6 +929,27 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       db,
     );
   }
+  // Touch `last_executed_at` for saved runs so the `wf_<slug>` tool
+  // catalog can rank by recency. Drafts and one-shot step runs do not
+  // touch a persisted workflow row.
+  if (resolved.persist_workflow_refs && workflow_id) {
+    try {
+      await db
+        .update(workflows)
+        .set({ last_executed_at: new Date() })
+        .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflow_id)));
+    } catch (err) {
+      logger.warn({
+        module: "execution",
+        action: "engine.last_executed_at_write_failed",
+        msg: "failed to bump workflows.last_executed_at",
+        tenant_id,
+        workflow_id,
+        execution_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
   await auditAwait(
     {
       tenant_id,

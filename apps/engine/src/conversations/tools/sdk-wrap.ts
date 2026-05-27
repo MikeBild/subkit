@@ -23,6 +23,7 @@
 //   end-to-end picture.
 
 import type { Tool } from "ai";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import type { PermissionMode, ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
@@ -31,6 +32,7 @@ import { filterBySkillGate } from "./gated.ts";
 import { listTools, type ToolContext } from "./index.ts";
 import { wrapOne } from "./sdk-wrap/invoke.ts";
 import type { TurnSignals, WrappedToolOutput } from "./sdk-wrap/state.ts";
+import { buildSyntheticWorkflowTools } from "./sdk-wrap/synthetic-workflow-tools.ts";
 
 export {
   computeValidationFingerprint,
@@ -44,9 +46,13 @@ export {
 /**
  * Build the SDK `toolSet` for one `runLoop` invocation. Each wrapped
  * tool closes over `ctx`, `signals`, and `events` so side effects land
- * in the same sink the loop returns to callers.
+ * in the same sink the loop returns to callers. When a principal is
+ * provided, the tenant's saved workflows are additionally exposed as
+ * `wf_<slug>` synthetic tools, top-40 by `last_executed_at` — the same
+ * catalog MCP ships via `listWorkflowToolsForTenant`. The LLM can then
+ * dispatch a saved workflow in one tool call.
  */
-export function wrapTools(
+export async function wrapTools(
   ctx: ToolContext,
   signals: TurnSignals,
   events: TurnEvent[],
@@ -54,7 +60,8 @@ export function wrapTools(
   loadedSkills: ReadonlyArray<string> = [],
   toolPolicies: ToolPolicies = {},
   permissionMode: PermissionMode | null = null,
-): Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> {
+  principal: ResolvedPrincipal | null = null,
+): Promise<Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>> {
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   // Apply skill-gate: tools whose `requires_skill` isn't in loadedSkills
   // are hidden from the model until the matching `load_skill` call.
@@ -66,6 +73,18 @@ export function wrapTools(
   );
   for (const t of visibleTools) {
     out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode, loadedSkills);
+  }
+  if (principal) {
+    const synthetic = await buildSyntheticWorkflowTools({
+      db,
+      principal,
+      ctx,
+      signals,
+      events,
+    });
+    for (const [name, tool] of Object.entries(synthetic)) {
+      out[name] = tool;
+    }
   }
   return out;
 }

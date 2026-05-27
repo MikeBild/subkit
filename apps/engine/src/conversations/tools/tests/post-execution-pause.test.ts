@@ -83,7 +83,7 @@ describe("post-execution review pause (Bug UU)", () => {
     // ask_user_confirm{kind:"review_after_execution"} elicitation.
     const signals = freshSignals();
     const events: TurnEvent[] = [];
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       makeToolCtx(),
       signals,
       events,

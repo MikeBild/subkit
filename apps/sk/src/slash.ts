@@ -18,6 +18,7 @@
 
 import Fuse from "fuse.js";
 import { z } from "zod";
+import { frequencyBias } from "./usage-stats.ts";
 
 /**
  * Single canonical predicate for "what counts as a slash-name
@@ -651,9 +652,14 @@ export function searchSlashCommands(
 ): SlashCommand[] {
   const visible = slashCommandsForPersona(persona);
   const trimmed = query.replace(/^\//, "").trim();
-  if (trimmed.length === 0) return visible.slice(0, limit);
+  if (trimmed.length === 0) {
+    // No query — surface the most-frequently-used commands first so
+    // a typed-but-empty `/` opens the picker on the operator's hot list.
+    const sorted = [...visible].sort((a, b) => frequencyBias(b.name) - frequencyBias(a.name));
+    return sorted.slice(0, limit);
+  }
   const fuse = new Fuse(visible, {
-    includeScore: false,
+    includeScore: true,
     threshold: 0.3,
     ignoreLocation: true,
     keys: [
@@ -662,8 +668,19 @@ export function searchSlashCommands(
       { name: "help", weight: 0.5 },
     ],
   });
-  const results = fuse.search(trimmed).slice(0, limit);
-  return results.map((r) => r.item);
+  // Blend Fuse fuzzy score (0 = best, 1 = worst) with persisted usage
+  // frequency. A small log() bias is enough to lift a recently-used
+  // command over a cosmetically-better fuzzy match — the same Codex
+  // pattern. The cap keeps an idle command (count 0) from being
+  // dominated by a heavily-used unrelated one.
+  const FREQUENCY_WEIGHT = 0.05;
+  const scored = fuse.search(trimmed).map((r) => {
+    const fuzzy = r.score ?? 0.5;
+    const bias = frequencyBias(r.item.name) * FREQUENCY_WEIGHT;
+    return { item: r.item, effective: fuzzy - bias };
+  });
+  scored.sort((a, b) => a.effective - b.effective);
+  return scored.slice(0, limit).map((r) => r.item);
 }
 
 /**

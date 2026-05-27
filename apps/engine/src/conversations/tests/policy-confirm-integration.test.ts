@@ -65,7 +65,7 @@ describe("policy confirm_before_execution wiring", () => {
       setDraft: async () => {},
     };
 
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       toolCtx,
       signals,
       events,
@@ -156,7 +156,7 @@ describe("policy confirm_before_execution wiring", () => {
       setDraft: async () => {},
     };
 
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       toolCtx,
       signals,
       events,
