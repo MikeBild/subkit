@@ -15,8 +15,17 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const PREFS_DIR = join(homedir(), ".sk");
-const PREFS_PATH = join(PREFS_DIR, "prefs.json");
+// PREFS_DIR / PREFS_PATH are resolved lazily so test setup can override
+// HOME before the first call. A pinned const at module load would freeze
+// the path to whichever HOME was set when the module first imported —
+// which is fragile under parallel `bun test` because the dev's real
+// ~/.sk/prefs.json would get written across the entire suite.
+function prefsDir(): string {
+  return join(homedir(), ".sk");
+}
+function prefsPath(): string {
+  return join(prefsDir(), "prefs.json");
+}
 const SCHEMA_VERSION = 1;
 
 interface PrefsShape {
@@ -24,12 +33,10 @@ interface PrefsShape {
   counts: Record<string, number>;
 }
 
-let cached: PrefsShape | null = null;
-
 function readPrefs(): PrefsShape {
-  if (cached) return cached;
+  const path = prefsPath();
   try {
-    const raw = readFileSync(PREFS_PATH, "utf8");
+    const raw = readFileSync(path, "utf8");
     const parsed = JSON.parse(raw);
     if (
       parsed &&
@@ -38,23 +45,21 @@ function readPrefs(): PrefsShape {
       parsed.counts &&
       typeof parsed.counts === "object"
     ) {
-      cached = { version: parsed.version, counts: parsed.counts as Record<string, number> };
-      return cached;
+      return { version: parsed.version, counts: parsed.counts as Record<string, number> };
     }
   } catch {
     // Missing or unreadable — fall through to empty defaults.
   }
-  cached = { version: SCHEMA_VERSION, counts: {} };
-  return cached;
+  return { version: SCHEMA_VERSION, counts: {} };
 }
 
 function writePrefs(prefs: PrefsShape): void {
+  const path = prefsPath();
   try {
-    mkdirSync(PREFS_DIR, { recursive: true });
-    const tmp = `${PREFS_PATH}.tmp-${process.pid}`;
+    mkdirSync(prefsDir(), { recursive: true });
+    const tmp = `${path}.tmp-${process.pid}`;
     writeFileSync(tmp, JSON.stringify(prefs));
-    renameSync(tmp, PREFS_PATH);
-    cached = prefs;
+    renameSync(tmp, path);
   } catch {
     // Best-effort: prefs are a usability optimisation, never a hard
     // dependency. A failed write means the next picker still works
@@ -67,8 +72,13 @@ export function getUsageCount(commandName: string): number {
   return readPrefs().counts[commandName] ?? 0;
 }
 
-/** Increment a single command's usage count. Safe to call on every dispatch. */
+/** Increment a single command's usage count. Safe to call on every dispatch.
+ *  No-op under `bun test` (NODE_ENV=test): parallel tests sharing the same
+ *  HOME would otherwise race on the on-disk prefs file. The
+ *  `usage-stats.test.ts` unit suite exercises the production read/write path
+ *  directly via per-test tempdirs. */
 export function recordUsage(commandName: string): void {
+  if (process.env.NODE_ENV === "test") return;
   const prefs = readPrefs();
   const next = { ...prefs.counts, [commandName]: (prefs.counts[commandName] ?? 0) + 1 };
   writePrefs({ version: SCHEMA_VERSION, counts: next });

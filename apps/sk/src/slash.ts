@@ -669,14 +669,18 @@ export function searchSlashCommands(
     ],
   });
   // Blend Fuse fuzzy score (0 = best, 1 = worst) with persisted usage
-  // frequency. A small log() bias is enough to lift a recently-used
-  // command over a cosmetically-better fuzzy match — the same Codex
-  // pattern. The cap keeps an idle command (count 0) from being
-  // dominated by a heavily-used unrelated one.
-  const FREQUENCY_WEIGHT = 0.05;
+  // frequency. The weight is small enough to only break near-ties — a
+  // command with a clearly-better fuzzy match must never be bumped by
+  // a heavily-used unrelated one. Exact matches (score ≤ 0.001) get
+  // no bias applied: when the user typed precisely this name, surprising
+  // them with a different selection is worse than a missed bias lift.
+  const FREQUENCY_WEIGHT = 0.005;
   const scored = fuse.search(trimmed).map((r) => {
     const fuzzy = r.score ?? 0.5;
-    const bias = frequencyBias(r.item.name) * FREQUENCY_WEIGHT;
+    // Threshold 0.01 covers near-exact Fuse matches like `approvals`
+    // when the user typed `approve` (score ≈ 0.002): bias would
+    // otherwise lift the wrong-but-close name over the exact one.
+    const bias = fuzzy <= 0.01 ? 0 : frequencyBias(r.item.name) * FREQUENCY_WEIGHT;
     return { item: r.item, effective: fuzzy - bias };
   });
   scored.sort((a, b) => a.effective - b.effective);

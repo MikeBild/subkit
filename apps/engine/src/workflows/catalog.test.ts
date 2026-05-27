@@ -7,7 +7,10 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import { tenants } from "../db/schema/identity.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { createSeededRandom, FROZEN_NOW } from "../test-helpers/determinism/index.ts";
 import { listWorkflowToolsForTenant } from "./catalog.ts";
+
+const seedRand = createSeededRandom(0xc47a106);
 
 let tdb: TestDb;
 let tenantId: string;
@@ -64,7 +67,7 @@ async function seedWorkflow(
   opts: SeedOpts = {},
 ): Promise<{ id: string; version_id: string | null }> {
   const tid = opts.tenant_id ?? tenantId;
-  const slug = opts.slug ?? `wf-${Math.random().toString(36).slice(2, 8)}`;
+  const slug = opts.slug ?? `wf-${seedRand.int(0, 0xffffff).toString(36).padStart(6, "0")}`;
   const name = opts.name ?? "Test Workflow";
   const hasVersion = opts.has_version !== false;
 
@@ -76,7 +79,7 @@ async function seedWorkflow(
       name,
       lifecycle: "active",
       is_tool: opts.is_tool ?? true,
-      ...(opts.deleted ? { deleted_at: new Date() } : {}),
+      ...(opts.deleted ? { deleted_at: new Date(FROZEN_NOW) } : {}),
       ...(opts.last_executed_at !== undefined ? { last_executed_at: opts.last_executed_at } : {}),
     })
     .returning();

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { tenants } from "../db/schema/identity.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { FROZEN_NOW } from "../test-helpers/determinism/index.ts";
 import { looksLikeUuid, resolveWorkflowByIdOrSlug } from "./lookup.ts";
 
 let tdb: TestDb;
@@ -59,7 +60,7 @@ async function seedWorkflow(
       name,
       lifecycle: "active",
       is_tool: opts.is_tool ?? true,
-      ...(opts.deleted ? { deleted_at: new Date() } : {}),
+      ...(opts.deleted ? { deleted_at: new Date(FROZEN_NOW) } : {}),
     })
     .returning();
   if (!wf) throw new Error("seed workflow failed");

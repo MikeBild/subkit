@@ -36,13 +36,7 @@ export async function resolveWorkflowByIdOrSlug(
   tenant_id: string,
   ref: string,
 ): Promise<WorkflowLookupResult | null> {
-  const where = looksLikeUuid(ref)
-    ? and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, ref), isNull(workflows.deleted_at))
-    : and(
-        eq(workflows.tenant_id, tenant_id),
-        eq(workflows.slug, ref),
-        isNull(workflows.deleted_at),
-      );
+  const isUuid = looksLikeUuid(ref);
   const rows = await db
     .select({
       id: workflows.id,
@@ -52,7 +46,13 @@ export async function resolveWorkflowByIdOrSlug(
       is_tool: workflows.is_tool,
     })
     .from(workflows)
-    .where(where)
+    .where(
+      and(
+        eq(workflows.tenant_id, tenant_id),
+        isUuid ? eq(workflows.id, ref) : eq(workflows.slug, ref),
+        isNull(workflows.deleted_at),
+      ),
+    )
     .limit(1);
   return rows[0] ?? null;
 }

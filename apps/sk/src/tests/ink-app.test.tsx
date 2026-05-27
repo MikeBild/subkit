@@ -11,7 +11,7 @@
 // runtime. Async iterables for the SSE stream are synthesized
 // per test via a tiny `framesOf(...)` helper.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +19,23 @@ import type { PendingElicitation, TurnEvent } from "@cli-core/index.ts";
 import { cleanup, render } from "ink-testing-library";
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import type { PersonaProbe } from "../slash.ts";
+
+// Isolate HOME so slash dispatch's recordUsage(name) writes go to a
+// per-test-file tempdir, not the dev's real ~/.sk/prefs.json. Without
+// this, the journey tests inherit frequency-bias counts from prior runs
+// and autocomplete picks a stale command on Enter.
+let __homeTempDir: string | undefined;
+let __originalHome: string | undefined;
+beforeAll(() => {
+  __homeTempDir = mkdtempSync(join(tmpdir(), "sk-ink-app-home-"));
+  __originalHome = process.env.HOME;
+  process.env.HOME = __homeTempDir;
+});
+afterAll(() => {
+  if (__originalHome !== undefined) process.env.HOME = __originalHome;
+  else delete process.env.HOME;
+  if (__homeTempDir) rmSync(__homeTempDir, { recursive: true, force: true });
+});
 
 // ---------- Helpers ----------
 
@@ -129,6 +146,18 @@ afterEach(() => {
       } catch {
         // ignore
       }
+    }
+  }
+  // Reset the per-file usage-stats prefs file. Without this, every
+  // slash dispatched in this file accumulates a frequency bias that
+  // the next test's autocomplete sees — leading e.g. `/cost` to be
+  // outranked by an earlier-dispatched `/context`.
+  if (__homeTempDir) {
+    const skDir = join(__homeTempDir, ".sk");
+    try {
+      rmSync(skDir, { recursive: true, force: true });
+    } catch {
+      // ignore
     }
   }
 });

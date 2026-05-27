@@ -152,7 +152,7 @@ describe("run_workflow tool", () => {
         },
       }),
       {
-        workflow_id,
+        workflow: workflow_id,
         environment: "dev",
         input: '{"date":"tomorrow +1"}',
       },
@@ -319,7 +319,7 @@ describe("run_workflow tool", () => {
         draft: conversation.draft as DraftDocument,
         setDraft: async () => {},
       }),
-      { workflow_id, environment: "dev" /* no input */ },
+      { workflow: workflow_id, environment: "dev" /* no input */ },
     );
     expect(result.ok).toBe(false);
     const data = result.data as {

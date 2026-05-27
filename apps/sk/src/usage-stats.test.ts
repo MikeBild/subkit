@@ -20,15 +20,27 @@ import { join } from "node:path";
 
 let tempDir: string;
 let originalHome: string | undefined;
+let originalNodeEnv: string | undefined;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "sk-usage-stats-"));
   originalHome = process.env.HOME;
   // Override HOME so the module resolves ~/.sk/prefs.json to our tempdir
   process.env.HOME = tempDir;
+  // recordUsage is a no-op under NODE_ENV=test (parallel tests would
+  // otherwise race on the shared on-disk prefs file). This file is the
+  // ONE place that exercises the production write path, so flip the
+  // env for the duration of this test file only.
+  originalNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
 });
 
 afterEach(() => {
+  if (originalNodeEnv !== undefined) {
+    process.env.NODE_ENV = originalNodeEnv;
+  } else {
+    delete process.env.NODE_ENV;
+  }
   if (originalHome !== undefined) {
     process.env.HOME = originalHome;
   } else {
@@ -40,15 +52,10 @@ afterEach(() => {
 
 // We must reimport the module after changing HOME so the module-level
 // PREFS_DIR computation re-evaluates. Use dynamic import with cache busting.
+let freshModuleSeq = 0;
 async function freshModule() {
-  // Bust the bun module cache by using a timestamp query param trick
-  const ts = Date.now();
-  // In bun, dynamic import resolves from disk each time for different specifiers.
-  // We use the stable path but force a reload by invalidating the cache.
-  // Since we can't truly reset bun's module cache in tests, we instead
-  // import the implementation functions directly and test them against
-  // file paths we control.
-  const mod = await import(`./usage-stats.ts?t=${ts}`);
+  freshModuleSeq += 1;
+  const mod = await import(`./usage-stats.ts?seq=${freshModuleSeq}`);
   return mod;
 }
 

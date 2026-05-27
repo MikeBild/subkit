@@ -100,12 +100,12 @@ describe("buildPendingOutputForTool", () => {
 
   test("run_workflow preview carries env + input_keys (not values)", () => {
     const preview = buildPendingOutputForTool("run_workflow", {
-      workflow_id: "wf-1",
+      workflow: "wf-1",
       environment: "prod",
       input: { token: "secret", limit: 5 },
     });
     expect(preview).toEqual({
-      workflow_id: "wf-1",
+      workflow: "wf-1",
       version_id: null,
       environment: "prod",
       input_keys: ["token", "limit"],
@@ -114,12 +114,12 @@ describe("buildPendingOutputForTool", () => {
 
   test("run_workflow preview derives input_keys from a stringified object payload", () => {
     const preview = buildPendingOutputForTool("run_workflow", {
-      workflow_id: "wf-1",
+      workflow: "wf-1",
       environment: "dev",
       input: '{"date":"tomorrow +1","city":"Berlin"}',
     });
     expect(preview).toEqual({
-      workflow_id: "wf-1",
+      workflow: "wf-1",
       version_id: null,
       environment: "dev",
       input_keys: ["date", "city"],
