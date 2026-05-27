@@ -13,6 +13,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
+import { createWorkflow } from "../../workflows/service.ts";
 import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 
@@ -42,6 +43,34 @@ beforeAll(async () => {
     },
     ctx.testDb.db,
   );
+
+  // Seed an active workflow so a regression that pre-embeds prior
+  // workflows in the converse flow would surface as a non-empty
+  // `### Prior workflows` section in the system prompt.
+  const seedWf = await createWorkflow(
+    {
+      tenant_id: ctx.tenant_id,
+      def: {
+        name: "Pagination probe",
+        slug: "wf-pagination-probe",
+        description: "Walks a paginated endpoint to verify cursor handling.",
+        steps: [
+          {
+            id: "list",
+            kind: "request",
+            method: "GET",
+            url: "https://jsonplaceholder.typicode.com/users",
+            connector_id: ctx.connector_id,
+          },
+        ],
+      },
+      actor_id: null,
+    },
+    ctx.testDb.db,
+  );
+  if ("errors" in seedWf) {
+    throw new Error(`seed workflow failed: ${seedWf.errors.join("; ")}`);
+  }
 }, 60_000);
 
 afterAll(async () => {
@@ -130,5 +159,45 @@ describe.skipIf(skip)("converse pipeline — non-regression contract", () => {
       ctx.testDb.db,
     );
     expect(prompt.system).not.toContain("TENANT SNAPSHOT");
+  });
+
+  test("converse flow does NOT pre-embed prior-workflow reference cases", async () => {
+    // Same load-bearing guard as the knowledge / docs cases above:
+    // the converse flow lets the model discover prior workflows via the
+    // always-on tenant snapshot + the `find_workflow` tool, not via
+    // pre-embedded reference cases. Removing the `preEmbedCorpus` gate
+    // would re-introduce a 1M-token-class regression in chat turns.
+    const prompt = await assembleEnhancedPrompt(
+      {
+        tenant_id: ctx.tenant_id,
+        flow: "converse",
+        user_turns: [{ role: "user", content: "walk pagination users" }],
+        max_tokens: 180_000,
+        model: "claude-sonnet-4-6",
+      },
+      ctx.testDb.db,
+    );
+    expect(prompt.system).not.toContain("### Prior workflows");
+    expect(prompt.included_prior_workflow_slugs).toEqual([]);
+    expect(prompt.token_counts.prior_workflows).toBe(0);
+  });
+
+  test("non-converse flows DO pre-embed prior-workflow reference cases when matches exist", async () => {
+    // Inverted regression check: when the same intent runs through a
+    // structured authoring flow, the section appears — proving the
+    // guard is what suppressed it above (not e.g. a missing seed).
+    const prompt = await assembleEnhancedPrompt(
+      {
+        tenant_id: ctx.tenant_id,
+        flow: "generate",
+        connector_id: ctx.connector_id,
+        user_turns: [{ role: "user", content: "walk pagination users" }],
+        max_tokens: 180_000,
+        model: "claude-sonnet-4-6",
+      },
+      ctx.testDb.db,
+    );
+    expect(prompt.system).toContain("### Prior workflows [reference, not template]");
+    expect(prompt.included_prior_workflow_slugs).toContain("wf-pagination-probe");
   });
 });

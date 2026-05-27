@@ -1832,6 +1832,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         messages: prompt.token_counts.messages,
         recipe_bodies: prompt.token_counts.recipe_bodies,
         skill_candidates: prompt.token_counts.skill_candidates,
+        prior_workflows: prompt.token_counts.prior_workflows,
         total: prompt.token_counts.total,
       }
     : undefined;

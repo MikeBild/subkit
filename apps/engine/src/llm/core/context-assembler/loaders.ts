@@ -11,6 +11,7 @@ import { logger } from "../../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
 import { listProposedForAuthoring } from "../../../skill-candidates/service.ts";
 import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
+import { findSimilarActive, type PriorWorkflowRef } from "../../../workflows/prior-workflows.ts";
 import { countTokens } from "../../accounting/index.ts";
 import type {
   AuthoringPromptHint,
@@ -20,6 +21,7 @@ import type {
 } from "../../types.ts";
 import {
   formatSkillCandidates,
+  PRIOR_WORKFLOWS_TOP_K,
   RECIPE_BODIES_SECTION_CAP,
   RECIPE_BODIES_TOP_K,
   RECIPE_BODY_HYBRID_SOFT_CAP,
@@ -680,4 +682,71 @@ export function trimCandidatesToBudget(candidates: SkillCandidateView[]): {
     trimmed += 1;
   }
   return { survivors: [], section: null, trimmed, oversized_item_id: null };
+}
+
+// ---------------------------------------------------------------------------
+// Prior workflows — 5th authoring context source (#203)
+// ---------------------------------------------------------------------------
+
+/** Build the ranking query string for `loadPriorWorkflows` from the
+ *  authoring hint + the tail of the user turns. Mirrors
+ *  `buildRecipeRankingQuery` so similar workflows are scored against
+ *  the same operator intent signal as similar recipes. */
+function buildPriorWorkflowRankingQuery(
+  hint: AuthoringPromptHint | undefined,
+  turns: UserTurn[],
+): string {
+  const parts: string[] = [];
+  if (hint?.next_required_action) parts.push(hint.next_required_action);
+  if (hint?.active_target?.kind) parts.push(hint.active_target.kind);
+  for (const turn of turns.slice(-3)) parts.push(turn.content);
+  return parts.join(" ").slice(0, 512);
+}
+
+/**
+ * Load up to `PRIOR_WORKFLOWS_TOP_K` similar active workflows for the
+ * authoring prompt. Best-effort: any DB failure returns `[]` so the
+ * assembler keeps working without the section — same pattern as
+ * `loadKnowledgeChunks` / `loadProposedCandidates`.
+ *
+ * Wires the structured authoring hint + the tail of the user turns
+ * into the keyword vector, then delegates ranking to
+ * `findSimilarActive` (workflows/service.ts). The workflow currently
+ * being edited (when `p.workflow_id` is set) is excluded so a workflow
+ * never appears as its own reference.
+ */
+export async function loadPriorWorkflows(
+  p: {
+    tenant_id: string;
+    workflow_id?: string;
+    connector_id?: string;
+    authoring_hint?: AuthoringPromptHint;
+    user_turns: UserTurn[];
+  },
+  exec: Executor,
+): Promise<PriorWorkflowRef[]> {
+  try {
+    const query = buildPriorWorkflowRankingQuery(p.authoring_hint, p.user_turns);
+    return await findSimilarActive(
+      p.tenant_id,
+      {
+        query,
+        connector_ids: p.connector_id ? [p.connector_id] : [],
+        ...(p.workflow_id ? { exclude_workflow_id: p.workflow_id } : {}),
+      },
+      PRIOR_WORKFLOWS_TOP_K,
+      exec,
+    );
+  } catch (err) {
+    logger.debug({
+      module: "llm",
+      action: "llm.context.prior_workflows_skipped",
+      msg: "prior-workflows load failed during context assembly",
+      tenant_id: p.tenant_id,
+      ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
+      ...(p.connector_id ? { connector_id: p.connector_id } : {}),
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
 }

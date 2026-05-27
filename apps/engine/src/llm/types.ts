@@ -197,6 +197,13 @@ export interface EnhancedPrompt {
      * surfaced for authoring). Bounded by the same intra-section trim.
      */
     skill_candidates: number;
+    /**
+     * Tokens spent on the Prior-Workflows section (top-K active workflow
+     * reference cases for the in-flight authoring intent). Bounded by
+     * `PRIOR_WORKFLOWS_SECTION_CAP`. Always 0 in the converse flow,
+     * which fetches workflows on demand via the tenant snapshot + tools.
+     */
+    prior_workflows: number;
   };
   included_skill_ids: string[];
   included_chunk_ids: string[];
