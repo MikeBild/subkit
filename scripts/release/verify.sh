@@ -83,13 +83,47 @@ else
   ok "remote-health smoke green"
 
   # 4. Diagnostics endpoints.
+  #
+  # `/v1/diagnostics/llm` makes a real provider ping on every call, so
+  # it is the slowest endpoint on the engine's first warm seconds —
+  # 6.2.11–6.2.14 deploys all hit `curl: (28) Operation timed out
+  # after 10000ms` on this call even though every other check passed
+  # 5/5 smoke + 8/8 remote-health, forcing a manual `git push` for
+  # the version bump and tag. Two layers of defence:
+  #   (1) DIAG_MAX_TIME bumped to 30s — Anthropic's p99 cold-call is
+  #       ~12-15s; 10s leaves no slack. 30s remains comfortably under
+  #       the 90s HEALTH_TIMEOUT_SECS so the deploy still aborts on a
+  #       genuinely stuck engine.
+  #   (2) Warmup poll on /v1/diagnostics/llm (up to DIAG_WARMUP_SECS)
+  #       before the three asserted curls. Returns the moment a 200
+  #       lands; only fails if the endpoint can't respond at all in
+  #       the budget. Once the engine is warm, the three follow-up
+  #       calls always finish well under their per-call timeout.
   msg "checking authenticated diagnostics endpoints"
-  LLM_BODY=$(curl -fsS --max-time 10 -H "Authorization: Bearer $VERIFY_API_KEY" \
-    "$DEPLOY_URL/v1/diagnostics/llm")
-  SETUP_BODY=$(curl -fsS --max-time 10 -H "Authorization: Bearer $VERIFY_API_KEY" \
-    "$DEPLOY_URL/v1/diagnostics/setup")
-  ERR_BODY=$(curl -fsS --max-time 10 -H "Authorization: Bearer $VERIFY_API_KEY" \
-    "$DEPLOY_URL/v1/diagnostics/errors?limit=20")
+  DIAG_MAX_TIME="${DIAG_MAX_TIME:-30}"
+  DIAG_WARMUP_SECS="${DIAG_WARMUP_SECS:-60}"
+  warmup_deadline=$(( $(date +%s) + DIAG_WARMUP_SECS ))
+  while :; do
+    if curl -fsS --max-time "$DIAG_MAX_TIME" -o /dev/null \
+        -H "Authorization: Bearer $VERIFY_API_KEY" \
+        "$DEPLOY_URL/v1/diagnostics/llm" 2>/dev/null; then
+      break
+    fi
+    if [ "$(date +%s)" -ge "$warmup_deadline" ]; then
+      err "diagnostics/llm did not respond within ${DIAG_WARMUP_SECS}s warmup budget"
+      exit 1
+    fi
+    sleep 3
+  done
+  # The assertion calls below get the same generous --max-time AND a
+  # single retry on transient timeout/network errors — same pattern
+  # the engine's /v1/health poll uses at the top of this script.
+  LLM_BODY=$(curl -fsS --max-time "$DIAG_MAX_TIME" --retry 1 --retry-delay 2 --retry-all-errors \
+    -H "Authorization: Bearer $VERIFY_API_KEY" "$DEPLOY_URL/v1/diagnostics/llm")
+  SETUP_BODY=$(curl -fsS --max-time "$DIAG_MAX_TIME" --retry 1 --retry-delay 2 --retry-all-errors \
+    -H "Authorization: Bearer $VERIFY_API_KEY" "$DEPLOY_URL/v1/diagnostics/setup")
+  ERR_BODY=$(curl -fsS --max-time "$DIAG_MAX_TIME" --retry 1 --retry-delay 2 --retry-all-errors \
+    -H "Authorization: Bearer $VERIFY_API_KEY" "$DEPLOY_URL/v1/diagnostics/errors?limit=20")
   inferred_provider=$(printf '%s' "$LLM_BODY" | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{try{const b=JSON.parse(d); process.stdout.write(String(b.inferred_provider ?? ''))}catch{process.stdout.write('')}})")
   setup_status=$(printf '%s' "$SETUP_BODY" | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{try{const b=JSON.parse(d); process.stdout.write(String(b.overall_status ?? ''))}catch{process.stdout.write('')}})")
   blocker_count=$(printf '%s' "$SETUP_BODY" | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{try{const b=JSON.parse(d); const items=Array.isArray(b.issues)?b.issues:[]; process.stdout.write(String(items.filter(i=>i.severity==='blocker').length))}catch{process.stdout.write('0')}})")
