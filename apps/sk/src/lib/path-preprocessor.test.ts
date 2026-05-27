@@ -105,7 +105,7 @@ describe("autoUploadLocalPaths", () => {
           content_type: "text/markdown",
           size_bytes: 5,
           sha256: "x",
-          created_at: new Date().toISOString(),
+          created_at: "2024-11-14T22:13:20.000Z", // FROZEN_NOW
         };
       },
       async linkFile(file_id: string, link: { resource_id: string }) {
@@ -160,7 +160,7 @@ describe("autoUploadLocalPaths", () => {
           content_type: "text/markdown",
           size_bytes: 3,
           sha256: "x",
-          created_at: new Date().toISOString(),
+          created_at: "2024-11-14T22:13:20.000Z", // FROZEN_NOW
         };
       },
       async linkFile() {
