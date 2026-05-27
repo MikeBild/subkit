@@ -273,4 +273,88 @@ describe("findSimilarActive · stage-1 ranking", () => {
     expect(new Set(ref?.output_keys)).toEqual(new Set(["channel", "message_ts", "amount"]));
     expect(ref?.description).toBe("Notify #ops when a Stripe charge succeeds.");
   });
+
+  test("never surfaces another tenant's workflows (cross-tenant isolation)", async () => {
+    // Load-bearing pin against silent regressions in the read path. If
+    // anyone refactors `listWorkflows`' tenant predicate, this test is
+    // the new ranker's last line of defence — without it the leak would
+    // only surface in the prompt-assembly integration test, which is
+    // less obviously about tenant scoping.
+    const tenant_a = await newTenant("iso-a");
+    const tenant_b = await newTenant("iso-b");
+
+    await seed(tenant_a, {
+      name: "A-only Stripe handler",
+      slug: "wf-a-only-stripe",
+      steps: [
+        {
+          id: "fetch",
+          kind: "request",
+          method: "GET",
+          url: "https://api.stripe.com/v1/charges",
+          connector_id: stripeConnectorId,
+        },
+      ],
+    });
+
+    const refs = await findSimilarActive(
+      tenant_b,
+      { query: "stripe charges", connector_ids: [stripeConnectorId] },
+      3,
+      ctx.db,
+    );
+
+    expect(refs).toEqual([]);
+  });
+
+  test("k=0 honours caller intent and returns []", async () => {
+    // S1: `Math.max(0, k)` lets callers disable the section via the
+    // existing `k` knob (e.g. an A/B flag) without unwiring the loader.
+    // The previous `Math.max(1, k)` floor silently returned a single
+    // ref instead.
+    const tenant_id = await newTenant("k-zero");
+    await seed(tenant_id, {
+      name: "Some workflow",
+      slug: "wf-some",
+      steps: [{ id: "s", kind: "transform", language: "jsonata", expression: "$" }],
+    });
+
+    const refs = await findSimilarActive(
+      tenant_id,
+      { query: "anything", connector_ids: [] },
+      0,
+      ctx.db,
+    );
+
+    expect(refs).toEqual([]);
+  });
+
+  test("output_keys returns [] for a JSON-schema-shaped object without `.properties`", async () => {
+    // S5: `deriveOutputKeys` falls back to top-level keys only when the
+    // schema looks like a loose property map. A schema with `type:
+    // "object"` but no `.properties` is JSON-schema-shaped and would
+    // otherwise leak reserved keywords (`type`, `required`,
+    // `additionalProperties`) as if they were workflow output keys.
+    const tenant_id = await newTenant("output-keys-strict");
+    await seed(tenant_id, {
+      name: "Schema-without-properties",
+      slug: "wf-schema-noprops",
+      output_schema: {
+        type: "object",
+        required: ["whatever"],
+        additionalProperties: false,
+      },
+      steps: [{ id: "s", kind: "transform", language: "jsonata", expression: "$" }],
+    });
+
+    const [ref] = await findSimilarActive(
+      tenant_id,
+      { query: "schema test", connector_ids: [] },
+      3,
+      ctx.db,
+    );
+
+    expect(ref).toBeDefined();
+    expect(ref?.output_keys).toEqual([]);
+  });
 });

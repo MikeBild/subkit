@@ -11,11 +11,9 @@
 // 1000-LOC ceiling enforced by `audit-invariants.ts` — the
 // `.size-allowlist.txt` comment explicitly forbids new entries.
 
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { type ListWorkflowsOptions, listWorkflows, type WorkflowView } from "./service.ts";
 import type { WorkflowDef } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Compressed reference-case shape for an active workflow. Travels in
  *  the authoring prompt as "look how the team already solved this" —
@@ -58,6 +56,16 @@ export interface FindSimilarActiveIntent {
 // means the recent authoring history dominates. Stage 2 will swap the
 // keyword path for a pgvector lookup.
 const PRIOR_WORKFLOWS_CANDIDATE_POOL = 50;
+
+// Score weights for `scorePriorWorkflow`. The precedence is locked by
+// these constants AND pinned by the ranker unit tests (connector
+// overlap beats name/description, which beats step overlap, which beats
+// step-count affinity). Tune here when stage-2 swaps the keyword path
+// for embeddings.
+const SCORE_W_CONNECTOR = 4;
+const SCORE_W_NAME = 2;
+const SCORE_W_STEP = 1;
+const SCORE_W_AFFINITY = 0.5;
 
 function normalisePriorWorkflowToken(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -116,11 +124,21 @@ function deriveOutputKeys(def: WorkflowDef): string[] {
   const schema = def.output_schema;
   if (!schema || typeof schema !== "object") return [];
   const properties = (schema as { properties?: unknown }).properties;
-  const target =
-    properties && typeof properties === "object" && !Array.isArray(properties)
-      ? (properties as Record<string, unknown>)
-      : (schema as Record<string, unknown>);
-  return Object.keys(target).slice(0, 10);
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    return Object.keys(properties as Record<string, unknown>).slice(0, 10);
+  }
+  // JSON-schema-shaped object without `.properties` (or a non-object
+  // schema entirely): return `[]` rather than leaking JSON-schema
+  // reserved keywords (`type`, `required`, `additionalProperties`, …)
+  // as if they were workflow output keys. The fallback to top-level
+  // keys is reserved for the loose-property-map shape — where there's
+  // no `type` AND no `properties` discriminator that says "this is
+  // JSON-schema, not a property map".
+  const looksLikeJsonSchema =
+    typeof (schema as { type?: unknown }).type === "string" ||
+    "properties" in (schema as Record<string, unknown>);
+  if (looksLikeJsonSchema) return [];
+  return Object.keys(schema as Record<string, unknown>).slice(0, 10);
 }
 
 function projectPriorWorkflowRef(view: WorkflowView): PriorWorkflowRef {
@@ -173,7 +191,12 @@ function scorePriorWorkflow(
   const targetCount = targetStepCount ?? ref.step_topology.length;
   const stepCountAffinity = 1 / (1 + Math.abs(ref.step_topology.length - targetCount));
 
-  return 4 * connectorOverlap + 2 * nameDescOverlap + 1 * stepOverlap + 0.5 * stepCountAffinity;
+  return (
+    SCORE_W_CONNECTOR * connectorOverlap +
+    SCORE_W_NAME * nameDescOverlap +
+    SCORE_W_STEP * stepOverlap +
+    SCORE_W_AFFINITY * stepCountAffinity
+  );
 }
 
 /**
@@ -224,5 +247,9 @@ export async function findSimilarActive(
     return a.ref.slug.localeCompare(b.ref.slug);
   });
 
-  return scored.slice(0, Math.max(1, k)).map((s) => s.ref);
+  // `Math.max(0, k)` honours `k=0` as "do not surface any refs" — useful
+  // for an A/B flag that disables the section without unwiring it.
+  // Negative `k` clamps to 0 rather than throwing; .slice(0, 0) returns
+  // []. Tested in find-similar-active.test.ts.
+  return scored.slice(0, Math.max(0, k)).map((s) => s.ref);
 }

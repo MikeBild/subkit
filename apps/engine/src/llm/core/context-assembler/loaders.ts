@@ -740,6 +740,11 @@ export async function loadPriorWorkflows(
   } catch (err) {
     logger.debug({
       module: "llm",
+      // Subsystem discriminator: the log emits from the LLM assembly
+      // path but the failure originates in `workflows/prior-workflows.ts`.
+      // Dashboards pivot on `subsystem` to isolate prior-workflow load
+      // failures from other context-assembly noise.
+      subsystem: "prior_workflows",
       action: "llm.context.prior_workflows_skipped",
       msg: "prior-workflows load failed during context assembly",
       tenant_id: p.tenant_id,
