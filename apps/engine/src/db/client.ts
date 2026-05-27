@@ -107,3 +107,15 @@ export async function closeDb(): Promise<void> {
 
 export { schema };
 export type Db = NodePgDatabase<typeof schema>;
+
+/**
+ * Accepts either the root `Db` or a drizzle transaction handle. Callers
+ * that compose with `db.transaction(async (tx) => …)` can take this
+ * type so the helper works equally well at top level and inside a tx.
+ *
+ * Several subsystem modules redeclare this alias locally (see
+ * `workflows/service.ts`, `llm/core/context-assembler/loaders.ts`, …);
+ * those are left in place to keep this PR narrow. New modules should
+ * import the alias from here instead.
+ */
+export type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];

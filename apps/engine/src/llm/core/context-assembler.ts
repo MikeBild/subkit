@@ -46,6 +46,7 @@ import {
   retrieveApplicableSkills,
 } from "../../skills/service.ts";
 import type { Skill } from "../../skills/types.ts";
+import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
 import { LlmContextTooLarge } from "../errors.ts";
 import { renderRuntimeContextBlock } from "../runtime-context.ts";
@@ -73,6 +74,7 @@ import {
   type RecipeBodyView,
   SKILL_CANDIDATES_SECTION_CAP,
   selectOperatorQuirkCategories,
+  trimPriorWorkflowsToBudget,
 } from "./context-assembler/formatters.ts";
 import {
   type Executor,
@@ -82,6 +84,7 @@ import {
   loadInteractionLog,
   loadKnowledgeChunks,
   loadLatestPreview,
+  loadPriorWorkflows,
   loadProposedCandidates,
   loadTopRecipeBodies,
   logRecipeBodyFallbacks,
@@ -222,6 +225,9 @@ export interface BudgetReport {
     recipe_bodies: number;
     /** Count of proposed Skill Candidates rendered into the prompt. */
     candidates: number;
+    /** Count of Prior Workflow reference cases rendered into the
+     *  prompt. Always 0 in the converse flow. */
+    prior_workflows: number;
   };
   /** Sections dropped by the trimmer, in order. Empty = fit comfortably. */
   dropped_sections: string[];
@@ -252,6 +258,10 @@ export async function assembleEnhancedPrompt(
     included_recipe_slugs: string[];
     /** Candidate ids likewise. Empty when the section was dropped. */
     included_candidate_ids: string[];
+    /** Prior-workflow slugs whose ref survived BOTH the intra-section
+     *  trim AND the global trimmer. Empty in converse flow (section is
+     *  not loaded) or when the section was dropped to fit the cap. */
+    included_prior_workflow_slugs: string[];
   }
 > {
   const db = exec ?? getDb();
@@ -438,6 +448,34 @@ export async function assembleEnhancedPrompt(
     );
   }
 
+  // Prior workflows — 5th authoring context source (#203). Compressed
+  // reference cases from this tenant's most similar active workflows,
+  // surfaced so the LLM grounds new drafts in patterns the team has
+  // already used. Gated by `preEmbedCorpus`: the converse flow
+  // deliberately omits this section (workflows are discoverable via
+  // the always-on tenant snapshot + the `find_workflow` tool); only
+  // the structured authoring flows (`generate`, `repair`, `extract`,
+  // `discover`, `summarize`) pre-embed.
+  let priorWorkflowsBlock: string | null = null;
+  let priorWorkflowsSurvivors: PriorWorkflowRef[] = [];
+  if (preEmbedCorpus) {
+    const refs = await loadPriorWorkflows(
+      {
+        tenant_id: p.tenant_id,
+        ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
+        ...(p.connector_id ? { connector_id: p.connector_id } : {}),
+        ...(p.authoring_hint ? { authoring_hint: p.authoring_hint } : {}),
+        user_turns: p.user_turns,
+      },
+      db,
+    );
+    if (refs.length > 0) {
+      const trimmed = trimPriorWorkflowsToBudget(refs);
+      priorWorkflowsBlock = trimmed.section;
+      priorWorkflowsSurvivors = trimmed.survivors;
+    }
+  }
+
   // Skill candidates — proposed (status=proposed) candidates the LLM
   // should see this turn so detected patterns reach the prompt without
   // waiting for operator promotion. Sibling block to the connector
@@ -540,6 +578,12 @@ export async function assembleEnhancedPrompt(
     // trimmer needs room (the slim roster keeps the LLM able to call
     // inspect_recipe for anything that fell off).
     if (connectorRecipeBodiesBlock) sections.push(connectorRecipeBodiesBlock);
+    // Prior workflows — reference cases from this tenant's own active
+    // workflows, surfaced next to connector recipes so the LLM reads
+    // "templates to clone" → "patterns this team already uses"
+    // together. Marked `[reference, not template]` per its own header
+    // so the model never confuses the two surfaces.
+    if (priorWorkflowsBlock) sections.push(priorWorkflowsBlock);
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
     // Loaded skills carry the full body — the LLM explicitly opted
@@ -669,6 +713,16 @@ export async function assembleEnhancedPrompt(
       // operator hasn't yet promoted — recoverable on the next turn.
       skillCandidatesBlock = null;
       trimmed.push("skill_candidates");
+    } else if (priorWorkflowsBlock) {
+      // Prior workflows drop between skill_candidates and
+      // connector_recipe_bodies: a reference case is informational
+      // (the LLM can still call `find_workflow` / `get_workflow` to
+      // re-discover it), whereas connector recipes are first-turn-
+      // clone payloads with a much higher per-turn payoff. When the
+      // budget gets tight, drop the references first.
+      priorWorkflowsBlock = null;
+      priorWorkflowsSurvivors = [];
+      trimmed.push("prior_workflows");
     } else if (connectorRecipeBodiesBlock) {
       // Rich recipe bodies drop BEFORE the slim recipe roster: the
       // index is the navigational signal (the LLM can still call
@@ -735,6 +789,7 @@ export async function assembleEnhancedPrompt(
     connectorRecipeBodiesBlock !== null ? countTokens(connectorRecipeBodiesBlock) : 0;
   const skillCandidatesTokens =
     skillCandidatesBlock !== null ? countTokens(skillCandidatesBlock) : 0;
+  const priorWorkflowsTokens = priorWorkflowsBlock !== null ? countTokens(priorWorkflowsBlock) : 0;
   // Survivor lists: only items in blocks the global trimmer kept count.
   // When the section was dropped above, the ids zero out — so the
   // observability hashes report exactly what the LLM actually saw.
@@ -743,6 +798,8 @@ export async function assembleEnhancedPrompt(
       ? connectorRecipeBodiesSurvivors.map((r) => r.recipe_slug)
       : [];
   const includedCandidateIds = skillCandidatesBlock !== null ? skillCandidateSurvivorIds : [];
+  const includedPriorWorkflowSlugs =
+    priorWorkflowsBlock !== null ? priorWorkflowsSurvivors.map((r) => r.slug) : [];
   return {
     system,
     messages: p.user_turns,
@@ -759,6 +816,7 @@ export async function assembleEnhancedPrompt(
       total,
       recipe_bodies: recipeBodiesTokens,
       skill_candidates: skillCandidatesTokens,
+      prior_workflows: priorWorkflowsTokens,
     },
     included_skill_ids: includedSkills.map((s) => s.id),
     included_chunk_ids: chunks.map((c) => c.id),
@@ -769,6 +827,7 @@ export async function assembleEnhancedPrompt(
     dropped_sections: trimmed,
     included_recipe_slugs: includedRecipeSlugs,
     included_candidate_ids: includedCandidateIds,
+    included_prior_workflow_slugs: includedPriorWorkflowSlugs,
   };
 }
 
@@ -792,6 +851,7 @@ export async function assembleContext(
     dropped_sections,
     included_recipe_slugs,
     included_candidate_ids,
+    included_prior_workflow_slugs,
     ...promptWithoutDropped
   } = prompt;
 
@@ -810,6 +870,7 @@ export async function assembleContext(
       // global trimmer — what the LLM actually saw on this turn.
       recipe_bodies: included_recipe_slugs.length,
       candidates: included_candidate_ids.length,
+      prior_workflows: included_prior_workflow_slugs.length,
     },
     dropped_sections,
   };
@@ -848,6 +909,10 @@ export async function assembleContext(
     // problem and the slugs should switch to hashed via `idHashes` like
     // the other id arrays.
     included_recipe_slugs: included_recipe_slugs.slice(0, 12),
+    // Prior-workflow slugs are tenant-internal and bounded — at most
+    // `PRIOR_WORKFLOWS_TOP_K` per turn. Emitted raw (capped at 12 for
+    // log-line bounds, same headroom as recipes).
+    included_prior_workflow_slugs: included_prior_workflow_slugs.slice(0, 12),
     dropped_sections: budget_report.dropped_sections,
   });
 

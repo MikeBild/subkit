@@ -7,6 +7,7 @@
 import type { OperatorQuirkCategory, OperatorQuirks } from "../../../connectors/types.ts";
 import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
 import type { Skill } from "../../../skills/types.ts";
+import type { PriorWorkflowRef } from "../../../workflows/prior-workflows.ts";
 import { countTokens } from "../../accounting/index.ts";
 import type {
   AssembleContextParams,
@@ -485,6 +486,91 @@ export function formatSkillCandidates(candidates: SkillCandidateView[]): string 
 
 // (Constants exported above so loaders + assembler + tests can read
 //  the same cap values without hard-coding magic numbers.)
+
+// ---------------------------------------------------------------------------
+// Prior workflows — 5th authoring context source (#203)
+// ---------------------------------------------------------------------------
+
+/**
+ * Token cap for the rendered Prior-Workflows section. Mirrors the
+ * `RECIPE_BODIES_SECTION_CAP` discipline — tuning is a source change,
+ * not a runtime knob. 1500 tokens fits ~3 refs × ~400 tokens with the
+ * section heading.
+ */
+export const PRIOR_WORKFLOWS_SECTION_CAP = 1500;
+
+/** Hard cap on the number of prior-workflow refs the assembler ever
+ *  surfaces for a single authoring turn. Pairs with the section cap. */
+export const PRIOR_WORKFLOWS_TOP_K = 3;
+
+function renderStepTopology(step_topology: PriorWorkflowRef["step_topology"]): string {
+  if (step_topology.length === 0) return "(no steps)";
+  return step_topology
+    .map((s, i) => {
+      const action = s.action ? ` ${s.action}` : "";
+      return `${i + 1}. ${s.kind}${action}`;
+    })
+    .join(" · ");
+}
+
+/** Render a single PriorWorkflowRef as a markdown fragment. The
+ *  `[reference, not template]` marker is repeated in the per-ref
+ *  preamble so trimming can't strip it from the section header. */
+function renderPriorWorkflowRef(ref: PriorWorkflowRef): string {
+  const parts: string[] = [`#### \`${ref.slug}\` — ${ref.name} [reference, not template]`];
+  if (ref.description) parts.push(ref.description);
+  parts.push(`- trigger: ${ref.trigger_summary}`);
+  parts.push(`- steps: ${renderStepTopology(ref.step_topology)}`);
+  if (ref.output_keys.length > 0) {
+    parts.push(`- outputs: ${ref.output_keys.join(", ")}`);
+  }
+  return parts.join("\n");
+}
+
+/** Format the Prior-Workflows section. Returns null on empty input so
+ *  the assembler can omit a dead header (mirrors `formatConnectorRecipes`). */
+export function formatPriorWorkflows(refs: PriorWorkflowRef[]): string | null {
+  if (refs.length === 0) return null;
+  return [
+    "### Prior workflows [reference, not template]",
+    "Compressed shapes of this tenant's most similar active workflows. Use to understand existing patterns, naming, and trigger choices — DO NOT clone these as templates. To create a new workflow, call `build_workflow` (or `start_workflow_from_recipe` when a connector recipe applies).",
+    ...refs.map(renderPriorWorkflowRef),
+  ].join("\n\n");
+}
+
+/**
+ * Render-and-count trim: drop the lowest-ranked prior-workflow refs
+ * one at a time until the section fits the cap. Mirrors
+ * `trimRecipeBodiesToBudget`. Returns the surviving list, the rendered
+ * section (or null if everything was dropped), and the trim count.
+ *
+ * When at least one ref was dropped an elision notice is appended so
+ * the model sees there were more candidates.
+ */
+export function trimPriorWorkflowsToBudget(refs: PriorWorkflowRef[]): {
+  survivors: PriorWorkflowRef[];
+  section: string | null;
+  trimmed: number;
+} {
+  if (refs.length === 0) return { survivors: [], section: null, trimmed: 0 };
+  const survivors = [...refs];
+  let trimmed = 0;
+  while (survivors.length > 0) {
+    const sectionBase = formatPriorWorkflows(survivors);
+    if (sectionBase === null) break;
+    const notice =
+      trimmed > 0
+        ? `\n\n_${trimmed} more prior workflow${trimmed === 1 ? "" : "s"} elided — token budget_`
+        : "";
+    const candidate = `${sectionBase}${notice}`;
+    if (countTokens(candidate) <= PRIOR_WORKFLOWS_SECTION_CAP) {
+      return { survivors, section: candidate, trimmed };
+    }
+    survivors.pop();
+    trimmed += 1;
+  }
+  return { survivors: [], section: null, trimmed };
+}
 
 /**
  * Render the interaction log as a markdown section. Mirrors the

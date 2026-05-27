@@ -24,6 +24,7 @@ function callRecordLlmContextAssembled(overrides: {
   included_skill_id_hashes?: string[];
   included_candidate_id_hashes?: string[];
   included_recipe_slugs?: string[];
+  included_prior_workflow_slugs?: string[];
   included?: {
     skills?: number;
     knowledge?: number;
@@ -31,6 +32,7 @@ function callRecordLlmContextAssembled(overrides: {
     failures?: number;
     recipe_bodies?: number;
     candidates?: number;
+    prior_workflows?: number;
   };
 }): void {
   recordLlmContextAssembled({
@@ -49,10 +51,12 @@ function callRecordLlmContextAssembled(overrides: {
       failures: overrides.included?.failures ?? 0,
       recipe_bodies: overrides.included?.recipe_bodies ?? 0,
       candidates: overrides.included?.candidates ?? 0,
+      prior_workflows: overrides.included?.prior_workflows ?? 0,
     },
     included_skill_id_hashes: overrides.included_skill_id_hashes ?? [],
     included_candidate_id_hashes: overrides.included_candidate_id_hashes ?? [],
     included_recipe_slugs: overrides.included_recipe_slugs ?? [],
+    included_prior_workflow_slugs: overrides.included_prior_workflow_slugs ?? [],
     dropped_sections: [],
   });
 }

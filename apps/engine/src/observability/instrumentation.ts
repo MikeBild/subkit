@@ -566,10 +566,12 @@ export function recordLlmContextAssembled(args: {
     failures: number;
     recipe_bodies: number;
     candidates: number;
+    prior_workflows: number;
   };
   included_skill_id_hashes: string[];
   included_candidate_id_hashes: string[];
   included_recipe_slugs: string[];
+  included_prior_workflow_slugs: string[];
   dropped_sections: string[];
 }): void {
   safe(() => {
@@ -610,9 +612,11 @@ export function recordLlmContextAssembled(args: {
       included_failures: args.included.failures,
       included_recipe_bodies: args.included.recipe_bodies,
       included_candidates: args.included.candidates,
+      included_prior_workflows: args.included.prior_workflows,
       included_skill_id_hashes: args.included_skill_id_hashes,
       included_candidate_id_hashes: args.included_candidate_id_hashes,
       included_recipe_slugs: args.included_recipe_slugs,
+      included_prior_workflow_slugs: args.included_prior_workflow_slugs,
       dropped_sections: args.dropped_sections,
     });
   });
