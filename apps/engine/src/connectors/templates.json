@@ -9821,8 +9821,7 @@
           "my open jira",
           "open tickets",
           "open issues",
-          "jira tickets to do",
-          "what jira tickets do i have"
+          "jira tickets to do"
         ],
         "derived_from_skill": "jira-basics",
         "category": "project-management",
