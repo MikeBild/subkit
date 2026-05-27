@@ -10,14 +10,16 @@ sk is an **operational AI execution layer** — the shared system in which an or
 turns individual agentic productivity into organisational agentic operationalisation. The
 problem it addresses is the one named in the thesis:
 
-> *Agentic productivity does not automatically scale organisationally. The bottleneck is
-> not model quality or workflow execution; it is the organisation's ability to make
-> operational AI work repeatable, reviewable, and learnable.*
+> *Models are mature. Agents are mature. Workflow and integration platforms are mature.
+> The bottleneck sits between them — in the mediation of an organisation's specific
+> structure, culture, knowledge, priorities, and ways of working to those mature layers,
+> and in the daily improvement and application of that knowledge.*
 
-Concretely, sk uses contextualised AI in the authoring phase to produce a versioned,
-reviewable workflow artefact, then governs and runs it deterministically in production —
-with a closed feedback loop (drift detection → operator-reviewed Patch and Skill
-Candidates → improved next authoring run). The AI lowers the cost of authoring; the
+Concretely, sk uses **AI grounded on the organisation's own context** as that mediator:
+it produces a versioned, reviewable workflow artefact in the authoring phase, then
+governs and runs it deterministically in production — with a closed feedback loop
+(drift detection → operator-reviewed Patch and Skill Candidates → improved next
+authoring run). The contextual grounding is what lowers the cost of authoring; the
 platform guarantees that what runs in production is exactly what a human approved; the
 learning loop is what makes the operating model improve over time.
 
@@ -102,7 +104,7 @@ The AI layer is not tied to a single model provider. Claude, OpenAI, and Gemini 
 
 sk is designed around three distinct personas, each interacting with the platform differently.
 
-**End Users** are the people describing workflow goals. They may be business analysts, operations staff, or developers who want to automate a process without building infrastructure from scratch. They interact through the conversational REPL (sk CLI) or chat platforms (Slack, Teams, or the MCP adapter). They need the platform to understand their intent, propose something useful, and make approval and execution straightforward.
+**End Users** are the people describing workflow goals. They may be business analysts, operations staff, or developers who want to automate a process without building infrastructure from scratch. They interact through whichever conversational surface they already live in — the sk CLI's conversational REPL (interactive prompt with `/`-slashes for approval, listing, draft inspection, and execution, and `@`-mentions for connectors, skills, workflows, executions, and patch candidates as first-class context), a chat workspace (Slack, Teams, or Google Chat), or an MCP-connected AI client (Claude.ai, ChatGPT custom connectors, Cursor). The authoring loop, the slash commands, and the mention semantics are the *same* across these surfaces — only the render target differs. They need the platform to understand their intent, propose something useful, and make approval and execution straightforward.
 
 **Operators** run the engine for teams and organizations. They configure connectors, manage credentials, set RBAC policies, curate skills, review Patch Candidates, and monitor execution health. They need visibility into what is running, confidence that the governance controls are working, and tools to intervene when something drifts.
 

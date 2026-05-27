@@ -10,7 +10,9 @@
 
 A new layer is emerging in enterprise software because of agentic AI — what we call **organisational agentic operationalisation**. The market term for the same thing, the one that fits a sentence, is the **operational AI execution layer**.
 
-Agentic productivity does not automatically scale organisationally. The bottleneck is not model quality or workflow execution. It is the organisation's ability to make operational AI work repeatable, reviewable, and learnable. A new layer is emerging to address this.
+Models are mature. Agents are mature. Workflow and integration platforms are mature — most of them more capable than strictly required. The bottleneck is *not* in any single component. It sits **between** them: in the mediation of an organisation's specific structure, culture, knowledge, priorities, and ways of working to those mature layers — and in the **daily improvement and application** of that knowledge.
+
+Agentic productivity does not automatically scale organisationally. *Operationalisation* is not the bottleneck itself; it is the **form** in which this mediation bottleneck dissolves — organisation-specific context as a versioned, shared, learnable operational layer. A new layer is emerging to carry this.
 
 > ***The next relevant software layer after SaaS is organisational agentic operationalisation.***
 
@@ -18,6 +20,19 @@ The category is new, hard to copy, and model-/UI-/vendor-independent. Two senten
 
 - *Enterprise AI does not fail at the models; it fails at the absence of controlled execution.*
 - *Once AI touches operational systems, conversation governance is no longer enough.*
+
+### The mediation bottleneck is operationally measurable
+
+The mediation gap is not a feeling; it is observable in industry numbers. Today's defaults around integration and context transfer leave hard quantitative traces:
+
+- **Only 27 % of applications are integrated** across the average organisation — i.e. roughly **three out of four applications remain disconnected**, while organisations operate **around 900–1,000 applications** on average. *Source: [2026 MuleSoft Connectivity Benchmark Report](https://www.mulesoft.com/lp/reports/connectivity-benchmark) (n = 1,050 IT leaders, with Vanson Bourne and Deloitte Digital); the 1,000-app baseline already appears in the [2023 Salesforce report](https://www.salesforce.com/news/stories/connectivity-report-2023/).*
+- **USD 4.7 million per year**, on average, is spent on implementing custom integrations — a 21 % increase from USD 3.7 million the year before. *Source: [MuleSoft Connectivity Benchmark Report](https://www.mulesoft.com/lp/reports/connectivity-benchmark); custom-integration labour cost has been tracked across successive editions of the report and has risen consistently: USD 3.5 M, then USD 3.65 M, then USD 3.7 M, and most recently USD 4.7 M.*
+- **80 % of organisations** report that integration challenges slow or hamper their digital transformation, and the same share names data integration as the principal obstacle to AI adoption. *Source: [2025 MuleSoft Connectivity Benchmark Report](https://blogs.mulesoft.com/news/connectivity-benchmark-report/).*
+- Developer-time devoted to building and maintaining integrations is the hardest of these to pin to a single primary source; industry summaries put the share at roughly **a third to forty percent** of enterprise development time, consistent with [Postman's 2025 State of the API Report](https://www.postman.com/state-of-api/2025/) finding that **69 % of developers spend 10+ hours per week on API-related tasks**.
+
+Agentic AI does not change this mediation problem — it amplifies it. The mediator is no longer code between systems; it is an autonomous model deciding what action to take on the organisation's behalf. The bottleneck moves from *"how do these systems connect?"* to *"how does the agent know what this organisation actually does?"* The numbers above describe the pre-AI baseline of the same gap this document is about.
+
+The numbers are not a critique of any platform category — they are the operational footprint of mediation running today through lone heads and lone scripts, instead of through a shared, learnable operational layer.
 
 ---
 
@@ -29,7 +44,7 @@ Everything else in this document — and in the [system requirements](./system-r
 
 If Idea 1 is true, the immediate question is *what is missing*. Two derivations follow.
 
-**Idea 2 — The Category (follows from Idea 1).** The bottleneck is therefore not intelligence — supplied generically by model vendors — but *operationalisation*: the organisational machinery that turns generic intelligence into repeatable, reviewable, learnable operational work.
+**Idea 2 — The Category (follows from Idea 1).** The bottleneck is therefore not intelligence — supplied generically by model vendors — and not workflow execution either — supplied by mature platforms. It is the **mediation of organisation-specific context** to those mature components: structure, culture, knowledge, priorities, working procedures. *Operationalisation* is the form this mediation takes — the organisational machinery that turns generic intelligence into repeatable, reviewable, learnable operational work, with a learning loop that improves the same operation a little on every run.
 
 **Idea 3 — The Moat (follows from Ideas 1 and 2).** If intelligence is supplied externally and operationalisation is the bottleneck, the only durable advantage an organisation can build for itself is the one that compounds locally over time — *organisational context accumulation*. The moat is not any single feature.
 
@@ -123,9 +138,11 @@ This is the theoretically strongest claim of the document, and the one with the 
 
 > ***Operational knowledge has so far been implicit, situational, bound to people, hard to transfer. Under governed agentic operationalisation it becomes for the first time machine-readable, versioned, reusable, auditable, and accumulative over time — in effect, Git for operational organisational logic.***
 
-The first-order consequence is that the operational workflow becomes a *versioned organisational artefact*. An organisation accumulates not only software (source code) and documentation, but for the first time **operationalised action systems** — the literal procedures by which it acts on production systems, expressed as reviewable, diffable, rollbackable artefacts.
+The claim only bites if the prevailing default is named. The default in practice is that integration is treated as a **task**: built once for a project, then handed over to whichever script lives on whichever server with whichever person knows it. Yet integration code is never a one-off: API versions shift, data shapes drift, security standards tighten, business rules move. Treating integration as a task therefore produces tribal knowledge on lone heads and lone scripts on lone servers. After a while no one remembers *why* the script was written that way, *which* domain problem it solved, *when* it will fail next.
 
-That first-order consequence has six second-order consequences that, taken together, are larger than they look:
+Treating integration as a **process** instead requires a learning loop with organisational memory. That is precisely what a versioned workflow artefact plus drift detection plus operator-reviewed Patch Candidates plus Skill Candidates provides: the daily improvement of operational logic stops being tribal and becomes infrastructural. This closes the chain — mediation bottleneck → operationalisation as the form of the answer → versioned workflow + compounding loop as the substance.
+
+The workflow itself thereby becomes a *versioned organisational artefact*: an organisation accumulates not only software (source code) and documentation, but for the first time **operationalised action systems** — the literal procedures by which it acts on production systems, expressed as reviewable, diffable, rollbackable artefacts. This has six second-order consequences that, taken together, are larger than they look:
 
 - **A new class of organisational assets.** Operational workflows join source code and documentation as first-class assets an organisation owns. They appear on the same *balance sheet* of what the company can carry forward, sell, audit, and inherit. Once a workflow has a version history, an owner, an approval trail, and a known production behaviour, it has the legal and operational properties of an asset.
 - **Learning mechanics shift from individual to systematic.** Today, organisational knowledge mostly leaves with the people who hold it. Under governed operationalisation, the same Drift → Patch Candidate → Skill Candidate loop converts each individual insight into a tenant-wide artefact. The organisation learns from its operations the way it currently learns from its source-code history — continuously and structurally, not by accident.

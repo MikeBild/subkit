@@ -170,3 +170,74 @@ and surface in the generated OpenAPI document.
   without changing the dispatch contract.
 - **In-app notification surface** — there is no dedicated UI inbox;
   the deliveries table is the authoritative log.
+
+## Notification payload pattern — what, why, proposal
+
+Notifications are the first place an operator sees the bounded
+repair loop in action. The conceptual job of a useful incident
+message is to answer four questions in a single delivery, so the
+operator can decide without opening logs:
+
+1. **What** happened — the failure substance (status, surfaced
+   error, timestamp).
+2. **Where** in the operational system it happened — workflow slug
+   and version, step id, the external endpoint that drifted.
+   Important the moment there is more than one workflow, more than
+   one supplier, more than one tenant: "the script broke" is not
+   enough.
+3. **Why** it happened — the drift the connector or driver actually
+   detected, not just the HTTP status, plus the `patch_candidate`
+   reference when the bounded repair loop has already produced one.
+4. **How** to act — the Patch Candidate diff, the deterministic
+   dry-run outcome against recorded fixtures, and the operator
+   actions: **approve**, **reject**, **escalate to human**.
+
+A concrete delivery body for the wholesaler example from
+`docs/positioning.md §6.3` — same shape across every surface:
+
+```json
+{
+  "what": {
+    "occurred_at": "2026-05-27T14:02:11Z",
+    "status": "failed",
+    "error": "http_422 — unknown field 'sku_external'"
+  },
+  "where": {
+    "workflow_slug": "sync-suppliers",
+    "workflow_version": 4,
+    "step_id": "pull-supplier-3",
+    "endpoint": "supplier-3/inventory"
+  },
+  "why": {
+    "kind": "schema_drift",
+    "diff": { "renamed": [{ "from": "sku_external", "to": "sku" }] },
+    "patch_candidate_id": "pc_4711"
+  },
+  "how": {
+    "summary": "Map field 'sku_external' → 'sku' in pull-supplier-3 response shape",
+    "dryrun": { "fixtures": 12, "passed": 12, "diverged": 0 },
+    "actions": ["approve", "reject", "escalate"]
+  }
+}
+```
+
+The Slack / Teams / Google-Chat adapters render the same payload
+into a platform-native block layout with the four sections as
+headings and the operator actions as buttons. The webhook channel
+forwards the JSON verbatim — the receiving operator system gets the
+same four-part answer it could surface in its own UI. The **sk CLI**
+renders the same four-part shape into terminal-native blocks via
+`sk executions tail` (live *what* + *where* + *why* as the run
+progresses) and `sk patch-candidates get <id>` (the *how* with `sk
+patch-candidates approve` / `reject` as the actions). The CLI is a
+pull surface, the chat / webhook adapters are push surfaces — the
+**payload contract is the same** across all of them, so every
+operator path lands on the same answer.
+
+The point is not the wire format and not the surface. The point is
+the conceptual job: the closed learning loop is only as good as the
+moment in which a human can act on it, and acting requires *what*,
+*where*, *why*, and *how* in one place. The alternative — a red
+workflow plus a "go read the logs" link — pushes the operator into
+reconstructing all four questions from scratch, which is where the
+compounding loop quietly stalls into a ticket backlog.

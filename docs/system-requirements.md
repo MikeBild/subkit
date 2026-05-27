@@ -32,7 +32,7 @@ flowchart TB
     diy -. "audit · identity · context<br/>leak at every seam" .-> lost["fragmented trace"]
 ```
 
-*Three integrated layers as one product, contrasted with five separate tools whose seams leak audit, identity, and context. The requirements below describe what each band must provide and where the seams must disappear.*
+*Three integrated layers as one product, contrasted with five separate tools whose seams leak audit, identity, and context. The requirements below describe what each cluster must provide and where the seams must disappear.*
 
 ---
 
@@ -75,7 +75,7 @@ Explicit non-goals: replace IDE coding assistants; govern all employee AI usage;
 The three core ideas are a hierarchy, not three parallel claims; the [thesis](./thesis.md#2-the-three-core-ideas--a-hierarchy-not-three-parallel-claims) carries the full derivation.
 
 - **Idea 1 — The Problem (master claim).** Agentic productivity does not automatically scale organisationally.
-- **Idea 2 — The Category (follows from Idea 1).** The bottleneck is not intelligence — supplied externally by model vendors — but operationalisation.
+- **Idea 2 — The Category (follows from Idea 1).** The bottleneck is not intelligence (supplied externally by model vendors) and not workflow execution (supplied by mature platforms) — it is the **mediation of organisation-specific context** to those mature components; operationalisation is the form this mediation takes.
 - **Idea 3 — The Moat (follows from Ideas 1 and 2).** The only durable advantage is what compounds locally — organisational context accumulation, not any single feature.
 
 The [central axiom](./02-concepts.md#group-0-strategy-vocabulary) compresses Ideas 2 and 3:

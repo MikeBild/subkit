@@ -30,7 +30,13 @@ The vocabulary for this category is a **triad** — three terms that say the sam
 
 > ***The operating model improves because the organisation learns — and that is the part the organisation can actually control.***
 
-**The three core ideas** — *Idea 1 — Problem:* agentic productivity does not automatically scale organisationally. *Idea 2 — Category:* the bottleneck is not intelligence; it is operationalisation. *Idea 3 — Moat:* the moat emerges from organisational context accumulation, not from any single feature.
+**The three core ideas:**
+
+- *Idea 1 — Problem.* Agentic productivity does not automatically scale organisationally.
+- *Idea 2 — Category.* The bottleneck is not intelligence (supplied externally by model vendors) and not workflow execution (supplied by mature platforms) — it is the **mediation of organisation-specific context** to those mature components; operationalisation is the form this mediation takes.
+- *Idea 3 — Moat.* The moat emerges from organisational context accumulation, not from any single feature.
+
+**Mediation bottleneck** — the gap that defines the category. Between mature models, mature agents, and mature workflow/integration platforms sits the question of *how organisation-specific structure, culture, knowledge, priorities, and ways of working reach those mature layers* — and how that knowledge is improved and applied daily. The numbers in [§1 of the thesis](thesis.md#the-mediation-bottleneck-is-operationally-measurable) describe its operational footprint; operationalisation is the form in which the bottleneck dissolves.
 
 **Contextual learning loop** — also known as the *compounding loop*. *Run → Drift → Patch Candidate → Skill Candidate → Better Authoring → Better Run.* The mechanism by which the operating model improves over time. See [Git for operational organisational logic](thesis.md#53-operational-knowledge-becomes-accumulable-versionable-inheritable--git-for-operational-organisational-logic) and the [four platform effects](thesis.md#8-four-platform-effects--over-context-not-over-users) in the thesis, plus [closed learning loop](system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation) in the requirements.
 
