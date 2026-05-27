@@ -63,7 +63,6 @@ describe("WorkflowDefSchema parses every production workflow shape", () => {
         // Surface the FULL Zod error to the console so a regression is
         // immediately actionable — without this the failure message is
         // a single line that doesn't name the broken step.
-        // biome-ignore lint/suspicious/noConsole: diagnostic in test
         console.error(
           `fixture "${slug}" failed to parse:`,
           JSON.stringify(result.error.issues, null, 2),

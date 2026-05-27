@@ -98,7 +98,7 @@ type CittySub = {
 
 function getCreate(parent: unknown): CittySub {
   const sub = (parent as { subCommands?: Record<string, CittySub> }).subCommands;
-  if (!sub || !sub.create || !sub.create.run) {
+  if (!sub?.create?.run) {
     throw new Error("expected subCommands.create.run on parent command");
   }
   return sub.create;

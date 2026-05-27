@@ -19,7 +19,6 @@ import type {
   UserTurn,
 } from "../../types.ts";
 import {
-  formatConnectorRecipeBodies,
   formatSkillCandidates,
   RECIPE_BODIES_SECTION_CAP,
   RECIPE_BODIES_TOP_K,

@@ -24,7 +24,7 @@ let other_tenant_id: string;
 // Fixed connector + workflow ids used across tests
 const CONNECTOR_ID = "00000000-0000-0000-0000-000000000001";
 const WORKFLOW_ID = "00000000-0000-0000-0000-000000000002";
-const OTHER_WORKFLOW_ID = "00000000-0000-0000-0000-000000000003";
+const _OTHER_WORKFLOW_ID = "00000000-0000-0000-0000-000000000003";
 
 let counter = 0;
 function nextFingerprint(): string {

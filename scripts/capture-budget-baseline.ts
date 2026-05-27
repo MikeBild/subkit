@@ -19,7 +19,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { connectors, skillCandidates, tenants } from "../apps/engine/src/db/schema/index.ts";
 import { createTestDb } from "../apps/engine/src/db/tests/setup.ts";
 import { contextCapFor } from "../apps/engine/src/llm/accounting/index.ts";

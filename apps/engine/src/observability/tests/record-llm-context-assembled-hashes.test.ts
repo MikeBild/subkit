@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { idHashesCapped } from "../id-hashes.ts";
 import { recordLlmContextAssembled } from "../instrumentation.ts";
 import { logRing } from "../log-ring.ts";
-import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "../metrics.ts";
+import { getMetrics, resetMetricsRegistryForTests } from "../metrics.ts";
 
 // ---------------------------------------------------------------------------
 // Helper
