@@ -77,6 +77,27 @@ describe("resolveAgentSkillsForMode", () => {
   });
 });
 
+describe("skill content pinning — turn-one-discipline phrases (6.2.12 regression guard)", () => {
+  // Pins the SAVED-WORKFLOW-BEFORE-AD-HOC-CALL rule introduced in 6.2.12.
+  // The agent was guessing REST/GraphQL endpoints before checking the
+  // tenant's saved workflows, wasting two turns in the May 2026 OCPP
+  // review session. The turn-one-discipline skill now carries an explicit
+  // rule; these tests ensure the content is never accidentally trimmed.
+  const bundle = loadAgentSkills(ALWAYS_LOADED_AGENT_SKILLS);
+
+  test('bundle contains the literal phrase "SAVED WORKFLOW BEFORE AD-HOC CALL"', () => {
+    expect(bundle).toContain("SAVED WORKFLOW BEFORE AD-HOC CALL");
+  });
+
+  test('bundle references "run_workflow" (the tool the skill points the agent at)', () => {
+    expect(bundle).toContain("run_workflow");
+  });
+
+  test('bundle contains "do not speculate about API endpoints" prohibition', () => {
+    expect(bundle).toContain("do not speculate about API endpoints");
+  });
+});
+
 describe("attachment-handling skill content", () => {
   // Pins the regression fix for the "create a knowledge source using
   // /Users/...md" flow: the agent was hallucinating a paperclip UI,

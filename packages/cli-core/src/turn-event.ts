@@ -502,24 +502,34 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
       // Dedupe optimistic user echoes: when the CLI synthesised a
       // local `user` message before the engine round-trip (so the
       // operator sees their input immediately), the engine then
-      // replays the same content as a persisted `message` event with
-      // an id. Replace the local optimistic copy in-place rather
-      // than appending a duplicate `you` line. Two cases collapse:
-      //   1. prior message is local (no id) + same content → replace
+      // replays the persisted form as a `message` event with an id.
+      // Replace the local optimistic copy in-place rather than
+      // appending a duplicate `you` line. Two cases collapse:
+      //
+      //   1. prior message is local (no id) → ALWAYS supersede.
+      //      Content equality is NOT required: client-side preprocessors
+      //      (e.g. `apps/sk/src/lib/path-preprocessor.ts` swaps an
+      //      absolute path token for `{"$file":"fid_..."}` before the
+      //      prompt reaches the engine) rewrite content between the
+      //      optimistic echo and the engine-persisted form. The
+      //      busy-flag (`busyRef.current`) at the submit site
+      //      guarantees only one optimistic echo is in flight per
+      //      turn, so the next engine-emitted user message is
+      //      unambiguously its persisted partner.
       //   2. prior message is engine-anchored (has id) but its
-      //      content matches the new message AND its id differs →
-      //      replace (engine replayed the same user turn twice; seen
-      //      in session dcdcf246's "› you 1 / › you 1" double-render).
+      //      trimmed content matches the new event AND its id differs
+      //      → replace (engine replayed the same user turn twice;
+      //      seen in session dcdcf246's "› you 1 / › you 1"
+      //      double-render).
       let messages = state.messages;
       const prior = messages[messages.length - 1];
-      const sameContent =
-        ev.role === "user" &&
-        messages.length > 0 &&
-        prior?.role === "user" &&
-        prior.content.trim() === parsed.text.trim();
-      const priorIsLocalEcho = sameContent && prior?.id === undefined;
+      const isUserEcho = ev.role === "user" && messages.length > 0 && prior?.role === "user";
+      const priorIsLocalEcho = isUserEcho && prior?.id === undefined;
       const priorIsDifferentEnginePersist =
-        sameContent && prior?.id !== undefined && prior.id !== ev.id;
+        isUserEcho &&
+        prior?.id !== undefined &&
+        prior.id !== ev.id &&
+        prior.content.trim() === parsed.text.trim();
       if (priorIsLocalEcho || priorIsDifferentEnginePersist) {
         messages = [...messages.slice(0, -1), next];
       } else {

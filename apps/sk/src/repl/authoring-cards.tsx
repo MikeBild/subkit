@@ -72,6 +72,35 @@ function unwrapData(call: ToolCallState): Record<string, unknown> | null {
   return inner ?? r;
 }
 
+// A tenant-write tool whose policy is `confirm_before_execution`
+// returns a sentinel envelope BEFORE the side effect actually runs:
+//   { pending: true, status: "awaiting_confirmation",
+//     policy_mode: "confirm_before_execution",
+//     elicitation_id: "...", note: "policy_confirm_required..." }
+// The engine then emits an `elicit_request` event so the operator can
+// approve. Rendering this envelope as a green-checked success card
+// ("✓ Knowledge source ready") is misleading — nothing has run yet.
+// Card dispatchers consult this helper and short-circuit to a
+// generic-pending fallback so the operator's mental model matches
+// the wire state.
+//
+// Strict on `policy_mode`: only the literal `"confirm_before_execution"`
+// emits this envelope (sdk-wrap/invoke.ts:864 gates on
+// `resolvedMode === "confirm_before_execution"`). A previous draft used
+// `startsWith("confirm_")` which would silently swallow real success
+// cards if a future `confirm_after_execution` flow ever stamped the
+// same envelope shape. Case-folded so a future emitter that
+// capitalises the mode does not slip past.
+// EXPORTED FOR TESTS — keep in sync with the production guard below.
+export function isPolicyGatePending(call: ToolCallState): boolean {
+  const d = unwrapData(call);
+  if (!d) return false;
+  const pending = d.pending === true;
+  const awaiting = d.status === "awaiting_confirmation";
+  const policyMode = typeof d.policy_mode === "string" ? d.policy_mode.toLowerCase() : "";
+  return (pending || awaiting) && policyMode === "confirm_before_execution";
+}
+
 // Truncate an arbitrary value to a single-line, eye-friendly preview.
 // Strings >120 chars are clipped; objects/arrays are JSON-stringified
 // and clipped to the same budget. Used by the output-preview blocks so
@@ -1097,12 +1126,13 @@ export function extractConnectorSummary(call: ToolCallState): ConnectorSummary |
 
 // create_knowledge_source returns
 //   { created: true, knowledge_source: { id, name, slug, scope, status,
-//     chunk_count, bytes_total }, audit_log_id }
-// The tool intentionally does NOT echo back mime_type or file_id —
-// those are inputs. We recover what we can from `call.args`
-// (`mime_type` for inline mode, `file_id` for from_attachment) so the
-// card matches the existing `KnowledgeSourceSummary` rendering used by
-// the CLI `sk knowledge-sources create` command.
+//     chunk_count, bytes_total, mime_type?, filename? }, audit_log_id }
+// Since 6.2.12 the tool response carries the resolved `mime_type` and
+// `filename` so the card shows the real content_type (`text/markdown`
+// for an .md upload) instead of a hardcoded fallback. Pre-6.2.12 the
+// from_attachment branch defaulted to `application/octet-stream` and
+// surfaced as a misleading display in the OCPP-2.0.1.md session.
+// `file_id` is still read from args (engine never echoes it).
 export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSourceSummary | null {
   const d = unwrapData(call);
   if (!d) return null;
@@ -1115,10 +1145,21 @@ export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSou
   const args = asRecord(call.args) ?? {};
   const argMime = typeof args.mime_type === "string" ? args.mime_type : null;
   const argFileId = typeof args.file_id === "string" ? args.file_id : null;
-  // Default inline mode is text/markdown per the tool implementation;
-  // fall back to that when args didn't carry one.
+  // Resolution order: engine-echoed mime_type (authoritative) →
+  // args.mime_type (set explicitly in inline mode) → mode-derived
+  // default. The from_attachment branch falls back to
+  // `application/octet-stream` only when the engine response is
+  // missing the field (older engine on a newer sk).
+  // Coerce empty strings to null so the `??` chain falls through to
+  // the next tier. Pre-fix `??` only treated nullish as missing, so an
+  // engine that ever returned `mime_type: ""` would surface as an
+  // empty content-type label in the card.
+  const resMime = typeof ks.mime_type === "string" && ks.mime_type.length > 0 ? ks.mime_type : null;
+  const argMimeNonEmpty = argMime && argMime.length > 0 ? argMime : null;
   const mime_type =
-    argMime ?? (args.mode === "inline" ? "text/markdown" : "application/octet-stream");
+    resMime ??
+    argMimeNonEmpty ??
+    (args.mode === "inline" ? "text/markdown" : "application/octet-stream");
   return {
     kind: "knowledge_source",
     id,
@@ -1141,6 +1182,18 @@ export function renderAuthoringCard(
   // 5–8s spinner with nothing on screen.
   if (call.status === "running" || call.status === "pending") {
     return <InFlightToolCard key={`acc-${call.id}-flight`} call={call} />;
+  }
+  // Policy-gated tenant-write tools (e.g. create_knowledge_source,
+  // run_workflow, save_workflow_draft) return a sentinel envelope
+  // BEFORE the side effect runs when policy is
+  // `confirm_before_execution`. The companion `elicit_request` event
+  // surfaces the approval UI separately. Suppress the result card so
+  // the operator doesn't see "✓ Knowledge source ready" while the
+  // engine is still waiting for the approve/decline click.
+  if (isPolicyGatePending(call)) {
+    return mode === "chat" ? null : (
+      <InFlightToolCard key={`acc-${call.id}-pending-approval`} call={call} />
+    );
   }
   switch (call.name) {
     case "probe_connector_draft":

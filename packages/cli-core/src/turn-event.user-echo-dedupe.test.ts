@@ -35,20 +35,39 @@ describe("applyTurnEvent · user-message echo dedupe", () => {
     expect(next.messages[0]?.content).toBe("3");
   });
 
-  test("appends as new message when content differs (no dedupe)", () => {
+  test("supersedes optimistic echo even when client preprocessor rewrote content (v6.2.12)", () => {
+    // Pre-6.2.12 the dedupe required content equality, so the
+    // optimistic "create a knowledge source from /Users/.../foo.md"
+    // and the engine's persisted "create a knowledge source from
+    // {"$file":"fid_..."}" stayed as two distinct rows. Contract
+    // changed in 6.2.12 because `apps/sk/src/lib/path-preprocessor.ts`
+    // now rewrites the prompt before submit, so the two forms ARE
+    // the same turn — just before vs. after preprocessing. The
+    // busy-flag at the submit site guarantees one optimistic echo
+    // per turn, so the next engine user-message event is its
+    // persisted partner regardless of textual diff.
     let state = initialSessionState("conv-2");
     state = {
       ...state,
-      messages: [...state.messages, { role: "user", content: "yes" }],
+      messages: [
+        ...state.messages,
+        {
+          role: "user",
+          content: "create a knowledge source from /Users/me/doc.md",
+        },
+      ],
     };
     const ev: TurnEvent = {
       type: "message",
       role: "user",
-      content: "no, actually run option 2",
+      content:
+        'create a knowledge source from {"$file":"fid_00000000-0000-0000-0000-000000000001"}',
       id: "msg-eng-002",
     };
     const next = applyTurnEvent(state, ev);
-    expect(next.messages).toHaveLength(2);
+    expect(next.messages).toHaveLength(1);
+    expect(next.messages[0]?.id).toBe("msg-eng-002");
+    expect(next.messages[0]?.content).toContain('"$file"');
   });
 
   test("collapses two engine-anchored user messages with identical content into one (bug GG)", () => {
@@ -127,5 +146,31 @@ describe("applyTurnEvent · user-message echo dedupe", () => {
     const next = applyTurnEvent(state, ev);
     expect(next.messages).toHaveLength(1);
     expect(next.messages[0]?.id).toBe("msg-eng-005");
+  });
+
+  test("preserves engine-anchored user messages when the engine emits a NEW user message with different content", () => {
+    // The 6.2.12 contract: dedupe only collapses (a) a local no-id
+    // echo against ANY engine user message, or (b) an engine-anchored
+    // message against a new engine message with IDENTICAL trimmed
+    // content. When content differs AND the prior is engine-anchored,
+    // both messages are kept — they are genuinely distinct operator turns.
+    let state = initialSessionState("conv-6");
+    state = {
+      ...state,
+      messages: [...state.messages, { role: "user", content: "first", id: "A" }],
+    };
+    const ev: TurnEvent = {
+      type: "message",
+      role: "user",
+      content: "second",
+      id: "B",
+    };
+    const next = applyTurnEvent(state, ev);
+    // Both rows kept — different content, both engine-anchored.
+    expect(next.messages).toHaveLength(2);
+    expect(next.messages[0]?.id).toBe("A");
+    expect(next.messages[0]?.content).toBe("first");
+    expect(next.messages[1]?.id).toBe("B");
+    expect(next.messages[1]?.content).toBe("second");
   });
 });

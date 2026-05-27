@@ -38,6 +38,15 @@ const CreateKnowledgeSourceOutputData = z.object({
     status: z.string(),
     chunk_count: z.number(),
     bytes_total: z.number(),
+    // Mirror back the resolved MIME and filename so client renderers
+    // (e.g. the Ink authoring card at `apps/sk/src/repl/authoring-
+    // cards.tsx:extractKnowledgeSourceSummary`) can show the real
+    // content_type / filename without re-fetching the file row.
+    // Pre-6.2.12 the sk card hardcoded `application/octet-stream` for
+    // `mode='from_attachment'` because the response didn't carry the
+    // MIME — surfaced in the OCPP-2.0.1.md session repro.
+    mime_type: z.string().optional(),
+    filename: z.string().optional(),
   }),
   audit_log_id: z.string(),
 });
@@ -172,15 +181,56 @@ function defaultNameFromFilename(filename: string): string {
   return base.length > 0 ? base : filename;
 }
 
+// Catch generic placeholders the LLM sometimes invents when it can't
+// see the filename (e.g. when sk's preprocessor rewrote a path token
+// to `{"$file":"fid_..."}` and the agent had no human-readable hint).
+// These leak into the KS title, slug, audit metadata and `/knowledge`
+// list — surfaced in the OCPP-2.0.1.md session as "Uploaded Knowledge
+// Source (slug: uploaded-knowledge-source)". The tool description
+// already instructs the agent to omit `name` in this case; this guard
+// is the defensive belt for when the agent ignores the instruction.
+// Case-insensitive on whole-string match so a legitimate name like
+// "Uploaded API reference for vendor X" (which starts with the same
+// word) survives.
+const GENERIC_NAME_PATTERNS = [
+  // "Uploaded …" family
+  /^uploaded\s+knowledge\s+source$/i,
+  /^uploaded\s+file$/i,
+  /^uploaded\s+document$/i,
+  /^uploaded\s+content$/i,
+  // "New …" family — LLM "starting fresh" pattern
+  /^new\s+knowledge\s+source$/i,
+  /^new\s+file$/i,
+  /^new\s+document$/i,
+  // "Pasted …" family
+  /^pasted\s+(content|text|document|file)$/i,
+  // Single-word generics
+  /^attachment$/i,
+  /^file$/i,
+  /^document$/i,
+  /^content$/i,
+  /^untitled$/i,
+  /^untitled[-_\s]\d+$/i,
+  /^knowledge\s+source$/i,
+];
+
+function isGenericName(name: string): boolean {
+  return GENERIC_NAME_PATTERNS.some((re) => re.test(name.trim()));
+}
+
+// EXPORTED FOR TESTS — keep in sync with the production guard below.
+export { isGenericName };
+
 export const createKnowledgeSourceTool: ConversationTool = {
   name: "create_knowledge_source",
   description:
-    "Ingest content as a tenant Knowledge Source. Accepts inline markdown/text/JSON (mode='inline' with name + content) or an existing conversation attachment (mode='from_attachment' with file_id). Supported file types: markdown, plaintext, JSON, YAML, XML, CSV, PDF, DOCX, XLSX, PPTX. sk auto-uploads any absolute local path the user mentions in chat, so the prompt usually already contains a `{\"$file\":\"fid_…\"}` leaf — call mode='from_attachment' with that file_id. Use mode='inline' for text the user pasted directly into chat.",
+    "Ingest content as a tenant Knowledge Source. Accepts inline markdown/text/JSON (mode='inline' with name + content) or an existing conversation attachment (mode='from_attachment' with file_id). Supported file types: markdown, plaintext, JSON, YAML, XML, CSV, PDF, DOCX, XLSX, PPTX. sk auto-uploads any absolute local path the user mentions in chat, so the prompt usually already contains a `{\"$file\":\"fid_…\"}` leaf — call mode='from_attachment' with that file_id. Use mode='inline' for text the user pasted directly into chat. For mode='from_attachment', OMIT `name` unless the user explicitly named the source — the engine derives a clean name from the uploaded filename (e.g. `OCPP-2.0.1.md` → `OCPP-2.0.1`). NEVER invent generic placeholders like 'Uploaded Knowledge Source' or 'Attachment'.",
   use_case:
-    "Use when the user asks to add a file, document, or pasted content as searchable knowledge. If the prompt contains a `{\"$file\":\"fid_…\"}` leaf or the user previously ran /attach, use mode='from_attachment' with that file_id. For pasted text or LLM-generated content, use mode='inline'. If the user mentions a path string but no fid_… is present (sk's preprocessor will have uploaded any existing file automatically), the file likely doesn't exist on disk — ask the user to double-check the path rather than calling this tool with the raw path string as `content`.",
+    "Use when the user asks to add a file, document, or pasted content as searchable knowledge. If the prompt contains a `{\"$file\":\"fid_…\"}` leaf or the user previously ran /attach, use mode='from_attachment' with that file_id AND OMIT `name` so the engine uses the real filename. Only set `name` when the user explicitly typed one in the chat (e.g. \"name it Internal API Docs\"). For pasted text or LLM-generated content, use mode='inline'. If the user mentions a path string but no fid_… is present (sk's preprocessor will have uploaded any existing file automatically), the file likely doesn't exist on disk — ask the user to double-check the path rather than calling this tool with the raw path string as `content`.",
   important_notes: [
     "Re-runs with identical content are idempotent at the chunk level — the engine deduplicates.",
     "scope='workflow' requires workflow_id; omit both to default to global scope.",
+    "mode='from_attachment' with no `name` argument is the common case — the engine derives the name from the file's filename. Passing a generic placeholder defeats the default and leaks into the slug and KS listings.",
     "Tenant has a global byte budget; very large files may be rejected with `budget_exceeded`.",
   ],
   example_input: {
@@ -227,7 +277,10 @@ export const createKnowledgeSourceTool: ConversationTool = {
       buffer = await readAllBytes(stream);
       filename = resolved.filename;
       mime = resolved.content_type ?? undefined;
-      name = args.name ?? defaultNameFromFilename(filename);
+      // Prefer the user-supplied name, but fall through to the
+      // filename-derived default when the agent passed a generic
+      // placeholder it invented in the absence of filename context.
+      name = args.name && !isGenericName(args.name) ? args.name : defaultNameFromFilename(filename);
       source_type_override = "file_upload";
       source_uri_override = filename;
     } else {
@@ -282,6 +335,8 @@ export const createKnowledgeSourceTool: ConversationTool = {
             status: view.status,
             chunk_count: view.chunk_count,
             bytes_total: view.bytes_total,
+            ...(mime ? { mime_type: mime } : {}),
+            ...(filename ? { filename } : {}),
           },
           audit_log_id,
         },

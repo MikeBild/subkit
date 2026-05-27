@@ -87,6 +87,30 @@ export interface SuggestNextParams {
 
 const MIN_HISTORY_FOR_MODEL_CALL = 2;
 
+// Detect a trailing CTA question — the assistant's last message already
+// invites the operator's next move ("which would you like to explore?",
+// "want me to run it?"), so an independent next_suggestion frame
+// renders as a second, competing prompt. Surfaced in the OCPP-2.0.1.md
+// review session: assistant asked "Which section would you like to
+// explore further, or would you like to search for something more
+// specific?" AND a `next_suggestion` event fired with "create a skill
+// using this knowledge source". Two CTAs for one decision point.
+function endsWithCtaQuestion(text: string): boolean {
+  const trimmed = text.trimEnd();
+  if (!trimmed.endsWith("?")) return false;
+  // Look back to the start of the last sentence-like span.
+  const lastBoundary = Math.max(
+    trimmed.lastIndexOf(". "),
+    trimmed.lastIndexOf("\n"),
+    trimmed.lastIndexOf("! "),
+    trimmed.lastIndexOf("? ", trimmed.length - 2),
+  );
+  const lastSentence = (lastBoundary >= 0 ? trimmed.slice(lastBoundary + 1) : trimmed).trim();
+  if (lastSentence.length === 0) return false;
+  if (lastSentence.length > 280) return false;
+  return true;
+}
+
 export async function suggestNextMessage(params: SuggestNextParams): Promise<SuggestNextResult> {
   if (params.client_suppress === true) {
     emitOutcome(params.tenant_id, "suppressed", null);
@@ -99,12 +123,36 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
   }
 
   // 1. Offer-parse fast path — no tokens, no network.
+  // Runs BEFORE the CTA-question suppression because the offer parser
+  // is precisely the right handler for the "Want me to X?" shape: it
+  // converts the question into a structured slash suggestion. The
+  // generic-CTA suppression below only fires when the offer parser
+  // didn't match.
   const offer = parseOffer({
     assistant_text: params.last_assistant_text,
     ...(params.loaded_skills ? { loaded_skills: params.loaded_skills } : {}),
   });
   if (offer) {
     return finalizeOfferResult(params, offer);
+  }
+
+  // Suppress when the assistant ended with a generic question (and
+  // the offer parser already passed). The assistant's own CTA wins;
+  // a separate suggestion would render as a second, competing prompt.
+  // Surfaced in the May 2026 OCPP review: assistant asked "Which
+  // section would you like to explore further?" AND a next_suggestion
+  // fired with "create a skill using this knowledge source".
+  if (endsWithCtaQuestion(params.last_assistant_text)) {
+    logger.info({
+      module: "conversations",
+      action: "suggest_next.suppressed",
+      msg: "next-message suggestion suppressed (assistant ended with CTA question)",
+      tenant_id: params.tenant_id,
+      conversation_id: params.conversation_id,
+      reason: "assistant-cta-question",
+    });
+    emitOutcome(params.tenant_id, "suppressed", null);
+    return { suggestion: null, reason: "filtered", kind: null };
   }
 
   // 2. Budget guard — only the model path consumes tokens.
