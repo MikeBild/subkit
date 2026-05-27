@@ -22,6 +22,44 @@ import * as schema from "../schema/index.ts";
 
 const { Client, Pool } = pg;
 
+// Orphan sweep — runs at most once per bun test process. Killed runs
+// (Ctrl-C, OOM, timeout) leave test_* databases behind. Without a
+// sweep, the catalog grows unbounded across days; CREATE DATABASE in
+// the next run serialises on the shared catalog lock, and a fresh
+// run can take 1h+ to finish what normally takes minutes. The
+// observed pathology: 563 orphans pushed the journey suite into
+// terminal lock-wait.
+//
+// Safety: only drop databases that have no active connections. A
+// concurrent test run's database has its admin/pool connection open,
+// so it shows up in pg_stat_activity and is skipped. The match is
+// gated to the `test_` prefix so production data is untouched.
+let _orphanSweepPromise: Promise<void> | null = null;
+async function sweepOrphanTestDatabases(adminUrl: string): Promise<void> {
+  const admin = new Client({ connectionString: adminUrl });
+  await admin.connect();
+  try {
+    const { rows } = await admin.query<{ datname: string }>(
+      `SELECT datname FROM pg_database
+        WHERE datname LIKE 'test\\_%' ESCAPE '\\'
+          AND NOT EXISTS (
+            SELECT 1 FROM pg_stat_activity WHERE pg_stat_activity.datname = pg_database.datname
+          )`,
+    );
+    for (const { datname } of rows) {
+      // Identifier comes from pg_database catalog with the test_ prefix
+      // already gated above; safe to interpolate into the DDL.
+      await admin.query(`DROP DATABASE IF EXISTS "${datname}"`).catch(() => {});
+    }
+  } finally {
+    await admin.end().catch(() => {});
+  }
+}
+function ensureOrphanSweep(adminUrl: string): Promise<void> {
+  if (!_orphanSweepPromise) _orphanSweepPromise = sweepOrphanTestDatabases(adminUrl);
+  return _orphanSweepPromise;
+}
+
 /** Read the admin connection string lazily so tests can override
  *  DATABASE_URL between imports. */
 function getAdminUrl(): string {
@@ -52,6 +90,10 @@ export async function createTestDb(label: string): Promise<TestDb> {
   const dbName = `test_${label}_${process.pid}_${rand}`.toLowerCase().replace(/[^a-z0-9_]/g, "_");
 
   const adminUrl = getAdminUrl();
+  // First call in this process sweeps orphaned databases from prior
+  // killed runs. Subsequent calls share the cached promise — zero
+  // overhead.
+  await ensureOrphanSweep(adminUrl);
   const admin = new Client({ connectionString: adminUrl });
   await admin.connect();
   try {
