@@ -105,6 +105,47 @@ ReadWritePaths=/etc/subkit /var/lib/subkit
 LimitNOFILE=65536
 LimitNPROC=4096
 
+; ---------------------------------------------------------------------------
+; Memory containment — cgroup limits + OOM-killer steering.
+;
+; The production droplet is 4 GB total and co-hosts Postgres. Without a
+; cgroup memory cap the engine grows until the *kernel global OOM killer*
+; fires (constraint=CONSTRAINT_NONE, task_memcg=…/subkit-engine.service),
+; which can also kill anyone else who happens to allocate at the wrong
+; tick. Three documented incidents to date: 2026-05-20, 2026-05-21, and
+; the 2026-05-28 morning burst (six engine kills in two hours, RSS ~3.6 GB
+; on a 4 GB host, all global OOM not cgroup OOM). The 502s the user sees
+; at Cloudflare are the cut-off in-flight HTTP requests; the
+; `worker_expired` audit entries on conversation turns are pg-boss jobs
+; whose worker process was killed mid-turn and then expired in the
+; 10-minute visibility window before the restarted engine could finish
+; them (jobs have retryLimit:0 — they are not idempotent, see
+; queue/handlers/conversation-run-turn-dlq.ts).
+;
+; The fix has two halves:
+;   1. Cap *this* unit so memory pressure becomes a *cgroup* OOM (kills
+;      the engine only, leaves Postgres + Caddy + system alone). 2.8 G
+;      hard cap + 2.4 G soft throttle keeps ~1 G headroom on the 4 GB
+;      host for Postgres' buffers + page cache + the OS. Operators on
+;      larger droplets can raise these via a drop-in override at
+;      /etc/systemd/system/subkit-engine.service.d/memory.conf.
+;   2. Steer the kernel global OOM killer (if it ever fires anyway from
+;      a noisy neighbour) to prefer killing the engine over Postgres.
+;      Postgres has a default oom_score_adj of 0; +500 here makes the
+;      engine ~10x more likely to be picked. The restart loop above
+;      brings it back; killing Postgres would corrupt the pgboss queue
+;      and force a manual recovery pass.
+;
+; ManagedOOMSwap=kill enrolls systemd-oomd if present so swap thrashing
+; (the host has a 4 GB swapfile from the 2026-05-20 mitigation) triggers
+; a clean kill before the kernel OOM has to make a hostile pick.
+MemoryHigh=2400M
+MemoryMax=2800M
+MemorySwapMax=2G
+OOMScoreAdjust=500
+ManagedOOMSwap=kill
+; ---------------------------------------------------------------------------
+
 ; Network — engine listens on 3000 (HTTP).
 ; Caddy in front handles 443→3000 routing.
 

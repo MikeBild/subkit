@@ -143,4 +143,42 @@ describe("buildStepErrorDetail", () => {
     expect(detail.message).not.toBe("[object Object]");
     expect(detail.message).toContain("$match");
   });
+
+  // Regression: production logs on 2026-05-27 (executions ef957eab +
+  // b8ae30b2) emitted `error_msg:"[object Object]"` despite the
+  // safeMessage helper. Root cause: somewhere upstream, an Error
+  // instance was constructed with `new Error(String(someObject))`,
+  // so its `.message` was the literal string `"[object Object]"`,
+  // and safeMessage's `instanceof Error` branch propagated it
+  // verbatim. Treat that literal as "no detail" and fall through to
+  // the cause chain / fallback so the logged value is at least
+  // diagnostic ("<code> (no detail)") instead of misleading.
+  test("does not propagate the literal '[object Object]' string from a poisoned Error", () => {
+    const poisoned = new Error("[object Object]");
+    const detail = buildStepErrorDetail({ code: "transform_error", err: poisoned });
+    expect(detail.message).not.toBe("[object Object]");
+    expect(detail.message).toContain("transform_error");
+  });
+
+  test("prefers err.cause.message when the outer Error's message is poisoned", () => {
+    const cause = new Error("Function 'foo' not found");
+    const poisoned = new Error("[object Object]");
+    (poisoned as { cause?: unknown }).cause = cause;
+    const detail = buildStepErrorDetail({ code: "transform_error", err: poisoned });
+    expect(detail.message).toBe("Function 'foo' not found");
+  });
+
+  test("does not propagate the literal '[object Object]' string from a poisoned plain-object .message", () => {
+    const detail = buildStepErrorDetail({
+      code: "transform_error",
+      err: { message: "[object Object]", code: "T9999", token: "$munge" },
+    });
+    // Equality, not substring: a JSON.stringify dump that *contains*
+    // the noisy substring inside extra context is still strictly more
+    // useful than the bare "[object Object]" we used to log.
+    expect(detail.message).not.toBe("[object Object]");
+    // And the rest of the object's content makes it through.
+    expect(detail.message).toContain("T9999");
+    expect(detail.message).toContain("$munge");
+  });
 });

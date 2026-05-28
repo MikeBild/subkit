@@ -116,13 +116,29 @@ export interface BuildStepErrorOptions {
 /** Render a non-Error throwable into a useful string.
  *  Replaces the historic `String(err)` → `"[object Object]"` fallback. */
 function safeMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message || fallback;
+  // Belt-and-suspenders: even when err is a proper Error, its `.message`
+  // can be the literal "[object Object]" if upstream code template-stringed
+  // an object into the Error constructor. Treat that as no-detail and try
+  // the cause/JSON paths below instead of propagating the useless string.
+  if (err instanceof Error) {
+    const direct = err.message;
+    if (typeof direct === "string" && direct.length > 0 && direct !== "[object Object]") {
+      return direct;
+    }
+    const causeMsg = pickCauseMessage(err);
+    if (causeMsg) return causeMsg;
+    return fallback;
+  }
   if (err === null || err === undefined) return fallback;
-  if (typeof err === "string") return err || fallback;
+  if (typeof err === "string") {
+    return err && err !== "[object Object]" ? err : fallback;
+  }
   if (typeof err === "number" || typeof err === "boolean") return String(err);
   if (typeof err === "object") {
     const o = err as Record<string, unknown>;
-    if (typeof o.message === "string" && o.message.length > 0) return o.message;
+    if (typeof o.message === "string" && o.message.length > 0 && o.message !== "[object Object]") {
+      return o.message;
+    }
     try {
       const json = JSON.stringify(o);
       if (json && json !== "{}") return json;
@@ -131,6 +147,16 @@ function safeMessage(err: unknown, fallback: string): string {
     }
   }
   return fallback;
+}
+
+function pickCauseMessage(err: Error): string | null {
+  const cause = (err as { cause?: unknown }).cause;
+  if (!cause || typeof cause !== "object") return null;
+  const msg = (cause as { message?: unknown }).message;
+  if (typeof msg === "string" && msg.length > 0 && msg !== "[object Object]") {
+    return msg;
+  }
+  return null;
 }
 
 export function buildStepErrorDetail(opts: BuildStepErrorOptions): StepErrorDetail {

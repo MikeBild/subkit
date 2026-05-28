@@ -9,6 +9,7 @@ import {
   evaluate,
   extractAst,
   flattenBindings,
+  formatError,
   JSONataError,
   parseDeps,
 } from "../jsonata-engine.ts";
@@ -55,6 +56,37 @@ describe("structured errors", () => {
       caught = err;
     }
     expect(caught).toBeInstanceOf(JSONataError);
+  });
+
+  test("formatError coerces an object-shaped .message instead of '[object Object]'", () => {
+    // Regression: production logs (executions ef957eab + b8ae30b2 on
+    // 2026-05-27) showed `error:"[object Object]"` from
+    // `step.transform.error`. Root cause: JSONata can throw a value whose
+    // `.message` is itself an object, and `${baseMessage}` then coerced to
+    // the literal string `"[object Object]"`. Now coerced via JSON.stringify
+    // so the LLM author sees something diagnostic.
+    const wrapped = formatError({ message: { code: "T9999", detail: "boom" } }, "$.foo");
+    expect(wrapped).toBeInstanceOf(JSONataError);
+    expect(wrapped.message).not.toContain("[object Object]");
+    expect(wrapped.message).toContain("T9999");
+    expect(wrapped.message).toContain("boom");
+  });
+
+  test("formatError handles a throw value with no .message at all", () => {
+    const wrapped = formatError({ position: 4 }, "$.bar");
+    expect(wrapped).toBeInstanceOf(JSONataError);
+    expect(wrapped.message).toContain("JSONata error");
+    expect(wrapped.message).not.toContain("[object Object]");
+  });
+
+  test("formatError preserves a normal string .message untouched", () => {
+    const wrapped = formatError(
+      { message: "Function 'foo' not found", position: 7, token: "foo" },
+      "$.baz",
+    );
+    expect(wrapped).toBeInstanceOf(JSONataError);
+    expect(wrapped.message).toContain("Function 'foo' not found");
+    expect(wrapped.token).toBe("foo");
   });
 });
 

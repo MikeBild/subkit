@@ -234,14 +234,23 @@ export function formatError(err: unknown, source: string): JSONataError {
         lineNumber?: number;
         column?: number;
         token?: string;
-        message?: string;
+        message?: unknown;
       }
     | undefined;
   const position = e?.position;
   const lineNumber = e?.lineNumber;
   const column = e?.column;
   const token = e?.token;
-  const baseMessage = e?.message ?? "JSONata error";
+  // JSONata 2.x normally throws `{ code, message: string, position, token }`.
+  // But internal failure paths (`$assert(false)`, user-thrown `$error`,
+  // JS-engine TypeError wrapped by a custom function) can hand us a value
+  // whose `.message` is itself an object — and `${baseMessage}` would coerce
+  // that to the literal string `"[object Object]"`. Then the catch block in
+  // transform.ts logs `error: "[object Object]"`, the LLM author sees no
+  // diagnostic, and the next turn re-emits the same expression. Observed in
+  // executions ef957eab + b8ae30b2 on 2026-05-27. Coerce defensively here so
+  // every JSONataError carries a useful string.
+  const baseMessage = coerceMessage(e?.message);
   const location = lineNumber !== undefined ? ` at L${lineNumber}:${column}` : "";
   const caret =
     position !== undefined ? `\n  ${source.slice(0, position)}█${source.slice(position)}` : "";
@@ -253,4 +262,17 @@ export function formatError(err: unknown, source: string): JSONataError {
     token,
     `JSONata error${location}: ${baseMessage}${caret}`,
   );
+}
+
+function coerceMessage(raw: unknown): string {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  if (raw === null || raw === undefined) return "JSONata error";
+  if (typeof raw === "number" || typeof raw === "boolean") return String(raw);
+  try {
+    const json = JSON.stringify(raw);
+    if (json && json !== "{}") return json;
+  } catch {
+    // fall through
+  }
+  return "JSONata error";
 }
