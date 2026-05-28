@@ -39,12 +39,7 @@ import { getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { idHashesCapped } from "../../observability/id-hashes.ts";
 import { recordLlmContextAssembled } from "../../observability/instrumentation.ts";
-import {
-  getSkill,
-  getSkillBySlug,
-  listSkills,
-  retrieveApplicableSkills,
-} from "../../skills/service.ts";
+import { getSkill, getSkillBySlug, retrieveApplicableSkills } from "../../skills/service.ts";
 import type { Skill } from "../../skills/types.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
@@ -284,29 +279,34 @@ export async function assembleEnhancedPrompt(
   // On-demand skills (load_skill). Each entry is a slug, an id, or a
   // title. Resolution order is slug → id → title — slug first because
   // `loaded_skill_slugs` literally carries slugs from the seed-loader
-  // and the auto-loaded authoring constants (loop.ts). Last-resort fetch
-  // routes by shape so a bare slug never hits the uuid-typed id column.
+  // and the auto-loaded authoring constants (loop.ts). The fetch routes
+  // by shape so a bare slug never hits the uuid-typed id column.
+  //
+  // Previously this path fetched ALL active skills via listSkills (full
+  // body for every row, capped at 500) just to find ~3-5 matches by
+  // slug — flagged in the 2026-05-28 memory-stuck incident as one of
+  // the hottest per-turn allocations. Now we hit the indexed lookup
+  // helpers per ref. A handful of indexed primary-key / unique-slug
+  // queries is much cheaper on wall-time *and* heap than streaming the
+  // whole skills table into JS.
+  //
+  // The title fallback is intentionally dropped: in practice loadedSkillSlugs
+  // is populated from slug or id (the seed-loader and load_skill tool both
+  // resolve to one of those upstream), and a stray title-shaped ref is a
+  // caller bug — better to surface as a missing skill in the trace than to
+  // silently re-introduce a full-table scan to translate it.
   const loadedSkillSlugs = p.loaded_skill_slugs ?? [];
   const loadedSkills = [] as Skill[];
   if (loadedSkillSlugs.length > 0) {
     const existingIds = new Set(skillsApplicable.map((s) => s.id));
-    const allTenantSkills = await listSkills({ tenant_id: p.tenant_id }, db);
     for (const ref of loadedSkillSlugs) {
       if (existingIds.has(ref)) continue;
-      let match =
-        allTenantSkills.find((s) => s.slug === ref) ??
-        allTenantSkills.find((s) => s.id === ref) ??
-        allTenantSkills.find((s) => s.title.toLowerCase() === ref.toLowerCase());
-      if (!match) {
-        // Pagination escape hatch: listSkills caps at 500 rows.
-        const fetched = UUID_RE.test(ref)
-          ? await getSkill(p.tenant_id, ref, db)
-          : await getSkillBySlug(p.tenant_id, ref, db);
-        if (fetched) match = fetched;
-      }
-      if (match && !existingIds.has(match.id)) {
-        loadedSkills.push(match);
-        existingIds.add(match.id);
+      const fetched = UUID_RE.test(ref)
+        ? await getSkill(p.tenant_id, ref, db)
+        : await getSkillBySlug(p.tenant_id, ref, db);
+      if (fetched && !existingIds.has(fetched.id)) {
+        loadedSkills.push(fetched);
+        existingIds.add(fetched.id);
       }
     }
   }

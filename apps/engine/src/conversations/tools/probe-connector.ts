@@ -55,6 +55,19 @@ const ProbeInput = z
   .openapi("ProbeConnectorToolInput");
 
 // ---- rate limit ------------------------------------------------------------
+//
+// Per-conversation rate gate for the network probe. The bucket is a
+// trivial fixed-window: one entry per conversation_id, refreshed when
+// the window rolls over. Buckets are evicted opportunistically to keep
+// the Map bounded:
+//   - On every read, drop any bucket whose window is more than
+//     RATE_BUCKET_EXPIRY_MS old (twice the active window — a small
+//     grace so a probe right after the boundary still bumps the
+//     existing entry instead of creating two).
+//   - At BUCKET_HARD_CAP entries, drop the oldest-window entry to keep
+//     a misbehaving caller from growing the Map to OOM (the prod 4 GB
+//     transient spike investigation flagged this Map as one of the
+//     unbounded module-level caches in the conversation hot path).
 
 interface RateBucket {
   count: number;
@@ -62,10 +75,36 @@ interface RateBucket {
 }
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 20;
+const RATE_BUCKET_EXPIRY_MS = RATE_WINDOW_MS * 2;
+const BUCKET_HARD_CAP = 10_000;
+const SWEEP_EVERY_N_READS = 256;
 const rateBuckets = new Map<string, RateBucket>();
+let readsSinceSweep = 0;
+
+function sweepExpiredBuckets(now: number): void {
+  for (const [id, bucket] of rateBuckets) {
+    if (now - bucket.window_start_ms >= RATE_BUCKET_EXPIRY_MS) {
+      rateBuckets.delete(id);
+    }
+  }
+}
 
 function consumeRateToken(conversation_id: string): boolean {
   const now = Date.now();
+  // Amortised sweep — every Nth read, evict expired entries. Cheaper
+  // than a setInterval timer and bounded by call rate, so an idle engine
+  // doesn't spend CPU cycles maintaining an empty cache.
+  if (++readsSinceSweep >= SWEEP_EVERY_N_READS) {
+    readsSinceSweep = 0;
+    sweepExpiredBuckets(now);
+  }
+  // Hard backstop — if the sweep budget hasn't kept up (e.g. a burst of
+  // unique conversation_ids inside one window), drop the oldest entry.
+  // Map iteration is insertion order, so the first key is the oldest.
+  if (rateBuckets.size >= BUCKET_HARD_CAP) {
+    const oldest = rateBuckets.keys().next().value;
+    if (oldest !== undefined) rateBuckets.delete(oldest);
+  }
   const bucket = rateBuckets.get(conversation_id);
   if (!bucket || now - bucket.window_start_ms >= RATE_WINDOW_MS) {
     rateBuckets.set(conversation_id, { count: 1, window_start_ms: now });
@@ -81,6 +120,19 @@ export function resetProbeRateLimit(conversation_id?: string): void {
   if (conversation_id) rateBuckets.delete(conversation_id);
   else rateBuckets.clear();
 }
+
+/** Test-only — inspect the live bucket count to assert eviction behaviour. */
+export function _probeRateBucketCountForTests(): number {
+  return rateBuckets.size;
+}
+
+/** Test-only — drive the gate directly without a DB / tool dispatcher. */
+export function _consumeRateTokenForTests(conversation_id: string): boolean {
+  return consumeRateToken(conversation_id);
+}
+
+/** Test-only — surface the cap so the unit test stays in lockstep with the source. */
+export const _RATE_BUCKET_HARD_CAP_FOR_TESTS = BUCKET_HARD_CAP;
 
 // ---- helpers ---------------------------------------------------------------
 
