@@ -48,6 +48,7 @@ import sql0027ChatEventsSeen from "./0027_chat_events_seen.sql" with { type: "te
 import sql0028ChatWorkspacesGlobalUnique from "./0028_chat_workspaces_global_unique.sql" with { type: "text" };
 import sql0029OauthScopeTracking from "./0029_oauth_scope_tracking.sql" with { type: "text" };
 import sql0030WorkflowsLastExecutedAt from "./0030_workflows_last_executed_at.sql" with { type: "text" };
+import sql0031WorkflowsCatalogLruIndex from "./0031_workflows_catalog_lru_index.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -103,6 +104,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0028_chat_workspaces_global_unique": sql0028ChatWorkspacesGlobalUnique,
   "0029_oauth_scope_tracking": sql0029OauthScopeTracking,
   "0030_workflows_last_executed_at": sql0030WorkflowsLastExecutedAt,
+  "0031_workflows_catalog_lru_index": sql0031WorkflowsCatalogLruIndex,
 };
 
 const journal = journalMeta as unknown as Journal;

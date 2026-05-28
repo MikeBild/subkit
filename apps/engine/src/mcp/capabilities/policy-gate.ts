@@ -121,7 +121,11 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
         resource_id: tool_call_id,
         result: "success",
         metadata: {
-          tool: `tenant_${p.tool}`,
+          // `tenant_` is an MCP-historical prefix kept for backward-compat
+          // on the MCP surface only. Chat / fast_path callers persist the
+          // bare tool name so audit aggregates by `metadata.tool` match
+          // the conversation_tool_calls table.
+          tool: via === "mcp" ? `tenant_${p.tool}` : p.tool,
           policy_mode: resolvedMode,
           via,
         },
@@ -141,7 +145,11 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
       resource_id: tool_call_id,
       result: "success",
       metadata: {
-        tool: `tenant_${p.tool}`,
+        // `tenant_` is an MCP-historical prefix kept for backward-compat
+        // on the MCP surface only. Chat / fast_path callers persist the
+        // bare tool name so audit aggregates by `metadata.tool` match
+        // the conversation_tool_calls table.
+        tool: via === "mcp" ? `tenant_${p.tool}` : p.tool,
         policy_mode: resolvedMode,
         via,
       },

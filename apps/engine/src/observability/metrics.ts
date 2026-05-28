@@ -381,6 +381,11 @@ export const METRIC_NAMES = {
   // to estimate signal quality, and (passed+rejected):fail_open to
   // spot provider instability.
   CRITIC_RUNS_TOTAL: "subkit_critic_runs_total",
+  // Best-effort `workflows.last_executed_at` write failures from the
+  // saved-execution finaliser. The catalog LRU degrades silently when
+  // this drifts; a non-zero rate is operational signal.
+  WORKFLOWS_LAST_EXECUTED_AT_WRITE_FAILED_TOTAL:
+    "subkit_workflows_last_executed_at_write_failed_total",
   // G15 (lock the LLM-token-accountant lead): the token accountant
   // reconciles tiktoken estimates against SDK-reported usage already;
   // exporting the absolute drift percentage as a histogram surfaces
@@ -538,6 +543,11 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.EXECUTION_TOTAL,
     help: "Workflow executions, partitioned by terminal status.",
     labels: ["tenant_id", "status", "request_source", "workflow_id"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.WORKFLOWS_LAST_EXECUTED_AT_WRITE_FAILED_TOTAL,
+    help: "Best-effort `workflows.last_executed_at` write failures from the saved-execution finaliser.",
+    labels: ["tenant_id"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.ENGINE_UPDATE_TOTAL,

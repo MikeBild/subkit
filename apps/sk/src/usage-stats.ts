@@ -14,6 +14,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 
 // PREFS_DIR / PREFS_PATH are resolved lazily so test setup can override
 // HOME before the first call. A pinned const at module load would freeze
@@ -28,25 +29,18 @@ function prefsPath(): string {
 }
 const SCHEMA_VERSION = 1;
 
-interface PrefsShape {
-  version: number;
-  counts: Record<string, number>;
-}
+const PrefsSchema = z.object({
+  version: z.number(),
+  counts: z.record(z.string(), z.number()),
+});
+type PrefsShape = z.infer<typeof PrefsSchema>;
 
 function readPrefs(): PrefsShape {
   const path = prefsPath();
   try {
     const raw = readFileSync(path, "utf8");
-    const parsed = JSON.parse(raw);
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      typeof parsed.version === "number" &&
-      parsed.counts &&
-      typeof parsed.counts === "object"
-    ) {
-      return { version: parsed.version, counts: parsed.counts as Record<string, number> };
-    }
+    const parsed = PrefsSchema.safeParse(JSON.parse(raw));
+    if (parsed.success) return parsed.data;
   } catch {
     // Missing or unreadable — fall through to empty defaults.
   }

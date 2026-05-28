@@ -70,6 +70,14 @@ export async function listWorkflowToolsForTenant(
 ): Promise<WorkflowToolDescriptor[]> {
   const limit = p.limit ?? 40;
   const principal = p.principal;
+  // Push the allowlist filter into SQL when the principal has an array
+  // allowlist — saves fetching 40 rows just to discard 35 in JS for
+  // narrowly-scoped portal tokens. `"all"` and `undefined` skip the
+  // narrowing (the JS-side filter below still owns those cases).
+  const allowlistSqlFilter =
+    Array.isArray(principal.allowed_workflows) && principal.allowed_workflows.length > 0
+      ? inArray(workflows.id, principal.allowed_workflows)
+      : undefined;
   const rows = await p.db
     .select({
       id: workflows.id,
@@ -84,6 +92,7 @@ export async function listWorkflowToolsForTenant(
         eq(workflows.tenant_id, principal.tenant_id),
         isNull(workflows.deleted_at),
         eq(workflows.is_tool, true),
+        ...(allowlistSqlFilter ? [allowlistSqlFilter] : []),
       ),
     )
     .orderBy(sql`${workflows.last_executed_at} DESC NULLS LAST`, asc(workflows.created_at))

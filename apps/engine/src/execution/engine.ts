@@ -22,6 +22,7 @@ import { workflows } from "../db/schema/index.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { logger } from "../logging/logger.ts";
 import { recordLoopIterationsOffloaded } from "../observability/instrumentation.ts";
+import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
 import { buildStepDag, topoSort } from "../workflows/dag.ts";
@@ -948,6 +949,15 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         execution_id,
         error: err instanceof Error ? err.message : String(err),
       });
+      // SRE dashboards page on a non-zero rate — catalog LRU silently
+      // degrades when this drifts, so make it observable.
+      try {
+        getMetrics().inc(METRIC_NAMES.WORKFLOWS_LAST_EXECUTED_AT_WRITE_FAILED_TOTAL, {
+          tenant_id,
+        });
+      } catch {
+        // metrics inc is itself best-effort; never let it mask the run.
+      }
     }
   }
   await auditAwait(

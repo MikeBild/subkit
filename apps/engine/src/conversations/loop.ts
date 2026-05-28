@@ -69,12 +69,12 @@ import { appendSnapshot, loadDraft } from "./draft.ts";
 import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
-import { RUN_VERB_RE } from "./fast-path.ts";
 import {
   detectMultiArtifactIntent,
   detectUserIntent,
   inferStateDrivenFollowUpTool,
 } from "./intent-detector.ts";
+import { RUN_VERB_RE } from "./intent-patterns.ts";
 import { resolveInitialModel } from "./loop/authoring-intent.ts";
 import {
   DEFAULT_BUDGET,

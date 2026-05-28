@@ -86,17 +86,11 @@ export interface FastPathParams {
  */
 const AFFIRM_RESUME_WINDOW_MS = 5 * 60 * 1000;
 
-// Bilingual verbs. Anchored to the start of the trimmed message so a
-// run command embedded mid-sentence ("if today is friday, run X") does
-// NOT trigger the fast path — that's the LLM-mediated branch.
-//
-// Exported so `conversations/loop.ts`'s run-verb bias regex reuses the
-// same separable-verb shape (`führe foo aus`) instead of drifting on a
-// narrower in-place pattern.
-export const RUN_VERB_RE =
-  /^(run|execute|starte|f[uü]hre)\s+(?:die\s+|the\s+)?(?:workflow\s+)?([a-z0-9_][a-z0-9_-]*)(?:\s+aus)?\s*$/i;
-const INSPECT_EXEC_RE =
-  /^(inspect|show|zeige)\s+(?:the\s+|die\s+)?execution\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*$/i;
+// Run-verb + inspect-execution regexes live in `./intent-patterns.ts`
+// — shared with `loop.ts` so the two surfaces never drift.
+import { INSPECT_EXEC_RE, RUN_VERB_RE } from "./intent-patterns.ts";
+
+export { RUN_VERB_RE };
 
 const LIST_RES = {
   workflows: [
@@ -389,27 +383,36 @@ async function persistFastPathTurn(
  * Write a POLICY_DENIED audit row for a fast-path read deny. Mirrors
  * what the HTTP middleware does — without this, an operator scanning
  * the audit log cannot distinguish a chat deny from a no-op fall-through.
+ *
+ * Per-resource denials (`inspect_execution`, future per-row reads) pass
+ * the matching resource_type + resource_id so audit aggregations stay
+ * comparable with the HTTP layer's row shape. List-level denials default
+ * to the conversation as the resource because there's no single resource
+ * id at fault.
  */
 async function auditPolicyDenied(
   p: FastPathParams,
   permission: string,
   tool: string,
   reason: string,
+  resource?: { type: string; id: string },
 ): Promise<void> {
+  // `FastPathParams.principal` is non-nullable; collapse to direct
+  // access so the audit row's actor matches the type contract.
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: p.principal?.kind === "user" ? "user" : "system",
-      actor_id: p.principal?.id ?? p.actor_id,
+      actor_type: p.principal.kind === "user" ? "user" : "system",
+      actor_id: p.principal.id,
       action: AuditAction.POLICY_DENIED,
-      resource_type: "conversation",
-      resource_id: p.conversation_id,
+      resource_type: resource?.type ?? "conversation",
+      resource_id: resource?.id ?? p.conversation_id,
       result: "denied",
       reason,
       metadata: {
         tool,
         via: "fast_path",
-        provider: p.principal?.provider,
+        provider: p.principal.provider,
         permission,
       },
     },
@@ -434,11 +437,11 @@ async function executeRunWorkflow(
   // the operator gets actionable diagnostics; the throw was too strict
   // for test fixtures that legitimately seed principal without seeding
   // a users-table row for the FK.
-  if (p.principal && p.actor_id === null) {
+  if (p.actor_id === null) {
     logger.warn({
       module: "conversation",
       action: "fast_path.actor_id_missing",
-      msg: "fast-path executeRunWorkflow invoked with principal set but actor_id=null — audit row will fall back to actor_type=system",
+      msg: "fast-path executeRunWorkflow invoked with actor_id=null — audit row will fall back to actor_type=system",
       tenant_id: p.tenant_id,
       principal_id: p.principal.id,
     });
@@ -525,7 +528,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
     // the corresponding permission cannot enumerate via chat what the
     // HTTP layer would deny. The deny is deterministic (no fall-through
     // to the LLM) so the contract is closed at the fast-path boundary.
-    if (p.principal) {
+    {
       const decision = await can(p.db, {
         tenant_id: p.tenant_id,
         principal: p.principal,
@@ -610,7 +613,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       // list-intent branch does for `*:read`. The HTTP equivalents at
       // `apps/engine/src/http/routes/executions/list.ts` enforce this
       // per-resource; the fast-path must agree.
-      if (p.principal) {
+      {
         const decision = await can(p.db, {
           tenant_id: p.tenant_id,
           principal: p.principal,
@@ -619,7 +622,10 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         });
         if (!decision.allow) {
           const reason = decision.reason ?? "permission_denied";
-          await auditPolicyDenied(p, "execution:read", "inspect_execution", reason);
+          await auditPolicyDenied(p, "execution:read", "inspect_execution", reason, {
+            type: "execution",
+            id: execId,
+          });
           const reply = `Permission denied: execution:read.`;
           const persisted = await persistFastPathTurn(
             p,
@@ -674,7 +680,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
   const runMatch = text.match(RUN_VERB_RE);
   if (runMatch) {
     const slugOrId = runMatch[2];
-    if (slugOrId && p.principal) {
+    if (slugOrId) {
       // `require_published: true` mirrors MCP's catalog filter — a slug
       // that resolves only to a draft is treated as "not found" and
       // falls through to the LLM, instead of bypassing the contract.
@@ -755,10 +761,13 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           },
           `Confirm: run ${resolved.slug} in dev?`,
         );
+        // The pending envelope is NOT a denial — the operator may yet
+        // approve. Reporting `denied` would skew the run-vs-deny ratio
+        // on the conversation_tool_calls_total counter.
         recordConversationToolCall({
           category: "tenant_write",
           tool: "run_workflow",
-          outcome: "denied",
+          outcome: "pending",
           duration_ms: 0,
         });
         return {
@@ -812,8 +821,13 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
   // workflow now. Mirrors how MCP re-issues with `__policy_confirmed:
   // true`. We resolve the slug from the prior tool_call input — no
   // hidden state.
-  const AFFIRM_RE = /^(yes|ja|approve|do it|go|run it|los|bestätigt|confirm)\.?!?$/i;
-  if (AFFIRM_RE.test(text) && p.principal) {
+  // Affirmation tokens — closed list covering en + de. Tokens outside
+  // this set fall through to the LLM (which handles fuzzier affirmation
+  // shapes). Track misses via the existing fast-path-miss metric to
+  // decide which to add next.
+  const AFFIRM_RE =
+    /^(yes|yep|yeah|y|ok|okay|ack|approve|approved|do it|go|run it|sí|si|ja|jo|los|bestätigt|confirm)\.?!?$/i;
+  if (AFFIRM_RE.test(text)) {
     const recent = await p.db
       .select({
         id: conversationToolCalls.id,
@@ -887,8 +901,11 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         }
         // Mirror MCP's APPROVAL_APPROVED via gateTenantToolCall with
         // __policy_confirmed: true so the audit trail records the
-        // approval the same way.
-        await gateTenantToolCall({
+        // approval the same way. Capture the result — if a future
+        // stricter policy returns `pending` here despite the confirm
+        // marker, surface the re-pending envelope rather than running
+        // the workflow anyway.
+        const resumeGate = await gateTenantToolCall({
           tool: "run_workflow",
           category: "tenant_write",
           args: { workflow: resolved.slug, environment: "dev", __policy_confirmed: true },
@@ -897,6 +914,38 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           db: p.db,
           via: "fast_path",
         });
+        if (resumeGate.kind !== "proceed") {
+          const persisted = await persistFastPathTurn(
+            p,
+            "run_workflow",
+            { workflow: resolved.slug, environment: "dev", __policy_confirmed: true },
+            {
+              ok: false,
+              pending: true,
+              status: "awaiting_confirmation",
+              policy_mode: "confirm_before_execution",
+              confirm_required: true,
+              target: resumeGate.envelope.target,
+              tool_call_id: resumeGate.envelope.tool_call_id,
+              resume: resumeGate.envelope.resume,
+              skipped_llm: true,
+            },
+            `Confirm: run ${resolved.slug} in dev?`,
+          );
+          recordConversationToolCall({
+            category: "tenant_write",
+            tool: "run_workflow",
+            outcome: "pending",
+            duration_ms: 0,
+          });
+          return {
+            status: "awaiting_input",
+            events: persisted.events,
+            pending_elicitation_id: resumeGate.envelope.tool_call_id,
+            fast_path_tool: "run_workflow",
+            assistant_text: `Confirm: run ${resolved.slug} in dev?`,
+          };
+        }
         const payload = await executeRunWorkflow(p, { workflow: resolved }, null);
         const persisted = await persistFastPathTurn(
           p,

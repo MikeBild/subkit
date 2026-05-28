@@ -186,7 +186,7 @@ export function recordPatchCandidate(args: { classification: string; decision: s
 export function recordConversationToolCall(args: {
   category: "draft_write" | "tenant_read" | "tenant_write";
   tool: string;
-  outcome: "ok" | "error" | "denied";
+  outcome: "ok" | "error" | "denied" | "pending";
   duration_ms: number;
 }): void {
   safe(() => {

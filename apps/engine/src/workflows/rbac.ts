@@ -58,14 +58,15 @@ export async function gateWorkflowRunRbac(
   });
   if (decision.allow) return { allow: true };
 
-  // Preserve the legacy reason string for allowlist denials so the
-  // existing audit-log + error-message contracts keep working. Other
-  // denials surface as a generic reason.
+  // Surface-neutral reason names — the canonical RBAC contract is the
+  // same regardless of which call site (mcp / chat / fast_path) hit
+  // the gate. Operators filtering audit by `reason` get one bucket per
+  // failure mode instead of one bucket per surface.
   const allowlistViolation =
     p.principal.provider === "portal_token" || Array.isArray(p.principal.allowed_workflows);
   const auditReason = allowlistViolation
-    ? "mcp_workflow_not_in_allowlist"
-    : (decision.reason ?? "mcp_permission_denied");
+    ? "workflow_not_in_allowlist"
+    : (decision.reason ?? "workflow_run_permission_denied");
   const errMessage = allowlistViolation
     ? "workflow_not_in_allowlist"
     : (decision.reason ?? "permission_denied");
