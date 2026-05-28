@@ -3,7 +3,11 @@ import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
-import { EngineClient, type RunExecutionResponse } from "../engine-client.ts";
+import {
+  EngineClient,
+  type RunExecutionBody,
+  type RunExecutionResponse,
+} from "../engine-client.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type {
   PlanStep,
@@ -189,7 +193,11 @@ const runCommand = defineCommand({
       required: false,
       description: "Workflow id (omit when using --draft or --step)",
     },
-    input: { type: "string", description: "Input JSON string" },
+    input: {
+      type: "string",
+      description:
+        "Input JSON string. Prefix with `@` to read from a file (e.g. `--input @./payload.json`).",
+    },
     "input-file": {
       type: "string",
       description:
@@ -214,20 +222,29 @@ const runCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
+    const { readFileSync } = await import("node:fs");
 
     // Parse the --input JSON blob once; it is reused across all three
-    // source kinds.
+    // source kinds. The `@<path>` prefix opts into file-backed input
+    // (e.g. `--input @./payload.json`), matching the convention curl
+    // and gh use; the rest of the string is treated as a path.
     let input: unknown = null;
     if (args.input) {
+      const raw = String(args.input);
       try {
-        input = JSON.parse(args.input as string);
-      } catch {
-        process.stderr.write("invalid JSON for --input\n");
+        if (raw.startsWith("@")) {
+          const filePath = raw.slice(1);
+          input = JSON.parse(readFileSync(filePath, "utf8"));
+        } else {
+          input = JSON.parse(raw);
+        }
+      } catch (err) {
+        process.stderr.write(
+          `invalid JSON for --input: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
         process.exit(1);
       }
     }
-
-    const { readFileSync } = await import("node:fs");
 
     // Parse repeatable --input-file flags. Citty surfaces a repeated
     // string-typed arg as `string | string[]` depending on how the
@@ -310,11 +327,13 @@ const runCommand = defineCommand({
         );
         process.exit(1);
       }
-      const body = {
-        source: "saved" as const,
+      // Use the engine's `RunExecutionBody` so the body shape is
+      // type-checked against the canonical POST /v1/executions schema.
+      const body: Extract<RunExecutionBody, { source: "saved" }> = {
+        source: "saved",
         workflow_id: String(args.id),
         ...(input !== null ? { input } : {}),
-        request_source: "cli" as const,
+        request_source: "cli",
       };
       printRunResult(await client.runExecution(body));
     } catch (err) {

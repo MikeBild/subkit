@@ -122,7 +122,7 @@ describe("saved workflow reruns stay on the sk conversation surface", () => {
       {
         tool: "run_workflow",
         args: {
-          workflow_id: workflowId,
+          workflow: workflowId,
           environment: "dev",
           input: { date: "tomorrow" },
         },
@@ -157,7 +157,7 @@ describe("saved workflow reruns stay on the sk conversation surface", () => {
       {
         tool: "run_workflow",
         args: {
-          workflow_id: workflowId,
+          workflow: workflowId,
           environment: "dev",
           input: { date: "tomorrow +1" },
         },

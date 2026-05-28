@@ -247,7 +247,7 @@ describe("journey: portal token end-user", () => {
           eq(auditLog.action, "policy.denied"),
           eq(auditLog.resource_type, "workflow"),
           eq(auditLog.resource_id, otherWorkflowId),
-          eq(auditLog.reason, "mcp_workflow_not_in_allowlist"),
+          eq(auditLog.reason, "workflow_not_in_allowlist"),
         ),
       );
     expect(rows.length).toBeGreaterThan(0);

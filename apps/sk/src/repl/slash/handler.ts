@@ -35,6 +35,7 @@ import type {
   StatusSummary,
 } from "../../engine-client.ts";
 import { loadSettings, saveUserSettingsPatch } from "../../settings.ts";
+import { recordUsage } from "../../usage-stats.ts";
 import type {
   OnboardingProbeResult,
   OnboardingSaveResult,
@@ -558,6 +559,9 @@ export async function handleSlash(
   rawArgs: string[],
   ctx: SlashHandlerContext,
 ): Promise<string | null> {
+  // Persist frequency for the autocomplete bias. Best-effort — a
+  // write failure never blocks the dispatch.
+  recordUsage(name);
   // R3-W2 review fix: consume `classifySlash` so the dispatcher seam
   // is real, not aspirational. The classification is logged via
   // `debugLog` for telemetry and used to short-circuit unknown

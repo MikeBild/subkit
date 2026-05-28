@@ -22,6 +22,7 @@ import { workflows } from "../db/schema/index.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { logger } from "../logging/logger.ts";
 import { recordLoopIterationsOffloaded } from "../observability/instrumentation.ts";
+import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
 import { buildStepDag, topoSort } from "../workflows/dag.ts";
@@ -928,6 +929,36 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       },
       db,
     );
+  }
+  // Touch `last_executed_at` for saved runs so the `wf_<slug>` tool
+  // catalog can rank by recency. Drafts and one-shot step runs do not
+  // touch a persisted workflow row.
+  if (resolved.persist_workflow_refs && workflow_id) {
+    try {
+      await db
+        .update(workflows)
+        .set({ last_executed_at: new Date() })
+        .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflow_id)));
+    } catch (err) {
+      logger.warn({
+        module: "execution",
+        action: "engine.last_executed_at_write_failed",
+        msg: "failed to bump workflows.last_executed_at",
+        tenant_id,
+        workflow_id,
+        execution_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // SRE dashboards page on a non-zero rate — catalog LRU silently
+      // degrades when this drifts, so make it observable.
+      try {
+        getMetrics().inc(METRIC_NAMES.WORKFLOWS_LAST_EXECUTED_AT_WRITE_FAILED_TOTAL, {
+          tenant_id,
+        });
+      } catch {
+        // metrics inc is itself best-effort; never let it mask the run.
+      }
+    }
   }
   await auditAwait(
     {

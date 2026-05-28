@@ -94,7 +94,7 @@ describe("conversations/hardening", () => {
     // Register a fake tool via wrapOne-like closure by reusing wrapTools
     // over an ad-hoc registry. We monkey-pick one tool from wrapTools
     // output and replace the inner body via a custom wrap.
-    const tools = wrapTools(toolCtx, signals, events, ctx.testDb.db);
+    const tools = await wrapTools(toolCtx, signals, events, ctx.testDb.db);
     // The real palette doesn't include "marker"; patch by creating a
     // fresh wrapper that mirrors wrapOne using the public helper shape.
     // Instead of re-importing wrapOne, we exercise one existing tool

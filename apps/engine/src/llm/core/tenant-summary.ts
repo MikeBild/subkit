@@ -116,6 +116,7 @@ export function renderTenantSummaryBlock(summary: TenantSummary): string | null 
     "- Use the ids and slugs above verbatim in tool calls. Never invent new ids. Never repeat a list_* call to 'double-check'.",
     "- Call get_workflow(id) / get_connector(id) only when you need fields beyond slug, name, lifecycle, driver, environment.",
     "- A plain enumeration reply is one short sentence plus bullet list of slug + name. No preamble, no follow-up questions.",
+    "- Each workflow above is also exposed as a `wf_<slug>` tool. To run, call `wf_<slug>(<inputs>)` directly — that is the one-tool-call path. Use `run_workflow(workflow=<slug>)` only as a fallback. Never call `dry_run_workflow` on a saved workflow.",
     "=== END TENANT SNAPSHOT ===",
   ].join("\n");
 }

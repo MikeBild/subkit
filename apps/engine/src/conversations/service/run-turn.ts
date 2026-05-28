@@ -14,9 +14,11 @@
 
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
-import { runLoop } from "../loop.ts";
+import { tryFastPath } from "../fast-path.ts";
+import { type RunLoopResult, runLoop } from "../loop.ts";
 import type { ConversationPermissionMode } from "../types.ts";
 import { getConversation } from "./get.ts";
 import { type ConversationTurnOutcome, getStoredPermissionMode } from "./shared.ts";
@@ -58,6 +60,15 @@ export interface RunConversationTurnParams {
    * path and the conversation goes `awaiting_input`.
    */
   elicitationBridge?: ElicitationBridge;
+  /**
+   * Resolved principal — threaded through so the fast-path matcher can
+   * enforce the same RBAC / confirm-before-execution gate the LLM tools
+   * use (`gateTenantToolCall`). Absent on the MCP-worker resume path
+   * where no live HTTP principal exists; in that case the fast-path
+   * matcher short-circuits to the LLM loop so confirmation discipline
+   * stays correct.
+   */
+  principal?: ResolvedPrincipal | null;
 }
 
 /**
@@ -74,11 +85,43 @@ export async function runConversationTurn(
   if (!conv) throw new Error("conversation not found");
   const effectivePermissionMode = p.permission_mode ?? getStoredPermissionMode(conv.draft);
 
+  // Fast-path matcher: deterministic intents (list_*, run <slug>,
+  // inspect execution <uuid>) skip the LLM turn entirely. The matcher
+  // persists the same tool-call + assistant-message rows the LLM loop
+  // would produce, then short-circuits with `RunLoopResult`-shaped
+  // outcome so HTTP + MCP callers see the same envelope.
+  if (p.principal && p.user_message) {
+    const hit = await tryFastPath({
+      db: exec,
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      actor_id: p.actor_id,
+      principal: p.principal,
+      user_message: p.user_message,
+    });
+    if (hit) {
+      if (p.onEvent) {
+        for (const ev of hit.events) p.onEvent(ev);
+      }
+      const fastResult: RunLoopResult = {
+        events: hit.events,
+        status: hit.status,
+        ...(hit.pending_elicitation_id
+          ? { pending_elicitation_id: hit.pending_elicitation_id }
+          : {}),
+      };
+      const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
+      if (!updated) throw new Error("conversation disappeared");
+      return { conversation: updated.conversation, result: fastResult };
+    }
+  }
+
   const result = await runLoop({
     db: exec,
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
+    ...(p.principal ? { principal: p.principal } : {}),
     connector_id: conv.conversation.target_connector_id,
     workflow_id: conv.conversation.target_workflow_id,
     user_message: p.user_message,

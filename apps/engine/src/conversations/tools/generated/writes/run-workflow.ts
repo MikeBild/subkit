@@ -12,6 +12,8 @@ import {
 import { runExecution } from "../../../../execution/engine.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
+import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
+import { gateWorkflowRunRbac } from "../../../../workflows/rbac.ts";
 import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
 import {
   bindPersistedWorkflow,
@@ -98,7 +100,12 @@ async function detectRepairLoop(
 
 const Input = z
   .object({
-    workflow_id: z.string().uuid().optional(),
+    // Accepts a slug (kebab-case identifier from the tenant snapshot) or
+    // a uuid. `.min(1)` rejects empty / whitespace-only strings that an
+    // LLM might emit instead of failing later at `resolveWorkflowByIdOrSlug`;
+    // `.max(256)` is a defensive cap (slugs are short, uuids are 36
+    // chars, anything beyond is a hallucination).
+    workflow: z.string().min(1).max(256).optional(),
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).default("dev"),
     /**
@@ -137,7 +144,7 @@ function withStatus(
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
-    "Execute a workflow synchronously by id. Records an audit entry. Default environment is `dev`.",
+    "FALLBACK for executing a saved workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. Never call `dry_run_workflow` on a saved workflow — that is for drafts only.",
   inputSchema: Input,
   category: "tenant_write",
   requires_persisted_workflow: true,
@@ -145,11 +152,26 @@ export const runWorkflowTool: ConversationTool = {
     const args = Input.parse(rawArgs);
     const currentDraft = ctx.getDraft();
     const activeTarget = currentDraft.summary?.active_target ?? null;
-    const workflowId =
-      args.workflow_id ??
-      (activeTarget?.kind === "workflow" && activeTarget.lifecycle_state === "persisted"
-        ? activeTarget.id
-        : null);
+    let workflowId: string | null = null;
+    if (args.workflow) {
+      const resolved = await resolveWorkflowByIdOrSlug(ctx.db, ctx.tenant_id, args.workflow);
+      if (!resolved) {
+        return {
+          ok: false,
+          data: withStatus(
+            {
+              error_code: "workflow_not_found",
+              message: `no workflow matched the reference '${args.workflow}' — pass a slug or UUID from the TENANT SNAPSHOT block`,
+              next_best_actions: ["list_workflows", "find_workflow"],
+            },
+            "failed",
+          ),
+        };
+      }
+      workflowId = resolved.id;
+    } else if (activeTarget?.kind === "workflow" && activeTarget.lifecycle_state === "persisted") {
+      workflowId = activeTarget.id;
+    }
     if (!workflowId) {
       return {
         ok: false,
@@ -224,7 +246,7 @@ export const runWorkflowTool: ConversationTool = {
     if (
       activeTarget?.kind === "workflow" &&
       activeTarget.lifecycle_state === "draft_only" &&
-      !args.workflow_id
+      !args.workflow
     ) {
       return {
         ok: false,
@@ -283,6 +305,61 @@ export const runWorkflowTool: ConversationTool = {
     }
 
     try {
+      // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`,
+      // the fast-path "run <slug>" branch, and the synthetic palette.
+      // POLICY_DENIED audit row is committed inside the helper. Principal
+      // is REQUIRED — production callers always thread it; in-process
+      // workers and test fixtures must seed a system principal. A null
+      // here refuses (instead of silently bypassing RBAC) so a future
+      // caller that forgets to wire principal fails loudly.
+      if (!ctx.principal) {
+        logger.warn({
+          module: "conversation_tool",
+          action: "run_workflow.no_principal",
+          msg: "run_workflow invoked without ctx.principal — refusing rather than bypassing RBAC",
+          tenant_id: ctx.tenant_id,
+          workflow_id: workflowId,
+        });
+        // Surface the refusal as a counter so SRE can alert on a future
+        // regression that silently drops `ctx.principal`. `logger.warn`
+        // alone is invisible to the existing dashboards.
+        recordAuthoringGateBlock({ code: "principal_required", tool: "run_workflow" });
+        return {
+          ok: false,
+          data: withStatus(
+            {
+              error_code: "principal_required",
+              message:
+                "run_workflow requires an authenticated principal on the ToolContext; production callers must thread it from the auth resolution.",
+              workflow_slug: wf.slug,
+            },
+            "failed",
+          ),
+        };
+      }
+      const rbac = await gateWorkflowRunRbac({
+        db: ctx.db,
+        principal: ctx.principal,
+        workflow_id: workflowId,
+        workflow_slug: wf.slug,
+        request_source: "chat",
+        tool: "run_workflow",
+      });
+      if (!rbac.allow) {
+        return {
+          ok: false,
+          data: withStatus(
+            {
+              error_code: "permission_denied",
+              permission: "workflow:run",
+              reason: rbac.reason,
+              message: rbac.error_message,
+              workflow_slug: wf.slug,
+            },
+            "failed",
+          ),
+        };
+      }
       ctx.onLog?.(
         "info",
         `running workflow ${wf.slug} (v${wf.current_version}) in env=${args.environment}`,
@@ -295,7 +372,7 @@ export const runWorkflowTool: ConversationTool = {
         options: {
           request_source: "chat",
           trace_id: null,
-          principal: null,
+          principal: ctx.principal,
           execution_mode: args.environment,
         },
       });
@@ -677,6 +754,9 @@ export const runWorkflowTool: ConversationTool = {
               : {}),
             ...(hasWarnings ? { warnings: result.warnings } : {}),
             ...(includeStepTrace ? { step_trace: stepTraceEntries } : {}),
+            // Teach the keystroke route: every successful chat run carries
+            // the slash-equivalent the REPL chip strip will offer the user.
+            suggested_command: `/workflows run ${wf.slug}`,
           }),
           // payloadStatus is one of the three terminal values (already
           // narrowed above), but withStatus is a no-op when the inner

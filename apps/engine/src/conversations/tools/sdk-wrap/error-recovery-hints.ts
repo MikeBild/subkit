@@ -34,6 +34,12 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   // Surface-restriction signals from the unified tool dispatcher.
   not_available_on_surface:
     "this tool exists in the catalog but cannot be invoked from the current surface — for draft_write tools (save_workflow_draft, dry_run_workflow), the operator must drive the call from a chat conversation, not a headless MCP session",
+  // Caller bypassed auth: ToolContext arrived without a principal. Production
+  // callers always thread it from the auth resolution; a refusal here means
+  // an upstream caller dropped the principal. Re-issue via an authenticated
+  // surface (HTTP/MCP route, not a raw in-process invocation).
+  principal_required:
+    "this tool requires an authenticated principal on the ToolContext — re-issue the call from the HTTP / MCP / sk-cli surface so the auth resolution threads through, instead of invoking the tool directly in-process",
   // Authoring guardrails — the model called the wrong tool first.
   transform_authoring_requires_inspect:
     "call inspect_execution_step(execution_id, step_key, include_full_payload: true) to read the upstream step's actual shape before authoring the transform",

@@ -68,7 +68,7 @@ describe("adaptive loop-breaker structured envelope", () => {
       getDraft: () => ({ workflow: { name: "", steps: [] } }),
       setDraft: async () => {},
     };
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       toolCtx,
       signals,
       events,
@@ -117,7 +117,7 @@ describe("adaptive loop-breaker structured envelope", () => {
       getDraft: () => ({ workflow: { name: "t", steps: [] } }),
       setDraft: async () => {},
     };
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       toolCtx,
       signals,
       events,
@@ -178,7 +178,7 @@ describe("adaptive loop-breaker structured envelope", () => {
       getDraft: () => ({ workflow: { name: "t", steps: [] } }),
       setDraft: async () => {},
     };
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       toolCtx,
       signals,
       events,

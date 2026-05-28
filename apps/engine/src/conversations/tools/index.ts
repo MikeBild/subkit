@@ -80,6 +80,15 @@ export interface ToolContext {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  /**
+   * Resolved principal for RBAC-checking tools that need finer-grained
+   * permission evaluation than `tenant_id` + `actor_id` provide. Set
+   * by `loop.ts` when the conversation turn is driven from an
+   * authenticated HTTP/MCP request; absent on test harnesses and the
+   * in-process MCP elicitation worker. Tools that read this MUST
+   * guard against the undefined case.
+   */
+  principal?: import("../../auth/types.ts").ResolvedPrincipal | null;
   /** Current conversation_tool_calls.id for this tool execution. */
   tool_call_id?: string;
   /** Assistant message id anchoring this tool step's child rows. */

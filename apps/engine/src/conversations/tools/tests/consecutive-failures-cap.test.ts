@@ -76,7 +76,7 @@ describe("consecutive-failures cap (Bug PP)", () => {
       getDraft: () => ({ workflow: { name: "", steps: [] } }),
       setDraft: async () => {},
     };
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       toolCtx,
       signals,
       events,
@@ -120,7 +120,14 @@ describe("consecutive-failures cap (Bug PP)", () => {
       getDraft: () => ({ workflow: { name: "", steps: [] } }),
       setDraft: async () => {},
     };
-    const wrapped = wrapTools(toolCtx, signals, events, ctx.testDb.db as unknown as Db, [], {});
+    const wrapped = await wrapTools(
+      toolCtx,
+      signals,
+      events,
+      ctx.testDb.db as unknown as Db,
+      [],
+      {},
+    );
     const askUserChoice = wrapped.ask_user_choice;
     expect(askUserChoice).toBeDefined();
     // The tool body runs (returns its normal pause shape with an
@@ -162,7 +169,7 @@ describe("consecutive-failures cap (Bug PP)", () => {
       getDraft: () => ({ workflow: { name: "", steps: [] } }),
       setDraft: async () => {},
     };
-    const wrapped = wrapTools(
+    const wrapped = await wrapTools(
       toolCtx,
       signals,
       events,

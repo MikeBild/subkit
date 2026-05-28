@@ -23,8 +23,13 @@ function mount(children: React.ReactNode, height = 5): ReturnType<typeof render>
   );
 }
 
-async function tick(ms = 20): Promise<void> {
-  await new Promise((r) => setTimeout(r, ms)); // allow-wall-clock: Ink renderer settle window after a scroll event
+async function tick(ms = 80): Promise<void> {
+  // Settle window for the Ink renderer's effect chain. 20ms is enough
+  // on an idle machine but flakes under the parallel `bun test` runner
+  // when contention pushes the auto-pin effect past the assertion. 80ms
+  // is still microscopic relative to the test's wall time and survives
+  // CI load.
+  await new Promise((r) => setTimeout(r, ms)); // allow-wall-clock
 }
 
 describe("ScrollView", () => {

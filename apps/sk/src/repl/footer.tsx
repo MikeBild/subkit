@@ -65,6 +65,14 @@ export interface FooterProps {
   contextCapTokens?: number | null;
   /** Terminal width hint for collapse logic. */
   columns?: number | undefined;
+  /**
+   * Context-sensitive one-line hint rendered above the budget line.
+   * Set by the REPL host based on what's on screen (e.g. after a
+   * workflow run → "R re-run · D diagnose · V view trace · Esc back",
+   * after a list pane → "Enter inspect · / filter"). Empty / undefined
+   * hides the row entirely.
+   */
+  hintLine?: string | null | undefined;
 }
 
 /** Compact 1.2k / 4.8M formatting for the budget line. */
@@ -108,6 +116,7 @@ const FooterImpl: React.FC<FooterProps> = ({
   lastTurnPromptTokens = null,
   contextCapTokens = null,
   columns = 80,
+  hintLine = null,
 }) => {
   const theme = useTheme();
   const modeColor = theme.mode[mode];
@@ -149,6 +158,11 @@ const FooterImpl: React.FC<FooterProps> = ({
         <Text color={modeColor}>{layout.modeLabel}</Text>
         <Text color={theme.severity.dim}>{layout.activitySuffix}</Text>
       </Box>
+      {hintLine ? (
+        <Box>
+          <Text color={theme.severity.dim}> {hintLine}</Text>
+        </Box>
+      ) : null}
       {hasAnyUsage ? (
         <BudgetLine
           sessionTokens={sessionTokens}

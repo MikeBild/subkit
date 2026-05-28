@@ -37,6 +37,14 @@ export type GateResult =
   | { kind: "proceed" }
   | { kind: "pending"; envelope: ConfirmRequiredEnvelope };
 
+/**
+ * Origin surface for the policy gate — stamped into audit metadata so
+ * APPROVAL_REQUESTED / APPROVAL_APPROVED rows can be filtered by
+ * surface. MCP defaults; chat callers (fast-path, synthetic palette)
+ * pass `chat` or `fast_path` so the rows are not mis-attributed.
+ */
+export type PolicyGateVia = "mcp" | "chat" | "fast_path";
+
 export interface GateTenantToolCallParams {
   /** Canonical tool name (no "tenant." prefix). */
   tool: string;
@@ -48,6 +56,20 @@ export interface GateTenantToolCallParams {
   meta: Record<string, unknown> | undefined;
   principal: ResolvedPrincipal;
   db: Db;
+  /**
+   * Origin surface for the call. Stamped into the audit metadata so
+   * APPROVAL_REQUESTED / APPROVAL_APPROVED rows can be distinguished
+   * per surface. Defaults to `"mcp"` for the original MCP callsite.
+   */
+  via?: PolicyGateVia;
+  /**
+   * Workflow slug being dispatched, when the call is on the
+   * `wf_<slug>` synthetic palette. `tool` stays the canonical
+   * `run_workflow` so the policy resolver finds the same dev → no_confirm
+   * shortcut MCP uses; this field surfaces the specific slug in the
+   * audit row so operators can filter approvals by saved workflow.
+   */
+  subject_workflow_slug?: string;
 }
 
 const SK_CONFIRM_META_KEY = "sk_confirm";
@@ -94,6 +116,7 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
 
   const confirmed = isConfirmed(p.args, p.meta);
   const tool_call_id = crypto.randomUUID();
+  const via: PolicyGateVia = p.via ?? "mcp";
 
   if (confirmed) {
     await auditAwait(
@@ -106,9 +129,19 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
         resource_id: tool_call_id,
         result: "success",
         metadata: {
-          tool: `tenant_${p.tool}`,
+          // `tenant_` is an MCP-historical prefix kept for backward-compat
+          // on the MCP surface only. Chat / fast_path callers persist the
+          // bare tool name so audit aggregates by `metadata.tool` match
+          // the conversation_tool_calls table.
+          tool: via === "mcp" ? `tenant_${p.tool}` : p.tool,
+          // Stable column for cross-surface audit queries. `tool` forks
+          // by surface (MCP keeps the legacy prefix); `canonical_tool`
+          // is always the bare tool name so operators have one column
+          // they can `GROUP BY` regardless of `via`.
+          canonical_tool: p.tool,
           policy_mode: resolvedMode,
-          via: "mcp",
+          via,
+          ...(p.subject_workflow_slug ? { subject_workflow_slug: p.subject_workflow_slug } : {}),
         },
       },
       p.db,
@@ -126,9 +159,19 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
       resource_id: tool_call_id,
       result: "success",
       metadata: {
-        tool: `tenant_${p.tool}`,
+        // `tenant_` is an MCP-historical prefix kept for backward-compat
+        // on the MCP surface only. Chat / fast_path callers persist the
+        // bare tool name so audit aggregates by `metadata.tool` match
+        // the conversation_tool_calls table.
+        tool: via === "mcp" ? `tenant_${p.tool}` : p.tool,
+        // Stable column for cross-surface audit queries. `tool` forks
+        // by surface (MCP keeps the legacy prefix); `canonical_tool`
+        // is always the bare tool name so operators have one column
+        // they can `GROUP BY` regardless of `via`.
+        canonical_tool: p.tool,
         policy_mode: resolvedMode,
-        via: "mcp",
+        via,
+        ...(p.subject_workflow_slug ? { subject_workflow_slug: p.subject_workflow_slug } : {}),
       },
     },
     p.db,

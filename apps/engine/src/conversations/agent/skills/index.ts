@@ -96,23 +96,28 @@ export const ALL_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = AGENT_SKILL_NAMES
  * authoring mode. The remainder live in `MODE_SPECIFIC_AGENT_SKILLS`
  * and only ship when the matching mode is active.
  *
- * `conversational-authoring` is the only body large enough (~7.3KB / ~1.8k
- * tokens) and authoring-specific enough that loading it for non-authoring
- * chats (general help, MCP-only conversations, execution-mode debugging
- * without a draft in flight) is wasted budget. Everything else
- * (turn-rhythm, chat-first, confirmation, attachment, error-recovery,
- * placeholder-rules, workflow-step-kinds, …) is small or universal
- * enough that pinning it costs less than the test maintenance of
- * splitting it.
+ * Three bodies are mode-specific:
+ *   - `conversational-authoring` (~7.3KB / ~1.8k tokens) — the ideal-flow
+ *      narrative + stage signals, only relevant when actively authoring.
+ *   - `workflow-step-kinds` — anti-Zapier-namespace guardrails for the
+ *      eight step kinds; only relevant when proposing / editing steps.
+ *   - `placeholder-rules` — `${cred|connector|input|scope.*}` grammar;
+ *      only relevant when authoring (drafts) or repairing (diagnosis).
  *
- * The other behaviour rules — workflow-step-kinds and placeholder-rules
- * specifically — stay in always-loaded because base-prompt-step-kinds
- * tests pin them as anti-Zapier-namespace guardrails that apply even
- * when the user asks an off-topic question; trimming them invites the
- * model to invent shapes.
+ * Trimming the latter two from execution-mode turns ("run emobxp-jira-
+ * test-plans") saves ~750 tokens. Execution-mode turns reach for
+ * `wf_<slug>` / `run_workflow` directly; there is no step proposal to
+ * guard. Authoring-mode and connector-mode and diagnosis-mode turns
+ * re-add them via `MODE_SPECIFIC_AGENT_SKILLS`.
  */
+const MODE_GATED_SKILLS: ReadonlyArray<AgentSkillName> = [
+  "conversational-authoring",
+  "workflow-step-kinds",
+  "placeholder-rules",
+];
+
 export const ALWAYS_LOADED_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = AGENT_SKILL_NAMES.filter(
-  (n) => n !== "conversational-authoring",
+  (n) => !MODE_GATED_SKILLS.includes(n),
 );
 
 /**
@@ -122,19 +127,16 @@ export const ALWAYS_LOADED_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = AGENT_S
  * small for non-authoring chats. The lookup keys match
  * `AuthoringSurfaceMode` from `conversations/types.ts`.
  *
- *   workflow / connector → conversational-authoring (the ideal-flow
- *                          narrative + stage signals)
- *   execution / diagnosis → none (always-loaded core only)
+ *   workflow / connector → conversational-authoring + step-kinds + placeholders
+ *   diagnosis            → conversational-authoring + step-kinds + placeholders
+ *   execution            → none (always-loaded core only)
  *   undefined / null     → none (always-loaded core only)
- *
- * If a future skill is too verbose to load universally and clearly maps
- * to one mode, add it here rather than padding the always-loaded set.
  */
 export const MODE_SPECIFIC_AGENT_SKILLS: Record<string, ReadonlyArray<AgentSkillName>> = {
-  workflow: ["conversational-authoring"],
-  connector: ["conversational-authoring"],
+  workflow: ["conversational-authoring", "workflow-step-kinds", "placeholder-rules"],
+  connector: ["conversational-authoring", "workflow-step-kinds", "placeholder-rules"],
   execution: [],
-  diagnosis: [],
+  diagnosis: ["workflow-step-kinds", "placeholder-rules"],
 };
 
 /**

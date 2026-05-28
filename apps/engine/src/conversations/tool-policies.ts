@@ -292,7 +292,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     buildPendingOutput: (input) => {
       const obj = asObj(input);
       return {
-        workflow_id: obj.workflow_id ?? null,
+        workflow: obj.workflow ?? null,
         version_id: obj.version_id ?? null,
         environment: obj.environment ?? null,
         ...(obj.input !== undefined ? { input_keys: workflowInputObjectKeys(obj.input) } : {}),

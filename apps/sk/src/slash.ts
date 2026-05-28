@@ -18,6 +18,7 @@
 
 import Fuse from "fuse.js";
 import { z } from "zod";
+import { frequencyBias } from "./usage-stats.ts";
 
 /**
  * Single canonical predicate for "what counts as a slash-name
@@ -651,9 +652,14 @@ export function searchSlashCommands(
 ): SlashCommand[] {
   const visible = slashCommandsForPersona(persona);
   const trimmed = query.replace(/^\//, "").trim();
-  if (trimmed.length === 0) return visible.slice(0, limit);
+  if (trimmed.length === 0) {
+    // No query — surface the most-frequently-used commands first so
+    // a typed-but-empty `/` opens the picker on the operator's hot list.
+    const sorted = [...visible].sort((a, b) => frequencyBias(b.name) - frequencyBias(a.name));
+    return sorted.slice(0, limit);
+  }
   const fuse = new Fuse(visible, {
-    includeScore: false,
+    includeScore: true,
     threshold: 0.3,
     ignoreLocation: true,
     keys: [
@@ -662,8 +668,23 @@ export function searchSlashCommands(
       { name: "help", weight: 0.5 },
     ],
   });
-  const results = fuse.search(trimmed).slice(0, limit);
-  return results.map((r) => r.item);
+  // Blend Fuse fuzzy score (0 = best, 1 = worst) with persisted usage
+  // frequency. The weight is small enough to only break near-ties — a
+  // command with a clearly-better fuzzy match must never be bumped by
+  // a heavily-used unrelated one. Exact matches (score ≤ 0.001) get
+  // no bias applied: when the user typed precisely this name, surprising
+  // them with a different selection is worse than a missed bias lift.
+  const FREQUENCY_WEIGHT = 0.005;
+  const scored = fuse.search(trimmed).map((r) => {
+    const fuzzy = r.score ?? 0.5;
+    // Threshold 0.01 covers near-exact Fuse matches like `approvals`
+    // when the user typed `approve` (score ≈ 0.002): bias would
+    // otherwise lift the wrong-but-close name over the exact one.
+    const bias = fuzzy <= 0.01 ? 0 : frequencyBias(r.item.name) * FREQUENCY_WEIGHT;
+    return { item: r.item, effective: fuzzy - bias };
+  });
+  scored.sort((a, b) => a.effective - b.effective);
+  return scored.slice(0, limit).map((r) => r.item);
 }
 
 /**

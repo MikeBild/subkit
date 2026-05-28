@@ -6,6 +6,7 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { collectFileRefs } from "../utils/file-ref.ts";
+import { buildRerunDecision } from "./executions-rerun.ts";
 
 /** Compact human-readable byte formatter (matches files.ts / audit). */
 function humanBytes(n: number): string {
@@ -174,6 +175,35 @@ const abortCommand = defineCommand({
   },
 });
 
+const rerunCommand = defineCommand({
+  meta: {
+    name: "rerun",
+    description:
+      "Re-run a previous execution against the workflow + input it carried. Useful after diagnose/repair.",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "Execution id to rerun" },
+  },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    try {
+      const prior = (await client.getExecution(args.id)) as Record<string, unknown>;
+      const decision = buildRerunDecision(prior);
+      if (!decision.ok) {
+        process.stderr.write(`execution ${args.id} ${decision.reason}\n`);
+        process.exit(1);
+      }
+      printJson(await client.runExecution(decision.body));
+    } catch (err) {
+      process.stderr.write(
+        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(exitCodeFor(err));
+    }
+  },
+});
+
 const tailCommand = defineCommand({
   meta: { name: "tail", description: "Stream live output from an execution" },
   args: {
@@ -208,5 +238,6 @@ export const executionsCommand = defineCommand({
     steps: stepsCommand,
     abort: abortCommand,
     tail: tailCommand,
+    rerun: rerunCommand,
   },
 });

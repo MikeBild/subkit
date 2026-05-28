@@ -142,11 +142,21 @@ const WORKFLOW_PREVIEW: ReadonlySet<string> = new Set([
  *  `force_commit` escape hatch. */
 const WORKFLOW_PERSISTENCE: ReadonlySet<string> = new Set(["save_workflow_draft"]);
 
-/** Execution + diagnosis — paired with workflow authoring. The tools
- *  themselves emit a `tool_unavailable_in_state` envelope when no
- *  workflow is yet persisted / no execution exists. */
-const EXECUTION_TOOLS: ReadonlySet<string> = new Set(["run_workflow"]);
+/** Diagnosis — paired with workflow authoring. The tool itself emits a
+ *  `tool_unavailable_in_state` envelope when no execution exists. */
 const DIAGNOSIS_TOOLS: ReadonlySet<string> = new Set(["diagnose_latest_execution"]);
+
+/**
+ * Execution-tier tools that are always visible regardless of skill load
+ * state. `run_workflow` lives here so a fresh conversation that names a
+ * saved workflow ("run emobxp-jira-test-plans") can dispatch it on the
+ * first LLM turn without first loading `workflow-authoring`. Same
+ * treatment `delete_workflow` already has in ALWAYS_AVAILABLE_CLEANUP.
+ * The tool's input contract still resolves the slug against the live
+ * workflows table, and `gateTenantToolCall` still applies before the run
+ * actually fires.
+ */
+const ALWAYS_AVAILABLE_EXECUTION: ReadonlySet<string> = new Set(["run_workflow"]);
 
 function addNames(target: Set<string>, names: ReadonlySet<string>): void {
   for (const name of names) target.add(name);
@@ -182,6 +192,7 @@ export function filterByAuthoringPalette<
   addNames(allowed, ALWAYS_VISIBLE);
   addNames(allowed, RELEVANT_READS);
   addNames(allowed, ALWAYS_AVAILABLE_CLEANUP);
+  addNames(allowed, ALWAYS_AVAILABLE_EXECUTION);
 
   if (loadedSkills.has(CONNECTOR_AUTHORING_SKILL)) {
     addNames(allowed, CONNECTOR_AUTHORING);
@@ -192,7 +203,6 @@ export function filterByAuthoringPalette<
     addNames(allowed, WORKFLOW_AUTHORING);
     addNames(allowed, WORKFLOW_PREVIEW);
     addNames(allowed, WORKFLOW_PERSISTENCE);
-    addNames(allowed, EXECUTION_TOOLS);
     addNames(allowed, DIAGNOSIS_TOOLS);
   }
   // tenant_read tools are tenant-scoped, side-effect-free, and parallelisable.

@@ -28,8 +28,6 @@ import {
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { listTools as listConversationToolsRegistry } from "../../conversations/tools/index.ts";
@@ -39,10 +37,10 @@ import { cancel } from "../../execution/abort.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { maybeOffload } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
-import { can } from "../../rbac/evaluator.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
-import { synthesizeInputSchema } from "../../workflows/input-schema-synth.ts";
+import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
+import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
@@ -61,97 +59,19 @@ import { buildWorkflowToolMeta } from "./tool-meta.ts";
 const TOOL_PREFIX = "wf_";
 const PROGRESS_POLL_MS = 250;
 
-function emptyObjectSchema(): Tool["inputSchema"] {
-  return { type: "object", properties: {} };
-}
-
-function toInputSchema(raw: unknown): Tool["inputSchema"] {
-  // The workflow `input_schema` field is persisted as-is (raw JSON
-  // Schema). When it already looks like an object schema, pass it
-  // through; otherwise fall back to the empty shape so the SDK's zod
-  // validator keeps smiling.
-  if (
-    raw &&
-    typeof raw === "object" &&
-    !Array.isArray(raw) &&
-    (raw as { type?: unknown }).type === "object"
-  ) {
-    return raw as Tool["inputSchema"];
-  }
-  return emptyObjectSchema();
-}
-
 interface ListToolsParams {
   db: Db;
   principal: ResolvedPrincipal;
 }
 
 async function listWorkflowTools({ db, principal }: ListToolsParams): Promise<Tool[]> {
-  // Product-catalog rule: only workflows flagged `is_tool=true` are
-  // exposed as MCP tools. Drafts (no current_version_id) never show up,
-  // regardless of the flag.
-  const rows = await db
-    .select({
-      id: workflows.id,
-      slug: workflows.slug,
-      name: workflows.name,
-      current_version_id: workflows.current_version_id,
-      is_tool: workflows.is_tool,
-    })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, principal.tenant_id),
-        isNull(workflows.deleted_at),
-        eq(workflows.is_tool, true),
-      ),
-    )
-    .orderBy(asc(workflows.created_at));
-
-  const out: Tool[] = [];
-  for (const row of rows) {
-    if (!row.current_version_id) continue;
-    // Respect per-key allowed_workflows scope when set.
-    if (
-      principal.allowed_workflows &&
-      principal.allowed_workflows !== "all" &&
-      !principal.allowed_workflows.includes(row.id)
-    ) {
-      continue;
-    }
-    let description = row.name;
-    let inputSchema: Tool["inputSchema"] = emptyObjectSchema();
-    const versionRows = await db
-      .select({ dag: workflowVersions.dag })
-      .from(workflowVersions)
-      .where(
-        and(
-          eq(workflowVersions.tenant_id, principal.tenant_id),
-          eq(workflowVersions.id, row.current_version_id),
-        ),
-      )
-      .limit(1);
-    const dag = versionRows[0]?.dag;
-    if (dag) {
-      const parsed = WorkflowDefSchema.safeParse(dag);
-      if (parsed.success) {
-        if (parsed.data.description) description = parsed.data.description;
-        if (parsed.data.input_schema) {
-          inputSchema = toInputSchema(parsed.data.input_schema);
-        } else {
-          const synth = synthesizeInputSchema(parsed.data);
-          if (synth) inputSchema = synth as Tool["inputSchema"];
-        }
-      }
-    }
-    out.push({
-      name: `${TOOL_PREFIX}${row.slug}`,
-      description,
-      inputSchema,
-      _meta: buildWorkflowToolMeta(),
-    });
-  }
-  return out;
+  const catalog = await listWorkflowToolsForTenant({ db, principal });
+  return catalog.map((entry) => ({
+    name: `${TOOL_PREFIX}${entry.slug}`,
+    description: entry.description,
+    inputSchema: entry.inputSchema as Tool["inputSchema"],
+    _meta: buildWorkflowToolMeta(),
+  }));
 }
 
 async function resolveWorkflowBySlug(
@@ -513,61 +433,21 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         };
       }
 
-      // Centralized RBAC evaluator — resolves built-in admin,
-      // resource grants, groups, role_permissions, and the portal
-      // token allowlist in one call.
-      const decision = await can(db, {
-        tenant_id: principal.tenant_id,
+      // Canonical RBAC gate. See `workflows/rbac.ts` —
+      // the chat fast-path, synthetic palette, and fallback
+      // `run_workflow` tool call the same helper so the four
+      // execution surfaces cannot drift on permission semantics or
+      // audit metadata.
+      const rbac = await gateWorkflowRunRbac({
+        db,
         principal,
-        permission: "workflow:run",
-        resource: { type: "workflow", id: wf.id },
+        workflow_id: wf.id,
+        workflow_slug: slug,
+        request_source: "mcp",
+        tool: name,
       });
-      if (!decision.allow) {
-        // Preserve the legacy reason string for allowlist denials so
-        // the existing audit-log + error-message contracts keep
-        // working. Other denials surface as a generic reason.
-        const allowlistViolation =
-          principal.provider === "portal_token" || Array.isArray(principal.allowed_workflows);
-        const auditReason = allowlistViolation
-          ? "mcp_workflow_not_in_allowlist"
-          : (decision.reason ?? "mcp_permission_denied");
-        const errMessage = allowlistViolation
-          ? "workflow_not_in_allowlist"
-          : (decision.reason ?? "permission_denied");
-        // Use auditAwait so the deny audit row is committed BEFORE the
-        // MCP response reaches the client. Without this, portal-token
-        // end-user tests that inspect the audit table immediately after
-        // receiving the deny race the fire-and-forget `audit()` write
-        // and occasionally see zero rows on CI's slower ubuntu runner.
-        await auditAwait(
-          {
-            tenant_id: principal.tenant_id,
-            actor_type: principal.kind === "user" ? "user" : "system",
-            actor_id: principal.id,
-            action: AuditAction.POLICY_DENIED,
-            resource_type: "workflow",
-            resource_id: wf.id,
-            result: "denied",
-            reason: auditReason,
-            metadata: {
-              tool: name,
-              via: "mcp",
-              provider: principal.provider,
-              permission: "workflow:run",
-            },
-          },
-          db,
-        );
-        logger.warn({
-          module: "mcp",
-          action: "mcp.tool.denied",
-          msg: "mcp tools/call denied by RBAC evaluator",
-          tool: name,
-          workflow_id: wf.id,
-          principal_id: principal.id,
-          reason: decision.reason,
-        });
-        const err = new Error(errMessage) as Error & { code?: number };
+      if (!rbac.allow) {
+        const err = new Error(rbac.error_message) as Error & { code?: number };
         err.code = -32001;
         throw err;
       }
