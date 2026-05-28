@@ -38,6 +38,26 @@ async function tick(ms = 40): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Poll the rendered frame until a predicate matches. Same rationale as
+ * ink-app.test.tsx's `waitForFrame`: fixed `tick(N)` waits race under
+ * CI's parallel bun-test pressure, but local runs settle in <50 ms. Poll
+ * up to maxMs (default 2 s) at stepMs intervals.
+ */
+async function waitForFrame(
+  instance: ReturnType<typeof render>,
+  pred: (frame: string) => boolean,
+  { maxMs = 2000, stepMs = 20 }: { maxMs?: number; stepMs?: number } = {},
+): Promise<void> {
+  const deadline = Date.now() + maxMs; // allow-wall-clock: budget is real ms (CI scheduler pressure, not fake time)
+  while (Date.now() < deadline) {
+    // allow-wall-clock: see comment above
+    const frame = instance.lastFrame() ?? "";
+    if (pred(frame)) return;
+    await new Promise((r) => setTimeout(r, stepMs)); // allow-wall-clock: paced poll; the ink render commit + scheduler yield need real wall time
+  }
+}
+
 async function type(instance: ReturnType<typeof render>, text: string): Promise<void> {
   for (const ch of text) {
     instance.stdin.write(ch);
@@ -150,9 +170,10 @@ async function driveChipTurn(
   // Inspect view (Ctrl-O) so the generic ToolCard renders for the
   // unrecognized tool name — the chips render under either path,
   // but inspect view also gives us the tool name in the frame for a
-  // sanity check.
+  // sanity check. Poll for the chip marker to land instead of a fixed
+  // tick — CI's parallel runner can take 100+ ms wall-clock to settle.
   instance.stdin.write("\x0f");
-  await tick(50);
+  await waitForFrame(instance, (f) => /\[1\]/.test(f));
   return { instance, prompts: calls };
 }
 

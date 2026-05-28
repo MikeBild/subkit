@@ -47,7 +47,12 @@ export interface MentionPickerProps {
   onDismiss?: () => void;
 }
 
-/** Shallow file scan (max 3 dirs deep, max 200 files) filtered by query substring. */
+/** Shallow file scan (max 3 dirs deep, max 200 files) filtered by query substring.
+ *  Results are sorted lexicographically — readdirSync returns entries in
+ *  filesystem hash order (insertion-ish on macOS APFS, ext4 hash on Linux),
+ *  which made the order between dev (macOS) and CI (Ubuntu ext4) differ.
+ *  Sorting makes the picker stable for users AND makes index-based component
+ *  tests like "↓ moves focus to the next candidate" platform-portable. */
 export function scanFiles(cwd: string, query: string, limit = 8): MentionCandidate[] {
   const q = query.toLowerCase();
   const results: MentionCandidate[] = [];
@@ -58,7 +63,7 @@ export function scanFiles(cwd: string, query: string, limit = 8): MentionCandida
     visited++;
     let dirents: string[];
     try {
-      dirents = readdirSync(path);
+      dirents = readdirSync(path).sort();
     } catch {
       continue;
     }

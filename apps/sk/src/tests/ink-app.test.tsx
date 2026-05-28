@@ -111,6 +111,29 @@ async function tick(ms = 30): Promise<void> {
 }
 
 /**
+ * Poll the frame until a predicate matches, then return. Replaces the
+ * brittle `tick(N) + assertion` pattern for places where the render
+ * timing depends on chained async work (tool result → render → key →
+ * render). Locally a 40-ms tick is plenty; on CI under
+ * `bun test --max-concurrency=4` (8.5k tests, 1.5 GB test runner heap)
+ * the same code can take 200+ ms wall-clock to land the frame, and a
+ * fixed tick races past it.
+ */
+async function waitForFrame(
+  instance: ReturnType<typeof renderApp>,
+  pred: (frame: string) => boolean,
+  { maxMs = 2000, stepMs = 20 }: { maxMs?: number; stepMs?: number } = {},
+): Promise<void> {
+  const deadline = Date.now() + maxMs; // allow-wall-clock: budget is real ms (CI scheduler pressure, not fake time)
+  while (Date.now() < deadline) {
+    // allow-wall-clock: see comment above
+    const frame = instance.lastFrame() ?? "";
+    if (pred(frame)) return;
+    await new Promise((r) => setTimeout(r, stepMs)); // allow-wall-clock: paced poll; the ink render commit + scheduler yield need real wall time
+  }
+}
+
+/**
  * Feed characters into the Ink app one key at a time. Necessary
  * because Ink 7's InputParser batches multi-char chunks in ways
  * that differ from real keystrokes. Single-char writes are
@@ -353,11 +376,17 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     await tick();
     await type(instance, "do the thing");
     await pressEnter(instance);
-    await tick(80);
+    // The first half: the turn should land in the *non-inspect* render —
+    // ⎿ marker stays absent. Wait for the tool name to appear (proves
+    // the turn was processed end-to-end) before asserting on the marker.
+    await waitForFrame(instance, (f) => f.includes("propose_step"));
     let frame = instance.lastFrame() ?? "";
     expect(frame).not.toMatch(/⎿/);
+    // Second half: toggle inspect view (Ctrl-O) and wait for the
+    // ⎿ marker to render. The previous `tick(40)` was racey on CI
+    // under bun test parallelism.
     instance.stdin.write("\x0f");
-    await tick(40);
+    await waitForFrame(instance, (f) => /⎿/.test(f));
     frame = instance.lastFrame() ?? "";
     expect(frame).toMatch(/⎿/);
     expect(frame).toContain("propose_step");
