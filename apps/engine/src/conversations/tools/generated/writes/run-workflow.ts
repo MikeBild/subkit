@@ -100,7 +100,12 @@ async function detectRepairLoop(
 
 const Input = z
   .object({
-    workflow: z.string().optional(),
+    // Accepts a slug (kebab-case identifier from the tenant snapshot) or
+    // a uuid. `.min(1)` rejects empty / whitespace-only strings that an
+    // LLM might emit instead of failing later at `resolveWorkflowByIdOrSlug`;
+    // `.max(256)` is a defensive cap (slugs are short, uuids are 36
+    // chars, anything beyond is a hallucination).
+    workflow: z.string().min(1).max(256).optional(),
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).default("dev"),
     /**
@@ -315,6 +320,10 @@ export const runWorkflowTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
           workflow_id: workflowId,
         });
+        // Surface the refusal as a counter so SRE can alert on a future
+        // regression that silently drops `ctx.principal`. `logger.warn`
+        // alone is invisible to the existing dashboards.
+        recordAuthoringGateBlock({ code: "principal_required", tool: "run_workflow" });
         return {
           ok: false,
           data: withStatus(
@@ -332,6 +341,7 @@ export const runWorkflowTool: ConversationTool = {
         db: ctx.db,
         principal: ctx.principal,
         workflow_id: workflowId,
+        workflow_slug: wf.slug,
         request_source: "chat",
         tool: "run_workflow",
       });

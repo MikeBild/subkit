@@ -7,6 +7,11 @@
 // chat `sdk-wrap.ts`), not in this module — callers tack it on when
 // naming the tool. Catalog rows carry the bare slug + the materialised
 // input schema, plus the workflow id needed to dispatch.
+//
+// COLLISION SAFETY: the `wf_` prefix guarantees no clash with the
+// conversation-tool registry, which never uses that prefix. A user-
+// authored workflow with slug `propose_step` becomes tool
+// `wf_propose_step` (distinct from the built-in `propose_step` tool).
 
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";

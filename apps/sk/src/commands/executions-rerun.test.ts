@@ -68,8 +68,11 @@ describe("executions rerun — refusal on non-saved execution", () => {
   });
 
   test("rejects an execution where workflow_id is a non-string", () => {
-    const prior: PriorExecution = {
-      workflow_id: null as unknown,
+    // The Zod schema requires workflow_id to be string|undefined.
+    // A null here produces a structured refusal rather than a runtime
+    // crash. Pass via `unknown` so the test can exercise the Zod path.
+    const prior: unknown = {
+      workflow_id: null,
       source_kind: "saved",
     };
     const result = buildRerunDecision(prior);

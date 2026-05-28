@@ -175,6 +175,11 @@ describe("journey: sk fast-path — list intent (T16)", () => {
 // ---------------------------------------------------------------------------
 
 describe("journey: sk fast-path — run <slug> (T16)", () => {
+  // 180s timeout — the journey spins up the sk binary as a subprocess,
+  // talks to the local engine over HTTP, and asserts on the executions
+  // table. Locally completes in ~25s but CI's parallel `bun test` runner
+  // under testcontainers contention has been observed past the default
+  // 60s timeout. The headroom matches CP5's full-verify e2e budget.
   test("AC3: 'run <slug>' creates exactly one saved-kind execution row", async () => {
     // Count executions for this workflow before the run
     const priorRows = await ctx.db
@@ -209,5 +214,5 @@ describe("journey: sk fast-path — run <slug> (T16)", () => {
     // the wrong execution source.
     const newRows = afterRows.slice(priorCount);
     expect(newRows.every((r) => r.source_kind === "saved")).toBe(true);
-  });
+  }, 180000);
 });

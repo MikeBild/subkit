@@ -5,6 +5,14 @@
 // at a unique tempdir. The redirection is safe for engine tests because
 // production engine code never reads `homedir()` / `process.env.HOME`
 // (verified with `grep -r 'homedir()|process.env.HOME' apps/engine/src`).
+// That invariant is pinned by the `engine_homedir_absent` check in
+// `apps/engine/scripts/audit-invariants.ts` — a future engine feature
+// that legitimately needs HOME must add `// homedir-allowed: <reason>`
+// AND consider whether the preload still covers its test surface.
+// Note: this preload also affects `packages/*` test runs. If a future
+// `packages/*` adds production code reading HOME, audit-invariants
+// won't catch it (engine-only scan) — extend the scan or split the
+// bunfig preload at that point.
 // `apps/sk` is the consumer that needs it — its tests transitively load
 // `usage-stats.ts` (via the slash dispatcher), `settings.ts`, `config.ts`,
 // `sessions.ts`, all of which resolve on-disk paths from `homedir()`.

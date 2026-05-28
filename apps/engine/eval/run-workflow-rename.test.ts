@@ -61,10 +61,13 @@ describe("run_workflow tool — field rename: workflow not workflow_id", () => {
 
 describe("eval fixture: convo-workflow-rerun-stays-chat-native", () => {
   test("fixture runs the validator and passes", async () => {
-    const fixture = await import("../eval/fixtures/convo-workflow-rerun-stays-chat-native.json");
-    const { validate } = await import(
-      "../eval/validators/convo-workflow-rerun-stays-chat-native.ts"
-    );
+    // The fixture + validator live in this same `apps/engine/eval/`
+    // directory. The earlier `../eval/...` paths resolved through
+    // `apps/engine/eval/eval/...` which doesn't exist — the resolver
+    // would throw at runtime. `./fixtures/...` / `./validators/...` are
+    // the correct relative paths.
+    const fixture = await import("./fixtures/convo-workflow-rerun-stays-chat-native.json");
+    const { validate } = await import("./validators/convo-workflow-rerun-stays-chat-native.ts");
     const result = validate({
       ...fixture.default,
       name: fixture.default.name ?? "convo-workflow-rerun-stays-chat-native",

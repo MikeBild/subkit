@@ -33,6 +33,14 @@ export interface GateWorkflowRunRbacParams {
    * Falls back to `request_source` when omitted.
    */
   tool?: string;
+  /**
+   * Optional workflow slug for the audit row. Denormalised here so
+   * operator dashboards aggregating denials per workflow don't need
+   * a join — the `resource_id` already carries the workflow_id, but a
+   * SIEM filter is easier on a human-readable slug. Pass when known;
+   * omit otherwise.
+   */
+  workflow_slug?: string;
 }
 
 export type WorkflowRunRbacDecision =
@@ -86,6 +94,7 @@ export async function gateWorkflowRunRbac(
         via: p.request_source,
         provider: p.principal.provider,
         permission: "workflow:run",
+        ...(p.workflow_slug ? { workflow_slug: p.workflow_slug } : {}),
       },
     },
     p.db,

@@ -112,6 +112,22 @@ async function executeSyntheticRun(
       `synthetic wf_<slug> dispatch: ctx.tenant_id (${ctx.tenant_id}) !== principal.tenant_id (${principal.tenant_id})`,
     );
   }
+  // Mirrors fast-path's actor_id invariant warning. Authenticated
+  // production calls always carry both `principal` and `ctx.actor_id`
+  // from the same auth resolution; if a user-kind principal arrives
+  // without an actor_id the audit row will fall back to actor_type=system,
+  // and operators should see the diagnostic instead of silently
+  // mis-attributing the dispatch.
+  if (ctx.actor_id === null && principal.kind === "user") {
+    logger.warn({
+      module: "conversation_tool",
+      action: "wf_synthetic.actor_id_missing",
+      msg: "synthetic wf_<slug> dispatch with user-kind principal but actor_id=null — audit row will fall back to actor_type=system",
+      tenant_id: ctx.tenant_id,
+      principal_id: principal.id,
+      tool: name,
+    });
+  }
   // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`
   // dispatch and the fast-path "run <slug>" branch. A POLICY_DENIED
   // audit row is committed before this returns so an operator denied
@@ -120,6 +136,7 @@ async function executeSyntheticRun(
     db,
     principal,
     workflow_id: entry.workflow_id,
+    workflow_slug: entry.slug,
     request_source: "chat",
     tool: name,
   });

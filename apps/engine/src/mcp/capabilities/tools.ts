@@ -442,6 +442,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         db,
         principal,
         workflow_id: wf.id,
+        workflow_slug: slug,
         request_source: "mcp",
         tool: name,
       });

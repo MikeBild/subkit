@@ -704,6 +704,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         db: p.db,
         principal: p.principal,
         workflow_id: resolved.id,
+        workflow_slug: resolved.slug,
         request_source: "fast_path",
         tool: "run_workflow",
       });
@@ -864,6 +865,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           db: p.db,
           principal: p.principal,
           workflow_id: resolved.id,
+          workflow_slug: resolved.slug,
           request_source: "fast_path",
           tool: "run_workflow",
         });
