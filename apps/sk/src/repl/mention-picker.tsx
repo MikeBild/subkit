@@ -166,11 +166,20 @@ export const MentionPicker: React.FC<MentionPickerProps> = ({
         return;
       }
       if (key.tab || key.return) {
-        const pick = candidates[focused];
-        if (pick) {
-          onPick(pick);
-          return;
-        }
+        // Read the latest focused index via the functional setter so a
+        // press("down")→press("enter") sequence fired back-to-back picks
+        // the just-moved-to candidate, not the one that was focused at
+        // the prior render. Without this, the Enter handler closes over
+        // the pre-arrow `focused` value because React has not yet
+        // committed the setFocused(arrow) update before the next
+        // useInput tick runs. Reproduced on CI as the MentionPicker
+        // "↓ moves focus to the next candidate before Enter" flake.
+        setFocused((current) => {
+          const pick = candidates[current];
+          if (pick) onPick(pick);
+          return current;
+        });
+        return;
       }
       if (key.escape) {
         onDismiss?.();

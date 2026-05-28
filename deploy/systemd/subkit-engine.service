@@ -124,18 +124,17 @@ LimitNPROC=4096
 ;
 ; The fix has two halves:
 ;   1. Cap *this* unit so memory pressure becomes a *cgroup* OOM (kills
-;      the engine only, leaves Postgres + Caddy + system alone). 3.2 G
-;      hard cap + 2.9 G soft throttle keeps ~700 M headroom on the 4 GB
-;      host — Postgres typically holds only ~150 M (the queries are
-;      tiny; pg-boss + the operator workload share one wal-writer + a
-;      handful of idle client backends), the OS + Caddy take ~250 M,
-;      leaving ~300 M slack. Initial 2.4 G / 2.8 G caps starved the
-;      engine — at idle it parks around 2.55 G (single-binary Bun
-;      runtime + skill catalogue + jsonata cache) and was throttled
-;      below MemoryHigh, slow-failing the auth smoke during the first
-;      6.2.17 deploy. Operators on larger droplets can raise these via
-;      a drop-in override at
-;      /etc/systemd/system/subkit-engine.service.d/memory.conf.
+;      the engine only, leaves Postgres + Caddy + system alone). The
+;      caps below assume the 8 GB s-2vcpu-8gb-amd droplet sk runs on
+;      after the 2026-05-28 upsize (the prior 4 GB host hit kernel
+;      global OOM six times that morning). 6 G hard cap + 5 G soft
+;      throttle keeps ~2 G headroom for Postgres + Caddy + the OS,
+;      with comfortable working-set room for a 1.5 G transient per
+;      conversation turn. Tighter caps starve the engine: 2.4 / 2.8
+;      throttled idle (2.5 G working set) and slow-failed the auth
+;      smoke on the first 6.2.17 deploy. Operators on larger or
+;      smaller droplets can raise/lower these via a drop-in override
+;      at /etc/systemd/system/subkit-engine.service.d/memory.conf.
 ;   2. Steer the kernel global OOM killer (if it ever fires anyway from
 ;      a noisy neighbour) to prefer killing the engine over Postgres.
 ;      Postgres has a default oom_score_adj of 0; +500 here makes the
@@ -146,8 +145,8 @@ LimitNPROC=4096
 ; ManagedOOMSwap=kill enrolls systemd-oomd if present so swap thrashing
 ; (the host has a 4 GB swapfile from the 2026-05-20 mitigation) triggers
 ; a clean kill before the kernel OOM has to make a hostile pick.
-MemoryHigh=2900M
-MemoryMax=3200M
+MemoryHigh=5G
+MemoryMax=6G
 MemorySwapMax=2G
 OOMScoreAdjust=500
 ManagedOOMSwap=kill

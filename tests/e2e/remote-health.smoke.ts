@@ -187,8 +187,17 @@ async function probeConversationCreate(): Promise<number> {
     );
     return 0;
   }
+  // POST /v1/conversations with an initial_message runs the first turn
+  // synchronously: skill autoload (~42k tokens of catalogue) + Anthropic
+  // round-trip + critic verdict. On a freshly-restarted engine with cold
+  // caches the round-trip is ~15-30 s; Bun's default fetch timeout (~10 s)
+  // would race past completion and the smoke would TimeoutError every
+  // post-deploy run. Mirror the 30-s budget verify.sh already uses for the
+  // first /v1/diagnostics/llm probe, but tripled — the turn does real work
+  // (LLM call + tool-call adjudication), not just a provider liveness ping.
   const r = await fetch(`${BASE}/v1/conversations`, {
     method: "POST",
+    signal: AbortSignal.timeout(90_000),
     headers: {
       authorization: `Bearer ${SMOKE_KEY}`,
       "content-type": "application/json",
