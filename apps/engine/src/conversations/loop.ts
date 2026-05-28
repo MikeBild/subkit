@@ -69,6 +69,7 @@ import { appendSnapshot, loadDraft } from "./draft.ts";
 import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
+import { RUN_VERB_RE } from "./fast-path.ts";
 import {
   detectMultiArtifactIntent,
   detectUserIntent,
@@ -291,6 +292,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
+    principal: p.principal ?? null,
     connector_id: p.connector_id,
     workflow_id: workflowIdForTurn,
     permission_mode: p.permission_mode ?? null,
@@ -495,7 +497,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // ambiguous LLM-routed cases ("run X if Y else Z").
   const runVerbBiasFires = (() => {
     if (!currentUserText) return false;
-    return /^\s*(run|execute|starte|führe\s+aus)\s+\S/i.test(currentUserText);
+    // Shared with `fast-path.ts` so the two surfaces never drift.
+    return RUN_VERB_RE.test(currentUserText);
   })();
   const authoringHint = draft.summary
     ? {

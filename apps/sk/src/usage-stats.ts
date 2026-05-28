@@ -72,13 +72,12 @@ export function getUsageCount(commandName: string): number {
   return readPrefs().counts[commandName] ?? 0;
 }
 
-/** Increment a single command's usage count. Safe to call on every dispatch.
- *  No-op under `bun test` (NODE_ENV=test): parallel tests sharing the same
- *  HOME would otherwise race on the on-disk prefs file. The
- *  `usage-stats.test.ts` unit suite exercises the production read/write path
- *  directly via per-test tempdirs. */
+/** Increment a single command's usage count. Safe to call on every
+ *  dispatch. Test isolation is the caller's responsibility — tests that
+ *  cross-talk through this file must redirect HOME to a tempdir
+ *  (`apps/sk/src/tests/ink-app.test.tsx` and `usage-stats.test.ts` both
+ *  do this). The production path is unconditional. */
 export function recordUsage(commandName: string): void {
-  if (process.env.NODE_ENV === "test") return;
   const prefs = readPrefs();
   const next = { ...prefs.counts, [commandName]: (prefs.counts[commandName] ?? 0) + 1 };
   writePrefs({ version: SCHEMA_VERSION, counts: next });

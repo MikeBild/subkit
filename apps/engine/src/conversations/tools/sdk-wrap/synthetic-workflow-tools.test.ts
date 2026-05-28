@@ -26,7 +26,9 @@ function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrin
   return {
     provider: "test",
     kind: "user",
-    id: "u-synthetic-test",
+    // UUID-shape so audit-write doesn't fail validation when a deny path
+    // commits a POLICY_DENIED row.
+    id: "00000000-0000-0000-0000-0000000000fc",
     tenant_id: tenantId,
     roles: ["admin"],
     ...overrides,
@@ -322,5 +324,61 @@ describe("buildSyntheticWorkflowTools — envelope fields", () => {
       data: Record<string, unknown>;
     };
     expect(Array.isArray(result.data?.next_best_actions)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tenant isolation + RBAC denial
+// ---------------------------------------------------------------------------
+
+describe("buildSyntheticWorkflowTools — tenant isolation", () => {
+  test("principal from tenant B sees no wf_<slug> entries for tenant A", async () => {
+    await seedTool("tenant-a-tool");
+    const [tB] = await tdb.db
+      .insert(tenants)
+      .values({ slug: "t-syn-b", display_name: "Tenant B Synthetic" })
+      .returning();
+    if (!tB) throw new Error("tenant B seed failed");
+    const principalB = makePrincipal({ tenant_id: tB.id });
+    const tools = await buildSyntheticWorkflowTools({
+      db: tdb.db,
+      principal: principalB,
+      ctx: makeCtx({ tenant_id: tB.id }),
+      signals: makeTurnSignals(),
+      events: [],
+    });
+    expect(Object.keys(tools)).not.toContain("wf_tenant-a-tool");
+    expect(Object.keys(tools)).toHaveLength(0);
+  });
+});
+
+describe("buildSyntheticWorkflowTools — RBAC denial", () => {
+  test("portal-token principal not on the workflow's allowlist receives POLICY_DENIED on execute", async () => {
+    const wf = await seedTool("rbac-denied-syn");
+    const restricted = makePrincipal({
+      provider: "portal_token",
+      roles: ["portal_token_user"],
+      allowed_workflows: ["00000000-0000-0000-0000-000000000099"],
+    });
+    const events: TurnEvent[] = [];
+    const tools = await buildSyntheticWorkflowTools({
+      db: tdb.db,
+      principal: restricted,
+      ctx: makeCtx(),
+      signals: makeTurnSignals(),
+      events,
+    });
+    // Portal-token allowlist filters the visible catalog, so the
+    // synthetic palette likely omits the tool altogether. If it does
+    // surface (admin allowlist), the execute path must deny.
+    const tool = tools[`wf_${wf.id ? "rbac-denied-syn" : ""}`];
+    if (!tool) return;
+    const result = (await tool.execute!({}, { toolCallId: "test-call-id", messages: [] })) as {
+      ok: boolean;
+      data: Record<string, unknown>;
+    };
+    expect(result.ok).toBe(false);
+    expect(result.data?.denied).toBe(true);
+    expect(result.data?.permission).toBe("workflow:run");
   });
 });

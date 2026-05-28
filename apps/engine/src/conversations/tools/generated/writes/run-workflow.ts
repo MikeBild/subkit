@@ -13,6 +13,7 @@ import { runExecution } from "../../../../execution/engine.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
 import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
+import { gateWorkflowRunRbac } from "../../../../workflows/rbac.ts";
 import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
 import {
   bindPersistedWorkflow,
@@ -299,6 +300,35 @@ export const runWorkflowTool: ConversationTool = {
     }
 
     try {
+      // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`,
+      // the fast-path "run <slug>" branch, and the synthetic palette.
+      // POLICY_DENIED audit row is committed inside the helper. Skipped
+      // only when no principal is on the ToolContext (test paths +
+      // in-process MCP elicitation worker — see ToolContext docstring).
+      if (ctx.principal) {
+        const rbac = await gateWorkflowRunRbac({
+          db: ctx.db,
+          principal: ctx.principal,
+          workflow_id: workflowId,
+          request_source: "chat",
+          tool: "run_workflow",
+        });
+        if (!rbac.allow) {
+          return {
+            ok: false,
+            data: withStatus(
+              {
+                error_code: "permission_denied",
+                permission: "workflow:run",
+                reason: rbac.reason,
+                message: rbac.error_message,
+                workflow_slug: wf.slug,
+              },
+              "failed",
+            ),
+          };
+        }
+      }
       ctx.onLog?.(
         "info",
         `running workflow ${wf.slug} (v${wf.current_version}) in env=${args.environment}`,

@@ -20,27 +20,17 @@ import { join } from "node:path";
 
 let tempDir: string;
 let originalHome: string | undefined;
-let originalNodeEnv: string | undefined;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "sk-usage-stats-"));
   originalHome = process.env.HOME;
-  // Override HOME so the module resolves ~/.sk/prefs.json to our tempdir
+  // Override HOME so the module resolves ~/.sk/prefs.json to our tempdir.
+  // The journey + ink-app tests use the same isolation; recordUsage runs
+  // unconditionally regardless of NODE_ENV.
   process.env.HOME = tempDir;
-  // recordUsage is a no-op under NODE_ENV=test (parallel tests would
-  // otherwise race on the shared on-disk prefs file). This file is the
-  // ONE place that exercises the production write path, so flip the
-  // env for the duration of this test file only.
-  originalNodeEnv = process.env.NODE_ENV;
-  process.env.NODE_ENV = "production";
 });
 
 afterEach(() => {
-  if (originalNodeEnv !== undefined) {
-    process.env.NODE_ENV = originalNodeEnv;
-  } else {
-    delete process.env.NODE_ENV;
-  }
   if (originalHome !== undefined) {
     process.env.HOME = originalHome;
   } else {

@@ -20,7 +20,11 @@ function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrin
   return {
     provider: "test",
     kind: "user",
-    id: "u-fp-test",
+    // Must be a UUID so audit writes (which target the `users` FK or
+    // similar UUID columns) don't blow up. The id doesn't need to match
+    // a real user row because we don't FK-enforce audit's actor_id in
+    // this schema, but it must parse as a UUID.
+    id: "00000000-0000-0000-0000-0000000000fb",
     tenant_id: tenantId,
     roles: ["admin"],
     ...overrides,
@@ -36,7 +40,12 @@ async function makeConversation(): Promise<string> {
   return conv.id;
 }
 
-// actor_id must be null or a valid UUID for the DB constraint
+// actor_id is null in tests (no users table seed); the fast-path's
+// authenticated-route invariant only fires when principal is non-null
+// AND actor_id is null — both come from the same auth resolution in
+// production, so either both set (authenticated) or both null (test) is
+// allowed. Tests that need the authenticated invariant met override
+// both fields.
 function makeParams(msg: string, overrides: Partial<FastPathParams> = {}): FastPathParams {
   return {
     db: tdb.db,
@@ -214,6 +223,99 @@ describe("tryFastPath — run <slug> confirmation gate", () => {
     // result is not null (fast path handled it)
     expect(result).not.toBeNull();
     void wf;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tenant isolation + RBAC denial
+// ---------------------------------------------------------------------------
+
+describe("tryFastPath — tenant isolation", () => {
+  test("principal from tenant B never sees tenant A's workflows on 'list workflows'", async () => {
+    await seedMinimalWorkflow("tenant-a-only");
+    const [tB] = await tdb.db
+      .insert(tenants)
+      .values({ slug: "t-fp-b", display_name: "Tenant B" })
+      .returning();
+    if (!tB) throw new Error("tenant B seed failed");
+    const [convB] = await tdb.db
+      .insert(conversations)
+      .values({ tenant_id: tB.id, status: "active" })
+      .returning();
+    if (!convB) throw new Error("conv B seed failed");
+    const principalB = makePrincipal({ tenant_id: tB.id });
+    const result = await tryFastPath({
+      db: tdb.db,
+      tenant_id: tB.id,
+      conversation_id: convB.id,
+      actor_id: null,
+      principal: principalB,
+      user_message: "list workflows",
+    });
+    expect(result?.assistant_text).toContain("No saved workflows yet");
+    expect(result?.assistant_text).not.toContain("tenant-a-only");
+  });
+
+  test("principal from tenant B cannot run tenant A's workflow by slug", async () => {
+    await seedMinimalWorkflow("tenant-a-runable");
+    const [tB] = await tdb.db
+      .insert(tenants)
+      .values({ slug: "t-fp-b-run", display_name: "Tenant B Run" })
+      .returning();
+    if (!tB) throw new Error("tenant B seed failed");
+    const [convB] = await tdb.db
+      .insert(conversations)
+      .values({ tenant_id: tB.id, status: "active" })
+      .returning();
+    if (!convB) throw new Error("conv B seed failed");
+    const principalB = makePrincipal({ tenant_id: tB.id });
+    const result = await tryFastPath({
+      db: tdb.db,
+      tenant_id: tB.id,
+      conversation_id: convB.id,
+      actor_id: null,
+      principal: principalB,
+      user_message: "run tenant-a-runable",
+    });
+    // The slug doesn't exist in tenant B's scope, so resolveWorkflowByIdOrSlug
+    // returns null → fast-path falls through to LLM (returns null).
+    expect(result).toBeNull();
+  });
+});
+
+describe("tryFastPath — RBAC denial", () => {
+  test("portal-token principal not on the workflow's allowlist is denied on 'run <slug>'", async () => {
+    const wf = await seedMinimalWorkflow("run-denied-wf");
+    // Portal-token principals are scoped to their `allowed_workflows`.
+    // An empty allowlist on a portal_token denies workflow:run on every
+    // workflow — the RBAC evaluator's `matchesPortalTokenAllowlist` path.
+    const restricted = makePrincipal({
+      provider: "portal_token",
+      roles: ["portal_token_user"],
+      allowed_workflows: ["00000000-0000-0000-0000-000000000099"],
+    });
+    const result = await tryFastPath({
+      ...makeParams("run run-denied-wf"),
+      principal: restricted,
+    });
+    expect(result?.assistant_text).toContain("Permission denied");
+    expect(result?.fast_path_tool).toBe("run_workflow");
+    void wf;
+  });
+
+  test("portal-token principal not on the workflow's allowlist is denied on 'list workflows' (workflow:read)", async () => {
+    await seedMinimalWorkflow("read-denied-wf");
+    const restricted = makePrincipal({
+      provider: "portal_token",
+      roles: ["portal_token_user"],
+      allowed_workflows: ["00000000-0000-0000-0000-000000000099"],
+    });
+    const result = await tryFastPath({
+      ...makeParams("list workflows"),
+      principal: restricted,
+    });
+    expect(result?.assistant_text).toContain("Permission denied");
+    expect(result?.fast_path_tool).toBe("list_workflows");
   });
 });
 

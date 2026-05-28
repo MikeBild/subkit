@@ -4,6 +4,13 @@
 // to the matching action (R = re-run, D = diagnose, V = view trace,
 // / = pre-fill the suggested slash command into the input).
 //
+// SCAFFOLDING: this component is fully unit-tested but not yet
+// imported by `apps/sk/src/ink-app.tsx`. The integration (mounting it
+// under the latest assistant message + wiring the single-key handlers
+// through ink-app's existing `useInput` discipline) ships in the
+// Stage-4 REPL polish PR — see CP2 deviation note in
+// `/Users/mikebild/.claude/plans/checkpoints-rustling-lightning.md`.
+//
 // The bar itself is pure render; keystroke wiring lives in `ink-app.tsx`
 // alongside the other `useInput` consumers (the REPL contract is at
 // most one active useInput hook at a time, so we never spin up our

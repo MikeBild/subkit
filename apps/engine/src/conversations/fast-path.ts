@@ -14,10 +14,12 @@
 //     no keyword regex translations. A miss falls through to the
 //     existing LLM-mediated turn.
 //   - Same audit + RBAC + confirmation gate the LLM tools use. The
-//     `run <slug>` branch calls `gateTenantToolCall` identically
-//     to MCP (`apps/engine/src/mcp/capabilities/tools.ts:501-573`)
-//     and surfaces the pending envelope verbatim — there is NO
-//     "known slug" exemption.
+//     `run <slug>` branch routes through `gateWorkflowRunRbac`
+//     (the canonical helper extracted from `mcp/capabilities/tools.ts`)
+//     and `gateTenantToolCall(via: "fast_path")`, so the RBAC
+//     decision + APPROVAL_* audit rows match MCP exactly — no "known
+//     slug" exemption. The list-side renderers gate on the same
+//     `*:read` permissions the HTTP routes enforce.
 
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
@@ -26,7 +28,6 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import {
   connectors,
-  conversationMessages,
   conversationToolCalls,
   executionSteps,
   executions,
@@ -38,7 +39,9 @@ import { runExecution } from "../execution/engine.ts";
 import { logger } from "../logging/logger.ts";
 import { gateTenantToolCall } from "../mcp/capabilities/policy-gate.ts";
 import { recordConversationToolCall } from "../observability/instrumentation.ts";
+import { can } from "../rbac/evaluator.ts";
 import { resolveWorkflowByIdOrSlug } from "../workflows/lookup.ts";
+import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "./persist.ts";
 import type { ConversationStatus, TurnEvent } from "./types.ts";
 
@@ -69,7 +72,11 @@ export interface FastPathParams {
 // Bilingual verbs. Anchored to the start of the trimmed message so a
 // run command embedded mid-sentence ("if today is friday, run X") does
 // NOT trigger the fast path — that's the LLM-mediated branch.
-const RUN_VERB_RE =
+//
+// Exported so `conversations/loop.ts`'s run-verb bias regex reuses the
+// same separable-verb shape (`führe foo aus`) instead of drifting on a
+// narrower in-place pattern.
+export const RUN_VERB_RE =
   /^(run|execute|starte|f[uü]hre)\s+(?:die\s+|the\s+)?(?:workflow\s+)?([a-z0-9_][a-z0-9_-]*)(?:\s+aus)?\s*$/i;
 const INSPECT_EXEC_RE =
   /^(inspect|show|zeige)\s+(?:the\s+|die\s+)?execution\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*$/i;
@@ -100,6 +107,20 @@ function matchListIntent(text: string): keyof typeof LIST_RES | null {
   }
   return null;
 }
+
+// HTTP routes gate the matching list endpoints on these permissions
+// (see `apps/engine/src/http/routes/workflows.ts:267`,
+// `connectors/index.ts:36`, `executions/list.ts`, `schedules.ts`,
+// `knowledge-sources.ts:173`). The fast-path renderers must enforce the
+// same contract so a principal who can talk to the chat surface but
+// lacks `*:read` does not see rows the HTTP layer would deny.
+const READ_PERMISSION_BY_LIST: Record<keyof typeof LIST_RES, string> = {
+  workflows: "workflow:read",
+  connectors: "connector:read",
+  executions: "execution:read",
+  schedules: "schedule:read",
+  knowledge_sources: "knowledge:read",
+};
 
 interface RenderPayload {
   ok: boolean;
@@ -347,6 +368,38 @@ async function persistFastPathTurn(
   return { events, assistant_message_id: assistantMessageId, tool_call_id: toolCallId };
 }
 
+/**
+ * Write a POLICY_DENIED audit row for a fast-path read deny. Mirrors
+ * what the HTTP middleware does — without this, an operator scanning
+ * the audit log cannot distinguish a chat deny from a no-op fall-through.
+ */
+async function auditPolicyDenied(
+  p: FastPathParams,
+  permission: string,
+  tool: string,
+  reason: string,
+): Promise<void> {
+  await auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: p.principal?.kind === "user" ? "user" : "system",
+      actor_id: p.principal?.id ?? p.actor_id,
+      action: AuditAction.POLICY_DENIED,
+      resource_type: "conversation",
+      resource_id: p.conversation_id,
+      result: "denied",
+      reason,
+      metadata: {
+        tool,
+        via: "fast_path",
+        provider: p.principal?.provider,
+        permission,
+      },
+    },
+    p.db,
+  );
+}
+
 interface RunFastPathResolution {
   workflow: { id: string; slug: string; name: string; current_version_id: string | null };
 }
@@ -356,6 +409,23 @@ async function executeRunWorkflow(
   resolution: RunFastPathResolution,
   input: unknown,
 ): Promise<RenderPayload> {
+  // Authenticated production calls always carry both principal AND
+  // actor_id together (both come from the same auth resolution). If a
+  // principal made it this far but actor_id is null, an upstream caller
+  // dropped the actor — surface it loudly instead of silently writing
+  // `system` to the audit trail. We log a warning rather than throw so
+  // the operator gets actionable diagnostics; the throw was too strict
+  // for test fixtures that legitimately seed principal without seeding
+  // a users-table row for the FK.
+  if (p.principal && p.actor_id === null) {
+    logger.warn({
+      module: "conversation",
+      action: "fast_path.actor_id_missing",
+      msg: "fast-path executeRunWorkflow invoked with principal set but actor_id=null — audit row will fall back to actor_type=system",
+      tenant_id: p.tenant_id,
+      principal_id: p.principal.id,
+    });
+  }
   const wf = resolution.workflow;
   try {
     const result = await runExecution({
@@ -389,12 +459,6 @@ async function executeRunWorkflow(
           .join(", ")}`,
       );
     }
-    await p.db
-      .update(workflows)
-      .set({
-        /* last_executed_at already touched by runExecution */
-      })
-      .where(and(eq(workflows.tenant_id, p.tenant_id), eq(workflows.id, wf.id)));
     return {
       ok,
       reply: replyParts.join("\n"),
@@ -440,6 +504,47 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
   const listKind = matchListIntent(text);
   if (listKind) {
     const tool = listKind === "knowledge_sources" ? "list_knowledge_sources" : `list_${listKind}`;
+    // Mirror the HTTP route's `*:read` gate so a principal who lacks
+    // the corresponding permission cannot enumerate via chat what the
+    // HTTP layer would deny. The deny is deterministic (no fall-through
+    // to the LLM) so the contract is closed at the fast-path boundary.
+    if (p.principal) {
+      const decision = await can(p.db, {
+        tenant_id: p.tenant_id,
+        principal: p.principal,
+        permission: READ_PERMISSION_BY_LIST[listKind],
+      });
+      if (!decision.allow) {
+        const reason = decision.reason ?? "permission_denied";
+        await auditPolicyDenied(p, READ_PERMISSION_BY_LIST[listKind], tool, reason);
+        const reply = `Permission denied: ${READ_PERMISSION_BY_LIST[listKind]}.`;
+        const persisted = await persistFastPathTurn(
+          p,
+          tool,
+          {},
+          {
+            ok: false,
+            denied: true,
+            permission: READ_PERMISSION_BY_LIST[listKind],
+            reason,
+            skipped_llm: true,
+          },
+          reply,
+        );
+        recordConversationToolCall({
+          category: "tenant_read",
+          tool,
+          outcome: "denied",
+          duration_ms: 0,
+        });
+        return {
+          status: "active",
+          events: persisted.events,
+          fast_path_tool: tool,
+          assistant_text: reply,
+        };
+      }
+    }
     const renderer =
       listKind === "workflows"
         ? renderWorkflowsList
@@ -511,12 +616,57 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
   if (runMatch) {
     const slugOrId = runMatch[2];
     if (slugOrId && p.principal) {
-      const resolved = await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, slugOrId);
+      // `require_published: true` mirrors MCP's catalog filter — a slug
+      // that resolves only to a draft is treated as "not found" and
+      // falls through to the LLM, instead of bypassing the contract.
+      const resolved = await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, slugOrId, {
+        require_published: true,
+      });
       if (!resolved?.current_version_id) {
         // Unknown slug — fall through to LLM (the model can suggest
         // alternatives or surface the right slug). Same shape as the
         // run_workflow tool's "workflow_not_found" branch handles it.
         return null;
+      }
+      // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`
+      // dispatch. See `workflows/rbac.ts`. A POLICY_DENIED audit row
+      // is committed before this returns; the persisted tool-call row
+      // tells the operator + transcript reader why the run did not fire.
+      const rbac = await gateWorkflowRunRbac({
+        db: p.db,
+        principal: p.principal,
+        workflow_id: resolved.id,
+        request_source: "fast_path",
+        tool: "run_workflow",
+      });
+      if (!rbac.allow) {
+        const reply = `Permission denied: ${rbac.error_message}.`;
+        const persisted = await persistFastPathTurn(
+          p,
+          "run_workflow",
+          { workflow: resolved.slug, environment: "dev" },
+          {
+            ok: false,
+            denied: true,
+            permission: "workflow:run",
+            reason: rbac.reason,
+            error: rbac.error_message,
+            skipped_llm: true,
+          },
+          reply,
+        );
+        recordConversationToolCall({
+          category: "tenant_write",
+          tool: "run_workflow",
+          outcome: "denied",
+          duration_ms: 0,
+        });
+        return {
+          status: "active",
+          events: persisted.events,
+          fast_path_tool: "run_workflow",
+          assistant_text: reply,
+        };
       }
       const gate = await gateTenantToolCall({
         tool: "run_workflow",
@@ -525,6 +675,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         meta: undefined,
         principal: p.principal,
         db: p.db,
+        via: "fast_path",
       });
       if (gate.kind === "pending") {
         const persisted = await persistFastPathTurn(
@@ -567,19 +718,11 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         { ok: payload.ok, ...payload.data, skipped_llm: true },
         payload.reply,
       );
-      await auditAwait(
-        {
-          tenant_id: p.tenant_id,
-          actor_type: p.actor_id ? "user" : "system",
-          actor_id: p.actor_id,
-          action: AuditAction.CONVERSATION_COMMITTED,
-          resource_type: "conversation",
-          resource_id: p.conversation_id,
-          result: payload.ok ? "success" : "error",
-          metadata: { fast_path: true, workflow_id: resolved.id },
-        },
-        p.db,
-      );
+      // `runExecution` already emits its own execution audit row.
+      // We previously stamped a CONVERSATION_COMMITTED row here, but
+      // that action is reserved for workflow-commit moments (draft →
+      // persisted) — see `service/run-turn.ts:145-158`. Dropping the
+      // extra row keeps audit semantics aligned across surfaces.
       recordConversationToolCall({
         category: "tenant_write",
         tool: "run_workflow",
@@ -639,8 +782,50 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       Date.now() - (head.created_at?.getTime() ?? 0) < 5 * 60 * 1000 &&
       typeof headInput?.workflow === "string"
     ) {
-      const resolved = await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, headInput.workflow);
+      const resolved = await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, headInput.workflow, {
+        require_published: true,
+      });
       if (resolved?.current_version_id) {
+        // Canonical RBAC gate — the resume branch must check the same
+        // permission MCP enforces. Without this, an operator whose
+        // role changed between the pending request and the approval
+        // could bypass `workflow:run` denial.
+        const rbac = await gateWorkflowRunRbac({
+          db: p.db,
+          principal: p.principal,
+          workflow_id: resolved.id,
+          request_source: "fast_path",
+          tool: "run_workflow",
+        });
+        if (!rbac.allow) {
+          const reply = `Permission denied: ${rbac.error_message}.`;
+          const persisted = await persistFastPathTurn(
+            p,
+            "run_workflow",
+            { workflow: resolved.slug, environment: "dev", __policy_confirmed: true },
+            {
+              ok: false,
+              denied: true,
+              permission: "workflow:run",
+              reason: rbac.reason,
+              error: rbac.error_message,
+              skipped_llm: true,
+            },
+            reply,
+          );
+          recordConversationToolCall({
+            category: "tenant_write",
+            tool: "run_workflow",
+            outcome: "denied",
+            duration_ms: 0,
+          });
+          return {
+            status: "active",
+            events: persisted.events,
+            fast_path_tool: "run_workflow",
+            assistant_text: reply,
+          };
+        }
         // Mirror MCP's APPROVAL_APPROVED via gateTenantToolCall with
         // __policy_confirmed: true so the audit trail records the
         // approval the same way.
@@ -651,6 +836,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           meta: undefined,
           principal: p.principal,
           db: p.db,
+          via: "fast_path",
         });
         const payload = await executeRunWorkflow(p, { workflow: resolved }, null);
         const persisted = await persistFastPathTurn(
@@ -683,9 +869,5 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       }
     }
   }
-  // Discard the unused import in some build modes — exported above is
-  // sufficient for live use; this line silences the linter when the
-  // module is split-fetched.
-  void conversationMessages;
   return null;
 }

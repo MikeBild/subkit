@@ -3,6 +3,12 @@
 // callers supply a label-rendering function plus a key-action handler
 // keyed on the highlighted row.
 //
+// SCAFFOLDING: this component is fully unit-tested but not yet
+// imported by `apps/sk/src/ink-app.tsx`. The integration (adopting it
+// for /workflows, /executions, /connectors slash list panes) ships in
+// the Stage-4 REPL polish PR — see CP2 deviation note in
+// `/Users/mikebild/.claude/plans/checkpoints-rustling-lightning.md`.
+//
 // The pane owns its `useInput` listener while mounted, so the ink-app
 // host must yield the keyboard to it (the existing one-active-useInput
 // discipline applies — see `apps/sk/src/ink-app.tsx` notes on
@@ -10,7 +16,7 @@
 
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
-import { useCallback, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 
 export interface InteractiveListProps<Row> {
   rows: ReadonlyArray<Row>;
@@ -59,9 +65,14 @@ export function InteractiveList<Row>(props: InteractiveListProps<Row>): React.JS
     [cursor, rows.length, props.wrap],
   );
   // Scroll window: keep the highlighted row visible. Adjust the
-  // visible slice when the cursor leaves the current window.
-  if (cursor < scrollTop) setScrollTop(cursor);
-  else if (cursor >= scrollTop + pageSize) setScrollTop(cursor - pageSize + 1);
+  // visible slice when the cursor leaves the current window. Done in
+  // `useLayoutEffect` (not in the render body) so React strict mode
+  // doesn't warn about set-state-during-render and to keep the scroll
+  // commit synchronous with the cursor update.
+  useLayoutEffect(() => {
+    if (cursor < scrollTop) setScrollTop(cursor);
+    else if (cursor >= scrollTop + pageSize) setScrollTop(cursor - pageSize + 1);
+  }, [cursor, scrollTop, pageSize]);
 
   useInput((input, key) => {
     if (rows.length === 0) {

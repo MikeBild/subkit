@@ -32,6 +32,7 @@ import {
   listWorkflowToolsForTenant,
   type WorkflowToolDescriptor,
 } from "../../../workflows/catalog.ts";
+import { gateWorkflowRunRbac } from "../../../workflows/rbac.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
@@ -96,6 +97,28 @@ async function executeSyntheticRun(
   p: BuildOneParams & { rawArgs: Record<string, unknown> },
 ): Promise<WrappedToolOutput> {
   const { entry, ctx, signals, events, db, name, principal, rawArgs } = p;
+  // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`
+  // dispatch and the fast-path "run <slug>" branch. A POLICY_DENIED
+  // audit row is committed before this returns so an operator denied
+  // here sees the same evidence trail an MCP denial produces.
+  const rbac = await gateWorkflowRunRbac({
+    db,
+    principal,
+    workflow_id: entry.workflow_id,
+    request_source: "chat",
+    tool: name,
+  });
+  if (!rbac.allow) {
+    const output: Record<string, unknown> = {
+      ok: false,
+      denied: true,
+      permission: "workflow:run",
+      reason: rbac.reason,
+      error: rbac.error_message,
+      status: "failed",
+    };
+    return { ok: false, data: output };
+  }
   // Policy gate — identical contract to MCP and the regular `run_workflow`
   // tool. The LLM re-issues with `__policy_confirmed: true` after the
   // operator confirms.
@@ -106,6 +129,7 @@ async function executeSyntheticRun(
     meta: undefined,
     principal,
     db,
+    via: "chat",
   });
 
   // Anchor an assistant message + tool-call row so this synthetic

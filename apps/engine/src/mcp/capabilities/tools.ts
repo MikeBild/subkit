@@ -28,8 +28,6 @@ import {
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { listTools as listConversationToolsRegistry } from "../../conversations/tools/index.ts";
@@ -39,10 +37,10 @@ import { cancel } from "../../execution/abort.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { maybeOffload } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
-import { can } from "../../rbac/evaluator.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
 import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
+import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
@@ -435,61 +433,20 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         };
       }
 
-      // Centralized RBAC evaluator — resolves built-in admin,
-      // resource grants, groups, role_permissions, and the portal
-      // token allowlist in one call.
-      const decision = await can(db, {
-        tenant_id: principal.tenant_id,
+      // Canonical RBAC gate. See `workflows/rbac.ts` —
+      // the chat fast-path, synthetic palette, and fallback
+      // `run_workflow` tool call the same helper so the four
+      // execution surfaces cannot drift on permission semantics or
+      // audit metadata.
+      const rbac = await gateWorkflowRunRbac({
+        db,
         principal,
-        permission: "workflow:run",
-        resource: { type: "workflow", id: wf.id },
+        workflow_id: wf.id,
+        request_source: "mcp",
+        tool: name,
       });
-      if (!decision.allow) {
-        // Preserve the legacy reason string for allowlist denials so
-        // the existing audit-log + error-message contracts keep
-        // working. Other denials surface as a generic reason.
-        const allowlistViolation =
-          principal.provider === "portal_token" || Array.isArray(principal.allowed_workflows);
-        const auditReason = allowlistViolation
-          ? "mcp_workflow_not_in_allowlist"
-          : (decision.reason ?? "mcp_permission_denied");
-        const errMessage = allowlistViolation
-          ? "workflow_not_in_allowlist"
-          : (decision.reason ?? "permission_denied");
-        // Use auditAwait so the deny audit row is committed BEFORE the
-        // MCP response reaches the client. Without this, portal-token
-        // end-user tests that inspect the audit table immediately after
-        // receiving the deny race the fire-and-forget `audit()` write
-        // and occasionally see zero rows on CI's slower ubuntu runner.
-        await auditAwait(
-          {
-            tenant_id: principal.tenant_id,
-            actor_type: principal.kind === "user" ? "user" : "system",
-            actor_id: principal.id,
-            action: AuditAction.POLICY_DENIED,
-            resource_type: "workflow",
-            resource_id: wf.id,
-            result: "denied",
-            reason: auditReason,
-            metadata: {
-              tool: name,
-              via: "mcp",
-              provider: principal.provider,
-              permission: "workflow:run",
-            },
-          },
-          db,
-        );
-        logger.warn({
-          module: "mcp",
-          action: "mcp.tool.denied",
-          msg: "mcp tools/call denied by RBAC evaluator",
-          tool: name,
-          workflow_id: wf.id,
-          principal_id: principal.id,
-          reason: decision.reason,
-        });
-        const err = new Error(errMessage) as Error & { code?: number };
+      if (!rbac.allow) {
+        const err = new Error(rbac.error_message) as Error & { code?: number };
         err.code = -32001;
         throw err;
       }

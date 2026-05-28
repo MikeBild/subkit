@@ -8,7 +8,7 @@
 // naming the tool. Catalog rows carry the bare slug + the materialised
 // input schema, plus the workflow id needed to dispatch.
 
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
@@ -89,29 +89,45 @@ export async function listWorkflowToolsForTenant(
     .orderBy(sql`${workflows.last_executed_at} DESC NULLS LAST`, asc(workflows.created_at))
     .limit(limit);
 
-  const out: WorkflowToolDescriptor[] = [];
-  for (const row of rows) {
-    if (!row.current_version_id) continue;
+  // First filter rows the principal can actually see — published only,
+  // allowlist (when set). This shrinks the version-id batch and avoids
+  // wasting a query when the principal has no visible workflows.
+  const visibleRows = rows.filter((row) => {
+    if (!row.current_version_id) return false;
     if (
       principal.allowed_workflows &&
       principal.allowed_workflows !== "all" &&
       !principal.allowed_workflows.includes(row.id)
     ) {
-      continue;
+      return false;
     }
+    return true;
+  });
+  if (visibleRows.length === 0) return [];
+
+  // Single `IN (...)` batch fetch for the current-version DAGs. Previously
+  // this loop ran one `select … from workflowVersions` per row, which
+  // produced up to 41 round-trips per chat turn (catalog cap is 40).
+  const versionIds = visibleRows
+    .map((r) => r.current_version_id)
+    .filter((id): id is string => id !== null);
+  const versionRows = await p.db
+    .select({ id: workflowVersions.id, dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, principal.tenant_id),
+        inArray(workflowVersions.id, versionIds),
+      ),
+    );
+  const dagByVersionId = new Map<string, unknown>();
+  for (const v of versionRows) dagByVersionId.set(v.id, v.dag);
+
+  const out: WorkflowToolDescriptor[] = [];
+  for (const row of visibleRows) {
     let description = row.name;
     let inputSchema: WorkflowToolDescriptor["inputSchema"] = EMPTY_OBJECT_SCHEMA;
-    const versionRows = await p.db
-      .select({ dag: workflowVersions.dag })
-      .from(workflowVersions)
-      .where(
-        and(
-          eq(workflowVersions.tenant_id, principal.tenant_id),
-          eq(workflowVersions.id, row.current_version_id),
-        ),
-      )
-      .limit(1);
-    const dag = versionRows[0]?.dag;
+    const dag = row.current_version_id ? dagByVersionId.get(row.current_version_id) : undefined;
     if (dag) {
       const parsed = WorkflowDefSchema.safeParse(dag);
       if (parsed.success) {
@@ -133,9 +149,5 @@ export async function listWorkflowToolsForTenant(
       last_executed_at: row.last_executed_at,
     });
   }
-  // The DESC NULLS LAST clause already orders by recency; re-emit `desc`
-  // so a future column rename or driver bug surfaces visibly in the
-  // sort rather than silently shuffling. No behaviour change today.
-  void desc;
   return out;
 }

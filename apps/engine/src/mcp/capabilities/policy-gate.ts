@@ -37,6 +37,14 @@ export type GateResult =
   | { kind: "proceed" }
   | { kind: "pending"; envelope: ConfirmRequiredEnvelope };
 
+/**
+ * Origin surface for the policy gate — stamped into audit metadata so
+ * APPROVAL_REQUESTED / APPROVAL_APPROVED rows can be filtered by
+ * surface. MCP defaults; chat callers (fast-path, synthetic palette)
+ * pass `chat` or `fast_path` so the rows are not mis-attributed.
+ */
+export type PolicyGateVia = "mcp" | "chat" | "fast_path";
+
 export interface GateTenantToolCallParams {
   /** Canonical tool name (no "tenant." prefix). */
   tool: string;
@@ -48,6 +56,12 @@ export interface GateTenantToolCallParams {
   meta: Record<string, unknown> | undefined;
   principal: ResolvedPrincipal;
   db: Db;
+  /**
+   * Origin surface for the call. Stamped into the audit metadata so
+   * APPROVAL_REQUESTED / APPROVAL_APPROVED rows can be distinguished
+   * per surface. Defaults to `"mcp"` for the original MCP callsite.
+   */
+  via?: PolicyGateVia;
 }
 
 const SK_CONFIRM_META_KEY = "sk_confirm";
@@ -94,6 +108,7 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
 
   const confirmed = isConfirmed(p.args, p.meta);
   const tool_call_id = crypto.randomUUID();
+  const via: PolicyGateVia = p.via ?? "mcp";
 
   if (confirmed) {
     await auditAwait(
@@ -108,7 +123,7 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
         metadata: {
           tool: `tenant_${p.tool}`,
           policy_mode: resolvedMode,
-          via: "mcp",
+          via,
         },
       },
       p.db,
@@ -128,7 +143,7 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
       metadata: {
         tool: `tenant_${p.tool}`,
         policy_mode: resolvedMode,
-        via: "mcp",
+        via,
       },
     },
     p.db,

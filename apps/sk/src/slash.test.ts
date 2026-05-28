@@ -116,6 +116,41 @@ describe("searchSlashCommands — frequency bias", () => {
 });
 
 // ---------------------------------------------------------------------------
+// recordUsage / frequencyBias key convention
+//
+// The dispatcher in `apps/sk/src/repl/slash/handler.ts` calls
+// `recordUsage(name)` where `name` is the slash command name without
+// the leading `/`. `frequencyBias(commandName)` later reads back by
+// the same key. Pin this contract so a future refactor that flips the
+// convention (with or without `/`) is caught at the unit-test layer.
+// ---------------------------------------------------------------------------
+
+describe("usage-stats — recordUsage / frequencyBias key convention", () => {
+  test("the bias key for the dispatched name matches (no leading slash)", async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const tempDir = mkdtempSync(join(tmpdir(), "sk-slash-test-"));
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempDir;
+    try {
+      const { recordUsage, frequencyBias } = await import("./usage-stats.ts");
+      // `recordUsage` is called with the bare name in the dispatcher.
+      recordUsage("workflows");
+      // `frequencyBias` must read back by the same bare name.
+      expect(frequencyBias("workflows")).toBeGreaterThan(0);
+      // Crucially: the leading-slash form must NOT collide. If a future
+      // refactor flips the convention, this assertion will flag it.
+      expect(frequencyBias("/workflows")).toBe(0);
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Persona filtering in combination with search
 // ---------------------------------------------------------------------------
 
