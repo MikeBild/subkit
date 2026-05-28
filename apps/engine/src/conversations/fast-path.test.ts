@@ -4,8 +4,10 @@
 // via getMockProvider().calls.length.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import { auditLog } from "../db/schema/audit.ts";
 import { tenants } from "../db/schema/identity.ts";
 import { conversations, workflows, workflowVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -185,20 +187,18 @@ describe("tryFastPath — embedded run-verb NOT matched (anchored regex)", () =>
 });
 
 // ---------------------------------------------------------------------------
-// no-principal short-circuit
+// Principal is required (non-nullable) — the production caller in
+// `service/run-turn.ts` filters `principal === null` before reaching
+// `tryFastPath`. The contract is self-documenting now; previous tests
+// that asserted "no-principal" behaviour are obsolete.
 // ---------------------------------------------------------------------------
 
-describe("tryFastPath — no-principal short-circuit for run commands", () => {
-  test("'run my-workflow' with principal=null returns null", async () => {
-    await seedMinimalWorkflow("my-workflow");
-    const result = await tryFastPath(makeParams("run my-workflow", { principal: null }));
-    // Without a principal, gateTenantToolCall can't run → fast-path skips
-    expect(result).toBeNull();
-  });
-
-  test("list intents work even without a principal", async () => {
-    // List intents don't require RBAC gate — they just read
-    const result = await tryFastPath(makeParams("list workflows", { principal: null }));
+describe("tryFastPath — list intents render under an authenticated principal", () => {
+  test("list intents render under an authenticated principal", async () => {
+    // List intents check `*:read` permission against the principal; an
+    // admin role gets full access. The dropped "with principal=null"
+    // case lives at the caller boundary now.
+    const result = await tryFastPath(makeParams("list workflows"));
     expect(result).not.toBeNull();
     expect(result?.fast_path_tool).toBe("list_workflows");
   });
@@ -284,11 +284,8 @@ describe("tryFastPath — tenant isolation", () => {
 });
 
 describe("tryFastPath — RBAC denial", () => {
-  test("portal-token principal not on the workflow's allowlist is denied on 'run <slug>'", async () => {
+  test("portal-token principal not on the workflow's allowlist is denied on 'run <slug>' AND writes POLICY_DENIED audit", async () => {
     const wf = await seedMinimalWorkflow("run-denied-wf");
-    // Portal-token principals are scoped to their `allowed_workflows`.
-    // An empty allowlist on a portal_token denies workflow:run on every
-    // workflow — the RBAC evaluator's `matchesPortalTokenAllowlist` path.
     const restricted = makePrincipal({
       provider: "portal_token",
       roles: ["portal_token_user"],
@@ -300,10 +297,23 @@ describe("tryFastPath — RBAC denial", () => {
     });
     expect(result?.assistant_text).toContain("Permission denied");
     expect(result?.fast_path_tool).toBe("run_workflow");
-    void wf;
+    // Audit hygiene: the helper must have committed a POLICY_DENIED
+    // row keyed on the workflow before the deny returned. A future
+    // refactor to fire-and-forget audit would break this assertion.
+    const audit = await tdb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, AuditAction.POLICY_DENIED),
+          eq(auditLog.resource_type, "workflow"),
+          eq(auditLog.resource_id, wf.id),
+        ),
+      );
+    expect(audit.length).toBeGreaterThan(0);
   });
 
-  test("portal-token principal not on the workflow's allowlist is denied on 'list workflows' (workflow:read)", async () => {
+  test("portal-token principal not on the workflow's allowlist is denied on 'list workflows' (workflow:read) AND writes POLICY_DENIED audit", async () => {
     await seedMinimalWorkflow("read-denied-wf");
     const restricted = makePrincipal({
       provider: "portal_token",
@@ -316,6 +326,18 @@ describe("tryFastPath — RBAC denial", () => {
     });
     expect(result?.assistant_text).toContain("Permission denied");
     expect(result?.fast_path_tool).toBe("list_workflows");
+    // List-intent deny path writes the POLICY_DENIED row against the
+    // conversation resource (the list call has no per-resource target).
+    const audit = await tdb.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, AuditAction.POLICY_DENIED), eq(auditLog.tenant_id, tenantId)));
+    expect(audit.length).toBeGreaterThan(0);
+    expect(
+      audit.some(
+        (row) => (row.metadata as Record<string, unknown>)?.permission === "workflow:read",
+      ),
+    ).toBe(true);
   });
 });
 

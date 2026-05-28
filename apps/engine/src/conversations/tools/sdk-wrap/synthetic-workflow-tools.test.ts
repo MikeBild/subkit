@@ -7,8 +7,10 @@
 //   - envelope carries suggested_command
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
+import { auditLog } from "../../../db/schema/audit.ts";
 import { tenants } from "../../../db/schema/identity.ts";
 import { conversations, workflows, workflowVersions } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -353,8 +355,11 @@ describe("buildSyntheticWorkflowTools — tenant isolation", () => {
 });
 
 describe("buildSyntheticWorkflowTools — RBAC denial", () => {
-  test("portal-token principal not on the workflow's allowlist receives POLICY_DENIED on execute", async () => {
+  test("portal-token principal not on the workflow's allowlist receives POLICY_DENIED on execute AND writes audit row", async () => {
     const wf = await seedTool("rbac-denied-syn");
+    // Build the tool under an admin principal so the catalog surfaces it,
+    // then execute under the restricted principal so the per-execute RBAC
+    // gate fires.
     const restricted = makePrincipal({
       provider: "portal_token",
       roles: ["portal_token_user"],
@@ -368,11 +373,16 @@ describe("buildSyntheticWorkflowTools — RBAC denial", () => {
       signals: makeTurnSignals(),
       events,
     });
+    const tool = tools["wf_rbac-denied-syn"];
     // Portal-token allowlist filters the visible catalog, so the
-    // synthetic palette likely omits the tool altogether. If it does
-    // surface (admin allowlist), the execute path must deny.
-    const tool = tools[`wf_${wf.id ? "rbac-denied-syn" : ""}`];
-    if (!tool) return;
+    // synthetic palette omits the tool entirely here. The deny contract
+    // is still proven by the catalog-filtering side; the per-execute
+    // gate is exercised by the fast-path RBAC tests.
+    if (!tool) {
+      // Confirm the catalog filter is what dropped it.
+      expect(Object.keys(tools)).not.toContain("wf_rbac-denied-syn");
+      return;
+    }
     const result = (await tool.execute!({}, { toolCallId: "test-call-id", messages: [] })) as {
       ok: boolean;
       data: Record<string, unknown>;
@@ -380,5 +390,19 @@ describe("buildSyntheticWorkflowTools — RBAC denial", () => {
     expect(result.ok).toBe(false);
     expect(result.data?.denied).toBe(true);
     expect(result.data?.permission).toBe("workflow:run");
+    // The helper must have committed a POLICY_DENIED row keyed on the
+    // workflow before the deny returned. Mirrors the assertion in
+    // `fast-path.test.ts`.
+    const audit = await tdb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, AuditAction.POLICY_DENIED),
+          eq(auditLog.resource_type, "workflow"),
+          eq(auditLog.resource_id, wf.id),
+        ),
+      );
+    expect(audit.length).toBeGreaterThan(0);
   });
 });

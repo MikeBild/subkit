@@ -3,7 +3,11 @@ import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
-import { EngineClient, type RunExecutionResponse } from "../engine-client.ts";
+import {
+  EngineClient,
+  type RunExecutionBody,
+  type RunExecutionResponse,
+} from "../engine-client.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type {
   PlanStep,
@@ -323,11 +327,13 @@ const runCommand = defineCommand({
         );
         process.exit(1);
       }
-      const body = {
-        source: "saved" as const,
+      // Use the engine's `RunExecutionBody` so the body shape is
+      // type-checked against the canonical POST /v1/executions schema.
+      const body: Extract<RunExecutionBody, { source: "saved" }> = {
+        source: "saved",
         workflow_id: String(args.id),
         ...(input !== null ? { input } : {}),
-        request_source: "cli" as const,
+        request_source: "cli",
       };
       printRunResult(await client.runExecution(body));
     } catch (err) {

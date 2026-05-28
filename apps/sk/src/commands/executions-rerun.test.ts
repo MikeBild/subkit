@@ -1,63 +1,9 @@
-// Unit tests for `sk executions rerun` logic.
-// Tests the business logic of the rerun command in isolation:
-//   - happy path on a saved execution
-//   - refusal on a draft/step execution (no workflow_id)
-//   - null source_ref.input round-trips as no-input body
+// Unit tests for `sk executions rerun` logic. Exercises the real
+// production helper at `commands/executions-rerun.ts` so any drift
+// between the test expectations and the command runner shows up here.
 
 import { describe, expect, test } from "bun:test";
-
-// ---------------------------------------------------------------------------
-// The rerun logic is implemented inline in executionsCommand. We extract
-// the core decision logic to test it as pure functions.
-// ---------------------------------------------------------------------------
-
-interface PriorExecution {
-  workflow_id?: unknown;
-  source_kind?: unknown;
-  source_ref?: {
-    input?: unknown;
-  } | null;
-}
-
-interface RerunBody {
-  source: "saved";
-  workflow_id: string;
-  input?: unknown;
-  request_source: "cli";
-}
-
-interface RerunResult {
-  ok: true;
-  body: RerunBody;
-}
-interface RerunRefusal {
-  ok: false;
-  reason: string;
-}
-type RerunDecision = RerunResult | RerunRefusal;
-
-/**
- * Pure implementation of the rerun decision logic from executions.ts.
- * Mirrors commands/executions.ts:188-212 exactly.
- */
-function buildRerunDecision(prior: PriorExecution): RerunDecision {
-  const workflow_id = typeof prior.workflow_id === "string" ? prior.workflow_id : undefined;
-  if (!workflow_id) {
-    return {
-      ok: false,
-      reason: `execution is not bound to a saved workflow (source_kind=${prior.source_kind ?? "unknown"}); rerun requires a saved workflow.`,
-    };
-  }
-  const sourceRef = (prior.source_ref ?? null) as Record<string, unknown> | null;
-  const priorInput = sourceRef?.input;
-  const body: RerunBody = {
-    source: "saved",
-    workflow_id,
-    ...(priorInput !== undefined ? { input: priorInput } : {}),
-    request_source: "cli",
-  };
-  return { ok: true, body };
-}
+import { buildRerunDecision, type PriorExecution } from "./executions-rerun.ts";
 
 // ---------------------------------------------------------------------------
 // Happy path: saved execution with workflow_id

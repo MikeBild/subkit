@@ -341,7 +341,7 @@ export const runWorkflowTool: ConversationTool = {
         options: {
           request_source: "chat",
           trace_id: null,
-          principal: null,
+          principal: ctx.principal ?? null,
           execution_mode: args.environment,
         },
       });

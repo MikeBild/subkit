@@ -6,6 +6,7 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { collectFileRefs } from "../utils/file-ref.ts";
+import { buildRerunDecision } from "./executions-rerun.ts";
 
 /** Compact human-readable byte formatter (matches files.ts / audit). */
 function humanBytes(n: number): string {
@@ -188,22 +189,12 @@ const rerunCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
       const prior = (await client.getExecution(args.id)) as Record<string, unknown>;
-      const workflow_id = typeof prior.workflow_id === "string" ? prior.workflow_id : undefined;
-      if (!workflow_id) {
-        process.stderr.write(
-          `execution ${args.id} is not bound to a saved workflow (source_kind=${prior.source_kind ?? "unknown"}); rerun requires a saved workflow.\n`,
-        );
+      const decision = buildRerunDecision(prior);
+      if (!decision.ok) {
+        process.stderr.write(`execution ${args.id} ${decision.reason}\n`);
         process.exit(1);
       }
-      const sourceRef = (prior.source_ref ?? null) as Record<string, unknown> | null;
-      const priorInput = sourceRef?.input;
-      const body = {
-        source: "saved" as const,
-        workflow_id,
-        ...(priorInput !== undefined ? { input: priorInput } : {}),
-        request_source: "cli" as const,
-      };
-      printJson(await client.runExecution(body));
+      printJson(await client.runExecution(decision.body));
     } catch (err) {
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,

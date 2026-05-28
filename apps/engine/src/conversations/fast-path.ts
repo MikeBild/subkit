@@ -65,9 +65,26 @@ export interface FastPathParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
-  principal: ResolvedPrincipal | null;
+  /**
+   * Resolved principal. Required (non-nullable) so the RBAC gates
+   * inside this function can run unconditionally — the production
+   * caller in `service/run-turn.ts` already drops `principal === null`
+   * before reaching here. Making the contract self-documenting
+   * removes the "what if principal is null" branch from every
+   * RBAC site below.
+   */
+  principal: ResolvedPrincipal;
   user_message: string;
 }
+
+/**
+ * Confirmation-resume window: a fast-path "run <slug>" pending envelope
+ * is only re-issued via the affirmation branch ("yes" / "ja" / etc.)
+ * within this many milliseconds of the prior `tool_calls` row. Older
+ * pendings fall through to the LLM so a stale affirmation never
+ * resurrects a workflow run from a different topic.
+ */
+const AFFIRM_RESUME_WINDOW_MS = 5 * 60 * 1000;
 
 // Bilingual verbs. Anchored to the start of the trimmed message so a
 // run command embedded mid-sentence ("if today is friday, run X") does
@@ -589,6 +606,48 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
   if (inspectMatch) {
     const execId = inspectMatch[2];
     if (execId) {
+      // Mirror the HTTP route's `execution:read` gate the same way the
+      // list-intent branch does for `*:read`. The HTTP equivalents at
+      // `apps/engine/src/http/routes/executions/list.ts` enforce this
+      // per-resource; the fast-path must agree.
+      if (p.principal) {
+        const decision = await can(p.db, {
+          tenant_id: p.tenant_id,
+          principal: p.principal,
+          permission: "execution:read",
+          resource: { type: "execution", id: execId },
+        });
+        if (!decision.allow) {
+          const reason = decision.reason ?? "permission_denied";
+          await auditPolicyDenied(p, "execution:read", "inspect_execution", reason);
+          const reply = `Permission denied: execution:read.`;
+          const persisted = await persistFastPathTurn(
+            p,
+            "inspect_execution",
+            { execution_id: execId },
+            {
+              ok: false,
+              denied: true,
+              permission: "execution:read",
+              reason,
+              skipped_llm: true,
+            },
+            reply,
+          );
+          recordConversationToolCall({
+            category: "tenant_read",
+            tool: "inspect_execution",
+            outcome: "denied",
+            duration_ms: 0,
+          });
+          return {
+            status: "active",
+            events: persisted.events,
+            fast_path_tool: "inspect_execution",
+            assistant_text: reply,
+          };
+        }
+      }
       const payload = await renderInspectExecution(p, execId);
       const persisted = await persistFastPathTurn(
         p,
@@ -779,7 +838,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
     if (
       head &&
       headOutput?.pending === true &&
-      Date.now() - (head.created_at?.getTime() ?? 0) < 5 * 60 * 1000 &&
+      Date.now() - (head.created_at?.getTime() ?? 0) < AFFIRM_RESUME_WINDOW_MS &&
       typeof headInput?.workflow === "string"
     ) {
       const resolved = await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, headInput.workflow, {
