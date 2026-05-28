@@ -127,14 +127,21 @@ LimitNPROC=4096
 ;      the engine only, leaves Postgres + Caddy + system alone). The
 ;      caps below assume the 8 GB s-2vcpu-8gb-amd droplet sk runs on
 ;      after the 2026-05-28 upsize (the prior 4 GB host hit kernel
-;      global OOM six times that morning). 6 G hard cap + 5 G soft
-;      throttle keeps ~2 G headroom for Postgres + Caddy + the OS,
-;      with comfortable working-set room for a 1.5 G transient per
-;      conversation turn. Tighter caps starve the engine: 2.4 / 2.8
-;      throttled idle (2.5 G working set) and slow-failed the auth
-;      smoke on the first 6.2.17 deploy. Operators on larger or
-;      smaller droplets can raise/lower these via a drop-in override
-;      at /etc/systemd/system/subkit-engine.service.d/memory.conf.
+;      global OOM six times that morning). 7 G hard cap + 6.5 G soft
+;      throttle keeps the engine clear of the ~400 M Postgres + Caddy
+;      + OS resident set. Conversation turns have been observed to
+;      allocate ~4 G of transient memory on the FIRST POST
+;      /v1/conversations after a cold start (the runner buffers the
+;      assembled prompt, tool palette, AI SDK streamText state, and
+;      tokenizer tables before the LLM round-trip even begins; root
+;      cause not yet isolated). With the prior 6 G cap, that spike
+;      tripped MemoryHigh throttling so hard the engine stopped
+;      responding to /v1/health locally and the deploy/smoke chain
+;      tore itself down. The wider caps let the spike complete while
+;      still containing a runaway turn within the engine cgroup.
+;      Operators on larger or smaller droplets can raise/lower these
+;      via a drop-in override at
+;      /etc/systemd/system/subkit-engine.service.d/memory.conf.
 ;   2. Steer the kernel global OOM killer (if it ever fires anyway from
 ;      a noisy neighbour) to prefer killing the engine over Postgres.
 ;      Postgres has a default oom_score_adj of 0; +500 here makes the
@@ -145,8 +152,8 @@ LimitNPROC=4096
 ; ManagedOOMSwap=kill enrolls systemd-oomd if present so swap thrashing
 ; (the host has a 4 GB swapfile from the 2026-05-20 mitigation) triggers
 ; a clean kill before the kernel OOM has to make a hostile pick.
-MemoryHigh=5G
-MemoryMax=6G
+MemoryHigh=6500M
+MemoryMax=7G
 MemorySwapMax=2G
 OOMScoreAdjust=500
 ManagedOOMSwap=kill
