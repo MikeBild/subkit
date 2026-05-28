@@ -21,3 +21,14 @@ export const RUN_VERB_RE =
  */
 export const INSPECT_EXEC_RE =
   /^(inspect|show|zeige)\s+(?:the\s+|die\s+)?execution\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*$/i;
+
+/**
+ * Closed list of affirmation tokens (en + de). Used by the fast-path
+ * confirmation-resume branch to recognise an operator approving the
+ * pending workflow run from the prior turn. Shared here so the LLM path
+ * can opt into the same set (e.g. prose-confirmation dedupe) without
+ * the two surfaces drifting. Tokens outside the set fall through to
+ * the LLM, which handles fuzzier shapes.
+ */
+export const AFFIRM_RE =
+  /^(yes|yep|yeah|y|ok|okay|ack|approve|approved|do it|go|run it|sí|si|ja|jo|los|bestätigt|confirm)\.?!?$/i;

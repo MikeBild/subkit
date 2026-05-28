@@ -297,6 +297,16 @@ describe("journey 53: session-79bf2cca regression set", () => {
       tenant_id: ctx.tenantId,
       conversation_id: "00000000-0000-0000-0000-000000000000",
       actor_id: ctx.userId,
+      // run_workflow now refuses without a principal; seed an admin-shaped
+      // one so the RBAC gate passes and the test exercises the loop-body-
+      // empty warning path it was written to catch.
+      principal: {
+        provider: "test",
+        kind: "user",
+        id: ctx.userId,
+        tenant_id: ctx.tenantId,
+        roles: ["admin"],
+      },
       connector_id: null,
       workflow_id: seeded.id,
       permission_mode: "auto",
@@ -306,7 +316,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
       setDraft: async () => {},
     };
     const out = await runWorkflowTool.execute(toolCtx, {
-      workflow_id: seeded.id,
+      workflow: seeded.id,
       environment: "dev",
     });
     expect((out.data as { status?: string }).status).toBe("partial_success");

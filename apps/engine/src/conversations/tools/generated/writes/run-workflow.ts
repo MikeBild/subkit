@@ -302,32 +302,53 @@ export const runWorkflowTool: ConversationTool = {
     try {
       // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`,
       // the fast-path "run <slug>" branch, and the synthetic palette.
-      // POLICY_DENIED audit row is committed inside the helper. Skipped
-      // only when no principal is on the ToolContext (test paths +
-      // in-process MCP elicitation worker — see ToolContext docstring).
-      if (ctx.principal) {
-        const rbac = await gateWorkflowRunRbac({
-          db: ctx.db,
-          principal: ctx.principal,
+      // POLICY_DENIED audit row is committed inside the helper. Principal
+      // is REQUIRED — production callers always thread it; in-process
+      // workers and test fixtures must seed a system principal. A null
+      // here refuses (instead of silently bypassing RBAC) so a future
+      // caller that forgets to wire principal fails loudly.
+      if (!ctx.principal) {
+        logger.warn({
+          module: "conversation_tool",
+          action: "run_workflow.no_principal",
+          msg: "run_workflow invoked without ctx.principal — refusing rather than bypassing RBAC",
+          tenant_id: ctx.tenant_id,
           workflow_id: workflowId,
-          request_source: "chat",
-          tool: "run_workflow",
         });
-        if (!rbac.allow) {
-          return {
-            ok: false,
-            data: withStatus(
-              {
-                error_code: "permission_denied",
-                permission: "workflow:run",
-                reason: rbac.reason,
-                message: rbac.error_message,
-                workflow_slug: wf.slug,
-              },
-              "failed",
-            ),
-          };
-        }
+        return {
+          ok: false,
+          data: withStatus(
+            {
+              error_code: "principal_required",
+              message:
+                "run_workflow requires an authenticated principal on the ToolContext; production callers must thread it from the auth resolution.",
+              workflow_slug: wf.slug,
+            },
+            "failed",
+          ),
+        };
+      }
+      const rbac = await gateWorkflowRunRbac({
+        db: ctx.db,
+        principal: ctx.principal,
+        workflow_id: workflowId,
+        request_source: "chat",
+        tool: "run_workflow",
+      });
+      if (!rbac.allow) {
+        return {
+          ok: false,
+          data: withStatus(
+            {
+              error_code: "permission_denied",
+              permission: "workflow:run",
+              reason: rbac.reason,
+              message: rbac.error_message,
+              workflow_slug: wf.slug,
+            },
+            "failed",
+          ),
+        };
       }
       ctx.onLog?.(
         "info",
@@ -341,7 +362,7 @@ export const runWorkflowTool: ConversationTool = {
         options: {
           request_source: "chat",
           trace_id: null,
-          principal: ctx.principal ?? null,
+          principal: ctx.principal,
           execution_mode: args.environment,
         },
       });

@@ -86,9 +86,9 @@ export interface FastPathParams {
  */
 const AFFIRM_RESUME_WINDOW_MS = 5 * 60 * 1000;
 
-// Run-verb + inspect-execution regexes live in `./intent-patterns.ts`
-// — shared with `loop.ts` so the two surfaces never drift.
-import { INSPECT_EXEC_RE, RUN_VERB_RE } from "./intent-patterns.ts";
+// Intent-detection regexes live in `./intent-patterns.ts` — shared with
+// `loop.ts` so the two surfaces never drift.
+import { AFFIRM_RE, INSPECT_EXEC_RE, RUN_VERB_RE } from "./intent-patterns.ts";
 
 export { RUN_VERB_RE };
 
@@ -121,10 +121,13 @@ function matchListIntent(text: string): keyof typeof LIST_RES | null {
 
 // HTTP routes gate the matching list endpoints on these permissions
 // (see `apps/engine/src/http/routes/workflows.ts:267`,
-// `connectors/index.ts:36`, `executions/list.ts`, `schedules.ts`,
-// `knowledge-sources.ts:173`). The fast-path renderers must enforce the
-// same contract so a principal who can talk to the chat surface but
-// lacks `*:read` does not see rows the HTTP layer would deny.
+// `connectors/index.ts:36`, `executions/list.ts`,
+// `knowledge-sources.ts:173`; the schedule:read permission is declared
+// in `apps/engine/src/rbac/permissions.json` and enforced via the
+// same `can()` evaluator on every surface that touches schedules).
+// The fast-path renderers must enforce the same contract so a principal
+// who can talk to the chat surface but lacks `*:read` does not see rows
+// the HTTP layer would deny.
 const READ_PERMISSION_BY_LIST: Record<keyof typeof LIST_RES, string> = {
   workflows: "workflow:read",
   connectors: "connector:read",
@@ -821,12 +824,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
   // workflow now. Mirrors how MCP re-issues with `__policy_confirmed:
   // true`. We resolve the slug from the prior tool_call input — no
   // hidden state.
-  // Affirmation tokens — closed list covering en + de. Tokens outside
-  // this set fall through to the LLM (which handles fuzzier affirmation
-  // shapes). Track misses via the existing fast-path-miss metric to
-  // decide which to add next.
-  const AFFIRM_RE =
-    /^(yes|yep|yeah|y|ok|okay|ack|approve|approved|do it|go|run it|sí|si|ja|jo|los|bestätigt|confirm)\.?!?$/i;
   if (AFFIRM_RE.test(text)) {
     const recent = await p.db
       .select({

@@ -37,11 +37,13 @@ afterEach(() => {
     delete process.env.HOME;
   }
   rmSync(tempDir, { recursive: true, force: true });
-  // Reset the module cache so each test gets a fresh `cached = null`
 });
 
-// We must reimport the module after changing HOME so the module-level
-// PREFS_DIR computation re-evaluates. Use dynamic import with cache busting.
+// PREFS_DIR / PREFS_PATH are lazy in the production module (resolved on
+// each call), so the HOME redirect in `beforeEach` is picked up without
+// re-importing. The dynamic-import cache-buster below is harmless and
+// kept so a future production-side cache addition would survive the
+// test ordering.
 let freshModuleSeq = 0;
 async function freshModule() {
   freshModuleSeq += 1;

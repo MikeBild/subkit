@@ -97,6 +97,16 @@ async function executeSyntheticRun(
   p: BuildOneParams & { rawArgs: Record<string, unknown> },
 ): Promise<WrappedToolOutput> {
   const { entry, ctx, signals, events, db, name, principal, rawArgs } = p;
+  // Defence in depth — production callers always source ctx.tenant_id
+  // and principal.tenant_id from the same auth resolution, so a mismatch
+  // means an upstream refactor broke that invariant. Better to fail
+  // loud at the dispatch boundary than to write audit / execution rows
+  // for the wrong tenant.
+  if (ctx.tenant_id !== principal.tenant_id) {
+    throw new Error(
+      `synthetic wf_<slug> dispatch: ctx.tenant_id (${ctx.tenant_id}) !== principal.tenant_id (${principal.tenant_id})`,
+    );
+  }
   // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`
   // dispatch and the fast-path "run <slug>" branch. A POLICY_DENIED
   // audit row is committed before this returns so an operator denied

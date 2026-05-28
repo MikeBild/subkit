@@ -204,11 +204,10 @@ describe("journey: sk fast-path — run <slug> (T16)", () => {
       .where(eq(executions.workflow_id, savedWorkflowId));
 
     expect(afterRows.length).toBeGreaterThan(priorCount);
-
-    // The new row(s) must have source_kind = "saved"
+    // Every new row written by this turn must be saved-kind — a draft
+    // or step row leaking through would mean the fast-path dispatched
+    // the wrong execution source.
     const newRows = afterRows.slice(priorCount);
-    // At minimum one of the new rows is saved-kind
-    expect(afterRows.some((r) => r.source_kind === "saved")).toBe(true);
-    void newRows;
+    expect(newRows.every((r) => r.source_kind === "saved")).toBe(true);
   });
 });

@@ -108,6 +108,16 @@ function buildToolCtx(params: {
     tenant_id: ctx.tenant_id,
     conversation_id: params.conversation_id,
     actor_id: ctx.user_id,
+    // Seed a real principal so the now-mandatory RBAC gate inside
+    // run_workflow proceeds (system-account principal sees all
+    // permissions in the evaluator by default).
+    principal: {
+      provider: "test",
+      kind: "user",
+      id: ctx.user_id,
+      tenant_id: ctx.tenant_id,
+      roles: ["admin"],
+    },
     connector_id: null,
     workflow_id: null,
     permission_mode: "auto",

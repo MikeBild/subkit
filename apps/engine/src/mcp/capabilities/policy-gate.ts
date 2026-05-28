@@ -150,6 +150,11 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
         // bare tool name so audit aggregates by `metadata.tool` match
         // the conversation_tool_calls table.
         tool: via === "mcp" ? `tenant_${p.tool}` : p.tool,
+        // Stable column for cross-surface audit queries. `tool` forks
+        // by surface (MCP keeps the legacy prefix); `canonical_tool`
+        // is always the bare tool name so operators have one column
+        // they can `GROUP BY` regardless of `via`.
+        canonical_tool: p.tool,
         policy_mode: resolvedMode,
         via,
       },
