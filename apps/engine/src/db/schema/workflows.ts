@@ -53,6 +53,19 @@ export const workflows = pgTable(
     uniqueIndex("workflows_tenant_slug_active_key")
       .on(t.tenant_id, t.slug)
       .where(sql`${t.deleted_at} IS NULL`),
+    // The `wf_<slug>` tool catalog (apps/engine/src/workflows/catalog.ts)
+    // orders by `last_executed_at DESC NULLS LAST, created_at ASC` and
+    // caps at 40 per principal. For tenants with thousands of workflows
+    // the planner would otherwise scan. Migration
+    // `0031_workflows_catalog_lru_index.sql` is the source of truth for
+    // the `WHERE is_tool=TRUE AND deleted_at IS NULL` partial clause;
+    // drizzle-kit does not express that cleanly today, so we declare the
+    // unfiltered ordering here and let the migration own the partial
+    // predicate. A future drizzle-kit run will see this declaration and
+    // emit nothing — the partial index already exists.
+    index("workflows_tool_catalog_lru_idx")
+      .on(t.tenant_id, t.last_executed_at.desc(), t.created_at)
+      .where(sql`${t.is_tool} = TRUE AND ${t.deleted_at} IS NULL`),
   ],
 );
 

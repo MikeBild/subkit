@@ -23,11 +23,16 @@
 //      `next_best_actions`.
 
 import { jsonSchema, type Tool, tool } from "ai";
+import { and, eq } from "drizzle-orm";
+import { auditAwait } from "../../../audit/audit.ts";
+import { AuditAction } from "../../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
+import { conversations } from "../../../db/schema/index.ts";
 import { runExecution } from "../../../execution/engine.ts";
 import { logger } from "../../../logging/logger.ts";
 import { gateTenantToolCall } from "../../../mcp/capabilities/policy-gate.ts";
+import { recordConversationToolCall } from "../../../observability/instrumentation.ts";
 import {
   listWorkflowToolsForTenant,
   type WorkflowToolDescriptor,
@@ -127,11 +132,21 @@ async function executeSyntheticRun(
       error: rbac.error_message,
       status: "failed",
     };
+    recordConversationToolCall({
+      category: "tenant_write",
+      tool: name,
+      outcome: "denied",
+      duration_ms: 0,
+    });
     return { ok: false, data: output };
   }
   // Policy gate — identical contract to MCP and the regular `run_workflow`
   // tool. The LLM re-issues with `__policy_confirmed: true` after the
-  // operator confirms.
+  // operator confirms. `tool` stays `run_workflow` so `resolveToolMode`
+  // applies the same dev → no_confirm shortcut MCP uses (the policy
+  // registry doesn't know `wf_<slug>` names). The specific slug surfaces
+  // in audit metadata via `subject_workflow_slug` so operators can still
+  // filter approvals by saved workflow.
   const gate = await gateTenantToolCall({
     tool: "run_workflow",
     category: "tenant_write",
@@ -140,6 +155,7 @@ async function executeSyntheticRun(
     principal,
     db,
     via: "chat",
+    subject_workflow_slug: entry.slug,
   });
 
   // Anchor an assistant message + tool-call row so this synthetic
@@ -194,6 +210,12 @@ async function executeSyntheticRun(
       tool: name,
       output,
       parent_message_id: assistantMessageId,
+    });
+    recordConversationToolCall({
+      category: "tenant_write",
+      tool: name,
+      outcome: "pending",
+      duration_ms: 0,
     });
     return { ok: false, data: output };
   }
@@ -282,6 +304,45 @@ async function executeSyntheticRun(
       workflow_id: entry.workflow_id,
       status: result.status,
     });
+    // Mirror run-workflow.ts so chat-via-`wf_<slug>` and
+    // chat-via-`run_workflow` are observationally indistinguishable:
+    //   1. `conversation.run_workflow` audit row (operators searching
+    //      by this action surface both paths together);
+    //   2. `target_workflow_id` on the conversation (so "run it again"
+    //      heuristics in `service/run-turn.ts` still resolve);
+    //   3. `conversation_tool_calls_total` counter.
+    await auditAwait(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_type: principal.kind === "user" ? "user" : "system",
+        actor_id: principal.id,
+        action: AuditAction.EXECUTION_STARTED,
+        resource_type: "execution",
+        resource_id: result.execution_id,
+        result: ok ? "success" : "error",
+        metadata: {
+          via_action: "conversation.run_workflow",
+          conversation_id: ctx.conversation_id,
+          workflow_id: entry.workflow_id,
+          tool: name,
+          environment: "dev",
+          final_status: result.status,
+        },
+      },
+      db,
+    );
+    await db
+      .update(conversations)
+      .set({ target_workflow_id: entry.workflow_id, updated_at: new Date() })
+      .where(
+        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
+      );
+    recordConversationToolCall({
+      category: "tenant_write",
+      tool: name,
+      outcome: ok ? "ok" : "error",
+      duration_ms: 0,
+    });
     return { ok, data: output };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -309,6 +370,12 @@ async function executeSyntheticRun(
       tool: name,
       workflow_id: entry.workflow_id,
       error: msg,
+    });
+    recordConversationToolCall({
+      category: "tenant_write",
+      tool: name,
+      outcome: "error",
+      duration_ms: 0,
     });
     return { ok: false, data: output };
   }

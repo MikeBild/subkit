@@ -40,7 +40,14 @@ function readPrefs(): PrefsShape {
   try {
     const raw = readFileSync(path, "utf8");
     const parsed = PrefsSchema.safeParse(JSON.parse(raw));
-    if (parsed.success) return parsed.data;
+    if (parsed.success) {
+      // Forward-compat: a future v2 file shape would survive the Zod
+      // parse via z.record(z.string(), z.number()) but the semantics
+      // could have changed. Treat anything other than the current
+      // SCHEMA_VERSION as "unknown shape" and fall back to empty — the
+      // next `recordUsage` write will stamp the current version.
+      if (parsed.data.version === SCHEMA_VERSION) return parsed.data;
+    }
   } catch {
     // Missing or unreadable — fall through to empty defaults.
   }

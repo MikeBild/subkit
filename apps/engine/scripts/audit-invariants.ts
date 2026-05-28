@@ -651,6 +651,46 @@ function checkTestSeamsGated(): Result {
   };
 }
 
+function checkEngineHomedirAbsence(): Result {
+  // Engine production code MUST NOT read `homedir()` or `process.env.HOME` —
+  // the repo-root `bunfig.toml` preloads `setup-isolated-home.ts` for every
+  // `bun test` process, which redirects HOME to a tempdir. If engine code
+  // ever starts reading HOME (e.g. a credential cache, an MCP server's
+  // .netrc lookup, an LLM client config probe), test runs would silently
+  // see an empty $HOME and miss the misconfiguration.
+  //
+  // Allow-list a use via `// homedir-allowed: <reason>` on the same line.
+  const violations: string[] = [];
+  for (const f of listFiles(ENGINE_SRC, (p) => p.endsWith(".ts") || p.endsWith(".tsx"))) {
+    const rel = relative(REPO, f);
+    if (rel.includes("/test-helpers/") || rel.endsWith(".test.ts") || rel.endsWith(".test.tsx")) {
+      continue;
+    }
+    const text = readFileSync(f, "utf8");
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] ?? "";
+      if (line.includes("homedir-allowed:")) continue;
+      if (/\bhomedir\s*\(/.test(line) || /\bprocess\.env\.HOME\b/.test(line)) {
+        violations.push(`${rel}:${i + 1}`);
+      }
+    }
+  }
+  if (violations.length === 0) {
+    return {
+      id: "engine_homedir_absent",
+      status: "PASS",
+      message:
+        "no homedir()/process.env.HOME reads in engine production code (bunfig.toml preload assumes this)",
+    };
+  }
+  return {
+    id: "engine_homedir_absent",
+    status: "FAIL",
+    message: `engine production code reads HOME / homedir() (annotate with \`// homedir-allowed: <reason>\` if intentional, or scope the bunfig preload):\n  ${violations.join("\n  ")}`,
+  };
+}
+
 // ---------- driver ----------
 
 const CHECKS: Array<() => Result> = [
@@ -669,6 +709,7 @@ const CHECKS: Array<() => Result> = [
   checkRegressionIsolation,
   checkSystemdUnitJitFriendly,
   checkTestSeamsGated,
+  checkEngineHomedirAbsence,
 ];
 
 const results: Result[] = [];
