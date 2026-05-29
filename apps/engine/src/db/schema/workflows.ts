@@ -29,6 +29,15 @@ export const workflows = pgTable(
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
+    // First-class, editable workflow description. Canonical source for the
+    // LLM-facing `wf_<slug>` tool description: the catalog
+    // (apps/engine/src/workflows/catalog.ts) prefers this column, then the
+    // DAG's `WorkflowDef.description`, then `name`. Patchable as metadata
+    // via `update_workflow` with no version bump — the DAG carries an
+    // authoring-time `description` too, but editing the surface text must
+    // not force a new version. Nullable so existing rows survive unchanged
+    // and fall through to the DAG/name fallback.
+    description: text("description"),
     current_version_id: uuid("current_version_id"),
     lifecycle: workflowLifecycleEnum("lifecycle").notNull(),
     // Product-catalog flag: if true AND current_version_id is set AND

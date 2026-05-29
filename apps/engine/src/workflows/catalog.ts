@@ -88,6 +88,7 @@ export async function listWorkflowToolsForTenant(
       id: workflows.id,
       slug: workflows.slug,
       name: workflows.name,
+      description: workflows.description,
       current_version_id: workflows.current_version_id,
       last_executed_at: workflows.last_executed_at,
     })
@@ -139,13 +140,19 @@ export async function listWorkflowToolsForTenant(
 
   const out: WorkflowToolDescriptor[] = [];
   for (const row of visibleRows) {
-    let description = row.name;
+    // Description precedence: the editable `workflows.description` column
+    // wins (set via `update_workflow`), then the DAG's authoring-time
+    // `description`, then the display name as a last resort. Keeps the
+    // LLM-facing `wf_<slug>` description aligned with the HTTP surface
+    // (serializeWorkflow) and the MCP resource view.
+    const columnDescription = row.description?.trim() ? row.description.trim() : null;
+    let description = columnDescription ?? row.name;
     let inputSchema: WorkflowToolDescriptor["inputSchema"] = EMPTY_OBJECT_SCHEMA;
     const dag = row.current_version_id ? dagByVersionId.get(row.current_version_id) : undefined;
     if (dag) {
       const parsed = WorkflowDefSchema.safeParse(dag);
       if (parsed.success) {
-        if (parsed.data.description) description = parsed.data.description;
+        if (!columnDescription && parsed.data.description) description = parsed.data.description;
         if (parsed.data.input_schema) {
           inputSchema = toInputSchema(parsed.data.input_schema);
         } else {

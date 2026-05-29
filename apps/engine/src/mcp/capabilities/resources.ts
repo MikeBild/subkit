@@ -580,6 +580,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
                 id: wf.id,
                 slug: wf.slug,
                 name: wf.name,
+                description: wf.description ?? wf.definition.description ?? null,
                 lifecycle: wf.lifecycle,
                 current_version: wf.current_version,
                 definition: wf.definition,
