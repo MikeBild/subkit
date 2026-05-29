@@ -83,6 +83,7 @@ function buildToolCtx(params?: {
         id: string;
         slug?: string;
         name?: string;
+        description?: string | null;
         lifecycle?: "active" | "archived";
       }) => {
         const { updateWorkflowMetadata } = await import("../../workflows/service.ts");
@@ -92,6 +93,7 @@ function buildToolCtx(params?: {
             id: params.id,
             ...(params.slug !== undefined ? { slug: params.slug } : {}),
             ...(params.name !== undefined ? { name: params.name } : {}),
+            ...(params.description !== undefined ? { description: params.description } : {}),
             ...(params.lifecycle !== undefined ? { lifecycle: params.lifecycle } : {}),
             actor_id: ctx.user_id,
           },
@@ -292,7 +294,7 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     });
   });
 
-  test("rejects an empty patch (no slug, name, or lifecycle)", async () => {
+  test("rejects an empty patch (no slug, name, description, or lifecycle)", async () => {
     const wf = await seedLiveWorkflow("empty-patch-uw", "Untouched");
 
     const result = await updateWorkflowTool
@@ -303,9 +305,80 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     // which is the expected shape (Zod errors propagate without being
     // wrapped in a structured tool result for invalid input).
     if ("threw" in result) {
-      expect(String(result.threw)).toMatch(/at least one of slug, name, or lifecycle/i);
+      expect(String(result.threw)).toMatch(
+        /at least one of slug, name, description, or lifecycle/i,
+      );
     } else {
       expect(result.ok).toBe(false);
     }
+  });
+
+  test("sets a description on the workflows.description column without a new version", async () => {
+    const wf = await seedLiveWorkflow("describe-me-uw", "Describe Me");
+    const richDescription =
+      "Converts a Notion essay page into Markdown with YAML frontmatter. Phase 1 of a publishing pipeline.";
+
+    const result = await updateWorkflowTool.execute(toolCtx(), {
+      id: wf.id,
+      description: richDescription,
+    });
+
+    expect(result.ok).toBe(true);
+    const data = result.data as { workflow: { description: string | null } };
+    expect(data.workflow.description).toBe(richDescription);
+
+    // Persisted to the column, not the DAG, and no new version row.
+    const refetched = await ctx.testDb.db
+      .select({ description: workflows.description })
+      .from(workflows)
+      .where(eq(workflows.id, wf.id))
+      .limit(1);
+    expect(refetched[0]?.description).toBe(richDescription);
+    const vrows = await ctx.testDb.db
+      .select({ version: workflowVersions.version })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.workflow_id, wf.id));
+    expect(vrows.length).toBe(1);
+
+    // The `wf_<slug>` catalog now surfaces the column description (not the
+    // bland name) — this is the regression the live `update_workflow`
+    // repair-loop produced.
+    const { listWorkflowToolsForTenant } = await import("../../workflows/catalog.ts");
+    const catalog = await listWorkflowToolsForTenant({
+      db: ctx.testDb.db,
+      // biome-ignore lint/suspicious/noExplicitAny: minimal principal stub
+      principal: { tenant_id: ctx.tenant_id, allowed_workflows: "all" } as any,
+    });
+    const entry = catalog.find((c) => c.slug === "describe-me-uw");
+    expect(entry?.description).toBe(richDescription);
+
+    // Audit from/to carries the description transition.
+    const auditRows = await ctx.testDb.db
+      .select({ action: auditLog.action, metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(eq(auditLog.resource_id, wf.id));
+    const meta = (auditRows.find((r) => r.action === "workflow.updated")?.metadata ?? {}) as {
+      kind?: string;
+      from?: { description?: string | null };
+      to?: { description?: string | null };
+    };
+    expect(meta.kind).toBe("metadata");
+    expect(meta.from?.description ?? null).toBeNull();
+    expect(meta.to?.description).toBe(richDescription);
+  });
+
+  test("clears a description with an empty string (stored as NULL)", async () => {
+    const wf = await seedLiveWorkflow("clear-desc-uw", "Clear Desc");
+    await updateWorkflowTool.execute(toolCtx(), { id: wf.id, description: "temporary" });
+
+    const result = await updateWorkflowTool.execute(toolCtx(), { id: wf.id, description: "" });
+    expect(result.ok).toBe(true);
+
+    const refetched = await ctx.testDb.db
+      .select({ description: workflows.description })
+      .from(workflows)
+      .where(eq(workflows.id, wf.id))
+      .limit(1);
+    expect(refetched[0]?.description ?? null).toBeNull();
   });
 });

@@ -62,6 +62,9 @@ export interface WorkflowView {
   tenant_id: string;
   slug: string;
   name: string;
+  /** First-class workflow description (workflows.description column). Null
+   *  when never set — readers fall back to the DAG description, then name. */
+  description: string | null;
   lifecycle: "draft" | "active" | "archived";
   current_version_id: string | null;
   current_version: number | null;
@@ -220,6 +223,7 @@ async function loadWorkflowView(
     tenant_id: wf.tenant_id,
     slug: wf.slug,
     name: wf.name,
+    description: wf.description ?? null,
     lifecycle: wf.lifecycle as "draft" | "active" | "archived",
     current_version_id: wf.current_version_id,
     current_version: version,
@@ -462,6 +466,13 @@ export interface UpdateWorkflowMetadataInput {
   slug?: string;
   /** New display name. Independently optional. */
   name?: string;
+  /**
+   * New workflow description (workflows.description column). Independently
+   * optional. A non-empty string sets it; an empty/whitespace string clears
+   * it (stored as NULL). Omit to leave the description unchanged. Metadata
+   * patch — never rolls a new version.
+   */
+  description?: string | null;
   /** New lifecycle state ("active" / "archived"). "draft" cannot be set explicitly. */
   lifecycle?: "active" | "archived";
   actor_id: string | null;
@@ -507,9 +518,19 @@ export async function updateWorkflowMetadata(
   const desiredName =
     typeof input.name === "string" && input.name.trim().length > 0 ? input.name.trim() : null;
   const desiredLifecycle = input.lifecycle ?? null;
-  if (!desiredSlug && !desiredName && !desiredLifecycle) {
+  // Description is the only patch field where an empty value is meaningful
+  // (clear → NULL), so we track "provided" separately from the trimmed
+  // value. `undefined` means "leave unchanged"; any string (incl. "") means
+  // "set", with empty/whitespace normalised to NULL.
+  const descriptionProvided = typeof input.description === "string";
+  const desiredDescription = descriptionProvided
+    ? (input.description as string).trim() || null
+    : null;
+  if (!desiredSlug && !desiredName && !desiredLifecycle && !descriptionProvided) {
     return {
-      errors: ["updateWorkflowMetadata requires at least one of slug, name, or lifecycle"],
+      errors: [
+        "updateWorkflowMetadata requires at least one of slug, name, lifecycle, or description",
+      ],
     };
   }
   if (desiredSlug && !/^[a-z0-9][a-z0-9-]*$/.test(desiredSlug)) {
@@ -551,6 +572,7 @@ export async function updateWorkflowMetadata(
       const patch: {
         slug?: string;
         name?: string;
+        description?: string | null;
         lifecycle?: "active" | "archived";
         updated_at: Date;
       } = {
@@ -558,11 +580,22 @@ export async function updateWorkflowMetadata(
       };
       if (desiredSlug && desiredSlug !== wf.slug) patch.slug = desiredSlug;
       if (desiredName && desiredName !== wf.name) patch.name = desiredName;
+      // Only patch description when it was provided AND differs from the
+      // current value (NULL-normalised both sides) — so a redundant set is a
+      // no-op rather than a spurious audit row.
+      if (descriptionProvided && desiredDescription !== (wf.description ?? null)) {
+        patch.description = desiredDescription;
+      }
       if (desiredLifecycle && desiredLifecycle !== wf.lifecycle) {
         patch.lifecycle = desiredLifecycle;
       }
       // Nothing actually changed — no-op patch, no audit.
-      if (patch.slug === undefined && patch.name === undefined && patch.lifecycle === undefined) {
+      if (
+        patch.slug === undefined &&
+        patch.name === undefined &&
+        patch.description === undefined &&
+        patch.lifecycle === undefined
+      ) {
         return { id: wf.id, noop: true as const };
       }
       await tx.update(workflows).set(patch).where(eq(workflows.id, wf.id));
@@ -577,10 +610,17 @@ export async function updateWorkflowMetadata(
           result: "success",
           metadata: {
             kind: "metadata",
-            from: { slug: wf.slug, name: wf.name, lifecycle: wf.lifecycle },
+            from: {
+              slug: wf.slug,
+              name: wf.name,
+              description: wf.description ?? null,
+              lifecycle: wf.lifecycle,
+            },
             to: {
               slug: patch.slug ?? wf.slug,
               name: patch.name ?? wf.name,
+              description:
+                patch.description === undefined ? (wf.description ?? null) : patch.description,
               lifecycle: patch.lifecycle ?? wf.lifecycle,
             },
           },

@@ -89,13 +89,19 @@ export class EngineClient {
     get: (id: string) => getWorkflow(this.tenant_id, id, this.db),
     getBySlug: (slug: string) => getWorkflowBySlug(this.tenant_id, slug, this.db),
     delete: (id: string) => deleteWorkflow(this.tenant_id, id, this.actor_id, this.db),
-    update: (params: Pick<UpdateWorkflowMetadataInput, "id" | "slug" | "name" | "lifecycle">) =>
+    update: (
+      params: Pick<
+        UpdateWorkflowMetadataInput,
+        "id" | "slug" | "name" | "description" | "lifecycle"
+      >,
+    ) =>
       updateWorkflowMetadata(
         {
           tenant_id: this.tenant_id,
           id: params.id,
           ...(params.slug !== undefined ? { slug: params.slug } : {}),
           ...(params.name !== undefined ? { name: params.name } : {}),
+          ...(params.description !== undefined ? { description: params.description } : {}),
           ...(params.lifecycle !== undefined ? { lifecycle: params.lifecycle } : {}),
           actor_id: this.actor_id,
         },

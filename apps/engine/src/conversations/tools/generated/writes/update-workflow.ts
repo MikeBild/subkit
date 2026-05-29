@@ -1,7 +1,13 @@
 // update_workflow — patch a persisted workflow's metadata (slug,
-// display name, lifecycle) without rewriting the dag or version
-// history. Generic on purpose: the LLM picks which subset of fields
-// to send, the same tool covers rename, archive, and reactivate.
+// display name, description, lifecycle) without rewriting the dag or
+// version history. Generic on purpose: the LLM picks which subset of
+// fields to send, the same tool covers rename, re-describe, archive,
+// and reactivate.
+//
+// `description` writes the editable `workflows.description` column —
+// the canonical source for the LLM-facing `wf_<slug>` tool description
+// (catalog precedence: column → DAG → name). It is metadata: setting it
+// does NOT roll a new version. Sending an empty string clears it.
 //
 // Reference parity: the reference codebase exposes rename + lifecycle
 // only as HTTP datastore ops (`POST /tools/:toolId/rename`,
@@ -32,11 +38,25 @@ const UpdateWorkflowInput = z
       .regex(/^[a-z0-9][a-z0-9-]*$/, "slug must be lowercase alphanumeric with hyphens")
       .optional(),
     name: z.string().min(1).optional(),
+    description: z
+      .string()
+      .max(2000)
+      .optional()
+      .describe(
+        "One-paragraph workflow description. Becomes the LLM-facing wf_<slug> tool description. Send an empty string to clear it. Metadata only — does not roll a new version.",
+      ),
     lifecycle: z.enum(["active", "archived"]).optional(),
   })
-  .refine((v) => Boolean(v.slug || v.name || v.lifecycle), {
-    message: "At least one of slug, name, or lifecycle is required",
-  })
+  .refine(
+    (v) =>
+      v.slug !== undefined ||
+      v.name !== undefined ||
+      v.description !== undefined ||
+      v.lifecycle !== undefined,
+    {
+      message: "At least one of slug, name, description, or lifecycle is required",
+    },
+  )
   .openapi("UpdateWorkflowToolInput");
 
 type PermissionResult = { allow: true } | { allow: false; reason: string };
@@ -128,12 +148,13 @@ function permissionDenied(permission: string, reason: string) {
 export const updateWorkflowTool: ConversationTool = {
   name: "update_workflow",
   description:
-    "Patch a persisted workflow's metadata (slug, display name, lifecycle) without rewriting the dag or version history.",
+    "Patch a persisted workflow's metadata (slug, display name, description, lifecycle) without rewriting the dag or version history.",
   requires_persisted_workflow: true,
   use_case:
-    "Use when the user asks to rename a workflow, change its display name, archive it, or reactivate it. Send only the fields that should change. Does NOT alter steps, input/output schema, or version count — for those, edit the draft and use save_workflow_draft.",
+    "Use when the user asks to rename a workflow, set or change its description, archive it, or reactivate it. Send only the fields that should change. Does NOT alter steps, input/output schema, or version count — for those, edit the draft and use save_workflow_draft.",
   important_notes: [
-    "At least one of slug, name, or lifecycle is required.",
+    "At least one of slug, name, description, or lifecycle is required.",
+    "description sets the editable workflows.description column — the LLM-facing wf_<slug> tool description. Metadata only: it does NOT roll a new version. Send an empty string to clear it.",
     "slug must be lowercase alphanumeric with hyphens; the service slugifies it again before the write.",
     "Slug uniqueness is enforced; collisions return slug_conflict_with_live_workflow with conflict.workflow_id.",
     "Audits as workflow.updated with metadata.kind='metadata' plus from/to snapshots — never overrides version history.",
@@ -155,6 +176,7 @@ export const updateWorkflowTool: ConversationTool = {
         id: args.id,
         ...(args.slug !== undefined ? { slug: args.slug } : {}),
         ...(args.name !== undefined ? { name: args.name } : {}),
+        ...(args.description !== undefined ? { description: args.description } : {}),
         ...(args.lifecycle !== undefined ? { lifecycle: args.lifecycle } : {}),
       });
     } catch (err) {
@@ -208,6 +230,7 @@ export const updateWorkflowTool: ConversationTool = {
         conversation_id: ctx.conversation_id,
         slug: args.slug,
         name: args.name,
+        description: args.description,
         lifecycle: args.lifecycle,
       },
     });
@@ -241,6 +264,7 @@ export const updateWorkflowTool: ConversationTool = {
           id: result.workflow.id,
           slug: result.workflow.slug,
           name: result.workflow.name,
+          description: result.workflow.description,
           lifecycle: result.workflow.lifecycle,
         },
         audit_log_id,

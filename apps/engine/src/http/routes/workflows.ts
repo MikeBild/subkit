@@ -74,7 +74,11 @@ function serializeWorkflow(w: svc.WorkflowView) {
     tenant_id: w.tenant_id,
     slug: w.slug,
     name: w.name,
-    description: w.definition.description ?? null,
+    // Same precedence as the `wf_<slug>` catalog: the editable
+    // workflows.description column wins, then the DAG's authoring-time
+    // description, then null. Keeps the HTTP/dashboard surface in lock-step
+    // with what the MCP tool palette shows.
+    description: w.description ?? w.definition.description ?? null,
     lifecycle: w.lifecycle,
     current_version_id: w.current_version_id,
     current_version: w.current_version,
