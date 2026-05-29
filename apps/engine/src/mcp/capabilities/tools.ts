@@ -37,6 +37,8 @@ import { cancel } from "../../execution/abort.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { maybeOffload } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
+import { globalEmitter } from "../../pubsub/emitter.ts";
+import type { EventEnvelope } from "../../pubsub/types.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
 import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
@@ -58,6 +60,11 @@ import { buildWorkflowToolMeta } from "./tool-meta.ts";
 
 const TOOL_PREFIX = "wf_";
 const PROGRESS_POLL_MS = 250;
+// Coalesce `notifications/tools/list_changed` bursts: a bulk import that
+// emits many `workflow.lifecycle` events in quick succession yields a
+// single client-facing ping, not a storm. Trailing-window from the first
+// event of a burst.
+const TOOL_LIST_CHANGED_DEBOUNCE_MS = 250;
 
 interface ListToolsParams {
   db: Db;
@@ -169,7 +176,63 @@ export interface RegisterToolsParams {
 export function registerToolsCapability(p: RegisterToolsParams): void {
   const { server, db, principal } = p;
 
-  server.registerCapabilities({ tools: { listChanged: false } });
+  server.registerCapabilities({ tools: { listChanged: true } });
+
+  // Tool-list freshness. The `wf_<slug>` catalog is DB-driven (see
+  // `listWorkflowTools` → `catalog.ts`), so any workflow
+  // create/update/delete/restore/metadata change alters the tool list
+  // mid-session. We subscribe to the same `workflow.lifecycle` pub/sub
+  // channel `resources.ts` uses and push `notifications/tools/list_changed`
+  // so spec-compliant clients (Claude Code ≥ 2.1.0, claude.ai) re-fetch
+  // `tools/list` across the next turn without a manual `/mcp` reconnect.
+  //
+  // Tenant isolation: cross-tenant events drop before anything else
+  // (same guard as `forwardIfSubscribed`). No RBAC re-check is needed —
+  // the notification carries no payload (no workflow id), and the
+  // follow-up `tools/list` it triggers is itself principal-scoped and
+  // RBAC-filtered in `catalog.ts`. Delivery is best-effort: a failed
+  // `sendToolListChanged` logs once at `warn` and is swallowed, matching
+  // the resources-channel discipline (clients poll on critical paths).
+  let listChangedTimer: ReturnType<typeof setTimeout> | undefined;
+  const offWorkflowLifecycle = globalEmitter.on(
+    "workflow.lifecycle",
+    (event: EventEnvelope<unknown>) => {
+      if (event.tenant_id !== principal.tenant_id) return;
+      // Leading-edge schedule: the first event of a burst arms a single
+      // trailing fire; later events inside the window are absorbed by it.
+      if (listChangedTimer) return;
+      listChangedTimer = setTimeout(() => {
+        listChangedTimer = undefined;
+        void server.sendToolListChanged().catch((err: unknown) => {
+          logger.warn({
+            module: "mcp",
+            action: "mcp.tools.list_changed.failed",
+            msg: "failed to send mcp tools list_changed",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }, TOOL_LIST_CHANGED_DEBOUNCE_MS);
+      listChangedTimer.unref?.();
+    },
+  );
+  // Tear down the listener + pending timer when the session closes so we
+  // don't leak handlers across reconnects. Chain any prior `onclose`
+  // (e.g. the resources capability sets one too).
+  const priorOnClose = server.onclose;
+  server.onclose = (): void => {
+    offWorkflowLifecycle();
+    if (listChangedTimer) {
+      clearTimeout(listChangedTimer);
+      listChangedTimer = undefined;
+    }
+    if (typeof priorOnClose === "function") {
+      try {
+        priorOnClose();
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   // Write-tools inside the tenant.* family are additionally gated at
   // call time by `gateTenantToolCall`. The env var below forces a strictly
