@@ -18,6 +18,7 @@
 import { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import { and, desc, eq } from "drizzle-orm";
+import { recordToolPolicyConfirmationRequired } from "../../../audit/recorders/index.ts";
 import type { Db } from "../../../db/client.ts";
 import {
   conversationElicitations,
@@ -50,6 +51,7 @@ import {
 import type { TurnEvent } from "../../types.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
+import { resolveExecutionMode } from "../tool-policies.ts";
 import { truncateForLlm } from "../truncate.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
 import {
@@ -146,6 +148,57 @@ export function wrapOne(
     // compileDescription appends to the description above.
     ...toInputExamples(inner.example_input),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
+      // Per-call policy-mode resolution + confirmation audit. Folded in
+      // here from a second wrapper layer at loop.ts that doubled every
+      // tool's closure footprint per turn (~109 tools × 2 closures =
+      // ~218 closures held simultaneously, all referencing tenant_id /
+      // actor_id / conversation_id / db / logger). Keeping it inline
+      // with the existing prerequisite + circuit-breaker checks
+      // collapses the duplication without changing the policy
+      // resolution order: still BEFORE the toolChain mutex acquisition
+      // and BEFORE the inner tool runs.
+      const policyEnvironment =
+        typeof (rawArgs as { environment?: unknown }).environment === "string"
+          ? (rawArgs as { environment: string }).environment
+          : undefined;
+      const resolvedPolicy = resolveExecutionMode(inner.name, rawArgs, {
+        tenant_id: ctx.tenant_id,
+        ...(policyEnvironment ? { environment: policyEnvironment } : {}),
+      });
+      logger.debug({
+        module: "conversation_loop",
+        action: "tool_policy.resolved",
+        msg: "resolved tool execution mode",
+        conversation_id: ctx.conversation_id,
+        tenant_id: ctx.tenant_id,
+        tool: inner.name,
+        mode: resolvedPolicy.mode,
+        confirmation_kind: resolvedPolicy.confirmationKind,
+        reason: resolvedPolicy.reason,
+      });
+      if (resolvedPolicy.mode === "confirm_before_execution") {
+        // Best-effort audit; never blocks dispatch on a failed insert.
+        await recordToolPolicyConfirmationRequired({
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.actor_id ?? null,
+          executor: db,
+          conversation_id: ctx.conversation_id,
+          tool: inner.name,
+          mode: resolvedPolicy.mode,
+          confirmation_kind: resolvedPolicy.confirmationKind,
+          resolver_reason: resolvedPolicy.reason,
+          ...(policyEnvironment !== undefined ? { environment: policyEnvironment } : {}),
+        }).catch((err: unknown) => {
+          logger.warn({
+            module: "conversation_loop",
+            action: "tool_policy.audit_failed",
+            msg: "failed to record tool_policy.confirmation_required audit",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
       // Serialize against other tool executions in this turn — see
       // TurnSignals.toolChain for rationale.
       const prevChain = signals.toolChain;

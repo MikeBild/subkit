@@ -11,7 +11,6 @@
 
 import { hasToolCall, stepCountIs, streamText } from "ai";
 import { and, desc, eq } from "drizzle-orm";
-import { recordToolPolicyConfirmationRequired } from "../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import {
@@ -95,7 +94,6 @@ import {
 import { nextSuggestion } from "./streaming.ts";
 import { listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
-import { resolveExecutionMode } from "./tools/tool-policies.ts";
 import { classifyFallbackSynthesis, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
 import type { ConversationStatus, DraftDocument, TurnEvent } from "./types.ts";
 
@@ -770,73 +768,13 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     tools_count: Object.keys(wrappedTools).length,
   });
 
-  // Pre-dispatch policy resolver — consults `tool-policies.ts` for
-  // every LLM-emitted tool call BEFORE we hand it to the wrapped
-  // execute. The resolver decides whether the call needs to pause
-  // for human confirmation; the resolution is logged as a structured
-  // event so operators / observability see the decision per-call.
-  // The wrapped tool's own confirmation gate (sdk-wrap.ts) is the
-  // mechanism that actually pauses the loop — this hook is the single
-  // canonical resolver the loop owns.
-  const tools: typeof wrappedTools = {};
-  for (const [name, wrapped] of Object.entries(wrappedTools)) {
-    // biome-ignore lint/suspicious/noExplicitAny: SDK Tool generic doesn't reconcile with our pre-flight wrapper.
-    const innerExecute = (wrapped as unknown as { execute: (...args: any[]) => any }).execute;
-    tools[name] = {
-      ...wrapped,
-      // biome-ignore lint/suspicious/noExplicitAny: pre-flight wrapper preserves the SDK's execute signature.
-      execute: async (rawArgs: Record<string, unknown>, options: any) => {
-        const resolvedEnv =
-          typeof (rawArgs as { environment?: unknown }).environment === "string"
-            ? (rawArgs as { environment: string }).environment
-            : undefined;
-        const resolved = resolveExecutionMode(name, rawArgs, {
-          tenant_id: p.tenant_id,
-          ...(resolvedEnv ? { environment: resolvedEnv } : {}),
-        });
-        logger.debug({
-          module: "conversation_loop",
-          action: "tool_policy.resolved",
-          msg: "resolved tool execution mode",
-          conversation_id: p.conversation_id,
-          tenant_id: p.tenant_id,
-          tool: name,
-          mode: resolved.mode,
-          confirmation_kind: resolved.confirmationKind,
-          reason: resolved.reason,
-        });
-        // Wave 4: every confirmation pause lands an audit row so
-        // operators can see policy decisions without scraping debug
-        // logs. Best-effort — a failed audit write must not block tool
-        // dispatch (`recordToolPolicyConfirmationRequired` is async,
-        // but we don't await on the hot path beyond the helper's own
-        // resilience to insert errors).
-        if (resolved.mode === "confirm_before_execution") {
-          await recordToolPolicyConfirmationRequired({
-            tenant_id: p.tenant_id,
-            actor_id: p.actor_id,
-            executor: p.db,
-            conversation_id: p.conversation_id,
-            tool: name,
-            mode: resolved.mode,
-            confirmation_kind: resolved.confirmationKind,
-            resolver_reason: resolved.reason,
-            ...(resolvedEnv !== undefined ? { environment: resolvedEnv } : {}),
-          }).catch((err: unknown) => {
-            logger.warn({
-              module: "conversation_loop",
-              action: "tool_policy.audit_failed",
-              msg: "failed to record tool_policy.confirmation_required audit",
-              conversation_id: p.conversation_id,
-              tool: name,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-        }
-        return innerExecute(rawArgs, options);
-      },
-    } as typeof wrapped;
-  }
+  // Pre-dispatch policy resolution (resolveExecutionMode +
+  // recordToolPolicyConfirmationRequired audit) lives inline at the top
+  // of `wrapOne`'s execute — no second wrapping layer here. See
+  // `tools/sdk-wrap/invoke.ts` for the fold rationale: the previous
+  // two-layer wrap held ~218 closures simultaneously per turn (one per
+  // tool × two wraps) and forced a duplicate `tools` map.
+  const tools = wrappedTools;
 
   // Steer toolChoice from explicit user intent. Without this, the model
   // sees "auto" and can decide to just narrate ("the workflow already
@@ -1374,8 +1312,24 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       // boundaries are blank-line separated runs, the same shape the
       // assistant naturally emits between tool-call narrations.
       try {
-        let proseBuffer = "";
+        // Fixed-size tail-only paragraph detection. Pre-fix this used
+        // an unbounded `proseBuffer += chunk` plus
+        // `proseBuffer.split(/\n\s*\n/)` on EVERY chunk — O(N²) string
+        // and array allocations during long replies, plus a per-chunk
+        // full-buffer copy. For a 50-KB reply across ~500 chunks that
+        // was ~12 MB of transient string garbage just to find paragraph
+        // boundaries. The authoritative full-text guard still runs in
+        // `onStepFinish` over the complete `step.text`; this loop is
+        // purely an early-warning signal.
+        const PROSE_TAIL_WINDOW = 4096;
+        const PARA_RE = /\n\s*\n/g;
+        let proseTail = "";
         let paragraphsEmitted = 0;
+        // Cursor into `proseTail` where the next paragraph-boundary
+        // scan should start. Reset when the tail-window slice trims
+        // the leading bytes off `proseTail` to keep the cursor relative
+        // to current tail contents.
+        let proseScanFrom = 0;
         for await (const chunk of result.textStream) {
           if (chunk.length === 0) continue;
           // Once tokens arrive, the heartbeat is redundant — Layer B
@@ -1383,25 +1337,32 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           // a stale "still composing" tick on top of live tokens.
           stopHeartbeat();
           events.push({ type: "text_delta", text: chunk });
-          proseBuffer += chunk;
-          const paragraphs = proseBuffer.split(/\n\s*\n/).length - 1;
-          if (paragraphs > paragraphsEmitted && paragraphs >= 1) {
-            paragraphsEmitted = paragraphs;
-            if (paragraphs >= 2) {
+          const prevLen = proseTail.length;
+          proseTail = (proseTail + chunk).slice(-PROSE_TAIL_WINDOW);
+          // When the slice drops the head, rebase the scan cursor by
+          // the same amount so it stays anchored to the last detected
+          // boundary inside the current window.
+          const trimmed = prevLen + chunk.length - proseTail.length;
+          if (trimmed > 0) {
+            proseScanFrom = Math.max(0, proseScanFrom - trimmed);
+          }
+          PARA_RE.lastIndex = proseScanFrom;
+          const match = PARA_RE.exec(proseTail);
+          if (match) {
+            paragraphsEmitted += 1;
+            proseScanFrom = match.index + match[0].length;
+            if (paragraphsEmitted >= 2) {
               events.push({
                 type: "activity",
                 phase: "composing",
-                label: `composing reply · ${paragraphs} paragraphs so far`,
+                label: `composing reply · ${paragraphsEmitted} paragraphs so far`,
               });
             }
             // Overlapped scan: log violations on the latest completed
-            // paragraph as soon as it boundaries. The authoritative
-            // rewrite still happens at onStepFinish over the full
-            // step.text — this is purely an early-warning signal.
-            // Lower bound is `paragraphs >= 1` (not 2) so single-
-            // paragraph steps still get a streamed scan.
-            const segments = proseBuffer.split(/\n\s*\n/);
-            const latestParagraph = segments[Math.max(0, segments.length - 2)] ?? "";
+            // paragraph as soon as it boundaries. Lower bound matches
+            // the prior behavior — single-paragraph steps still get a
+            // streamed scan.
+            const latestParagraph = proseTail.slice(0, match.index);
             if (latestParagraph) {
               runOutputGuardStream(latestParagraph, {
                 ...(p.runtime_context?.engine_url
@@ -2001,5 +1962,31 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const out: RunLoopResult = { events, status };
   if (committedWorkflowId) out.committed_workflow_id = committedWorkflowId;
   if (pendingElicitationId) out.pending_elicitation_id = pendingElicitationId;
+  // Per-turn GC hint. Production evidence: the cgroup hit MemoryHigh
+  // 1967 times in 12 h on the engine droplet at idle (peak 6.34 GB,
+  // current never drops below 2.79 GB). Bun's JSC arenas do not
+  // proactively return memory after a multi-GB turn unless major GC
+  // fires, and major-GC heuristics don't trigger again until the next
+  // allocation pushes them. A synchronous full GC right after
+  // `dialog.turn_end` (~5-20 ms on a multi-GB heap; in the noise vs.
+  // the turn cost) lets `memory.current` fall back toward boot
+  // baseline between turns instead of staying elevated.
+  //
+  // Drop the strong refs on the largest closure-captured allocations
+  // first so the upcoming GC pass can reclaim them in one cycle.
+  // `wrappedTools` is the ~109-tool palette built per turn; the loop
+  // closure was the last live reference, but clearing it explicitly
+  // removes ambiguity for the optimizer.
+  for (const key of Object.keys(wrappedTools)) {
+    delete (wrappedTools as Record<string, unknown>)[key];
+  }
+  const maybeBun = (globalThis as { Bun?: { gc?: (sync: boolean) => void } }).Bun;
+  if (typeof maybeBun?.gc === "function") {
+    try {
+      maybeBun.gc(true);
+    } catch {
+      // GC hint is best-effort; never block the turn return on it.
+    }
+  }
   return out;
 }

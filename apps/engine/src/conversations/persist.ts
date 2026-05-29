@@ -8,7 +8,7 @@
 // parse the `[conv:<id>]` envelope that keys its plan cursor.
 
 import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import { fileLinks } from "../db/schema/files.ts";
@@ -59,6 +59,17 @@ const REPLAY_TAIL_MESSAGES = 16;
 // contributes nothing to the next turn — but we kept it forever.
 const TOOL_OUTPUT_VERBATIM_TURNS = 3;
 const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
+
+// SQL-side projection marker. The summary-window query (outputs older
+// than the verbatim cutoff) replaces any tool output whose serialized
+// length exceeds TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS with a tiny object
+// carrying this discriminator + size + any pre-existing `_raw_ref`.
+// The replay loop detects it and emits the `_elided` stub without ever
+// loading the bulky payload into the JS heap. Before this, the loop
+// loaded every prior tool output (multi-MB JSONB each) only to discard
+// it via the same elision check; on a 50-turn conversation that added
+// hundreds of MB of transient garbage per turn.
+const ELIDED_SQL_MARKER = "__sk_elided_in_sql";
 
 /**
  * Build multimodal UserContent for a conversation turn that may
@@ -447,7 +458,109 @@ export async function buildModelMessages(
   conversation_id: string,
   opts: BuildModelMessagesOpts = {},
 ): Promise<ModelMessage[]> {
-  const [msgs, calls, elicitations] = await Promise.all([
+  // Two scoping micro-queries first. Both touch only timestamps + tiny
+  // content slices so neither loads bulk row data. They resolve the two
+  // cutoffs that the rest of the function operates against:
+  //   replayStartAt        — the latest compacted-summary system message;
+  //                          everything older is collapsed into that
+  //                          summary and never replayed verbatim.
+  //   verbatimWindowStartAt — the timestamp of the Nth-from-last user
+  //                          message; tool calls older than this lose
+  //                          their bulky `output` payload via SQL-side
+  //                          projection (see ELIDED_SQL_MARKER above).
+  const [latestCompactionRow] = await db
+    .select({
+      created_at: conversationMessages.created_at,
+      content: conversationMessages.content,
+    })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.tenant_id, tenant_id),
+        eq(conversationMessages.conversation_id, conversation_id),
+        eq(conversationMessages.role, "system"),
+        sql`${conversationMessages.content}->>'kind' = 'compacted'`,
+      ),
+    )
+    .orderBy(desc(conversationMessages.created_at))
+    .limit(1);
+  const replayStartAt = latestCompactionRow?.created_at ?? null;
+
+  const recentUserRows = await db
+    .select({ created_at: conversationMessages.created_at })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.tenant_id, tenant_id),
+        eq(conversationMessages.conversation_id, conversation_id),
+        eq(conversationMessages.role, "user"),
+      ),
+    )
+    .orderBy(desc(conversationMessages.created_at))
+    .limit(TOOL_OUTPUT_VERBATIM_TURNS + 1);
+  // The Nth-from-last user message timestamp = the start of the verbatim
+  // window. recentUserRows is descending, so when we have more than
+  // TOOL_OUTPUT_VERBATIM_TURNS rows the cutoff is the LAST row in the
+  // limited slice (which corresponds to the (N+1)th-from-last user msg).
+  const verbatimWindowStartAt =
+    recentUserRows.length > TOOL_OUTPUT_VERBATIM_TURNS
+      ? (recentUserRows[recentUserRows.length - 2]?.created_at ?? null)
+      : null;
+
+  // Lower bound for the bulk queries. When a compaction marker exists,
+  // we only replay rows newer than it; older rows are already encoded in
+  // the marker's summary.
+  const lowerBoundClauseMessages = replayStartAt
+    ? gte(conversationMessages.created_at, replayStartAt)
+    : undefined;
+  const lowerBoundClauseElicitations = replayStartAt
+    ? gte(conversationElicitations.created_at, replayStartAt)
+    : undefined;
+  const lowerBoundClauseCalls = replayStartAt
+    ? gte(conversationToolCalls.created_at, replayStartAt)
+    : undefined;
+
+  // Tool-calls split: verbatim window keeps full `output`; summary
+  // window replaces any output > ELIDE_THRESHOLD bytes with a tiny
+  // discriminator object built in SQL (no bulk transfer, no JS heap).
+  // `tenant_id` is named in the predicate so the audit-invariants
+  // tenant-filter scanner recognises it through the `where(<const>)`
+  // indirection.
+  const callsVerbatimWhereTenant = and(
+    eq(conversationToolCalls.tenant_id, tenant_id),
+    eq(conversationToolCalls.conversation_id, conversation_id),
+    ...(verbatimWindowStartAt
+      ? [gte(conversationToolCalls.created_at, verbatimWindowStartAt)]
+      : lowerBoundClauseCalls
+        ? [lowerBoundClauseCalls]
+        : []),
+  );
+  const callsSummaryWhereTenant = verbatimWindowStartAt
+    ? and(
+        eq(conversationToolCalls.tenant_id, tenant_id),
+        eq(conversationToolCalls.conversation_id, conversation_id),
+        lt(conversationToolCalls.created_at, verbatimWindowStartAt),
+        ...(lowerBoundClauseCalls ? [lowerBoundClauseCalls] : []),
+      )
+    : null;
+
+  // `ELIDED_SQL_MARKER` is a compile-time constant with no quotes, so
+  // inlining it via `sql.raw` is safe and avoids Postgres `42P18`
+  // ("could not determine data type of parameter") — `jsonb_build_object`
+  // is variadic, so a bound `text` parameter has no inferable position-
+  // typed signature for the planner to lock onto.
+  const summaryOutputProjection = sql<unknown>`CASE
+    WHEN ${conversationToolCalls.output} IS NULL THEN NULL
+    WHEN octet_length(${conversationToolCalls.output}::text) > ${TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS}
+      THEN jsonb_build_object(
+        ${sql.raw(`'${ELIDED_SQL_MARKER}'`)}, true,
+        '_raw_ref', ${conversationToolCalls.output}->>'_raw_ref',
+        '_orig_bytes', octet_length(${conversationToolCalls.output}::text)
+      )
+    ELSE ${conversationToolCalls.output}
+  END`;
+
+  const [msgs, callsVerbatim, callsSummary, elicitations] = await Promise.all([
     db
       .select()
       .from(conversationMessages)
@@ -455,19 +568,37 @@ export async function buildModelMessages(
         and(
           eq(conversationMessages.tenant_id, tenant_id),
           eq(conversationMessages.conversation_id, conversation_id),
+          ...(lowerBoundClauseMessages ? [lowerBoundClauseMessages] : []),
         ),
       )
       .orderBy(asc(conversationMessages.created_at)),
     db
       .select()
       .from(conversationToolCalls)
-      .where(
-        and(
-          eq(conversationToolCalls.tenant_id, tenant_id),
-          eq(conversationToolCalls.conversation_id, conversation_id),
-        ),
-      )
+      .where(callsVerbatimWhereTenant)
       .orderBy(asc(conversationToolCalls.created_at)),
+    callsSummaryWhereTenant
+      ? db
+          .select({
+            id: conversationToolCalls.id,
+            tenant_id: conversationToolCalls.tenant_id,
+            conversation_id: conversationToolCalls.conversation_id,
+            parent_message_id: conversationToolCalls.parent_message_id,
+            tool: conversationToolCalls.tool,
+            input: conversationToolCalls.input,
+            output: summaryOutputProjection,
+            approval_required: conversationToolCalls.approval_required,
+            approved_at: conversationToolCalls.approved_at,
+            approved_by_user_id: conversationToolCalls.approved_by_user_id,
+            confirmation_state: conversationToolCalls.confirmation_state,
+            confirmation_data: conversationToolCalls.confirmation_data,
+            interaction_log: conversationToolCalls.interaction_log,
+            created_at: conversationToolCalls.created_at,
+          })
+          .from(conversationToolCalls)
+          .where(callsSummaryWhereTenant)
+          .orderBy(asc(conversationToolCalls.created_at))
+      : Promise.resolve([] as Array<typeof conversationToolCalls.$inferSelect>),
     db
       .select()
       .from(conversationElicitations)
@@ -475,10 +606,17 @@ export async function buildModelMessages(
         and(
           eq(conversationElicitations.tenant_id, tenant_id),
           eq(conversationElicitations.conversation_id, conversation_id),
+          ...(lowerBoundClauseElicitations ? [lowerBoundClauseElicitations] : []),
         ),
       )
       .orderBy(asc(conversationElicitations.created_at)),
   ]);
+  // Unify the two tool-call slices. They share the same shape modulo
+  // `output` (summary rows carry the elision marker on bulky outputs).
+  // The downstream replay loop is monomorphic over this combined array.
+  const calls = [...callsSummary, ...callsVerbatim].sort(
+    (a, b) => a.created_at.getTime() - b.created_at.getTime(),
+  );
   const callsById = new Map(calls.map((call) => [call.id, call]));
   const replayableElicitations = elicitations
     .map((elicitation) => {
@@ -515,23 +653,10 @@ export async function buildModelMessages(
   const resolvedElicitationByCallId = new Map(
     replayableElicitations.map((entry) => [entry.tool_call_id, entry] as const),
   );
-  const latestCompaction = [...msgs]
-    .reverse()
-    .find((message) => message.role === "system" && compactedSummary(message.content) !== null);
-  const replayStartAt = latestCompaction?.created_at ?? null;
-
-  // Tool-output sliding window. Keep verbatim only the tool calls
-  // produced after the Nth-from-last user message; older bulky outputs
-  // collapse to a one-line stub. Ask-user elicitations are never elided
-  // (they carry the user's answer, not raw payload).
-  const userMessageTimestamps = msgs
-    .filter((m) => m.role === "user")
-    .map((m) => m.created_at)
-    .sort((a, b) => a.getTime() - b.getTime());
-  const verbatimWindowStartAt =
-    userMessageTimestamps.length > TOOL_OUTPUT_VERBATIM_TURNS
-      ? (userMessageTimestamps[userMessageTimestamps.length - TOOL_OUTPUT_VERBATIM_TURNS] ?? null)
-      : null;
+  // `replayStartAt` and `verbatimWindowStartAt` were resolved up-front by
+  // the two scoping micro-queries; the bulk SELECTs above already clamp
+  // by `replayStartAt`, so we don't need to re-derive these from `msgs`
+  // or filter again in the items loop.
 
   interface Item {
     kind: "msg" | "call";
@@ -549,14 +674,13 @@ export async function buildModelMessages(
   items.sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
 
   const out: ModelMessage[] = [];
-  const latestCompactionSummary = latestCompaction
-    ? compactedSummary(latestCompaction.content)
+  const latestCompactionSummary = latestCompactionRow
+    ? compactedSummary(latestCompactionRow.content)
     : null;
   if (latestCompactionSummary) {
     out.push({ role: "system", content: latestCompactionSummary });
   }
   for (const item of items) {
-    if (replayStartAt && item.created_at < replayStartAt) continue;
     if (item.kind === "msg" && item.msg) {
       const role = item.msg.role;
       const content = item.msg.content;
@@ -666,6 +790,39 @@ export async function buildModelMessages(
           ? (call.interaction_log as Array<Record<string, unknown>>)
           : [];
         const rawOutput = call.output as Record<string, unknown>;
+        // Pre-elided fast path: the summary-window SQL projection
+        // already replaced bulky outputs with a tiny discriminator
+        // object. Build the `_elided` stub directly from it — no need
+        // to load the multi-MB original, no `augmented` clone, no
+        // approxValueSize JSON.stringify pass. This is the per-turn
+        // allocation that the OOM-on-conversation-16a865f8 trace was
+        // burning hundreds of MB on.
+        if (rawOutput[ELIDED_SQL_MARKER] === true) {
+          const existingRef = typeof rawOutput._raw_ref === "string" ? rawOutput._raw_ref : null;
+          const origBytes = typeof rawOutput._orig_bytes === "number" ? rawOutput._orig_bytes : 0;
+          const ref = existingRef ?? rememberRawForElision(undefined);
+          resultValue = {
+            _elided: true,
+            _tool: call.tool,
+            _raw_ref: ref,
+            _note: `<elided: tool=${call.tool}, ref=${ref}, original=${origBytes} bytes; call get_raw_result(ref="${ref}") for the full payload>`,
+          };
+          out.push({
+            role: "tool",
+            content: [
+              {
+                type: "tool-result",
+                toolCallId: call.id,
+                toolName: call.tool,
+                output: {
+                  type: "json",
+                  value: resultValue as Parameters<typeof JSON.stringify>[0],
+                },
+              },
+            ],
+          });
+          continue;
+        }
         const augmented: Record<string, unknown> = { ...rawOutput };
         if (confirmationState) augmented.confirmationState = confirmationState;
         if (interactionLog.length > 0) augmented.interactionLog = interactionLog;
@@ -676,7 +833,10 @@ export async function buildModelMessages(
           // Older, bulky tool result — elide. Reuse the existing
           // `_raw_ref` if persist already truncated this output on the
           // way in; otherwise mint a fresh ref so the model can still
-          // fetch the full payload via `get_raw_result`.
+          // fetch the full payload via `get_raw_result`. This branch
+          // still fires for the small-but-augmented case (output ≤4 KB
+          // raw but pushed over threshold once confirmation_state /
+          // interaction_log are spliced in).
           const existingRef = typeof rawOutput._raw_ref === "string" ? rawOutput._raw_ref : null;
           const ref = existingRef ?? rememberRawForElision(augmented);
           resultValue = {
