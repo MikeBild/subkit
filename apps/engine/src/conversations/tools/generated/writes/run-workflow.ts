@@ -17,6 +17,7 @@ import { gateWorkflowRunRbac } from "../../../../workflows/rbac.ts";
 import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
 import {
   bindPersistedWorkflow,
+  getWorkflowDraft,
   withLatestPreview,
   withWorkflowExecution,
 } from "../../../authoring-state.ts";
@@ -144,7 +145,7 @@ function withStatus(
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
-    "FALLBACK for executing a saved workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. Never call `dry_run_workflow` on a saved workflow — that is for drafts only.",
+    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `build_workflow` or `propose_step`.",
   inputSchema: Input,
   category: "tenant_write",
   requires_persisted_workflow: true,
@@ -173,14 +174,32 @@ export const runWorkflowTool: ConversationTool = {
       workflowId = activeTarget.id;
     }
     if (!workflowId) {
+      // Disambiguate the two ways we can land here:
+      //   (a) there IS a draft in progress → the author just needs to
+      //       commit it (save_workflow_draft / dry_run_workflow auto-commit).
+      //   (b) there is NO draft yet → the user asked to BUILD a workflow and
+      //       the model wrongly reached for run_workflow. Without a redirect
+      //       to build_workflow the model retries run_workflow with variant
+      //       args until the loop-detector aborts the turn (observed in prod:
+      //       run_workflow → workflow_not_persisted ×3 → tool.loop_detected,
+      //       ~150k tokens/turn). Route it to the authoring tools instead.
+      const draftSteps = getWorkflowDraft(currentDraft).steps;
+      const hasDraftSteps = Array.isArray(draftSteps) && draftSteps.length > 0;
+      const message = hasDraftSteps
+        ? "commit the workflow before running it from the conversation surface"
+        : "there is no workflow to run yet — author one first. If the user asked to BUILD or CREATE a workflow, call build_workflow (one-shot) or propose_step (incremental). run_workflow only executes a workflow that has already been authored and saved.";
+      const next_best_actions = hasDraftSteps
+        ? ["dry_run_workflow", "save_workflow_draft"]
+        : ["build_workflow", "propose_step", "start_workflow_from_goal"];
       return {
         ok: false,
         data: withStatus(
           buildGateError(currentDraft, {
             error_code: "workflow_not_persisted",
-            message: "commit the workflow before running it from the conversation surface",
+            message,
             recommended_mode: "workflow",
             stale_checkpoints: ["workflow_persisted"],
+            next_best_actions,
           }),
           "failed",
         ),

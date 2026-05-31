@@ -146,6 +146,16 @@ chat; the same six tools repair in place:
 
 Do not instruct the user to run `sk workflow commit` (no CLI fallback exists). Do not re-run the failed workflow before re-validating (overwrites the diagnosis). Do not skip failing steps with `if: false` unless the user asks for that behaviour. After three failed repair iterations on the same error, stop and ask the user.
 
+## Build vs run — do not confuse them
+
+When the user says **build / create / make / author** a workflow — especially when
+they paste example data or JSONata paths for a workflow that does not exist yet —
+that is **authoring** intent: call `build_workflow` (one-shot) or `propose_step`
+(incremental). It is NOT a `run_workflow` request. `run_workflow` ONLY executes a
+workflow that is already saved. If `run_workflow` returns `workflow_not_persisted`,
+do **not** retry it — switch to `build_workflow` / `propose_step`. Repeating
+`run_workflow` after that error trips the loop-detector and wastes the entire turn.
+
 ## `propose_step` vs `build_workflow`
 
 | Question | Use `build_workflow` | Use `propose_step` (one per step) |

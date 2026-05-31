@@ -79,7 +79,7 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   workflow_not_found:
     "the workflow id is unknown on this tenant — call find_workflow or list_workflows to discover the correct id",
   workflow_not_persisted:
-    "the workflow draft has not been saved — call dry_run_workflow (which auto-commits on a clean preview) or save_workflow_draft",
+    "no runnable workflow yet. If you are AUTHORING a new workflow (the user said build/create/make a workflow), call build_workflow (one-shot) or propose_step (incremental) — do NOT call run_workflow again. If a draft already exists, call dry_run_workflow (auto-commits on a clean preview) or save_workflow_draft. Never retry run_workflow with the same args.",
   // G1: workflow declares input_schema but caller passed no input.
   // Surface the required fields to the user before re-running.
   input_required:
