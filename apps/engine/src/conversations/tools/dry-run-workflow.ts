@@ -556,21 +556,39 @@ export const dryRunWorkflowTool: ConversationTool = {
         s.error && typeof s.error === "object" && s.error !== null
           ? (s.error as { code?: unknown }).code
           : undefined;
+      // `scope_at_step` (enumerated JSONata paths + shape summary) is the
+      // authoring-critical projection and is computed from the FULL preview
+      // here, BEFORE the preview itself is capped below. So capping the
+      // persisted `output_preview` / `raw_preview` loses no path/shape signal
+      // the next turn relies on.
       const scope =
         s.output_preview !== undefined && s.output_preview !== null
           ? buildScopeAtStep(s.output_preview)
+          : undefined;
+      // Cap the persisted previews to the same per-step budget the LLM
+      // envelope uses. `latest_preview.step_traces` is persisted into
+      // `conversations.draft` (JSONB) and re-rendered into the authoring
+      // prompt on EVERY turn; storing a step's full ~10 KB preview × N steps
+      // ballooned the draft to multi-MB and drove the per-turn heap into the
+      // memory-pressure band. The full payload remains in the execution step
+      // rows (reachable via inspect_execution_step / diagnose_latest_execution),
+      // so this only trims the redundant in-draft copy. `.data` is the
+      // structurally-truncated shape (keys/sample values preserved).
+      const persistedPreview =
+        s.output_preview !== undefined && s.output_preview !== null
+          ? truncateStepPreviewForLlm(s.output_preview).data
+          : undefined;
+      const persistedRawPreview =
+        s.raw_preview !== undefined && s.raw_preview !== null
+          ? truncateStepPreviewForLlm(s.raw_preview).data
           : undefined;
       return {
         step_id: s.step_key,
         kind: s.kind,
         status: s.status,
         ...(s.duration_ms != null ? { duration_ms: s.duration_ms } : {}),
-        ...(s.output_preview !== undefined && s.output_preview !== null
-          ? { output_preview: s.output_preview }
-          : {}),
-        ...(s.raw_preview !== undefined && s.raw_preview !== null
-          ? { raw_preview: s.raw_preview }
-          : {}),
+        ...(persistedPreview !== undefined ? { output_preview: persistedPreview } : {}),
+        ...(persistedRawPreview !== undefined ? { raw_preview: persistedRawPreview } : {}),
         ...(scope ? { scope_at_step: scope } : {}),
         ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
       };
