@@ -152,8 +152,8 @@ LimitNPROC=4096
 ; ManagedOOMSwap=kill enrolls systemd-oomd if present so swap thrashing
 ; (the host has a 4 GB swapfile from the 2026-05-20 mitigation) triggers
 ; a clean kill before the kernel OOM has to make a hostile pick.
-MemoryHigh=6500M
-MemoryMax=7G
+MemoryHigh=11G
+MemoryMax=13G
 MemorySwapMax=2G
 OOMScoreAdjust=500
 ManagedOOMSwap=kill
