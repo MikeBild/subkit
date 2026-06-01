@@ -268,6 +268,16 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       const fixtureData = (envObj as { data?: unknown }).data;
       scope[step.id] = fixtureEnvelope;
       lastOutput = fixtureData;
+      // `output_preview` MUST mirror the normal path (line ~603), which
+      // records the RAW step output — NOT the `{ data, … }` scope envelope.
+      // The dry-run cache re-wraps `output_preview` into a fresh fixture
+      // envelope (`{ data: output_preview }`) on the next iteration; if we
+      // stored the already-enveloped `fixtureEnvelope` here, each rerun would
+      // wrap one `.data` layer deeper — `$scope.<step>.data.slug` →
+      // `.data.data.slug` → ad infinitum (SUBKIT_BUGS.md Bug 2, and the
+      // root of Bugs 1 & 3, where URL/JSONata refs then point at the wrong
+      // depth). Recording the unwrapped `fixtureData` keeps the replay path
+      // idempotent with the live path: the cached shape never drifts.
       stepSummaries.push({
         step_key: step.id,
         step_index: i,
@@ -276,7 +286,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         duration_ms: 0,
         retry_count: 0,
         error: null,
-        output_preview: fixtureEnvelope,
+        output_preview: fixtureData,
       });
       continue;
     }
