@@ -711,7 +711,18 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   if (lastOutput !== undefined && finalStatus === "succeeded") {
     if (def.output_transform) {
       try {
-        const transformed = await evaluateJsonata(def.output_transform, lastOutput);
+        // Bind `$scope` + `$input` exactly like transform STEPS do
+        // (jsonata-bindings.buildJsonataBindings). Without these bindings the
+        // output_transform could only see the last step's output as the bare
+        // root — every `$scope.<step>.data…` reference resolved to nothing, so
+        // an object-constructor transform collapsed to `{}` even though all
+        // steps succeeded (the `wf_<slug>` envelope returned `{}` while
+        // inspect_execution showed the real per-step data). `lastOutput`
+        // stays the data root so bare-path transforms keep working.
+        const transformed = await evaluateJsonata(def.output_transform, lastOutput, {
+          input: normalizedInput,
+          scope,
+        });
         if (transformed !== undefined) lastOutput = transformed;
       } catch (err) {
         logger.warn({
@@ -802,7 +813,13 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // Mirrors the reference impl's optional `validationFunction`.
   if (def.validation_expression && lastOutput !== undefined && finalStatus === "succeeded") {
     try {
-      const verdict = await evaluateJsonata(def.validation_expression, lastOutput);
+      // Same binding fix as output_transform above — a validation_expression
+      // that references `$scope.<step>` or `$input` must resolve them, not
+      // silently see `undefined` (which is falsy → spurious validation_failed).
+      const verdict = await evaluateJsonata(def.validation_expression, lastOutput, {
+        input: normalizedInput,
+        scope,
+      });
       if (!verdict) {
         logger.warn({
           module: "execution",
