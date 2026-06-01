@@ -180,6 +180,13 @@ export async function createWorkflow(
         tenant_id: input.tenant_id,
         slug,
         name: def.name,
+        // Seed the top-level description column from the DAG so a freshly
+        // built workflow's `wf_<slug>` tool carries the authored description
+        // immediately — without forcing a follow-up update_workflow /
+        // edit_workflow_patch. The column is the canonical source the catalog
+        // prefers (column → DAG → name); leaving it NULL here was why every
+        // newly committed workflow showed a "missing" top-level description.
+        ...(def.description ? { description: def.description } : {}),
         lifecycle: "active",
       })
       .returning();
@@ -316,7 +323,17 @@ export async function updateWorkflow(
     assertInsertRow(v, "workflow_versions");
     await tx
       .update(workflows)
-      .set({ name: def.name, current_version_id: v.id, updated_at: new Date() })
+      // Keep the top-level description column in sync with the committed DAG
+      // (def.description is authoritative on the full-def path). Authors who
+      // edit the description inside build_workflow / save_workflow_draft get
+      // it reflected on the `wf_<slug>` tool without a separate metadata call;
+      // removing it from the def clears the column too.
+      .set({
+        name: def.name,
+        description: def.description ?? null,
+        current_version_id: v.id,
+        updated_at: new Date(),
+      })
       .where(eq(workflows.id, wf.id));
     await auditAwait(
       {
@@ -845,9 +862,21 @@ export async function restoreWorkflowVersion(
       })
       .returning();
     assertInsertRow(v, "restore");
+    // Restore makes the target version current, so the top-level description
+    // column must track that version's DAG description (mirrors the
+    // create/update full-def paths). dag is jsonb-typed `unknown`; read its
+    // description defensively.
+    const restoredDescription =
+      target.dag && typeof target.dag === "object" && !Array.isArray(target.dag)
+        ? ((target.dag as { description?: unknown }).description ?? null)
+        : null;
     await tx
       .update(workflows)
-      .set({ current_version_id: v.id, updated_at: new Date() })
+      .set({
+        current_version_id: v.id,
+        description: typeof restoredDescription === "string" ? restoredDescription : null,
+        updated_at: new Date(),
+      })
       .where(eq(workflows.id, id));
     await auditAwait(
       {
