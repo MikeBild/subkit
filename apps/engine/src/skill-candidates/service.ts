@@ -614,6 +614,9 @@ export async function approveSkillCandidate(
     // (drift-detection time) — not the evidence-capture time — so the
     // histogram measures the true drift→skill journey. Candidates with no
     // patch evidence (failure/success patterns) leave lag_seconds undefined.
+    // tenant-filter:exempt — evidence rows are FK children of the candidate
+    // already tenant-verified above (skillCandidates filtered by p.tenant_id),
+    // joined by skill_candidate_id; the parent scope constrains the tenant.
     const patchRows = await tx
       .select({ patch_candidate_id: skillCandidateEvidence.patch_candidate_id })
       .from(skillCandidateEvidence)
@@ -623,6 +626,9 @@ export async function approveSkillCandidate(
       .filter((id): id is string => id !== null);
     let lag_seconds: number | undefined;
     if (patchIds.length > 0) {
+      // tenant-filter:exempt — patchIds are drawn from the tenant-verified
+      // candidate's evidence rows above, so the id set is already scoped to
+      // the tenant; this only reads created_at to compute drift→skill lag.
       const earliest = await tx
         .select({ created_at: patchCandidates.created_at })
         .from(patchCandidates)
