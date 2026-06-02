@@ -312,6 +312,75 @@ export function recordProactiveDriftUnanchored(args: {
   });
 }
 
+// --- Run → Drift → Patch → Skill loop closure (positioning.md §6) ---------
+
+/** Closing edge: catalog/candidate skills that entered an authoring LLM
+ *  context. `source` distinguishes promoted Skills (`catalog`) from proposed
+ *  Skill Candidates (`candidate`). Incremented by the assembled-skill count, so
+ *  the counter measures skill-uses, not turns; a zero count is a no-op. */
+export function recordAuthoringContextSkillsUsed(args: {
+  tenant_id: string;
+  source: "catalog" | "candidate";
+  count: number;
+}): void {
+  safe(() => {
+    if (!Number.isFinite(args.count) || args.count <= 0) return;
+    getMetrics().inc(
+      METRIC_NAMES.AUTHORING_CONTEXT_SKILLS_USED_TOTAL,
+      { tenant_id: args.tenant_id, source: args.source },
+      args.count,
+    );
+  });
+}
+
+/** Opening edge: a drift signal became a Patch Candidate. `classifier` is the
+ *  safety classification (`safe` / `unsafe`). Tenant-scoped sibling of the
+ *  global `patch_candidates_total`. */
+export function recordLoopDriftToPatchCandidate(args: {
+  tenant_id: string;
+  classifier: string;
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.LOOP_DRIFT_TO_PATCH_CANDIDATE_TOTAL, {
+      tenant_id: args.tenant_id,
+      classifier: args.classifier,
+    });
+  });
+}
+
+/** Middle edge: a Patch Candidate became a Skill Candidate (repair-pattern
+ *  detector; evidence carries a `patch_candidate_id`). */
+export function recordLoopPatchToSkillCandidate(args: { tenant_id: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.LOOP_PATCH_TO_SKILL_CANDIDATE_TOTAL, {
+      tenant_id: args.tenant_id,
+    });
+  });
+}
+
+/** Promotion edge: a Skill Candidate became a Skill. `source` is
+ *  `auto-suggested` (detector-born) or `manual` (reserved). When the candidate
+ *  carries patch evidence, `lag_seconds` records the drift→skill journey into
+ *  the lag histogram; omit it for failure/success-pattern candidates. */
+export function recordLoopSkillCandidatePromoted(args: {
+  tenant_id: string;
+  source: "auto-suggested" | "manual";
+  lag_seconds?: number | undefined;
+}): void {
+  safe(() => {
+    const reg = getMetrics();
+    reg.inc(METRIC_NAMES.LOOP_SKILL_CANDIDATE_PROMOTED_TOTAL, {
+      tenant_id: args.tenant_id,
+      source: args.source,
+    });
+    if (args.lag_seconds !== undefined && Number.isFinite(args.lag_seconds)) {
+      reg.observe(METRIC_NAMES.LOOP_DRIFT_TO_SKILL_LAG_SECONDS, args.lag_seconds, {
+        tenant_id: args.tenant_id,
+      });
+    }
+  });
+}
+
 export function recordExecutionWarningsEmitted(args: {
   tenant_id: string;
   step_kind: string;

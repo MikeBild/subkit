@@ -294,6 +294,11 @@ const HISTOGRAM_DURATION_BUCKETS_MS = [10, 50, 250, 1000, 5000, 30000, 300000, 3
 
 const HTTP_DURATION_BUCKETS_MS = [5, 25, 100, 500, 2500, 10000] as const;
 
+// Drift→skill-promotion lag, in SECONDS (not ms): the loop spans human-review
+// latency, so buckets stretch from 1 min to 1 week — 1m / 5m / 30m / 1h / 6h /
+// 1d / 1w. Surfaces the positioning.md §6 "compounding becomes measurable" claim.
+const LOOP_LAG_BUCKETS_SECONDS = [60, 300, 1800, 3600, 21600, 86400, 604800] as const;
+
 export const METRIC_NAMES = {
   EXECUTION_TOTAL: "execution_total",
   EXECUTION_DURATION_MS: "execution_duration_ms",
@@ -534,6 +539,47 @@ export const METRIC_NAMES = {
    * `subkit_docs_binary_parse_total{result="success"}`.
    */
   DOCS_BINARY_PARSE_INPUT_BYTES_TOTAL: "subkit_docs_binary_parse_input_bytes_total",
+  // ----- Run → Drift → Patch → Skill loop closure (positioning.md §6) -----
+  // The self-improvement loop runs today but emitted no metric proving it
+  // compounds. These four counters + one histogram instrument each stage so
+  // "each drift makes the next workflow better" becomes concretely measurable.
+  /**
+   * Loop-originated skills that entered an authoring LLM context, partitioned
+   * by `source`. `catalog` counts ONLY Skills promoted from a Skill Candidate
+   * (skills.source === "candidate") — engine-shipped seed/template/manual
+   * skills are deliberately excluded so the series isn't drowned by always-on
+   * skills. `candidate` counts proposed Skill Candidates surfaced for review.
+   * The closing edge of the loop: proves a loop-promoted skill influenced a
+   * later authoring turn. Incremented by the assembled-skill count, so the
+   * counter measures skill-uses, not turns.
+   */
+  AUTHORING_CONTEXT_SKILLS_USED_TOTAL: "sk_authoring_context_skills_used_total",
+  /**
+   * Drift signals promoted to a Patch Candidate, partitioned by `classifier`
+   * (`safe` / `unsafe`). Tenant-scoped sibling of the global
+   * `patch_candidates_total` — kept separate so the loop funnel carries
+   * `tenant_id` without mutating the existing counter's cardinality.
+   */
+  LOOP_DRIFT_TO_PATCH_CANDIDATE_TOTAL: "sk_loop_drift_to_patch_candidate_total",
+  /**
+   * Patch Candidates that became a Skill Candidate via the repair-pattern
+   * detector (evidence carries ≥1 `patch_candidate_id`). The middle edge of
+   * the loop. A second source (the #202 auto-aggregator) will later feed the
+   * same counter — no rework needed.
+   */
+  LOOP_PATCH_TO_SKILL_CANDIDATE_TOTAL: "sk_loop_patch_to_skill_candidate_total",
+  /**
+   * Skill Candidates promoted to a Skill, partitioned by `source`
+   * (`auto-suggested` = detector-born; `manual` reserved for a future
+   * hand-authored proposal path). Paired with the lag histogram below.
+   */
+  LOOP_SKILL_CANDIDATE_PROMOTED_TOTAL: "sk_loop_skill_candidate_promoted_total",
+  /**
+   * Wall-clock lag, in seconds, from the earliest patch-link (drift
+   * detection) to skill promotion. Only observed for candidates with patch
+   * evidence, so the histogram reflects true drift→skill journeys.
+   */
+  LOOP_DRIFT_TO_SKILL_LAG_SECONDS: "sk_loop_drift_to_skill_lag_seconds",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -698,6 +744,33 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.PROACTIVE_DRIFT_UNANCHORED_TOTAL,
     help: "Drift detected by proactive scans that could not be promoted to a Patch Candidate (no workflow anchor).",
     labels: ["tenant_id", "signal_type", "reason"],
+  });
+  // Run → Drift → Patch → Skill loop closure (positioning.md §6).
+  reg.registerCounter({
+    name: METRIC_NAMES.AUTHORING_CONTEXT_SKILLS_USED_TOTAL,
+    help: "Loop-originated skills in an authoring LLM context, by source. catalog = Skills promoted from a Candidate (excludes seed/template/manual); candidate = proposed Skill Candidates surfaced. The closing edge of the self-improvement loop.",
+    labels: ["tenant_id", "source"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LOOP_DRIFT_TO_PATCH_CANDIDATE_TOTAL,
+    help: "Drift signals promoted to a Patch Candidate, partitioned by classifier (safe / unsafe). Tenant-scoped loop-funnel sibling of patch_candidates_total.",
+    labels: ["tenant_id", "classifier"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LOOP_PATCH_TO_SKILL_CANDIDATE_TOTAL,
+    help: "Patch Candidates that became a Skill Candidate via the repair-pattern detector (evidence carries a patch_candidate_id).",
+    labels: ["tenant_id"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LOOP_SKILL_CANDIDATE_PROMOTED_TOTAL,
+    help: "Skill Candidates promoted to a Skill, partitioned by source (auto-suggested / manual).",
+    labels: ["tenant_id", "source"],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.LOOP_DRIFT_TO_SKILL_LAG_SECONDS,
+    help: "Wall-clock lag (seconds) from earliest patch-link (drift detection) to skill promotion. Observed only for candidates with patch evidence.",
+    labels: ["tenant_id"],
+    buckets: LOOP_LAG_BUCKETS_SECONDS,
   });
   reg.registerCounter({
     name: METRIC_NAMES.EXECUTION_WARNINGS_EMITTED_TOTAL,

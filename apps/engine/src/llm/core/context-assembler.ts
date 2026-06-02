@@ -38,7 +38,10 @@ import { generateMainAgentSystemPrompt } from "../../conversations/agent/context
 import { getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { idHashesCapped } from "../../observability/id-hashes.ts";
-import { recordLlmContextAssembled } from "../../observability/instrumentation.ts";
+import {
+  recordAuthoringContextSkillsUsed,
+  recordLlmContextAssembled,
+} from "../../observability/instrumentation.ts";
 import { getSkill, getSkillBySlug, retrieveApplicableSkills } from "../../skills/service.ts";
 import type { Skill } from "../../skills/types.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
@@ -914,6 +917,25 @@ export async function assembleContext(
     // log-line bounds, same headroom as recipes).
     included_prior_workflow_slugs: included_prior_workflow_slugs.slice(0, 12),
     dropped_sections: budget_report.dropped_sections,
+  });
+
+  // Closing edge of the Run → Drift → Patch → Skill loop (positioning.md §6):
+  // record which loop-originated skills actually influenced this authoring
+  // turn. `catalog` counts ONLY Skills promoted from a Skill Candidate
+  // (source === "candidate") — not engine-shipped seed/template/manual skills,
+  // which are always-on and would otherwise drown the loop-closure signal.
+  // `candidate` counts proposed Skill Candidates surfaced for review. Both
+  // counts come from data already in hand — pure in-memory increments.
+  const promotedSkillCount = prompt.included_skills.filter((s) => s.source === "candidate").length;
+  recordAuthoringContextSkillsUsed({
+    tenant_id: params.tenant_id,
+    source: "catalog",
+    count: promotedSkillCount,
+  });
+  recordAuthoringContextSkillsUsed({
+    tenant_id: params.tenant_id,
+    source: "candidate",
+    count: budget_report.included.candidates,
   });
 
   return {

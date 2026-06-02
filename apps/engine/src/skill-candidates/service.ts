@@ -3,15 +3,21 @@
 // Candidates are NEVER auto-promoted. Every mutation goes through an
 // explicit human gate (conversation approval or REST API).
 
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
+import { patchCandidates } from "../db/schema/executions.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
 import { log } from "../logging/logger.ts";
+import {
+  recordLoopPatchToSkillCandidate,
+  recordLoopSkillCandidatePromoted,
+} from "../observability/instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { createSkill } from "../skills/service.ts";
+import { now } from "../utils/clock.ts";
 import {
   detectFailurePatterns,
   detectRepairPatterns,
@@ -490,6 +496,13 @@ export async function runPatternAnalysis(
     const result = await upsertFromSignal(params.tenant_id, signal, db);
     if (result.action === "proposed") proposed++;
     if (result.action === "updated") updated++;
+    // Middle edge of the Run → Drift → Patch → Skill loop (positioning.md §6):
+    // a freshly-proposed candidate whose evidence carries a patch_candidate_id
+    // is a Patch Candidate that became a Skill Candidate (the repair-pattern
+    // detector path). #202's auto-aggregator will later feed the same counter.
+    if (result.action === "proposed" && signal.evidence.some((e) => e.patch_candidate_id)) {
+      recordLoopPatchToSkillCandidate({ tenant_id: params.tenant_id });
+    }
   }
 
   log.info({
@@ -522,7 +535,7 @@ export async function approveSkillCandidate(
 ): Promise<{ candidate: SkillCandidateView; skill_id: string } | null> {
   const db = exec ?? (getDb() as Db);
 
-  return await db.transaction(async (tx) => {
+  const out = await db.transaction(async (tx) => {
     const rows = await tx
       .select()
       .from(skillCandidates)
@@ -596,11 +609,50 @@ export async function approveSkillCandidate(
       actor_id: p.actor_id,
     });
 
+    // Promotion edge of the Run → Drift → Patch → Skill loop (positioning.md
+    // §6). Lag is anchored to the EARLIEST linked Patch Candidate's created_at
+    // (drift-detection time) — not the evidence-capture time — so the
+    // histogram measures the true drift→skill journey. Candidates with no
+    // patch evidence (failure/success patterns) leave lag_seconds undefined.
+    const patchRows = await tx
+      .select({ patch_candidate_id: skillCandidateEvidence.patch_candidate_id })
+      .from(skillCandidateEvidence)
+      .where(eq(skillCandidateEvidence.skill_candidate_id, p.candidate_id));
+    const patchIds = patchRows
+      .map((r) => r.patch_candidate_id)
+      .filter((id): id is string => id !== null);
+    let lag_seconds: number | undefined;
+    if (patchIds.length > 0) {
+      const earliest = await tx
+        .select({ created_at: patchCandidates.created_at })
+        .from(patchCandidates)
+        .where(inArray(patchCandidates.id, patchIds))
+        .orderBy(asc(patchCandidates.created_at))
+        .limit(1);
+      if (earliest[0]) {
+        lag_seconds = (now() - earliest[0].created_at.getTime()) / 1000;
+      }
+    }
+
     return {
       candidate: updated ? toView(updated) : toView(row),
       skill_id: skill.id,
+      // All candidates are detector-born today; `manual` is reserved for a
+      // future hand-authored proposal path (see metrics.ts).
+      promotion_source: "auto-suggested" as const,
+      lag_seconds,
     };
   });
+
+  if (!out) return null;
+
+  recordLoopSkillCandidatePromoted({
+    tenant_id: p.tenant_id,
+    source: out.promotion_source,
+    lag_seconds: out.lag_seconds,
+  });
+
+  return { candidate: out.candidate, skill_id: out.skill_id };
 }
 
 // ---------------------------------------------------------------------------
