@@ -149,7 +149,11 @@ export const updateWorkflowTool: ConversationTool = {
   name: "update_workflow",
   description:
     "Patch a persisted workflow's metadata (slug, display name, description, lifecycle) without rewriting the dag or version history.",
-  requires_persisted_workflow: true,
+  // NOT `requires_persisted_workflow`: like delete_workflow this targets an
+  // EXISTING workflow by an explicit id supplied in the args, is only called on
+  // explicit management intent ("rename/archive workflow X"), and has no
+  // no-args loop failure mode. Flagging it made the step-router hide it on a
+  // fresh conversation, so those requests silently failed. See step-router.ts.
   use_case:
     "Use when the user asks to rename a workflow, set or change its description, archive it, or reactivate it. Send only the fields that should change. Does NOT alter steps, input/output schema, or version count — for those, edit the draft and use save_workflow_draft.",
   important_notes: [

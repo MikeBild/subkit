@@ -312,11 +312,15 @@ const ALWAYS_AVAILABLE: ReadonlySet<string> = new Set([
  * `workflow_validated`, `workflow_previewed`) and `connector_persisted`
  * with no workflow bound exhibit the same failure mode.
  *
- * Calling `run_workflow` / `update_workflow` / `delete_workflow` /
- * `create_schedule` / `update_schedule` / `delete_schedule` against a
- * non-existent id fails with `workflow_not_persisted` /
- * `workflow_not_found`. Surfacing them when no workflow is bound is
- * what trips the loop.
+ * The flag belongs on tools the model auto-fires while authoring a
+ * not-yet-persisted workflow: `run_workflow` (the original `run_workflow{}`
+ * loop) and the schedule writes that bind the draft (`create_schedule` /
+ * `update_schedule` / `delete_schedule`). It deliberately does NOT belong on
+ * `delete_workflow` / `update_workflow` — those resolve an EXISTING workflow
+ * by an explicit id/slug against the live table, are only called on explicit
+ * management intent, and have no no-args loop. Flagging them hid the only verb
+ * for "delete/rename workflow X" on a fresh conversation, so the model fell
+ * back to `delete_connector`. See cleanup.ts / update-workflow.ts.
  */
 function activeToolsForStage(
   stage: AuthoringStage | undefined,

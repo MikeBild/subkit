@@ -39,8 +39,11 @@ const TOOLS: Record<string, ConversationTool> = Object.fromEntries([
   fakeTool("propose_step", "draft_write"),
   fakeTool("save_workflow_draft", "tenant_write"),
   fakeTool("build_workflow", "draft_write"),
-  fakeTool("delete_workflow", "tenant_write", { requires_persisted_workflow: true }),
-  fakeTool("update_workflow", "tenant_write", { requires_persisted_workflow: true }),
+  // delete_workflow / update_workflow target an existing workflow by explicit
+  // id/slug — they are NOT requires_persisted_workflow (see cleanup.ts /
+  // update-workflow.ts) and must stay reachable on a fresh conversation.
+  fakeTool("delete_workflow", "tenant_write"),
+  fakeTool("update_workflow", "tenant_write"),
   fakeTool("create_schedule", "tenant_write", { requires_persisted_workflow: true }),
   fakeTool("run_workflow", "tenant_write", { requires_persisted_workflow: true }),
 ]);
@@ -353,11 +356,14 @@ describe("prepareStep — pre-persistence stages drop tools requiring a persiste
     it(`drops run_workflow + peers on stage='${stage}'`, () => {
       const decision = prepareStep(baseParams({ signals: { stage } }));
       expect(decision?.activeTools).toBeDefined();
-      // Every tool flagged requires_persisted_workflow must be gone.
+      // These stages narrow to tenant_read + draft_write, so EVERY tenant_write
+      // tool is gone here — run_workflow/create_schedule (flagged) and
+      // delete_workflow/update_workflow (dropped by category, not the flag).
       expect(decision?.activeTools).not.toContain("run_workflow");
       expect(decision?.activeTools).not.toContain("update_workflow");
       expect(decision?.activeTools).not.toContain("delete_workflow");
       expect(decision?.activeTools).not.toContain("create_schedule");
+      expect(decision?.activeTools).not.toContain("save_workflow_draft");
       // The authoring tools the LLM should be picking instead must
       // still be in the palette.
       expect(decision?.activeTools).toContain("build_workflow");
@@ -390,8 +396,9 @@ describe("prepareStep — pre-persistence stages drop tools requiring a persiste
       const decision = prepareStep(baseParams({ signals: { stage }, forcedTool: "run_workflow" }));
       expect(decision?.activeTools).toBeDefined();
       expect(decision?.activeTools).toContain("run_workflow");
-      // Other persisted-workflow-requiring tools that are NOT the
-      // forced one still get dropped.
+      // At these draft stages the category narrowing (tenant_read +
+      // draft_write) drops every other tenant_write tool — the flagged
+      // create_schedule and the unflagged delete/update_workflow alike.
       expect(decision?.activeTools).not.toContain("update_workflow");
       expect(decision?.activeTools).not.toContain("delete_workflow");
       expect(decision?.activeTools).not.toContain("create_schedule");
@@ -413,9 +420,14 @@ describe("prepareStep — live-state gate drops persisted-workflow tools across 
     );
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).not.toContain("run_workflow");
-    expect(decision?.activeTools).not.toContain("update_workflow");
-    expect(decision?.activeTools).not.toContain("delete_workflow");
     expect(decision?.activeTools).not.toContain("create_schedule");
+    // Regression guard (session 85ce71d7): delete_workflow / update_workflow
+    // are NOT requires_persisted_workflow — they resolve an existing workflow
+    // by explicit id/slug, so on a fresh "list then delete/rename workflow X"
+    // conversation they must stay reachable. Hiding them is what forced the
+    // model onto delete_connector and the connector_not_found dead-end.
+    expect(decision?.activeTools).toContain("delete_workflow");
+    expect(decision?.activeTools).toContain("update_workflow");
     // Authoring tools (and the always-available set) remain.
     expect(decision?.activeTools).toContain("build_workflow");
     expect(decision?.activeTools).toContain("propose_step");
@@ -437,9 +449,10 @@ describe("prepareStep — live-state gate drops persisted-workflow tools across 
     );
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).not.toContain("run_workflow");
-    expect(decision?.activeTools).not.toContain("update_workflow");
-    expect(decision?.activeTools).not.toContain("delete_workflow");
     expect(decision?.activeTools).not.toContain("create_schedule");
+    // Unflagged management ops survive the full-palette drop (see idle case).
+    expect(decision?.activeTools).toContain("delete_workflow");
+    expect(decision?.activeTools).toContain("update_workflow");
   });
 
   it("connector_persisted + persisted workflow BOUND → full palette", () => {
@@ -473,8 +486,9 @@ describe("prepareStep — live-state gate drops persisted-workflow tools across 
     );
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).toContain("run_workflow");
-    // Peers still drop.
-    expect(decision?.activeTools).not.toContain("update_workflow");
-    expect(decision?.activeTools).not.toContain("delete_workflow");
+    // Flagged peer still drops; unflagged management ops survive.
+    expect(decision?.activeTools).not.toContain("create_schedule");
+    expect(decision?.activeTools).toContain("delete_workflow");
+    expect(decision?.activeTools).toContain("update_workflow");
   });
 });

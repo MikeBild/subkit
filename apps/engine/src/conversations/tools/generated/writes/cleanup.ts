@@ -134,7 +134,13 @@ export const deleteWorkflowTool: ConversationTool = {
     "Soft-delete a workflow by id or slug. Requires confirmation first and records audit.",
   inputSchema: WorkflowDeleteInput,
   category: "tenant_write",
-  requires_persisted_workflow: true,
+  // NOT `requires_persisted_workflow`: this resolves an EXISTING workflow by
+  // explicit id/slug against the live table (see resolution below), it is the
+  // same class of cleanup op as delete_connector, and it has no `{}`-no-args
+  // loop failure mode (the input schema requires id or slug). Flagging it made
+  // the step-router drop it from the palette whenever no workflow was bound to
+  // the conversation, so "delete workflow X" on a fresh chat had no tool to
+  // reach for and the model fell back to delete_connector. See step-router.ts.
   async execute(ctx, rawArgs) {
     const args = WorkflowDeleteInput.parse(rawArgs);
     if (args.id) {
