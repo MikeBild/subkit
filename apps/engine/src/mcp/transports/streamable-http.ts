@@ -68,6 +68,32 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
     let session: Session | undefined;
     if (sessionHeader) {
       session = sessions.get(sessionHeader);
+      if (!session) {
+        // The client holds a session id this process no longer has — an
+        // engine restart dropped the in-memory map, or we already closed
+        // the session. Per the MCP Streamable HTTP spec the server SHOULD
+        // answer 404 so the client re-runs the `initialize` handshake.
+        // This is routine client churn, not a transport fault: log at
+        // `debug` and return the 404 directly. Falling through to build a
+        // fresh transport would make that transport self-reject with
+        // "Server not initialized" (it never saw the handshake) — the noise
+        // this branch exists to eliminate.
+        logger.debug({
+          module: "mcp",
+          action: "mcp.session.stale",
+          msg: "unknown mcp session id — client should re-initialize",
+          session_id: sessionHeader,
+          principal_id: principal.id,
+        });
+        return new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32001, message: "Session not found" },
+            id: null,
+          }),
+          { status: 404, headers: { "content-type": "application/json" } },
+        );
+      }
     }
 
     if (!session) {
@@ -101,6 +127,22 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
         },
       });
       transport.onerror = (err: Error) => {
+        // A non-initialize request that reached this fresh transport with no
+        // session id at all self-rejects with "Server not initialized" — the
+        // client skipped the handshake. That's recoverable client churn, not
+        // a fault; log it at `debug` like the stale-session case above. Every
+        // other transport error stays at `warn`.
+        const staleSession = err.message === "Bad Request: Server not initialized";
+        if (staleSession) {
+          logger.debug({
+            module: "mcp",
+            action: "mcp.session.stale",
+            msg: "mcp request before initialize — client should re-initialize",
+            error: err.message,
+            principal_id: principal.id,
+          });
+          return;
+        }
         logger.warn({
           module: "mcp",
           action: "mcp.transport.error",
