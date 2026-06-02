@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 5
+version: 6
 ---
 
 # Authoring Workflows In A Conversation
@@ -697,6 +697,13 @@ Prefer the stdlib over raw comparisons so hook + transform code stays uniform.
 - **Confusing `output_transform` with `data_selector`.** `output_transform` runs
   once, at the end. `data_selector` runs per step. Using `output_transform` to
   trim an early step wastes scope space for the whole run.
+- **Chasing escaped quotes inside `output_transform` as a "bug".** A `\"` (or a
+  stored DAG showing `\\\"`) inside a JSONata `output_transform` is the normal,
+  valid JSON encoding of a quote — JSONata accepts it and the runtime evaluates it
+  correctly. It is cosmetic, not a defect. Do **not** burn version bumps
+  `edit_workflow_patch`-ing the escaping back and forth. Only re-author the
+  transform when a dry-run actually reports wrong output or an
+  `unresolved_identifier` / `placeholder_unresolved` warning.
 - **Nested loop id collisions.** `loop.body[].id` values must be unique across
   the whole workflow, not just within the body. The validator rejects duplicates.
 - **Writing JSONata that assumes arrays.** `$scope.foo.data.items` when `items`
