@@ -57,7 +57,14 @@ ENGINE_NEXT="${ENGINE_BIN}.next"
 ENGINE_PREV="${ENGINE_BIN}.prev"
 HEALTH_URL="http://127.0.0.1:3000/v1/health"
 SERVICE_UNIT="subkit-engine.service"
-HEALTH_TIMEOUT_SECS="${HEALTH_TIMEOUT_SECS:-150}"
+# 300s (not 150s): the engine is a ~131 MB single compiled binary that is
+# demand-faulted into RAM as its module graph executes on boot. On a cold or
+# memory-pressured page cache (e.g. a redeploy right after the prior process
+# freed a multi-GB footprint) that fault-in can stall well past 150s — once
+# observed at 2h22m, which timed this gate out on an engine that was merely
+# booting slowly, not broken. The pre-warm below shrinks the common case; this
+# ceiling covers the contended tail.
+HEALTH_TIMEOUT_SECS="${HEALTH_TIMEOUT_SECS:-300}"
 # BOOTSTRAP_ONLY=1 — re-run the post-health PUT /v1/settings/* phase
 # without re-shipping a binary. Useful when the operator added a
 # BOOTSTRAP_LLM_* secret after the first deploy and wants the engine
@@ -150,6 +157,16 @@ else
   chmod 755 "$ENGINE_NEXT"
   mv "$ENGINE_NEXT" "$ENGINE_BIN"
 
+  # Pre-warm the binary into the page cache BEFORE restart. The dominant
+  # boot cost is the kernel demand-faulting this ~131 MB binary's code
+  # pages off disk as the module graph executes (a silent ~50s phase that
+  # has ballooned to hours under memory/IO contention). Reading the whole
+  # file front-loads that IO while the old process is still serving, so the
+  # new process starts against a warm cache. `cat >/dev/null` is the
+  # no-extra-deps form (ubuntu-24-04 host, no vmtouch); best-effort.
+  echo "pre-warming $ENGINE_BIN into page cache ($(stat -c%s "$ENGINE_BIN" 2>/dev/null || echo '?') bytes)"
+  cat "$ENGINE_BIN" >/dev/null 2>&1 || true
+
   # Restart the unit. systemd will re-exec the binary; engine boot runs
   # embedded migrations in-process before the HTTP listener starts, so
   # /v1/health == ENGINE_VERSION implies migrations succeeded.
@@ -177,6 +194,16 @@ else
       non_json_seen=1
     fi
     if [ "$(date +%s)" -ge "$deadline" ]; then
+      # Final authoritative re-probe before declaring failure. A slow but
+      # successful boot can cross the deadline just before it starts serving;
+      # rolling back — or fataling on a rollback-cycle (prev==target) — a
+      # healthy engine is worse than honouring one last probe. If it now
+      # reports the target version, the deploy succeeded.
+      live=$(read_running_version)
+      if [ "$live" = "$ENGINE_VERSION" ]; then
+        echo "Engine v${ENGINE_VERSION} healthy (surfaced at the ${HEALTH_TIMEOUT_SECS}s deadline)"
+        break
+      fi
       echo "FATAL: health timeout after ${HEALTH_TIMEOUT_SECS}s (live='${live:-<unreachable>}', want=${ENGINE_VERSION})"
       if [ -f "$ENGINE_PREV" ]; then
         # Refuse a chained-rollback cycle: if the prev binary's
