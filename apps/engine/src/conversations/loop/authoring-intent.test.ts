@@ -151,10 +151,12 @@ describe("detectAuthoringIntent — non-authoring phrases", () => {
 });
 
 describe("AUTHORING_INITIAL_MODEL constant", () => {
-  it("seeds Sonnet 4.6", () => {
-    // Hard-wired here so a future rename in invoke.ts surfaces as a
-    // failing test instead of a silent drift.
-    expect(AUTHORING_INITIAL_MODEL).toBe("claude-sonnet-4-6");
+  it("seeds Opus 4.7", () => {
+    // Hard-wired here so a future rename surfaces as a failing test
+    // instead of a silent drift. Raised from Sonnet 4.6 → Opus 4.7
+    // after the publish-ready-essays incident (Sonnet-seeded authoring
+    // turns still mis-selected run_workflow).
+    expect(AUTHORING_INITIAL_MODEL).toBe("claude-opus-4-7");
   });
 });
 
@@ -168,23 +170,23 @@ describe("AUTHORING_INITIAL_MODEL constant", () => {
 describe("resolveInitialModel — FIX 2 loop seeding", () => {
   const tenantDefault = "claude-haiku-4-5";
 
-  it("seeds Sonnet 4.6 when initial_message expresses authoring intent", () => {
+  it("seeds the authoring model when initial_message expresses authoring intent", () => {
     const decision = resolveInitialModel({
       modelOverride: null,
       tenantDefault,
       recentUserMessage: "build a workflow called daily-report",
     });
-    expect(decision.modelId).toBe("claude-sonnet-4-6");
+    expect(decision.modelId).toBe("claude-opus-4-7");
     expect(decision.authoringSeeded).toBe(true);
   });
 
-  it("seeds Sonnet 4.6 for the German equivalent", () => {
+  it("seeds the authoring model for the German equivalent", () => {
     const decision = resolveInitialModel({
       modelOverride: null,
       tenantDefault,
       recentUserMessage: "erstelle einen workflow für den Tagesbericht",
     });
-    expect(decision.modelId).toBe("claude-sonnet-4-6");
+    expect(decision.modelId).toBe("claude-opus-4-7");
     expect(decision.authoringSeeded).toBe(true);
   });
 

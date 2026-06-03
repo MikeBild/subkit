@@ -206,6 +206,16 @@ export interface ConversationRunTurnJob {
   conversation_id: string;
   mcp_task_id: string;
   actor_id: string | null;
+  /**
+   * Resolved principal of the actor who initiated the turn. The HTTP/SSE
+   * surface threads its live principal straight into `runConversationTurn`;
+   * the MCP async path runs the turn in a queue worker that has no live
+   * request, so the principal must ride the job envelope or RBAC-gated
+   * tools (notably `run_workflow`) fail with `principal_required`. Always
+   * the initiating actor's OWN principal (same tenant_id as this job) —
+   * never elevated. Small + JSON-serialisable; well under the 8 KB cap.
+   */
+  principal?: import("../auth/types.ts").ResolvedPrincipal | null;
   kind: "start" | "append" | "respond_elicitation";
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   /** Present only for `respond_elicitation` turns. */

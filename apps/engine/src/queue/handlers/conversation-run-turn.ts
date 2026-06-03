@@ -167,6 +167,10 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
           conversation_id: data.conversation_id,
           elicitation_id: data.elicitation_id,
           actor_id: data.actor_id,
+          // Thread the initiating principal so a run_workflow resumed
+          // from an elicitation also runs under RBAC instead of failing
+          // principal_required.
+          ...(data.principal ? { principal: data.principal } : {}),
           output: elicitation.output,
           turn_abort_ctrl: turnAbortCtrl,
           ...(data.reason ? { reason: data.reason } : {}),
@@ -186,6 +190,9 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
           tenant_id: data.tenant_id,
           conversation_id: data.conversation_id,
           actor_id: data.actor_id,
+          // Thread the initiating principal so RBAC-gated tools
+          // (run_workflow) execute instead of failing principal_required.
+          ...(data.principal ? { principal: data.principal } : {}),
           user_message: message,
           surface: "mcp",
           turn_abort_ctrl: turnAbortCtrl,

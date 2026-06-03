@@ -6,6 +6,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
@@ -28,6 +29,13 @@ export interface RespondElicitationParams {
   conversation_id: string;
   elicitation_id: string;
   actor_id: string | null;
+  /**
+   * Resolved principal of the actor resuming the turn. Threaded into
+   * `runLoop` so a `run_workflow` triggered by the resumed turn runs
+   * under RBAC instead of failing `principal_required`. Absent on test
+   * harnesses; tools guard the undefined case.
+   */
+  principal?: ResolvedPrincipal | null;
   /** User's answer — shape depends on the tool (choice/multi/text/form/confirm). */
   output: unknown;
   reason?: string;
@@ -297,6 +305,7 @@ export async function respondElicitation(
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
+    ...(p.principal ? { principal: p.principal } : {}),
     connector_id: conv.conversation.target_connector_id,
     workflow_id: conv.conversation.target_workflow_id,
     user_message: null,

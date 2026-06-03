@@ -21,11 +21,20 @@
 // Kept intentionally as a pure regex pass: no LLM classifier, no
 // network, no DB. Easy to unit-test, cheap to call once per turn.
 
-/** Sonnet 4.6 — documented authoring-quality default. Single string
- *  literal so the source-of-truth lives next to the detector that
- *  needs it; the step-router ladder and the `DEFAULT_PRIMARY` constant
- *  in invoke.ts already reference the same id. */
-export const AUTHORING_INITIAL_MODEL = "claude-sonnet-4-6";
+/** Opus 4.7 — authoring-quality seed for the FIRST step of an
+ *  authoring turn. Raised from Sonnet 4.6 after the publish-ready-essays
+ *  incident: even Sonnet-seeded authoring turns (the user message
+ *  contained `build_workflow`, so `detectAuthoringIntent` matched and
+ *  Sonnet was selected) repeatedly chose `run_workflow` instead of
+ *  `build_workflow`, looping on the principal/input guardrails until the
+ *  caps stopped the turn. Opus follows the explicit "call build_workflow,
+ *  not run_workflow" instruction reliably. This model is paid only on
+ *  authoring-intent turns (infrequent), so the tenant's cheap default
+ *  still covers enumeration / read / execute turns. Single string literal
+ *  so the source-of-truth lives next to the detector that needs it;
+ *  `claude-opus-4-7` is the same id the step-router escalation ladder
+ *  uses. */
+export const AUTHORING_INITIAL_MODEL = "claude-opus-4-7";
 
 // English + German authoring verbs the user actually types when
 // starting a workflow build. Verbs are anchored with `\b` so substrings

@@ -195,6 +195,10 @@ async function backgroundTurn(p: {
       conversation_id: p.conversation_id,
       mcp_task_id: taskId,
       actor_id: p.principal.id,
+      // Thread the initiating principal so the queue worker can run
+      // RBAC-gated tools (run_workflow) instead of failing
+      // principal_required — see ConversationRunTurnJob.principal.
+      principal: p.principal,
       kind: p.kind,
       ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
       ...(p.elicitation_id ? { elicitation_id: p.elicitation_id } : {}),
