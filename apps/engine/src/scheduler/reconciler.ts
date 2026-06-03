@@ -21,6 +21,7 @@ import {
 } from "../db/schema/index.ts";
 import { createExecution } from "../execution/state.ts";
 import { errorFields, logger } from "../logging/logger.ts";
+import { instrument } from "../observability/runtime-telemetry.ts";
 import { enqueueIngest, INGEST_DOCS_QUEUE } from "../queue/handlers/ingest-docs.ts";
 import {
   enqueueKnowledgeIngest,
@@ -442,6 +443,14 @@ export class SchedulerReconciler {
    * happens without waiting for the cron's first natural tick.
    */
   async reconcileDocsAutoRefresh(): Promise<void> {
+    await instrument({
+      module: "scheduler",
+      action: "docs_auto_refresh.run",
+      fn: () => this.reconcileDocsAutoRefreshPass(),
+    });
+  }
+
+  private async reconcileDocsAutoRefreshPass(): Promise<void> {
     // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
     const rows = await this.opts.db
       .select()
@@ -513,6 +522,14 @@ export class SchedulerReconciler {
    * the interval timer already enforces the same dedup property.
    */
   async reconcileWorkflowSchedules(now: Date = new Date()): Promise<void> {
+    await instrument({
+      module: "scheduler",
+      action: "workflow_schedules.run",
+      fn: () => this.reconcileWorkflowSchedulesPass(now),
+    });
+  }
+
+  private async reconcileWorkflowSchedulesPass(now: Date): Promise<void> {
     // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
     const rows = await this.opts.db
       .select({
@@ -871,6 +888,14 @@ export class SchedulerReconciler {
    * is re-fetched). File-upload sources require a manual re-upload.
    */
   async reconcileKnowledgeAutoRefresh(): Promise<void> {
+    await instrument({
+      module: "scheduler",
+      action: "knowledge_auto_refresh.run",
+      fn: () => this.reconcileKnowledgeAutoRefreshPass(),
+    });
+  }
+
+  private async reconcileKnowledgeAutoRefreshPass(): Promise<void> {
     // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
     const rows = await this.opts.db
       .select()

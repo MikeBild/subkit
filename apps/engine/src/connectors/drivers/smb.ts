@@ -9,6 +9,7 @@
 // enough to benefit from pooling for typical workflow traffic.
 
 import SMB2 from "@marsaud/smb2";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 
 export type SmbCommand = "LIST" | "GET" | "PUT" | "DELETE";
@@ -118,45 +119,25 @@ export async function executeSmbCommand(p: SmbExecuteParams): Promise<SmbExecute
   const parts = parseDsn(p.connector.dsn);
   const client = makeClient(parts);
   const full = toSmbPath(parts, p.path);
+  const putBytes =
+    p.command === "PUT" && p.body !== undefined
+      ? typeof p.body === "string"
+        ? Buffer.byteLength(p.body, "utf8")
+        : p.body.byteLength
+      : undefined;
   try {
-    if (p.command === "LIST") {
-      const names = await client.readdir(full);
-      const entries: SmbFileInfo[] = await Promise.all(
-        names.map(async (name) => {
-          const childPath = full ? `${full}\\${name}` : name;
-          try {
-            const stat = await client.stat(childPath);
-            return {
-              name,
-              size: 0,
-              type: stat.isDirectory() ? "directory" : ("file" as const),
-              modified_at: stat.mtime ? new Date(stat.mtime).toISOString() : null,
-            };
-          } catch {
-            return { name, size: 0, type: "unknown" as const, modified_at: null };
-          }
-        }),
-      );
-      return { command: "LIST", entries };
-    }
-    if (p.command === "GET") {
-      const buf = await client.readFile(full);
-      return { command: "GET", body: buf.toString("utf8") };
-    }
-    if (p.command === "PUT") {
-      if (p.body === undefined) throw new Error("PUT requires 'body'");
-      const buf = typeof p.body === "string" ? Buffer.from(p.body, "utf8") : p.body;
-      await client.writeFile(full, buf);
-      return { command: "PUT", bytes: buf.byteLength };
-    }
-    if (p.command === "DELETE") {
-      await client.unlink(full);
-      return { command: "DELETE", deleted: true };
-    }
-    // Exhaustiveness guard — TypeScript can't always infer the switch is
-    // total, so an explicit never-branch keeps the return type tight.
-    const _never: never = p.command;
-    throw new Error(`unsupported smb command: ${String(_never)}`);
+    return await instrument({
+      module: "connector",
+      action: "driver.smb.request",
+      level: "debug",
+      thresholdMs: 1000,
+      fields: {
+        connector_id: p.connector.id,
+        op: p.command,
+        ...(putBytes !== undefined ? { bytes: putBytes } : {}),
+      },
+      fn: () => runSmbCommand(client, p, full),
+    });
   } finally {
     try {
       client.disconnect();
@@ -164,4 +145,49 @@ export async function executeSmbCommand(p: SmbExecuteParams): Promise<SmbExecute
       // best-effort
     }
   }
+}
+
+async function runSmbCommand(
+  client: SMB2,
+  p: SmbExecuteParams,
+  full: string,
+): Promise<SmbExecuteResult> {
+  if (p.command === "LIST") {
+    const names = await client.readdir(full);
+    const entries: SmbFileInfo[] = await Promise.all(
+      names.map(async (name) => {
+        const childPath = full ? `${full}\\${name}` : name;
+        try {
+          const stat = await client.stat(childPath);
+          return {
+            name,
+            size: 0,
+            type: stat.isDirectory() ? "directory" : ("file" as const),
+            modified_at: stat.mtime ? new Date(stat.mtime).toISOString() : null,
+          };
+        } catch {
+          return { name, size: 0, type: "unknown" as const, modified_at: null };
+        }
+      }),
+    );
+    return { command: "LIST", entries };
+  }
+  if (p.command === "GET") {
+    const buf = await client.readFile(full);
+    return { command: "GET", body: buf.toString("utf8") };
+  }
+  if (p.command === "PUT") {
+    if (p.body === undefined) throw new Error("PUT requires 'body'");
+    const buf = typeof p.body === "string" ? Buffer.from(p.body, "utf8") : p.body;
+    await client.writeFile(full, buf);
+    return { command: "PUT", bytes: buf.byteLength };
+  }
+  if (p.command === "DELETE") {
+    await client.unlink(full);
+    return { command: "DELETE", deleted: true };
+  }
+  // Exhaustiveness guard — TypeScript can't always infer the switch is
+  // total, so an explicit never-branch keeps the return type tight.
+  const _never: never = p.command;
+  throw new Error(`unsupported smb command: ${String(_never)}`);
 }

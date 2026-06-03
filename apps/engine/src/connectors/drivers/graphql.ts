@@ -13,6 +13,7 @@
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import type { ConnectorView } from "../types.ts";
@@ -215,10 +216,23 @@ export async function executeGraphQLRequest(p: {
   // GraphQL surface returns the obtuse "Invalid header name" error.
   // (Audit anti-pattern C1, conversation 730c568a.)
   validateOutboundHeaders(headers);
-  const res = await fetchImpl(url.toString(), {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ query: p.op.query, variables: p.op.variables ?? {} }),
+  const res = await instrument({
+    module: "connector",
+    action: "driver.graphql.request",
+    level: "debug",
+    thresholdMs: 1000,
+    fields: {
+      connector_id: p.connector.id,
+      operation: p.op.operation,
+      operation_name: operationName,
+      url_host: url.host,
+    },
+    fn: () =>
+      fetchImpl(url.toString(), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ query: p.op.query, variables: p.op.variables ?? {} }),
+      }),
   });
   const text = await res.text();
   let parsed: { data?: unknown; errors?: unknown };

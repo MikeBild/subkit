@@ -9,6 +9,7 @@
 
 import { Writable } from "node:stream";
 import * as ftp from "basic-ftp";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 
 export type FtpCommand = "LIST" | "GET" | "PUT" | "DELETE";
@@ -125,43 +126,61 @@ export async function executeFtpCommand(p: FtpExecuteParams): Promise<FtpExecute
   }
   const parts = parseDsn(p.connector.dsn);
   const full = resolvePath(parts, p.path);
-  return await withClient(p.connector, async (client) => {
-    switch (p.command) {
-      case "LIST": {
-        const entries = await client.list(full);
-        return {
-          command: "LIST" as const,
-          entries: entries.map((e) => ({
-            name: e.name,
-            size: e.size,
-            type: mapFileType(e.type),
-            modified_at: e.modifiedAt ? e.modifiedAt.toISOString() : null,
-          })),
-        };
-      }
-      case "GET": {
-        const chunks: Buffer[] = [];
-        const sink = new Writable({
-          write(chunk, _enc, cb) {
-            chunks.push(Buffer.from(chunk));
-            cb();
-          },
-        });
-        await client.downloadTo(sink, full);
-        return { command: "GET" as const, body: Buffer.concat(chunks).toString("utf8") };
-      }
-      case "PUT": {
-        if (p.body === undefined) throw new Error("PUT requires 'body'");
-        const { Readable } = await import("node:stream");
-        const buf = typeof p.body === "string" ? Buffer.from(p.body, "utf8") : p.body;
-        const src = Readable.from(buf);
-        await client.uploadFrom(src, full);
-        return { command: "PUT" as const, bytes: buf.byteLength };
-      }
-      case "DELETE": {
-        await client.remove(full);
-        return { command: "DELETE" as const, deleted: true };
-      }
-    }
+  const putBytes =
+    p.command === "PUT" && p.body !== undefined
+      ? typeof p.body === "string"
+        ? Buffer.byteLength(p.body, "utf8")
+        : p.body.byteLength
+      : undefined;
+  return await instrument({
+    module: "connector",
+    action: "driver.ftp.request",
+    level: "debug",
+    thresholdMs: 1000,
+    fields: {
+      connector_id: p.connector.id,
+      op: p.command,
+      ...(putBytes !== undefined ? { bytes: putBytes } : {}),
+    },
+    fn: () =>
+      withClient(p.connector, async (client) => {
+        switch (p.command) {
+          case "LIST": {
+            const entries = await client.list(full);
+            return {
+              command: "LIST" as const,
+              entries: entries.map((e) => ({
+                name: e.name,
+                size: e.size,
+                type: mapFileType(e.type),
+                modified_at: e.modifiedAt ? e.modifiedAt.toISOString() : null,
+              })),
+            };
+          }
+          case "GET": {
+            const chunks: Buffer[] = [];
+            const sink = new Writable({
+              write(chunk, _enc, cb) {
+                chunks.push(Buffer.from(chunk));
+                cb();
+              },
+            });
+            await client.downloadTo(sink, full);
+            return { command: "GET" as const, body: Buffer.concat(chunks).toString("utf8") };
+          }
+          case "PUT": {
+            if (p.body === undefined) throw new Error("PUT requires 'body'");
+            const { Readable } = await import("node:stream");
+            const buf = typeof p.body === "string" ? Buffer.from(p.body, "utf8") : p.body;
+            const src = Readable.from(buf);
+            await client.uploadFrom(src, full);
+            return { command: "PUT" as const, bytes: buf.byteLength };
+          }
+          case "DELETE": {
+            await client.remove(full);
+            return { command: "DELETE" as const, deleted: true };
+          }
+        }
+      }),
   });
 }

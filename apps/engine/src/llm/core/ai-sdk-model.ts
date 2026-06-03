@@ -13,6 +13,7 @@
 
 import { generateText, jsonSchema, NoSuchToolError, type Tool, tool } from "ai";
 import { logger } from "../../logging/logger.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import { classifyProviderError, isFallbackEligible } from "../provider-errors.ts";
 import type {
   SubkitLlm,
@@ -211,7 +212,15 @@ export class AiSdkModel implements SubkitLlm {
       };
     }
     try {
-      return await this.gt(callOpts);
+      // `generateText` returns a resolved result object (no streaming here),
+      // so the instrument bracket is behaviour-transparent — it times the
+      // primary model round-trip and rethrows on provider error.
+      return await instrument({
+        module: "llm",
+        action: "model.call",
+        fields: { model: primary.modelId },
+        fn: () => this.gt(callOpts),
+      });
     } catch (err) {
       if (!this.fallbackResolved || !isFallbackEligible(err)) throw err;
       const kind = classifyProviderError(err);
@@ -227,7 +236,12 @@ export class AiSdkModel implements SubkitLlm {
       });
       // biome-ignore lint/suspicious/noExplicitAny: ai sdk options shape
       const fbOpts: any = { ...callOpts, model: this.fallbackResolved.model };
-      return await this.gt(fbOpts);
+      return await instrument({
+        module: "llm",
+        action: "model.call",
+        fields: { model: this.fallbackResolved.modelId },
+        fn: () => this.gt(fbOpts),
+      });
     }
   }
 

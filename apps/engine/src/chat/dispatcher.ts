@@ -54,6 +54,7 @@ import { createExecution } from "../execution/state.ts";
 import { log, logger } from "../logging/logger.ts";
 import { tryAcquire } from "../notifications/rate-limit.ts";
 import { recordChatDelivery } from "../observability/instrumentation.ts";
+import { instrument } from "../observability/runtime-telemetry.ts";
 import { can } from "../rbac/evaluator.ts";
 import { getWorkflow, getWorkflowBySlug } from "../workflows/service.ts";
 import type { ChatAdapter } from "./adapter.ts";
@@ -148,7 +149,12 @@ async function sendTracked(
     }
   }
   try {
-    const out = await adapter.send(delivery);
+    const out = await instrument({
+      module: "chat",
+      action: "outbound.send",
+      fields: { platform, channel: delivery.channel_id, tenant_id: delivery.tenant_id },
+      fn: () => adapter.send(delivery),
+    });
     recordChatDelivery({ platform, status: "delivered" });
     log.chat.outbound.delivered({
       platform,
@@ -271,6 +277,15 @@ export async function handleChatEvent(
   deps: DispatcherDeps,
   ev: ChatEvent,
 ): Promise<DispatchOutcome> {
+  return instrument({
+    module: "chat",
+    action: "inbound.dispatch",
+    fields: { platform: ev.platform, workspace_id: ev.workspace_id },
+    fn: () => handleChatEventImpl(deps, ev),
+  });
+}
+
+async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise<DispatchOutcome> {
   const { db, adapter } = deps;
 
   // tenant-filter:exempt — platform/workspace_id lookup pre-tenant

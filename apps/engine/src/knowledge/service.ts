@@ -13,6 +13,7 @@ import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_source
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
 import { log } from "../logging/logger.ts";
+import { instrument } from "../observability/runtime-telemetry.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
 import {
   KNOWLEDGE_SOURCE_MAX_BYTES,
@@ -376,7 +377,18 @@ export async function ingestKnowledgeSource(
   }
 
   const format = detectFormat(p.upload.filename, p.upload.mime);
-  const rawChunks = parseFileToChunks(content, p.upload.filename, format);
+  const rawChunks = await instrument({
+    module: "knowledge",
+    action: "parse_file_to_chunks",
+    memory: true,
+    fields: {
+      knowledge_source_id: p.knowledge_source_id,
+      tenant_id: p.tenant_id,
+      format,
+      byte_size: byteSize,
+    },
+    fn: () => parseFileToChunks(content, p.upload.filename, format),
+  });
   const fingerprinted = fingerprintChunks(rawChunks);
   const { accepted, skipped } = dedupChunks(fingerprinted);
 

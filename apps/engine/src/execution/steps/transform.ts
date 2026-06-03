@@ -10,6 +10,7 @@
 // against the QuickJS wall-clock budget plus the same abort signal.
 
 import { logger } from "../../logging/logger.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import {
   SandboxInterruptError,
@@ -377,6 +378,20 @@ function detectUnresolvedIdentifiers(
 }
 
 export async function runTransformStep(p: RunTransformParams): Promise<StepResult> {
+  // Wrap the whole transform run in a single rss-delta sample. Transforms
+  // are the dominant memory hog in the executor: a large JSONata projection
+  // over loop output can balloon the heap. One delta per transform (not per
+  // sub-eval) keeps the signal attributable without log spam.
+  return instrument({
+    module: "execution",
+    action: "transform",
+    memory: true,
+    fields: { step_id: p.step.id, language: p.step.language ?? "jsonata" },
+    fn: () => runTransformStepInner(p),
+  });
+}
+
+async function runTransformStepInner(p: RunTransformParams): Promise<StepResult> {
   const start = Date.now();
   const timeoutMs = p.step.timeout_ms ?? TRANSFORM_TIMEOUT_DEFAULT_MS;
   const timeoutCtrl = new AbortController();

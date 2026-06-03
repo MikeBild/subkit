@@ -138,6 +138,9 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
     return;
   }
 
+  // Bracket the heavy model loop with an rss baseline so the success
+  // log can attribute the multi-GB transient to THIS turn/tenant.
+  const rssBefore = process.memoryUsage().rss;
   try {
     // (d) Dispatch by kind. NOTE: NO `elicitationBridge` is passed — a
     // backgrounded turn has no live MCP session, so input-collecting
@@ -199,7 +202,10 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
       msg: "conversation.run-turn job completed",
       queue: CONVERSATION_RUN_TURN_QUEUE,
       job_id: job.id,
+      tenant_id: data.tenant_id,
       duration_ms: Date.now() - started,
+      rss_mb: Math.round((process.memoryUsage().rss / 1048576) * 10) / 10,
+      rss_delta_mb: Math.round(((process.memoryUsage().rss - rssBefore) / 1048576) * 10) / 10,
     });
   } catch (err) {
     // (h) Distinguish a cancellation from a real failure. A cancel is

@@ -18,6 +18,7 @@ import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowed, assertRobotsAllowed } from "../egress-guard.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
@@ -803,7 +804,14 @@ export async function executePlannedHttpRequest(params: {
       credential: params.sigv4.credential,
     });
   }
-  const res = await fetch(params.url, init);
+  const res = await instrument({
+    module: "connector",
+    action: "driver.http.request",
+    level: "debug",
+    thresholdMs: 1000,
+    fields: { method: params.method, url_host: params.url.host },
+    fn: () => fetch(params.url, init),
+  });
   const text = await res.text();
   const headerObj: Record<string, string> = {};
   res.headers.forEach((v, k) => {

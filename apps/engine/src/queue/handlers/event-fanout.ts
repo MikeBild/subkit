@@ -8,7 +8,7 @@
 import type { Job, PgBoss } from "pg-boss";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/logger.ts";
 import type { AdapterResolver } from "../../notifications/service.ts";
 import { fanoutEventRow, makeRegistryAdapterResolver } from "../../webhooks/outbound/fanout.ts";
 
@@ -39,6 +39,7 @@ export async function registerEventFanoutHandler(
     { batchSize: 5, pollingIntervalSeconds: 1 },
     async (jobs: Job<EventFanoutJob>[]) => {
       for (const j of jobs) {
+        const started = Date.now();
         try {
           await fanoutEventRow(
             db,
@@ -46,7 +47,22 @@ export async function registerEventFanoutHandler(
             j.data.event_row_id,
             resolver ? { notificationAdapterResolver: resolver } : {},
           );
+          log.queue.job.completed({
+            msg: "event.fanout job completed",
+            queue: EVENT_FANOUT_QUEUE,
+            job_id: j.id,
+            event_row_id: j.data.event_row_id,
+            duration_ms: Date.now() - started,
+          });
         } catch (err) {
+          log.queue.job.failed({
+            msg: "event.fanout job failed",
+            queue: EVENT_FANOUT_QUEUE,
+            job_id: j.id,
+            event_row_id: j.data.event_row_id,
+            error: err instanceof Error ? err.message : String(err),
+            duration_ms: Date.now() - started,
+          });
           logger.error({
             module: "webhooks.outbound",
             action: "fanout.handler_error",

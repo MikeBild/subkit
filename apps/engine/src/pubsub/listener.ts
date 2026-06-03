@@ -19,6 +19,7 @@ import type { Db } from "../db/client.ts";
 import { events as eventsTable, outboxCursors } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { setOutboxCursorLag } from "../observability/instrumentation.ts";
+import { instrument } from "../observability/runtime-telemetry.ts";
 import { globalEmitter, type PubSubEmitter } from "./emitter.ts";
 import {
   type EventEnvelope,
@@ -262,7 +263,14 @@ export class PubSubListener {
         payload: row.payload,
         created_at: row.created_at,
       };
-      await this.emitter.dispatch(envelope);
+      await instrument({
+        module: "pubsub",
+        action: "event.dispatch",
+        level: "debug",
+        thresholdMs: 250,
+        fields: { channel, event_type: envelope.type, event_id: envelope.id },
+        fn: () => this.emitter.dispatch(envelope),
+      });
     }
     const lastId = rows[rows.length - 1]?.id ?? cursor;
     await this.saveCursor(channel, lastId);

@@ -23,6 +23,7 @@ import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { logger } from "../logging/logger.ts";
 import { recordLoopIterationsOffloaded } from "../observability/instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
+import { instrument } from "../observability/runtime-telemetry.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
 import { buildStepDag, topoSort } from "../workflows/dag.ts";
@@ -320,9 +321,17 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     };
     let outcome: import("./step-runner.ts").RunStepOutcome;
     try {
-      outcome = await runStep(ctx, scope, normalizedInput, async ({ ctx: cctx, step: cstep }) =>
-        runCallStep(db, cctx, cstep as CallStep),
-      );
+      outcome = await instrument({
+        module: "execution",
+        action: "step",
+        level: "debug",
+        thresholdMs: 1000,
+        fields: { step_id: step.id, step_kind: step.kind },
+        fn: () =>
+          runStep(ctx, scope, normalizedInput, async ({ ctx: cctx, step: cstep }) =>
+            runCallStep(db, cctx, cstep as CallStep),
+          ),
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error({
@@ -416,12 +425,17 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               step_row_id: bodyStepRowId,
               llm_budget: llmBudget,
             };
-            const bodyOutcome = await runStep(
-              bodyCtx,
-              childScope,
-              normalizedInput,
-              async ({ ctx: cctx, step: cstep }) => runCallStep(db, cctx, cstep as CallStep),
-            );
+            const bodyOutcome = await instrument({
+              module: "execution",
+              action: "step",
+              level: "debug",
+              thresholdMs: 1000,
+              fields: { step_id: bodyStep.id, step_kind: bodyStep.kind },
+              fn: () =>
+                runStep(bodyCtx, childScope, normalizedInput, async ({ ctx: cctx, step: cstep }) =>
+                  runCallStep(db, cctx, cstep as CallStep),
+                ),
+            });
             // Per-iteration trace: surface the post-substitution URL +
             // status + outcome so an operator (or the LLM author reading
             // diagnose_run) can see which iteration of which body step
@@ -540,55 +554,71 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     // Parallel fan-out: run each branch concurrently via Promise.all.
     if (step.kind === "parallel" && outcome.result.status === "succeeded") {
       const parallelStep = step as ParallelStep;
-      const branchResults = await Promise.all(
-        parallelStep.branches.map(async (branchStepIds) => {
-          const branchScope: Record<string, unknown> = { ...scope };
-          const branchOutput: Record<string, unknown> = {};
-          for (const branchStepId of branchStepIds) {
-            const branchStepDef = def.steps.find((s) => s.id === branchStepId) as
-              | StepDef
-              | undefined;
-            if (!branchStepDef) continue;
-            const branchStepRowId = await insertStepRow(db, {
-              tenant_id,
-              execution_id,
-              step_key: branchStepId,
-              step_index: i,
-              kind: branchStepDef.kind,
-            });
-            const branchCtx: import("./types.ts").StepRunContext = {
-              db,
-              tenant_id,
-              execution_id,
-              workflow_id,
-              workflow_version_id,
-              request_source,
-              parent_execution_id,
-              depth,
-              signal,
-              scope: branchScope,
-              started_at: new Date(),
-              workflow_slug: resolved.workflow_slug,
-              trace_id: opts.trace_id ?? null,
-              principal: opts.principal ?? null,
-              execution_mode,
-              step: branchStepDef,
-              step_index: i,
-              step_row_id: branchStepRowId,
-              llm_budget: llmBudget,
-            };
-            const branchOutcome = await runStep(
-              branchCtx,
-              branchScope,
-              normalizedInput,
-              async ({ ctx: cctx, step: cstep }) => runCallStep(db, cctx, cstep as CallStep),
-            );
-            branchScope[branchStepId] = envelopeFor(branchOutcome);
-            branchOutput[branchStepId] = envelopeFor(branchOutcome);
-          }
-          return branchOutput;
-        }),
-      );
+      const branchResults = await instrument({
+        module: "execution",
+        action: "parallel",
+        memory: true,
+        fields: { step_id: step.id, branch_count: parallelStep.branches.length },
+        fn: () =>
+          Promise.all(
+            parallelStep.branches.map(async (branchStepIds) => {
+              const branchScope: Record<string, unknown> = { ...scope };
+              const branchOutput: Record<string, unknown> = {};
+              for (const branchStepId of branchStepIds) {
+                const branchStepDef = def.steps.find((s) => s.id === branchStepId) as
+                  | StepDef
+                  | undefined;
+                if (!branchStepDef) continue;
+                const branchStepRowId = await insertStepRow(db, {
+                  tenant_id,
+                  execution_id,
+                  step_key: branchStepId,
+                  step_index: i,
+                  kind: branchStepDef.kind,
+                });
+                const branchCtx: import("./types.ts").StepRunContext = {
+                  db,
+                  tenant_id,
+                  execution_id,
+                  workflow_id,
+                  workflow_version_id,
+                  request_source,
+                  parent_execution_id,
+                  depth,
+                  signal,
+                  scope: branchScope,
+                  started_at: new Date(),
+                  workflow_slug: resolved.workflow_slug,
+                  trace_id: opts.trace_id ?? null,
+                  principal: opts.principal ?? null,
+                  execution_mode,
+                  step: branchStepDef,
+                  step_index: i,
+                  step_row_id: branchStepRowId,
+                  llm_budget: llmBudget,
+                };
+                const branchOutcome = await instrument({
+                  module: "execution",
+                  action: "step",
+                  level: "debug",
+                  thresholdMs: 1000,
+                  fields: { step_id: branchStepDef.id, step_kind: branchStepDef.kind },
+                  fn: () =>
+                    runStep(
+                      branchCtx,
+                      branchScope,
+                      normalizedInput,
+                      async ({ ctx: cctx, step: cstep }) =>
+                        runCallStep(db, cctx, cstep as CallStep),
+                    ),
+                });
+                branchScope[branchStepId] = envelopeFor(branchOutcome);
+                branchOutput[branchStepId] = envelopeFor(branchOutcome);
+              }
+              return branchOutput;
+            }),
+          ),
+      });
       scope[step.id] = wrapEnvelope({
         data: branchResults,
         duration_ms: outcome.result.duration_ms ?? 0,

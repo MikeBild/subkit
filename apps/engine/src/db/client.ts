@@ -5,6 +5,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
+import { instrument } from "../observability/runtime-telemetry.ts";
 import * as schema from "./schema/index.ts";
 
 const { Pool } = pg;
@@ -61,9 +62,37 @@ export function getPool(): pg.Pool {
   return _pool;
 }
 
+/**
+ * Wrap a drizzle db so every `db.transaction(...)` records its duration
+ * and outcome via `instrument()` (debug + 500ms threshold, so only SLOW
+ * transactions surface in the log stream while the histogram records all).
+ *
+ * Implemented as a `Proxy` over the `transaction` method only: the
+ * returned value is still typed (and behaves) as `Db`, the generic return
+ * type of the user callback is preserved, and `instrument()` re-throws on
+ * failure — so drizzle's rollback-on-throw semantics are untouched.
+ */
+function instrumentTransactions(db: NodePgDatabase<typeof schema>): NodePgDatabase<typeof schema> {
+  const original = db.transaction.bind(db) as NodePgDatabase<typeof schema>["transaction"];
+  const wrapped: NodePgDatabase<typeof schema>["transaction"] = (...args) =>
+    instrument({
+      module: "db",
+      action: "transaction",
+      level: "debug",
+      thresholdMs: 500,
+      fn: () => original(...args),
+    });
+  return new Proxy(db, {
+    get(target, prop, receiver) {
+      if (prop === "transaction") return wrapped;
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
 export function getDb(): NodePgDatabase<typeof schema> {
   if (_db) return _db;
-  _db = drizzle(getPool(), { schema });
+  _db = instrumentTransactions(drizzle(getPool(), { schema }));
   return _db;
 }
 
@@ -85,7 +114,7 @@ export function createDbFromUrl(url: string): {
       error: err.message,
     });
   });
-  const db = drizzle(pool, { schema });
+  const db = instrumentTransactions(drizzle(pool, { schema }));
   return { pool, db };
 }
 

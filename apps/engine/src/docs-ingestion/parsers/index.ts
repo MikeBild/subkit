@@ -20,6 +20,7 @@
 
 import { logger } from "../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import { type DocxParseOutput, docxStrategy } from "./docx.ts";
 import { type PdfParseOutput, pdfStrategy } from "./pdf.ts";
 import { type PptxParseOutput, pptxStrategy } from "./pptx.ts";
@@ -89,7 +90,13 @@ export async function parseBinaryFile<F extends BinaryFormat>(
   const metrics = getMetrics();
   metrics.inc(METRIC_NAMES.DOCS_BINARY_PARSE_INPUT_BYTES_TOTAL, { format }, buffer.byteLength);
   try {
-    const result = (await strategy.parse(buffer)) as BinaryParseResultFor<F>;
+    const result = (await instrument({
+      module: "docs-ingestion",
+      action: "binary_parse",
+      memory: true,
+      fields: { format, bytes: buffer.byteLength },
+      fn: () => strategy.parse(buffer),
+    })) as BinaryParseResultFor<F>;
     metrics.inc(METRIC_NAMES.DOCS_BINARY_PARSE_TOTAL, { format, result: "success" });
     return result;
   } catch (err) {

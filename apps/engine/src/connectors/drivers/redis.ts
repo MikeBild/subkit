@@ -16,6 +16,7 @@
 
 import { createClient, type RedisClientType } from "redis";
 import { logger } from "../../logging/logger.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 
 export type RedisCommand = "GET" | "SET" | "DEL" | "PUBLISH" | "INCR" | "EXPIRE";
@@ -87,6 +88,20 @@ export interface RedisExecuteResult {
 
 export async function executeRedisCommand(p: RedisExecuteParams): Promise<RedisExecuteResult> {
   const client = await getClient(p.connector);
+  return await instrument({
+    module: "connector",
+    action: "driver.redis.request",
+    level: "debug",
+    thresholdMs: 1000,
+    fields: { connector_id: p.connector.id, op: p.command },
+    fn: () => runRedisCommand(client, p),
+  });
+}
+
+async function runRedisCommand(
+  client: RedisClientType,
+  p: RedisExecuteParams,
+): Promise<RedisExecuteResult> {
   switch (p.command) {
     case "GET": {
       if (!p.key) throw new Error("GET requires 'key'");

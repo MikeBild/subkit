@@ -21,6 +21,7 @@
 
 import { evaluate as evaluateJsonata } from "../execution/jsonata-engine.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
+import { instrument } from "../observability/runtime-telemetry.ts";
 import type { DryRunFixture, DryRunResult, DryRunStep } from "./types.ts";
 
 export interface FixtureRunParams {
@@ -79,6 +80,16 @@ export function applyPatchToStep(step: DryRunStep, patch: PatchProposal): DryRun
  * undefined result or a thrown exception.
  */
 export async function runFixtureDryRun(p: FixtureRunParams): Promise<DryRunResult> {
+  return instrument({
+    module: "self-healing",
+    action: "fixture_dry_run",
+    memory: true,
+    fields: { patch_kind: p.patch.kind, step_kind: p.step.kind },
+    fn: () => runFixtureDryRunImpl(p),
+  });
+}
+
+async function runFixtureDryRunImpl(p: FixtureRunParams): Promise<DryRunResult> {
   const patched = applyPatchToStep(p.step, p.patch);
   const body = p.fixture.response;
 

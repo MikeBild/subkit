@@ -32,6 +32,7 @@ import {
   recordLlmQuotaExhausted,
   recordLlmTokens,
 } from "../../observability/instrumentation.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import {
   account,
   checkAndDecrement,
@@ -293,9 +294,26 @@ export async function invoke<T = unknown>(
   params: InvokeParams<T>,
   exec?: Executor,
 ): Promise<InvokeResult<T>> {
+  // `model` is filled in once the route resolves, so the completion/failure
+  // line carries the effective model even though it isn't known at entry.
+  const invokeFields: Record<string, unknown> = { flow: params.flow, model: null };
+  return instrument({
+    module: "llm",
+    action: "invoke",
+    fields: invokeFields,
+    fn: () => invokeInner<T>(params, exec, invokeFields),
+  });
+}
+
+async function invokeInner<T = unknown>(
+  params: InvokeParams<T>,
+  exec: Executor | undefined,
+  invokeFields: Record<string, unknown>,
+): Promise<InvokeResult<T>> {
   const db = exec ?? getDb();
   const base_route = params.route ?? (await resolveModelRoute(params.tenant_id, db));
   const route = applyFlowEnvOverrides(base_route, params.flow);
+  invokeFields.model = route.primary;
   log.llm.route.resolved({
     model_id: route.primary,
     fallback: route.fallback,
@@ -316,7 +334,17 @@ export async function invoke<T = unknown>(
   if (params.workflow_id) assembleParams.workflow_id = params.workflow_id;
   if (params.prior_failures) assembleParams.prior_failures = params.prior_failures;
   if (params.user_memory !== undefined) assembleParams.user_memory = params.user_memory;
-  const assembled = await assembleContext(assembleParams, db);
+  // Memory-delta wrap around the top-level assembly — this is the known
+  // multi-GB per-turn transient (buildModelMessages / prompt construction).
+  // Single rss-delta bracket here rather than nested wraps inside the
+  // assembler keeps the signal attributable without double-counting.
+  const assembled = await instrument({
+    module: "llm",
+    action: "context.assemble",
+    memory: true,
+    fields: { flow: params.flow },
+    fn: () => assembleContext(assembleParams, db),
+  });
 
   // 2) Budget pre-check.
   const estimated = assembled.prompt.token_counts.total + 1024;

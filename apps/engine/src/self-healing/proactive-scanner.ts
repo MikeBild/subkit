@@ -37,6 +37,7 @@ import { executions } from "../db/schema/executions.ts";
 import { tenants } from "../db/schema/identity.ts";
 import { workflows, workflowVersions } from "../db/schema/workflows.ts";
 import { logger } from "../logging/logger.ts";
+import { instrument } from "../observability/runtime-telemetry.ts";
 import { diffShapes } from "../schema-versions/service.ts";
 import { scanStdlibDrift } from "./stdlib-drift-scan.ts";
 import type { DriftSignal, SchemaShape } from "./types.ts";
@@ -469,6 +470,18 @@ async function scanValidationDriftForTenant(
  * branch is exercised by the admin HTTP "scan everything" form.
  */
 export async function scanForDrift(filters: ProactiveScanFilters, exec: Db): Promise<ScanResult> {
+  return instrument({
+    module: "self-healing",
+    action: "scan_for_drift",
+    memory: true,
+    fields: {
+      ...(filters.tenant_id ? { scoped_tenant: true } : { scoped_tenant: false }),
+    },
+    fn: () => scanForDriftImpl(filters, exec),
+  });
+}
+
+async function scanForDriftImpl(filters: ProactiveScanFilters, exec: Db): Promise<ScanResult> {
   const tenantIds: string[] = [];
   if (filters.tenant_id) {
     tenantIds.push(filters.tenant_id);

@@ -24,7 +24,7 @@ import { AuditAction } from "../../audit/types.ts";
 import { assertEgressAllowed, EgressBlockedError } from "../../connectors/egress-guard.ts";
 import type { Db } from "../../db/client.ts";
 import { deliveries, subscriptions } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/logger.ts";
 import { recordWebhookDelivery } from "../../observability/instrumentation.ts";
 import * as breaker from "./circuit-breaker.ts";
 import { classifyFailure, isPermanentFailure } from "./failure-classifier.ts";
@@ -413,9 +413,27 @@ export async function registerDeliveryWorker(
       { batchSize: 1, pollingIntervalSeconds: 1 },
       async (jobs: Job<WebhookDeliverJob>[]) => {
         for (const j of jobs) {
+          const started = Date.now();
           try {
             await handle(j);
+            log.queue.job.completed({
+              msg: "webhook.deliver job completed",
+              queue: WEBHOOK_DELIVER_QUEUE,
+              job_id: j.id,
+              subscription_id: j.data.subscription_id,
+              attempt: j.data.attempt_number,
+              duration_ms: Date.now() - started,
+            });
           } catch (err) {
+            log.queue.job.failed({
+              msg: "webhook.deliver job failed",
+              queue: WEBHOOK_DELIVER_QUEUE,
+              job_id: j.id,
+              subscription_id: j.data.subscription_id,
+              attempt: j.data.attempt_number,
+              error: err instanceof Error ? err.message : String(err),
+              duration_ms: Date.now() - started,
+            });
             logger.error({
               module: "webhooks.outbound",
               action: "delivery.handler_error",

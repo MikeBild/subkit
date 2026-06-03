@@ -7,6 +7,7 @@
 
 import pg from "pg";
 import { logger } from "../../logging/logger.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 
 const { Pool } = pg;
@@ -84,7 +85,14 @@ export interface PgQueryResult<T = unknown> {
  */
 export async function pgQueryWithCount<T = unknown>(p: PgQueryParams): Promise<PgQueryResult<T>> {
   const pool = getPoolForConnector(p.connector);
-  const res = await pool.query(p.sql, p.params ?? []);
+  const res = await instrument({
+    module: "connector",
+    action: "driver.postgres.request",
+    level: "debug",
+    thresholdMs: 1000,
+    fields: { connector_id: p.connector.id, op: "query" },
+    fn: () => pool.query(p.sql, p.params ?? []),
+  });
   return {
     rows: res.rows as T[],
     row_count: typeof res.rowCount === "number" ? res.rowCount : null,
@@ -121,25 +129,38 @@ export async function pgTransaction<T = unknown>(p: {
   const pool = getPoolForConnector(p.connector);
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    const out: T[][] = [];
-    const counts: Array<number | null> = [];
-    let total = 0;
-    for (let i = 0; i < p.statements.length; i++) {
-      const stmt = p.statements[i]!;
-      const res = await client.query(stmt.query, stmt.params ?? []);
-      out.push(res.rows as T[]);
-      const rc = typeof res.rowCount === "number" ? res.rowCount : null;
-      counts.push(rc);
-      if (rc !== null) total += rc;
-      if (p.onStatement) await p.onStatement(i, res.rows as T[], rc);
-    }
-    await client.query("COMMIT");
-    return {
-      rows_per_statement: out,
-      row_count_per_statement: counts,
-      total_row_count: total,
-    };
+    return await instrument({
+      module: "connector",
+      action: "driver.postgres.request",
+      level: "debug",
+      thresholdMs: 1000,
+      fields: {
+        connector_id: p.connector.id,
+        op: "transaction",
+        statement_count: p.statements.length,
+      },
+      fn: async () => {
+        await client.query("BEGIN");
+        const out: T[][] = [];
+        const counts: Array<number | null> = [];
+        let total = 0;
+        for (let i = 0; i < p.statements.length; i++) {
+          const stmt = p.statements[i]!;
+          const res = await client.query(stmt.query, stmt.params ?? []);
+          out.push(res.rows as T[]);
+          const rc = typeof res.rowCount === "number" ? res.rowCount : null;
+          counts.push(rc);
+          if (rc !== null) total += rc;
+          if (p.onStatement) await p.onStatement(i, res.rows as T[], rc);
+        }
+        await client.query("COMMIT");
+        return {
+          rows_per_statement: out,
+          row_count_per_statement: counts,
+          total_row_count: total,
+        };
+      },
+    });
   } catch (err) {
     try {
       await client.query("ROLLBACK");
@@ -168,18 +189,27 @@ export async function pgQueryCursor<T = unknown>(p: {
   const client = await pool.connect();
   const cursorName = `sk_cursor_${Math.random().toString(36).slice(2, 10)}`;
   try {
-    await client.query("BEGIN");
-    await client.query(`DECLARE ${cursorName} CURSOR FOR ${p.sql}`, p.params ?? []);
-    const out: T[] = [];
-    while (true) {
-      const batch = await client.query(`FETCH ${p.fetch_size} FROM ${cursorName}`);
-      if (batch.rows.length === 0) break;
-      for (const row of batch.rows as T[]) out.push(row);
-      if (batch.rows.length < p.fetch_size) break;
-    }
-    await client.query(`CLOSE ${cursorName}`);
-    await client.query("COMMIT");
-    return out;
+    return await instrument({
+      module: "connector",
+      action: "driver.postgres.request",
+      level: "debug",
+      thresholdMs: 1000,
+      fields: { connector_id: p.connector.id, op: "cursor", fetch_size: p.fetch_size },
+      fn: async () => {
+        await client.query("BEGIN");
+        await client.query(`DECLARE ${cursorName} CURSOR FOR ${p.sql}`, p.params ?? []);
+        const out: T[] = [];
+        while (true) {
+          const batch = await client.query(`FETCH ${p.fetch_size} FROM ${cursorName}`);
+          if (batch.rows.length === 0) break;
+          for (const row of batch.rows as T[]) out.push(row);
+          if (batch.rows.length < p.fetch_size) break;
+        }
+        await client.query(`CLOSE ${cursorName}`);
+        await client.query("COMMIT");
+        return out;
+      },
+    });
   } catch (err) {
     try {
       await client.query("ROLLBACK");

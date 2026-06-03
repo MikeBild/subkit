@@ -11,6 +11,7 @@
 
 import mssql from "mssql";
 import { logger } from "../../logging/logger.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 
 const pools = new Map<string, mssql.ConnectionPool>();
@@ -100,7 +101,14 @@ export async function mssqlQuery<T = Record<string, unknown>>(p: MssqlQueryParam
   for (const [name, value] of Object.entries(p.params ?? {})) {
     req.input(name, value);
   }
-  const res = await req.query(p.sql);
+  const res = await instrument({
+    module: "connector",
+    action: "driver.mssql.request",
+    level: "debug",
+    thresholdMs: 1000,
+    fields: { connector_id: p.connector.id, op: "query" },
+    fn: () => req.query(p.sql),
+  });
   return res.recordset as T[];
 }
 

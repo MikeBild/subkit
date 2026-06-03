@@ -3,6 +3,7 @@
 // engine.ts will call this driver and merge the results array.
 
 import { logger } from "../../logging/logger.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { LoopStep } from "../../workflows/types.ts";
@@ -20,6 +21,23 @@ export async function runLoopStep(p: {
   scope: Record<string, unknown>;
 }): Promise<StepResult> {
   const start = Date.now();
+  return instrument({
+    module: "execution",
+    action: "loop",
+    memory: true,
+    fields: { step_id: p.step.id },
+    fn: () => runLoopBody(p, start),
+  });
+}
+
+async function runLoopBody(
+  p: {
+    ctx: StepRunContext;
+    step: LoopStep;
+    scope: Record<string, unknown>;
+  },
+  start: number,
+): Promise<StepResult> {
   try {
     // A loop's `over` / `data_selector` is a downstream consumer of the
     // scope — a nested loop can iterate a prior loop's output. Re-hydrate

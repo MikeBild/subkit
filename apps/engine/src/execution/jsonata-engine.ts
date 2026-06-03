@@ -21,6 +21,7 @@
 // `compile` / `evaluate` here. CI grep gate enforces this (see WS8.4).
 
 import jsonata, { type Expression } from "jsonata";
+import { instrument } from "../observability/runtime-telemetry.ts";
 
 export type EvalBindings = {
   /** Workflow input (top-level); accessible as `$input` in expressions. */
@@ -109,11 +110,19 @@ export async function evaluate<T = unknown>(
 ): Promise<T> {
   const expr = compile(source);
   const flat = flattenBindings(bindings);
-  try {
-    return (await expr.evaluate(data, flat)) as T;
-  } catch (err) {
-    throw formatError(err, source);
-  }
+  return instrument({
+    module: "execution",
+    action: "jsonata",
+    level: "debug",
+    thresholdMs: 250,
+    fn: async () => {
+      try {
+        return (await expr.evaluate(data, flat)) as T;
+      } catch (err) {
+        throw formatError(err, source);
+      }
+    },
+  });
 }
 
 /**

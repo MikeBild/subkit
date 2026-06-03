@@ -17,6 +17,7 @@ import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
+import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 
 export interface S3ConnectorConfig {
@@ -192,6 +193,24 @@ export async function executeS3Request(p: {
     key,
     has_credential: credentials !== null,
   });
+  return await instrument({
+    module: "connector",
+    action: "driver.s3.request",
+    level: "debug",
+    thresholdMs: 1000,
+    fields: { connector_id: p.connector.id, op: method, key },
+    fn: () => executeS3Operation({ client, method, key, credential_id, p }),
+  });
+}
+
+async function executeS3Operation(ctx: {
+  client: S3Client;
+  method: S3Method;
+  key: string;
+  credential_id: string | null;
+  p: Parameters<typeof executeS3Request>[0];
+}): Promise<S3Response> {
+  const { client, method, key, credential_id, p } = ctx;
   switch (method) {
     case "GET": {
       // Presigned URL path — operator wants delegated read access.

@@ -30,6 +30,9 @@ async function handleOne(job: Job<WorkflowRepairJob>, db: Db): Promise<void> {
     step_id: data.step_id,
   });
   const started = Date.now();
+  // rss baseline around the LLM-heavy self-healing loop, so the success
+  // log attributes the transient to THIS tenant's repair run.
+  const rssBefore = process.memoryUsage().rss;
   try {
     const result = await runSelfHealingLoop(data, db);
     log.queue.job.completed({
@@ -42,6 +45,8 @@ async function handleOne(job: Job<WorkflowRepairJob>, db: Db): Promise<void> {
       auto_applied: result.auto_applied,
       reason: result.reason,
       duration_ms: Date.now() - started,
+      rss_mb: Math.round((process.memoryUsage().rss / 1048576) * 10) / 10,
+      rss_delta_mb: Math.round(((process.memoryUsage().rss - rssBefore) / 1048576) * 10) / 10,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
