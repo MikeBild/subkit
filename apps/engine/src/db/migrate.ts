@@ -161,6 +161,7 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
       tag: m.tag,
       statement_count: m.statements.length,
     });
+    const migStartedAt = Date.now();
     await db.transaction(async (tx) => {
       for (const stmt of m.statements) {
         // Safe `sql.raw`: `stmt` originates from `EMBEDDED_MIGRATIONS`,
@@ -177,6 +178,17 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
     applied.hashes.add(m.hash);
     applied.count += 1;
     appliedCount++;
+    // Per-migration timing — a slow migration on boot used to be an
+    // invisible contributor to the boot-time budget. With this an
+    // operator can attribute a long boot to the exact migration.
+    logger.info({
+      module: "db",
+      action: "migrate.applied_one",
+      msg: "migration applied",
+      idx: m.idx,
+      tag: m.tag,
+      duration_ms: Date.now() - migStartedAt,
+    });
   }
 
   const report: MigrationReport = {

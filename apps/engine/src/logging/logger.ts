@@ -406,4 +406,23 @@ export const log = {
     reconciled: (ctx: Ctx) => logger.debug({ module: "scheduler", action: "reconciled", ...ctx }),
     lifecycle: (ctx: Ctx) => logger.info({ module: "scheduler", action: "lifecycle", ...ctx }),
   },
+  // Boot-phase timing. `phase` records one named startup step's elapsed
+  // ms (+ rss snapshot); `heartbeat` fires on a timer until the engine is
+  // ready so a stalled boot is visible as a growing elapsed/rss trend
+  // instead of a silent gap; `ready` marks the listener accepting traffic.
+  boot: {
+    phase: (ctx: Ctx) => logger.info({ module: "boot", action: "phase", ...ctx }),
+    heartbeat: (ctx: Ctx) => logger.warn({ module: "boot", action: "heartbeat", ...ctx }),
+    ready: (ctx: Ctx) => logger.info({ module: "boot", action: "ready", ...ctx }),
+  },
+  // Process-level runtime telemetry. `memory.sample` is the periodic
+  // rss/heap series; `event_loop.lag` fires when sampled loop drift
+  // crosses the alert threshold; `operation` is the generic
+  // success/failure+duration line emitted by the shared `instrument()`
+  // wrapper for any operation that doesn't have a bespoke helper.
+  process: {
+    memory: (ctx: Ctx) => logger.info({ module: "process", action: "memory.sample", ...ctx }),
+    eventLoopLag: (ctx: Ctx) =>
+      logger.warn({ module: "process", action: "event_loop.lag", ...ctx }),
+  },
 } as const;

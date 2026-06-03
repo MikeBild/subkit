@@ -11,6 +11,7 @@
 // a module-level instance.
 
 import { logger } from "../logging/logger.ts";
+import { registerRuntimeTelemetryMetrics } from "./runtime-metrics.ts";
 import type { LabelValues, MetricDefinition, SampleSnapshot, SeriesSnapshot } from "./types.ts";
 
 const DROPPED_LABEL_WARNINGS = new Set<string>();
@@ -312,6 +313,17 @@ export const METRIC_NAMES = {
   LLM_QUOTA_EXHAUSTED_TOTAL: "llm_quota_exhausted_total",
   PATCH_CANDIDATES_TOTAL: "patch_candidates_total",
   PROCESS_UPTIME_SECONDS: "process_uptime_seconds",
+  // Runtime-telemetry series (registered in runtime-metrics.ts, emitted by
+  // runtime-telemetry.ts): in-process memory, event-loop lag, boot-phase
+  // and generic-operation durations. Fill the gap that left memory/timing
+  // invisible outside systemd's post-mortem `memory peak`.
+  PROCESS_MEMORY_RSS_BYTES: "process_memory_rss_bytes",
+  PROCESS_MEMORY_HEAP_USED_BYTES: "process_memory_heap_used_bytes",
+  PROCESS_MEMORY_HEAP_TOTAL_BYTES: "process_memory_heap_total_bytes",
+  PROCESS_MEMORY_EXTERNAL_BYTES: "process_memory_external_bytes",
+  EVENT_LOOP_LAG_MS: "event_loop_lag_ms",
+  BOOT_PHASE_DURATION_MS: "boot_phase_duration_ms",
+  OPERATION_DURATION_MS: "operation_duration_ms",
   HTTP_REQUESTS_TOTAL: "http_requests_total",
   HTTP_REQUEST_DURATION_MS: "http_request_duration_ms",
   RBAC_CHECKS_TOTAL: "rbac_checks_total",
@@ -661,6 +673,10 @@ function buildRegistry(): MetricsRegistry {
     help: "Engine process uptime in seconds.",
     labels: [],
   });
+  // Runtime-telemetry series (process memory, event-loop lag, boot-phase +
+  // operation durations) are registered from a sibling module to keep this
+  // file under the 1000-LOC audit cap. See runtime-metrics.ts.
+  registerRuntimeTelemetryMetrics(reg);
   reg.registerCounter({
     name: METRIC_NAMES.HTTP_REQUESTS_TOTAL,
     help: "HTTP requests served by the engine HTTP layer.",

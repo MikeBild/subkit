@@ -16,6 +16,12 @@ import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { errorFields, logger } from "./logging/logger.ts";
+import {
+  bootPhase,
+  startBootHeartbeat,
+  startEventLoopLagMonitor,
+  startMemorySampler,
+} from "./observability/runtime-telemetry.ts";
 import { startTracing } from "./observability/tracing.ts";
 import * as bootstrap from "./onboarding/bootstrap.ts";
 import { startListener, stopListener } from "./pubsub/listener.ts";
@@ -76,6 +82,14 @@ async function runSmoke(): Promise<void> {
 }
 
 async function runServer(): Promise<void> {
+  // Boot-phase heartbeat: emit elapsed + rss every 5s until `ready`. A boot
+  // that stalls (binary page-fault-in under memory pressure, a hung await)
+  // is then visible as a growing trend rather than a silent multi-minute
+  // gap. Paired with the `bootPhase()` start/end markers below, which name
+  // the phase a freeze is stuck in. Stopped at `ready`. See
+  // project_engine_slow_boot_stall.
+  const stopBootHeartbeat = startBootHeartbeat();
+
   // Phase 1 logger is already live (hardcoded defaults). Load the
   // config file before any subsystem reads it; reconfigure the logger
   // immediately so subsequent boot logs honor the operator's settings.
@@ -83,7 +97,7 @@ async function runServer(): Promise<void> {
     "./config/loader.ts"
   );
   const { reconfigureLogger } = await import("./logging/logger.ts");
-  await loadConfig();
+  await bootPhase("config_load", () => loadConfig());
   const cfg = getConfig();
   reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
   recordBootConsumer("logger");
@@ -118,7 +132,7 @@ async function runServer(): Promise<void> {
   // reach an encrypt/decrypt path. Pre-fix this lived as a top-level
   // call in crypto/aes-gcm.ts but that fired on every binary import,
   // breaking arg-only flags like --smoke / --version.
-  assertCryptoKeyOrExit();
+  await bootPhase("crypto_assert", () => assertCryptoKeyOrExit());
   const db = getDb();
 
   // Non-blocking update check — fire and forget
@@ -161,7 +175,7 @@ async function runServer(): Promise<void> {
   // instead of a confusing migrate.* / drift.* downstream failure.
   // Non-blocker degradations log at warn and continue.
   const { validateBootDependencies } = await import("./observability/boot-dependencies.ts");
-  await validateBootDependencies(db);
+  await bootPhase("boot_dependencies", () => validateBootDependencies(db));
 
   // Apply embedded migrations BEFORE any subsystem touches a table.
   // Issue #149: this used to be a separate `migrate` compose container
@@ -173,7 +187,7 @@ async function runServer(): Promise<void> {
   // schema would make every downstream subsystem misbehave the way
   // wait_reaper / docs_refresh / skills.seed did before this fix.
   try {
-    await runMigrations(db);
+    await bootPhase("migrations", () => runMigrations(db));
   } catch (err) {
     logger.fatal({
       module: "engine",
@@ -231,9 +245,11 @@ async function runServer(): Promise<void> {
 
   // Start pg-boss + register handlers before the HTTP server so enqueue
   // requests hitting the first byte always find a live boss.
-  const boss = await startBoss({ connectionString: getConfig().database.url });
+  const boss = await bootPhase("queue_start", () =>
+    startBoss({ connectionString: getConfig().database.url }),
+  );
   recordBootConsumer("queue");
-  await registerAllHandlers({ boss, db, chatRegistry });
+  await bootPhase("queue_handlers", () => registerAllHandlers({ boss, db, chatRegistry }));
 
   // Hydrate the chat adapter registry from `chat_workspaces` BEFORE the
   // HTTP listener accepts traffic. Without this, the first Slack POST
@@ -325,7 +341,9 @@ async function runServer(): Promise<void> {
   }
 
   // Pub/sub listener — catch-up first, then LISTEN.
-  const listener = await startListener({ connectionString: getConfig().database.url, db });
+  const listener = await bootPhase("pubsub_listener", () =>
+    startListener({ connectionString: getConfig().database.url, db }),
+  );
 
   // Wire the listener into the event-fanout queue. Without this,
   // `execution.failed` and self-healing `notification.emitted` events are
@@ -473,7 +491,17 @@ async function runServer(): Promise<void> {
     msg: `engine listening on http://127.0.0.1:${port}`,
     port,
     public_base_url: getConfig().server.public_base_url || null,
+    rss_mb: Math.round((process.memoryUsage().rss / (1024 * 1024)) * 10) / 10,
   });
+
+  // Boot done — stop the heartbeat and switch to steady-state samplers.
+  // The memory sampler emits the rss/heap series + gauges every 60s (the
+  // in-process memory time-series that was entirely missing); the
+  // event-loop monitor flags loop blockage. Both timers are unref'd and
+  // stopped on shutdown.
+  stopBootHeartbeat();
+  const stopMemorySampler = startMemorySampler();
+  const stopEventLoopLagMonitor = startEventLoopLagMonitor();
 
   // boot.complete: every subsystem above (logger, queue, http_server,
   // tracing if started, …) called recordBootConsumer. Emit one summary
@@ -492,6 +520,8 @@ async function runServer(): Promise<void> {
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     if (shutting) return;
     shutting = true;
+    stopMemorySampler();
+    stopEventLoopLagMonitor();
     logger.info({
       module: "engine",
       action: "shutdown.begin",
