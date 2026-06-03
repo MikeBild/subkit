@@ -106,6 +106,46 @@ export function evaluateTransformAuthoringGate(
     }
   }
 
+  // Control-flow exemption. A `loop`/`branch`/`parallel` step's output
+  // shape is STRUCTURAL, not runtime-discoverable from a side-effect-free
+  // dry-run, and its body/then/branch CHILD steps never record a
+  // standalone `output_preview`:
+  //   - a loop's children run inside the iteration and are marked
+  //     `skipped` in the linear walk → no top-level trace
+  //   - a 0-row loop never executes its body at all → no trace, ever
+  //   - a branch's then/else steps don't run when the arm is not taken
+  //     → no trace until the predicate happens to fire
+  // Requiring a recorded preview for these is an UNSATISFIABLE gate: the
+  // only way to record one is to run the side-effecting body (publish a
+  // page, send an email), so authoring a post-loop summary transform
+  // deadlocks against its own data. The shape a transform needs here is
+  // the documented structural contract
+  // (`$scope.<loop_id>.data.<body_step_id>.data` = array of per-iteration
+  // body outputs), which the model authors from the schema, not from a
+  // probe. So we exempt both the control-flow steps themselves and their
+  // declared children from the preview requirement. The gate keeps its
+  // teeth for the case it was built for: a transform guessing the
+  // response shape of a plain `request`/`transform` sibling.
+  const controlFlowStepIds = new Set<string>();
+  const controlFlowChildIds = new Set<string>();
+  for (const step of workflow.steps) {
+    const kind = (step as { kind?: unknown }).kind;
+    if (kind !== "loop" && kind !== "branch" && kind !== "parallel") continue;
+    const id = (step as { id?: unknown }).id;
+    if (typeof id === "string") controlFlowStepIds.add(id);
+    const collect = (arr: unknown): void => {
+      if (!Array.isArray(arr)) return;
+      for (const child of arr) if (typeof child === "string") controlFlowChildIds.add(child);
+    };
+    // loop.body, branch.then_steps, branch.else_steps are string[]
+    collect((step as { body?: unknown }).body);
+    collect((step as { then_steps?: unknown }).then_steps);
+    collect((step as { else_steps?: unknown }).else_steps);
+    // parallel.branches is string[][]
+    const branches = (step as { branches?: unknown }).branches;
+    if (Array.isArray(branches)) for (const br of branches) collect(br);
+  }
+
   const probedSlugs = options.probedConnectorSlugs ?? new Set<string>();
 
   /**
@@ -179,6 +219,12 @@ export function evaluateTransformAuthoringGate(
       // through a chain of transforms — skip the gate. The probe IS
       // the shape evidence.
       if (transitivelyExempt(ref)) continue;
+      // Control-flow exemption: loop/branch/parallel steps and their
+      // body/then/branch children have no recordable standalone preview
+      // (see the `controlFlowStepIds` comment above). Gating on them is
+      // unsatisfiable without a side-effecting run, so exempt them — the
+      // structural scope contract is what the transform reads here.
+      if (controlFlowStepIds.has(ref) || controlFlowChildIds.has(ref)) continue;
       const trace = traceById.get(ref);
       if (!trace || trace.output_preview === undefined || trace.output_preview === null) {
         blocks.push({

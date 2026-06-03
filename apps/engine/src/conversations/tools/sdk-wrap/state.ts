@@ -27,6 +27,41 @@ export const MAX_CONSECUTIVE_FAILURES = 5;
  */
 export const MAX_VALIDATION_FINGERPRINT_REPEAT = 3;
 
+/**
+ * Max times a single tool may return the SAME structured `error_code`
+ * (or `reason`) in one turn before the wrapper short-circuits with the
+ * "ask the user" envelope.
+ *
+ * The gap this closes: `consecutiveFailures` (MAX_CONSECUTIVE_FAILURES)
+ * resets to 0 on the FIRST successful tool call, and
+ * `toolValidationFingerprint` only fires on a Zod `errors[]` array. A
+ * structured authoring-gate refusal like
+ * `transform_authoring_requires_inspect` carries NO `errors[]`, varies
+ * its `message`/args every attempt, and is routinely interleaved with
+ * successful `inspect_*` / `dry_run_*` reads — so it slips past BOTH
+ * existing detectors and can repeat unbounded until pg-boss expires the
+ * job (`worker_expired`) after a 30-minute, 240k-token thrash (the
+ * publish-ready-essays authoring incident). Counting repeats of the
+ * stable `error_code` per tool — not reset by other tools' successes —
+ * catches it.
+ *
+ * Deliberately set BETWEEN `MAX_VALIDATION_FINGERPRINT_REPEAT` (3) and
+ * `MAX_CONSECUTIVE_FAILURES` (5). The `error_code` is a COARSE key:
+ * legitimate incremental authoring can fail the SAME gate code several
+ * times while genuinely converging — e.g. a multi-transform draft where
+ * each `dry_run_workflow` records only some upstream shapes (an early
+ * step errored, so downstream steps never ran) and `build_workflow`
+ * keeps returning `transform_authoring_requires_inspect` with FEWER
+ * blocks each round. That is progress, not a loop, and the coarse code
+ * can't tell it from thrash — so we give a round more slack than the
+ * precise fingerprint cap. Kept strictly BELOW the global
+ * consecutive-failures cap (5) so this breaker fires one call earlier
+ * than — and stays distinguishable from — the global cap in the
+ * no-interleave case; its unique value is the INTERLEAVED-success case
+ * the global cap (reset on any success) cannot catch.
+ */
+export const MAX_ERROR_CODE_REPEAT = 4;
+
 export interface TurnSignals {
   pendingElicitation?: {
     elicitation_id: string;
@@ -111,6 +146,19 @@ export interface TurnSignals {
    * detector saw 4 distinct argsHashes and never tripped.
    */
   toolValidationFingerprint: Map<string, { hash: string; count: number }>;
+  /**
+   * Per-tool same-`error_code` streak. Keyed by tool name → the stable
+   * error code (`reason` ?? `error_code`) and how many times in a row
+   * this tool returned it. Unlike `consecutiveFailures` this is NOT
+   * reset by OTHER tools succeeding — only by this tool succeeding or
+   * returning a DIFFERENT code — so an authoring-gate refusal that the
+   * model keeps re-triggering with fresh args (interleaved with
+   * successful reads) is caught at `MAX_ERROR_CODE_REPEAT`. Distinct
+   * from `toolValidationFingerprint`, which only tracks Zod `errors[]`
+   * shapes; this one tracks the top-level structured `error_code` that
+   * gate refusals carry instead of an `errors[]` array.
+   */
+  toolErrorCodeRepeat: Map<string, { code: string; count: number }>;
   /**
    * Turn-level loop-warning counter. Incremented by the per-tool
    * loop-breaker on every short-circuit. Once this exceeds

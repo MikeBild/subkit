@@ -69,6 +69,7 @@ import {
 import {
   computeValidationFingerprint,
   MAX_CONSECUTIVE_FAILURES,
+  MAX_ERROR_CODE_REPEAT,
   MAX_TURN_LOOP_WARNINGS,
   MAX_VALIDATION_FINGERPRINT_REPEAT,
   type TurnSignals,
@@ -289,6 +290,68 @@ export function wrapOne(
               reason: "consecutive_failures_cap",
               consecutive_failures: signals.consecutiveFailures,
               recommended_options: recommendedOptions,
+              next_best_actions: ["ask_user_choice", "ask_user_text", "inspect_workflow"],
+            },
+          };
+        }
+
+        // Same-error_code breaker. Sits between the global
+        // consecutive-failures cap (reset by ANY successful tool) and
+        // the identical-args repeat detector below (reset when args
+        // change). Neither catches a tool that keeps returning the SAME
+        // structured `error_code` with FRESH args while successful reads
+        // are interleaved — the exact shape of the authoring-gate thrash
+        // (`transform_authoring_requires_inspect` repeated past a 240k-
+        // token, 30-minute turn that ended in `worker_expired`). The
+        // post-execution accounting below increments
+        // `toolErrorCodeRepeat` per tool/code and clears it when this
+        // tool succeeds or returns a different code; here we refuse the
+        // next call once it has already failed the same way
+        // `MAX_ERROR_CODE_REPEAT` times. ask_user_* and inspect_* always
+        // pass — those are how the model recovers and reads the shape.
+        const errorCodeStreak = signals.toolErrorCodeRepeat.get(inner.name);
+        if (
+          !isAskUser &&
+          !isInspect &&
+          errorCodeStreak &&
+          errorCodeStreak.count >= MAX_ERROR_CODE_REPEAT
+        ) {
+          signals.totalLoopWarnings += 1;
+          const turnBudgetReached = signals.totalLoopWarnings >= MAX_TURN_LOOP_WARNINGS;
+          recordToolCircuitOpen({
+            tool: inner.name,
+            reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "error_code_repeat",
+          });
+          logger.warn({
+            module: "conversation_tool",
+            action: "tool.error_code_repeat_block",
+            msg: "same error_code repeated for one tool — short-circuiting until the model asks the user",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            error_code: errorCodeStreak.code,
+            repeat_count: errorCodeStreak.count,
+            total_loop_warnings: signals.totalLoopWarnings,
+            turn_budget_reached: turnBudgetReached,
+          });
+          events.push({
+            type: "tool_log",
+            call_id: "error-code-repeat",
+            tool: inner.name,
+            level: "warn",
+            message: `tool.error_code_repeat_block: ${inner.name} returned \`${errorCodeStreak.code}\` ${errorCodeStreak.count}× this turn — different args, same refusal. Stop retrying; emit ask_user_choice / ask_user_text describing the blocker and offering a path forward.`,
+            ts: new Date().toISOString(),
+          });
+          return {
+            ok: false,
+            data: {
+              error_code: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_error_repeat",
+              message: turnBudgetReached
+                ? `this turn keeps hitting the same blocker (${errorCodeStreak.code}) — stop, summarise what you know, and end the turn with a single question for the user (use ask_user_choice or ask_user_text, not prose).`
+                : `${inner.name} has failed with \`${errorCodeStreak.code}\` ${errorCodeStreak.count}× in this turn — the args changed but the blocker did not. Stop retrying and ask the user via ask_user_choice / ask_user_text, or change approach entirely.`,
+              reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_error_repeat",
+              tool: inner.name,
+              repeated_error_code: errorCodeStreak.code,
+              repeat_count: errorCodeStreak.count,
               next_best_actions: ["ask_user_choice", "ask_user_text", "inspect_workflow"],
             },
           };
@@ -1254,6 +1317,9 @@ export function wrapOne(
         if (result.ok) {
           signals.toolLastErrorHash.delete(inner.name);
           signals.toolValidationFingerprint.delete(inner.name);
+          // This tool succeeded — clear its same-error_code streak so a
+          // recovered tool is not penalised for earlier refusals.
+          signals.toolErrorCodeRepeat.delete(inner.name);
           // First success resets the global consecutive-failures counter.
           signals.consecutiveFailures = 0;
         } else {
@@ -1274,6 +1340,19 @@ export function wrapOne(
                   : "";
           const shape = `${reason}|${err.slice(0, 120)}`;
           signals.toolLastErrorHash.set(inner.name, shape);
+          // Same-error_code streak: track the STABLE code (`reason` ??
+          // `error_code`) independently of the volatile message tail.
+          // Read pre-dispatch on the NEXT call to short-circuit a tool
+          // that keeps refusing the same way even as its args change.
+          // Not reset by other tools succeeding (only by THIS tool
+          // succeeding or returning a different code), so it survives
+          // the interleaved read-tool successes that reset
+          // `consecutiveFailures`.
+          if (reason) {
+            const priorCode = signals.toolErrorCodeRepeat.get(inner.name);
+            const nextCount = priorCode?.code === reason ? priorCode.count + 1 : 1;
+            signals.toolErrorCodeRepeat.set(inner.name, { code: reason, count: nextCount });
+          }
           // Validation-fingerprint tracker: catches the case where
           // args differ but the engine keeps returning the same
           // validation error shape. Args-hash repeat detection won't

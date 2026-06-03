@@ -60,6 +60,7 @@ function freshSignals(): TurnSignals {
     toolLastErrorHash: new Map(),
     toolArgsRepeat: new Map(),
     toolValidationFingerprint: new Map(),
+    toolErrorCodeRepeat: new Map(),
     totalLoopWarnings: 0,
     consecutiveFailures: 0,
     lastAssistantText: "",

@@ -442,6 +442,12 @@ const TOOL_CIRCUIT_REASONS = new Set<string>([
   "consecutive_failures_cap",
   "turn_loop_budget_exhausted",
   "validation_fingerprint_repeat",
+  // Per-tool same-`error_code` streak breaker (sdk-wrap/invoke.ts). Must
+  // be allow-listed so the circuit-open this change adds is attributable
+  // in metrics instead of collapsing into the "other" bucket — the
+  // breaker exists for exactly the dashboards an operator reads to triage
+  // an authoring-gate thrash.
+  "error_code_repeat",
 ]);
 
 /**

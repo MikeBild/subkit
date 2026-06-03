@@ -26,6 +26,7 @@ import {
   conversationToolCalls,
 } from "../../db/schema/index.ts";
 import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/substitution/index.ts";
+import { logger } from "../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
 import { detectReservedAuthHeaders } from "../../workflows/header-policy.ts";
@@ -599,6 +600,23 @@ export const buildWorkflowTool: ConversationTool = {
           code: "loop_authoring_requires_inspect",
           tool: "build_workflow",
         });
+        // Forensic runtime log: an operator triaging "why did build_workflow
+        // refuse?" can read the exact blocking refs from engine logs
+        // instead of reconstructing them from the LLM-facing envelope.
+        logger.warn({
+          module: "conversation_tool",
+          action: "authoring_gate.blocked",
+          msg: "build_workflow refused: loop step references a step with no recorded preview",
+          conversation_id: ctx.conversation_id,
+          tool: "build_workflow",
+          error_code: "loop_authoring_requires_inspect",
+          block_count: gate.blocks.length,
+          blocks: gate.blocks.map((b) => ({
+            loop_step_id: b.loop_step_id,
+            referenced_step_id: b.referenced_step_id,
+            reason: b.reason,
+          })),
+        });
         return {
           ok: false,
           data: buildGateError(currentDraft, {
@@ -647,6 +665,25 @@ export const buildWorkflowTool: ConversationTool = {
         recordAuthoringGateBlock({
           code: "transform_authoring_requires_inspect",
           tool: "build_workflow",
+        });
+        // Forensic runtime log — see the loop-gate block above. Surfaces
+        // the transform→referenced-step pairs so the gate's refusals are
+        // diagnosable from engine logs (the publish-ready-essays incident
+        // had no log line here; the cause was reconstructed from the
+        // LLM-facing gate_blocks alone).
+        logger.warn({
+          module: "conversation_tool",
+          action: "authoring_gate.blocked",
+          msg: "build_workflow refused: transform reads a step with no recorded preview",
+          conversation_id: ctx.conversation_id,
+          tool: "build_workflow",
+          error_code: "transform_authoring_requires_inspect",
+          block_count: gate.blocks.length,
+          blocks: gate.blocks.map((b) => ({
+            transform_step_id: b.transform_step_id,
+            referenced_step_id: b.referenced_step_id,
+            reason: b.reason,
+          })),
         });
         return {
           ok: false,
