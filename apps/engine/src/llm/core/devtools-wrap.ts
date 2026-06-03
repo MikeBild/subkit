@@ -1,10 +1,13 @@
 // DevTools wrap.
 //
-// In non-production environments we wrap the resolved `LanguageModel` with
+// When NODE_ENV === "development" we wrap the resolved `LanguageModel` with
 // `@ai-sdk/devtools`'s middleware so each `streamText`/`generateText` call
 // is captured under `.devtools/` (auto-gitignored by the devtools package)
 // and surfaced in the local viewer at `npx @ai-sdk/devtools`
-// (port 4983). This is a developer-experience tool — never wraps in prod.
+// (port 4983). This is a developer-experience tool — it is opt-IN on an
+// explicit development env, never enabled in prod / smoke / unset / staging
+// contexts (the devtools writer is unbounded; an opt-out gate once grew a
+// prod `.devtools/generations.json` to 684 MB — see isDevEnv() below).
 //
 // We compose two middlewares: a small header scrubber (outermost) so
 // devtools never sees `Authorization` / `x-api-key` / `api-key` /
@@ -42,7 +45,17 @@ export const scrubAuthHeadersMiddleware: LanguageModelV3Middleware = {
   },
 };
 
-const isDevEnv = (): boolean => process.env.NODE_ENV !== "production";
+// Explicit opt-IN on NODE_ENV === "development" — NOT opt-out via
+// `!== "production"`. The opt-out form enabled the @ai-sdk/devtools writer
+// (which appends every generation to cwd/.devtools/generations.json,
+// unbounded) in EVERY context whose NODE_ENV wasn't exactly "production":
+// smoke runs, an unset env, a staging tag, a future unit edit. On the prod
+// droplet that grew generations.json to 684 MB. The prod systemd unit sets
+// NODE_ENV=production (never "development"), so this gate keeps devtools off
+// in prod and any ambiguous context; a developer who wants the viewer runs
+// with NODE_ENV=development. See project_config_array_doubling_outage's
+// sibling note on .devtools growth.
+const isDevEnv = (): boolean => process.env.NODE_ENV === "development";
 
 let cachedDevtoolsMiddleware: LanguageModelV3Middleware | null | undefined;
 

@@ -70,6 +70,22 @@ describe("maybeWrapForDevtools", () => {
     expect(typeof out === "object" && out !== null && "specificationVersion" in out).toBe(true);
   });
 
+  // Regression (684 MB prod .devtools/generations.json leak): the gate is
+  // opt-IN on NODE_ENV === "development", NOT opt-out via `!== "production"`.
+  // Every non-development context must pass through unwrapped so the
+  // unbounded devtools writer never activates outside an explicit dev env.
+  for (const env of ["", "staging", "test", "smoke"] as const) {
+    it(`does not wrap when NODE_ENV is ${env === "" ? "unset" : `"${env}"`}`, async () => {
+      if (env === "") delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = env;
+      const model = stubV3Model();
+      // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+      const out = await maybeWrapForDevtools(model as any);
+      // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+      expect(out).toBe(model as any);
+    });
+  }
+
   it("passes through models with unsupported specificationVersion", async () => {
     process.env.NODE_ENV = "development";
     const legacyModel = { ...stubV3Model(), specificationVersion: "v2" };
