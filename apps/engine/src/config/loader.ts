@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { loadConfig as c12LoadConfig } from "c12";
 import type { z } from "zod";
 import { type Config, ConfigSchema } from "./schema.ts";
 import { type ConfigLeaf, dottedPath, findLeafByPath, listConfigLeaves } from "./walk.ts";
@@ -264,21 +263,20 @@ export async function loadConfig(
 
   const { overrides, keys: overrideKeys } = collectOverrides(env);
 
-  // c12 reads + merges from the configFile path. We pass it the
-  // already-read `fileObj` via `defaults` and `overrides` for layering;
-  // c12 stays in the dep tree so the future `extends:` story is one
-  // option call away.
-  const { config: merged } = await c12LoadConfig<Record<string, unknown>>({
-    name: "subkit",
-    cwd: path.dirname(configPath),
-    configFile: configPath,
-    rcFile: false,
-    globalRc: false,
-    defaults: fileObj,
+  // Merge the file config with SK_OVERRIDE_* env overlays using
+  // REPLACE-array semantics (overrides win). We deliberately do NOT use
+  // c12/defu here: defu CONCATENATES arrays, and the previous code also
+  // handed c12 the same file twice — once via `configFile` (which c12
+  // reads) and again via `defaults: fileObj` — so every load DOUBLED every
+  // array-valued leaf. `auth.mcp_oauth.scopes_supported` (the one leaf with
+  // a non-empty default array) grew 3 → 3·2ⁿ, was persisted on each deploy's
+  // settings write, and reached 3·2²² ≈ 12.6M entries = a 276 MB config that
+  // hung boot (config parse + reserialize spun a core and ~3.6 GB heap).
+  // `deepMergeReplaceArrays` replaces arrays, matching `applyTenantOverlay`.
+  const mergedObj = deepMergeReplaceArrays(
+    deepMergeReplaceArrays({} as Record<string, unknown>, fileObj),
     overrides,
-  });
-
-  const mergedObj = (merged ?? {}) as Record<string, unknown>;
+  ) as Record<string, unknown>;
 
   // DATABASE_URL fallback: only consulted when database.url is absent.
   const databaseUrlInConfig = (mergedObj.database as Record<string, unknown> | undefined)?.url;
