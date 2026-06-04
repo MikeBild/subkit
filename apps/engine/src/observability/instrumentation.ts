@@ -426,6 +426,7 @@ const AUTHORING_GATE_CODES = new Set<string>([
   "transform_authoring_requires_inspect",
   "repair_loop_detected",
   "critic_rejected",
+  "principal_required",
 ]);
 /** Allow-list for `tool` label values. */
 const AUTHORING_GATE_TOOLS = new Set<string>([

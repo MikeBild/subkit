@@ -47,7 +47,6 @@ import {
   chatSessions,
   chatWorkspaces,
   conversations,
-  users,
   workflows as workflowsTable,
 } from "../db/schema/index.ts";
 import { createExecution } from "../execution/state.ts";
@@ -59,6 +58,7 @@ import { can } from "../rbac/evaluator.ts";
 import { getWorkflow, getWorkflowBySlug } from "../workflows/service.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { mapToolNameToKind } from "./api.ts";
+import { resolveChatPrincipal } from "./principal.ts";
 
 // Backward-compat re-export: `DispatchOutcome` and `DispatchRunEnqueue`
 // moved to `./dispatcher-types.ts` (extracted to break a circular dep
@@ -518,23 +518,12 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
     // Pass-2 C6: chat slash `/run` gates on `workflow:run`. The
     // dispatcher assembles a synthetic user principal out of the
     // resolved chat identity so the evaluator can walk the
-    // role/group/grant ladder. Preload the linked user's enum role so
-    // the evaluator's admin short-circuit fires when applicable.
-    const userRows = await db
-      .select({ role: users.role })
-      .from(users)
-      .where(and(eq(users.tenant_id, tenant_id), eq(users.id, user_id)))
-      .limit(1);
-    const syntheticRoles = userRows[0] ? [userRows[0].role] : [];
+    // role/group/grant ladder and the admin short-circuit fires when
+    // the linked user's enum role warrants it.
+    const principal = await resolveChatPrincipal(db, tenant_id, user_id);
     const runDecision = await can(db, {
       tenant_id,
-      principal: {
-        provider: "chat",
-        kind: "user",
-        id: user_id,
-        tenant_id,
-        roles: syntheticRoles,
-      },
+      principal,
       permission: "workflow:run",
       resource: { type: "workflow", id: wf.id },
     });
@@ -641,6 +630,11 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
     )
     .limit(1);
 
+  // Synthetic chat principal threaded into the turn so the fast-path
+  // matcher and run_workflow gate on the linked user's RBAC instead of
+  // failing `principal_required`.
+  const chatPrincipal = await resolveChatPrincipal(db, tenant_id, user_id);
+
   let conversation_id: string;
   let outcome: RunLoopResult;
   if (existing) {
@@ -661,6 +655,7 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
           tenant_id,
           conversation_id,
           actor_id: user_id,
+          principal: chatPrincipal,
           user_message: appended.message,
           user_memory: appended.user_memory,
           turn_abort_ctrl: turnAbortCtrl,
@@ -690,6 +685,7 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
           tenant_id,
           conversation_id,
           actor_id: user_id,
+          principal: chatPrincipal,
           user_message: created.initial_message ?? "",
           user_memory: created.user_memory,
           turn_abort_ctrl: turnAbortCtrl,

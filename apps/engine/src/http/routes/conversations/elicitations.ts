@@ -89,6 +89,11 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         conversation_id: id,
         elicitation_id,
         actor_id: principal.id,
+        // Thread the authenticated principal so the resumed turn can run
+        // a workflow under RBAC. Without it `run_workflow` hits
+        // `principal_required` and the loop guard blocks after 3 retries
+        // (root cause of the `run_workflow.no_principal` warn floods).
+        principal,
         output: body.output,
         turn_abort_ctrl: turnAbortCtrl,
         ...(body.reason ? { reason: body.reason } : {}),
