@@ -1,8 +1,10 @@
-// Usage tab (M5 of #159).
-// Asserts the Usage tab renders audit-derived data with empty-state
-// and loaded-state coverage. The former Stats tab has been merged
-// into the Status tab as an embedded ActivityHeatmap — coverage for
-// that lives in apps/sk/src/settings-ui/__tests__/StatusTab.heatmap.ink.test.tsx.
+// Usage tab (M5 of #159, rewired in #160).
+// Asserts the Usage tab renders month-to-date token usage sourced from
+// the tenant-scoped /v1/stats/llm endpoint (grouped by flow) plus the
+// monthly budget denominator from /v1/status. The former audit-log
+// (`llm.invocation`) scrape is gone. The former Stats tab lives as an
+// embedded ActivityHeatmap in the Status tab — coverage in
+// apps/sk/src/settings-ui/__tests__/StatusTab.heatmap.ink.test.tsx.
 
 import { describe, expect, mock, test } from "bun:test";
 import type React from "react";
@@ -10,7 +12,48 @@ import type { EngineClient } from "../engine-client.ts";
 import { SettingsModal } from "../settings-ui/SettingsModal.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 
-function makeClient(items: Array<Record<string, unknown>>): EngineClient {
+interface FlowTokens {
+  flow: string;
+  prompt: number;
+  completion: number;
+  total: number;
+}
+
+/** Minimal /v1/stats/llm response — the UsageTab reads only
+ *  groups[].key.flow, groups[].totals.tokens, and totals.tokens. */
+function statsLlmResponse(flows: FlowTokens[]) {
+  const sum = (k: "prompt" | "completion" | "total") => flows.reduce((acc, f) => acc + f[k], 0);
+  return {
+    bucket: "day",
+    tz: "UTC",
+    from: "2024-11-01T00:00:00.000Z",
+    to: "2024-11-30T00:00:00.000Z",
+    groups: flows.map((f) => ({
+      key: { flow: f.flow },
+      buckets: [],
+      totals: {
+        tokens: {
+          prompt: f.prompt,
+          completion: f.completion,
+          cache_read: 0,
+          cache_creation: 0,
+          total: f.total,
+        },
+      },
+    })),
+    totals: {
+      tokens: {
+        prompt: sum("prompt"),
+        completion: sum("completion"),
+        cache_read: 0,
+        cache_creation: 0,
+        total: sum("total"),
+      },
+    },
+  };
+}
+
+function makeClient(flows: FlowTokens[], budget: number | null = null): EngineClient {
   return {
     skBootstrap: mock(async () => ({
       whoami: {
@@ -34,7 +77,8 @@ function makeClient(items: Array<Record<string, unknown>>): EngineClient {
     listMcpTools: mock(async () => ({ items: [] })),
     listMcpPrompts: mock(async () => ({ items: [] })),
     listMcpResources: mock(async () => ({ items: [] })),
-    tailAuditLog: mock(async () => ({ items })),
+    statsLlm: mock(async () => statsLlmResponse(flows)),
+    statusSummary: mock(async () => ({ monthly_budget_tokens: budget })),
   } as unknown as EngineClient;
 }
 
@@ -57,49 +101,26 @@ async function navigateTo(
 }
 
 describe("UsageTab — token aggregation by flow (M5 + G6 closure)", () => {
-  test("renders top-5 flows from llm.invocation events with prompt + completion totals", async () => {
-    const items = [
-      {
-        action: "llm.invocation",
-        metadata: { flow: "chat", prompt_tokens: 1000, completion_tokens: 500 },
-        created_at: "2024-11-14T22:13:20.000Z",
-      },
-      {
-        action: "llm.invocation",
-        metadata: { flow: "chat", prompt_tokens: 200, completion_tokens: 100 },
-        created_at: "2024-11-14T22:13:20.000Z",
-      },
-      {
-        action: "llm.invocation",
-        metadata: { flow: "summarize", prompt_tokens: 800, completion_tokens: 50 },
-        created_at: "2024-11-14T22:13:20.000Z",
-      },
-      {
-        action: "llm.invocation",
-        metadata: { flow: "tool-chain", prompt_tokens: 50, completion_tokens: 25 },
-        created_at: "2024-11-14T22:13:20.000Z",
-      },
-      // Non-llm.invocation rows must be ignored.
-      {
-        action: "conversation.completed",
-        metadata: { prompt_tokens: 9999 },
-        created_at: "2024-11-14T22:13:20.000Z",
-      },
+  test("renders top-5 flows from /v1/stats/llm with prompt + completion totals", async () => {
+    const flows: FlowTokens[] = [
+      { flow: "chat", prompt: 1200, completion: 600, total: 1800 },
+      { flow: "summarize", prompt: 800, completion: 50, total: 850 },
+      { flow: "tool-chain", prompt: 50, completion: 25, total: 75 },
     ];
-    const ui = await navigateTo(makeClient(items), 2);
+    const ui = await navigateTo(makeClient(flows), 2);
     try {
       await ui.waitFor((t) => t.includes("Token usage"));
       await ui.waitFor((t) => t.includes("chat") && t.includes("summarize"));
       const txt = ui.text();
-      // chat: 1200 prompt + 600 completion = 1800
+      // chat: 1200 prompt + 600 completion = 1800 total
       expect(txt).toContain("chat");
       expect(txt).toContain("1,800");
       expect(txt).toContain("summarize");
       expect(txt).toContain("tool-chain");
-      // grand totals row
+      // window totals row: 2,050 input + 675 output = 2,725 tokens
       expect(txt).toMatch(/totals: 2,050 input \+ 675 output = 2,725 tokens/);
-      // conversation.completed should NOT have leaked in.
-      expect(txt).not.toMatch(/9,999/);
+      // no budget configured → unlimited
+      expect(txt).toContain("monthly budget: unlimited");
     } finally {
       ui.unmount();
     }
@@ -110,7 +131,7 @@ describe("UsageTab — token aggregation by flow (M5 + G6 closure)", () => {
     try {
       await ui.waitFor((t) => t.includes("Token usage"));
       await ui.waitFor((t) => t.includes("no AI requests recorded"));
-      expect(ui.text()).toContain("no AI requests recorded for this tenant yet");
+      expect(ui.text()).toContain("no AI requests recorded for this tenant this month");
     } finally {
       ui.unmount();
     }

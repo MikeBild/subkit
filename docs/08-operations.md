@@ -112,6 +112,42 @@ New metrics added in this revision:
 - `llm_context_total_tokens{flow}` — histogram of total prompt tokens
   per call.
 
+#### Tenant-scoped runtime stats (`/v1/stats/*`)
+
+Where `/metrics` is a process-wide Prometheus snapshot that resets on
+redeploy and is **not** tenant-scoped, the `/v1/stats/*` surface answers
+per-tenant operational questions over time-bucketed history. It
+aggregates at read time from `executions`, `audit_log`, and `llm_usage`
+— no new tables. Every route filters `tenant_id = principal.tenant_id`
+as the first predicate and is gated by the single `stats:read`
+permission (admins hold it by default; members opt in via a custom
+role).
+
+| Route | Aggregates over | Answers |
+|---|---|---|
+| `GET /v1/stats/executions` | `executions` | run volume + duration distribution (p50/p95/p99/max) by workflow / status / request_source |
+| `GET /v1/stats/connectors` | `audit_log` (`action='connector.invoked'`) | connector-call volume + latency + outcome + status-class (`4xx_auth`/`4xx_rate_limited`/…) |
+| `GET /v1/stats/events` | `audit_log` (per `?class=`) | webhook / chat / schedule / self-healing / discovery / policy / external-write event volume |
+| `GET /v1/stats/llm` | `llm_usage` | token usage + cache-hit rate + latency by model / flow |
+
+Common bucket grammar: `bucket` (`minute|hour|day|month|year`), required
+`from`, optional `to` (default now) and `tz` (default UTC). Hard window
+caps reject scans that would explode (`minute ≤ 24h`, `hour ≤ 31d`, `day
+≤ 366d`, …) with `400 bucket_window_too_large`. Audit-backed routes clamp
+`from` to the tenant's audit-retention horizon and surface
+`truncated_at` on the envelope. Every response carries three rollups:
+per-bucket (`groups[].buckets[]`), per-group totals (`groups[].totals`),
+and window totals (top-level `totals`).
+
+Two btree indexes back these routes:
+`executions (tenant_id, status, started_at)` and
+`audit_log (tenant_id, action, ts)`.
+
+Operators read this surface from the CLI: `sk stats
+executions|connectors|events|llm` (human ASCII table + sparkline by
+default, `--json` for cron/CI/ETL), and it feeds the `sk` settings
+Status heatmap + Usage token bar.
+
 ---
 
 ## Resource Limits and Operational Safety

@@ -162,7 +162,7 @@ layer, stop and move it.
 - **`packages/shared/`** — shared domain types & helpers. Pure, deterministic, no
   `apps/*` imports. See `packages/shared/AGENTS.md` for stricter rules.
 
-Subsystem map inside `apps/engine/src/` (42 directories + 5 loose root files):
+Subsystem map inside `apps/engine/src/` (43 directories + 5 loose root files):
 
 | Concern | Directory | Key docs |
 |---|---|---|
@@ -200,6 +200,7 @@ Subsystem map inside `apps/engine/src/` (42 directories + 5 loose root files):
 | Drift detection + bounded repair | `self-healing/` | `docs/06-execution.md` |
 | Pattern detection → proposed skills | `skill-candidates/` | `docs/04-authoring.md` |
 | Curated LLM-context records | `skills/` | `docs/04-authoring.md` |
+| Tenant-scoped time-bucketed runtime stats aggregation | `stats/` | `docs/08-operations.md` |
 | Object/blob storage | `storage/` | `docs/06-execution.md` |
 | Engine-internal cross-subsystem fixtures + helpers | `test-helpers/` | (test infrastructure) |
 | Top-level integration suites | `tests/` | (test infrastructure) |

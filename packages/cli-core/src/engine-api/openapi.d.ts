@@ -314,6 +314,225 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/stats/executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Time-bucketed workflow execution stats (count + duration distribution) */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    workflow_id?: string;
+                    status?: string | string[];
+                    request_source?: string | string[];
+                    execution_mode?: "dev" | "prod";
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsExecutionsResponse"];
+                    };
+                };
+                /** @description Invalid window */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stats/connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Time-bucketed connector-call stats (volume + latency + outcome distribution) */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    connector_id?: string;
+                    connector_slug?: string;
+                    driver?: string | string[];
+                    method?: string | string[];
+                    outcome?: string | string[];
+                    status_class?: string | string[];
+                    group_by?: string | string[];
+                    include_endpoint?: "true" | "false" | boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsConnectorsResponse"];
+                    };
+                };
+                /** @description Invalid window */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stats/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Time-bucketed audit-event stats by class (webhooks, chat, self-healing, policy, …) */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    class: "webhook_outbound" | "webhook_inbound" | "chat" | "notification" | "schedule" | "self_healing" | "discovery" | "execution_lifecycle" | "policy" | "external_write";
+                    outcome?: string | string[];
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsEventsResponse"];
+                    };
+                };
+                /** @description Invalid window */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stats/llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Time-bucketed LLM token usage + cache-hit + latency stats */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    model?: string | string[];
+                    flow?: string | string[];
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsLlmResponse"];
+                    };
+                };
+                /** @description Invalid window */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings": {
         parameters: {
             query?: never;
@@ -8617,6 +8836,195 @@ export interface components {
             ok: boolean;
             message: string;
             missing: string[];
+        };
+        StatsExecutionsResponse: {
+            /** @enum {string} */
+            bucket: "minute" | "hour" | "day" | "month" | "year";
+            tz: string;
+            from: string;
+            to: string;
+            truncated_at?: string;
+            groups: {
+                key: {
+                    [key: string]: string;
+                };
+                buckets: {
+                    ts: string;
+                    executions: number;
+                    duration_ms: components["schemas"]["StatsDurationAgg"];
+                }[];
+                totals: {
+                    executions: number;
+                    duration_ms: components["schemas"]["StatsDurationAgg"];
+                };
+            }[];
+            totals: {
+                executions: {
+                    count: number;
+                    by_status: {
+                        [key: string]: number;
+                    };
+                };
+                duration_ms: components["schemas"]["StatsDurationAgg"];
+            };
+        };
+        StatsDurationAgg: {
+            total: number;
+            avg: number;
+            p50: number;
+            p95: number;
+            p99: number;
+            max: number;
+        };
+        StatsConnectorsResponse: {
+            /** @enum {string} */
+            bucket: "minute" | "hour" | "day" | "month" | "year";
+            tz: string;
+            from: string;
+            to: string;
+            truncated_at?: string;
+            groups: {
+                key: {
+                    [key: string]: string;
+                };
+                buckets: {
+                    ts: string;
+                    calls: number;
+                    latency_ms: components["schemas"]["StatsLatencyAgg"];
+                    outcomes: {
+                        success: number;
+                        denied: number;
+                        error: number;
+                    };
+                }[];
+                totals: {
+                    calls: {
+                        total: number;
+                        by_outcome: {
+                            success: number;
+                            denied: number;
+                            error: number;
+                        };
+                    };
+                    latency_ms: components["schemas"]["StatsLatencyAgg"];
+                };
+            }[];
+            totals: {
+                calls: {
+                    total: number;
+                    by_outcome: {
+                        success: number;
+                        denied: number;
+                        error: number;
+                    };
+                    by_status_class: {
+                        [key: string]: number;
+                    };
+                };
+                latency_ms: components["schemas"]["StatsLatencyAgg"];
+            };
+            truncated_endpoints?: boolean;
+        };
+        StatsLatencyAgg: {
+            total: number;
+            avg: number;
+            p50: number;
+            p95: number;
+            p99: number;
+            max: number;
+        };
+        StatsEventsResponse: {
+            /** @enum {string} */
+            bucket: "minute" | "hour" | "day" | "month" | "year";
+            tz: string;
+            from: string;
+            to: string;
+            truncated_at?: string;
+            groups: {
+                key: {
+                    [key: string]: string;
+                };
+                buckets: {
+                    ts: string;
+                    calls: number;
+                    latency_ms: components["schemas"]["StatsLatencyAgg"];
+                    outcomes: {
+                        success: number;
+                        denied: number;
+                        error: number;
+                    };
+                }[];
+                totals: {
+                    calls: {
+                        total: number;
+                        by_outcome: {
+                            success: number;
+                            denied: number;
+                            error: number;
+                        };
+                    };
+                    latency_ms: components["schemas"]["StatsLatencyAgg"];
+                };
+            }[];
+            totals: {
+                calls: {
+                    total: number;
+                    by_outcome: {
+                        success: number;
+                        denied: number;
+                        error: number;
+                    };
+                    by_status_class: {
+                        [key: string]: number;
+                    };
+                };
+                latency_ms: components["schemas"]["StatsLatencyAgg"];
+            };
+            truncated_endpoints?: boolean;
+        };
+        StatsLlmResponse: {
+            /** @enum {string} */
+            bucket: "minute" | "hour" | "day" | "month" | "year";
+            tz: string;
+            from: string;
+            to: string;
+            truncated_at?: string;
+            groups: {
+                key: {
+                    [key: string]: string;
+                };
+                buckets: {
+                    ts: string;
+                    calls: number;
+                    tokens: components["schemas"]["StatsTokenAgg"];
+                    latency_ms: components["schemas"]["StatsLatencyAgg"];
+                    result: {
+                        [key: string]: number;
+                    };
+                }[];
+                totals: {
+                    calls: number;
+                    tokens: components["schemas"]["StatsTokenAgg"];
+                    latency_ms: components["schemas"]["StatsLatencyAgg"];
+                };
+            }[];
+            totals: {
+                calls: {
+                    total: number;
+                    by_result: {
+                        [key: string]: number;
+                    };
+                };
+                tokens: components["schemas"]["StatsTokenAgg"];
+                latency_ms: components["schemas"]["StatsLatencyAgg"];
+            };
+        };
+        StatsTokenAgg: {
+            prompt: number;
+            completion: number;
+            cache_read: number;
+            cache_creation: number;
+            total: number;
         };
         SettingsListResponse: {
             items: components["schemas"]["SettingLeafEntry"][];

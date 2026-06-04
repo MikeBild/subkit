@@ -48,6 +48,11 @@ export const BUILTIN_ROLE_NAMES = {
 function memberPermissionFilter(name: string): boolean {
   if (name.startsWith("rbac:")) return false;
   if (name === "audit:read") return false;
+  // stats:read exposes cross-workflow operational posture (failure
+  // rates, connector rate-limit floods, LLM spend) that a typical
+  // member working on their own connector/workflow does not need.
+  // Tenants who want every member to see stats add it to a custom role.
+  if (name === "stats:read") return false;
   if (name === "api_key:write") return false;
   if (name === "api_key:rotate") return false;
   if (name === "api_key:revoke") return false;

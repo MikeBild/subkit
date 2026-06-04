@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.6.0](https://github.com/MikeBild/subkit/compare/subkit-v6.5.10...subkit-v6.6.0)
+
+
+### Features
+
+* **stats:** tenant-scoped, time-bucketed runtime stats surface — four read-only endpoints `GET /v1/stats/{executions,connectors,events,llm}` (per-bucket + per-group + window rollups, percentile latency/duration, status-class breakdown, token usage + cache-hit), all gated by the new `stats:read` permission; new `sk stats <executions|connectors|events|llm>` CLI verb (zero-config defaults, relative `--from`, ASCII table + sparkline, `--json`); `sk` settings Status heatmap + Usage token bar now read from the stats endpoints instead of scraping the audit log. Adds two btree indexes — `executions (tenant_id, status, started_at)` and `audit_log (tenant_id, action, ts)`.
+
 ## [6.2.0](https://github.com/MikeBild/subkit/compare/subkit-v6.1.1...subkit-v6.2.0) (2026-05-25)
 
 

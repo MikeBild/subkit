@@ -87,6 +87,117 @@ export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promis
 // Mirror `apps/engine/src/api/files-schemas.ts`. Kept structural (not
 // Zod) here so the CLI's tsc graph doesn't pull in @hono/zod-openapi.
 
+// ---------- Stats wire types (#160) ----------
+// Mirror apps/engine/src/http/routes/stats/schemas.ts. Kept structural
+// (not Zod) so the CLI tsc graph doesn't pull in @hono/zod-openapi.
+
+export interface StatsQuery {
+  // Index signature so the query object is accepted by `request`'s
+  // `Record<string, string | number | boolean | undefined>` param.
+  [key: string]: string | number | boolean | undefined;
+  bucket: string;
+  from: string;
+  to?: string;
+  tz?: string;
+  group_by?: string;
+  // route-specific filters (comma-joined for multi-value):
+  workflow_id?: string;
+  status?: string;
+  request_source?: string;
+  execution_mode?: string;
+  connector_id?: string;
+  connector_slug?: string;
+  driver?: string;
+  method?: string;
+  outcome?: string;
+  status_class?: string;
+  include_endpoint?: boolean;
+  class?: string;
+  model?: string;
+  flow?: string;
+}
+
+export interface StatsDurationAgg {
+  total: number;
+  avg: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  max: number;
+}
+export type StatsLatencyAgg = StatsDurationAgg;
+export interface StatsTokenAgg {
+  prompt: number;
+  completion: number;
+  cache_read: number;
+  cache_creation: number;
+  total: number;
+}
+
+interface StatsEnvelope {
+  bucket: string;
+  tz: string;
+  from: string;
+  to: string;
+  truncated_at?: string;
+}
+
+export interface StatsExecutionsResponse extends StatsEnvelope {
+  groups: Array<{
+    key: Record<string, string>;
+    buckets: Array<{ ts: string; executions: number; duration_ms: StatsDurationAgg }>;
+    totals: { executions: number; duration_ms: StatsDurationAgg };
+  }>;
+  totals: {
+    executions: { count: number; by_status: Record<string, number> };
+    duration_ms: StatsDurationAgg;
+  };
+}
+
+export interface StatsAuditResponse extends StatsEnvelope {
+  groups: Array<{
+    key: Record<string, string>;
+    buckets: Array<{
+      ts: string;
+      calls: number;
+      latency_ms: StatsLatencyAgg;
+      outcomes: { success: number; denied: number; error: number };
+    }>;
+    totals: {
+      calls: { total: number; by_outcome: { success: number; denied: number; error: number } };
+      latency_ms: StatsLatencyAgg;
+    };
+  }>;
+  totals: {
+    calls: {
+      total: number;
+      by_outcome: { success: number; denied: number; error: number };
+      by_status_class: Record<string, number>;
+    };
+    latency_ms: StatsLatencyAgg;
+  };
+  truncated_endpoints?: boolean;
+}
+
+export interface StatsLlmResponse extends StatsEnvelope {
+  groups: Array<{
+    key: Record<string, string>;
+    buckets: Array<{
+      ts: string;
+      calls: number;
+      tokens: StatsTokenAgg;
+      latency_ms: StatsLatencyAgg;
+      result: Record<string, number>;
+    }>;
+    totals: { calls: number; tokens: StatsTokenAgg; latency_ms: StatsLatencyAgg };
+  }>;
+  totals: {
+    calls: { total: number; by_result: Record<string, number> };
+    tokens: StatsTokenAgg;
+    latency_ms: StatsLatencyAgg;
+  };
+}
+
 export type FileStatusWire = "pending" | "uploading" | "scanning" | "ready" | "failed" | "expired";
 
 export interface FileWire {
@@ -952,6 +1063,24 @@ export class EngineClient {
    */
   statusSummary(): Promise<StatusSummary> {
     return this.request("GET", "/v1/status");
+  }
+
+  // --------------------------- Runtime stats (#160) ---------------------------
+  // Tenant-scoped, time-bucketed read-only aggregates. Gated by the
+  // `stats:read` permission server-side. Multi-value filters are passed
+  // as comma-joined strings; the engine's CsvOrArray schema splits them.
+  // Wire shape stays snake_case to match the OpenAPI surface.
+  statsExecutions(query: StatsQuery): Promise<StatsExecutionsResponse> {
+    return this.request("GET", "/v1/stats/executions", undefined, query);
+  }
+  statsConnectors(query: StatsQuery): Promise<StatsAuditResponse> {
+    return this.request("GET", "/v1/stats/connectors", undefined, query);
+  }
+  statsEvents(query: StatsQuery): Promise<StatsAuditResponse> {
+    return this.request("GET", "/v1/stats/events", undefined, query);
+  }
+  statsLlm(query: StatsQuery): Promise<StatsLlmResponse> {
+    return this.request("GET", "/v1/stats/llm", undefined, query);
   }
 
   // --------------------------- Workflow versions ---------------------------
