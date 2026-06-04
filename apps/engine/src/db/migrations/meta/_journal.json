@@ -232,6 +232,27 @@
       "when": 1780400000000,
       "tag": "0032_workflows_description",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1780500000000,
+      "tag": "0033_add_stats_read_permission",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1780600000000,
+      "tag": "0034_executions_tenant_status_started_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1780700000000,
+      "tag": "0035_audit_log_tenant_action_ts_idx",
+      "breakpoints": true
     }
   ]
 }

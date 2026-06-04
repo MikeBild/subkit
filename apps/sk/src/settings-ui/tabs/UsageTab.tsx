@@ -1,9 +1,8 @@
-// Usage tab — token usage progress bars + last-N top contributors,
-// sourced from the existing `llm.invocation` audit events. Each
-// `llm.invocation` row's metadata carries `prompt_tokens` and
-// `completion_tokens`; we aggregate by `metadata.flow` (sk's existing
-// flow taxonomy: `chat`, `summarize`, `tool-chain`, etc.) so the
-// operator can see where their tokens went.
+// Usage tab — month-to-date token usage, sourced from the tenant-scoped
+// /v1/stats/llm endpoint (#160) grouped by `flow`, plus the monthly
+// budget bar whose denominator comes from /v1/status.monthly_budget_tokens.
+// Replaces the prior `llm.invocation` audit-log scraping: stats aggregate
+// at read time and carry the cache-read breakdown the bar visualizes.
 //
 // Keymap: `r` re-fetches; Esc is owned by the outer modal.
 
@@ -16,11 +15,6 @@ interface Props {
   client: EngineClient;
 }
 
-interface AuditEntry {
-  action?: unknown;
-  metadata?: unknown;
-}
-
 interface UsageRow {
   flow: string;
   prompt: number;
@@ -28,22 +22,18 @@ interface UsageRow {
   total: number;
 }
 
-function readNumber(o: unknown, key: string): number {
-  if (!o || typeof o !== "object") return 0;
-  const v = (o as Record<string, unknown>)[key];
-  return typeof v === "number" && Number.isFinite(v) ? v : 0;
-}
-
-function readString(o: unknown, key: string, fallback: string): string {
-  if (!o || typeof o !== "object") return fallback;
-  const v = (o as Record<string, unknown>)[key];
-  return typeof v === "string" && v.length > 0 ? v : fallback;
+/** First-of-month UTC, ISO — matches the engine's monthly budget window. */
+function startOfMonthIso(): string {
+  const d = new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
 }
 
 export const UsageTab: React.FC<Props> = ({ client }) => {
   const [rows, setRows] = useState<UsageRow[]>([]);
   const [totalPrompt, setTotalPrompt] = useState(0);
   const [totalCompletion, setTotalCompletion] = useState(0);
+  const [cacheRead, setCacheRead] = useState(0);
+  const [budget, setBudget] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -54,28 +44,25 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
     setError(null);
     (async () => {
       try {
-        const res = await client.tailAuditLog({ action: "llm.invocation", limit: 200 });
+        const [stats, status] = await Promise.all([
+          client.statsLlm({ bucket: "day", from: startOfMonthIso(), group_by: "flow" }),
+          client.statusSummary(),
+        ]);
         if (cancelled) return;
-        const tally = new Map<string, UsageRow>();
-        let pTotal = 0;
-        let cTotal = 0;
-        for (const raw of res.items as AuditEntry[]) {
-          if (raw.action !== "llm.invocation") continue;
-          const flow = readString(raw.metadata, "flow", "unknown");
-          const p = readNumber(raw.metadata, "prompt_tokens");
-          const c = readNumber(raw.metadata, "completion_tokens");
-          pTotal += p;
-          cTotal += c;
-          const cur = tally.get(flow) ?? { flow, prompt: 0, completion: 0, total: 0 };
-          cur.prompt += p;
-          cur.completion += c;
-          cur.total += p + c;
-          tally.set(flow, cur);
-        }
-        const top = [...tally.values()].sort((a, b) => b.total - a.total).slice(0, 5);
+        const top: UsageRow[] = stats.groups
+          .map((g) => ({
+            flow: g.key.flow || "unknown",
+            prompt: g.totals.tokens.prompt,
+            completion: g.totals.tokens.completion,
+            total: g.totals.tokens.total,
+          }))
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 5);
         setRows(top);
-        setTotalPrompt(pTotal);
-        setTotalCompletion(cTotal);
+        setTotalPrompt(stats.totals.tokens.prompt);
+        setTotalCompletion(stats.totals.tokens.completion);
+        setCacheRead(stats.totals.tokens.cache_read);
+        setBudget(status.monthly_budget_tokens);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -93,22 +80,28 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
   });
 
   const grandTotal = totalPrompt + totalCompletion;
+  const cacheHitPct = totalPrompt > 0 ? ((cacheRead / totalPrompt) * 100).toFixed(1) : "0.0";
   return (
     <Box flexDirection="column">
       <Text bold>Token usage</Text>
       <Box marginTop={1} flexDirection="column">
-        <Text color="gray">Last 200 AI requests for this tenant.</Text>
+        <Text color="gray">Month-to-date AI usage for this tenant.</Text>
         <Text color="gray">
           totals: {totalPrompt.toLocaleString()} input + {totalCompletion.toLocaleString()} output ={" "}
-          {grandTotal.toLocaleString()} tokens
+          {grandTotal.toLocaleString()} tokens · cache hit {cacheHitPct}%
         </Text>
+        {budget != null ? (
+          <BudgetBar used={grandTotal} budget={budget} />
+        ) : (
+          <Text color="gray">monthly budget: unlimited</Text>
+        )}
       </Box>
       <Box marginTop={1} flexDirection="column">
-        <Text color="gray">Top 5 flows by total tokens</Text>
+        <Text color="gray">Top 5 flows by total tokens (this month)</Text>
         {loading ? <Text>loading…</Text> : null}
         {error ? <Text color="red">failed: {error}</Text> : null}
         {!loading && !error && rows.length === 0 ? (
-          <Text color="gray">no AI requests recorded for this tenant yet</Text>
+          <Text color="gray">no AI requests recorded for this tenant this month</Text>
         ) : null}
         {rows.map((r) => (
           <UsageBar
@@ -124,6 +117,27 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
       <Box marginTop={1}>
         <Text color="gray">r refresh · Esc closes</Text>
       </Box>
+    </Box>
+  );
+};
+
+const BudgetBar: React.FC<{ used: number; budget: number }> = ({ used, budget }) => {
+  const width = 24;
+  const ratio = budget > 0 ? Math.min(1, used / budget) : 0;
+  const filled = Math.round(ratio * width);
+  const bar = "█".repeat(filled) + "░".repeat(Math.max(0, width - filled));
+  const pct = (ratio * 100).toFixed(0);
+  const color = ratio >= 0.9 ? "red" : ratio >= 0.7 ? "yellow" : "green";
+  return (
+    <Box>
+      <Box width={20}>
+        <Text>monthly budget</Text>
+      </Box>
+      <Text color={color}>{bar}</Text>
+      <Text color="gray">
+        {" "}
+        {pct}% ({used.toLocaleString()} / {budget.toLocaleString()})
+      </Text>
     </Box>
   );
 };

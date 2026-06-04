@@ -1,6 +1,7 @@
 // Verifies the activity heatmap is embedded inside the Status tab
-// (formerly a standalone Stats tab). Also checks the 1/2/3 window
-// toggles still work after the merge.
+// (formerly a standalone Stats tab) and is sourced from the tenant-scoped
+// /v1/stats/executions endpoint (#160) rather than the audit log. Also
+// checks the 1/2/3 window toggles still work after the merge.
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { EngineClient } from "../../engine-client.ts";
@@ -43,7 +44,31 @@ afterEach(() => {
   liveTimers.clear();
 });
 
-function makeClient(auditItems: Array<{ ts: string }>): EngineClient {
+/** Minimal /v1/stats/executions response — the heatmap reads only
+ *  groups[].buckets[].{ts, executions} and totals.executions.count. */
+function statsExecResponse(buckets: Array<{ ts: string; executions: number }>, total: number) {
+  return {
+    bucket: "day",
+    tz: "UTC",
+    from: "2023-11-14T00:00:00.000Z",
+    to: "2024-11-14T00:00:00.000Z",
+    groups: buckets.length
+      ? [
+          {
+            key: {},
+            buckets: buckets.map((b) => ({ ts: b.ts, executions: b.executions })),
+            totals: { executions: { count: total, by_status: {} } },
+          },
+        ]
+      : [],
+    totals: { executions: { count: total, by_status: {} } },
+  };
+}
+
+function makeClient(
+  buckets: Array<{ ts: string; executions: number }>,
+  total: number,
+): EngineClient {
   return {
     skBootstrap: mock(async () => ({
       whoami: {
@@ -67,30 +92,26 @@ function makeClient(auditItems: Array<{ ts: string }>): EngineClient {
     listMcpTools: mock(async () => ({ items: [] })),
     listMcpPrompts: mock(async () => ({ items: [] })),
     listMcpResources: mock(async () => ({ items: [] })),
-    tailAuditLog: mock(async () => ({ items: auditItems })),
+    statsExecutions: mock(async () => statsExecResponse(buckets, total)),
   } as unknown as EngineClient;
 }
 
 const NO_FIELDS: FormField[] = [];
 
 describe("StatusTab — embedded ActivityHeatmap", () => {
-  test("renders the heatmap header and totals from audit log", async () => {
-    const today = "2024-11-14T22:13:20.000Z";
-    const items = Array.from({ length: 12 }, () => ({ ts: today }));
+  test("renders the heatmap header and totals from /v1/stats/executions", async () => {
+    // The totals row reads res.totals.executions.count (server-provided),
+    // independent of the rendered day window — a fixed past bucket is fine.
+    const client = makeClient([{ ts: "2024-11-14T00:00:00.000Z", executions: 12 }], 12);
     const ui = renderInk(
-      <StatusTab
-        client={makeClient(items)}
-        fields={NO_FIELDS}
-        pendingRestartKeys={[]}
-        overrideKeys={[]}
-      />,
+      <StatusTab client={client} fields={NO_FIELDS} pendingRestartKeys={[]} overrideKeys={[]} />,
     );
     try {
       // Status content renders synchronously; heatmap content arrives
-      // after the tailAuditLog promise resolves.
+      // after the statsExecutions promise resolves.
       await ui.waitFor((t) => t.includes("Runtime status"));
       await ui.waitFor((t) => t.includes("Activity"));
-      await ui.waitFor((t) => /totals: 12 actions/.test(t));
+      await ui.waitFor((t) => /totals: 12 runs/.test(t));
       expect(ui.text()).toContain("Last 30 days");
     } finally {
       ui.unmount();
@@ -100,7 +121,7 @@ describe("StatusTab — embedded ActivityHeatmap", () => {
   test("`1` switches the heatmap window to Last 7 days", async () => {
     const ui = renderInk(
       <StatusTab
-        client={makeClient([])}
+        client={makeClient([], 0)}
         fields={NO_FIELDS}
         pendingRestartKeys={[]}
         overrideKeys={[]}
@@ -116,20 +137,18 @@ describe("StatusTab — embedded ActivityHeatmap", () => {
     }
   });
 
-  test("renders peak glyph when audit rows land on today (regression: ts vs created_at)", async () => {
-    // Stamp the 50 audit rows with "right now" so they bucket into
-    // today's cell in the heatmap. The heatmap renders the last 30
-    // days anchored at `new Date()`; using a fixed past timestamp
-    // would land outside that window and the peak glyph would
-    // (correctly) not render.
+  test("renders peak glyph when runs land on today", async () => {
+    // Stamp the day bucket with "right now" so it bins into today's
+    // cell. The heatmap renders the last 30 days anchored at
+    // `new Date()`; a fixed past timestamp would land outside the window
+    // and the peak glyph would (correctly) not render.
     // allow-wall-clock: this test exercises a date-window UI that
-    // intrinsically depends on the real wall-clock — the same
-    // exception pattern `text-prompt.test.tsx` uses.
+    // intrinsically depends on the real wall-clock — the same exception
+    // pattern `text-prompt.test.tsx` uses.
     const todayIso = new Date().toISOString();
-    const items = Array.from({ length: 50 }, () => ({ ts: todayIso }));
     const ui = renderInk(
       <StatusTab
-        client={makeClient(items)}
+        client={makeClient([{ ts: todayIso, executions: 50 }], 50)}
         fields={NO_FIELDS}
         pendingRestartKeys={[]}
         overrideKeys={[]}
@@ -137,10 +156,9 @@ describe("StatusTab — embedded ActivityHeatmap", () => {
     );
     try {
       await ui.waitFor((t) => t.includes("Activity"));
-      await ui.waitFor((t) => /totals: 50 actions/.test(t));
-      // The grid MUST contain the peak glyph somewhere — previously it
-      // never did because `bucketize` read `created_at` while the
-      // engine returns `ts`, so all 50 rows were silently dropped.
+      await ui.waitFor((t) => /totals: 50 runs/.test(t));
+      // The grid MUST contain the peak glyph somewhere — the single
+      // today bucket is the window max, so its cell renders at band 4.
       expect(ui.text()).toContain("█");
     } finally {
       ui.unmount();
@@ -150,7 +168,7 @@ describe("StatusTab — embedded ActivityHeatmap", () => {
   test("`3` switches the heatmap window to All time", async () => {
     const ui = renderInk(
       <StatusTab
-        client={makeClient([])}
+        client={makeClient([], 0)}
         fields={NO_FIELDS}
         pendingRestartKeys={[]}
         overrideKeys={[]}

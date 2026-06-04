@@ -569,6 +569,740 @@
           "missing"
         ]
       },
+      "StatsExecutionsResponse": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "minute",
+              "hour",
+              "day",
+              "month",
+              "year"
+            ]
+          },
+          "tz": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "truncated_at": {
+            "type": "string"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "buckets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ts": {
+                        "type": "string"
+                      },
+                      "executions": {
+                        "type": "number"
+                      },
+                      "duration_ms": {
+                        "$ref": "#/components/schemas/StatsDurationAgg"
+                      }
+                    },
+                    "required": [
+                      "ts",
+                      "executions",
+                      "duration_ms"
+                    ]
+                  }
+                },
+                "totals": {
+                  "type": "object",
+                  "properties": {
+                    "executions": {
+                      "type": "number"
+                    },
+                    "duration_ms": {
+                      "$ref": "#/components/schemas/StatsDurationAgg"
+                    }
+                  },
+                  "required": [
+                    "executions",
+                    "duration_ms"
+                  ]
+                }
+              },
+              "required": [
+                "key",
+                "buckets",
+                "totals"
+              ]
+            }
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "executions": {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "number"
+                  },
+                  "by_status": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "required": [
+                  "count",
+                  "by_status"
+                ]
+              },
+              "duration_ms": {
+                "$ref": "#/components/schemas/StatsDurationAgg"
+              }
+            },
+            "required": [
+              "executions",
+              "duration_ms"
+            ]
+          }
+        },
+        "required": [
+          "bucket",
+          "tz",
+          "from",
+          "to",
+          "groups",
+          "totals"
+        ]
+      },
+      "StatsDurationAgg": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "avg": {
+            "type": "number"
+          },
+          "p50": {
+            "type": "number"
+          },
+          "p95": {
+            "type": "number"
+          },
+          "p99": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "total",
+          "avg",
+          "p50",
+          "p95",
+          "p99",
+          "max"
+        ]
+      },
+      "StatsConnectorsResponse": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "minute",
+              "hour",
+              "day",
+              "month",
+              "year"
+            ]
+          },
+          "tz": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "truncated_at": {
+            "type": "string"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "buckets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ts": {
+                        "type": "string"
+                      },
+                      "calls": {
+                        "type": "number"
+                      },
+                      "latency_ms": {
+                        "$ref": "#/components/schemas/StatsLatencyAgg"
+                      },
+                      "outcomes": {
+                        "type": "object",
+                        "properties": {
+                          "success": {
+                            "type": "number"
+                          },
+                          "denied": {
+                            "type": "number"
+                          },
+                          "error": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "success",
+                          "denied",
+                          "error"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "ts",
+                      "calls",
+                      "latency_ms",
+                      "outcomes"
+                    ]
+                  }
+                },
+                "totals": {
+                  "type": "object",
+                  "properties": {
+                    "calls": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "number"
+                        },
+                        "by_outcome": {
+                          "type": "object",
+                          "properties": {
+                            "success": {
+                              "type": "number"
+                            },
+                            "denied": {
+                              "type": "number"
+                            },
+                            "error": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "success",
+                            "denied",
+                            "error"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "total",
+                        "by_outcome"
+                      ]
+                    },
+                    "latency_ms": {
+                      "$ref": "#/components/schemas/StatsLatencyAgg"
+                    }
+                  },
+                  "required": [
+                    "calls",
+                    "latency_ms"
+                  ]
+                }
+              },
+              "required": [
+                "key",
+                "buckets",
+                "totals"
+              ]
+            }
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "calls": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number"
+                  },
+                  "by_outcome": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "number"
+                      },
+                      "denied": {
+                        "type": "number"
+                      },
+                      "error": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "success",
+                      "denied",
+                      "error"
+                    ]
+                  },
+                  "by_status_class": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "required": [
+                  "total",
+                  "by_outcome",
+                  "by_status_class"
+                ]
+              },
+              "latency_ms": {
+                "$ref": "#/components/schemas/StatsLatencyAgg"
+              }
+            },
+            "required": [
+              "calls",
+              "latency_ms"
+            ]
+          },
+          "truncated_endpoints": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bucket",
+          "tz",
+          "from",
+          "to",
+          "groups",
+          "totals"
+        ]
+      },
+      "StatsLatencyAgg": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "avg": {
+            "type": "number"
+          },
+          "p50": {
+            "type": "number"
+          },
+          "p95": {
+            "type": "number"
+          },
+          "p99": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "total",
+          "avg",
+          "p50",
+          "p95",
+          "p99",
+          "max"
+        ]
+      },
+      "StatsEventsResponse": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "minute",
+              "hour",
+              "day",
+              "month",
+              "year"
+            ]
+          },
+          "tz": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "truncated_at": {
+            "type": "string"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "buckets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ts": {
+                        "type": "string"
+                      },
+                      "calls": {
+                        "type": "number"
+                      },
+                      "latency_ms": {
+                        "$ref": "#/components/schemas/StatsLatencyAgg"
+                      },
+                      "outcomes": {
+                        "type": "object",
+                        "properties": {
+                          "success": {
+                            "type": "number"
+                          },
+                          "denied": {
+                            "type": "number"
+                          },
+                          "error": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "success",
+                          "denied",
+                          "error"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "ts",
+                      "calls",
+                      "latency_ms",
+                      "outcomes"
+                    ]
+                  }
+                },
+                "totals": {
+                  "type": "object",
+                  "properties": {
+                    "calls": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "number"
+                        },
+                        "by_outcome": {
+                          "type": "object",
+                          "properties": {
+                            "success": {
+                              "type": "number"
+                            },
+                            "denied": {
+                              "type": "number"
+                            },
+                            "error": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "success",
+                            "denied",
+                            "error"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "total",
+                        "by_outcome"
+                      ]
+                    },
+                    "latency_ms": {
+                      "$ref": "#/components/schemas/StatsLatencyAgg"
+                    }
+                  },
+                  "required": [
+                    "calls",
+                    "latency_ms"
+                  ]
+                }
+              },
+              "required": [
+                "key",
+                "buckets",
+                "totals"
+              ]
+            }
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "calls": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number"
+                  },
+                  "by_outcome": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "number"
+                      },
+                      "denied": {
+                        "type": "number"
+                      },
+                      "error": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "success",
+                      "denied",
+                      "error"
+                    ]
+                  },
+                  "by_status_class": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "required": [
+                  "total",
+                  "by_outcome",
+                  "by_status_class"
+                ]
+              },
+              "latency_ms": {
+                "$ref": "#/components/schemas/StatsLatencyAgg"
+              }
+            },
+            "required": [
+              "calls",
+              "latency_ms"
+            ]
+          },
+          "truncated_endpoints": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bucket",
+          "tz",
+          "from",
+          "to",
+          "groups",
+          "totals"
+        ]
+      },
+      "StatsLlmResponse": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "minute",
+              "hour",
+              "day",
+              "month",
+              "year"
+            ]
+          },
+          "tz": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "truncated_at": {
+            "type": "string"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "buckets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ts": {
+                        "type": "string"
+                      },
+                      "calls": {
+                        "type": "number"
+                      },
+                      "tokens": {
+                        "$ref": "#/components/schemas/StatsTokenAgg"
+                      },
+                      "latency_ms": {
+                        "$ref": "#/components/schemas/StatsLatencyAgg"
+                      },
+                      "result": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "required": [
+                      "ts",
+                      "calls",
+                      "tokens",
+                      "latency_ms",
+                      "result"
+                    ]
+                  }
+                },
+                "totals": {
+                  "type": "object",
+                  "properties": {
+                    "calls": {
+                      "type": "number"
+                    },
+                    "tokens": {
+                      "$ref": "#/components/schemas/StatsTokenAgg"
+                    },
+                    "latency_ms": {
+                      "$ref": "#/components/schemas/StatsLatencyAgg"
+                    }
+                  },
+                  "required": [
+                    "calls",
+                    "tokens",
+                    "latency_ms"
+                  ]
+                }
+              },
+              "required": [
+                "key",
+                "buckets",
+                "totals"
+              ]
+            }
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "calls": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number"
+                  },
+                  "by_result": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "required": [
+                  "total",
+                  "by_result"
+                ]
+              },
+              "tokens": {
+                "$ref": "#/components/schemas/StatsTokenAgg"
+              },
+              "latency_ms": {
+                "$ref": "#/components/schemas/StatsLatencyAgg"
+              }
+            },
+            "required": [
+              "calls",
+              "tokens",
+              "latency_ms"
+            ]
+          }
+        },
+        "required": [
+          "bucket",
+          "tz",
+          "from",
+          "to",
+          "groups",
+          "totals"
+        ]
+      },
+      "StatsTokenAgg": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "number"
+          },
+          "completion": {
+            "type": "number"
+          },
+          "cache_read": {
+            "type": "number"
+          },
+          "cache_creation": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "prompt",
+          "completion",
+          "cache_read",
+          "cache_creation",
+          "total"
+        ]
+      },
       "SettingsListResponse": {
         "type": "object",
         "properties": {
@@ -11187,6 +11921,629 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StatusSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stats/executions": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "summary": "Time-bucketed workflow execution stats (count + duration distribution)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minute",
+                "hour",
+                "day",
+                "month",
+                "year"
+              ]
+            },
+            "required": true,
+            "name": "bucket",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tz",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "workflow_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "request_source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "dev",
+                "prod"
+              ]
+            },
+            "required": false,
+            "name": "execution_mode",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "group_by",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsExecutionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stats/connectors": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "summary": "Time-bucketed connector-call stats (volume + latency + outcome distribution)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minute",
+                "hour",
+                "day",
+                "month",
+                "year"
+              ]
+            },
+            "required": true,
+            "name": "bucket",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tz",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "connector_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "connector_slug",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "driver",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "method",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "outcome",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "status_class",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "group_by",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "true"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "false"
+                  ]
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "required": false,
+            "name": "include_endpoint",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsConnectorsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stats/events": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "summary": "Time-bucketed audit-event stats by class (webhooks, chat, self-healing, policy, …)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minute",
+                "hour",
+                "day",
+                "month",
+                "year"
+              ]
+            },
+            "required": true,
+            "name": "bucket",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tz",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "webhook_outbound",
+                "webhook_inbound",
+                "chat",
+                "notification",
+                "schedule",
+                "self_healing",
+                "discovery",
+                "execution_lifecycle",
+                "policy",
+                "external_write"
+              ]
+            },
+            "required": true,
+            "name": "class",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "outcome",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "group_by",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsEventsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stats/llm": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "summary": "Time-bucketed LLM token usage + cache-hit + latency stats",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minute",
+                "hour",
+                "day",
+                "month",
+                "year"
+              ]
+            },
+            "required": true,
+            "name": "bucket",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tz",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "model",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "flow",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "group_by",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsLlmResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

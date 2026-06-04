@@ -61,6 +61,10 @@ function memberAllows(name: string): boolean {
   if (name === "api_key:revoke") return false;
   if (name.startsWith("credential:") && name !== "credential:read") return false;
   if (name === "discovery:approve") return false;
+  // stats:read exposes cross-workflow operational posture (failure
+  // rates, LLM spend); members opt in via a custom role grant, not the
+  // default catalogue. Mirrors memberPermissionFilter in seed.ts.
+  if (name === "stats:read") return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;
   // chat_workspace:write / chat_identity:write install/remove tenant-wide

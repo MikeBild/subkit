@@ -30,6 +30,12 @@ export const auditLog = pgTable(
   },
   (t) => [
     index("audit_log_tenant_ts_idx").on(t.tenant_id, t.ts),
+    // Covers GET /v1/stats/connectors (action='connector.invoked') and
+    // GET /v1/stats/events (?class= → action set): both filter
+    // (tenant_id, action) + ts-window bucketing. Added in migration
+    // 0035. One full btree covers both routes — simpler ops than a
+    // connector-specific partial index.
+    index("audit_log_tenant_action_ts_idx").on(t.tenant_id, t.action, t.ts),
     check("audit_log_actor_type_check", sql`${t.actor_type} IN ('user','system_account','system')`),
     check("audit_log_result_check", sql`${t.result} IN ('success','denied','error')`),
   ],

@@ -9,7 +9,7 @@ When rules conflict, the more specific file wins (this one).
 pub/sub, connector drivers, AI flows, self-healing, audit log, RBAC. It's the only
 surface with domain logic. `sk` (`apps/sk/`) is a thin wrapper on top of it.
 
-See the subsystem table in `../../AGENTS.md` for the 42 directories and their
+See the subsystem table in `../../AGENTS.md` for the 43 directories and their
 responsibilities.
 
 ## Non-negotiables
@@ -76,7 +76,7 @@ responsibilities.
 
 ## When adding a new subsystem
 
-Ask first. 42 directories already cover the concerns subkit owns. If you think
+Ask first. 43 directories already cover the concerns subkit owns. If you think
 you need a new one:
 
 1. Confirm it doesn't fit in an existing directory.
@@ -97,6 +97,17 @@ If Postgres is not already listening on `localhost:5432`, start it first:
 
 These are choices that look arbitrary at first glance; documenting them once
 here saves a future maintainer the reverse-engineering trip.
+
+### Runtime stats (`stats/` + `http/routes/stats/`)
+
+Read-time aggregation over `executions` / `audit_log` / `llm_usage` — no new
+tables. `stats/aggregate-{executions,audit,llm}.ts` are pure Drizzle `sql\`\``
+builders; the routes under `http/routes/stats/` wrap them with the shared
+`bucket-window.ts` validation (bucket enum + hard window caps + audit-retention
+clamp) and gate every path with `requirePermission("stats:read")`. The
+**tenant filter is the first WHERE clause** in every builder and is bound from
+the principal — user-supplied `connector_id`/`workflow_id` can only narrow
+within the tenant, never widen across tenants.
 
 ### Binary file parsers — `xlsx@0.18.5` supply-chain stance
 

@@ -50,6 +50,9 @@ import sql0029OauthScopeTracking from "./0029_oauth_scope_tracking.sql" with { t
 import sql0030WorkflowsLastExecutedAt from "./0030_workflows_last_executed_at.sql" with { type: "text" };
 import sql0031WorkflowsCatalogLruIndex from "./0031_workflows_catalog_lru_index.sql" with { type: "text" };
 import sql0032WorkflowsDescription from "./0032_workflows_description.sql" with { type: "text" };
+import sql0033AddStatsReadPermission from "./0033_add_stats_read_permission.sql" with { type: "text" };
+import sql0034ExecutionsTenantStatusStartedIdx from "./0034_executions_tenant_status_started_idx.sql" with { type: "text" };
+import sql0035AuditLogTenantActionTsIdx from "./0035_audit_log_tenant_action_ts_idx.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -107,6 +110,9 @@ const SQL_BY_TAG: Record<string, string> = {
   "0030_workflows_last_executed_at": sql0030WorkflowsLastExecutedAt,
   "0031_workflows_catalog_lru_index": sql0031WorkflowsCatalogLruIndex,
   "0032_workflows_description": sql0032WorkflowsDescription,
+  "0033_add_stats_read_permission": sql0033AddStatsReadPermission,
+  "0034_executions_tenant_status_started_idx": sql0034ExecutionsTenantStatusStartedIdx,
+  "0035_audit_log_tenant_action_ts_idx": sql0035AuditLogTenantActionTsIdx,
 };
 
 const journal = journalMeta as unknown as Journal;

@@ -57,6 +57,12 @@ export const executions = pgTable(
   (t) => [
     index("executions_tenant_workflow_started_idx").on(t.tenant_id, t.workflow_id, t.started_at),
     index("executions_tenant_status_idx").on(t.tenant_id, t.status),
+    // Covers GET /v1/stats/executions: date_trunc(bucket, started_at)
+    // bucketing + status filter/group + percentile over duration, all
+    // tenant-scoped. Added in migration 0034. The plain (tenant_id,
+    // status) index above lacks the time prefix; the workflow_started
+    // index lacks status.
+    index("executions_tenant_status_started_idx").on(t.tenant_id, t.status, t.started_at),
     index("executions_tenant_request_source_idx").on(t.tenant_id, t.request_source),
     index("executions_tenant_source_kind_idx").on(t.tenant_id, t.source_kind),
   ],

@@ -1,12 +1,14 @@
-// Calendar heatmap of recent activity sourced from the audit log.
-// Rows are weeks, columns are weekdays (Mon–Sun); intensity is rendered
-// as one of five glyphs based on count quintile. Toggle the window with
-// `1` (Last 7), `2` (Last 30), `3` (All time). Lifted from the former
-// StatsTab so the Status surface owns activity visualization.
+// Calendar heatmap of recent workflow-execution activity, sourced from
+// the tenant-scoped /v1/stats/executions endpoint (#160) at
+// `bucket=day`. Rows are weeks, columns are weekdays; intensity is one
+// of five glyphs based on count quintile. Toggle the window with `1`
+// (Last 7), `2` (Last 30), `3` (All time). Replaces the prior audit-log
+// scrape: stats pre-bucket by day server-side, so the heatmap reflects
+// actual run volume rather than a capped tail of recent audit rows.
 
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { EngineClient } from "../../engine-client.ts";
 
 interface Props {
@@ -21,35 +23,14 @@ const WINDOW_LABEL: Record<WindowKey, string> = {
   all: "All time",
 };
 
-// Glyph gradient mirrors GitHub's contribution graph: a faint dot for
-// empty days (so the grid shape is visible even on quiet weeks) plus
-// four ascending shades for intensity. Earlier `GLYPHS[0] = " "`
-// rendered empty days as invisible spaces and the grid disappeared
-// whenever activity was sparse — the user would see a blank gap
-// between the toggle row and the totals row.
 const GLYPHS = ["·", "░", "▒", "▓", "█"] as const;
 
-interface AuditEntry {
-  // The engine's audit-log endpoint returns rows with `ts` (an ISO
-  // string), not `created_at`. The earlier shape mismatch silently
-  // dropped every row in `bucketize` so the heatmap always showed
-  // zero counts regardless of actual activity. See
-  // `apps/engine/src/http/routes/audit-log.ts:38` (AuditEntrySchema).
-  ts?: unknown;
-}
+// Day buckets keyed YYYY-MM-DD → execution count, from the per-bucket
+// series of the (single, ungrouped) executions stats response.
+type DayBuckets = Map<string, number>;
 
 function dayKey(iso: string): string {
   return iso.slice(0, 10);
-}
-
-function bucketize(items: AuditEntry[]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const e of items) {
-    if (typeof e.ts !== "string") continue;
-    const k = dayKey(e.ts);
-    m.set(k, (m.get(k) ?? 0) + 1);
-  }
-  return m;
 }
 
 function computeStreak(buckets: Map<string, number>): number {
@@ -66,7 +47,8 @@ function computeStreak(buckets: Map<string, number>): number {
 }
 
 export const ActivityHeatmap: React.FC<Props> = ({ client }) => {
-  const [items, setItems] = useState<AuditEntry[]>([]);
+  const [buckets, setBuckets] = useState<DayBuckets>(new Map());
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [windowKey, setWindowKey] = useState<WindowKey>("30");
@@ -77,9 +59,19 @@ export const ActivityHeatmap: React.FC<Props> = ({ client }) => {
     setError(null);
     (async () => {
       try {
-        const res = await client.tailAuditLog({ limit: 500 });
+        // 366 days is the `day`-bucket window cap; request just under it.
+        const from = new Date(Date.now() - 365 * 86_400_000).toISOString();
+        const res = await client.statsExecutions({ bucket: "day", from });
         if (cancelled) return;
-        setItems(res.items as AuditEntry[]);
+        const m: DayBuckets = new Map();
+        for (const g of res.groups) {
+          for (const b of g.buckets) {
+            const k = dayKey(b.ts);
+            m.set(k, (m.get(k) ?? 0) + b.executions);
+          }
+        }
+        setBuckets(m);
+        setTotal(res.totals.executions.count);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -98,8 +90,7 @@ export const ActivityHeatmap: React.FC<Props> = ({ client }) => {
     else if (input === "3") setWindowKey("all");
   });
 
-  const buckets = useMemo(() => bucketize(items), [items]);
-  const days = windowKey === "7" ? 7 : windowKey === "30" ? 30 : Math.max(1, items.length);
+  const days = windowKey === "7" ? 7 : windowKey === "30" ? 30 : 365;
   const today = new Date();
   const dayList: { iso: string; count: number }[] = [];
   for (let i = 0; i < days; i++) {
@@ -126,7 +117,7 @@ export const ActivityHeatmap: React.FC<Props> = ({ client }) => {
     weeks.push(dayList.slice(i, i + 7));
   }
 
-  const totals = items.length;
+  const totals = total;
   const streak = computeStreak(buckets);
 
   return (
@@ -154,7 +145,7 @@ export const ActivityHeatmap: React.FC<Props> = ({ client }) => {
       </Box>
       <Box marginTop={1} flexDirection="column">
         <Text color="gray">
-          totals: {totals} actions · streak: {streak} day(s)
+          totals: {totals} runs · streak: {streak} day(s)
         </Text>
         <Text color="gray">
           legend: {GLYPHS[0]} none · {GLYPHS[1]} low · {GLYPHS[2]} med · {GLYPHS[3]} high ·{" "}

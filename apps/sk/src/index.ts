@@ -45,6 +45,7 @@ import { sessionsCommand, skLs, skRename, skRm, skShow } from "./commands/sessio
 import { settingsCommand } from "./commands/settings.ts";
 import { skillCandidatesCommand } from "./commands/skill-candidates.ts";
 import { skillsCommand } from "./commands/skills.ts";
+import { statsCommand } from "./commands/stats.ts";
 import { subscriptionsCommand } from "./commands/subscriptions.ts";
 import { systemAccountsCommand } from "./commands/system-accounts.ts";
 import { updateCommand } from "./commands/update.ts";
@@ -509,6 +510,7 @@ const mainCommand = defineCommand({
     events: eventsCommand,
     notifications: notificationsCommand,
     diagnostics: diagnosticsCommand,
+    stats: statsCommand,
     init: initCommand,
     install: installCommand,
     // admin commands
@@ -693,6 +695,7 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   events: { command: eventsCommand, requires: "audit:read" },
   notifications: { command: notificationsCommand, requires: "notification:read" },
   diagnostics: { command: diagnosticsCommand, requires: "audit:read" },
+  stats: { command: statsCommand, requires: "stats:read" },
   // `sk init` is the first command an operator runs against a fresh
   // engine — it has no profile / api key yet, so it carries no
   // permission requirement.  The engine route is rate-limited and

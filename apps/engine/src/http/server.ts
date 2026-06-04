@@ -76,6 +76,7 @@ import { registerSettingsRoutes } from "./routes/settings.ts";
 import { registerSetupRoute } from "./routes/setup.ts";
 import { registerSkillCandidateRoutes } from "./routes/skill-candidates.ts";
 import { registerSkillRoutes } from "./routes/skills.ts";
+import { registerStatsRoutes } from "./routes/stats/index.ts";
 import { registerStatusRoute } from "./routes/status.ts";
 import { registerSubscriptionRoutes } from "./routes/subscriptions.ts";
 import { registerWorkflowRoutes } from "./routes/workflows.ts";
@@ -206,6 +207,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerInstallBinaryRoute(app);
   registerSetupRoute(app);
   registerStatusRoute(app);
+  registerStatsRoutes(app);
   registerSettingsRoutes(app);
   registerMetricsRoute(app);
   registerTenantRoutes(app);
