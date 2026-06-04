@@ -28,6 +28,7 @@ import {
   validateElicitationOutput,
 } from "./api.ts";
 import type { DispatchOutcome } from "./dispatcher-types.ts";
+import { resolveChatPrincipal } from "./principal.ts";
 import type { ChatEvent, ElicitationKind } from "./types.ts";
 
 /** UUID v4-friendly shape check. Used before any string from an
@@ -286,6 +287,9 @@ export async function routeChatInteraction(
   // button is visible to every user in the channel, so without this
   // check user B could resolve user A's pending elicitation.
   const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+  // Synthetic chat principal so the resumed turn gates on the linked
+  // user's RBAC instead of failing `principal_required`.
+  const principal = await resolveChatPrincipal(db, tenant_id, user_id);
   try {
     await respondElicitation(
       {
@@ -293,6 +297,7 @@ export async function routeChatInteraction(
         conversation_id,
         elicitation_id,
         actor_id: user_id,
+        principal,
         output,
         turn_abort_ctrl: turnAbortCtrl,
         require_same_actor: true,

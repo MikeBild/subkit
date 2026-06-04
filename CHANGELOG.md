@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.6.1](https://github.com/MikeBild/subkit/compare/subkit-v6.6.0...subkit-v6.6.1)
+
+
+### Bug Fixes
+
+* **conversations:** thread an authenticated principal through the chat conversation, chat elicitation-resume, and HTTP elicitation-resume entry paths so `run_workflow` gates on RBAC instead of refusing with `principal_required` (a recurring `run_workflow.no_principal` → consecutive-failure-block flood on chat surfaces). New `resolveChatPrincipal` helper builds the synthetic principal from the linked user's role — fail-closed (empty roles when unresolved), tenant-scoped, no admin fallback. Also registers `principal_required` in `AUTHORING_GATE_CODES` so the operator alert metric no longer collapses it into `other`.
+
 ## [6.6.0](https://github.com/MikeBild/subkit/compare/subkit-v6.5.10...subkit-v6.6.0)
 
 
