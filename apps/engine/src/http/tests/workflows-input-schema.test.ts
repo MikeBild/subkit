@@ -6,6 +6,8 @@
 // discover a workflow's I/O without round-tripping through MCP.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { workflowsSchedules } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -150,5 +152,45 @@ describe("GET /v1/workflows/:id/input-schema", () => {
     });
     const res = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}/input-schema`);
     expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /v1/workflows (definition fields are not silently dropped)", () => {
+  // Regression: the create/update CreateBody schema was a partial copy of
+  // the WorkflowDef that omitted `trigger` + `output_transform`, so a
+  // `schedule` trigger submitted over HTTP (and via the `sk` CLI on top of
+  // it) was stripped before save — no schedule ever bound (trigger-on-save
+  // is the only binding path). Now CreateBody preserves them end to end.
+  test("a schedule trigger binds a workflows_schedules row", async () => {
+    const wf = await createWorkflow({
+      name: "scheduled-fields-check",
+      trigger: { kind: "schedule", cron: "7 8 * * *", tz: "Europe/Berlin" },
+      steps: [{ kind: "transform", id: "out", expression: '{ "ok": true }' }],
+    });
+
+    const rows = await ctx.db
+      .select()
+      .from(workflowsSchedules)
+      .where(eq(workflowsSchedules.workflow_id, wf.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.cron).toBe("7 8 * * *");
+    expect(rows[0]?.timezone).toBe("Europe/Berlin");
+    expect(rows[0]?.paused).toBe(false);
+  });
+
+  test("output_transform round-trips through create → GET", async () => {
+    const wf = await createWorkflow({
+      name: "output-transform-check",
+      output_transform: '{ "ok": true }',
+      steps: [{ kind: "transform", id: "out", expression: "1" }],
+    });
+
+    const res = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}`, {
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    // Pre-fix this was stripped by CreateBody → serialized as null.
+    expect(body.output_transform).toBe('{ "ok": true }');
   });
 });

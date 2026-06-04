@@ -8955,6 +8955,47 @@ export interface components {
             }[];
             timeout_ms?: number;
             max_llm_tokens_per_run?: number;
+            trigger?: components["schemas"]["WorkflowTrigger"];
+            output_transform?: string;
+            output_transform_function?: string;
+            validation_expression?: string;
+            validation_function?: string;
+            response_filters?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        WorkflowTrigger: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTrigger"];
+        RequestTrigger: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "request";
+        };
+        WebhookTrigger: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "webhook";
+            source: string;
+            events: string[];
+            /** @enum {string} */
+            verify: "stripe-signature" | "github-hmac" | "none";
+        };
+        ScheduleTrigger: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "schedule";
+            cron: string;
+            /** @default UTC */
+            tz: string;
+            business_days_only?: boolean;
+            skip_dates?: string[];
         };
         ValidateWorkflowResponse: {
             ok: boolean;

@@ -1889,11 +1889,143 @@
             "type": "integer",
             "minimum": 0,
             "exclusiveMinimum": true
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/WorkflowTrigger"
+          },
+          "output_transform": {
+            "type": "string"
+          },
+          "output_transform_function": {
+            "type": "string"
+          },
+          "validation_expression": {
+            "type": "string"
+          },
+          "validation_function": {
+            "type": "string"
+          },
+          "response_filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "nullable": true
+              }
+            }
           }
         },
         "required": [
           "name",
           "steps"
+        ],
+        "additionalProperties": {
+          "nullable": true
+        }
+      },
+      "WorkflowTrigger": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RequestTrigger"
+          },
+          {
+            "$ref": "#/components/schemas/WebhookTrigger"
+          },
+          {
+            "$ref": "#/components/schemas/ScheduleTrigger"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "request": "#/components/schemas/RequestTrigger",
+            "webhook": "#/components/schemas/WebhookTrigger",
+            "schedule": "#/components/schemas/ScheduleTrigger"
+          }
+        }
+      },
+      "RequestTrigger": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "request"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "WebhookTrigger": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "webhook"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "verify": {
+            "type": "string",
+            "enum": [
+              "stripe-signature",
+              "github-hmac",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "events",
+          "verify"
+        ]
+      },
+      "ScheduleTrigger": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "schedule"
+            ]
+          },
+          "cron": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tz": {
+            "type": "string",
+            "minLength": 1,
+            "default": "UTC"
+          },
+          "business_days_only": {
+            "type": "boolean"
+          },
+          "skip_dates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "cron"
         ]
       },
       "ValidateWorkflowResponse": {

@@ -3,7 +3,11 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../workflows/index.ts";
-import { synthesizeInputSchema, validateWorkflowDef } from "../../workflows/index.ts";
+import {
+  synthesizeInputSchema,
+  TriggerSchema,
+  validateWorkflowDef,
+} from "../../workflows/index.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -53,6 +57,22 @@ const VersionListResponse = z
   .object({ items: z.array(VersionSchema) })
   .openapi("WorkflowVersionListResponse");
 
+// Create/update request body. This is the full workflow definition the
+// caller submits — `createWorkflow`/`updateWorkflow` pass it straight to
+// `validateWorkflowDef` (the canonical `WorkflowDefSchema` gate) and to
+// `applyTriggerBindings`. Historically this schema was a hand-maintained
+// PARTIAL copy of the def that omitted `trigger`, `output_transform`,
+// `response_filters`, and the validation_* fields — so a `schedule`
+// trigger submitted via the HTTP API (and the `sk` CLI on top of it) was
+// SILENTLY STRIPPED here before the save, and no schedule ever bound
+// (the trigger-on-save path is the only binding path — there is no
+// separate schedule endpoint). The GET serializer already round-trips
+// all of these fields, so the request shape was also asymmetric with the
+// response. Fix: declare the headline authoring fields explicitly (for an
+// accurate OpenAPI contract, symmetric with `serializeWorkflow`) AND
+// `.passthrough()` so EVERY other `WorkflowDef` field survives to
+// `validateWorkflowDef` — the single source of truth — instead of the
+// HTTP layer drifting out of sync with the def and dropping fields.
 const CreateBody = z
   .object({
     name: z.string(),
@@ -63,7 +83,17 @@ const CreateBody = z
     steps: z.array(z.record(z.string(), z.unknown())),
     timeout_ms: z.number().int().positive().optional(),
     max_llm_tokens_per_run: z.number().int().positive().optional(),
+    // Previously-dropped definition fields — now preserved end to end.
+    trigger: TriggerSchema.optional(),
+    output_transform: z.string().optional(),
+    output_transform_function: z.string().optional(),
+    validation_expression: z.string().optional(),
+    validation_function: z.string().optional(),
+    response_filters: z.array(z.record(z.string(), z.unknown())).optional(),
   })
+  // Any other WorkflowDef field (e.g. payload) passes through to
+  // validateWorkflowDef rather than being silently stripped here.
+  .passthrough()
   .openapi("CreateWorkflowBody");
 
 const IdVersionParam = z.object({ id: z.string().uuid(), version: z.string() });
