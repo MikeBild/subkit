@@ -8939,6 +8939,29 @@ export interface components {
             validation_function: string | null;
             timeout_ms: number | null;
             max_llm_tokens_per_run: number | null;
+            trigger: components["schemas"]["WorkflowTrigger"];
+        };
+        WorkflowTrigger: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTrigger"] | unknown;
+        RequestTrigger: {
+            /** @enum {string} */
+            kind: "request";
+        };
+        WebhookTrigger: {
+            /** @enum {string} */
+            kind: "webhook";
+            source: string;
+            events: string[];
+            /** @enum {string} */
+            verify: "stripe-signature" | "github-hmac" | "none";
+        };
+        ScheduleTrigger: {
+            /** @enum {string} */
+            kind: "schedule";
+            cron: string;
+            /** @default UTC */
+            tz: string;
+            business_days_only?: boolean;
+            skip_dates?: string[];
         };
         CreateWorkflowBody: {
             name: string;
@@ -8965,37 +8988,6 @@ export interface components {
             }[];
         } & {
             [key: string]: unknown;
-        };
-        WorkflowTrigger: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTrigger"];
-        RequestTrigger: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "request";
-        };
-        WebhookTrigger: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "webhook";
-            source: string;
-            events: string[];
-            /** @enum {string} */
-            verify: "stripe-signature" | "github-hmac" | "none";
-        };
-        ScheduleTrigger: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "schedule";
-            cron: string;
-            /** @default UTC */
-            tz: string;
-            business_days_only?: boolean;
-            skip_dates?: string[];
         };
         ValidateWorkflowResponse: {
             ok: boolean;

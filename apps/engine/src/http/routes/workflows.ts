@@ -35,6 +35,11 @@ const WorkflowSchema = z
     validation_function: z.string().nullable(),
     timeout_ms: z.number().nullable(),
     max_llm_tokens_per_run: z.number().nullable(),
+    // The workflow's trigger (schedule / webhook / request). Surfaced so
+    // GET is symmetric with the create/update request body and the MCP
+    // get_workflow definition — non-MCP callers (and the `sk` CLI banner)
+    // previously couldn't read the trigger from the bare HTTP response.
+    trigger: TriggerSchema.nullable(),
   })
   .openapi("Workflow");
 
@@ -130,6 +135,7 @@ function serializeWorkflow(w: svc.WorkflowView) {
     validation_function: w.definition.validation_function ?? null,
     timeout_ms: w.definition.timeout_ms ?? null,
     max_llm_tokens_per_run: w.definition.max_llm_tokens_per_run ?? null,
+    trigger: w.definition.trigger ?? null,
   };
 }
 

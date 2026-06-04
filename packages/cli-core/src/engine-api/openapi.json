@@ -1822,6 +1822,9 @@
           "max_llm_tokens_per_run": {
             "type": "number",
             "nullable": true
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/WorkflowTrigger"
           }
         },
         "required": [
@@ -1844,84 +1847,9 @@
           "validation_expression",
           "validation_function",
           "timeout_ms",
-          "max_llm_tokens_per_run"
+          "max_llm_tokens_per_run",
+          "trigger"
         ]
-      },
-      "CreateWorkflowBody": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "slug": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "input_schema": {
-            "type": "object",
-            "additionalProperties": {
-              "nullable": true
-            }
-          },
-          "output_schema": {
-            "type": "object",
-            "additionalProperties": {
-              "nullable": true
-            }
-          },
-          "steps": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": {
-                "nullable": true
-              }
-            }
-          },
-          "timeout_ms": {
-            "type": "integer",
-            "minimum": 0,
-            "exclusiveMinimum": true
-          },
-          "max_llm_tokens_per_run": {
-            "type": "integer",
-            "minimum": 0,
-            "exclusiveMinimum": true
-          },
-          "trigger": {
-            "$ref": "#/components/schemas/WorkflowTrigger"
-          },
-          "output_transform": {
-            "type": "string"
-          },
-          "output_transform_function": {
-            "type": "string"
-          },
-          "validation_expression": {
-            "type": "string"
-          },
-          "validation_function": {
-            "type": "string"
-          },
-          "response_filters": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": {
-                "nullable": true
-              }
-            }
-          }
-        },
-        "required": [
-          "name",
-          "steps"
-        ],
-        "additionalProperties": {
-          "nullable": true
-        }
       },
       "WorkflowTrigger": {
         "oneOf": [
@@ -1933,16 +1861,11 @@
           },
           {
             "$ref": "#/components/schemas/ScheduleTrigger"
+          },
+          {
+            "nullable": true
           }
-        ],
-        "discriminator": {
-          "propertyName": "kind",
-          "mapping": {
-            "request": "#/components/schemas/RequestTrigger",
-            "webhook": "#/components/schemas/WebhookTrigger",
-            "schedule": "#/components/schemas/ScheduleTrigger"
-          }
-        }
+        ]
       },
       "RequestTrigger": {
         "type": "object",
@@ -2027,6 +1950,82 @@
           "kind",
           "cron"
         ]
+      },
+      "CreateWorkflowBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "nullable": true
+              }
+            }
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "max_llm_tokens_per_run": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/WorkflowTrigger"
+          },
+          "output_transform": {
+            "type": "string"
+          },
+          "output_transform_function": {
+            "type": "string"
+          },
+          "validation_expression": {
+            "type": "string"
+          },
+          "validation_function": {
+            "type": "string"
+          },
+          "response_filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "nullable": true
+              }
+            }
+          }
+        },
+        "required": [
+          "name",
+          "steps"
+        ],
+        "additionalProperties": {
+          "nullable": true
+        }
       },
       "ValidateWorkflowResponse": {
         "type": "object",

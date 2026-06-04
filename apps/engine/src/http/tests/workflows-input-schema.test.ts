@@ -176,6 +176,16 @@ describe("POST /v1/workflows (definition fields are not silently dropped)", () =
     expect(rows[0]?.cron).toBe("7 8 * * *");
     expect(rows[0]?.timezone).toBe("Europe/Berlin");
     expect(rows[0]?.paused).toBe(false);
+
+    // GET surfaces the trigger (symmetric with the create body) so the
+    // `sk` CLI banner + non-MCP callers can read it back.
+    const get = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}`, {
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+    });
+    expect(get.status).toBe(200);
+    const got = (await get.json()) as { trigger?: { kind?: string; cron?: string } };
+    expect(got.trigger?.kind).toBe("schedule");
+    expect(got.trigger?.cron).toBe("7 8 * * *");
   });
 
   test("output_transform round-trips through create → GET", async () => {
