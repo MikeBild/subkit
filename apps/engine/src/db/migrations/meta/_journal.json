@@ -267,6 +267,13 @@
       "when": 1780900000000,
       "tag": "0037_supersede_workflow_scope_repair_candidates",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781000000000,
+      "tag": "0038_tenants_last_skill_candidate_analyze_at",
+      "breakpoints": true
     }
   ]
 }

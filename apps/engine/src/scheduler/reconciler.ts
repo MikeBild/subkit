@@ -33,6 +33,7 @@ import { parseCronExpression } from "./cron.ts";
 import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
+import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
 
 /** Fixed cadence for proactive drift scans (per scope decision). One
  *  hour balances early-detection value against the cost of repeated
@@ -343,6 +344,20 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "drift_scan_failed",
         msg: "scheduler proactive drift scan pass failed",
+        ...errorFields(err),
+      });
+    });
+    // Skill-candidate pattern analysis. Per-tenant CAS-stamp on
+    // `tenants.last_skill_candidate_analyze_at` gives multi-instance
+    // deployments exactly-once firing per cadence; each due tenant gets a
+    // `skill-candidate.analyze` job enqueued, whose worker runs
+    // runPatternAnalysis (repair / failure / success detectors → Skill
+    // Candidate proposals behind the operator-approval gate).
+    await this.reconcileSkillCandidateAnalysis().catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "skill_candidate_analyze_failed",
+        msg: "scheduler skill-candidate analysis pass failed",
         ...errorFields(err),
       });
     });
@@ -696,6 +711,24 @@ export class SchedulerReconciler {
 
       await runProactiveDriftScanForTenant(tenant.id, now, this.opts.db);
     }
+  }
+
+  /**
+   * Skill-candidate pattern analysis. Each live tenant whose
+   * `last_skill_candidate_analyze_at` is NULL or older than the cadence
+   * wins a CAS-stamp and gets a `skill-candidate.analyze` job enqueued
+   * exactly once per cadence. The worker runs `runPatternAnalysis`, which
+   * fans out to the repair / failure / success detectors and upserts Skill
+   * Candidate proposals (always `status='proposed'` — promotion to a Skill
+   * stays behind the operator-approval gate).
+   *
+   * Enqueue failures are caught per-tenant: the CAS-stamp has already
+   * advanced, so a transient enqueue error simply waits for the next
+   * cadence rather than hot-looping; the sweep keeps walking the other
+   * tenants.
+   */
+  async reconcileSkillCandidateAnalysis(now: Date = new Date()): Promise<void> {
+    await runSkillCandidateAnalysisSweep(now, this.opts.db, this.opts.boss);
   }
 
   /**

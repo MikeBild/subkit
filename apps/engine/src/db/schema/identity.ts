@@ -40,6 +40,15 @@ export const tenants = pgTable(
     // instance deployments. NULL means "never scanned" — the next pass
     // fires immediately.
     last_proactive_scan_at: timestamp("last_proactive_scan_at", { withTimezone: true }),
+    // Stamp set by the scheduler when the skill-candidate pattern analysis
+    // last fired for this tenant. Same compare-and-set cadence mechanism as
+    // last_proactive_scan_at — the reconciler CAS-stamps this column so the
+    // `skill-candidate.analyze` job is enqueued exactly once per cadence
+    // across multi-instance deployments. NULL means "never analysed" — the
+    // next reconciler pass fires immediately.
+    last_skill_candidate_analyze_at: timestamp("last_skill_candidate_analyze_at", {
+      withTimezone: true,
+    }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
