@@ -8,10 +8,12 @@
 //   • Emitted signal: scope:"connector", connector_id set, no workflow_id,
 //     fingerprint = sha256(`repair:<conn>:<ep>:<kind>`).slice(0,32).
 //
-// Note on clock usage: detectRepairPatterns calls Date.now() directly (it is
-// not wired to the production clock seam). Tests therefore insert created_at
-// values close to wall-clock time so rows fall inside the 30-day lookback
-// window relative to the real Date.now() when the test runs.
+// Note on clock usage: detectRepairPatterns reads time through the `now()`
+// clock seam (utils/clock.ts), which falls back to Date.now() when no test
+// override is installed — as here. Tests therefore insert created_at values
+// close to wall-clock time so rows fall inside the 30-day lookback window
+// relative to the seam's value when the test runs. (A future test that needs
+// frozen time can install a clock override and seed created_at relative to it.)
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
@@ -23,10 +25,10 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { detectRepairPatterns } from "../detectors/repair-pattern.ts";
 
 // A timestamp well within the 30-day lookback window (1 day ago relative to
-// wall-clock time when the test file is loaded). The detector uses Date.now()
-// directly, so we must stay anchored to real wall time.
+// wall-clock time when the test file is loaded).
 // allow-wall-clock: anchor for patch created_at — the detector computes its
-// own cutoff via Date.now(), so tests must stay within the real 30-day window.
+// cutoff via now() (falls back to Date.now() with no override installed), so
+// tests must stay within the real 30-day window.
 const RECENT_TS = new Date(Date.now() - 24 * 60 * 60 * 1000); // 1 day ago
 
 const skip = process.env.REQUIRES_PG === "0";

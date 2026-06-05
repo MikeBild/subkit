@@ -15,12 +15,18 @@
 // Output:       Connector-scoped PatternSignal (cross-workflow accumulation;
 //               connector + endpoint context comes from execution_fixtures).
 //
+// Grouping is deliberately at interface altitude: the kind is grouped, the
+// specific field path is NOT part of the key. Three `update_field_path`
+// repairs on the same endpoint that touch different paths still form one
+// "this interface needs field-path adjustment" convention. Because the path
+// is not part of the group, candidate copy never names a specific path — that
+// would misrepresent a group that may span several.
+//
 // Rows without an execution fixture (null fixture_id) carry no interface
 // context and are skipped (counted). Rows whose diff lacks a PatchProposal are
-// skipped (counted). The self-healing writer nests the proposal under
-// `diff.proposal` (see self-healing/service.ts:537-557); `kind` is
-// `proposal.kind` and, for `update_field_path`, the field path is
-// `proposal.patch.path`.
+// skipped (counted). The self-healing writer (processDriftSignal in
+// self-healing/service.ts) nests the proposal under `diff.proposal`; `kind` is
+// `proposal.kind`.
 
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
@@ -36,15 +42,14 @@ const MIN_PATCH_COUNT = 3;
 const LOOKBACK_DAYS = 30;
 
 // Read-shape for the patch proposal the self-healing writer nests under
-// `diff.proposal` (the producer is self-healing/service.ts:537-557, which
-// stores a PatchProposal from llm/flows/repair.ts). This is an internal
-// trust boundary — the writer is the only producer — but parsing it through
-// a schema means a writer-side rename surfaces as a counted skip
-// (`skipped_no_proposal`) instead of a silent misgroup, and keeps the read
-// site honest about the exact fields it depends on.
+// `diff.proposal` (the producer is `processDriftSignal` in
+// self-healing/service.ts, which stores a PatchProposal from
+// llm/flows/repair.ts). This is an internal trust boundary — the writer is the
+// only producer — but parsing it through a schema means a writer-side rename
+// surfaces as a counted skip (`skipped_no_proposal`) instead of a silent
+// misgroup, and keeps the read site honest about the field it depends on.
 const RepairProposalReadSchema = z.object({
   kind: z.string(),
-  patch: z.record(z.string(), z.unknown()).optional(),
 });
 
 interface PatchGroup {
@@ -52,7 +57,6 @@ interface PatchGroup {
   connector_slug: string | null;
   endpoint_key: string;
   kind: string;
-  path: string;
   count: number;
   patch_ids: string[];
 }
@@ -63,8 +67,10 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
   // Inner-join to execution_fixtures on BOTH fixture_id and tenant_id: the
   // tenant predicate keeps the read tenant-scoped (no cross-tenant fixture
   // reads), and the inner join naturally drops rows with a null fixture_id.
-  // Left-join connectors for the human-readable slug (the connector may have
-  // been deleted; slug is best-effort and only used for the candidate title).
+  // Left-join connectors (also tenant-scoped) for the human-readable slug:
+  // the connector may have been deleted, so slug is best-effort and only used
+  // for the candidate title — but the tenant predicate stops a mis-shaped
+  // fixture from leaking another tenant's slug into a user-visible title.
   const rows = await exec
     .select({
       id: patchCandidates.id,
@@ -81,7 +87,10 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
         eq(executionFixtures.tenant_id, tenant_id),
       ),
     )
-    .leftJoin(connectors, eq(connectors.id, executionFixtures.connector_id))
+    .leftJoin(
+      connectors,
+      and(eq(connectors.id, executionFixtures.connector_id), eq(connectors.tenant_id, tenant_id)),
+    )
     .where(
       and(
         eq(patchCandidates.tenant_id, tenant_id),
@@ -116,10 +125,6 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
     }
 
     const kind = parsed.data.kind;
-    let path = "";
-    if (kind === "update_field_path" && typeof parsed.data.patch?.path === "string") {
-      path = parsed.data.patch.path;
-    }
 
     const interfaceKey = `${connector_id}:${endpoint_key}`;
     totalsByInterface.set(interfaceKey, (totalsByInterface.get(interfaceKey) ?? 0) + 1);
@@ -135,7 +140,6 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
         connector_slug: row.connector_slug,
         endpoint_key,
         kind,
-        path,
         count: 1,
         patch_ids: [row.id],
       });
@@ -160,15 +164,17 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
     // expose the same endpoint_key don't produce visually identical titles.
     // Falls back to the connector id when the connector row is gone.
     const interfaceLabel = `${group.connector_slug ?? group.connector_id}/${group.endpoint_key}`;
-    const pathSuffix = group.path ? ` on path '${group.path}'` : "";
+    // The specific field path is intentionally absent: the group spans a kind
+    // on an interface, possibly across several paths, so the copy stays at the
+    // interface convention level rather than naming one path.
     const body =
       group.kind === "update_field_path"
-        ? `Repairs on the '${interfaceLabel}' interface consistently adjust the field path${pathSuffix}. This is an interface-level convention shared by every workflow that calls this connector endpoint — capture it as a skill so the path is applied up front instead of being re-discovered through drift.`
+        ? `Repairs on the '${interfaceLabel}' interface consistently adjust a response field path. This is an interface-level convention shared by every workflow that calls this connector endpoint — capture it as a skill so the path is applied up front instead of being re-discovered through drift.`
         : group.kind === "rename_param"
           ? `Repairs on the '${interfaceLabel}' interface consistently rename a parameter. This naming convention applies to every workflow on this connector endpoint — capture it as a skill to prevent recurring drift.`
           : group.kind === "add_header"
             ? `Repairs on the '${interfaceLabel}' interface consistently add a header. Every workflow calling this connector endpoint needs it — capture it as a skill.`
-            : `Repairs of kind '${group.kind}' recur on the '${interfaceLabel}' interface${pathSuffix}. This is a standing convention for every workflow on this connector endpoint — capture it as a skill.`;
+            : `Repairs of kind '${group.kind}' recur on the '${interfaceLabel}' interface. This is a standing convention for every workflow on this connector endpoint — capture it as a skill.`;
 
     signals.push({
       pattern_kind: "repair_pattern",
@@ -189,7 +195,7 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
       evidence: group.patch_ids.map((id) => ({
         patch_candidate_id: id,
         evidence_type: "patch_applied" as const,
-        summary: `Patch applied: ${group.kind}${group.path ? ` on ${group.path}` : ""}`,
+        summary: `Patch applied: ${group.kind} on ${interfaceLabel}`,
       })),
     });
   }

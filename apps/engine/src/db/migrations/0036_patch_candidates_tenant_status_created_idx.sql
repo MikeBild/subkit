@@ -13,6 +13,11 @@
 -- covers the new access path. Plain CREATE INDEX (the migration runner wraps
 -- each file in a transaction, so CONCURRENTLY is unavailable); IF NOT EXISTS
 -- keeps it idempotent.
+--
+-- ops: a non-concurrent build takes a SHARE lock on patch_candidates for the
+-- duration of the file's transaction. On a tenant with millions of
+-- patch_candidates rows this blocks writes briefly — schedule the deploy
+-- accordingly or pre-build the index CONCURRENTLY out-of-band before release.
 
 CREATE INDEX IF NOT EXISTS "patch_candidates_tenant_status_created_idx"
   ON "patch_candidates" ("tenant_id", "status", "created_at");
