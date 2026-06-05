@@ -454,6 +454,8 @@ async function upsertFromSignal(
           pattern_kind: signal.pattern_kind,
           confidence: signal.confidence,
           fingerprint: signal.fingerprint,
+          scope: signal.scope,
+          connector_id: signal.connector_id ?? null,
         },
       },
       tx,
