@@ -41,11 +41,13 @@ export const tenants = pgTable(
     // fires immediately.
     last_proactive_scan_at: timestamp("last_proactive_scan_at", { withTimezone: true }),
     // Stamp set by the scheduler when the skill-candidate pattern analysis
-    // last fired for this tenant. Same compare-and-set cadence mechanism as
-    // last_proactive_scan_at — the reconciler CAS-stamps this column so the
-    // `skill-candidate.analyze` job is enqueued exactly once per cadence
-    // across multi-instance deployments. NULL means "never analysed" — the
-    // next reconciler pass fires immediately.
+    // last fired for this tenant. The reconciler claims due tenants with a
+    // single atomic `UPDATE ... WHERE (col IS NULL OR col < cutoff)
+    // RETURNING id`, so the `skill-candidate.analyze` job is enqueued
+    // exactly once per cadence across multi-instance deployments. The
+    // range-based predicate is microsecond-safe (unlike a read-then-CAS on
+    // an equality, which truncates to milliseconds on read). NULL means
+    // "never analysed" — the next reconciler pass fires immediately.
     last_skill_candidate_analyze_at: timestamp("last_skill_candidate_analyze_at", {
       withTimezone: true,
     }),

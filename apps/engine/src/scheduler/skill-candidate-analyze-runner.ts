@@ -11,7 +11,7 @@
 // the worker was registered yet never fired, so the detectors never ran in
 // normal operation. This sweep is what actually drives them.
 
-import { and, eq, isNull, lt, or } from "drizzle-orm";
+import { and, isNull, lt, or } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Db } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
@@ -29,17 +29,31 @@ export const SKILL_CANDIDATE_ANALYZE_CADENCE_MS = 6 * 60 * 60 * 1000;
 /**
  * Sweep tenants and enqueue a `skill-candidate.analyze` job for each one
  * whose `last_skill_candidate_analyze_at` is NULL or older than the
- * cadence. Each due tenant wins a compare-and-set on the column, so a
- * multi-instance deployment fires exactly once per cadence per tenant.
+ * cadence.
+ *
+ * Claim is a SINGLE atomic `UPDATE ... WHERE <due> RETURNING id`: it flips
+ * every due tenant's stamp to `now` and returns only the ids it actually
+ * changed. Two properties fall out of doing it as one statement:
+ *
+ *   - Microsecond-safe. The predicate only ever uses range (`<`) and NULL
+ *     tests against the cadence cutoff — never an equality on a value read
+ *     back into a JS `Date`. (node-postgres truncates timestamptz to
+ *     millisecond precision on read, so the previous read-then-CAS-on-
+ *     equality silently matched 0 rows whenever the stored stamp carried
+ *     sub-millisecond microseconds, stalling that tenant forever.)
+ *   - Exactly-once across instances. Postgres takes a row lock per UPDATE;
+ *     a concurrent reconciler's UPDATE blocks, then re-evaluates the WHERE
+ *     against the now-advanced stamp (no longer `< cutoff`) and skips the
+ *     row, so it never appears in two instances' RETURNING sets.
  *
  * The worker runs `runPatternAnalysis`, which fans out to the repair /
  * failure / success detectors and upserts Skill Candidate proposals
  * (always `status='proposed'` — promotion to a Skill stays behind the
  * operator-approval gate).
  *
- * Enqueue failures are caught per-tenant: the CAS-stamp has already
- * advanced, so a transient enqueue error simply waits for the next cadence
- * rather than hot-looping; the sweep keeps walking the other tenants.
+ * Enqueue failures are caught per-tenant: the stamp has already advanced,
+ * so a transient enqueue error simply waits for the next cadence rather
+ * than hot-looping; the sweep keeps walking the other claimed tenants.
  */
 export async function runSkillCandidateAnalysisSweep(
   now: Date,
@@ -48,12 +62,9 @@ export async function runSkillCandidateAnalysisSweep(
 ): Promise<void> {
   // tenant-filter:exempt — analysis sweeps every tenant; row carries tenant_id forward
   const cadenceCutoff = new Date(now.getTime() - SKILL_CANDIDATE_ANALYZE_CADENCE_MS);
-  const dueRows = await db
-    .select({
-      id: tenants.id,
-      last_skill_candidate_analyze_at: tenants.last_skill_candidate_analyze_at,
-    })
-    .from(tenants)
+  const claimed = await db
+    .update(tenants)
+    .set({ last_skill_candidate_analyze_at: now })
     .where(
       and(
         isNull(tenants.deleted_at),
@@ -62,24 +73,10 @@ export async function runSkillCandidateAnalysisSweep(
           lt(tenants.last_skill_candidate_analyze_at, cadenceCutoff),
         ),
       ),
-    );
+    )
+    .returning({ id: tenants.id });
 
-  for (const tenant of dueRows) {
-    // Compare-and-set on `last_skill_candidate_analyze_at`: a concurrent
-    // reconciler in another engine instance racing for the same tenant
-    // only sees one successful UPDATE; the loser's RETURNING comes back
-    // empty and skips the enqueue.
-    const priorWhere =
-      tenant.last_skill_candidate_analyze_at === null
-        ? isNull(tenants.last_skill_candidate_analyze_at)
-        : eq(tenants.last_skill_candidate_analyze_at, tenant.last_skill_candidate_analyze_at);
-    const stamped = await db
-      .update(tenants)
-      .set({ last_skill_candidate_analyze_at: now })
-      .where(and(eq(tenants.id, tenant.id), priorWhere))
-      .returning({ id: tenants.id });
-    if (stamped.length === 0) continue;
-
+  for (const tenant of claimed) {
     try {
       await enqueueSkillCandidateAnalysis(boss, { tenant_id: tenant.id });
       logger.info({
