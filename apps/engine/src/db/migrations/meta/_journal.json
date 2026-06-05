@@ -260,6 +260,13 @@
       "when": 1780800000000,
       "tag": "0036_patch_candidates_tenant_status_created_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1780900000000,
+      "tag": "0037_supersede_workflow_scope_repair_candidates",
+      "breakpoints": true
     }
   ]
 }

@@ -165,6 +165,9 @@ export const patchCandidates = pgTable(
   },
   (t) => [
     index("patch_candidates_tenant_workflow_status_idx").on(t.tenant_id, t.workflow_id, t.status),
+    // Covers the connector-pattern detector scan (tenant_id, status='applied',
+    // created_at >= cutoff) with no workflow_id — see migration 0036.
+    index("patch_candidates_tenant_status_created_idx").on(t.tenant_id, t.status, t.created_at),
   ],
 );
 
