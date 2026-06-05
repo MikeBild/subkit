@@ -41,6 +41,9 @@ beforeAll(async () => {
   if (!conn) throw new Error("seed connector failed");
   connectorId = conn.id;
 
+  // The workflow exists only to satisfy patch_candidates.workflow_id (a NOT
+  // NULL FK). The rescoped detector groups by connector/endpoint, not by
+  // workflow, so the journey never asserts against it — keep the seed.
   const [wf] = await ctx.db
     .insert(workflows)
     .values({

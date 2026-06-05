@@ -23,7 +23,8 @@ let connectorId: string;
 
 // A timestamp well within the 30-day lookback window used by the detector.
 // allow-wall-clock: anchor for patch created_at — the detector computes its
-// own cutoff via Date.now(), so tests must stay within the real 30-day window.
+// cutoff via now() (falls back to Date.now() with no override installed), so
+// tests must stay within the real 30-day window.
 const RECENT_TS = new Date(Date.now() - 24 * 60 * 60 * 1000); // 1 day ago
 
 beforeAll(async () => {

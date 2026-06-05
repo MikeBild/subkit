@@ -13,6 +13,29 @@
 -- rows (the old detector never produced signals against production-shaped
 -- diffs), but the statement makes the rescope contract explicit and safe
 -- for any environment that did accumulate them.
+--
+-- Audit non-negotiable: this mutates tenant-visible state, so it writes a
+-- `skill_candidate.superseded` audit_log row per flipped candidate FIRST
+-- (same action the in-flow supersede path emits). Both statements run in the
+-- migration runner's per-file transaction, so the audit rows and the status
+-- flip commit atomically. If zero candidates match, zero audit rows are
+-- written.
+
+INSERT INTO "audit_log"
+  ("id", "tenant_id", "actor_type", "action", "resource_type", "resource_id", "result", "metadata")
+SELECT
+  gen_random_uuid(),
+  "tenant_id",
+  'system',
+  'skill_candidate.superseded',
+  'skill_candidate',
+  "id"::text,
+  'success',
+  jsonb_build_object('superseded_reason', 'detector_rescope_0037', 'scope', 'workflow')
+FROM "skill_candidates"
+WHERE "status" = 'proposed'
+  AND "pattern_kind" = 'repair_pattern'
+  AND "scope" = 'workflow';
 
 UPDATE "skill_candidates"
   SET "status" = 'superseded', "updated_at" = now()

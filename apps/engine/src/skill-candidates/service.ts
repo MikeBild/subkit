@@ -400,7 +400,11 @@ async function upsertFromSignal(
           resource_type: "skill_candidate",
           resource_id: s.id,
           result: "success",
-          metadata: { superseded_by_fingerprint: signal.fingerprint },
+          metadata: {
+            superseded_by_fingerprint: signal.fingerprint,
+            scope: signal.scope,
+            connector_id: signal.connector_id ?? null,
+          },
         },
         tx,
       );
