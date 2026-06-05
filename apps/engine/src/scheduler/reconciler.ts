@@ -7,7 +7,7 @@
 // locally via setInterval because pg-boss' cron is minute-resolution.
 
 import { CronExpressionParser } from "cron-parser";
-import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -624,10 +624,18 @@ export class SchedulerReconciler {
         // reconcilers run concurrently, exactly one wins this UPDATE
         // and the other's RETURNING comes back empty — the loser
         // skips fireWorkflowSchedule and the schedule fires once.
+        //
+        // The equality is taken at millisecond precision via date_trunc:
+        // node-postgres truncates the read-back timestamptz to ms, so a
+        // raw `= last` against a stored value carrying sub-millisecond
+        // microseconds would never match, silently stalling the schedule.
+        // Truncating both sides keeps the CAS microsecond-safe while
+        // preserving exactly-once (the old snapshot's ms value only
+        // matches until the winner advances the column).
         const priorWhere =
           last === null
             ? isNull(workflowsSchedules.last_enqueued_at)
-            : eq(workflowsSchedules.last_enqueued_at, last);
+            : sql`date_trunc('milliseconds', ${workflowsSchedules.last_enqueued_at}) = ${last}`;
         const stamped = await this.opts.db
           .update(workflowsSchedules)
           .set({ last_enqueued_at: now })
@@ -677,12 +685,17 @@ export class SchedulerReconciler {
   async reconcileProactiveDriftScans(now: Date = new Date()): Promise<void> {
     // tenant-filter:exempt — proactive drift scan sweeps every tenant; row carries tenant_id forward
     const cadenceCutoff = new Date(now.getTime() - PROACTIVE_DRIFT_SCAN_CADENCE_MS);
-    const dueRows = await this.opts.db
-      .select({
-        id: tenants.id,
-        last_proactive_scan_at: tenants.last_proactive_scan_at,
-      })
-      .from(tenants)
+    // Atomic claim: a single UPDATE flips every due tenant's stamp to `now`
+    // and RETURNs the ids it actually changed. Range-based (`<` / NULL) so
+    // it is microsecond-safe — never an equality on a millisecond-truncated
+    // read-back Date (which silently matched 0 rows whenever the stored
+    // stamp carried sub-millisecond microseconds). Exactly-once across
+    // instances is preserved by row locks: a concurrent reconciler's UPDATE
+    // blocks, then re-evaluates the WHERE against the now-advanced stamp (no
+    // longer `< cutoff`) and skips the row.
+    const claimed = await this.opts.db
+      .update(tenants)
+      .set({ last_proactive_scan_at: now })
       .where(
         and(
           isNull(tenants.deleted_at),
@@ -691,25 +704,24 @@ export class SchedulerReconciler {
             lt(tenants.last_proactive_scan_at, cadenceCutoff),
           ),
         ),
-      );
+      )
+      .returning({ id: tenants.id });
 
-    for (const tenant of dueRows) {
-      // Compare-and-set on `last_proactive_scan_at`: a concurrent
-      // reconciler in another engine instance racing for the same
-      // tenant only sees one successful UPDATE; the loser's
-      // RETURNING comes back empty and skips the scan.
-      const priorWhere =
-        tenant.last_proactive_scan_at === null
-          ? isNull(tenants.last_proactive_scan_at)
-          : eq(tenants.last_proactive_scan_at, tenant.last_proactive_scan_at);
-      const stamped = await this.opts.db
-        .update(tenants)
-        .set({ last_proactive_scan_at: now })
-        .where(and(eq(tenants.id, tenant.id), priorWhere))
-        .returning({ id: tenants.id });
-      if (stamped.length === 0) continue;
-
-      await runProactiveDriftScanForTenant(tenant.id, now, this.opts.db);
+    for (const tenant of claimed) {
+      // The runner is designed not to throw (per-tenant failures land as
+      // status='failed' on the scan row), but a defensive catch keeps one
+      // tenant's failure from skipping the rest of the already-claimed batch.
+      try {
+        await runProactiveDriftScanForTenant(tenant.id, now, this.opts.db);
+      } catch (err) {
+        logger.error({
+          module: "scheduler",
+          action: "drift_scan_failed",
+          msg: "proactive drift scan threw for tenant — continuing with the rest",
+          tenant_id: tenant.id,
+          ...errorFields(err),
+        });
+      }
     }
   }
 
