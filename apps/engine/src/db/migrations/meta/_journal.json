@@ -253,6 +253,13 @@
       "when": 1780700000000,
       "tag": "0035_audit_log_tenant_action_ts_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1780800000000,
+      "tag": "0036_patch_candidates_tenant_status_created_idx",
+      "breakpoints": true
     }
   ]
 }

@@ -1,40 +1,105 @@
 // Journey 32: Skill candidate lifecycle via REST API.
 //
-// Seed patch data, run pattern analysis, verify candidate proposed,
-// approve it, and verify the skill was created.
+// Seeds applied patch_candidates with the real diff shape (proposal nested
+// under diff.proposal) and execution_fixtures so the repair-pattern detector
+// can inner-join on fixture_id → connector_id/endpoint_key. Runs pattern
+// analysis, verifies a connector-scoped candidate is proposed, approves it,
+// and verifies the skill was created.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { auditLog, patchCandidates, workflows } from "../../db/schema/index.ts";
+import {
+  auditLog,
+  connectors,
+  executionFixtures,
+  patchCandidates,
+  workflows,
+} from "../../db/schema/index.ts";
 import { runPatternAnalysis } from "../../skill-candidates/service.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
-let workflowId: string;
+let connectorId: string;
+
+// A timestamp well within the 30-day lookback window used by the detector.
+// allow-wall-clock: anchor for patch created_at — the detector computes its
+// own cutoff via Date.now(), so tests must stay within the real 30-day window.
+const RECENT_TS = new Date(Date.now() - 24 * 60 * 60 * 1000); // 1 day ago
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("skill-candidate");
 
-  // Seed a workflow
-  const [wf] = await ctx.db
-    .insert(workflows)
+  // Seed a connector — the repair-pattern detector groups by connector_id.
+  const [conn] = await ctx.db
+    .insert(connectors)
     .values({
       tenant_id: ctx.tenantId,
-      slug: "sc-test-wf",
-      name: "SC Test Workflow",
-      lifecycle: "active",
+      slug: "sc-test-api",
+      display_name: "SC Test API",
+      driver: "http",
     })
     .returning();
-  workflowId = wf!.id;
+  if (!conn) throw new Error("seed connector failed");
+  connectorId = conn.id;
 
-  // Seed 5 applied patches with same pattern
-  for (let i = 0; i < 5; i++) {
+  // Seed 3 workflows — patches on DIFFERENT workflows must still form one group.
+  const seedWorkflowIds: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    const [wf] = await ctx.db
+      .insert(workflows)
+      .values({
+        tenant_id: ctx.tenantId,
+        slug: `sc-test-wf-${i}`,
+        name: `SC Test Workflow ${i}`,
+        lifecycle: "active",
+      })
+      .returning();
+    if (!wf) throw new Error(`seed workflow ${i} failed`);
+    seedWorkflowIds.push(wf.id);
+  }
+
+  // For each workflow, seed an execution_fixture and a matching applied
+  // patch_candidate with the REAL diff shape (proposal nested under diff.proposal).
+  // This lets the detector inner-join to execution_fixtures for connector context.
+  for (let i = 0; i < seedWorkflowIds.length; i++) {
+    const [fix] = await ctx.db
+      .insert(executionFixtures)
+      .values({
+        tenant_id: ctx.tenantId,
+        connector_id: connectorId,
+        endpoint_key: "get_customers",
+        request: {},
+        response: {},
+      })
+      .returning();
+    if (!fix) throw new Error(`seed fixture ${i} failed`);
+
     await ctx.db.insert(patchCandidates).values({
       tenant_id: ctx.tenantId,
-      workflow_id: workflowId,
-      diff: { kind: "update_field_path", path: "data.customer_id" },
+      workflow_id: seedWorkflowIds[i]!,
+      diff: {
+        proposal: {
+          classification: "safe",
+          kind: "update_field_path",
+          description: "field path convention on this endpoint",
+          patch: {
+            path: "/data/customer_id",
+            value: "/data/result/customer_id",
+          },
+          reasoning: "observed drift on every run",
+        },
+        drift_signal: {},
+        dry_run: { ok: true, error: null, fixture_id: null, skipped: false },
+        policy: {},
+        step_id: `step-${i}`,
+        execution_id: `exec-${i}`,
+        source: "test",
+      },
       classification: "safe",
+      fixture_id: fix.id,
       status: "applied",
+      created_at: RECENT_TS,
+      updated_at: RECENT_TS,
     });
   }
 }, JOURNEY_HOOK_TIMEOUT);
@@ -46,30 +111,48 @@ afterAll(async () => {
 describe("journey: skill candidate lifecycle", () => {
   let candidateId: string;
 
-  test("AC1: pattern analysis detects repair pattern", async () => {
+  test("AC1: pattern analysis detects repair pattern from applied patches", async () => {
     const result = await runPatternAnalysis({ tenant_id: ctx.tenantId }, ctx.db);
     expect(result.candidates_proposed).toBeGreaterThanOrEqual(1);
   });
 
-  test("AC2: list candidates shows proposed", async () => {
+  test("AC2: list candidates shows a connector-scoped proposed repair_pattern", async () => {
     const res = await journeyFetch(ctx, "/v1/skill-candidates?status=proposed");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { items: Array<{ id: string; pattern_kind: string }> };
+    const body = (await res.json()) as {
+      items: Array<{
+        id: string;
+        pattern_kind: string;
+        scope: string;
+        connector_id: string | null;
+        workflow_id: string | null;
+        evidence_count: number;
+      }>;
+    };
     expect(body.items.length).toBeGreaterThanOrEqual(1);
     const candidate = body.items.find((c) => c.pattern_kind === "repair_pattern");
     expect(candidate).toBeDefined();
+    expect(candidate!.scope).toBe("connector");
+    expect(candidate!.connector_id).toBe(connectorId);
+    // No workflow_id on a connector-scoped signal.
+    expect(candidate!.workflow_id).toBeNull();
     candidateId = candidate!.id;
   });
 
-  test("AC3: get candidate shows details", async () => {
+  test("AC3: get candidate shows connector-scoped details with evidence", async () => {
     const res = await journeyFetch(ctx, `/v1/skill-candidates/${candidateId}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       id: string;
+      scope: string;
+      connector_id: string | null;
       evidence_count: number;
       confidence: string;
     };
-    expect(body.evidence_count).toBeGreaterThanOrEqual(5);
+    expect(body.scope).toBe("connector");
+    expect(body.connector_id).toBe(connectorId);
+    // 3 applied patches were seeded — evidence_count must be >= 3.
+    expect(body.evidence_count).toBeGreaterThanOrEqual(3);
   });
 
   test("AC4: approve candidate creates skill", async () => {
@@ -82,24 +165,31 @@ describe("journey: skill candidate lifecycle", () => {
     expect(body.skill_id).toBeDefined();
     expect(body.candidate.status).toBe("approved");
 
-    // Verify skill exists
+    // Verify skill exists.
     const skillRes = await journeyFetch(ctx, `/v1/skills/${body.skill_id}`);
     expect(skillRes.status).toBe(200);
   });
 
-  test("AC5: re-analysis doesn't re-propose approved pattern", async () => {
+  test("AC5: re-analysis does not re-propose an already-approved pattern", async () => {
     const result = await runPatternAnalysis({ tenant_id: ctx.tenantId }, ctx.db);
-    // Should skip since the fingerprint is already approved
+    // The fingerprint is already approved, so no new candidate is proposed.
     expect(result.candidates_proposed).toBe(0);
   });
 
-  test("AC6: audit trail complete", async () => {
+  test("AC6: audit trail contains SKILL_CANDIDATE_PROPOSED with scope and connector_id metadata", async () => {
     const audits = await ctx.db
       .select()
       .from(auditLog)
       .where(eq(auditLog.resource_id, candidateId));
+
     const actions = audits.map((a) => a.action);
     expect(actions).toContain("skill_candidate.proposed");
     expect(actions).toContain("skill_candidate.approved");
+
+    const proposedRow = audits.find((a) => a.action === "skill_candidate.proposed");
+    expect(proposedRow).toBeDefined();
+    const meta = proposedRow!.metadata as Record<string, unknown>;
+    expect(meta.scope).toBe("connector");
+    expect(meta.connector_id).toBe(connectorId);
   });
 });
