@@ -54,6 +54,7 @@ import sql0033AddStatsReadPermission from "./0033_add_stats_read_permission.sql"
 import sql0034ExecutionsTenantStatusStartedIdx from "./0034_executions_tenant_status_started_idx.sql" with { type: "text" };
 import sql0035AuditLogTenantActionTsIdx from "./0035_audit_log_tenant_action_ts_idx.sql" with { type: "text" };
 import sql0036PatchCandidatesTenantStatusCreatedIdx from "./0036_patch_candidates_tenant_status_created_idx.sql" with { type: "text" };
+import sql0037SupersedeWorkflowScopeRepairCandidates from "./0037_supersede_workflow_scope_repair_candidates.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -115,6 +116,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0034_executions_tenant_status_started_idx": sql0034ExecutionsTenantStatusStartedIdx,
   "0035_audit_log_tenant_action_ts_idx": sql0035AuditLogTenantActionTsIdx,
   "0036_patch_candidates_tenant_status_created_idx": sql0036PatchCandidatesTenantStatusCreatedIdx,
+  "0037_supersede_workflow_scope_repair_candidates": sql0037SupersedeWorkflowScopeRepairCandidates,
 };
 
 const journal = journalMeta as unknown as Journal;

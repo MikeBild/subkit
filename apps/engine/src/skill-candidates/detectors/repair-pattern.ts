@@ -18,21 +18,38 @@
 // Rows without an execution fixture (null fixture_id) carry no interface
 // context and are skipped (counted). Rows whose diff lacks a PatchProposal are
 // skipped (counted). The self-healing writer nests the proposal under
-// `diff.proposal` (see self-healing/service.ts); `kind` is `proposal.kind` and,
-// for `update_field_path`, the field path is `proposal.patch.path`.
+// `diff.proposal` (see self-healing/service.ts:537-557); `kind` is
+// `proposal.kind` and, for `update_field_path`, the field path is
+// `proposal.patch.path`.
 
 import { createHash } from "node:crypto";
+import { z } from "@hono/zod-openapi";
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
+import { connectors } from "../../db/schema/connectors.ts";
 import { executionFixtures, patchCandidates } from "../../db/schema/executions.ts";
 import { logger } from "../../logging/logger.ts";
+import { now } from "../../utils/clock.ts";
 import { computeConfidence, type PatternSignal } from "../types.ts";
 
 const MIN_PATCH_COUNT = 3;
 const LOOKBACK_DAYS = 30;
 
+// Read-shape for the patch proposal the self-healing writer nests under
+// `diff.proposal` (the producer is self-healing/service.ts:537-557, which
+// stores a PatchProposal from llm/flows/repair.ts). This is an internal
+// trust boundary — the writer is the only producer — but parsing it through
+// a schema means a writer-side rename surfaces as a counted skip
+// (`skipped_no_proposal`) instead of a silent misgroup, and keeps the read
+// site honest about the exact fields it depends on.
+const RepairProposalReadSchema = z.object({
+  kind: z.string(),
+  patch: z.record(z.string(), z.unknown()).optional(),
+});
+
 interface PatchGroup {
   connector_id: string;
+  connector_slug: string | null;
   endpoint_key: string;
   kind: string;
   path: string;
@@ -41,17 +58,20 @@ interface PatchGroup {
 }
 
 export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise<PatternSignal[]> {
-  const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
   // Inner-join to execution_fixtures on BOTH fixture_id and tenant_id: the
   // tenant predicate keeps the read tenant-scoped (no cross-tenant fixture
   // reads), and the inner join naturally drops rows with a null fixture_id.
+  // Left-join connectors for the human-readable slug (the connector may have
+  // been deleted; slug is best-effort and only used for the candidate title).
   const rows = await exec
     .select({
       id: patchCandidates.id,
       diff: patchCandidates.diff,
       connector_id: executionFixtures.connector_id,
       endpoint_key: executionFixtures.endpoint_key,
+      connector_slug: connectors.slug,
     })
     .from(patchCandidates)
     .innerJoin(
@@ -61,6 +81,7 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
         eq(executionFixtures.tenant_id, tenant_id),
       ),
     )
+    .leftJoin(connectors, eq(connectors.id, executionFixtures.connector_id))
     .where(
       and(
         eq(patchCandidates.tenant_id, tenant_id),
@@ -79,12 +100,10 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
 
   for (const row of rows) {
     const diff = row.diff as Record<string, unknown> | null;
-    const proposal =
-      diff && typeof diff === "object"
-        ? (diff.proposal as Record<string, unknown> | undefined)
-        : undefined;
-
-    if (!proposal || typeof proposal.kind !== "string") {
+    const parsed = RepairProposalReadSchema.safeParse(
+      diff && typeof diff === "object" ? diff.proposal : undefined,
+    );
+    if (!parsed.success) {
       skipped_no_proposal++;
       continue;
     }
@@ -96,13 +115,10 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
       continue;
     }
 
-    const kind = proposal.kind;
+    const kind = parsed.data.kind;
     let path = "";
-    if (kind === "update_field_path") {
-      const patch = proposal.patch as Record<string, unknown> | undefined;
-      if (patch && typeof patch.path === "string") {
-        path = patch.path;
-      }
+    if (kind === "update_field_path" && typeof parsed.data.patch?.path === "string") {
+      path = parsed.data.patch.path;
     }
 
     const interfaceKey = `${connector_id}:${endpoint_key}`;
@@ -116,6 +132,7 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
     } else {
       groups.set(key, {
         connector_id,
+        connector_slug: row.connector_slug,
         endpoint_key,
         kind,
         path,
@@ -139,21 +156,25 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
       .digest("hex")
       .slice(0, 32);
 
+    // Qualify the interface with the connector slug so two connectors that
+    // expose the same endpoint_key don't produce visually identical titles.
+    // Falls back to the connector id when the connector row is gone.
+    const interfaceLabel = `${group.connector_slug ?? group.connector_id}/${group.endpoint_key}`;
     const pathSuffix = group.path ? ` on path '${group.path}'` : "";
     const body =
       group.kind === "update_field_path"
-        ? `Repairs on the '${group.endpoint_key}' interface consistently adjust the field path${pathSuffix}. This is an interface-level convention shared by every workflow that calls this connector endpoint — capture it as a skill so the path is applied up front instead of being re-discovered through drift.`
+        ? `Repairs on the '${interfaceLabel}' interface consistently adjust the field path${pathSuffix}. This is an interface-level convention shared by every workflow that calls this connector endpoint — capture it as a skill so the path is applied up front instead of being re-discovered through drift.`
         : group.kind === "rename_param"
-          ? `Repairs on the '${group.endpoint_key}' interface consistently rename a parameter. This naming convention applies to every workflow on this connector endpoint — capture it as a skill to prevent recurring drift.`
+          ? `Repairs on the '${interfaceLabel}' interface consistently rename a parameter. This naming convention applies to every workflow on this connector endpoint — capture it as a skill to prevent recurring drift.`
           : group.kind === "add_header"
-            ? `Repairs on the '${group.endpoint_key}' interface consistently add a header. Every workflow calling this connector endpoint needs it — capture it as a skill.`
-            : `Repairs of kind '${group.kind}' recur on the '${group.endpoint_key}' interface${pathSuffix}. This is a standing convention for every workflow on this connector endpoint — capture it as a skill.`;
+            ? `Repairs on the '${interfaceLabel}' interface consistently add a header. Every workflow calling this connector endpoint needs it — capture it as a skill.`
+            : `Repairs of kind '${group.kind}' recur on the '${interfaceLabel}' interface${pathSuffix}. This is a standing convention for every workflow on this connector endpoint — capture it as a skill.`;
 
     signals.push({
       pattern_kind: "repair_pattern",
       scope: "connector",
       connector_id: group.connector_id,
-      title: `Recurring ${group.kind} on ${group.endpoint_key}`,
+      title: `Recurring ${group.kind} on ${interfaceLabel}`,
       body,
       examples: [
         `Applied ${group.count} times across this interface in the last ${LOOKBACK_DAYS} days`,
