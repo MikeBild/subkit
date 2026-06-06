@@ -331,6 +331,33 @@ describe("connector draft tools", () => {
     expect(data.validation.errors.some((error) => error.path === "base_url")).toBe(false);
   });
 
+  test("start_connector_from_template steers oauth2 to authenticate_oauth and forbids access-token prompts", async () => {
+    // Regression for the live LinkedIn session where the LLM, given no
+    // next_phase on the template path, asked the user to "Enter your
+    // LinkedIn API access token" on an oauth2 connector. The template
+    // tool must return the same explicit oauth2 guidance as
+    // start_connector_from_description.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromTemplateTool.execute(toolCtx.base, {
+      template_slug: "linkedin",
+      environment: "dev",
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: { auth_type: string };
+      next_phase?: { phase: string; next_suggested_tool: string; hint: string };
+    };
+    expect(data.connector.auth_type).toBe("oauth2");
+    expect(data.next_phase?.phase).toBe("authenticate_connector");
+    expect(data.next_phase?.next_suggested_tool).toBe("authenticate_oauth");
+    // The hint must explicitly steer away from token collection and
+    // toward client_id/client_secret + the authorization-code flow.
+    expect(data.next_phase?.hint).toContain("client_id");
+    expect(data.next_phase?.hint).toContain("client_secret");
+    expect(data.next_phase?.hint.toLowerCase()).toContain("do not ask");
+    expect(data.next_phase?.hint).toContain("authenticate_oauth");
+  });
+
   test("probe_connector_draft stores the latest probe summary", async () => {
     const toolCtx = await createToolCtx();
     await startConnectorFromDescriptionTool.execute(toolCtx.base, {

@@ -73,6 +73,49 @@ export function toNextBestActions(
   return [...new Set(actions)];
 }
 
+/**
+ * Post-start guidance: what the author must do next to make a freshly
+ * started connector draft usable, keyed on auth_type. Lives here (not
+ * inline in each start_* tool) so `start_connector_from_description` and
+ * `start_connector_from_template` steer the LLM IDENTICALLY. Pre-fix the
+ * template path returned no `next_phase`, so for oauth2 connectors the
+ * LLM improvised "ask the user for an API access token" — wrong for
+ * providers like LinkedIn that only issue tokens through the
+ * authorization-code flow (confirmed in a live session: ask_user_form
+ * summary "Enter your LinkedIn API access token" on an oauth2 draft).
+ */
+export function buildAuthNextPhase(authType: string | undefined): {
+  phase: string;
+  next_suggested_tool: string;
+  hint: string;
+} {
+  if (authType === "oauth2") {
+    return {
+      phase: "authenticate_connector",
+      next_suggested_tool: "authenticate_oauth",
+      hint:
+        "OAuth2 connector — do NOT ask the user for an access token or API key. " +
+        "First collect the operator's OAuth2 client_id and client_secret " +
+        "(client_secret as a sensitive field) via ask_user_form; save_connector_draft " +
+        "binds them atomically; then call authenticate_oauth to run the " +
+        "authorization-code flow. The saved template_snapshot already carries the " +
+        "authorization/token endpoints and scopes — no manual oauth config needed.",
+    };
+  }
+  if (authType === "none") {
+    return {
+      phase: "test_connector",
+      next_suggested_tool: "probe_connector_draft",
+      hint: "No credential needed. Probe the draft to verify base_url, then save.",
+    };
+  }
+  return {
+    phase: "authenticate_connector",
+    next_suggested_tool: "ask_user_form",
+    hint: `Collect the operator's credential for auth_type=${authType} (token / api key / username+password) via ask_user_form, then save_connector_draft binds it atomically with the connector.`,
+  };
+}
+
 export function buildGateError(
   draft: DraftDocument,
   args: {

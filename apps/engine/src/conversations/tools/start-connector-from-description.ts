@@ -12,7 +12,7 @@ import {
   shouldAutoSelectConnectorTemplate,
 } from "../connector-template-intelligence.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
-import { buildDraftMutationPayload } from "./authoring-contract.ts";
+import { buildAuthNextPhase, buildDraftMutationPayload } from "./authoring-contract.ts";
 import { findReusableConnectorByUrl } from "./connector-reuse.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -206,24 +206,7 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
             template_source: connector.template_source ?? null,
             validation,
           },
-          next_phase:
-            connector.auth_type === "oauth2"
-              ? {
-                  phase: "authenticate_connector",
-                  next_suggested_tool: "authenticate_oauth",
-                  hint: "After save_connector_draft, call authenticate_oauth to start the authorization-code flow. The connector's saved template_snapshot already carries the oauth endpoints — no manual config needed.",
-                }
-              : connector.auth_type === "none"
-                ? {
-                    phase: "test_connector",
-                    next_suggested_tool: "probe_connector_draft",
-                    hint: "No credential needed. Probe the draft to verify base_url, then save.",
-                  }
-                : {
-                    phase: "authenticate_connector",
-                    next_suggested_tool: "ask_user_form",
-                    hint: `Collect the operator's credential for auth_type=${connector.auth_type} (token / api key / username+password) via ask_user_form, then save_connector_draft binds it atomically with the connector.`,
-                  },
+          next_phase: buildAuthNextPhase(connector.auth_type),
           validation,
           matched_template: template
             ? {

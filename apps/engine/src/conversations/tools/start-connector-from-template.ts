@@ -9,7 +9,11 @@ import {
   allowedTemplateAuthTypes,
   inferTemplateRequiredFields,
 } from "../connector-template-intelligence.ts";
-import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
+import {
+  buildAuthNextPhase,
+  buildDraftMutationPayload,
+  buildGateError,
+} from "./authoring-contract.ts";
 import { findReusableConnectorByUrl } from "./connector-reuse.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -161,6 +165,7 @@ export const startConnectorFromTemplateTool: ConversationTool = {
             required_fields: inferTemplateRequiredFields(template),
             validation,
           },
+          next_phase: buildAuthNextPhase(connector.auth_type),
           validation,
           endpoint_catalog: discoveryStatus,
         },
