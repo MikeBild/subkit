@@ -4248,6 +4248,8 @@ export interface paths {
                     q: string;
                     scope?: "global" | "workflow";
                     workflow_id?: string;
+                    /** @description Comma-separated tags; narrows to sources carrying any of them. */
+                    tags?: string;
                     limit?: number;
                 };
                 header?: never;
@@ -4388,6 +4390,57 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/v1/knowledge-sources/{id}/analyze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analyze a knowledge source (LLM-generate description + tags) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AnalyzeKnowledgeSourceBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AnalyzeKnowledgeSourceResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/knowledge-sources/inline": {
@@ -10607,6 +10660,7 @@ export interface components {
             name: string;
             slug: string;
             description: string | null;
+            tags: string[];
             /** @enum {string} */
             scope: "global" | "workflow";
             workflow_id: string | null;
@@ -10629,6 +10683,8 @@ export interface components {
             hits: {
                 id: string;
                 knowledge_source_id: string;
+                source_name: string;
+                source_tags: string[];
                 title: string | null;
                 path: string | null;
                 snippet: string;
@@ -10639,6 +10695,7 @@ export interface components {
         UpdateKnowledgeSourceBody: {
             name?: string;
             description?: string;
+            tags?: string[];
             /** @enum {string} */
             scope?: "global" | "workflow";
             /** Format: uuid */
@@ -10648,6 +10705,13 @@ export interface components {
             /** @enum {string} */
             refresh_strategy?: "manual" | "scheduled";
             refresh_cron?: string | null;
+        };
+        AnalyzeKnowledgeSourceResponse: {
+            analyzed: boolean;
+            knowledge_source: components["schemas"]["KnowledgeSource"];
+        };
+        AnalyzeKnowledgeSourceBody: {
+            force?: boolean;
         };
         CreateKnowledgeSourceInlineBody: components["schemas"]["CreateKnowledgeSourceBody"] & {
             content: string;
@@ -10660,6 +10724,7 @@ export interface components {
             name: string;
             slug?: string;
             description?: string;
+            tags?: string[];
             /** @enum {string} */
             scope?: "global" | "workflow";
             /** Format: uuid */

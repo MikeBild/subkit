@@ -1,5 +1,18 @@
 # Changelog
 
+## [6.10.0](https://github.com/MikeBild/subkit/compare/subkit-v6.9.0...subkit-v6.10.0)
+
+
+### Features
+
+* **knowledge:** self-describing Knowledge Sources — make a source understandable to the LLM and organizable for the end-user across sk-cli, MCP clients, and chat. Adds a first-class `tags text[]` column (GIN-indexed, migration 0040) with deduped REPLACE semantics, filterable in search. A best-effort LLM `analyzeKnowledgeSource` auto-generates a concise description + topical tags on upload — wired ONLY to the three interactive sites (multipart route, `create_knowledge_source` tool, conversation message upload), runs outside the create transaction, and never fails an upload; the bulk paths (inline route, scheduled refresh, discovery) stay mechanical so a sitemap crawl does not fan out into one LLM call per page. On-demand re-analyze via `POST /v1/knowledge-sources/{id}/analyze`, the `analyze_knowledge_source` MCP/chat tool, and `sk knowledge-sources analyze`. Provenance is surfaced to the model: search hits carry `source_name`/`source_tags`, `formatKnowledgeChunk` names the source, and `list_knowledge_sources` returns description+tags+chunk_count so the LLM can route before searching.
+
+
+### Bug Fixes
+
+* **sk:** `sk knowledge-sources search` was broken — the client typed/destructured the response as `{ items }` while the route returns `{ hits }`, so the command threw before printing. Fixed the shape and the list/search column names (`name`/`tags`/`chunk_count`, `source_name`/`title`/`rank`), and added `--description`/`--tags` to create/patch.
+* **knowledge:** the `create_knowledge_source` / `update_knowledge_source` tools gated on the non-canonical `knowledge_source:write` permission (absent from the RBAC catalog) instead of `knowledge:write`; corrected so the write tools and the new analyze tool share one catalog entry.
+
 ## [6.9.0](https://github.com/MikeBild/subkit/compare/subkit-v6.8.3...subkit-v6.9.0)
 
 

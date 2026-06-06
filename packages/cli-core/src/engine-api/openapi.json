@@ -7306,6 +7306,12 @@
             "type": "string",
             "nullable": true
           },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "scope": {
             "type": "string",
             "enum": [
@@ -7374,6 +7380,7 @@
           "name",
           "slug",
           "description",
+          "tags",
           "scope",
           "workflow_id",
           "status",
@@ -7404,6 +7411,15 @@
                 "knowledge_source_id": {
                   "type": "string"
                 },
+                "source_name": {
+                  "type": "string"
+                },
+                "source_tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "title": {
                   "type": "string",
                   "nullable": true
@@ -7426,6 +7442,8 @@
               "required": [
                 "id",
                 "knowledge_source_id",
+                "source_name",
+                "source_tags",
                 "title",
                 "path",
                 "snippet",
@@ -7450,6 +7468,15 @@
           "description": {
             "type": "string",
             "maxLength": 2000
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "maxItems": 20
           },
           "scope": {
             "type": "string",
@@ -7480,6 +7507,29 @@
           "refresh_cron": {
             "type": "string",
             "nullable": true
+          }
+        }
+      },
+      "AnalyzeKnowledgeSourceResponse": {
+        "type": "object",
+        "properties": {
+          "analyzed": {
+            "type": "boolean"
+          },
+          "knowledge_source": {
+            "$ref": "#/components/schemas/KnowledgeSource"
+          }
+        },
+        "required": [
+          "analyzed",
+          "knowledge_source"
+        ]
+      },
+      "AnalyzeKnowledgeSourceBody": {
+        "type": "object",
+        "properties": {
+          "force": {
+            "type": "boolean"
           }
         }
       },
@@ -7527,6 +7577,15 @@
           "description": {
             "type": "string",
             "maxLength": 2000
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "maxItems": 20
           },
           "scope": {
             "type": "string",
@@ -16652,6 +16711,16 @@
           },
           {
             "schema": {
+              "type": "string",
+              "description": "Comma-separated tags; narrows to sources carrying any of them."
+            },
+            "required": false,
+            "description": "Comma-separated tags; narrows to sources carrying any of them.",
+            "name": "tags",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
@@ -16810,6 +16879,61 @@
                   "required": [
                     "deleted"
                   ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/{id}/analyze": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Analyze a knowledge source (LLM-generate description + tags)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeKnowledgeSourceBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeKnowledgeSourceResponse"
                 }
               }
             }
