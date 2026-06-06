@@ -180,6 +180,10 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
       pattern_kind: "repair_pattern",
       scope: "connector",
       connector_id: group.connector_id,
+      // endpoint_key is part of the candidate's logical identity — two
+      // endpoints on one connector are distinct interfaces (distinct skills),
+      // so the supersede step must not collapse them. See upsertFromSignal.
+      endpoint_key: group.endpoint_key,
       title: `Recurring ${group.kind} on ${interfaceLabel}`,
       body,
       examples: [

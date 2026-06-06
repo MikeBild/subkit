@@ -118,6 +118,128 @@ function makeClient() {
   });
 }
 
+type SnippetLang = "curl" | "node" | "python";
+
+/** Render an authenticated, copy-paste snippet that runs a saved
+ *  workflow against the engine's canonical `POST /v1/executions`
+ *  surface (the same route `sk workflows run` posts to — see
+ *  `client.runExecution`). The API key is always a `$SK_API_KEY`
+ *  placeholder; the real key is never printed. The engine URL, tenant
+ *  header, and workflow id are real so the snippet is ready to paste. */
+function renderInvokeSnippet(opts: {
+  lang: SnippetLang;
+  engineUrl: string;
+  workflowId: string;
+  tenant: string | null;
+}): string {
+  const { lang, engineUrl, workflowId, tenant } = opts;
+  const url = `${engineUrl.replace(/\/+$/, "")}/v1/executions`;
+  const body = {
+    source: "saved",
+    workflow_id: workflowId,
+    request_source: "api",
+    input: {},
+  };
+
+  if (lang === "curl") {
+    const lines = [`curl -sS -X POST '${url}' \\`, `  -H 'authorization: Bearer '"$SK_API_KEY" \\`];
+    if (tenant) lines.push(`  -H 'x-subkit-tenant: ${tenant}' \\`);
+    lines.push(`  -H 'content-type: application/json' \\`);
+    lines.push(`  -d '${JSON.stringify(body)}'`);
+    return lines.join("\n");
+  }
+
+  if (lang === "node") {
+    const headers: Record<string, string> = {
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted verbatim into the user's Node snippet as a template-literal placeholder.
+      authorization: "Bearer ${process.env.SK_API_KEY}",
+      "content-type": "application/json",
+    };
+    if (tenant) headers["x-subkit-tenant"] = tenant;
+    const headerLines = Object.entries(headers)
+      .map(([k, v]) => `      "${k}": \`${v}\`,`)
+      .join("\n");
+    return [
+      `const res = await fetch("${url}", {`,
+      `  method: "POST",`,
+      `  headers: {`,
+      headerLines,
+      `  },`,
+      `  body: JSON.stringify(${JSON.stringify(body, null, 2).replace(/\n/g, "\n  ")}),`,
+      `});`,
+      `const result = await res.json();`,
+      `console.log(result);`,
+    ].join("\n");
+  }
+
+  // python (requests)
+  const headerEntries: string[] = [
+    `        "authorization": f"Bearer {os.environ['SK_API_KEY']}",`,
+    `        "content-type": "application/json",`,
+  ];
+  if (tenant) headerEntries.push(`        "x-subkit-tenant": "${tenant}",`);
+  return [
+    `import os`,
+    `import requests`,
+    ``,
+    `res = requests.post(`,
+    `    "${url}",`,
+    `    headers={`,
+    ...headerEntries,
+    `    },`,
+    `    json=${JSON.stringify(body)},`,
+    `)`,
+    `print(res.json())`,
+  ].join("\n");
+}
+
+const invokeSnippetCommand = defineCommand({
+  meta: {
+    name: "invoke-snippet",
+    description:
+      "Emit a ready-to-paste, authenticated snippet to run a saved workflow from your own app or CI (curl/node/python).",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "Workflow id" },
+    lang: {
+      type: "string",
+      description: "Snippet language: curl (default), node, or python",
+      default: "curl",
+    },
+    json: { type: "boolean", description: "JSON output" },
+  },
+  async run({ args }) {
+    const profile = resolveProfile();
+    const lang = String(args.lang) as SnippetLang;
+    if (!["curl", "node", "python"].includes(lang)) {
+      process.stderr.write(`invalid --lang '${lang}' (expected curl|node|python)\n`);
+      process.exit(1);
+    }
+    const workflowId = String(args.id);
+    const engineUrl = profile.engine_url;
+    const tenant = profile.active_tenant_id ?? null;
+    const snippet = renderInvokeSnippet({ lang, engineUrl, workflowId, tenant });
+
+    if (args.json) {
+      printJson({
+        workflow_id: workflowId,
+        engine_url: engineUrl,
+        ...(tenant ? { tenant } : {}),
+        route: "POST /v1/executions",
+        lang,
+        snippet,
+      });
+      return;
+    }
+
+    process.stdout.write(`${pc.bold("Run this workflow from your app:")}\n\n`);
+    process.stdout.write(`${snippet}\n\n`);
+    process.stdout.write(
+      `${pc.dim("Set SK_API_KEY in your environment; the snippet never embeds your key in plaintext.")}\n`,
+    );
+  },
+});
+
 const listCommand = defineCommand({
   meta: { name: "list", description: "List workflows" },
   args: {
@@ -336,6 +458,11 @@ const runCommand = defineCommand({
         request_source: "cli",
       };
       printRunResult(await client.runExecution(body));
+      // Discovery hint for saved-workflow runs: the same workflow can be
+      // triggered from the operator's own app/CI via invoke-snippet.
+      process.stderr.write(
+        `\n${pc.dim("Tip:")} sk workflows invoke-snippet ${String(args.id)} --lang node\n`,
+      );
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));
@@ -600,6 +727,15 @@ const createCommand = defineCommand({
         ...(previewExecutionId ? { preview_execution_id: previewExecutionId } : {}),
       };
       await renderSummary(summary, { jsonMode });
+
+      // Discovery hint: lead operators to the invoke-snippet so they can
+      // run this workflow from their own app/CI. Stderr keeps stdout a
+      // clean JSON body for pipes; suppressed in jsonMode for the same reason.
+      if (!jsonMode && summary.id !== "(unknown)") {
+        process.stderr.write(
+          `\n${pc.dim("Tip:")} sk workflows invoke-snippet ${summary.id} --lang node\n`,
+        );
+      }
     } catch (err) {
       reportError(err, jsonMode);
     }
@@ -619,5 +755,6 @@ export const workflowsCommand = defineCommand({
     history: historyCommand,
     restore: restoreCommand,
     create: createCommand,
+    "invoke-snippet": invokeSnippetCommand,
   },
 });

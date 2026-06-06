@@ -3,7 +3,7 @@
 // Candidates are NEVER auto-promoted. Every mutation goes through an
 // explicit human gate (conversation approval or REST API).
 
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -50,6 +50,7 @@ function toView(row: typeof skillCandidates.$inferSelect, evidenceCount = 0): Sk
     tenant_id: row.tenant_id,
     scope: row.scope,
     connector_id: row.connector_id,
+    endpoint_key: row.endpoint_key,
     workflow_id: row.workflow_id,
     pattern_kind: row.pattern_kind,
     title: row.title,
@@ -369,45 +370,65 @@ async function upsertFromSignal(
       return { action: "updated" as const };
     }
 
-    // Supersede existing proposed candidates for the same scope+entity
-    // with a different fingerprint (pattern has evolved).
-    const tenantSupersedeScope = [
-      eq(skillCandidates.tenant_id, tenant_id),
-      eq(skillCandidates.status, "proposed"),
-      eq(skillCandidates.scope, signal.scope),
-      eq(skillCandidates.pattern_kind, signal.pattern_kind),
-    ];
-    if (signal.workflow_id)
-      tenantSupersedeScope.push(eq(skillCandidates.workflow_id, signal.workflow_id));
-    if (signal.connector_id)
-      tenantSupersedeScope.push(eq(skillCandidates.connector_id, signal.connector_id));
+    // Cross-fingerprint supersede ("the pattern evolved → retire the stale
+    // proposal") only applies to patterns whose coarse entity (workflow /
+    // connector) IS their identity — failure/success/chained. For those, a new
+    // fingerprint on the same entity means the prior proposal is stale.
+    //
+    // Endpoint-scoped repair patterns are different: the fingerprint
+    // (repair:connector:endpoint:kind) IS the full identity. Two distinct
+    // fingerprints on one connector are genuinely distinct interface
+    // conventions — different endpoints, or different repair kinds on one
+    // endpoint (a field-path fix and a header add are both real, both needed).
+    // They must COEXIST; cross-superseding them silently drops a valid,
+    // evidence-backed candidate (the bug #202's connector-scoping introduced).
+    // Same-fingerprint recurrence is already handled by the dedup/update branch
+    // above; a stale repair candidate is retired through the operator gate, not
+    // by another endpoint/kind appearing. So we skip supersede entirely when
+    // the signal is endpoint-scoped, and the `isNull(endpoint_key)` guard stops
+    // a non-endpoint signal from superseding an endpoint-scoped candidate.
+    let supersededCount = 0;
+    if (!signal.endpoint_key) {
+      const tenantSupersedeScope = [
+        eq(skillCandidates.tenant_id, tenant_id),
+        eq(skillCandidates.status, "proposed"),
+        eq(skillCandidates.scope, signal.scope),
+        eq(skillCandidates.pattern_kind, signal.pattern_kind),
+        isNull(skillCandidates.endpoint_key),
+      ];
+      if (signal.workflow_id)
+        tenantSupersedeScope.push(eq(skillCandidates.workflow_id, signal.workflow_id));
+      if (signal.connector_id)
+        tenantSupersedeScope.push(eq(skillCandidates.connector_id, signal.connector_id));
 
-    const stale = await tx
-      .select({ id: skillCandidates.id })
-      .from(skillCandidates)
-      .where(and(...tenantSupersedeScope));
+      const stale = await tx
+        .select({ id: skillCandidates.id })
+        .from(skillCandidates)
+        .where(and(...tenantSupersedeScope));
+      supersededCount = stale.length;
 
-    for (const s of stale) {
-      await tx
-        .update(skillCandidates)
-        .set({ status: "superseded", updated_at: new Date() })
-        .where(eq(skillCandidates.id, s.id));
-      await auditAwait(
-        {
-          tenant_id,
-          actor_type: "system",
-          action: AuditAction.SKILL_CANDIDATE_SUPERSEDED,
-          resource_type: "skill_candidate",
-          resource_id: s.id,
-          result: "success",
-          metadata: {
-            superseded_by_fingerprint: signal.fingerprint,
-            scope: signal.scope,
-            connector_id: signal.connector_id ?? null,
+      for (const s of stale) {
+        await tx
+          .update(skillCandidates)
+          .set({ status: "superseded", updated_at: new Date() })
+          .where(eq(skillCandidates.id, s.id));
+        await auditAwait(
+          {
+            tenant_id,
+            actor_type: "system",
+            action: AuditAction.SKILL_CANDIDATE_SUPERSEDED,
+            resource_type: "skill_candidate",
+            resource_id: s.id,
+            result: "success",
+            metadata: {
+              superseded_by_fingerprint: signal.fingerprint,
+              scope: signal.scope,
+              connector_id: signal.connector_id ?? null,
+            },
           },
-        },
-        tx,
-      );
+          tx,
+        );
+      }
     }
 
     // Create new candidate
@@ -417,6 +438,7 @@ async function upsertFromSignal(
         tenant_id,
         scope: signal.scope,
         connector_id: signal.connector_id ?? null,
+        endpoint_key: signal.endpoint_key ?? null,
         workflow_id: signal.workflow_id ?? null,
         pattern_kind: signal.pattern_kind,
         title: signal.title,
@@ -472,7 +494,7 @@ async function upsertFromSignal(
       tenant_id,
       pattern_kind: signal.pattern_kind,
       confidence: signal.confidence,
-      superseded_count: stale.length,
+      superseded_count: supersededCount,
     });
 
     return { action: "proposed" as const };

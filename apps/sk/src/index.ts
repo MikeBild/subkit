@@ -40,6 +40,7 @@ import { patchCandidatesCommand } from "./commands/patch-candidates.ts";
 import { portalTokensCommand } from "./commands/portal-tokens.ts";
 import { profileCommand } from "./commands/profile.ts";
 import { rbacCommand } from "./commands/rbac.ts";
+import { reviewCommand } from "./commands/review.ts";
 import { selfHealingCommand } from "./commands/self-healing.ts";
 import { sessionsCommand, skLs, skRename, skRm, skShow } from "./commands/sessions.ts";
 import { settingsCommand } from "./commands/settings.ts";
@@ -420,6 +421,95 @@ const mcpCommand = defineCommand({
   },
 });
 
+// ---------- Interactive onboarding (bare `sk`, no profile) ----------
+
+/**
+ * When a bare `sk` is run with no usable profile AND stdout is a TTY,
+ * offer the operator a picker over the auth paths that already exist
+ * rather than printing a one-liner and exiting. Each option reuses an
+ * existing handler — nothing here reimplements a login flow.
+ *
+ * Returns `true` when a profile was created (so the caller can resolve
+ * it and continue into the REPL), `false` when the operator cancelled.
+ *
+ * Non-TTY callers must NOT reach this function — scripts/CI keep the
+ * exact stderr + exit(2) contract from before.
+ */
+async function runOnboarding(engineUrl: string): Promise<boolean> {
+  prompts.intro("Welcome to sk — let's connect you to an engine.");
+  const choice = await prompts.select({
+    message: "How would you like to get started?",
+    options: [
+      { value: "browser", label: "Log in via browser", hint: "SSO / Firebase" },
+      { value: "api-key", label: "Paste an API key", hint: "wf_live_…" },
+      { value: "init", label: "Point at an engine / bootstrap", hint: "sk init" },
+      { value: "device", label: "Device-code flow", hint: "OIDC" },
+    ],
+  });
+  if (prompts.isCancel(choice)) {
+    prompts.cancel("Onboarding cancelled.");
+    return false;
+  }
+
+  if (choice === "api-key") {
+    const key = await prompts.text({
+      message: "Paste your API key",
+      placeholder: "wf_live_…",
+    });
+    if (prompts.isCancel(key) || !String(key).trim()) {
+      prompts.cancel("Onboarding cancelled.");
+      return false;
+    }
+    // Reuse the scripted api-key path on loginCommand — identical to
+    // `sk login --api-key <key>`.
+    await runCommand(loginCommand, {
+      rawArgs: ["--api-key", String(key).trim(), "--engine-url", engineUrl],
+    });
+    return Boolean(resolveProfile().api_key);
+  }
+
+  if (choice === "init") {
+    // Reuse `sk init` for the engine-URL / bootstrap path. It needs the
+    // one-time token from the engine's first-boot banner; prompt for it
+    // (and an optional engine URL override) here, then delegate so the
+    // setup payload + profile save stay in the canonical handler.
+    const url = await prompts.text({
+      message: "Engine URL",
+      placeholder: engineUrl,
+      defaultValue: engineUrl,
+    });
+    if (prompts.isCancel(url)) {
+      prompts.cancel("Onboarding cancelled.");
+      return false;
+    }
+    const token = await prompts.text({
+      message: "Bootstrap token (from the engine's first-boot banner)",
+      placeholder: "tok_…",
+    });
+    if (prompts.isCancel(token) || !String(token).trim()) {
+      prompts.cancel("Onboarding cancelled.");
+      return false;
+    }
+    await runCommand(initCommand, {
+      rawArgs: ["--token", String(token).trim(), "--engine-url", String(url).trim() || engineUrl],
+    });
+    return Boolean(resolveProfile().api_key);
+  }
+
+  if (choice === "device") {
+    // Reuse the device-flow branch of `sk login`. Passing no --api-key
+    // makes loginCommand discover providers / fall back to device flow,
+    // which internally calls runDeviceFlow.
+    await runCommand(loginCommand, { rawArgs: ["--engine-url", engineUrl] });
+    return Boolean(resolveProfile().api_key);
+  }
+
+  // browser — reuse `sk login` provider discovery, which calls
+  // runBrowserLogin for Firebase/SSO providers.
+  await runCommand(loginCommand, { rawArgs: ["--engine-url", engineUrl] });
+  return Boolean(resolveProfile().api_key);
+}
+
 // ---------- Top-level `sk` ----------
 
 const mainCommand = defineCommand({
@@ -504,6 +594,7 @@ const mainCommand = defineCommand({
     discovery: discoveryCommand,
     executions: executionsCommand,
     "patch-candidates": patchCandidatesCommand,
+    review: reviewCommand,
     "self-healing": selfHealingCommand,
     hooks: hooksCommand,
     subscriptions: subscriptionsCommand,
@@ -522,15 +613,37 @@ const mainCommand = defineCommand({
     "system-accounts": systemAccountsCommand,
   },
   async run({ args }) {
-    const profile = resolveProfile({
+    let profile = resolveProfile({
       engine_url: args["engine-url"] as string | undefined,
       api_key: args["api-key"] as string | undefined,
       tenant: args.tenant as string | undefined,
       profile: args.profile as string | undefined,
     });
     if (!profile.api_key) {
-      process.stderr.write("sk: not logged in — run 'sk login --api-key <key>' first\n");
-      process.exit(2);
+      // Non-TTY (scripts / CI / piped stdout) MUST keep the exact
+      // stderr + exit(2) contract so scripts and CI are unchanged.
+      if (!process.stdout.isTTY) {
+        process.stderr.write("sk: not logged in — run 'sk login --api-key <key>' first\n");
+        process.exit(2);
+      }
+      // Interactive TTY: drop into the onboarding picker over the
+      // existing auth paths instead of bailing out.
+      const ok = await runOnboarding(profile.engine_url);
+      if (!ok) {
+        process.exit(2);
+      }
+      // Re-resolve so the freshly saved profile (api_key/tenant) drives
+      // the rest of the run.
+      profile = resolveProfile({
+        engine_url: args["engine-url"] as string | undefined,
+        api_key: args["api-key"] as string | undefined,
+        tenant: args.tenant as string | undefined,
+        profile: args.profile as string | undefined,
+      });
+      if (!profile.api_key) {
+        process.stderr.write("sk: not logged in — run 'sk login --api-key <key>' first\n");
+        process.exit(2);
+      }
     }
     const headlessPrompt = (args.p as string | undefined) ?? undefined;
     const interactivePrompt = (args.prompt as string | undefined) ?? undefined;
@@ -689,6 +802,7 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   discovery: { command: discoveryCommand, requires: "discovery:read" },
   executions: { command: executionsCommand, requires: "execution:read" },
   "patch-candidates": { command: patchCandidatesCommand, requires: "workflow:read" },
+  review: { command: reviewCommand, requires: "workflow:read" },
   "self-healing": { command: selfHealingCommand, requires: "workflow:write" },
   hooks: { command: hooksCommand, requires: "inbound_hook:read" },
   subscriptions: { command: subscriptionsCommand, requires: "subscription:read" },

@@ -11,6 +11,7 @@ import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { now } from "../../utils/clock.ts";
 import { computeConfidence, type PatternSignal } from "../types.ts";
 
 const MIN_SUCCESS_COUNT = 10;
@@ -24,7 +25,7 @@ interface StepRecord {
 }
 
 export async function detectSuccessPatterns(tenant_id: string, exec: Db): Promise<PatternSignal[]> {
-  const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
   const rows = await exec
     .select({

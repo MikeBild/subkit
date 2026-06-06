@@ -7589,6 +7589,10 @@
             "type": "string",
             "nullable": true
           },
+          "endpoint_key": {
+            "type": "string",
+            "nullable": true
+          },
           "workflow_id": {
             "type": "string",
             "nullable": true
@@ -7678,6 +7682,7 @@
           "tenant_id",
           "scope",
           "connector_id",
+          "endpoint_key",
           "workflow_id",
           "pattern_kind",
           "title",

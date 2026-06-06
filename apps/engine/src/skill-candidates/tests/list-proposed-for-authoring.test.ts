@@ -81,6 +81,7 @@ async function seedCandidate(opts: SeedOptions): Promise<SkillCandidateView> {
     tenant_id: row.tenant_id,
     scope: row.scope,
     connector_id: row.connector_id,
+    endpoint_key: row.endpoint_key ?? null,
     workflow_id: row.workflow_id,
     pattern_kind: row.pattern_kind,
     title: row.title,

@@ -23,6 +23,7 @@ function makeCandidate(overrides: Partial<SkillCandidateView> = {}): SkillCandid
     tenant_id: "test-tenant",
     scope: "global",
     connector_id: null,
+    endpoint_key: null,
     workflow_id: null,
     pattern_kind: "repair_pattern",
     title: `Candidate ${id}`,

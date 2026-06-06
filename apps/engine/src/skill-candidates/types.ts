@@ -28,6 +28,7 @@ export const SkillCandidateSchema = z
     tenant_id: z.string(),
     scope: z.enum(["global", "connector", "workflow"]),
     connector_id: z.string().nullable(),
+    endpoint_key: z.string().nullable(),
     workflow_id: z.string().nullable(),
     pattern_kind: SkillCandidatePatternSchema,
     title: z.string(),
@@ -69,6 +70,7 @@ export interface PatternSignal {
   pattern_kind: SkillCandidatePattern;
   scope: "global" | "connector" | "workflow";
   connector_id?: string;
+  endpoint_key?: string;
   workflow_id?: string;
   title: string;
   body: string;

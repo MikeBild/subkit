@@ -187,6 +187,7 @@ Admin command groups exposed from `apps/sk/src/index.ts`:
 | Subcommand | Coverage source |
 |------------|-----------------|
 | `sk workflows` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
+| `sk workflows invoke-snippet` | `sk-ux-additions.e2e.test.ts` (offline curl/node/python + `--json`) |
 | `sk connectors` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
 | `sk connector-templates` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk credentials` | `tier3-subkit-matrix.e2e.test.ts` |
@@ -196,6 +197,8 @@ Admin command groups exposed from `apps/sk/src/index.ts`:
 | `sk discovery` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk executions` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
 | `sk patch-candidates` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk review` | `sk-ux-additions.e2e.test.ts` (offline digest shape) |
+| `sk stats` | `apps/sk/src/commands/stats.test.ts` (unit), `tier3-subkit-matrix.e2e.test.ts` |
 | `sk hooks` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk subscriptions` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk events` | `tier3-subkit-matrix.e2e.test.ts` |

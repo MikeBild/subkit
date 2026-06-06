@@ -10677,6 +10677,7 @@ export interface components {
             /** @enum {string} */
             scope: "global" | "connector" | "workflow";
             connector_id: string | null;
+            endpoint_key: string | null;
             workflow_id: string | null;
             /** @enum {string} */
             pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern";

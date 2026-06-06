@@ -112,12 +112,15 @@ afterAll(async () => {
 describe("journey: skill candidate lifecycle", () => {
   let candidateId: string;
 
-  test("AC1: pattern analysis detects repair pattern from applied patches", async () => {
+  test("AC1: pattern analysis proposes exactly 1 repair_pattern candidate from the one connector/endpoint group", async () => {
     const result = await runPatternAnalysis({ tenant_id: ctx.tenantId }, ctx.db);
-    expect(result.candidates_proposed).toBeGreaterThanOrEqual(1);
+    // The seed creates exactly 3 patches on one connector + one endpoint_key
+    // ("get_customers"). The repair-pattern detector groups by
+    // (connector_id, endpoint_key, kind), so exactly 1 candidate is proposed.
+    expect(result.candidates_proposed).toBe(1);
   });
 
-  test("AC2: list candidates shows a connector-scoped proposed repair_pattern", async () => {
+  test("AC2: list candidates shows exactly one connector-scoped proposed repair_pattern", async () => {
     const res = await journeyFetch(ctx, "/v1/skill-candidates?status=proposed");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -130,17 +133,18 @@ describe("journey: skill candidate lifecycle", () => {
         evidence_count: number;
       }>;
     };
-    expect(body.items.length).toBeGreaterThanOrEqual(1);
-    const candidate = body.items.find((c) => c.pattern_kind === "repair_pattern");
-    expect(candidate).toBeDefined();
-    expect(candidate!.scope).toBe("connector");
-    expect(candidate!.connector_id).toBe(connectorId);
+    // There is exactly one proposed repair_pattern candidate.
+    const repairCandidates = body.items.filter((c) => c.pattern_kind === "repair_pattern");
+    expect(repairCandidates).toHaveLength(1);
+    const candidate = repairCandidates[0]!;
+    expect(candidate.scope).toBe("connector");
+    expect(candidate.connector_id).toBe(connectorId);
     // No workflow_id on a connector-scoped signal.
-    expect(candidate!.workflow_id).toBeNull();
-    candidateId = candidate!.id;
+    expect(candidate.workflow_id).toBeNull();
+    candidateId = candidate.id;
   });
 
-  test("AC3: get candidate shows connector-scoped details with evidence", async () => {
+  test("AC3: get candidate shows evidence_count === 3 (exactly the seeded patches)", async () => {
     const res = await journeyFetch(ctx, `/v1/skill-candidates/${candidateId}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -152,8 +156,8 @@ describe("journey: skill candidate lifecycle", () => {
     };
     expect(body.scope).toBe("connector");
     expect(body.connector_id).toBe(connectorId);
-    // 3 applied patches were seeded — evidence_count must be >= 3.
-    expect(body.evidence_count).toBeGreaterThanOrEqual(3);
+    // Exactly 3 applied patches were seeded for one endpoint — evidence_count must be 3.
+    expect(body.evidence_count).toBe(3);
   });
 
   test("AC4: approve candidate creates skill", async () => {

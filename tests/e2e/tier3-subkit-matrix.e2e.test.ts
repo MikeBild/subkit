@@ -204,3 +204,87 @@ describe("Tier 3 — write surfaces (CRUD round-trip)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tier 3 — stats endpoints smoke (GET /v1/stats/*)
+// ---------------------------------------------------------------------------
+
+describe("Tier 3 — stats endpoints smoke", () => {
+  test("GET /v1/stats/executions with bucket=hour returns groups + totals shape", async () => {
+    // Use a 24h window ending now so the query is always valid. May return
+    // zero rows if the engine has no executions; what we assert is the
+    // structural shape, not the count.
+    const from = new Date(TEST_NOW_MS - 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(TEST_NOW_MS + 60 * 1000).toISOString();
+    const { status, body } = await jget(
+      `/v1/stats/executions?bucket=hour&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    );
+    expect(status).toBe(200);
+    const b = body as {
+      groups: unknown[];
+      totals: {
+        executions: { count: number; by_status: Record<string, number> };
+        duration_ms: { total: number };
+      };
+    };
+    expect(Array.isArray(b.groups)).toBe(true);
+    expect(typeof b.totals.executions.count).toBe("number");
+    expect(b.totals.executions.count).toBeGreaterThanOrEqual(0);
+    expect(typeof b.totals.executions.by_status).toBe("object");
+    expect(typeof b.totals.duration_ms.total).toBe("number");
+  });
+
+  test("GET /v1/stats/llm with bucket=hour returns groups + totals shape", async () => {
+    const from = new Date(TEST_NOW_MS - 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(TEST_NOW_MS + 60 * 1000).toISOString();
+    const { status, body } = await jget(
+      `/v1/stats/llm?bucket=hour&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    );
+    expect(status).toBe(200);
+    const b = body as {
+      groups: unknown[];
+      totals: {
+        calls: { total: number; by_result: Record<string, number> };
+        tokens: { total: number };
+        latency_ms: { total: number };
+      };
+    };
+    expect(Array.isArray(b.groups)).toBe(true);
+    expect(typeof b.totals.calls.total).toBe("number");
+    expect(b.totals.calls.total).toBeGreaterThanOrEqual(0);
+    expect(typeof b.totals.calls.by_result).toBe("object");
+    expect(typeof b.totals.tokens.total).toBe("number");
+    expect(typeof b.totals.latency_ms.total).toBe("number");
+  });
+
+  test("GET /v1/stats/executions wrong tenant header returns 0 results", async () => {
+    // Tenant isolation: a request with a fabricated tenant id (via the
+    // x-subkit-tenant override) must not see the test tenant's rows.
+    // In the e2e harness the admin key already has a tenant binding;
+    // sending a different x-subkit-tenant value MUST be rejected or
+    // return an empty result, never another tenant's data.
+    const from = new Date(TEST_NOW_MS - 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(TEST_NOW_MS + 60 * 1000).toISOString();
+    const r = await fetch(
+      `${env.baseUrl}/v1/stats/executions?bucket=hour&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${env.personas.admin.apiKey}`,
+          "Content-Type": "application/json",
+          "x-subkit-tenant": "00000000-0000-0000-0000-000000000000",
+        },
+      },
+    );
+    // Engine either rejects the mismatched tenant header (403/400) or
+    // returns 200 with 0 rows. Either is correct; what is NOT correct is
+    // returning another tenant's rows with a 200 status.
+    if (r.status === 200) {
+      const b = (await r.json()) as {
+        totals: { executions: { count: number } };
+      };
+      expect(b.totals.executions.count).toBe(0);
+    } else {
+      expect([400, 403]).toContain(r.status);
+    }
+  });
+});

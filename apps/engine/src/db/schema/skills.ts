@@ -134,6 +134,12 @@ export const skillCandidates = pgTable(
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     scope: skillScopeEnum("scope").notNull(),
     connector_id: uuid("connector_id"),
+    // Endpoint within the connector this candidate is about, when the pattern
+    // is interface-scoped (repair_pattern). Part of the candidate's logical
+    // identity: two endpoints on the same connector are distinct candidates and
+    // must not supersede each other (migration 0039). NULL for patterns that
+    // aren't endpoint-specific (failure/success/chained).
+    endpoint_key: text("endpoint_key"),
     workflow_id: uuid("workflow_id"),
     pattern_kind: skillCandidatePatternEnum("pattern_kind").notNull(),
     title: text("title").notNull(),
