@@ -39,11 +39,17 @@ permissions:
   # ci.yml would have passed.
   actions: write
 
-# Only one release workflow per tag can run at a time — guards against
-# accidental double-fires (e.g. a retag) racing the host deploy.
+# Serialize ALL release runs onto one host — the host deploy is a single
+# shared resource, so the group must be global, NOT per-tag. A per-tag
+# group (`release-${github.ref}`) let two DIFFERENT versions deploy
+# concurrently: v6.10.1's run finished AFTER v6.10.2's laptop deploy and
+# clobbered the host back to 6.10.1, surfacing as a CLI/engine version
+# mismatch. A global group with cancel-in-progress makes the newest
+# release supersede any older in-flight one — newest-wins is exactly the
+# desired host-deploy semantics (the latest version should be live).
 concurrency:
-  group: release-${{ github.event.inputs.tag || github.ref }}
-  cancel-in-progress: false
+  group: release-host-deploy
+  cancel-in-progress: true
 
 jobs:
   # The release gate is the SAME `ci.yml / build` job that protects `main`.
