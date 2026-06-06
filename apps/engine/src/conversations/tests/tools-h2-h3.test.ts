@@ -127,6 +127,7 @@ describe("conversation tools — registration", () => {
     "approve_patch_candidate",
     "create_api_key",
     "create_knowledge_source",
+    "analyze_knowledge_source",
     "create_schedule",
     "diagnose_latest_execution",
     "list_schedules",
