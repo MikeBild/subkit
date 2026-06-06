@@ -1,5 +1,53 @@
 # Changelog
 
+## [6.9.0](https://github.com/MikeBild/subkit/compare/subkit-v6.8.3...subkit-v6.9.0)
+
+
+### Features
+
+* **sk:** end-to-end UX additions — bare `sk` with no profile now drops into an interactive onboarding picker on a TTY (browser / API-key / init / device-code), while non-TTY keeps the exact `stderr` + `exit 2` contract for scripts; `sk workflows invoke-snippet <id> [--lang curl|node|python]` emits a paste-ready authenticated call (`POST /v1/executions`, key as a `$SK_API_KEY` placeholder — never embedded) plus discovery hints on create/run; `sk review` is a read-only "what needs my approval" digest aggregating pending Patch Candidates, proposed Skill Candidates, and recent failed executions, each row carrying the next command to run.
+
+
+### Bug Fixes
+
+* **skill-candidates:** connector-scoped repair Skill Candidates were clobbering each other — `upsertFromSignal`'s supersede keyed only on `(scope, pattern_kind, connector_id)`, so a second endpoint's proposal superseded the first on every 6h analysis pass (data loss of valid, evidence-backed candidates introduced by the #202 connector-scoping). Root cause: the candidate row carried no endpoint identity. Adds `skill_candidates.endpoint_key` (migration 0039) on the row + `PatternSignal` + `SkillCandidateView` + the Zod/OpenAPI schema; the repair detector now emits it. Endpoint-scoped repair patterns are identified fully by their fingerprint (`repair:connector:endpoint:kind`), so they no longer cross-supersede — distinct endpoints **and** distinct repair kinds on one endpoint coexist as `proposed`; non-endpoint patterns keep the coarse-entity supersede, guarded by `isNull(endpoint_key)`.
+* **skill-candidates:** `failure-pattern` and `success-pattern` detectors read time through the `now()` clock seam instead of `Date.now()`, making the 30-day lookback boundary testable under a frozen clock. Adds integration coverage for both detectors (incl. the boundary), a supersede-coexistence regression test, a skill-candidate exactly-once race test, and stats `aggregate-executions`/`aggregate-llm` unit tests; tightens journey 32 to exact assertions.
+
+## [6.8.3](https://github.com/MikeBild/subkit/compare/subkit-v6.8.2...subkit-v6.8.3)
+
+
+### Bug Fixes
+
+* **scheduler:** `chat_dedup_cleanup` now logs `chat_dedup_cleanup.completed` on every run (including `deleted: 0`), symmetric with `files_cleanup` / `mcp_oauth_cleanup`. It previously logged only on a non-empty prune, so an operator scanning structured logs saw the other hourly sweeps but nothing for chat-dedup on quiet engines — reading like a stalled sweep until cross-checking the audit table. The audit row was already written every run.
+
+## [6.8.2](https://github.com/MikeBild/subkit/compare/subkit-v6.8.1...subkit-v6.8.2)
+
+
+### Bug Fixes
+
+* **scheduler:** make the proactive drift-scan and workflow-schedule compare-and-set microsecond-safe. Both read a `timestamptz` stamp back into a JS `Date` (node-postgres truncates to milliseconds) and then CAS'd with `eq(col, date)`; a stored value carrying sub-millisecond microseconds never matched, the `UPDATE` touched 0 rows, and that tenant/schedule stalled. Drift-scan now uses a single atomic range claim (`UPDATE … WHERE col IS NULL OR col < cutoff RETURNING`, exactly-once via row locks); the workflow-schedule CAS takes the equality at millisecond precision via `date_trunc('milliseconds', last_enqueued_at)`. Adds a microsecond-injection regression test for both paths.
+
+## [6.8.1](https://github.com/MikeBild/subkit/compare/subkit-v6.8.0...subkit-v6.8.1)
+
+
+### Bug Fixes
+
+* **scheduler:** make the skill-candidate analyze CAS microsecond-safe — replace the read-then-`eq` compare-and-set on `tenants.last_skill_candidate_analyze_at` with a single atomic range claim (`UPDATE … WHERE col IS NULL OR col < cutoff RETURNING`). The prior equality matched 0 rows whenever the stored stamp carried sub-millisecond microseconds (truncated on read), stalling that tenant's analysis. Range-based + NULL only → microsecond-safe; exactly-once across instances preserved by Postgres row locks. Includes a regression test injecting a `.123456` stamp.
+
+## [6.8.0](https://github.com/MikeBild/subkit/compare/subkit-v6.7.0...subkit-v6.8.0)
+
+
+### Features
+
+* **scheduler:** fire `skill-candidate.analyze` per tenant on a 6h cadence. The repair/failure/success detectors run inside that pg-boss job, but nothing enqueued it — the worker was registered yet never fired, so the detectors never ran in normal operation (the dormant-trigger gap behind #202). Adds a reconciler sweep (extracted to `skill-candidate-analyze-runner.ts` to keep `reconciler.ts` under the LOC ceiling) with a per-tenant compare-and-set stamp `tenants.last_skill_candidate_analyze_at` (migration 0038) for exactly-once firing per cadence across multi-instance deployments. Detectors stay proposers only; promotion to a Skill remains behind the operator-approval gate.
+
+## [6.7.0](https://github.com/MikeBild/subkit/compare/subkit-v6.6.1...subkit-v6.7.0)
+
+
+### Features
+
+* **self-healing:** auto-promote recurring Patch Candidates to connector-scoped Skill Candidates (R5) ([#202](https://github.com/MikeBild/subkit/issues/202)). Reworks the previously-dead `repair-pattern` detector: it read a non-existent top-level diff shape (`diff.kind`/`diff.path`) and grouped per-workflow, so it emitted zero signals and could never deliver the "a skill that applies to all workflows on the same interface" promise. It now reads `diff.proposal.kind`, joins `execution_fixtures` (tenant-scoped) for connector + endpoint context, groups by `(connector_id, endpoint_key, kind)`, and emits **connector-scoped** Skill Candidate signals — so a repair recurring across the same interface accumulates into one reviewable proposal. Adds index migration 0036 (`patch_candidates(tenant_id, status, created_at)`) and a one-shot audited rescope cleanup migration 0037.
+
 ## [6.6.1](https://github.com/MikeBild/subkit/compare/subkit-v6.6.0...subkit-v6.6.1)
 
 
