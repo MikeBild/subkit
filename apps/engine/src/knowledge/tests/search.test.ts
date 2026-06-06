@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
-import { createKnowledgeSource, searchKnowledge } from "../service.ts";
+import {
+  createKnowledgeSource,
+  invalidateKnowledgeCache,
+  searchKnowledge,
+  updateKnowledgeSource,
+} from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
@@ -141,6 +146,148 @@ describe.skipIf(skip)("knowledge/search", () => {
         expect(hits[i]!.rank).toBeLessThanOrEqual(hits[i - 1]!.rank);
       }
     }
+  });
+
+  // --- source_name and source_tags provenance --------------------------------
+
+  test("search hits carry source_name matching the owning knowledge source", async () => {
+    const hits = await searchKnowledge(
+      { tenant_id: ctx.tenantId, query: "pagination cursor" },
+      ctx.testDb.db,
+    );
+    expect(hits.length).toBeGreaterThan(0);
+    // Every hit must expose the owning source's name — not an empty string
+    for (const hit of hits) {
+      expect(typeof hit.source_name).toBe("string");
+      expect(hit.source_name.length).toBeGreaterThan(0);
+    }
+    // Hits from the global source must carry its name
+    const globalHits = hits.filter((h) => h.knowledge_source_id === globalSourceId);
+    expect(globalHits.length).toBeGreaterThan(0);
+    expect(globalHits[0]!.source_name).toBe("API Guidelines");
+  });
+
+  test("search hits carry source_tags from the owning knowledge source", async () => {
+    // Tag the global source
+    await updateKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        id: globalSourceId,
+        patch: { tags: ["api", "guidelines"] },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    invalidateKnowledgeCache(ctx.tenantId);
+
+    const hits = await searchKnowledge(
+      { tenant_id: ctx.tenantId, query: "pagination cursor" },
+      ctx.testDb.db,
+    );
+
+    const globalHits = hits.filter((h) => h.knowledge_source_id === globalSourceId);
+    expect(globalHits.length).toBeGreaterThan(0);
+    expect(globalHits[0]!.source_tags).toContain("api");
+    expect(globalHits[0]!.source_tags).toContain("guidelines");
+  });
+
+  // --- tags filter -----------------------------------------------------------
+
+  test("tags filter narrows results to sources carrying any of the specified tags", async () => {
+    // Tag the workflow source with "runbook" and ensure the global source has a different tag
+    await updateKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        id: workflowSourceId,
+        patch: { tags: ["runbook", "payments"] },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    await updateKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        id: globalSourceId,
+        patch: { tags: ["api", "guidelines"] },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    invalidateKnowledgeCache(ctx.tenantId);
+
+    // Searching with tag "runbook" should only find chunks from the workflow source
+    const runbookHits = await searchKnowledge(
+      { tenant_id: ctx.tenantId, query: "payment", tags: ["runbook"] },
+      ctx.testDb.db,
+    );
+    expect(runbookHits.length).toBeGreaterThan(0);
+    expect(runbookHits.every((h) => h.knowledge_source_id === workflowSourceId)).toBe(true);
+
+    // Searching with tag "api" should only find chunks from the global source
+    const apiHits = await searchKnowledge(
+      { tenant_id: ctx.tenantId, query: "authentication bearer", tags: ["api"] },
+      ctx.testDb.db,
+    );
+    expect(apiHits.length).toBeGreaterThan(0);
+    expect(apiHits.every((h) => h.knowledge_source_id === globalSourceId)).toBe(true);
+  });
+
+  test("tags filter is tenant-isolated: a tag from another tenant does not narrow cross-tenant", async () => {
+    // Seed a second tenant with its own source tagged "payments"
+    const [otherTenant] = await ctx.testDb.db
+      .insert(tenants)
+      .values({ slug: "other-tenant-tags", display_name: "Other Tenant Tags" })
+      .returning();
+    expect(otherTenant).toBeDefined();
+
+    await createKnowledgeSource(
+      {
+        tenant_id: otherTenant!.id,
+        input: { name: "Other Payments Doc", tags: ["payments"] },
+        upload: {
+          buffer: Buffer.from("Payment processing with idempotency keys and retry logic."),
+          filename: "payments.txt",
+        },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+
+    // Other tenant's "payments" tag must not bleed into ctx.tenantId search
+    const hits = await searchKnowledge(
+      { tenant_id: ctx.tenantId, query: "payment", tags: ["payments"] },
+      ctx.testDb.db,
+    );
+    // All hits (if any) must belong to ctx.tenantId sources, not otherTenant
+    for (const hit of hits) {
+      expect(hit.knowledge_source_id).not.toBe(otherTenant!.id);
+    }
+  });
+
+  test("cache key distinguishes different tag filters (no cross-contamination)", async () => {
+    invalidateKnowledgeCache(ctx.tenantId);
+
+    // Warm the cache with a "runbook" tag filter
+    const runbookHits = await searchKnowledge(
+      { tenant_id: ctx.tenantId, query: "payment", tags: ["runbook"] },
+      ctx.testDb.db,
+    );
+
+    // A different tag filter must not return the cached "runbook" result
+    const apiHits = await searchKnowledge(
+      { tenant_id: ctx.tenantId, query: "authentication bearer", tags: ["api"] },
+      ctx.testDb.db,
+    );
+
+    // The two result sets must differ (or at minimum not be identical when
+    // sources are tagged differently)
+    const runbookIds = new Set(runbookHits.map((h) => h.knowledge_source_id));
+    const apiIds = new Set(apiHits.map((h) => h.knowledge_source_id));
+
+    // The api-filtered hits must NOT include the workflow source (runbook-tagged)
+    expect(apiIds.has(workflowSourceId)).toBe(false);
+    // The runbook-filtered hits must NOT include the global source (api-tagged)
+    expect(runbookIds.has(globalSourceId)).toBe(false);
   });
 
   test("search respects tenant isolation", async () => {

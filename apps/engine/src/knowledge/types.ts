@@ -19,6 +19,7 @@ export const KnowledgeSourceSchema = z
     name: z.string(),
     slug: z.string(),
     description: z.string().nullable(),
+    tags: z.array(z.string()),
     scope: KnowledgeSourceScopeSchema,
     workflow_id: z.string().nullable(),
     status: KnowledgeSourceStatusSchema,
@@ -53,6 +54,7 @@ export const CreateKnowledgeSourceSchema = z
       )
       .optional(),
     description: z.string().max(2000).optional(),
+    tags: z.array(z.string().min(1).max(40)).max(20).optional(),
     scope: KnowledgeSourceScopeSchema.optional(),
     workflow_id: z.string().uuid().optional(),
     refresh_strategy: z.enum(["manual", "scheduled"]).optional(),
@@ -88,6 +90,7 @@ export const UpdateKnowledgeSourceSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
     description: z.string().max(2000).optional(),
+    tags: z.array(z.string().min(1).max(40)).max(20).optional(),
     scope: KnowledgeSourceScopeSchema.optional(),
     workflow_id: z.string().uuid().nullable().optional(),
     status: z.enum(["active", "inactive"]).optional(),
@@ -103,6 +106,10 @@ export type UpdateKnowledgeSourceInput = z.infer<typeof UpdateKnowledgeSourceSch
 export interface KnowledgeSearchHit {
   id: string;
   knowledge_source_id: string;
+  /** Human-readable name of the owning Knowledge Source — provenance for the model. */
+  source_name: string;
+  /** Topical tags on the owning Knowledge Source. */
+  source_tags: string[];
   title: string | null;
   path: string | null;
   snippet: string;
@@ -156,12 +163,22 @@ export interface UpdateKnowledgeSourceParams {
   actor_id: string | null;
 }
 
+export interface AnalyzeKnowledgeSourceParams {
+  tenant_id: string;
+  id: string;
+  actor_id: string | null;
+  /** When true, overwrite an existing description; otherwise only fill a null one. */
+  force?: boolean;
+}
+
 export interface SearchKnowledgeParams {
   tenant_id: string;
   query: string;
   scope?: KnowledgeSourceScope;
   workflow_id?: string;
   knowledge_source_ids?: string[];
+  /** Narrow results to sources carrying any of these tags (tenant-scoped). */
+  tags?: string[];
   limit?: number;
 }
 

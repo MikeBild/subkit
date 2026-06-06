@@ -4,7 +4,8 @@
 // no table coupling). Persists to knowledge_sources + knowledge_chunks.
 
 import { createHash } from "node:crypto";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { z } from "zod";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -12,6 +13,7 @@ import { type Db, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
+import { invoke } from "../llm/core/invoke.ts";
 import { log } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
@@ -22,6 +24,7 @@ import {
 } from "./budgets.ts";
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
 import type {
+  AnalyzeKnowledgeSourceParams,
   CreateKnowledgeSourceParams,
   IngestKnowledgeSourceParams,
   KnowledgeIngestResult,
@@ -46,6 +49,25 @@ function toSlug(name: string): string {
     .slice(0, 100);
 }
 
+// REPLACE-semantics tag normalizer: trims, drops empties, dedupes
+// case-insensitively (keeping first-seen casing), and caps to 20. This
+// is the single guard against the array-doubling class of bug — tags are
+// always set to a deduped replacement set, never concatenated.
+function dedupeTags(tags: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of tags) {
+    const tag = raw.trim();
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag.slice(0, 40));
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
 function toView(row: typeof knowledgeSources.$inferSelect): KnowledgeSourceView {
   return {
     id: row.id,
@@ -53,6 +75,7 @@ function toView(row: typeof knowledgeSources.$inferSelect): KnowledgeSourceView 
     name: row.name,
     slug: row.slug,
     description: row.description,
+    tags: row.tags,
     scope: row.scope,
     workflow_id: row.workflow_id,
     status: row.status,
@@ -133,6 +156,7 @@ export async function createKnowledgeSource(
         name: p.input.name,
         slug,
         description: p.input.description ?? null,
+        tags: dedupeTags(p.input.tags ?? []),
         scope: p.input.scope ?? "global",
         workflow_id: p.input.workflow_id ?? null,
         status: "active",
@@ -271,6 +295,7 @@ export async function updateKnowledgeSource(
     const updates: Record<string, unknown> = { updated_at: new Date() };
     if (p.patch.name !== undefined) updates.name = p.patch.name;
     if (p.patch.description !== undefined) updates.description = p.patch.description;
+    if (p.patch.tags !== undefined) updates.tags = dedupeTags(p.patch.tags);
     if (p.patch.scope !== undefined) updates.scope = p.patch.scope;
     if (p.patch.workflow_id !== undefined) updates.workflow_id = p.patch.workflow_id;
     if (p.patch.status !== undefined) updates.status = p.patch.status;
@@ -301,6 +326,153 @@ export async function updateKnowledgeSource(
       tx,
     );
 
+    return toView(updated);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Analyze (LLM enrichment — best-effort, interactive call sites only)
+// ---------------------------------------------------------------------------
+
+// Token-budget the analysis sample to ~6–8k tokens (≈4 chars/token → ~28k
+// chars) so a large source never blows the enrichment budget.
+const ANALYZE_SAMPLE_MAX_CHARS = 28_000;
+
+const AnalysisSchema = z.object({
+  description: z.string().min(1).max(2000),
+  tags: z.array(z.string().min(1).max(40)).min(1).max(8),
+});
+
+/**
+ * Enrich a Knowledge Source's metadata with an LLM-generated description
+ * and topical tags. NEVER renames `name`/`slug` (churns the unique slug
+ * index and breaks references). The `description` is overwritten only when
+ * currently null OR `force` is set; `tags` are always set to a deduped
+ * REPLACEMENT set (never concatenated).
+ *
+ * The LLM call runs OUTSIDE the DB transaction. Callers at the interactive
+ * upload sites wrap this in best-effort try/catch — a failed analysis must
+ * never fail the upload. Returns the updated view, or `null` if the source
+ * does not exist.
+ */
+export async function analyzeKnowledgeSource(
+  p: AnalyzeKnowledgeSourceParams,
+  exec?: Executor,
+): Promise<KnowledgeSourceView | null> {
+  const db = exec ?? getDb();
+
+  const sources = await db
+    .select()
+    .from(knowledgeSources)
+    .where(
+      and(
+        eq(knowledgeSources.tenant_id, p.tenant_id),
+        eq(knowledgeSources.id, p.id),
+        isNull(knowledgeSources.deleted_at),
+      ),
+    )
+    .limit(1);
+  const source = sources[0];
+  if (!source) return null;
+
+  // Load the first chunks in ordinal order, token-bounded.
+  const chunks = await db
+    .select({
+      title: knowledgeChunks.title,
+      path: knowledgeChunks.path,
+      content: knowledgeChunks.content,
+    })
+    .from(knowledgeChunks)
+    .where(
+      and(
+        eq(knowledgeChunks.tenant_id, p.tenant_id),
+        eq(knowledgeChunks.knowledge_source_id, p.id),
+      ),
+    )
+    .orderBy(asc(knowledgeChunks.ordinal))
+    .limit(20);
+
+  let sample = "";
+  for (const c of chunks) {
+    const heading = c.title ?? c.path ?? "";
+    const block = heading ? `## ${heading}\n${c.content}\n\n` : `${c.content}\n\n`;
+    if (sample.length + block.length > ANALYZE_SAMPLE_MAX_CHARS) {
+      sample += block.slice(0, ANALYZE_SAMPLE_MAX_CHARS - sample.length);
+      break;
+    }
+    sample += block;
+  }
+
+  if (sample.trim().length === 0) {
+    // Nothing to analyze (e.g. a source with no chunks). Leave it as-is.
+    return toView(source);
+  }
+
+  const prompt = [
+    `You are cataloguing an enterprise Knowledge Source named "${source.name}".`,
+    "Write a concise description (1-3 sentences, max 2000 characters) summarising what",
+    "this source covers and when an operator or AI agent would consult it, plus 3-8 short",
+    "lowercase topical tags for routing and filtering (single words or short phrases, e.g.",
+    '"billing", "oauth", "compliance"). Do not restate the source name as a tag.',
+    "",
+    "Source content sample:",
+    sample,
+  ].join("\n");
+
+  const result = await invoke<z.infer<typeof AnalysisSchema>>(
+    {
+      flow: "extract",
+      tenant_id: p.tenant_id,
+      user_turns: [{ role: "user", content: prompt }],
+      schema: AnalysisSchema,
+    },
+    db,
+  );
+
+  const analysis = result.object;
+  if (!analysis) {
+    // Model returned no structured object — leave the source un-enriched.
+    return toView(source);
+  }
+
+  const nextTags = dedupeTags(analysis.tags);
+  const overwriteDescription = source.description === null || p.force === true;
+
+  return await (db as Db).transaction(async (tx) => {
+    const updates: Record<string, unknown> = {
+      tags: nextTags,
+      updated_at: new Date(),
+    };
+    if (overwriteDescription) updates.description = analysis.description;
+
+    const [updated] = await tx
+      .update(knowledgeSources)
+      .set(updates)
+      .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), eq(knowledgeSources.id, p.id)))
+      .returning();
+
+    if (!updated) return null;
+
+    await auditAwait(
+      {
+        tenant_id: p.tenant_id,
+        actor_type: p.actor_id ? "user" : "system",
+        actor_id: p.actor_id,
+        action: AuditAction.KNOWLEDGE_SOURCE_ANALYZED,
+        resource_type: "knowledge_source",
+        resource_id: p.id,
+        result: "success",
+        metadata: {
+          tags: nextTags,
+          description_updated: overwriteDescription,
+          model_used: result.model_used,
+          force: p.force === true,
+        },
+      },
+      tx,
+    );
+
+    invalidateKnowledgeCache(p.tenant_id);
     return toView(updated);
   });
 }
@@ -488,7 +660,16 @@ function knowledgeSearchCacheKey(p: SearchKnowledgeParams): string {
   const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
   const normQuery = p.query.trim().toLowerCase();
   const ids = (p.knowledge_source_ids ?? []).slice().sort().join(",");
-  return [p.tenant_id, p.scope ?? "", p.workflow_id ?? "", ids, String(limit), normQuery].join(":");
+  const tags = (p.tags ?? []).slice().sort().join(",");
+  return [
+    p.tenant_id,
+    p.scope ?? "",
+    p.workflow_id ?? "",
+    ids,
+    tags,
+    String(limit),
+    normQuery,
+  ].join(":");
 }
 
 export function invalidateKnowledgeCache(tenant_id: string): void {
@@ -530,10 +711,20 @@ export async function searchKnowledge(
     scopeFilter = sql`${scopeFilter} AND ks.scope = ${p.scope}`;
   }
 
+  // Tag filter rides inside the `kc.tenant_id = ${p.tenant_id}` scope below,
+  // so it can only ever narrow results within the tenant — never widen
+  // across tenants. `&&` is the GIN-indexed array-overlap operator.
+  if (p.tags && p.tags.length > 0) {
+    const tagLiterals = p.tags.map((t) => sql`${t}`);
+    scopeFilter = sql`${scopeFilter} AND ks.tags && ARRAY[${sql.join(tagLiterals, sql`, `)}]::text[]`;
+  }
+
   const out = await db.execute(sql`
     SELECT
       kc.id::text AS id,
       kc.knowledge_source_id::text AS knowledge_source_id,
+      ks.name AS source_name,
+      ks.tags AS source_tags,
       kc.title,
       kc.path,
       COALESCE(ks.last_refreshed_at, ks.updated_at) AS fetched_at,
@@ -556,6 +747,8 @@ export async function searchKnowledge(
   type Row = {
     id: string;
     knowledge_source_id: string;
+    source_name: string;
+    source_tags: string[] | null;
     title: string | null;
     path: string | null;
     snippet: string;
@@ -566,6 +759,8 @@ export async function searchKnowledge(
   const hits: KnowledgeSearchHit[] = (out.rows as Row[]).map((r) => ({
     id: r.id,
     knowledge_source_id: r.knowledge_source_id,
+    source_name: r.source_name,
+    source_tags: r.source_tags ?? [],
     title: r.title,
     path: r.path,
     snippet: r.snippet,

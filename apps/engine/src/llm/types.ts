@@ -77,6 +77,8 @@ export interface IncludedChunk {
 export interface IncludedKnowledgeChunk {
   id: string;
   knowledge_source_id: string;
+  source_name: string;
+  source_tags: string[];
   title: string | null;
   path: string | null;
   snippet: string;

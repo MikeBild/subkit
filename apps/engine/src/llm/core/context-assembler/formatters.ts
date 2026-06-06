@@ -286,11 +286,14 @@ export function formatChunk(chunk: IncludedChunk): string {
 }
 
 export function formatKnowledgeChunk(chunk: IncludedKnowledgeChunk): string {
-  const heading = chunk.title
-    ? `## Knowledge: ${chunk.title}${chunk.path ? ` — ${chunk.path}` : ""}`
-    : chunk.path
-      ? `## Knowledge: ${chunk.path}`
-      : "## Knowledge";
+  // Lead the heading with the named source so the model has provenance
+  // ("which source covers X?"), then the chunk's title/path locator.
+  const locator = chunk.title
+    ? `${chunk.title}${chunk.path ? ` — ${chunk.path}` : ""}`
+    : (chunk.path ?? "");
+  const heading = locator
+    ? `## Knowledge: ${chunk.source_name} — ${locator}`
+    : `## Knowledge: ${chunk.source_name}`;
   return `${heading}${fetchedAtSuffix(chunk.fetched_at)}\n${chunk.snippet}`;
 }
 

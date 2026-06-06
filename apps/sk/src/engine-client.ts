@@ -2118,7 +2118,7 @@ export class EngineClient {
   searchKnowledge(
     q: string,
     query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
+  ): Promise<{ hits: Record<string, unknown>[] }> {
     return this.request("GET", "/v1/knowledge-sources/search", undefined, { q, ...query });
   }
   getKnowledgeSource(id: string): Promise<Record<string, unknown>> {
@@ -2129,6 +2129,12 @@ export class EngineClient {
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
     return this.request("PATCH", `/v1/knowledge-sources/${encodeURIComponent(id)}`, body);
+  }
+  analyzeKnowledgeSource(
+    id: string,
+    body: { force?: boolean } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/knowledge-sources/${encodeURIComponent(id)}/analyze`, body);
   }
   deleteKnowledgeSource(id: string): Promise<void> {
     return this.request("DELETE", `/v1/knowledge-sources/${encodeURIComponent(id)}`);

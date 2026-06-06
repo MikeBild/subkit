@@ -230,12 +230,23 @@ export class EngineClient {
         { tenant_id: this.tenant_id, id, patch, actor_id: this.actor_id },
         this.db,
       ),
-    search: (query: string, opts?: { workflow_id?: string; limit?: number }) =>
+    analyze: (id: string, opts?: { force?: boolean }) =>
+      knowledgeSvc.analyzeKnowledgeSource(
+        {
+          tenant_id: this.tenant_id,
+          id,
+          actor_id: this.actor_id,
+          ...(opts?.force !== undefined ? { force: opts.force } : {}),
+        },
+        this.db,
+      ),
+    search: (query: string, opts?: { workflow_id?: string; tags?: string[]; limit?: number }) =>
       knowledgeSvc.searchKnowledge(
         {
           tenant_id: this.tenant_id,
           query,
           ...(opts?.workflow_id ? { workflow_id: opts.workflow_id } : {}),
+          ...(opts?.tags ? { tags: opts.tags } : {}),
           ...(opts?.limit ? { limit: opts.limit } : {}),
         },
         this.db,

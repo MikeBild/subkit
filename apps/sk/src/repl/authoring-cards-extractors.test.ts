@@ -622,6 +622,8 @@ describe("extractKnowledgeSourceSummary · engine→sk shape overlap", () => {
         id: "ks-overlap",
         name: "Overlap KS",
         slug: "overlap-ks",
+        description: "Overlap fixture description",
+        tags: ["overlap"],
         scope: "global",
         status: "ready",
         chunk_count: 1,

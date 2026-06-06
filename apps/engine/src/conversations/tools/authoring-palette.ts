@@ -82,6 +82,7 @@ const RELEVANT_READS: ReadonlySet<string> = new Set([
  * `list_schedules` reaches the LLM via the `tenant_read` clause below.
  */
 const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
+  "analyze_knowledge_source",
   "create_knowledge_source",
   "create_schedule",
   "delete_connector",

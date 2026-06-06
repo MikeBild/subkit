@@ -18,6 +18,7 @@ const UpdateKnowledgeSourceInput = z
     id: z.string().uuid("knowledge source id must be a UUID"),
     name: z.string().min(1).max(200).optional(),
     description: z.string().max(2000).optional(),
+    tags: z.array(z.string().min(1).max(40)).max(20).optional(),
     scope: z.enum(["global", "workflow"]).optional(),
     workflow_id: z.string().uuid().nullable().optional(),
     status: z.enum(["active", "inactive"]).optional(),
@@ -29,6 +30,7 @@ const UpdateKnowledgeSourceInput = z
       Boolean(
         v.name ||
           v.description ||
+          v.tags !== undefined ||
           v.scope ||
           v.workflow_id !== undefined ||
           v.status ||
@@ -128,9 +130,9 @@ function permissionDenied(permission: string, reason: string) {
 export const updateKnowledgeSourceTool: ConversationTool = {
   name: "update_knowledge_source",
   description:
-    "Patch a persisted knowledge source — rename, retarget the workflow scope, change status, or change refresh cadence.",
+    "Patch a persisted knowledge source — rename, edit its description/tags, retarget the workflow scope, change status, or change refresh cadence.",
   use_case:
-    "Use when the user asks to rename a knowledge source, archive it (status='inactive'), repoint it to a different workflow scope, or change its refresh cadence. Send only the fields that should change.",
+    "Use when the user asks to rename a knowledge source, set its description or tags, archive it (status='inactive'), repoint it to a different workflow scope, or change its refresh cadence. To auto-generate a description/tags from the content instead of dictating them, use analyze_knowledge_source. Send only the fields that should change.",
   important_notes: [
     "At least one patch field is required.",
     "Switching scope to 'workflow' requires workflow_id to be set (either in this patch or already on the row).",
@@ -140,16 +142,17 @@ export const updateKnowledgeSourceTool: ConversationTool = {
   category: "tenant_write",
   async execute(ctx, rawArgs) {
     const args = UpdateKnowledgeSourceInput.parse(rawArgs);
-    const auth = await requirePermission(ctx, "knowledge_source:write", {
-      type: "knowledge_source",
+    const auth = await requirePermission(ctx, "knowledge:write", {
+      type: "knowledge",
       id: args.id,
     });
-    if (!auth.allow) return permissionDenied("knowledge_source:write", auth.reason);
+    if (!auth.allow) return permissionDenied("knowledge:write", auth.reason);
 
     try {
       const view = await ctx.engineClient.knowledgeSources.update(args.id, {
         ...(args.name !== undefined ? { name: args.name } : {}),
         ...(args.description !== undefined ? { description: args.description } : {}),
+        ...(args.tags !== undefined ? { tags: args.tags } : {}),
         ...(args.scope !== undefined ? { scope: args.scope } : {}),
         ...(args.workflow_id !== undefined ? { workflow_id: args.workflow_id } : {}),
         ...(args.status !== undefined ? { status: args.status } : {}),
@@ -179,6 +182,7 @@ export const updateKnowledgeSourceTool: ConversationTool = {
           knowledge_source: {
             id: view.id,
             name: view.name,
+            tags: view.tags,
             scope: view.scope,
             status: view.status,
           },

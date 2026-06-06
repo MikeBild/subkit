@@ -335,6 +335,9 @@ export const log = {
   knowledge: {
     ingested: (ctx: Ctx) => logger.info({ module: "knowledge", action: "ingested", ...ctx }),
     searched: (ctx: Ctx) => logger.debug({ module: "knowledge", action: "searched", ...ctx }),
+    analyzed: (ctx: Ctx) => logger.info({ module: "knowledge", action: "analyzed", ...ctx }),
+    analyze_skipped: (ctx: Ctx) =>
+      logger.warn({ module: "knowledge", action: "analyze_skipped", ...ctx }),
   },
   selfHealing: {
     drift: {

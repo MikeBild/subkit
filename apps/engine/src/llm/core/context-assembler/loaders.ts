@@ -251,6 +251,8 @@ export async function loadKnowledgeChunks(
     return hits.map((h) => ({
       id: h.id,
       knowledge_source_id: h.knowledge_source_id,
+      source_name: h.source_name,
+      source_tags: h.source_tags,
       title: h.title,
       path: h.path,
       snippet: h.snippet,

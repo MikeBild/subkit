@@ -58,6 +58,10 @@ export interface KnowledgeSourceSummary {
   name: string;
   mime_type: string;
   size_bytes: number;
+  /** Auto-generated (or supplied) description — shown so the user sees enrichment happened. */
+  description?: string;
+  /** Auto-generated (or supplied) topical tags. */
+  tags?: string[];
   file_id?: string;
   link_failed?: boolean;
 }

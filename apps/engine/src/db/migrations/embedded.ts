@@ -57,6 +57,7 @@ import sql0036PatchCandidatesTenantStatusCreatedIdx from "./0036_patch_candidate
 import sql0037SupersedeWorkflowScopeRepairCandidates from "./0037_supersede_workflow_scope_repair_candidates.sql" with { type: "text" };
 import sql0038TenantsLastSkillCandidateAnalyzeAt from "./0038_tenants_last_skill_candidate_analyze_at.sql" with { type: "text" };
 import sql0039SkillCandidatesEndpointKey from "./0039_skill_candidates_endpoint_key.sql" with { type: "text" };
+import sql0040KnowledgeTags from "./0040_knowledge_tags.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -121,6 +122,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0037_supersede_workflow_scope_repair_candidates": sql0037SupersedeWorkflowScopeRepairCandidates,
   "0038_tenants_last_skill_candidate_analyze_at": sql0038TenantsLastSkillCandidateAnalyzeAt,
   "0039_skill_candidates_endpoint_key": sql0039SkillCandidatesEndpointKey,
+  "0040_knowledge_tags": sql0040KnowledgeTags,
 };
 
 const journal = journalMeta as unknown as Journal;

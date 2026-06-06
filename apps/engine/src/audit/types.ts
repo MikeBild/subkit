@@ -311,6 +311,7 @@ export const AuditAction = {
   KNOWLEDGE_SOURCE_DELETED: "knowledge_source.deleted",
   KNOWLEDGE_SOURCE_INGESTED: "knowledge_source.ingested",
   KNOWLEDGE_SOURCE_REFRESHED: "knowledge_source.refreshed",
+  KNOWLEDGE_SOURCE_ANALYZED: "knowledge_source.analyzed",
   // Wave 2: synthesised connector endpoint candidates from a file (README,
   // architecture doc, code dump). Distinct from the regular
   // KNOWLEDGE_SOURCE_REFRESHED action — discovery from files is a

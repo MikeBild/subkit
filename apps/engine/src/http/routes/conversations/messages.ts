@@ -12,7 +12,7 @@ import {
   serializeEvent,
   unregisterConversationAbort,
 } from "../../../conversations/index.ts";
-import { createKnowledgeSource } from "../../../knowledge/index.ts";
+import { analyzeKnowledgeSource, createKnowledgeSource } from "../../../knowledge/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { HttpError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -230,6 +230,25 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
           db,
         );
         ingestedSources.push(source.id);
+        // Interactive auto-enrich (best-effort): description + tags when the
+        // attachment landed without them. Outside the create transaction; a
+        // failure (incl. LlmQuotaExhausted) never fails message ingestion.
+        if (source.description === null || source.tags.length === 0) {
+          try {
+            await analyzeKnowledgeSource(
+              { tenant_id: principal.tenant_id, id: source.id, actor_id: principal.id },
+              db,
+            );
+          } catch (enrichErr) {
+            logger.warn({
+              module: "conversations",
+              action: "file_attachment.analyze_skipped",
+              msg: `Failed to auto-analyze knowledge source: ${source.id}`,
+              error: enrichErr instanceof Error ? enrichErr.message : String(enrichErr),
+              knowledge_source_id: source.id,
+            });
+          }
+        }
       } catch (err) {
         logger.warn({
           module: "conversations",

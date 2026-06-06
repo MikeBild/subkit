@@ -44,7 +44,13 @@ const listCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
       const { items } = await client.listKnowledgeSources({ limit: Number(args.limit) });
-      emitList(!!args.json, ["id", "title", "kind", "status"], items as Record<string, unknown>[]);
+      // Pre-join `tags` (a string[]) to a comma string so the table renderer
+      // shows "a, b" rather than raw JSON.
+      const rows = items.map((it) => ({
+        ...it,
+        tags: Array.isArray(it.tags) ? (it.tags as string[]).join(", ") : (it.tags ?? ""),
+      }));
+      emitList(!!args.json, ["id", "name", "tags", "chunk_count", "status"], rows);
     } catch (err) {
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
@@ -78,6 +84,7 @@ const searchCommand = defineCommand({
   meta: { name: "search", description: "Semantic search across knowledge sources" },
   args: {
     query: { type: "positional", required: true, description: "Search query" },
+    tags: { type: "string", description: "Comma-separated tags to narrow results" },
     limit: { type: "string", description: "Max results", default: "10" },
     json: { type: "boolean", description: "JSON output", default: false },
   },
@@ -85,8 +92,11 @@ const searchCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      const { items } = await client.searchKnowledge(args.query, { limit: Number(args.limit) });
-      emitList(!!args.json, ["id", "title", "score"], items as Record<string, unknown>[]);
+      const { hits } = await client.searchKnowledge(args.query, {
+        limit: Number(args.limit),
+        ...(args.tags ? { tags: args.tags } : {}),
+      });
+      emitList(!!args.json, ["source_name", "title", "rank"], hits as Record<string, unknown>[]);
     } catch (err) {
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
@@ -101,6 +111,13 @@ const createCommand = defineCommand({
   args: {
     file: { type: "string", required: true, description: "Path to file" },
     title: { type: "string", description: "Override title (defaults to filename)" },
+    description: {
+      type: "string",
+      description: "Description (omit to let the engine auto-generate one)",
+    },
+    tags: { type: "string", description: "Comma-separated tags (omit to auto-generate)" },
+    scope: { type: "string", description: "Scope: global | workflow" },
+    "workflow-id": { type: "string", description: "Workflow id (required when scope=workflow)" },
     json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
   },
   async run({ args }) {
@@ -142,12 +159,25 @@ const createCommand = defineCommand({
         await renderTaskList(phases, { jsonMode });
         throw err;
       }
+      const metadata: Record<string, unknown> = { name: title };
+      if (args.description) metadata.description = args.description;
+      if (args.tags) {
+        metadata.tags = args.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0);
+      }
+      if (args.scope) metadata.scope = args.scope;
+      if (args["workflow-id"]) metadata.workflow_id = args["workflow-id"];
       try {
-        ks = (await client.createKnowledgeSource({
-          name: title,
-          content: fileBuffer,
-          mime_type,
-        })) as Record<string, unknown>;
+        ks = (await client.createKnowledgeSource(
+          {
+            name: title,
+            content: fileBuffer,
+            mime_type,
+          },
+          metadata,
+        )) as Record<string, unknown>;
       } catch (err) {
         const phases: PlanStep[] = [
           { id: "upload", label: "Upload", status: "succeeded" },
@@ -186,6 +216,8 @@ const createCommand = defineCommand({
         name: typeof ks.name === "string" ? ks.name : title,
         mime_type,
         size_bytes,
+        ...(typeof ks.description === "string" ? { description: ks.description } : {}),
+        ...(Array.isArray(ks.tags) ? { tags: ks.tags as string[] } : {}),
         ...(file.id ? { file_id: file.id } : {}),
         ...(linkFailed ? { link_failed: true } : {}),
       };
@@ -200,14 +232,56 @@ const patchCommand = defineCommand({
   meta: { name: "patch", description: "Update a knowledge source" },
   args: {
     id: { type: "positional", required: true, description: "Knowledge source id" },
-    title: { type: "string", required: true, description: "New title" },
+    title: { type: "string", description: "New title" },
+    description: { type: "string", description: "New description" },
+    tags: { type: "string", description: "Comma-separated tags (replaces existing)" },
+    status: { type: "string", description: "Status: active | inactive" },
+  },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    const body: Record<string, unknown> = {};
+    if (args.title) body.name = args.title;
+    if (args.description) body.description = args.description;
+    if (args.tags !== undefined) {
+      body.tags = args.tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+    }
+    if (args.status) body.status = args.status;
+    if (Object.keys(body).length === 0) {
+      const msg = "at least one of --title, --description, --tags, --status is required";
+      process.stderr.write(`${pc.red("error")}: ${msg}\n`);
+      throw new Error(msg);
+    }
+    try {
+      const ks = await client.patchKnowledgeSource(args.id, body);
+      printJson(ks);
+    } catch (err) {
+      process.stderr.write(
+        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      throw err;
+    }
+  },
+});
+
+const analyzeCommand = defineCommand({
+  meta: {
+    name: "analyze",
+    description: "Generate a description + tags for a knowledge source via the engine LLM",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "Knowledge source id" },
+    force: { type: "boolean", description: "Overwrite an existing description", default: false },
   },
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      const ks = await client.patchKnowledgeSource(args.id, { name: args.title });
-      printJson(ks);
+      const result = await client.analyzeKnowledgeSource(args.id, { force: Boolean(args.force) });
+      printJson(result);
     } catch (err) {
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
@@ -245,6 +319,7 @@ export const knowledgeSourcesCommand = defineCommand({
     search: searchCommand,
     create: createCommand,
     patch: patchCommand,
+    analyze: analyzeCommand,
     delete: deleteCommand,
   },
 });

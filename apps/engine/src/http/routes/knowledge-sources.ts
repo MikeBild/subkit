@@ -13,6 +13,7 @@ import {
   KnowledgeSourceSchema,
   UpdateKnowledgeSourceSchema,
 } from "../../knowledge/index.ts";
+import { log } from "../../logging/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -22,12 +23,27 @@ const KnowledgeSourceListResponse = z
   .object({ items: z.array(KnowledgeSourceSchema) })
   .openapi("KnowledgeSourceListResponse");
 
+const AnalyzeKnowledgeSourceBody = z
+  .object({
+    force: z.boolean().optional(),
+  })
+  .openapi("AnalyzeKnowledgeSourceBody");
+
+const AnalyzeKnowledgeSourceResponse = z
+  .object({
+    analyzed: z.boolean(),
+    knowledge_source: KnowledgeSourceSchema,
+  })
+  .openapi("AnalyzeKnowledgeSourceResponse");
+
 const SearchResultSchema = z
   .object({
     hits: z.array(
       z.object({
         id: z.string(),
         knowledge_source_id: z.string(),
+        source_name: z.string(),
+        source_tags: z.array(z.string()),
         title: z.string().nullable(),
         path: z.string().nullable(),
         snippet: z.string(),
@@ -114,6 +130,25 @@ const deleteRoute = createRoute({
   },
 });
 
+const analyzeRoute = createRoute({
+  method: "post",
+  path: "/v1/knowledge-sources/{id}/analyze",
+  tags: ["knowledge"],
+  summary: "Analyze a knowledge source (LLM-generate description + tags)",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    body: { content: { "application/json": { schema: AnalyzeKnowledgeSourceBody } } },
+  },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: AnalyzeKnowledgeSourceResponse } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 // Web-scraper #144 — JSON inline ingestion. The legacy
 // POST /v1/knowledge-sources stays on multipart/form-data (file
 // uploads); recipes that produce extracted markdown POST to this
@@ -156,6 +191,9 @@ const searchRoute = createRoute({
         q: z.string().min(1),
         scope: z.enum(["global", "workflow"]).optional(),
         workflow_id: z.string().uuid().optional(),
+        tags: z.string().optional().openapi({
+          description: "Comma-separated tags; narrows to sources carrying any of them.",
+        }),
         limit: z.coerce.number().int().positive().max(50).optional(),
       })
       .openapi("SearchKnowledgeQuery"),
@@ -176,6 +214,11 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   app.use("/v1/knowledge-sources/inline", async (c, next) => {
+    if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
+    return next();
+  });
+
+  app.use("/v1/knowledge-sources/:id/analyze", async (c, next) => {
     if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
     return next();
   });
@@ -218,6 +261,14 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
         query: q.q,
         ...(q.scope ? { scope: q.scope } : {}),
         ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
+        ...(q.tags
+          ? {
+              tags: q.tags
+                .split(",")
+                .map((t) => t.trim())
+                .filter((t) => t.length > 0),
+            }
+          : {}),
         ...(q.limit ? { limit: q.limit } : {}),
       },
       db,
@@ -245,6 +296,24 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     if (!updated) throw new NotFoundError("knowledge_source");
     return c.json(updated, 200);
+  });
+
+  app.openapi(analyzeRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const updated = await svc.analyzeKnowledgeSource(
+      {
+        tenant_id: principal.tenant_id,
+        id,
+        actor_id: principal.id,
+        ...(body.force !== undefined ? { force: body.force } : {}),
+      },
+      db,
+    );
+    if (!updated) throw new NotFoundError("knowledge_source");
+    return c.json({ analyzed: true, knowledge_source: updated }, 200);
   });
 
   app.openapi(deleteRoute, async (c) => {
@@ -347,7 +416,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     const input = CreateKnowledgeSourceSchema.parse(metadata);
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const source = await svc.createKnowledgeSource(
+    let source = await svc.createKnowledgeSource(
       {
         tenant_id: principal.tenant_id,
         input,
@@ -360,6 +429,26 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
+
+    // Interactive auto-enrich (best-effort): generate a description + tags
+    // when the upload landed without them. Runs after the create commits,
+    // outside its transaction. Any failure (incl. LlmQuotaExhausted) leaves
+    // the source created/un-enriched and never fails the upload.
+    if (source.description === null || source.tags.length === 0) {
+      try {
+        const enriched = await svc.analyzeKnowledgeSource(
+          { tenant_id: principal.tenant_id, id: source.id, actor_id: principal.id },
+          db,
+        );
+        if (enriched) source = enriched;
+      } catch (err) {
+        log.knowledge.analyze_skipped({
+          knowledge_source_id: source.id,
+          tenant_id: principal.tenant_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     return c.json(source, 201);
   });

@@ -11,6 +11,7 @@
 // Budgets (50 MB per source, 500 MB per tenant) are enforced at the service
 // layer — the schema just stores what made it through the pipeline.
 
+import { sql } from "drizzle-orm";
 import {
   customType,
   index,
@@ -63,6 +64,10 @@ export const knowledgeSources = pgTable(
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     description: text("description"),
+    // Auto-generated topical/routing tags (or operator-supplied). REPLACE
+    // semantics in the service guard against array-doubling; the GIN index
+    // below powers the `&&` overlap tag filter in `searchKnowledge`.
+    tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
     scope: knowledgeSourceScopeEnum("scope").notNull().default("global"),
     workflow_id: uuid("workflow_id").references(() => workflows.id, { onDelete: "set null" }),
     status: knowledgeSourceStatusEnum("status").notNull().default("active"),
@@ -89,6 +94,7 @@ export const knowledgeSources = pgTable(
     index("knowledge_sources_tenant_idx").on(t.tenant_id),
     index("knowledge_sources_tenant_scope_idx").on(t.tenant_id, t.scope),
     index("knowledge_sources_tenant_workflow_idx").on(t.tenant_id, t.workflow_id),
+    index("knowledge_sources_tenant_tags_idx").using("gin", t.tags),
   ],
 );
 

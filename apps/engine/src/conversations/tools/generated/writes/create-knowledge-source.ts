@@ -21,6 +21,7 @@ import { roles, systemAccounts, users } from "../../../../db/schema/index.ts";
 import type { FileRow } from "../../../../files/resolver.ts";
 import { requireFileForTenant, resolvedFromRow } from "../../../../files/resolver.ts";
 import { KnowledgeBudgetExceededError } from "../../../../knowledge/budgets.ts";
+import { log } from "../../../../logging/logger.ts";
 import { can } from "../../../../rbac/evaluator.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../../index.ts";
 
@@ -34,6 +35,8 @@ const CreateKnowledgeSourceOutputData = z.object({
     id: z.string(),
     name: z.string(),
     slug: z.string(),
+    description: z.string().nullable(),
+    tags: z.array(z.string()),
     scope: z.string(),
     status: z.string(),
     chunk_count: z.number(),
@@ -68,6 +71,7 @@ const CreateKnowledgeSourceInput = z
     file_id: z.string().regex(/^fid_/, "file_id must start with 'fid_'").optional(),
     // shared
     description: z.string().max(2000).optional(),
+    tags: z.array(z.string().min(1).max(40)).max(20).optional(),
     scope: z.enum(["global", "workflow"]).optional(),
     workflow_id: z.string().uuid().optional(),
   })
@@ -232,6 +236,7 @@ export const createKnowledgeSourceTool: ConversationTool = {
     "scope='workflow' requires workflow_id; omit both to default to global scope.",
     "mode='from_attachment' with no `name` argument is the common case — the engine derives the name from the file's filename. Passing a generic placeholder defeats the default and leaks into the slug and KS listings.",
     "Tenant has a global byte budget; very large files may be rejected with `budget_exceeded`.",
+    "Omit `description`/`tags` to let the engine auto-generate them from the content; pass them only when the user dictates specific values.",
   ],
   example_input: {
     mode: "from_attachment",
@@ -243,11 +248,11 @@ export const createKnowledgeSourceTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = CreateKnowledgeSourceInput.parse(rawArgs);
 
-    const auth = await requirePermission(ctx, "knowledge_source:write", {
-      type: "knowledge_source",
+    const auth = await requirePermission(ctx, "knowledge:write", {
+      type: "knowledge",
       id: "*",
     });
-    if (!auth.allow) return permissionDenied("knowledge_source:write", auth.reason);
+    if (!auth.allow) return permissionDenied("knowledge:write", auth.reason);
 
     let buffer: Buffer;
     let filename: string;
@@ -296,10 +301,11 @@ export const createKnowledgeSourceTool: ConversationTool = {
     }
 
     try {
-      const view = await ctx.engineClient.knowledgeSources.create({
+      let view = await ctx.engineClient.knowledgeSources.create({
         input: {
           name,
           ...(args.description !== undefined ? { description: args.description } : {}),
+          ...(args.tags !== undefined ? { tags: args.tags } : {}),
           ...(args.scope !== undefined ? { scope: args.scope } : {}),
           ...(args.workflow_id !== undefined ? { workflow_id: args.workflow_id } : {}),
         },
@@ -307,6 +313,23 @@ export const createKnowledgeSourceTool: ConversationTool = {
         source_type_override,
         source_uri_override,
       });
+
+      // Interactive auto-enrich (best-effort): generate a description +
+      // tags when the upload landed without them. Runs after the create
+      // commits, outside its transaction. A failure (e.g. LlmQuotaExhausted)
+      // leaves the source created/un-enriched and never fails the upload.
+      if (view.description === null || view.tags.length === 0) {
+        try {
+          const enriched = await ctx.engineClient.knowledgeSources.analyze(view.id, {});
+          if (enriched) view = enriched;
+        } catch (enrichErr) {
+          log.knowledge.analyze_skipped({
+            knowledge_source_id: view.id,
+            tenant_id: ctx.tenant_id,
+            error: enrichErr instanceof Error ? enrichErr.message : String(enrichErr),
+          });
+        }
+      }
 
       const audit_log_id = await ctx.engineClient.audit_write({
         resource_type: "knowledge_source",
@@ -331,6 +354,8 @@ export const createKnowledgeSourceTool: ConversationTool = {
             id: view.id,
             name: view.name,
             slug: view.slug,
+            description: view.description,
+            tags: view.tags,
             scope: view.scope,
             status: view.status,
             chunk_count: view.chunk_count,

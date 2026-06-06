@@ -7,6 +7,7 @@ import type { ConversationTool, ToolResult } from "./index.ts";
 const inputSchema = z
   .object({
     query: z.string().min(1),
+    tags: z.array(z.string().min(1)).optional(),
     limit: z.number().int().positive().max(20).optional(),
   })
   .openapi("SearchKnowledgeToolInput");
@@ -14,7 +15,7 @@ const inputSchema = z
 export const searchKnowledgeTool: ConversationTool = {
   name: "search_knowledge",
   description:
-    "Search the tenant's Knowledge Sources for domain-specific notes, runbooks, compliance rules, and reference material. Call this when the user's request needs context beyond the TENANT SNAPSHOT and the loaded skills — e.g. vendor-specific recipes, internal policy, error-code lookups. Results are chunks ranked by FTS relevance. Prefer a short focused query (3–6 words). If the first result does not answer the question, refine the query once and stop — do not spin.",
+    "Search the tenant's Knowledge Sources for domain-specific notes, runbooks, compliance rules, and reference material. Call this when the user's request needs context beyond the TENANT SNAPSHOT and the loaded skills — e.g. vendor-specific recipes, internal policy, error-code lookups. Results are chunks ranked by FTS relevance; each hit names its source via source_name. Prefer a short focused query (3–6 words). Optionally pass tags to narrow to sources carrying a topic. If the first result does not answer the question, refine the query once and stop — do not spin.",
   inputSchema,
   category: "tenant_read" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
@@ -24,6 +25,7 @@ export const searchKnowledgeTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         query: args.query,
         ...(ctx.workflow_id ? { workflow_id: ctx.workflow_id } : {}),
+        ...(args.tags ? { tags: args.tags } : {}),
         limit: args.limit ?? 5,
       },
       ctx.db,

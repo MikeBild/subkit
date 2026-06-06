@@ -317,7 +317,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       resources.push({
         uri: knowledgeUri(ks.id),
         name: ks.name,
-        description: `Knowledge (${ks.scope}): ${ks.description ?? ks.source_uri}`,
+        description: `Knowledge (${ks.scope})${ks.tags.length > 0 ? ` [${ks.tags.join(", ")}]` : ""}: ${ks.description ?? ks.source_uri}`,
         mimeType: "application/json",
       });
     }

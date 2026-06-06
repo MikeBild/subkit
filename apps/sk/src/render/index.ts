@@ -92,6 +92,12 @@ function plainSummary(summary: AnySummary): string {
         }`,
       )}`,
     );
+    if (summary.description) {
+      out.push(`  ${pc.dim(`description: ${summary.description}`)}`);
+    }
+    if (summary.tags && summary.tags.length > 0) {
+      out.push(`  ${pc.dim(`tags: ${summary.tags.join(", ")}`)}`);
+    }
     if (summary.link_failed) {
       out.push(`  ${pc.yellow("warning: file link did not persist (best-effort)")}`);
     }

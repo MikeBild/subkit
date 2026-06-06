@@ -9,6 +9,7 @@ import {
   listKnowledgeSources,
   updateKnowledgeSource,
 } from "../service.ts";
+import type { KnowledgeSourceView } from "../types.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
@@ -231,5 +232,122 @@ describe.skipIf(skip)("knowledge/service", () => {
   test("deleteKnowledgeSource returns false for already-deleted", async () => {
     const result = await deleteKnowledgeSource(ctx.tenantId, createdId, null, ctx.testDb.db);
     expect(result).toBe(false);
+  });
+
+  // --- tags -------------------------------------------------------------------
+
+  test("createKnowledgeSource persists tags, deduped and capped to 20", async () => {
+    // 22 tags (including two case-insensitive dups) → expect 20 unique deduped
+    const inputTags = [
+      "alpha",
+      "beta",
+      "gamma",
+      "delta",
+      "epsilon",
+      "zeta",
+      "eta",
+      "theta",
+      "iota",
+      "kappa",
+      "lambda",
+      "mu",
+      "nu",
+      "xi",
+      "omicron",
+      "pi",
+      "rho",
+      "sigma",
+      "tau",
+      "upsilon",
+      "Alpha", // dup of "alpha" (different case)
+      "extra", // pushed beyond cap of 20
+    ];
+
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: { name: "Tagged Source", tags: inputTags, scope: "global" },
+        upload: { buffer: Buffer.from("content about tagging"), filename: "tags.txt" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+
+    // Dedup removes "Alpha" (dup of "alpha"), cap at 20 removes "extra".
+    expect(source.tags.length).toBe(20);
+    expect(source.tags.includes("alpha")).toBe(true);
+    // "Alpha" (dup) must not appear because dedupe keeps first-seen casing
+    expect(source.tags.filter((t) => t.toLowerCase() === "alpha").length).toBe(1);
+    // "extra" beyond the cap must not appear
+    expect(source.tags.includes("extra")).toBe(false);
+  });
+
+  test("updateKnowledgeSource replaces tags (no concat — dedup replace semantics)", async () => {
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: { name: "Tag Replace Source", tags: ["original", "tags"], scope: "global" },
+        upload: { buffer: Buffer.from("source with tags to replace"), filename: "replace.txt" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+
+    expect(source.tags).toEqual(["original", "tags"]);
+
+    // Update with a new set that has a duplicate
+    const updated = (await updateKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        id: source.id,
+        patch: { tags: ["new", "new", "set"] },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    )) as KnowledgeSourceView;
+
+    // Must be a replacement — not the union, and deduped
+    expect(updated.tags).toEqual(["new", "set"]);
+    expect(updated.tags.includes("original")).toBe(false);
+  });
+
+  test("updateKnowledgeSource with duplicate tags dedupes case-insensitively", async () => {
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: { name: "Case Dedupe Source", scope: "global" },
+        upload: { buffer: Buffer.from("case dedupe test"), filename: "case.txt" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+
+    const updated = (await updateKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        id: source.id,
+        patch: { tags: ["Billing", "billing", "BILLING", "api"] },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    )) as KnowledgeSourceView;
+
+    // All three "billing" variants collapse to one (first-seen wins)
+    expect(updated.tags.filter((t) => t.toLowerCase() === "billing").length).toBe(1);
+    expect(updated.tags).toEqual(["Billing", "api"]);
+  });
+
+  test("createKnowledgeSource with no tags produces empty tags array", async () => {
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: { name: "No Tags Source", scope: "global" },
+        upload: { buffer: Buffer.from("no tags"), filename: "notags.txt" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+
+    expect(source.tags).toEqual([]);
   });
 });
