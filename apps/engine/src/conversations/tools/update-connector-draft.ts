@@ -137,12 +137,30 @@ export const updateConnectorDraftTool: ConversationTool = {
         Object.hasOwn(oauthPatch as Record<string, unknown>, "client_id") &&
         typeof (oauthPatch as { client_id?: unknown }).client_id === "string";
       if (!isClientIdOnlyPatch) {
+        // The dead-end depends on whether a template is bound. A
+        // template-less oauth2 draft can NEVER carry oauth metadata
+        // authored here — the only writers are template enrichment (at
+        // save) and the snapshot fallback. Pre-fix the LLM looped this
+        // call when no template existed (e.g. LinkedIn before the
+        // builtin template landed), burning a turn per retry. Point it
+        // at the real path instead of "start a new draft".
+        const draft = ctx.getDraft().connector ?? {};
+        const hasTemplate = Boolean(draft.template_slug);
+        if (draft.auth_type === "oauth2" && !hasTemplate) {
+          return {
+            ok: false,
+            error_code: "oauth_requires_template",
+            message:
+              "This draft has no connector template, so its OAuth2 metadata (authorization_endpoint, token_endpoint, scopes, grant_type) cannot be authored here — those fields are template-owned. Do NOT retry this call. Pick an existing template with `start_connector_from_template`, or register one for this system via `POST /v1/connector-templates` (admin) and then start from it. Only the public `client_id` is writable on a draft.",
+            next_best_actions: ["start_connector_from_template"],
+          };
+        }
         return {
           ok: false,
           error_code: "auth_mutation_not_allowed",
           message:
-            "config.oauth cannot be written via update_connector_draft except for the public field `client_id`. The OAuth2 client reads oauth metadata from the template snapshot at mint time; for a different auth shape, start a new draft. To begin the authorization-code flow on an oauth2 connector, save it first then call authenticate_oauth.",
-          next_best_actions: ["authenticate_oauth", "start_connector_from_description"],
+            "config.oauth cannot be written via update_connector_draft except for the public field `client_id` — every other oauth key is template-owned. To begin the authorization-code flow on this oauth2 connector, save it first then call `authenticate_oauth`.",
+          next_best_actions: ["authenticate_oauth", "save_connector_draft"],
         };
       }
       // Merge the client_id patch into the existing config.oauth so the

@@ -1471,5 +1471,27 @@
       "https://github.com/mozilla/readability",
       "https://github.com/mixmark-io/turndown"
     ]
+  },
+  "linkedin-basics": {
+    "title": "LinkedIn API Basics",
+    "body": "Authenticate with OAuth 2.0 (authorization code). For member identity request the OpenID Connect scopes `openid profile email`; to publish posts add `w_member_social` (requires the 'Share on LinkedIn' product approved on the app). The token endpoint is form-encoded (`application/x-www-form-urlencoded`) with client_id/client_secret in the body. API base is https://api.linkedin.com. Resolve the author identity from `GET /v2/userinfo` — its `sub` field is the member id, and the author URN for posts is `urn:li:person:{sub}`.",
+    "examples": [
+      "GET /v2/userinfo — returns { sub, name, email, picture } for the authenticated member",
+      "POST /v2/ugcPosts — publish a text share (JSON body) with header X-Restli-Protocol-Version: 2.0.0; author is urn:li:person:{sub}"
+    ],
+    "best_practices": [
+      "Always send the header `X-Restli-Protocol-Version: 2.0.0` on /v2/ugcPosts and other /v2 Rest.li endpoints.",
+      "Build the author URN from /v2/userinfo `sub` rather than hard-coding a member id.",
+      "Access tokens last ~60 days; refresh tokens are available so the connector can renew without re-consent."
+    ],
+    "pitfalls": [
+      "A connector created without the LinkedIn template (template_slug=null) has no OAuth metadata and can never mint a token — always start from the `linkedin` template.",
+      "`Invalid scope` at the authorization step means the requested scope (e.g. w_member_social) is not yet granted to the app in the LinkedIn Developer Portal Products tab.",
+      "The redirect URL registered in the LinkedIn app must exactly match the engine callback (https://<engine-host>/v1/oauth/callback) — no trailing slash, no extra query params."
+    ],
+    "doc_refs": [
+      "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow",
+      "https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin"
+    ]
   }
 }

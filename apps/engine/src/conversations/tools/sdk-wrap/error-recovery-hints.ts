@@ -88,6 +88,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the connector id is unknown — call find_connector or list_connectors to discover the correct id",
   connector_missing:
     "no connector is bound for this operation — call find_connector or start_connector_from_description to create one",
+  oauth_requires_template:
+    "this oauth2 draft has no template, so its oauth metadata cannot be authored on the draft — call start_connector_from_template with an existing template, or register one via POST /v1/connector-templates (admin); do not retry update_connector_draft with oauth fields",
   connector_bindings_missing:
     "the workflow step is missing a connector binding — call inspect_workflow_draft to see required bindings, then update_param to attach a connector",
   connector_bindings_required:

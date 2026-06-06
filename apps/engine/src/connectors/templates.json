@@ -18950,5 +18950,132 @@
     "aws_service": null,
     "aws_region": null,
     "verified_at": null
+  },
+  {
+    "version": 1,
+    "slug": "linkedin",
+    "name": "LinkedIn",
+    "driver": "http",
+    "base_url": "https://api.linkedin.com",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://www.linkedin.com/oauth",
+      "authorization_endpoint": "https://www.linkedin.com/oauth/v2/authorization",
+      "token_endpoint": "https://www.linkedin.com/oauth/v2/accessToken",
+      "scopes": "openid profile email w_member_social",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
+    },
+    "default_skill": "linkedin-basics",
+    "ingestion_source": null,
+    "ingestion_url": null,
+    "icon": "linkedin.svg",
+    "description": "LinkedIn API — member identity (OpenID Connect) and posting (UGC Posts).",
+    "category": "communication",
+    "tags": ["rest", "linkedin", "social", "oauth2", "openid"],
+    "setup_instructions": "Create an app at linkedin.com/developers. Add the 'Sign In with LinkedIn using OpenID Connect' and 'Share on LinkedIn' products. Under Auth, add the redirect URL https://subkit-api.mikebild.dev/v1/oauth/callback (exact match, no trailing slash). Copy the Client ID and Client Secret.",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.linkedin\\.com(\\/|$)",
+    "keywords": ["linkedin", "post", "share", "social", "userinfo", "ugc"],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/v2/userinfo"
+    },
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow",
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow",
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "example_paths": ["/v2/userinfo", "/v2/ugcPosts"],
+    "recipes": [
+      {
+        "slug": "create-post",
+        "title": "Create a LinkedIn post (text share)",
+        "description": "Publish a text post to the authenticated member's LinkedIn feed.",
+        "intent_keywords": ["post to linkedin", "share on linkedin", "create linkedin post"],
+        "derived_from_skill": "linkedin-basics",
+        "category": "communication",
+        "tags": ["post", "share", "ugc"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": { "text": "Hello from sk 👋" },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "linkedin-create-post",
+          "description": "Resolve the author URN from /v2/userinfo, then publish a text share.",
+          "input_schema": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": { "type": "string" },
+              "visibility": { "type": "string", "default": "PUBLIC" }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "me",
+              "method": "GET",
+              "url": "${connector.linkedin.base_url}/v2/userinfo"
+            },
+            {
+              "kind": "request",
+              "id": "post",
+              "method": "POST",
+              "url": "${connector.linkedin.base_url}/v2/ugcPosts",
+              "headers": {
+                "X-Restli-Protocol-Version": "2.0.0",
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "author": "urn:li:person:${me.body.sub}",
+                "lifecycleState": "PUBLISHED",
+                "specificContent": {
+                  "com.linkedin.ugc.ShareContent": {
+                    "shareCommentary": { "text": "${input.text}" },
+                    "shareMediaCategory": "NONE"
+                  }
+                },
+                "visibility": {
+                  "com.linkedin.ugc.MemberNetworkVisibility": "${input.visibility}"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null
   }
 ]
