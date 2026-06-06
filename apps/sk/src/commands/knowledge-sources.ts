@@ -44,13 +44,17 @@ const listCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
       const { items } = await client.listKnowledgeSources({ limit: Number(args.limit) });
-      // Pre-join `tags` (a string[]) to a comma string so the table renderer
-      // shows "a, b" rather than raw JSON.
+      // JSON output must stay machine-faithful (tags as a string[]); only the
+      // human table pre-joins `tags` to "a, b" rather than rendering raw JSON.
+      if (args.json) {
+        printJson(items);
+        return;
+      }
       const rows = items.map((it) => ({
         ...it,
         tags: Array.isArray(it.tags) ? (it.tags as string[]).join(", ") : (it.tags ?? ""),
       }));
-      emitList(!!args.json, ["id", "name", "tags", "chunk_count", "status"], rows);
+      emitList(false, ["id", "name", "tags", "chunk_count", "status"], rows);
     } catch (err) {
       process.stderr.write(
         `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
