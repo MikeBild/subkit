@@ -60,13 +60,15 @@ export async function runChatDedupCleanup(now: Date, db: Db): Promise<void> {
     },
     db,
   );
-  if (deleted > 0) {
-    logger.info({
-      module: "scheduler",
-      action: "chat_dedup_cleanup.completed",
-      msg: "chat_events_seen retention sweep completed",
-      deleted,
-      duration_ms: Date.now() - started,
-    });
-  }
+  // Log every run (even deleted=0), symmetric with files-cleanup
+  // (`files_cleanup.fired`) and mcp-oauth-cleanup so an operator scanning
+  // structured logs sees the hourly sweep regardless of whether it pruned
+  // rows — not just on the rare non-empty sweep.
+  logger.info({
+    module: "scheduler",
+    action: "chat_dedup_cleanup.completed",
+    msg: "chat_events_seen retention sweep completed",
+    deleted,
+    duration_ms: Date.now() - started,
+  });
 }
