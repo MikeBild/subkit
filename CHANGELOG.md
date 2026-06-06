@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.10.1](https://github.com/MikeBild/subkit/compare/subkit-v6.10.0...subkit-v6.10.1)
+
+
+### Bug Fixes
+
+* **knowledge:** ships the self-describing Knowledge Sources work (tags, LLM auto-analyze, provenance — see 6.10.0) as the first successfully-deployed release; the 6.10.0 tag's CI failed on an exhaustive conversation-tool palette assertion that did not yet list the new `analyze_knowledge_source` tool. Adds the tool to the expected palette, and keeps `sk knowledge-sources list --json` machine-faithful (tags as a `string[]`, comma-joined only for the human table).
+
 ## [6.10.0](https://github.com/MikeBild/subkit/compare/subkit-v6.9.0...subkit-v6.10.0)
 
 
