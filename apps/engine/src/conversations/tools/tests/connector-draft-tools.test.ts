@@ -358,6 +358,31 @@ describe("connector draft tools", () => {
     expect(data.next_phase?.hint).toContain("authenticate_oauth");
   });
 
+  test("template URL match wins over discovery — discovery never overrides auth_type", async () => {
+    // Precedence guard for the discovery-based auth recognition: when a
+    // base_url matches a builtin template, the template's auth_type is
+    // authoritative and the discovery branch must NOT run (it is gated on
+    // `!template`). So no `recognized_auth` provenance appears and the
+    // type stays the template's, never "none" or a discovered guess.
+    // (The recognition mapping itself is unit-tested in
+    // connectors/discovery/recognize-auth.test.ts.)
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "GitHub API",
+      base_url: "https://api.github.com",
+      environment: "dev",
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: { template_slug: string | null; auth_type: string };
+      recognized_auth?: unknown;
+    };
+    expect(data.connector.template_slug).toBe("github");
+    expect(data.connector.auth_type).toBe("bearer");
+    // Discovery provenance must be absent on the template-matched path.
+    expect(data.recognized_auth).toBeUndefined();
+  });
+
   test("probe_connector_draft stores the latest probe summary", async () => {
     const toolCtx = await createToolCtx();
     await startConnectorFromDescriptionTool.execute(toolCtx.base, {

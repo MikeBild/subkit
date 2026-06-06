@@ -27,6 +27,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { type EndpointScore, scoreEndpoints } from "../../connectors/discovery/endpoint-scorer.ts";
+import { recognizeAuthFromSchemes } from "../../connectors/discovery/recognize-auth.ts";
 import {
   KNOWLEDGE_SOURCE_TTL_MS as DISCOVERY_TTL_MS,
   runDiscoveryCached,
@@ -133,6 +134,11 @@ export const discoverConnectorEndpointsTool: ConversationTool = {
  * ["discover_systems_from_files"]` so the agent reaches for the
  * file-based fallback (uploaded README, architecture doc) instead of
  * abandoning the turn.
+ *
+ * Informational `recommended_auth_type` is derived deterministically from
+ * the spec's securitySchemes. This tool is tenant_read — it does NOT
+ * mutate any draft. Callers (e.g. start_connector_from_description) own
+ * the decision of whether to act on this hint.
  */
 function finalizeOk(p: {
   source: "fresh" | "cache";
@@ -144,6 +150,25 @@ function finalizeOk(p: {
   const noStructure = p.result.endpoints.length === 0 && !p.result.text_corpus;
   if (noStructure) {
     data.next_best_actions = ["discover_systems_from_files"];
+  }
+  // Surface a deterministic auth hint so the authoring loop can steer
+  // the operator toward the right credential type without guessing.
+  const recognized = recognizeAuthFromSchemes(p.result.auth_schemes);
+  if (recognized) {
+    data.recommended_auth_type = recognized.auth_type;
+    if (recognized.auth_type === "oauth2" && recognized.oauth) {
+      data.oauth_metadata = {
+        scheme_name: recognized.scheme_name,
+        grant_type: recognized.oauth.grant_type,
+        ...(recognized.oauth.authorization_endpoint
+          ? { authorization_endpoint: recognized.oauth.authorization_endpoint }
+          : {}),
+        ...(recognized.oauth.token_endpoint
+          ? { token_endpoint: recognized.oauth.token_endpoint }
+          : {}),
+        ...(recognized.oauth.scope ? { scope: recognized.oauth.scope } : {}),
+      };
+    }
   }
   return { ok: true, data };
 }

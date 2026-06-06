@@ -1,6 +1,10 @@
 import { z } from "@hono/zod-openapi";
+import type { RecognizedAuth } from "../../connectors/discovery/recognize-auth.ts";
+import { recognizeAuthFromSchemes } from "../../connectors/discovery/recognize-auth.ts";
+import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { matchTemplatesByUrl } from "../../connectors/template-url-match.ts";
+import { logger } from "../../logging/logger.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import {
@@ -134,28 +138,91 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     // and unmatched drafts the LLM hint still wins.
     const urlPickedTemplate =
       urlMatchedAllowed && urlMatched && template?.slug === urlMatched.template.slug;
-    const auth_type = urlPickedTemplate
+    // Auth type precedence (highest to lowest):
+    //   1. Template URL match — authoritative when a template was found.
+    //   2. LLM-supplied args.auth_type hint.
+    //   3. Inferred from description text.
+    //   4. Template default (text-matched template).
+    //   5. Discovered from the OpenAPI securitySchemes (only when no
+    //      template matched, driver is http, and base_url is present).
+    //   6. "none" (fallback).
+    const resolvedDescription = args.description ?? template?.description;
+    const resolvedBaseUrl = args.base_url ?? template?.base_url;
+    const chainedAuthType: string | null = urlPickedTemplate
       ? template.auth_type
       : (args.auth_type ??
         inferAuthTypeFromDescription(args.description) ??
-        (template ? defaultTemplateAuthType(template) : "none"));
-    const resolvedDescription = args.description ?? template?.description;
-    const resolvedBaseUrl = args.base_url ?? template?.base_url;
-    // `config.oauth` is NOT seeded from the URL-matched template here.
-    // The draft is auth-shape-agnostic until the operator picks an auth
-    // path:
-    //   • auth_type === "oauth2" → the LLM is steered to call
-    //     `authenticate_oauth` after save. The OAuth2 client reads the
-    //     template's oauth metadata from the snapshot at mint time
-    //     (resolveConnectorOAuthConfig falls back to the snapshot when
-    //     config.oauth is absent), so no draft-time seed is needed.
-    //   • bearer / header / basic / aws_sigv4 / none → the operator
-    //     supplies a credential via `ask_user_form`; no oauth config
-    //     ever lands on the draft.
-    // Seeding oauth into a bearer draft (the pre-fix behaviour) caused
-    // strict-mode connector_config_invalid at save time — see session
-    // 18467df2.
+        (template ? defaultTemplateAuthType(template) : null));
+
+    // Discovery-based recognition: runs only when no template matched, the
+    // driver is http, and a base_url is present. Best-effort — discovery
+    // failures never block connector creation.
+    let recognizedAuth: RecognizedAuth | null = null;
+    if (!template && inferredDriver === "http" && resolvedBaseUrl) {
+      try {
+        const out = await runDiscoveryCached(
+          {
+            db: ctx.db,
+            tenant_id: ctx.tenant_id,
+            actor_id: ctx.actor_id,
+            ...(ctx.abortSignal ? { abortSignal: ctx.abortSignal } : {}),
+          },
+          { base_url: resolvedBaseUrl, force_refresh: false },
+        );
+        recognizedAuth = recognizeAuthFromSchemes(out.result.auth_schemes);
+      } catch (err) {
+        // Discovery is best-effort; a missing spec or network error must
+        // not block the connector draft from being created.
+        logger.warn({
+          module: "conversation_tool",
+          action: "start_connector_from_description.discovery_failed",
+          tenant_id: ctx.tenant_id,
+          base_url: resolvedBaseUrl,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Use discovered auth only when the existing chain produced no result.
+    // Discovered recognition is a new deterministic source — it fires
+    // only when the template/LLM/description chain yielded nothing.
+    const discoveryWasSource = !chainedAuthType && recognizedAuth !== null;
+    const auth_type: import("../../connectors/types.ts").AuthType =
+      (chainedAuthType as import("../../connectors/types.ts").AuthType | null) ??
+      recognizedAuth?.auth_type ??
+      "none";
+
+    // Seed `config.oauth` from discovered metadata when recognition fired
+    // and the auth type resolved to oauth2. The OAuth2 client reads these
+    // at mint/refresh time. `issuer_url` is required by OAuthEnrichmentSchema;
+    // derive it from the origin of the resolved base URL.
     const seedConfig: Record<string, unknown> = {};
+    if (
+      auth_type === "oauth2" &&
+      recognizedAuth?.auth_type === "oauth2" &&
+      recognizedAuth.oauth &&
+      resolvedBaseUrl
+    ) {
+      let origin: string;
+      try {
+        origin = new URL(resolvedBaseUrl).origin;
+      } catch {
+        origin = resolvedBaseUrl;
+      }
+      seedConfig.oauth = {
+        issuer_url: origin,
+        ...(recognizedAuth.oauth.authorization_endpoint
+          ? { authorization_endpoint: recognizedAuth.oauth.authorization_endpoint }
+          : {}),
+        ...(recognizedAuth.oauth.token_endpoint
+          ? { token_endpoint: recognizedAuth.oauth.token_endpoint }
+          : {}),
+        ...(recognizedAuth.oauth.scope ? { scope: recognizedAuth.oauth.scope } : {}),
+        grant_type: recognizedAuth.oauth.grant_type,
+        client_id: null,
+      };
+    }
+
     const connector: ConnectorDraftDocument = {
       name: args.name,
       slug: args.name
@@ -208,6 +275,15 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
           },
           next_phase: buildAuthNextPhase(connector.auth_type),
           validation,
+          ...(discoveryWasSource && recognizedAuth
+            ? {
+                recognized_auth: {
+                  auth_type: recognizedAuth.auth_type,
+                  scheme_name: recognizedAuth.scheme_name,
+                  source: "discovered_security_scheme" as const,
+                },
+              }
+            : {}),
           matched_template: template
             ? {
                 slug: template.slug,
