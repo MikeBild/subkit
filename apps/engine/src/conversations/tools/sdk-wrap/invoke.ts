@@ -247,18 +247,56 @@ export function wrapOne(
         const isInspect =
           inner.name.startsWith("inspect_") || inner.name === "diagnose_latest_execution";
         if (!isAskUser && !isInspect && signals.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          // Count this short-circuit against the SAME turn-loop budget as
+          // the identical-args loop detector below. Pre-fix the cap only
+          // blocked the tool call and returned an "ask the user" envelope
+          // without ending the turn — a model that ignored it re-emitted
+          // the blocked call every step (observed ~60× / 3.5 min of
+          // `consecutive_failures_block` before the step budget finally
+          // ran out). Mirroring `loop_detected`: once the turn budget is
+          // exhausted, return `reason: "turn_loop_budget_exhausted"`,
+          // which `turnLoopBudgetStopCondition` (loop.ts stopWhen) detects
+          // to halt the stream and end the turn.
+          signals.totalLoopWarnings += 1;
+          const turnBudgetReached = signals.totalLoopWarnings >= MAX_TURN_LOOP_WARNINGS;
           recordToolCircuitOpen({
             tool: inner.name,
-            reason: "consecutive_failures_cap",
+            reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "consecutive_failures_cap",
           });
           logger.warn({
             module: "conversation_tool",
             action: "tool.consecutive_failures_block",
-            msg: "global consecutive-failures cap reached — short-circuiting until model asks the user",
+            msg: turnBudgetReached
+              ? "global consecutive-failures cap + turn loop budget exhausted — ending turn"
+              : "global consecutive-failures cap reached — short-circuiting until model asks the user",
             conversation_id: ctx.conversation_id,
             tool: inner.name,
             consecutive_failures: signals.consecutiveFailures,
+            total_loop_warnings: signals.totalLoopWarnings,
+            turn_budget_reached: turnBudgetReached,
           });
+          events.push({
+            type: "tool_log",
+            call_id: "consecutive-failures-cap",
+            tool: inner.name,
+            level: "warn",
+            message: turnBudgetReached
+              ? `tool.consecutive_failures_block: ${signals.consecutiveFailures} failed tool calls in a row; turn-level loop budget exhausted (${signals.totalLoopWarnings}) — ending turn`
+              : `tool.consecutive_failures_block: ${signals.consecutiveFailures} failed tool calls in a row — emit ask_user_choice / ask_user_text instead of retrying.`,
+            ts: new Date().toISOString(),
+          });
+          if (turnBudgetReached) {
+            return {
+              ok: false,
+              data: {
+                error_code: "turn_loop_budget_exhausted",
+                message: `this turn failed ${signals.consecutiveFailures} tool calls in a row and exceeded the loop-warning budget — stop, summarise what you already know, and end the turn with a single question for the user (use ask_user_choice or ask_user_text, not prose).`,
+                reason: "turn_loop_budget_exhausted",
+                consecutive_failures: signals.consecutiveFailures,
+                next_best_actions: ["ask_user_choice", "ask_user_text"],
+              },
+            };
+          }
           const alternatives = buildCapAlternatives(signals.toolLastErrorHash);
           // G3 (runtime-logs review plan): give the model a ready-made
           // option set to drop straight into `ask_user_choice`. Pre-fix

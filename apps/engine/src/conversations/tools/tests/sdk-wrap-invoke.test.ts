@@ -93,6 +93,7 @@ describe("ERROR_CODE_ALTERNATIVES catalogue completeness", () => {
     "validation_failed",
     "run_failed",
     "consecutive_failures_cap", // meta — fires when the cap itself trips
+    "turn_loop_budget_exhausted", // meta — turn-ending signal (loop_detected / failures-cap); recovery is "end the turn", not a different tool
     // Tool-surface errors where the recovery is the same tool with
     // different args — no cross-tool alternative to recommend.
     "input_validation_failed",
