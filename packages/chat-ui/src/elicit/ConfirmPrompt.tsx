@@ -20,6 +20,7 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
 import { StructuredDiff } from "../diff/StructuredDiff.tsx";
+import { renderTextWithLinks } from "../hyperlink.ts";
 import { useTheme } from "../theme/Provider.tsx";
 import { ControlledTextField } from "./ControlledTextField.tsx";
 
@@ -54,34 +55,6 @@ function isPrintable(input: string, key: { ctrl: boolean; meta: boolean }): bool
   if (input.length !== 1) return false;
   const code = input.charCodeAt(0);
   return code >= 0x20 && code !== 0x7f;
-}
-
-// OSC 8 hyperlink escape — emits `\x1b]8;;URL\x07TEXT\x1b]8;;\x07`. Modern
-// terminals (iTerm2, Terminal.app on macOS 15+, kitty, Alacritty, VS Code,
-// Windows Terminal) render the visible TEXT as a clickable link to URL.
-// Terminals that don't understand OSC 8 ignore the escapes and show TEXT
-// unchanged, so the fallback is safe. The BEL terminator (\x07) is the
-// widely-supported form; ST (\x1b\\) is the spec but iTerm2 < 3.1 chokes.
-function osc8Hyperlink(url: string, displayText: string): string {
-  return `\x1b]8;;${url}\x07${displayText}\x1b]8;;\x07`;
-}
-
-// Split a multi-line text into chunks where URL tokens are wrapped with
-// OSC 8 escapes. Each URL renders as a single clickable token so the
-// terminal's word-wrap never splits a click target across lines. Returns
-// the rewritten string ready to hand to Ink's <Text> (which passes
-// non-SGR escapes through to the underlying writer).
-//
-// Pre-fix the OAuth elicitation rendered the authorize URL as plain prose
-// inside the confirm summary; Terminal.app can't re-assemble a wrapped
-// URL into a click target so the user had to copy-paste five line
-// fragments by hand (G11 in the runtime-logs review plan).
-export function renderTextWithLinks(text: string): string {
-  // Match https/http URLs greedily up to whitespace or a trailing
-  // sentence-terminator character. The trailing-char trim avoids
-  // capturing the closing `.` or `,` from prose like "...example.com.".
-  const urlPattern = /\bhttps?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]]/g;
-  return text.replace(urlPattern, (match) => osc8Hyperlink(match, match));
 }
 
 function describePendingValue(value: unknown): string {

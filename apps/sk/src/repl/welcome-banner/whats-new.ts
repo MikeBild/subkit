@@ -54,7 +54,15 @@ export function changelogHead(body: string = bundledChangelog): string | null {
     const m = line.match(/^##\s+\[([^\]]+)\]\s*(.*)$/);
     if (!m) continue;
     const version = m[1];
-    const tail = (m[2] ?? "").trim();
+    // Drop the changelog's compare-diff parenthetical
+    // `(https://github.com/…/compare/…)` — it's release plumbing, not
+    // operator-facing news, and a long URL in the width-clamped banner box
+    // truncates mid-string (the `…subkit-v6.…` copy/paste bug). Keep any
+    // real prose tail.
+    const tail = (m[2] ?? "")
+      .trim()
+      .replace(/^\(https?:\/\/[^)]*\)\s*/, "")
+      .trim();
     if (!version) continue;
     // Pass the bundled-CHANGELOG path through the same sanitizer the
     // cache/remote paths use, so a future automated changelog merge

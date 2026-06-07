@@ -48,6 +48,12 @@ export {
 export { TextPrompt, type TextPromptProps } from "./elicit/TextPrompt.tsx";
 export { HistorySearch, type HistorySearchProps } from "./HistorySearch.tsx";
 export {
+  hyperlink,
+  renderTextWithLinks,
+  resetHyperlinkSupportCacheForTests,
+  terminalSupportsHyperlinks,
+} from "./hyperlink.ts";
+export {
   KeybindingProvider,
   useActiveContext,
   useKeybinding,

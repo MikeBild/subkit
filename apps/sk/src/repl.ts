@@ -16,6 +16,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
+import { hyperlink } from "@chat-ui/index.ts";
 import {
   applyTurnEvent,
   initialSessionState,
@@ -580,7 +581,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           // gates the actual continuation; the operator resumes via the
           // same confirm/`/respond` path once the browser flow finishes.
           line(`  ! authorization needed: ${ev.summary}`);
-          line(`    open in browser: ${oauthUrl}`);
+          line(`    open in browser: ${hyperlink(oauthUrl)}`);
           void defaultOpenBrowser(oauthUrl).then(
             () => line("    waiting for authorization in your browser…"),
             () =>

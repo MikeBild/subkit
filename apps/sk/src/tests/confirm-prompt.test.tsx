@@ -15,8 +15,8 @@
 // After the rewrite, a single `useInput` in ConfirmPrompt dispatches
 // all keystrokes. These tests pin that contract.
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
-import { ConfirmPrompt } from "@chat-ui/index.ts";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { ConfirmPrompt, resetHyperlinkSupportCacheForTests } from "@chat-ui/index.ts";
 import { cleanup, render } from "ink-testing-library";
 
 async function yieldTick(ms = 40): Promise<void> {
@@ -196,6 +196,17 @@ describe("ConfirmPrompt — decision metadata", () => {
 });
 
 describe("ConfirmPrompt — URL hyperlinks in summary (G11)", () => {
+  // Hyperlink emission is now terminal-support-aware; the test env is
+  // non-TTY so force OSC 8 on to exercise the supported path. (The plain
+  // fallback path is covered in packages/chat-ui/src/tests/hyperlink.test.ts.)
+  beforeEach(() => {
+    process.env.SK_FORCE_HYPERLINKS = "1";
+    resetHyperlinkSupportCacheForTests();
+  });
+  afterEach(() => {
+    delete process.env.SK_FORCE_HYPERLINKS;
+    resetHyperlinkSupportCacheForTests();
+  });
   // Pre-fix the OAuth approval summary printed authorize URLs as plain
   // prose; Terminal.app's URL auto-detect cannot reassemble a wrapped
   // URL across multiple visual lines, so the user had to copy-paste

@@ -182,6 +182,25 @@ describe("loadWhatsNew", () => {
     expect(changelogHead("# just a header\n\nno versions here")).toBeNull();
   });
 
+  test("changelogHead drops the compare-URL parenthetical (no truncation, copy-safe)", () => {
+    // Regression for the `…subkit-v6.…` banner bug: the release-please
+    // header carries a compare diff URL that was being truncated mid-string
+    // inside the width-clamped banner box.
+    const body =
+      "# Changelog\n\n## [6.10.1](https://github.com/MikeBild/subkit/compare/subkit-v6.10.0...subkit-v6.10.1)\n";
+    const head = changelogHead(body);
+    expect(head).toBe("v6.10.1");
+    expect(head).not.toContain("http");
+    expect(head).not.toContain("…");
+    expect((head ?? "").length).toBeLessThanOrEqual(80);
+  });
+
+  test("changelogHead keeps a real prose tail after the compare URL", () => {
+    const body =
+      "# Changelog\n\n## [6.11.0](https://github.com/x/y/compare/a...b) — knowledge tags\n";
+    expect(changelogHead(body)).toBe("v6.11.0 — knowledge tags");
+  });
+
   test("changelogHead from bundled CHANGELOG returns a v-prefixed string", () => {
     expect(changelogHead()).toMatch(/^v\d+\.\d+/);
   });

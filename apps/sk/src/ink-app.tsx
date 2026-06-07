@@ -3307,7 +3307,18 @@ export const InkApp: React.FC<InkAppProps> = ({
         }
         return;
       }
-      // Home / End
+      // Home / End — physical keys jump to start/end of the WHOLE buffer
+      // (distinct from the line-aware Ctrl-A/E below, which stop at the
+      // current line in a multi-line draft). Ink 7 surfaces key.home/end.
+      if (key.home) {
+        setInput((prev) => applyInput(prev, { type: "moveHome" }));
+        return;
+      }
+      if (key.end) {
+        setInput((prev) => applyInput(prev, { type: "moveEnd" }));
+        return;
+      }
+      // Ctrl-A / Ctrl-E — readline line start/end
       if (key.ctrl && char === "a") {
         setInput((prev) => applyInput(prev, { type: "moveLineStart" }));
         return;

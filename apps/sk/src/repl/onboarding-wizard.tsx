@@ -35,6 +35,7 @@
 // `cancelled` reason so the caller can decide whether to log a
 // notice or stay quiet.
 
+import { hyperlink } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
@@ -421,7 +422,7 @@ const CredentialStep: React.FC<{
             return here.
           </Text>
           {template.oauth?.authorization_url ? (
-            <Text color="cyan">{template.oauth.authorization_url}</Text>
+            <Text color="cyan">{hyperlink(template.oauth.authorization_url)}</Text>
           ) : null}
           {template.oauth?.scopes && template.oauth.scopes.length > 0 ? (
             <Text color="gray">scopes: {template.oauth.scopes.join(" ")}</Text>
