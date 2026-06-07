@@ -392,3 +392,48 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     expect(persistedCheckpoint?.status).toBe("fresh");
   });
 });
+
+describe("auto-persist on confirmation — oauth_completed credential gate", () => {
+  test("confirming the OAuth prompt with NO minted credential returns authenticated:false (not a false success)", async () => {
+    // Regression for the LinkedIn session (connector d462743a): the
+    // operator confirmed "Have you completed the authorization?" but the
+    // provider never called back (zero oauth.callback hits / zero
+    // credential.created). Pre-fix the oauth_completed dispatcher reported
+    // authenticated:true unconditionally, so the LLM retried the connector
+    // and hit an auth failure while the operator was told it was active.
+    // Now it verifies a credential actually exists first.
+    const { conversation_id } = await seedConversationWithDraft("ap-oauth-nocred");
+    // A connector id with no credential row — the pre-token state.
+    const connectorId = "11111111-1111-4111-8111-111111111111";
+    const elicitation = await createCarrierElicitation({
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      input: {
+        kind: "external_write",
+        question: "Have you completed the authorization in your browser?",
+        commit_intent: {
+          kind: "oauth_completed",
+          payload: { connector_id: connectorId, connector_slug: "linkedin" },
+          description: "Resume work that was blocked on linkedin: the credential is now active.",
+        },
+      },
+      output: { confirmed: true },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      elicitation_output: { confirmed: true },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.dispatched).toBe(true);
+    expect(dispatch.synthetic_result?.ok).toBe(false);
+    expect(dispatch.synthetic_result?.error_code).toBe("oauth_not_completed");
+    const data = dispatch.synthetic_result?.data as Record<string, unknown> | undefined;
+    expect(data?.authenticated).toBe(false);
+    expect(dispatch.synthetic_result?.next_best_actions).toContain("authenticate_oauth");
+  });
+});

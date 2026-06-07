@@ -52,6 +52,8 @@
 import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { getConnector } from "../../connectors/service.ts";
+import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -348,22 +350,69 @@ export async function maybeAutoPersistFromElicitation(
             });
           }
         }
-        result = {
-          ok: true,
-          data: {
-            authenticated: true,
-            ...(connectorId ? { connector_id: connectorId } : {}),
-            ...(connectorSlug ? { connector_slug: connectorSlug } : {}),
-            ...(blockedCallToRetry
-              ? {
-                  blocked_call_to_retry: blockedCallToRetry,
-                  note: `OAuth flow completed. The saved credential is now active. Retry the call that was blocked on this connector: ${blockedCallToRetry.tool}(...). The same input shape is in blocked_call_to_retry.input — re-issue verbatim.`,
-                }
-              : {
-                  note: "OAuth flow completed. The saved credential is now active; retry the call_connector / dry_run_workflow / run_workflow that was blocked on this connector.",
-                }),
-          },
-        };
+        // Verify a credential ACTUALLY landed before telling the LLM the
+        // connector is authenticated. The operator confirming "I finished
+        // authorizing" does NOT mean the provider called back: if the
+        // browser consent was abandoned, or the provider rejected at its
+        // consent screen (redirect_uri not allowlisted / scope not
+        // approved), no token was minted and there is no credential row.
+        // Pre-fix this path optimistically reported `authenticated: true`,
+        // so the LLM immediately retried the connector and hit an auth
+        // failure — and the operator was told the credential was "active"
+        // when it never existed (LinkedIn session d462743a: zero
+        // oauth.callback hits, zero credential.created, yet the flow
+        // reported success). getCredentialForConnector returns null when
+        // no primary credential exists (the oauth2_client identity slot is
+        // excluded), which is exactly the pre-token state.
+        let oauthCredentialPresent = false;
+        if (connectorId) {
+          try {
+            const conn = await getConnector(p.tenant_id, connectorId, p.db);
+            const env: "dev" | "prod" = conn?.environment === "prod" ? "prod" : "dev";
+            oauthCredentialPresent = Boolean(
+              await getCredentialForConnector(p.tenant_id, connectorId, env, p.db),
+            );
+          } catch (err) {
+            logger.warn({
+              module: "auto-persist",
+              action: "oauth_completed.credential_check_failed",
+              msg: "could not verify oauth credential after confirmation; treating as not authenticated",
+              tenant_id: p.tenant_id,
+              conversation_id: p.conversation_id,
+              connector_id: connectorId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+        result = oauthCredentialPresent
+          ? {
+              ok: true,
+              data: {
+                authenticated: true,
+                ...(connectorId ? { connector_id: connectorId } : {}),
+                ...(connectorSlug ? { connector_slug: connectorSlug } : {}),
+                ...(blockedCallToRetry
+                  ? {
+                      blocked_call_to_retry: blockedCallToRetry,
+                      note: `OAuth flow completed. The saved credential is now active. Retry the call that was blocked on this connector: ${blockedCallToRetry.tool}(...). The same input shape is in blocked_call_to_retry.input — re-issue verbatim.`,
+                    }
+                  : {
+                      note: "OAuth flow completed. The saved credential is now active; retry the call_connector / dry_run_workflow / run_workflow that was blocked on this connector.",
+                    }),
+              },
+            }
+          : {
+              ok: false,
+              error_code: "oauth_not_completed",
+              message:
+                "No OAuth credential was minted for this connector — the provider never completed the authorization callback, so the connector is NOT authenticated. Do NOT retry the connector or report success. Causes: the authorization URL was not actually completed in the browser, or the provider rejected it (the redirect URI is not registered in the provider app, or a requested scope is not approved). Have the operator open the authorization URL, finish the consent so the provider redirects back to the engine callback, THEN call authenticate_oauth again to resume waiting for the token.",
+              data: {
+                authenticated: false,
+                ...(connectorId ? { connector_id: connectorId } : {}),
+                ...(connectorSlug ? { connector_slug: connectorSlug } : {}),
+              },
+              next_best_actions: ["authenticate_oauth"],
+            };
         break;
       }
     }
