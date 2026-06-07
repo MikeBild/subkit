@@ -2267,6 +2267,12 @@
               }
             },
             {
+              "kind": "transform",
+              "id": "now",
+              "language": "jsonata",
+              "expression": "$millis()"
+            },
+            {
               "kind": "request",
               "id": "put",
               "method": "POST",
@@ -2278,10 +2284,10 @@
               "body": {
                 "logGroupName": "${input.log_group_name}",
                 "logStreamName": "${input.log_stream_name}",
-                "sequenceToken": "${describe_streams.body.logStreams[0].uploadSequenceToken}",
+                "sequenceToken": "${scope.describe_streams.data.logStreams.0.uploadSequenceToken}",
                 "logEvents": [
                   {
-                    "timestamp": "${$now()}",
+                    "timestamp": "${scope.now.data}",
                     "message": "${input.message}"
                   }
                 ]
@@ -2361,7 +2367,7 @@
                 "content-type": "application/x-amz-json-1.1"
               },
               "body": {
-                "queryId": "${start.body.queryId}"
+                "queryId": "${scope.start.data.queryId}"
               }
             }
           ]
@@ -7085,7 +7091,7 @@
               "id": "triage",
               "workflow_slug": "triage-issue",
               "input": {
-                "issue_number": "${steps.open.body.number}",
+                "issue_number": "${scope.open.data.number}",
                 "owner": "${input.owner}",
                 "repo": "${input.repo}"
               }
@@ -7177,7 +7183,7 @@
               "kind": "request",
               "id": "merge",
               "method": "PUT",
-              "url": "${connector.github.base_url}/repos/${input.owner}/${input.repo}/pulls/${steps.open_pr.body.number}/merge",
+              "url": "${connector.github.base_url}/repos/${input.owner}/${input.repo}/pulls/${scope.open_pr.data.number}/merge",
               "json_body": {
                 "merge_method": "squash"
               }
@@ -15989,7 +15995,7 @@
               },
               "body": {
                 "channel": "${input.channel}",
-                "ts": "${post.body.ts}",
+                "ts": "${scope.post.data.ts}",
                 "text": "${input.final_text}"
               }
             }
@@ -17487,7 +17493,7 @@
                 "content-type": "application/x-www-form-urlencoded"
               },
               "form": {
-                "charge": "${list_for_refund.body.data[0].id}",
+                "charge": "${scope.list_for_refund.data.data.0.id}",
                 "amount": "${input.amount}"
               },
               "idempotency_key": "${input.customer_id}-${input.amount}"
@@ -19057,7 +19063,7 @@
                 "Content-Type": "application/json"
               },
               "body": {
-                "author": "urn:li:person:${me.body.sub}",
+                "author": "urn:li:person:${scope.me.data.sub}",
                 "lifecycleState": "PUBLISHED",
                 "specificContent": {
                   "com.linkedin.ugc.ShareContent": {

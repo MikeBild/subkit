@@ -127,6 +127,13 @@ const WORKFLOW_AUTHORING: ReadonlySet<string> = new Set([
   "inspect_workflow_draft",
   "propose_step",
   "start_workflow_from_goal",
+  // Clone a builtin/tenant recipe into the draft. Pre-fix this was
+  // omitted, so the conversation could never clone a recipe — the LLM
+  // fell back to free-form build_workflow and hand-authored step bodies
+  // (e.g. the LinkedIn create-post post body) with placeholder/schema
+  // mistakes. It is a draft_write tool like build_workflow and only
+  // clones a tenant-scoped recipe; safe to expose.
+  "start_workflow_from_recipe",
   "update_param",
   "validate_draft",
 ]);

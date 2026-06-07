@@ -37,7 +37,12 @@ export interface UnsupportedPlaceholder {
 const MUSTACHE_RE = /\{\{\s*([^{}]*?)\s*\}\}/g;
 const DOLLAR_RE = /\$\{([^{}]*)\}/g;
 
-const KNOWN_KINDS = new Set(["cred", "connector", "input", "scope", "item"]);
+// Must mirror the runtime parser's accepted heads (parser.ts parseBody
+// switch): cred | connector | input | scope | item | state. Pre-fix this
+// set omitted `state`, so the verifier false-flagged the valid
+// `${state.<var>}` placeholder (workflow persistent state, #51) as
+// bad_kind even though the runtime substitutes it.
+const KNOWN_KINDS = new Set(["cred", "connector", "input", "scope", "item", "state"]);
 
 /**
  * Best-effort rewrite of a Mustache or bad-`${...}` body into the canonical
@@ -144,7 +149,7 @@ export function findUnsupportedPlaceholders(text: string): UnsupportedPlaceholde
       raw,
       span: { start: d.index, end: d.index + raw.length },
       did_you_mean: suggestRewrite(trimmed),
-      message: `Unknown placeholder kind '${trimmed.split(".")[0] ?? ""}'. Expected one of: cred, connector, input, scope, item.`,
+      message: `Unknown placeholder kind '${trimmed.split(".")[0] ?? ""}'. Expected one of: cred, connector, input, scope, item, state.`,
     });
   }
 

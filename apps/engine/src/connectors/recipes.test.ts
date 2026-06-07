@@ -3,6 +3,10 @@
 // a conversation, a DB, or a tool context.
 
 import { describe, expect, test } from "bun:test";
+import {
+  validateStepReferences,
+  validateUnsupportedPlaceholders,
+} from "../workflows/reference-validator.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 import templateSkillsJson from "./template-skills.json" with { type: "json" };
 import { ConnectorRecipeSchema, getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
@@ -279,5 +283,34 @@ describe("recipe-coverage gate (A1)", () => {
       "loop",
     ]);
     expect([...declared].sort()).toEqual([...expected].sort());
+  });
+});
+
+describe("all builtin recipes — placeholder resolvability (regression for the LinkedIn create-post bug)", () => {
+  // The runtime placeholder grammar only substitutes the kinds
+  // cred|connector|input|scope|item|state (llm/substitution/parser.ts).
+  // A prior step's response body is addressable ONLY as
+  // `${scope.<step_id>.data.<path>}`. Recipes that used the bare
+  // `${<step_id>.body.<path>}` / `${steps.<id>...}` form shipped a literal
+  // `${...}` at runtime — silently broken. WorkflowDefSchema does not
+  // catch this; the substitution validators do. Gate every recipe.
+  test("every recipe.workflow has zero unsupported placeholders and zero bad step refs", () => {
+    const offenders: string[] = [];
+    for (const t of loadBuiltinTemplates()) {
+      for (const r of t.recipes) {
+        const parsed = WorkflowDefSchema.safeParse(JSON.parse(JSON.stringify(r.workflow)));
+        if (!parsed.success) {
+          offenders.push(`${t.slug}/${r.slug}: WorkflowDefSchema parse failed`);
+          continue;
+        }
+        for (const e of validateUnsupportedPlaceholders(parsed.data)) {
+          offenders.push(`${t.slug}/${r.slug}: unsupported_placeholder ${JSON.stringify(e)}`);
+        }
+        for (const e of validateStepReferences(parsed.data)) {
+          offenders.push(`${t.slug}/${r.slug}: bad_step_ref ${JSON.stringify(e)}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

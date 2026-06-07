@@ -155,6 +155,7 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
     };
     const tools = [
       { name: "build_workflow" },
+      { name: "start_workflow_from_recipe" },
       { name: "propose_step" },
       { name: "validate_draft" },
       { name: "dry_run_workflow" },
@@ -166,6 +167,10 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
     const filtered = filterByAuthoringPalette(tools, draft, ONLY_WORKFLOW);
     const names = filtered.map((t) => t.name);
     expect(names).toContain("build_workflow");
+    // Regression: start_workflow_from_recipe must be exposed in the
+    // authoring conversation so recipes can be cloned (pre-fix it was
+    // omitted, forcing error-prone free-form build_workflow).
+    expect(names).toContain("start_workflow_from_recipe");
     expect(names).toContain("save_workflow_draft");
     expect(names).toContain("run_workflow");
     expect(names).toContain("diagnose_latest_execution");
