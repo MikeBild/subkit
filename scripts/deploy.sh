@@ -307,8 +307,16 @@ else
     exit 1
   fi
   # Stream the binary up first; deploy-body.sh checks for it before
-  # touching the running engine.
-  scp "${SSH_COMMON_OPTS[@]}" \
+  # touching the running engine. Use rsync (compressed + --partial,
+  # resumable) for the ~130MB binary: plain scp intermittently dies
+  # mid-transfer on this link with `ssh_packet_write_poll: Result too
+  # large` (observed twice on the v6.10.8 ship), aborting the deploy.
+  # rsync's chunked transfer survives the flaky write and compresses the
+  # binary ~3x. The small config files below stay on scp (they always
+  # transfer cleanly). rsync is present on the droplet (provisioned by
+  # do-bootstrap.sh).
+  _RSYNC_SSH="ssh -i $SSH_KEY_PATH -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
+  rsync -z --partial --inplace -e "$_RSYNC_SSH" \
     "$_DIST_BIN" \
     "$SSH_TARGET:/usr/local/bin/engine.next"
   # Caddyfile + systemd unit: re-synced every release so the repo
