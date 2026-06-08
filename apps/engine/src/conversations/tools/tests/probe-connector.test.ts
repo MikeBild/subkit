@@ -311,6 +311,199 @@ describe("probe_connector — rate limit", () => {
   });
 });
 
+describe("probe_connector — credential pre-gate (oauth2)", () => {
+  // Regression coverage for the credential pre-gate introduced alongside
+  // the empty-Bearer fix in `applyAuthMaterial`.
+  //
+  // The pre-gate sits in probe_connector BEFORE dispatch: for auth_type !==
+  // "none" connectors it checks (a) whether a saved credential exists and
+  // (b) whether an oauth2 credential has a non-empty access_token. This
+  // prevents an empty-Bearer 401 from reaching the remote and prevents the
+  // LLM from misreading it as an API-path error.
+
+  test("oauth2 connector with a valid access_token → dispatches and returns credential descriptor", async () => {
+    const [tenant] = await ctx.db
+      .insert(tenants)
+      .values({
+        slug: `t-oauth2-ok-${Math.random().toString(36).slice(2, 8)}`, // allow-random: unique slug
+        display_name: "T",
+      })
+      .returning();
+
+    const [conn] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id: tenant!.id,
+        slug: "oauth2-live",
+        display_name: "oauth2-live",
+        driver: "http",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: baseUrl,
+      })
+      .returning();
+
+    // Seed an oauth2 credential with a real access_token.
+    await upsertCredential(
+      {
+        tenant_id: tenant!.id,
+        connector_id: conn!.id,
+        environment: "dev",
+        mode: "oauth2",
+        value: {
+          mode: "oauth2",
+          access_token: "live-oauth2-token-xyz",
+          token_type: "Bearer",
+          refresh_token: null,
+          expires_at: null,
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+
+    const tctx = makeToolContext({ tenant_id: tenant!.id, conversation_id: crypto.randomUUID() }); // allow-random: unique per test
+
+    const result = await probeConnectorTool.execute(tctx, {
+      connector_slug: "oauth2-live",
+      method: "GET",
+      path: "/health",
+      environment: "dev",
+    });
+
+    // Pre-gate passed → request was dispatched and returned a real response.
+    expect(result.ok).toBe(true);
+    const out = result.data as Record<string, unknown>;
+    expect(out.status_code).toBe(200);
+
+    // Credential descriptor surfaces on success envelope.
+    const cred = out.credential as { mode: string; present: boolean } | undefined;
+    expect(cred).toBeDefined();
+    expect(cred!.mode).toBe("oauth2");
+    expect(cred!.present).toBe(true);
+
+    // Auth header was injected — mock server saw `Authorization: Bearer <token>`.
+    expect(captured.length).toBeGreaterThan(0);
+    const req = captured[captured.length - 1]!;
+    expect(req.headers.authorization).toBe("Bearer live-oauth2-token-xyz");
+  });
+
+  test("oauth2 connector with NO credential row → credential_required pre-gate fires before dispatch", async () => {
+    const [tenant] = await ctx.db
+      .insert(tenants)
+      .values({
+        slug: `t-oauth2-nocred-${Math.random().toString(36).slice(2, 8)}`, // allow-random: unique slug
+        display_name: "T",
+      })
+      .returning();
+
+    await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id: tenant!.id,
+        slug: "oauth2-nocred",
+        display_name: "oauth2-nocred",
+        driver: "http",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: baseUrl,
+      })
+      .returning();
+
+    const tctx = makeToolContext({ tenant_id: tenant!.id, conversation_id: crypto.randomUUID() }); // allow-random: unique per test
+
+    const prevCapturedLen = captured.length;
+    const result = await probeConnectorTool.execute(tctx, {
+      connector_slug: "oauth2-nocred",
+      method: "GET",
+      environment: "dev",
+    });
+
+    // Pre-gate fired — no network dispatch.
+    expect(result.ok).toBe(false);
+    const err = (result.data as { error: { code: string; message: string } }).error;
+    expect(err.code).toBe("credential_required");
+    expect(err.message).toContain("oauth2-nocred");
+    expect(captured.length).toBe(prevCapturedLen);
+  });
+
+  test("oauth2 connector with credential but empty access_token → authenticate_oauth_required fires before dispatch", async () => {
+    const [tenant] = await ctx.db
+      .insert(tenants)
+      .values({
+        slug: `t-oauth2-empty-${Math.random().toString(36).slice(2, 8)}`, // allow-random: unique slug
+        display_name: "T",
+      })
+      .returning();
+
+    const [conn] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id: tenant!.id,
+        slug: "oauth2-empty-tok",
+        display_name: "oauth2-empty-tok",
+        driver: "http",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: baseUrl,
+      })
+      .returning();
+
+    // Credential row exists but access_token was never minted (empty string).
+    await upsertCredential(
+      {
+        tenant_id: tenant!.id,
+        connector_id: conn!.id,
+        environment: "dev",
+        mode: "oauth2",
+        value: {
+          mode: "oauth2",
+          access_token: "",
+          token_type: "Bearer",
+          refresh_token: null,
+          expires_at: null,
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+
+    const tctx = makeToolContext({ tenant_id: tenant!.id, conversation_id: crypto.randomUUID() }); // allow-random: unique per test
+
+    const prevCapturedLen = captured.length;
+    const result = await probeConnectorTool.execute(tctx, {
+      connector_slug: "oauth2-empty-tok",
+      method: "GET",
+      environment: "dev",
+    });
+
+    // Pre-gate fired — no empty-Bearer request dispatched.
+    expect(result.ok).toBe(false);
+    const err = (result.data as { error: { code: string; message: string } }).error;
+    expect(err.code).toBe("authenticate_oauth_required");
+    expect(err.message).toContain("oauth2-empty-tok");
+    // Verify the mock server was never called — no empty Bearer went out.
+    expect(captured.length).toBe(prevCapturedLen);
+  });
+
+  test("auth_type:none connector → no credential check at all, dispatches directly", async () => {
+    const env = await seedProbeConnector({ slug: "no-auth-conn", authType: "none" });
+    const tctx = makeToolContext(env);
+
+    const result = await probeConnectorTool.execute(tctx, {
+      connector_slug: "no-auth-conn",
+      method: "GET",
+      environment: "dev",
+    });
+
+    expect(result.ok).toBe(true);
+    const out = result.data as Record<string, unknown>;
+    expect(out.status_code).toBe(200);
+    // credential descriptor is absent for auth_type:none.
+    expect(out.credential).toBeUndefined();
+  });
+});
+
 describe("probe_connector — downstream error handling", () => {
   test("server 500 still returns ok:true with status_code=500 (probe surfaces the response)", async () => {
     nextResponse = {

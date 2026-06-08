@@ -135,3 +135,100 @@ describe("applyAuthMaterial — oauth2 token_type case normalization", () => {
     expect(headers.Authorization).toBe("Token glpat-xyz");
   });
 });
+
+describe("applyAuthMaterial — oauth2 empty access_token guard (empty-Bearer regression)", () => {
+  // Regression: a credential row exists but the OAuth2 dance never
+  // minted a token (access_token is empty or null). Pre-fix the driver
+  // would set `Authorization: Bearer ` (an empty Bearer), causing
+  // provider 401s that the LLM misread as auth-config errors.
+  // The fix: early-return when access_token is falsy so no Authorization
+  // header is emitted. Mirrors the same guard in the token_mint branch.
+
+  test("empty access_token → NO Authorization header emitted", () => {
+    const headers: Record<string, string> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "",
+        token_type: "Bearer",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      {},
+    );
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  test("null access_token → NO Authorization header emitted", () => {
+    const headers: Record<string, string> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        // biome-ignore lint/suspicious/noExplicitAny: testing null access_token at runtime boundary
+        access_token: null as any,
+        token_type: "Bearer",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      {},
+    );
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  test("non-empty access_token → Authorization: Bearer <token> (positive path)", () => {
+    const headers: Record<string, string> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "live-token-abc123",
+        token_type: "Bearer",
+        refresh_token: null,
+        expires_at: null,
+      },
+      headers,
+      {},
+    );
+    expect(headers.Authorization).toBe("Bearer live-token-abc123");
+  });
+
+  test("empty access_token with no_prefix token_type → still NO header (empty wins over scheme)", () => {
+    const headers: Record<string, string> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "",
+        token_type: "no_prefix",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      {},
+    );
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  test("pre-existing headers are preserved when access_token is empty", () => {
+    const headers: Record<string, string> = { "x-request-id": "req-42" };
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "",
+        token_type: "Bearer",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      {},
+    );
+    // Authorization must not have been added and the existing header must survive.
+    expect(headers.Authorization).toBeUndefined();
+    expect(headers["x-request-id"]).toBe("req-42");
+  });
+});

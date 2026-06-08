@@ -60,8 +60,7 @@ export interface EmitSuggestNextFrameParams {
 // Allow operators on non-Anthropic providers (Bedrock, OpenAI, local
 // mock) to swap the suggestion model without a code change. The
 // `SK_SUGGEST_MODEL` env override is read PER-REQUEST inside
-// `defaultSuggestNextModelInvoker` (matching `web-search.ts`'s
-// `TAVILY_API_KEY` precedent), not at module load — that way an
+// `defaultSuggestNextModelInvoker`, not at module load — that way an
 // operator can `export SK_SUGGEST_MODEL=...` mid-process and the next
 // turn picks it up. Promoting this to a `llm.suggestion.model` config
 // knob is tracked as a follow-up; until the suggestion feature has

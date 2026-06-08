@@ -25,6 +25,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
+import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import { resolvePlaceholders } from "../../llm/substitution/resolver.ts";
@@ -140,8 +141,15 @@ async function lookupConnectorBySlug(
   db: Db,
   tenant_id: string,
   slug: string,
-  environment: "dev" | "prod",
+  environment: "dev" | "prod" | null,
 ): Promise<ConnectorView | null> {
+  // When the caller pins an environment, scope the lookup to it. When it
+  // does not, resolve the connector by (tenant_id, slug) regardless of
+  // environment and use the connector's OWN environment downstream —
+  // credentials are env-scoped, so probing a `prod`-only connector under
+  // an implicit `dev` would resolve no credential and send an empty
+  // Bearer. This mirrors call_connector, which always uses the
+  // connector's own `environment`.
   const rows = await db
     .select()
     .from(connectorsTable)
@@ -149,7 +157,7 @@ async function lookupConnectorBySlug(
       and(
         eq(connectorsTable.tenant_id, tenant_id),
         eq(connectorsTable.slug, slug),
-        eq(connectorsTable.environment, environment),
+        ...(environment ? [eq(connectorsTable.environment, environment)] : []),
       ),
     )
     .limit(1);
@@ -219,6 +227,18 @@ export const probeConnectorTool: ConversationTool = {
       );
     }
 
+    // Did the caller explicitly pin an environment? `ProbeInput.environment`
+    // defaults to "dev" after parse, so we can't read explicit-ness off the
+    // parsed args — inspect the raw payload. When NOT explicit we resolve the
+    // connector regardless of environment and adopt its OWN environment for
+    // both credential resolution and dispatch (call_connector does the same),
+    // so a `prod`-only connector probed without an env doesn't resolve under a
+    // phantom `dev` scope and send an empty Bearer.
+    const explicitEnv =
+      typeof rawArgs === "object" &&
+      rawArgs !== null &&
+      (rawArgs as Record<string, unknown>).environment !== undefined;
+
     // Look up the connector. A missing connector (wrong slug / wrong env)
     // is the most common probe failure; the returned error includes the
     // placeholders the LLM should fix.
@@ -226,13 +246,52 @@ export const probeConnectorTool: ConversationTool = {
       ctx.db,
       ctx.tenant_id,
       args.connector_slug,
-      args.environment,
+      explicitEnv ? args.environment : null,
     );
     if (!connector) {
       return denyResult(
         "connector_not_found",
-        `no connector with slug '${args.connector_slug}' in ${args.environment}`,
+        explicitEnv
+          ? `no connector with slug '${args.connector_slug}' in ${args.environment}`
+          : `no connector with slug '${args.connector_slug}'`,
       );
+    }
+
+    // Effective environment: the explicit one when pinned, otherwise the
+    // connector's own. All credential + dispatch + audit downstream uses
+    // this value so they stay in lockstep.
+    const environment = explicitEnv ? args.environment : connector.environment;
+
+    // Credential pre-gate — mirror call_connector. For auth_type !== "none"
+    // connectors, refuse to dispatch when there is no saved credential, or
+    // when an oauth2 credential exists but its access_token is empty (the
+    // OAuth2 dance never minted a token). Otherwise an empty Bearer hits the
+    // provider and the model misreads the resulting 401 as "wrong path".
+    let credentialDescriptor: { mode: string; present: boolean } | null = null;
+    if (connector.auth_type !== "none") {
+      const cred = await getCredentialForConnector(
+        ctx.tenant_id,
+        connector.id,
+        environment,
+        ctx.db,
+      );
+      const oauth2TokenEmpty = cred?.value.mode === "oauth2" && !cred.value.access_token;
+      credentialDescriptor = {
+        mode: cred?.value.mode ?? "none",
+        present: cred !== null && !oauth2TokenEmpty,
+      };
+      if (!cred) {
+        return denyResult(
+          "credential_required",
+          `connector '${args.connector_slug}' (${environment}) has no saved credential — collect one (ask_user_form) and persist via save_connector_draft({credential}) first`,
+        );
+      }
+      if (oauth2TokenEmpty) {
+        return denyResult(
+          "authenticate_oauth_required",
+          `connector '${args.connector_slug}' (${environment}) has an oauth2 credential with no access token — complete the OAuth2 authorization before probing`,
+        );
+      }
     }
 
     // Resolve placeholders in every string field of headers/query/body.
@@ -246,7 +305,7 @@ export const probeConnectorTool: ConversationTool = {
       },
       {
         tenant_id: ctx.tenant_id,
-        environment: args.environment,
+        environment,
         db: ctx.db,
       },
     );
@@ -307,7 +366,7 @@ export const probeConnectorTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         connector_slug: args.connector_slug,
-        environment: args.environment,
+        environment,
         method: args.method,
         error: errorDetail,
       });
@@ -332,7 +391,7 @@ export const probeConnectorTool: ConversationTool = {
         metadata: {
           conversation_id: ctx.conversation_id,
           connector_slug: args.connector_slug,
-          environment: args.environment,
+          environment,
           method: args.method,
           url_host: usedHost,
           status_code: status,
@@ -361,7 +420,7 @@ export const probeConnectorTool: ConversationTool = {
           metadata: {
             connector_slug: args.connector_slug,
             method: args.method,
-            environment: args.environment,
+            environment,
             duration_ms,
             placeholders_used: resolved.placeholders_used,
           },
@@ -419,11 +478,16 @@ export const probeConnectorTool: ConversationTool = {
         truncated: truncated.truncated,
         raw_ref: truncated.raw_ref,
         placeholders_used: resolved.placeholders_used,
+        // Explicit credential presence so the model doesn't read an empty
+        // `placeholders_used` as "no credential" — for auth_type connectors
+        // this states the resolved credential mode and whether usable auth
+        // material was present at dispatch.
+        ...(credentialDescriptor ? { credential: credentialDescriptor } : {}),
         ...(isHttpFailure ? { next_best_actions: pickProbeRecoveryActions({ status }) } : {}),
         metadata: {
           connector_slug: args.connector_slug,
           method: args.method,
-          environment: args.environment,
+          environment,
         },
       },
     };

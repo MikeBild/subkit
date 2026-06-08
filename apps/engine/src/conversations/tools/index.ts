@@ -398,11 +398,6 @@ import { inspectExecutionTool } from "./inspect-execution.ts";
 
 register(inspectExecutionTool);
 
-// web_search — Tavily escalation when search_knowledge is empty.
-import { webSearchTool } from "./web-search.ts";
-
-register(webSearchTool);
-
 // test_rbac_expression — conversational RBAC probe.
 import { testRbacExpressionTool } from "./test-rbac-expression.ts";
 

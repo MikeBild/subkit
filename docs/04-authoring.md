@@ -153,7 +153,7 @@ The assembler pre-loads Skills + docs + Knowledge chunks before every turn. On-d
 1. `search_knowledge` — semantic search over tenant Knowledge Sources.
 2. `search_docs` — ranked search over a connector's ingested documentation (OpenAPI, GraphQL, HTML, Markdown chunks). Hits carry a `match_type` so the loop can tell whether the result is endpoint-oriented, auth-oriented, schema-oriented, or just a general text match. Use when `search_knowledge` is empty and the answer is connector-specific.
 3. `fetch_connector_docs` — full doc overview for a connector.
-4. `web_search` — Tavily public-web fallback. Advisory policy in `apps/engine/src/conversations/policies/web-search-escalation.ts`; the tool is only available when an operator has flipped `tenant_llm_settings.allow_web_search = true`.
+4. `web_search` — Anthropic-native server-side web search (provider-side, billed per search; Claude models only). On by default. Advisory escalation policy in `apps/engine/src/conversations/policies/web-search-escalation.ts`; gated per tenant by the `llm.web_search` config leaf (toggle off via /settings).
 
 ### Self-healing retry
 

@@ -188,6 +188,12 @@ export function applyAuthMaterial(
       // form with 401. Canonicalise "bearer"/"BEARER"/etc. to the
       // titlecased "Bearer" so the header is interoperable across
       // every provider we connect to.
+      //
+      // Empty access_token (credential row exists but the OAuth2 dance
+      // never minted a token, or it was cleared) leaves Authorization
+      // unset so the request errors with a clear upstream 401 instead of
+      // sending an empty/garbage Bearer. Mirrors the token_mint branch.
+      if (!credential.access_token) return;
       const scheme = (credential.token_type ?? "").trim();
       if (scheme === "" || /^(none|no_prefix)$/i.test(scheme)) {
         headers.Authorization = credential.access_token;

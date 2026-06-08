@@ -77,9 +77,10 @@ LLM can call mid-turn. Use them in this precedence order:
    the caller can tell why a chunk ranked highly. Use when `search_knowledge` is empty and the
    question is about a specific connector's endpoints, auth, or fields.
 3. `fetch_connector_docs` — full doc overview for a connector.
-4. `web_search` — Tavily escalation. Advisory policy in
-   `apps/engine/src/conversations/policies/web-search-escalation.ts`; gated by the
-   operator-flipped tenant setting `allow_web_search`.
+4. `web_search` — Anthropic-native server-side web search (provider-side, billed per
+   search; Claude models only). On by default. Advisory escalation policy in
+   `apps/engine/src/conversations/policies/web-search-escalation.ts`; gated per tenant by
+   the `llm.web_search` config leaf (toggle off via /settings).
 
 ## Warnings feed the next turn
 

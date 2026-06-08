@@ -5,7 +5,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createVertex } from "@ai-sdk/google-vertex";
 import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
-import type { LanguageModel } from "ai";
+import type { LanguageModel, Tool } from "ai";
 import { getConfig } from "../../config/loader.ts";
 
 // Engine LLM config moved to subkit.config.json in v3.5. Each historical
@@ -245,20 +245,59 @@ function resolveGatewayModel(defaultModel: string, modelOverride?: string): Reso
   };
 }
 
-function resolveAnthropic(defaultModel: string, modelOverride?: string): ResolvedModel {
-  const modelId = modelOverride ?? readEnv("ANTHROPIC_MODEL") ?? defaultModel;
-  const anthropicOptions: Record<string, unknown> = {
+/**
+ * Resolve the Anthropic provider options (api key, base url, 1M-context
+ * beta header) once so both the model build and the web-search tool build
+ * share an identical client configuration. Reads the same config leaves /
+ * env labels as the rest of the provider resolvers.
+ */
+function anthropicOptions(): Record<string, unknown> {
+  const options: Record<string, unknown> = {
     apiKey: requireEnv("ANTHROPIC_API_KEY", "anthropic"),
     headers: { "anthropic-beta": "context-1m-2025-08-07" },
   };
   const baseURL = readEnv("ANTHROPIC_BASE_URL");
-  if (baseURL) anthropicOptions.baseURL = baseURL;
-  const provider = createAnthropic(anthropicOptions);
+  if (baseURL) options.baseURL = baseURL;
+  return options;
+}
+
+function resolveAnthropic(defaultModel: string, modelOverride?: string): ResolvedModel {
+  const modelId = modelOverride ?? readEnv("ANTHROPIC_MODEL") ?? defaultModel;
+  const provider = createAnthropic(anthropicOptions());
   return {
     provider: "anthropic",
     modelId,
     model: provider(modelId) as unknown as LanguageModel,
   };
+}
+
+/**
+ * Whether the Anthropic-native web-search tool applies for this turn:
+ * an Anthropic Claude model AND the tenant's `llm.web_search` leaf on.
+ * Exported as a pure predicate so the loop and its unit test exercise the
+ * SAME gate (no re-implemented copy that can silently drift).
+ */
+export function anthropicWebSearchApplies(
+  provider: string,
+  modelId: string,
+  enabled: boolean,
+): boolean {
+  return provider === "anthropic" && /claude/i.test(modelId) && enabled === true;
+}
+
+/**
+ * Build the Anthropic provider-defined server-side web-search tool. The
+ * search runs on Anthropic's side (billed per search) and is only valid
+ * for Anthropic models — never construct this on the mock or any
+ * non-Anthropic provider path. Reuses the same client options as the
+ * model build so credentials / base URL stay in lockstep.
+ */
+export function buildAnthropicWebSearchTool(maxUses: number): Tool {
+  const provider = createAnthropic(anthropicOptions());
+  // The provider-defined tool is generically typed (`Tool<{query}, …>`);
+  // widen to the SDK's base `Tool` so it merges cleanly into the
+  // heterogeneous `ToolSet` the loop hands to `streamText`.
+  return provider.tools.webSearch_20250305({ maxUses }) as unknown as Tool;
 }
 
 function resolveOpenAi(defaultModel: string, modelOverride?: string): ResolvedModel {

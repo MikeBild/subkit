@@ -9,9 +9,10 @@
 // composing the call, mapping callbacks into DB writes + events, and
 // resolving the final per-turn status.
 
-import { hasToolCall, stepCountIs, streamText } from "ai";
+import { hasToolCall, stepCountIs, streamText, type ToolSet } from "ai";
 import { and, desc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import {
   connectorEndpointSchemas,
@@ -37,6 +38,7 @@ import {
   detectIntentSkills,
 } from "../llm/core/context-assembler.ts";
 import { resolveModelRoute } from "../llm/core/invoke.ts";
+import { anthropicWebSearchApplies, buildAnthropicWebSearchTool } from "../llm/core/model-init.ts";
 import { repairToolCall as repairToolCallHandler } from "../llm/core/repair-tool-call.ts";
 import {
   prepareStep as routerPrepareStep,
@@ -945,11 +947,28 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       thinking_suppressed_by_forced_tool: thinkingDecision.suppressedByForcedTool,
       cache_supported: cacheSupported,
     });
+    // Anthropic-native server-side web search. Only valid for Anthropic
+    // Claude models, and only when the tenant has the `llm.web_search`
+    // config leaf enabled (default on). Billed per search by Anthropic.
+    // The mock path (route.provider !== "anthropic") never adds it, so
+    // determinism in the integration suite is preserved.
+    const webSearchSetting = (() => {
+      try {
+        return getConfig(p.tenant_id).llm.web_search === true;
+      } catch {
+        // Loader not initialised (unit tests) → omit the tool gracefully.
+        return false;
+      }
+    })();
+    const webSearchEnabled = anthropicWebSearchApplies(route.provider, modelId, webSearchSetting);
+    const turnTools: ToolSet = webSearchEnabled
+      ? { ...tools, web_search: buildAnthropicWebSearchTool(5) }
+      : tools;
     const result = streamText({
       model: resolvedModel,
       system: systemMessages,
       messages: attemptMessages,
-      tools,
+      tools: turnTools,
       toolChoice: preferredTool
         ? { type: "tool" as const, toolName: preferredTool }
         : forceNoTools

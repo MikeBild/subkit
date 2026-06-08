@@ -6,10 +6,12 @@
 // doesn't drift between what the model reads and what the operator
 // expects.
 //
-// Enforcement is advisory — the runtime cannot block the LLM from
-// choosing `web_search` before `search_knowledge` — but the RBAC gate
-// on `tenant_llm_settings.allow_web_search` keeps the tool physically
-// unavailable unless an operator opts in.
+// `web_search` is the Anthropic-native, server-side web-search tool
+// (provider-side execution, billed per search; Anthropic Claude models
+// only). It is enabled by default and gated per tenant by the
+// `llm.web_search` config leaf — operators toggle it off via /settings
+// (PUT /v1/settings/{path}) when they don't want per-search billing or
+// want to keep turns inside the tenant perimeter.
 
 export const WEB_SEARCH_ESCALATION_POLICY = {
   /**
@@ -28,11 +30,11 @@ export const WEB_SEARCH_ESCALATION_POLICY = {
     "Public web search is escalation-only: try tenant Knowledge Sources, connector docs, and connector-scoped doc search first. Reach for `web_search` only when the answer is about the public internet and the local context turned up nothing.",
 
   /**
-   * Tenant-settings column that acts as the hard gate. When false the
-   * tool returns `web_search_not_allowed_for_tenant` regardless of what
-   * the model asked for.
+   * Config leaf that acts as the per-tenant gate. When `llm.web_search`
+   * is false the native tool is omitted from the palette entirely, so
+   * the model never sees it. Defaults to true.
    */
-  opt_in_setting: "allow_web_search" as const,
+  opt_in_setting: "llm.web_search" as const,
 } as const;
 
 /**
@@ -47,6 +49,6 @@ export function renderWebSearchEscalationBlock(): string {
     "",
     `Precedence: ${WEB_SEARCH_ESCALATION_POLICY.precedence.map((t) => `\`${t}\``).join(" → ")} → \`web_search\`.`,
     "",
-    `Operator gate: tenant setting \`${WEB_SEARCH_ESCALATION_POLICY.opt_in_setting}\` must be true.`,
+    `Web search is Anthropic-native (provider-side, billed per search) and on by default; operators toggle it per tenant via the \`${WEB_SEARCH_ESCALATION_POLICY.opt_in_setting}\` config leaf.`,
   ].join("\n");
 }

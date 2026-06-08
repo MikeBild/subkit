@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { ConfigSchema } from "../schema.ts";
+import { dottedPath, findLeafByPath, listConfigLeaves } from "../walk.ts";
 
 describe("ConfigSchema", () => {
   test("zero-config: empty input produces a fully-defaulted Config except for database.url", () => {
@@ -61,5 +62,67 @@ describe("ConfigSchema", () => {
     if (!r.success) return;
     expect(r.data.tenants?.["tenant-a"]?.llm?.api_key).toBe("tenant-a-key");
     expect(r.data.tenants?.["tenant-b"]?.tokens?.monthly_budget).toBe(50_000);
+  });
+});
+
+describe("ConfigSchema — llm.web_search leaf", () => {
+  // Regression: the leaf was added without a test; these cases ensure the
+  // default, round-trip, and meta scope all stay in sync with the schema.
+
+  test("default value is true (web search enabled by default)", () => {
+    const r = ConfigSchema.safeParse({ database: { url: "postgres://x" } });
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.llm.web_search).toBe(true);
+  });
+
+  test("explicit false round-trips through parse", () => {
+    const r = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      llm: { web_search: false },
+    });
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.llm.web_search).toBe(false);
+  });
+
+  test("explicit true round-trips through parse", () => {
+    const r = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      llm: { web_search: true },
+    });
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.llm.web_search).toBe(true);
+  });
+
+  test("non-boolean value is rejected", () => {
+    const r = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      llm: { web_search: "yes" },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  test("leaf has scope:tenant in the schema walker", () => {
+    const leaf = findLeafByPath("llm.web_search");
+    expect(leaf).toBeDefined();
+    expect(leaf!.kind).toBe("boolean");
+    expect(leaf!.meta.scope).toBe("tenant");
+  });
+
+  test("llm.web_search appears in the tenant-scoped leaf set", () => {
+    const tenantPaths = new Set(
+      listConfigLeaves()
+        .filter((l) => l.meta.scope === "tenant")
+        .map(dottedPath),
+    );
+    expect(tenantPaths.has("llm.web_search")).toBe(true);
+  });
+
+  test("sibling boolean llm.context_1m is also tenant-scoped (parity check)", () => {
+    const leaf = findLeafByPath("llm.context_1m");
+    expect(leaf).toBeDefined();
+    expect(leaf!.meta.scope).toBe("tenant");
   });
 });

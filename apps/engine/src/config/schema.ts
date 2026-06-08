@@ -184,6 +184,13 @@ const LlmSection = z
       .default(false)
       .describe("Enable 1M context window where supported")
       .meta(tenant()),
+    web_search: z
+      .boolean()
+      .default(true)
+      .describe(
+        "Allow the assistant to use Anthropic-native server-side web search (billed per search; Anthropic models only). Toggle off per tenant via /settings.",
+      )
+      .meta(tenant()),
     output_guard: z
       .enum(["soft", "hard", "off"])
       .default("soft")
