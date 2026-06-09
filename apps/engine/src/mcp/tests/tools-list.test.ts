@@ -46,7 +46,10 @@ describe("mcp tools/list", () => {
     const names = result.tools.map((t) => t.name);
     expect(names).toContain("wf_list-probe");
     const tool = result.tools.find((t) => t.name === "wf_list-probe");
-    expect(tool?.description).toBe("a tiny probe");
+    // wf_ tools are framed as an executable action wrapping the workflow's own
+    // description (see describeWorkflowTool in mcp/capabilities/tools.ts).
+    expect(tool?.description).toContain("a tiny probe");
+    expect(tool?.description).toContain("Run the saved workflow");
     expect(tool?.inputSchema).toEqual({
       type: "object",
       properties: { who: { type: "string" } },

@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { connectors, events, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { runConnectorReauthScanForTenant } from "../connector-reauth-scan-runner.ts";
 
 // Fixed scan timestamp — the runner only uses `now` for duration logging, so a
@@ -25,12 +26,14 @@ let db: TestDb;
 let tenantId: string;
 let otherTenantId: string;
 
-// Two ephemeral Bun HTTP servers: one always returns 401, one always returns 200.
-// Using separate servers (rather than path-based routing) avoids URL-resolution
-// ambiguity: resolveUrl(base_url, "/") always hits the server root regardless
-// of what path was in base_url, so the 401/200 split must live at the server level.
-let mockServer401: ReturnType<typeof Bun.serve>;
-let mockServer200: ReturnType<typeof Bun.serve>;
+// Two ephemeral node:http servers (createMockServer) — one always returns 401,
+// one always returns 200. node:http is the repo's stable mock pattern; Bun.serve
+// is avoided here because, under the full-suite run, fetch can bleed across
+// concurrent Bun.serve instances and return a stray response from another
+// server. Two separate servers (rather than path routing) avoids URL-resolution
+// ambiguity: resolveUrl(base_url, "/") hits the server root regardless of path.
+let mockServer401: MockServer;
+let mockServer200: MockServer;
 let unauthBaseUrl: string;
 let okBaseUrl: string;
 
@@ -49,28 +52,19 @@ beforeAll(async () => {
     .returning();
   otherTenantId = t2!.id;
 
-  mockServer401 = Bun.serve({
-    port: 0,
-    fetch() {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401,
-        headers: { "content-type": "application/json" },
-      });
-    },
+  mockServer401 = await createMockServer((_req, res) => {
+    jsonResponse(res, 401, { error: "unauthorized" });
   });
-  mockServer200 = Bun.serve({
-    port: 0,
-    fetch() {
-      return Response.json({ ok: true });
-    },
+  mockServer200 = await createMockServer((_req, res) => {
+    jsonResponse(res, 200, { ok: true });
   });
-  unauthBaseUrl = `http://127.0.0.1:${mockServer401.port}`;
-  okBaseUrl = `http://127.0.0.1:${mockServer200.port}`;
+  unauthBaseUrl = mockServer401.baseUrl;
+  okBaseUrl = mockServer200.baseUrl;
 });
 
 afterAll(async () => {
-  mockServer401.stop(true);
-  mockServer200.stop(true);
+  await mockServer401.close();
+  await mockServer200.close();
   await db.cleanup();
 });
 
