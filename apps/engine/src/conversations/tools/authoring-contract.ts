@@ -147,6 +147,7 @@ export function buildGateError(
     stage: snapshot.stage,
     lifecycle_state: snapshot.lifecycle_state,
     summary: snapshot.summary,
+    persistence: "draft_only" as const,
     ...(args.extra ?? {}),
   };
 }
@@ -267,6 +268,7 @@ export function buildPersistencePayload(
     version_id: args.version_id ?? null,
     draft_revision,
     lifecycle_state: "persisted",
+    persistence: "saved" as const,
     target_ref: snapshot.summary?.active_target ?? null,
     stale_after_mutation: false,
     next_required_action: snapshot.summary?.next_required_action ?? null,

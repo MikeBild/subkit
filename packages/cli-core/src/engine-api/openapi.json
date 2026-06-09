@@ -5630,6 +5630,18 @@
               "nullable": true
             }
           },
+          "needs_reauth": {
+            "type": "boolean"
+          },
+          "auth_failed_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "auth_failed_reason": {
+            "type": "string",
+            "nullable": true
+          },
           "created_at": {
             "type": "string"
           },
@@ -5654,6 +5666,9 @@
           "template_source",
           "template_version",
           "template_snapshot",
+          "needs_reauth",
+          "auth_failed_at",
+          "auth_failed_reason",
           "created_at",
           "updated_at"
         ]
@@ -5905,6 +5920,24 @@
           "raw_ref": {
             "type": "string"
           },
+          "health": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "auth_failed",
+              "endpoint_gone",
+              "degraded"
+            ]
+          },
+          "health_suggestion": {
+            "type": "string"
+          },
+          "next_best_actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "metadata": {
             "$ref": "#/components/schemas/ConnectorCallMetadata"
           }
@@ -5915,6 +5948,7 @@
           "latency_ms",
           "truncated",
           "body_byte_count",
+          "health",
           "metadata"
         ]
       },

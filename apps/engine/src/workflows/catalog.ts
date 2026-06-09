@@ -17,6 +17,7 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
+import { logger } from "../logging/logger.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import { WorkflowDefSchema } from "./types.ts";
 
@@ -103,6 +104,21 @@ export async function listWorkflowToolsForTenant(
     )
     .orderBy(sql`${workflows.last_executed_at} DESC NULLS LAST`, asc(workflows.created_at))
     .limit(limit);
+
+  // No silent cap — when the LRU limit is hit, the oldest workflows fall
+  // out of the LLM tool palette. They remain reachable via
+  // run_workflow(workflow=<slug>) / find_workflow, so this is an
+  // observability signal, not a functional break. Emit one structured
+  // line so an operator can see when the cap bites for a tenant.
+  if (rows.length === limit) {
+    logger.info({
+      module: "workflows",
+      action: "catalog.palette_truncated",
+      msg: "workflow tool palette hit the LRU cap; older workflows are reachable via run_workflow(workflow=<slug>) / find_workflow",
+      tenant_id: principal.tenant_id,
+      limit,
+    });
+  }
 
   // First filter rows the principal can actually see — published only,
   // allowlist (when set). This shrinks the version-id batch and avoids

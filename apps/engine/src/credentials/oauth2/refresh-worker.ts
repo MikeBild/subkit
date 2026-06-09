@@ -23,6 +23,8 @@ import { eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { flagConnectorAuthFailure } from "../../connectors/reauth.ts";
+import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import type { Db } from "../../db/client.ts";
 import { connectors, credentials } from "../../db/schema/index.ts";
@@ -208,6 +210,17 @@ export async function refreshIfStale(
       },
       db,
     );
+    // A rejected refresh token means the credential is dead — the stale token
+    // we return below guarantees the next request gets a 401. Flag the
+    // connector at the source so it is marked *before* the doomed request; the
+    // shared helper emits the operator notification once on the false→true edge
+    // (the dedup guard ensures the later request-site 401 won't double-emit).
+    const connector = await getConnector(tenant_id, credRow.connector_id, db);
+    if (connector) {
+      await flagConnectorAuthFailure(db, connector, {
+        reason: "oauth2 refresh token rejected by the IdP",
+      });
+    }
     return decrypted;
   }
 }

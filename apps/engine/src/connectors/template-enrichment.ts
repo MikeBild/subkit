@@ -81,6 +81,52 @@ function resolveBaseUrl(
 }
 
 /**
+ * Credential hints describe the fields an operator must supply to wire a
+ * connector's credential. A template carries hints for its *native*
+ * auth_type (e.g. the Jira template defaults to OAuth2 client_id/secret).
+ * When the operator picks a different `auth_options` entry (e.g. API-token
+ * Basic auth), the template's default hints describe the wrong fields — the
+ * operator gets asked for `client_id`/`client_secret` while the connector
+ * actually needs `username`/`password`, which is how a Jira connector ended
+ * up with a mismatched credential. Synthesize standard hints for the chosen
+ * auth_type instead; only reuse the template's curated hints when the chosen
+ * type matches the template's native type.
+ */
+function credentialHintsForAuthType(
+  authType: CreateConnectorInput["auth_type"] | undefined,
+  template: ConnectorTemplate,
+): unknown[] | undefined {
+  if (!authType || authType === template.auth_type) return template.credential_hints;
+  switch (authType) {
+    case "basic":
+      return [
+        { field: "username", label: "Username / email", secret: false, placeholder: "" },
+        { field: "password", label: "Password / API token", secret: true, placeholder: "" },
+      ];
+    case "bearer":
+      return [{ field: "token", label: "Bearer token", secret: true, placeholder: "" }];
+    case "header":
+      return [{ field: "value", label: "API key", secret: true, placeholder: "" }];
+    case "aws_sigv4":
+      return [
+        { field: "access_key_id", label: "AWS Access Key ID", secret: false, placeholder: "" },
+        {
+          field: "secret_access_key",
+          label: "AWS Secret Access Key",
+          secret: true,
+          placeholder: "",
+        },
+      ];
+    case "none":
+      return [];
+    default:
+      // oauth2 and any future types: the template's curated hints are the
+      // best available source.
+      return template.credential_hints;
+  }
+}
+
+/**
  * Merge a template's defaults into a connector draft. User-provided fields
  * always win. Returns a fresh `CreateConnectorInput`; the input is not
  * mutated.
@@ -146,7 +192,12 @@ export function enrichConnectorFromTemplate(
   if (cfg.probe_endpoint === undefined) cfg.probe_endpoint = template.probe_endpoint;
   if (cfg.pagination_defaults === undefined) cfg.pagination_defaults = template.pagination_defaults;
   if (cfg.capabilities === undefined) cfg.capabilities = template.capabilities;
-  if (cfg.credential_hints === undefined) cfg.credential_hints = template.credential_hints;
+  if (cfg.credential_hints === undefined) {
+    cfg.credential_hints = credentialHintsForAuthType(
+      draft.auth_type ?? template.auth_type,
+      template,
+    );
+  }
 
   const baseUrl = resolveBaseUrl(draft.base_url, template, opts);
   const result: CreateConnectorInput = {

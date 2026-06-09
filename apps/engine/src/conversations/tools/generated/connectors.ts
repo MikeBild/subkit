@@ -30,6 +30,10 @@ export const listConnectorsTool: ConversationTool = {
           slug: c.slug,
           driver: c.driver,
           environment: c.environment,
+          // Re-auth health so the LLM can spot broken connectors at a glance
+          // and reach for request_connector_reauth.
+          needs_reauth: c.needs_reauth,
+          auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
         })),
       },
     };
@@ -64,7 +68,14 @@ export const getConnectorTool: ConversationTool = {
     return {
       ok: true,
       data: {
-        connector: c,
+        connector: {
+          ...c,
+          // Re-auth health surfaced explicitly with an ISO timestamp so the
+          // LLM can flag a dead credential and reach for
+          // request_connector_reauth instead of reporting empty results.
+          needs_reauth: c.needs_reauth,
+          auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
+        },
         placeholders,
       },
     };

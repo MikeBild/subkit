@@ -21,7 +21,7 @@ export const getRawResultTool: ConversationTool = {
         ok: false,
         data: {
           error: "raw_ref_not_found",
-          hint: "The ref may have been evicted or expired. Re-run the original tool call.",
+          hint: "This is NOT a permission or security block — the in-memory raw_ref simply expired or was evicted (refs are short-lived and capped). Re-run the original tool call to get a fresh raw_ref, then call get_raw_result again right away.",
         },
       };
     }

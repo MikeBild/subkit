@@ -10211,6 +10211,10 @@ export interface components {
             template_snapshot: {
                 [key: string]: unknown;
             } | null;
+            needs_reauth: boolean;
+            /** Format: date-time */
+            auth_failed_at: string | null;
+            auth_failed_reason: string | null;
             created_at: string;
             updated_at: string;
         };
@@ -10283,6 +10287,10 @@ export interface components {
             truncated: boolean;
             body_byte_count: number;
             raw_ref?: string;
+            /** @enum {string} */
+            health: "ok" | "auth_failed" | "endpoint_gone" | "degraded";
+            health_suggestion?: string;
+            next_best_actions?: string[];
             metadata: components["schemas"]["ConnectorCallMetadata"];
         };
         ConnectorCallMetadata: {

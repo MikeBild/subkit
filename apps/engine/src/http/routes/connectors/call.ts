@@ -78,8 +78,11 @@ export function registerCallRoutes(app: OpenAPIHono<AppEnv>): void {
           latency_ms: result.latency_ms,
           truncated: result.truncated,
           body_byte_count: result.body_byte_count,
+          health: result.health,
           metadata: result.metadata,
           ...(result.raw_ref ? { raw_ref: result.raw_ref } : {}),
+          ...(result.health_suggestion ? { health_suggestion: result.health_suggestion } : {}),
+          ...(result.next_best_actions ? { next_best_actions: result.next_best_actions } : {}),
         },
         200,
       );

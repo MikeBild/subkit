@@ -44,6 +44,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "llm.summarize_provider": "Summarization provider",
   "llm.summarize_model": "Summarization model",
   "llm.context_1m": "Enable 1M context",
+  "llm.web_search": "AI web search",
   "llm.output_guard": "Output safety mode",
 
   // ── LLM providers ──────────────────────────────────────────────

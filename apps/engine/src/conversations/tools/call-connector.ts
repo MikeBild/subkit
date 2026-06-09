@@ -55,6 +55,7 @@ import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import { pgQueryWithCount } from "../../connectors/drivers/postgres.ts";
 import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts";
 import { executeSftpCommand } from "../../connectors/drivers/sftp.ts";
+import { classifyConnectorHealth, connectorHealthHint } from "../../connectors/health.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import { roles, systemAccounts, users } from "../../db/schema/index.ts";
@@ -272,9 +273,11 @@ export const callConnectorTool: ConversationTool = {
   use_case:
     "Reach for this when the connector is saved and the user (or you) needs to see the actual vendor response shape — for endpoint discovery, pagination probing, sampling rows, or field-name verification — without committing to a workflow draft.",
   important_notes: [
+    "If a saved workflow already covers this connector + intent, run its `wf_<slug>` tool instead of re-deriving the query here — `call_connector` is for ad-hoc exploration, not for executing known tasks.",
     "Connector must be persisted; for drafts use `probe_connector_draft`.",
     "Auth/credential is injected from the saved row — additional `headers` are merged on top (HTTP).",
     "4xx/5xx responses still return `ok:true` with the upstream status — the LLM should inspect the body and decide.",
+    "`health` is `ok|auth_failed|endpoint_gone|degraded`. When it is NOT `ok`, the connector itself is unusable: an empty body means 'auth failed / endpoint removed', NOT 'no data'. Use `health_suggestion` + `next_best_actions` and tell the user to fix the connector rather than reporting empty results.",
     "Response bodies > 8KB are truncated; full payload is available via `get_raw_result(ref=raw_ref)`.",
     "Postgres: writes (INSERT/UPDATE/DELETE/DROP/…) are rejected unless `allow_writes:true` is passed. `row_limit` defaults to 100; queries with an existing LIMIT pass through unchanged.",
     "SFTP: `op` is one of list/get/put. `get` and `put` cap the body at 1 MB.",
@@ -646,6 +649,14 @@ export const callConnectorTool: ConversationTool = {
 
     const latency_ms = Date.now() - started;
 
+    // A transport-level success can still prove the connector unusable —
+    // a rejected credential (401/403), a removed endpoint (410), or the
+    // Atlassian Seraph anonymous-200. Classify on the raw response so an
+    // empty body is not mistaken for "no data". HTTP/GraphQL carry real
+    // upstream statuses + headers; postgres/sftp/s3 synthesize status 200
+    // and classify as "ok".
+    const health = errorDetail ? "ok" : classifyConnectorHealth(status, responseHeaders);
+
     // Audit ALWAYS — including when the upstream failed. The audit row
     // never carries the body, headers, or full SQL (PII risk + cardinality).
     await recordConnectorInvoked({
@@ -661,7 +672,7 @@ export const callConnectorTool: ConversationTool = {
       url_host: usedHost,
       status_code: status,
       latency_ms,
-      outcome: errorDetail ? "error" : "success",
+      outcome: errorDetail || health !== "ok" ? "error" : "success",
       conversation_id: ctx.conversation_id,
     });
 
@@ -707,6 +718,7 @@ export const callConnectorTool: ConversationTool = {
       latency_ms,
       body_byte_count,
       truncated: truncatedBody.truncated,
+      health,
       metadata: {
         connector_id: connector.id,
         connector_slug: connector.slug,
@@ -722,6 +734,13 @@ export const callConnectorTool: ConversationTool = {
     }
     if (body_byte_count > RESPONSE_BODY_BUDGET_BYTES) {
       data.body_byte_count_exceeded_budget = true;
+    }
+    // When the connector is unusable, tell the LLM explicitly so it reports
+    // "auth failed / endpoint gone", not "no results".
+    const hint = connectorHealthHint(health, connector.slug);
+    if (hint) {
+      data.health_suggestion = hint.suggestion;
+      data.next_best_actions = hint.next_best_actions;
     }
 
     return { ok: true, data };

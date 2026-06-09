@@ -115,6 +115,9 @@ export const probeConnectorDraftTool: ConversationTool = {
       circuit_failure_count: 0,
       circuit_threshold: 5,
       circuit_reset_ms: 300000,
+      needs_reauth: false,
+      auth_failed_at: null,
+      auth_failed_reason: null,
     };
 
     // Non-HTTP drivers run their dedicated read-only probe (connect +

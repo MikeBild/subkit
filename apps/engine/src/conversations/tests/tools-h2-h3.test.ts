@@ -51,6 +51,7 @@ describe("conversation tools — registration", () => {
     "suggest_jsonata_paths",
     "find_workflow",
     "find_connector",
+    "request_connector_reauth",
     "find_skill",
     "find_role",
     "find_user",
@@ -74,7 +75,6 @@ describe("conversation tools — registration", () => {
     // Loaders + utility
     "load_skill",
     "get_raw_result",
-    "web_search",
     "test_rbac_expression",
     "get_vendor_recipe",
     // Generated read tools (15 domains)

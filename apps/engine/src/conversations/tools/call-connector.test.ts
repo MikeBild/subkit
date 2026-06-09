@@ -110,6 +110,22 @@ beforeAll(async () => {
           received: bodyText.length > 0 ? JSON.parse(bodyText) : null,
         });
       }
+      if (url.pathname === "/v2/unauth") {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.pathname === "/v2/seraph") {
+        // Atlassian Seraph anonymous response: 200 + empty + header.
+        return new Response(JSON.stringify({ issues: [], isLast: true }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "x-seraph-loginreason": "AUTHENTICATED_FAILED",
+          },
+        });
+      }
       return new Response("not found", { status: 404 });
     },
   });
@@ -229,6 +245,54 @@ describe("call_connector — HTTP", () => {
     expect(req.path).toContain("/v2/droplets");
     expect(req.path).toContain("per_page=10");
     expect(req.headers.authorization).toBe("Bearer TKN-GET");
+  });
+
+  test("401 → health:auth_failed with next_best_actions (not a blind success)", async () => {
+    captured = [];
+    const { connector_id } = await seedHttpConnector({ slug: "call_unauth" });
+    const result = await callConnectorTool.execute(makeToolContext(), {
+      connector_id,
+      method: "GET",
+      path: "/v2/unauth",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      status: number;
+      health: string;
+      health_suggestion?: string;
+      next_best_actions?: string[];
+    };
+    expect(data.status).toBe(401);
+    expect(data.health).toBe("auth_failed");
+    expect(data.next_best_actions).toContain("setup_connector_credentials");
+    expect(data.health_suggestion).toContain("call_unauth");
+  });
+
+  test("Seraph anonymous-200 → health:auth_failed despite HTTP 200", async () => {
+    captured = [];
+    const { connector_id } = await seedHttpConnector({ slug: "call_seraph" });
+    const result = await callConnectorTool.execute(makeToolContext(), {
+      connector_id,
+      method: "GET",
+      path: "/v2/seraph",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as { status: number; health: string };
+    expect(data.status).toBe(200);
+    expect(data.health).toBe("auth_failed");
+  });
+
+  test("healthy 200 → health:ok, no suggestion attached", async () => {
+    captured = [];
+    const { connector_id } = await seedHttpConnector({ slug: "call_healthy" });
+    const result = await callConnectorTool.execute(makeToolContext(), {
+      connector_id,
+      method: "GET",
+      path: "/v2/droplets",
+    });
+    const data = result.data as { health: string; next_best_actions?: string[] };
+    expect(data.health).toBe("ok");
+    expect(data.next_best_actions).toBeUndefined();
   });
 
   test("POST passes body through with content-type json", async () => {

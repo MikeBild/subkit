@@ -75,10 +75,29 @@ async function listWorkflowTools({ db, principal }: ListToolsParams): Promise<To
   const catalog = await listWorkflowToolsForTenant({ db, principal });
   return catalog.map((entry) => ({
     name: `${TOOL_PREFIX}${entry.slug}`,
-    description: entry.description,
+    // Frame the tool as an executable action, not a passive description.
+    // Without this, a workflow description like "Lists all Test Plan issues…"
+    // reads as documentation and the model re-derives the query with
+    // call_connector instead of running the saved workflow. The "prefer this
+    // over re-deriving" nudge closes that gap.
+    description: describeWorkflowTool(entry),
     inputSchema: entry.inputSchema as Tool["inputSchema"],
     _meta: buildWorkflowToolMeta(),
   }));
+}
+
+/**
+ * Executable-verb framing for a `wf_<slug>` tool. Runs the saved workflow's
+ * stored steps (with its connectors) and returns the result — the canonical
+ * way to execute a known task. When the workflow has its own description we
+ * append it; otherwise the name carries the intent.
+ */
+function describeWorkflowTool(entry: { name: string; description: string }): string {
+  const summary =
+    entry.description && entry.description.trim() !== entry.name.trim()
+      ? ` — ${entry.description.trim()}`
+      : "";
+  return `Run the saved workflow "${entry.name}"${summary}. Executes its stored steps and connectors and returns the result. Prefer this over re-deriving the same query with call_connector.`;
 }
 
 async function resolveWorkflowBySlug(

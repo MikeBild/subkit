@@ -58,6 +58,9 @@ function toView(row: typeof connectors.$inferSelect): ConnectorView {
     circuit_failure_count: row.circuit_failure_count ?? 0,
     circuit_threshold: row.circuit_threshold ?? 5,
     circuit_reset_ms: row.circuit_reset_ms ?? 300000,
+    needs_reauth: row.needs_reauth ?? false,
+    auth_failed_at: row.auth_failed_at ?? null,
+    auth_failed_reason: row.auth_failed_reason ?? null,
   };
 }
 

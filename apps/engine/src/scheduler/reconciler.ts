@@ -29,6 +29,7 @@ import {
 } from "../queue/handlers/ingest-knowledge.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { runChatDedupCleanup } from "./chat-dedup-cleanup-runner.ts";
+import { runConnectorReauthScanForTenant } from "./connector-reauth-scan-runner.ts";
 import { parseCronExpression } from "./cron.ts";
 import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
@@ -39,6 +40,13 @@ import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner
  *  hour balances early-detection value against the cost of repeated
  *  LLM repair calls when drift signals are emitted. */
 const PROACTIVE_DRIFT_SCAN_CADENCE_MS = 60 * 60 * 1000;
+
+/** Fixed cadence for the proactive connector re-auth health scan. One
+ *  hour is a reasonable early-detection window for stale credentials
+ *  without hammering vendor rate limits. The CAS-stamp claim pattern
+ *  ensures exactly-once firing per cadence across multi-instance
+ *  deployments. */
+const CONNECTOR_REAUTH_SCAN_CADENCE_MS = 60 * 60 * 1000;
 
 /** Fixed cadence for the unified-files cleanup cron. The sweeps are
  *  idempotent and bounded by a 7-day soft-delete grace, so an hour
@@ -344,6 +352,19 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "drift_scan_failed",
         msg: "scheduler proactive drift scan pass failed",
+        ...errorFields(err),
+      });
+    });
+    // Proactive connector re-auth scan. Per-tenant CAS-stamp on
+    // `tenants.last_connector_reauth_scan_at` gives multi-instance
+    // deployments exactly-once firing per cadence; each due tenant gets
+    // a lightweight authenticated probe per connector so stale or revoked
+    // credentials are flagged before a workflow hits them at runtime.
+    await this.reconcileConnectorReauthScans().catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "connector_reauth_scan_failed",
+        msg: "scheduler connector re-auth scan pass failed",
         ...errorFields(err),
       });
     });
@@ -718,6 +739,51 @@ export class SchedulerReconciler {
           module: "scheduler",
           action: "drift_scan_failed",
           msg: "proactive drift scan threw for tenant — continuing with the rest",
+          tenant_id: tenant.id,
+          ...errorFields(err),
+        });
+      }
+    }
+  }
+
+  /**
+   * Proactive connector re-auth scan. Each live tenant whose
+   * `last_connector_reauth_scan_at` is NULL or older than the cadence
+   * wins an atomic CAS-stamp and has all of its probeable connectors
+   * checked with a lightweight authenticated request. Any connector
+   * whose response classifies as `auth_failed` is atomically flagged
+   * and an operator notification is emitted — exactly once per
+   * false→true transition (dedup guard inside markConnectorNeedsReauth).
+   *
+   * Same microsecond-safe range-based UPDATE claim pattern as the drift
+   * scan: the predicate uses `< cutoff` / `IS NULL` so sub-millisecond
+   * microseconds in the stored timestamp never cause a missed claim.
+   */
+  async reconcileConnectorReauthScans(now: Date = new Date()): Promise<void> {
+    // tenant-filter:exempt — connector re-auth scan sweeps every tenant; row carries tenant_id forward
+    const cadenceCutoff = new Date(now.getTime() - CONNECTOR_REAUTH_SCAN_CADENCE_MS);
+    const claimed = await this.opts.db
+      .update(tenants)
+      .set({ last_connector_reauth_scan_at: now })
+      .where(
+        and(
+          isNull(tenants.deleted_at),
+          or(
+            isNull(tenants.last_connector_reauth_scan_at),
+            lt(tenants.last_connector_reauth_scan_at, cadenceCutoff),
+          ),
+        ),
+      )
+      .returning({ id: tenants.id });
+
+    for (const tenant of claimed) {
+      try {
+        await runConnectorReauthScanForTenant(tenant.id, now, this.opts.db);
+      } catch (err) {
+        logger.error({
+          module: "scheduler",
+          action: "connector_reauth_scan_failed",
+          msg: "connector re-auth scan threw for tenant — continuing with the rest",
           tenant_id: tenant.id,
           ...errorFields(err),
         });

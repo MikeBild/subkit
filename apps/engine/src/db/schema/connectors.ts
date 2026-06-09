@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -69,6 +70,9 @@ export const connectors = pgTable(
     circuit_failure_count: integer("circuit_failure_count").notNull().default(0),
     circuit_threshold: integer("circuit_threshold").notNull().default(5),
     circuit_reset_ms: integer("circuit_reset_ms").notNull().default(300000),
+    needs_reauth: boolean("needs_reauth").notNull().default(false),
+    auth_failed_at: timestamp("auth_failed_at", { withTimezone: true }),
+    auth_failed_reason: text("auth_failed_reason"),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

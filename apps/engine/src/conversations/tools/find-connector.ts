@@ -41,6 +41,15 @@ interface ConnectorSummary {
    * with base_url `https://api.digitalocean.com/v2` and 404'd 19 times.
    */
   example_paths: string[];
+  /**
+   * Re-auth health. `true` when the connector's credential is dead and a
+   * human must reconnect it (OAuth refresh revoked, API key rotated, login
+   * lapsed). Surfaced so the LLM can flag broken connectors proactively and
+   * reach for `request_connector_reauth` instead of reporting empty results.
+   */
+  needs_reauth: boolean;
+  /** ISO timestamp of the first auth failure that flagged the connector, or null. */
+  auth_failed_at: string | null;
 }
 
 function summarize(c: {
@@ -53,6 +62,8 @@ function summarize(c: {
   base_url?: string | null;
   operator_quirks?: Record<string, string | undefined> | null;
   template_snapshot?: unknown;
+  needs_reauth?: boolean;
+  auth_failed_at?: Date | null;
 }): ConnectorSummary {
   const snap = (c.template_snapshot ?? null) as { example_paths?: unknown } | null;
   const examplePaths =
@@ -74,6 +85,8 @@ function summarize(c: {
     base_url: c.base_url ?? null,
     description,
     example_paths: examplePaths,
+    needs_reauth: c.needs_reauth ?? false,
+    auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
   };
 }
 

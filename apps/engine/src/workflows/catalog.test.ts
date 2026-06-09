@@ -231,6 +231,61 @@ describe("listWorkflowToolsForTenant — 40-row cap", () => {
 });
 
 // ---------------------------------------------------------------------------
+// palette_truncated cap behavior
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — palette_truncated cap", () => {
+  test("limit is a hard cap: exactly `limit` descriptors are returned when more rows exist", async () => {
+    const limit = 3;
+    // Seed more workflows than the cap so the cap must fire.
+    for (let i = 0; i < limit + 2; i++) {
+      await seedWorkflow({ slug: `cap-small-${i}` });
+    }
+
+    const results = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal(),
+      limit,
+    });
+
+    // Must not exceed the limit.
+    expect(results.length).toBeLessThanOrEqual(limit);
+
+    // The workflows beyond the cap must not appear in the result.
+    const slugs = results.map((r) => r.slug);
+    // All returned slugs must be from the seeded set.
+    for (const slug of slugs) {
+      expect(slug).toMatch(/^cap-small-\d+$/);
+    }
+  });
+
+  test("workflows beyond the cap are absent from the returned descriptors", async () => {
+    const limit = 2;
+    // Seed with deterministic last_executed_at so the LRU order is stable:
+    // cap-lru-0 executed most recently → must appear; cap-lru-2 never
+    // executed → falls off the end when limit=2.
+    const recent = new Date("2026-05-01T00:00:00Z");
+    const older = new Date("2026-01-01T00:00:00Z");
+
+    const { id: id0 } = await seedWorkflow({ slug: "cap-lru-0", last_executed_at: recent });
+    const { id: id1 } = await seedWorkflow({ slug: "cap-lru-1", last_executed_at: older });
+    const { id: id2 } = await seedWorkflow({ slug: "cap-lru-2", last_executed_at: null });
+
+    const results = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal(),
+      limit,
+    });
+
+    // cap-lru-2 (null last_executed_at, last in LRU order) must be absent.
+    const ids = results.map((r) => r.workflow_id);
+    expect(ids).toContain(id0);
+    expect(ids).toContain(id1);
+    expect(ids).not.toContain(id2);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Principal mismatch — tenant isolation
 // ---------------------------------------------------------------------------
 

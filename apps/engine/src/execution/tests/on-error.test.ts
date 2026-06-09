@@ -21,6 +21,16 @@ beforeAll(async () => {
       jsonResponse(res, 404, { error: "not found" });
       return;
     }
+    if (req.url?.startsWith("/seraph")) {
+      // Atlassian Seraph anonymous response: HTTP 200 + empty result set +
+      // X-Seraph-LoginReason header. A dead credential must fail loudly here,
+      // not transform an empty body as if it were real data.
+      res.statusCode = 200;
+      res.setHeader("content-type", "application/json");
+      res.setHeader("x-seraph-loginreason", "AUTHENTICATED_FAILED");
+      res.end(JSON.stringify({ issues: [], isLast: true }));
+      return;
+    }
     jsonResponse(res, 200, { ok: true });
   });
 });
@@ -55,6 +65,31 @@ describe("onError modes", () => {
     expect(result.steps).toHaveLength(2);
     expect(result.steps[0]?.status).toBe("failed");
     expect(result.steps[1]?.status).toBe("aborted");
+  });
+
+  test("Seraph anonymous-200 (dead credential) fails the step instead of succeeding empty", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "seraph-auth-fail",
+      steps: [
+        {
+          kind: "request",
+          id: "jira_search",
+          method: "GET",
+          url: `${mock.baseUrl}/seraph/search`,
+          max_retries: 0,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    // Without the health classifier this step would "succeed" with an empty
+    // body. It must fail because the upstream served an unauthenticated 200.
+    expect(result.status).toBe("failed");
+    expect(result.steps[0]?.status).toBe("failed");
   });
 
   test("a failed run emits an execution.failed event carrying the failure reason", async () => {

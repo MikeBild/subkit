@@ -33,7 +33,10 @@ import {
 import { executeS3Request, type S3Method } from "../../../connectors/drivers/s3.ts";
 import { withEgressAudit } from "../../../connectors/egress.ts";
 import { EgressBlockedError, RobotsDisallowedError } from "../../../connectors/egress-guard.ts";
+import { classifyConnectorHealth } from "../../../connectors/health.ts";
+import { clearConnectorReauth, flagConnectorAuthFailure } from "../../../connectors/reauth.ts";
 import { getConnectorForEnvironment } from "../../../connectors/service.ts";
+import type { Db } from "../../../db/client.ts";
 import { connectorEndpointSchemas, connectors } from "../../../db/schema/index.ts";
 import type { ResolvedFile } from "../../../files/resolver.ts";
 import {
@@ -84,6 +87,24 @@ import {
 import { checkRequired, deriveAuthMethodFromAuthType, extractModelHint } from "./shape.ts";
 
 export const REQUEST_TIMEOUT_DEFAULT_MS = 60 * 60_000; // 1h
+
+/**
+ * Best-effort re-auth clear on a successful authenticated request. Fire-and-
+ * forget (the step result must not depend on it) but logs on failure so a
+ * stuck `needs_reauth` flag is observable rather than silently swallowed.
+ */
+function clearReauthOnSuccess(db: Db, connector: { tenant_id: string; id: string }): void {
+  void clearConnectorReauth(db, connector.tenant_id, connector.id).catch((err) => {
+    logger.warn({
+      module: "connectors",
+      action: "connector.reauth.clear_failed",
+      msg: "best-effort reauth clear on success failed",
+      tenant_id: connector.tenant_id,
+      connector_id: connector.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+}
 
 interface FetchAttemptResult {
   status: number;
@@ -203,7 +224,25 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         p.tenant_id,
         p.multipartBody,
       );
-      if (res.status >= 200 && res.status < 400) return res;
+      if (res.status >= 200 && res.status < 400) {
+        // A 2xx/3xx can still be an *unauthenticated* response when the
+        // upstream serves auth failures as 200 (Atlassian Seraph emits
+        // `X-Seraph-LoginReason: AUTHENTICATED_FAILED` with an empty body).
+        // Without this, a dead credential sails through as success and the
+        // downstream transform runs on an empty result set — exactly how a
+        // broken Jira connector returned "0 issues" instead of failing.
+        // Raise it as a 4xx so the step fails and the circuit breaker counts
+        // it (non-retryable, same path as a real 401).
+        if (classifyConnectorHealth(res.status, res.headers) === "auth_failed") {
+          throw new RequestError(
+            "upstream served an unauthenticated response (auth failed)",
+            "http_4xx",
+            401,
+            { body: res.body },
+          );
+        }
+        return res;
+      }
       const is_additional_retry_status = p.retry_policy.additional_retry_statuses.has(res.status);
       // Reference-aligned retry telemetry: every retry emits the
       // same shape — `attempt_no`, `total_attempts`, `delay_ms`,
@@ -1483,6 +1522,13 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           .set({ circuit_state: "closed", circuit_failure_count: 0 })
           .where(eq(connectors.id, activeConnector.id));
       }
+      // Re-auth clear: a successful authenticated response proves the
+      // credential is live. This is a SEPARATE concern from the circuit
+      // breaker — needs_reauth can be true while the circuit is closed, so
+      // clear unconditionally on success (outside the circuit-state guard).
+      if (activeConnector) {
+        clearReauthOnSuccess(p.ctx.db, activeConnector);
+      }
       last_meta = connectorResolution
         ? {
             driver: "http",
@@ -1702,6 +1748,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
     }
     if (inFlightCheckpoint) await inFlightCheckpoint;
+    // Re-auth clear on the PAGINATED success path (the single-page path clears
+    // above). A paginated workflow — e.g. a Jira JQL search — that recovers
+    // after a credential fix must clear needs_reauth too.
+    if (activeConnector) {
+      clearReauthOnSuccess(p.ctx.db, activeConnector);
+    }
     return {
       status: "succeeded",
       output: acc,
@@ -1748,6 +1800,23 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           .set({ circuit_failure_count: newCount })
           .where(eq(connectors.id, activeConnector.id));
       }
+    }
+    // Re-auth flag: an authentication rejection (401/403) means the
+    // credential is dead until a human re-authenticates — a SEPARATE concern
+    // from the circuit breaker above. Only the 401/403 subset of http_4xx
+    // sets needs_reauth (a 404/422 must not). The mark is atomic false→true;
+    // we emit the operator notification exactly once, on the transition edge,
+    // in the same transaction as the mark.
+    if (
+      activeConnector &&
+      err instanceof RequestError &&
+      err.cause_kind === "http_4xx" &&
+      (err.status === 401 || err.status === 403)
+    ) {
+      await flagConnectorAuthFailure(p.ctx.db, activeConnector, {
+        reason: "request rejected authentication (401/403)",
+        workflow_id: p.ctx.workflow_id ?? null,
+      });
     }
     if (err instanceof RequestError && err.cause_kind === "abort") {
       // distinguish step timeout vs external cancel

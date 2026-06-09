@@ -210,10 +210,37 @@ describe("POST /v1/connectors/{id}/call", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       status: number;
+      health: string;
       body: { error: { code: string } };
     };
     expect(body.status).toBe(404);
     expect(body.body.error.code).toBe("not_found");
+    // 404 is inspectable — health stays "ok" so the caller decides.
+    expect(body.health).toBe("ok");
+  });
+
+  test("401 — auth failure surfaces health:auth_failed with next_best_actions", async () => {
+    captured = [];
+    nextStatus = 401;
+    nextBody = JSON.stringify({ error: "unauthorized" });
+
+    const res = await fetch(`${ctx.baseUrl}/v1/connectors/${connectorId}/call`, {
+      method: "POST",
+      headers: adminAuth(),
+      body: JSON.stringify({ method: "GET", path: "/v1/customers" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      status: number;
+      health: string;
+      health_suggestion?: string;
+      next_best_actions?: string[];
+    };
+    expect(body.status).toBe(401);
+    // A rejected credential must be distinguishable from an empty result.
+    expect(body.health).toBe("auth_failed");
+    expect(body.next_best_actions).toContain("setup_connector_credentials");
+    expect(typeof body.health_suggestion).toBe("string");
   });
 
   test("403 — non-admin without connector:read is rejected at the policy gate", async () => {

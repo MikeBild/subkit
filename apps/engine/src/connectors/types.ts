@@ -285,4 +285,7 @@ export interface ConnectorView {
   circuit_failure_count: number;
   circuit_threshold: number;
   circuit_reset_ms: number;
+  needs_reauth: boolean;
+  auth_failed_at: Date | null;
+  auth_failed_reason: string | null;
 }

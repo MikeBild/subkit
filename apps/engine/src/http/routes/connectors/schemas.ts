@@ -38,6 +38,13 @@ export const ConnectorSchema = z
     // is internally typed; callers that need the narrower shape
     // re-validate via `parseTemplateSnapshot`. Per #147 review S4.
     template_snapshot: z.record(z.string(), z.unknown()).nullable(),
+    // Re-auth health. `needs_reauth` flips true when the connector's
+    // credential goes stale (OAuth refresh revoked, API key rotated, login
+    // lapsed) and stays unusable until a human reconnects it. The
+    // provenance pair records the first failure that flipped the flag.
+    needs_reauth: z.boolean(),
+    auth_failed_at: z.string().datetime().nullable(),
+    auth_failed_reason: z.string().nullable(),
     created_at: z.string(),
     updated_at: z.string(),
   })
@@ -150,6 +157,9 @@ export function serialize(c: ConnectorView) {
     template_source: c.template_source,
     template_version: c.template_version,
     template_snapshot: c.template_snapshot,
+    needs_reauth: c.needs_reauth,
+    auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
+    auth_failed_reason: c.auth_failed_reason,
     created_at: c.created_at.toISOString(),
     updated_at: c.updated_at.toISOString(),
   };

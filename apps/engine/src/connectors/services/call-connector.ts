@@ -31,6 +31,7 @@ import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { query as graphqlQuery } from "../drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../drivers/http.ts";
+import { type ConnectorHealth, classifyConnectorHealth, connectorHealthHint } from "../health.ts";
 import { getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 
@@ -63,6 +64,17 @@ export interface CallConnectorOk {
   body_byte_count: number;
   truncated: boolean;
   raw_ref?: string;
+  /**
+   * Connector-response health. "ok" for any inspectable result (incl.
+   * non-auth 4xx the caller may legitimately handle). Non-ok verdicts
+   * (auth_failed / endpoint_gone / degraded) mean the connector itself is
+   * unusable — the caller must NOT read an empty body as "no data".
+   */
+  health: ConnectorHealth;
+  /** Present only when `health !== "ok"`. */
+  health_suggestion?: string;
+  /** Present only when `health !== "ok"`. */
+  next_best_actions?: string[];
   metadata: {
     connector_id: string;
     connector_slug: string;
@@ -313,6 +325,11 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
 
   const status = dispatch?.status ?? 0;
   const url_host = dispatch?.url_host ?? "";
+  // A response that completed at the transport layer can still prove the
+  // connector unusable (rejected credential, removed endpoint, Seraph
+  // anonymous-200). Classify so the audit row and the LLM-facing envelope
+  // both reflect that instead of recording a blind "success".
+  const health = dispatch ? classifyConnectorHealth(status, dispatch.headers) : "ok";
 
   await recordConnectorInvoked({
     tenant_id: req.tenant_id,
@@ -327,7 +344,7 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
     url_host,
     status_code: status,
     latency_ms,
-    outcome: errorDetail ? "error" : "success",
+    outcome: errorDetail || health !== "ok" ? "error" : "success",
     ...(req.conversation_id ? { conversation_id: req.conversation_id } : {}),
   });
 
@@ -377,6 +394,7 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
     latency_ms,
     body_byte_count,
     truncated: truncatedBody.truncated,
+    health,
     metadata: {
       connector_id: connector.id,
       connector_slug: connector.slug,
@@ -389,6 +407,11 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
   };
   if (truncatedBody.truncated && truncatedBody.raw_ref) {
     ok.raw_ref = truncatedBody.raw_ref;
+  }
+  const hint = connectorHealthHint(health, connector.slug);
+  if (hint) {
+    ok.health_suggestion = hint.suggestion;
+    ok.next_best_actions = hint.next_best_actions;
   }
   return ok;
 }

@@ -70,3 +70,59 @@ describe("enrichConnectorFromTemplate — operator_quirks propagation", () => {
     expect(out.operator_quirks).toBeUndefined();
   });
 });
+
+describe("enrichConnectorFromTemplate — credential_hints follow the chosen auth_type", () => {
+  // Mirrors the real Jira template: native auth_type is oauth2 with
+  // client_id/client_secret hints, but the template ALSO offers API-token
+  // Basic auth via auth_options. A connector created with auth_type:"basic"
+  // must NOT inherit the OAuth2 hints.
+  const oauthTemplate: ConnectorTemplate = {
+    ...baseTemplate,
+    auth_type: "oauth2",
+    credential_hints: [
+      {
+        field: "client_id",
+        label: "OAuth2 Client ID",
+        secret: false,
+        placeholder: "",
+        doc_url: null,
+      },
+      {
+        field: "client_secret",
+        label: "OAuth2 Client Secret",
+        secret: true,
+        placeholder: "",
+        doc_url: null,
+      },
+    ],
+  };
+
+  test("native auth_type reuses the template's curated hints", () => {
+    const out = enrichConnectorFromTemplate({ auth_type: "oauth2" }, oauthTemplate);
+    const hints = (out.config?.credential_hints ?? []) as Array<{ field: string }>;
+    expect(hints.map((h) => h.field)).toEqual(["client_id", "client_secret"]);
+  });
+
+  test("basic auth gets username/password hints, NOT the OAuth2 defaults", () => {
+    const out = enrichConnectorFromTemplate({ auth_type: "basic" }, oauthTemplate);
+    const hints = (out.config?.credential_hints ?? []) as Array<{ field: string; secret: boolean }>;
+    expect(hints.map((h) => h.field)).toEqual(["username", "password"]);
+    expect(hints.find((h) => h.field === "password")?.secret).toBe(true);
+    expect(hints.some((h) => h.field === "client_secret")).toBe(false);
+  });
+
+  test("bearer auth gets a single token hint", () => {
+    const out = enrichConnectorFromTemplate({ auth_type: "bearer" }, oauthTemplate);
+    const hints = (out.config?.credential_hints ?? []) as Array<{ field: string }>;
+    expect(hints.map((h) => h.field)).toEqual(["token"]);
+  });
+
+  test("user-supplied credential_hints always win", () => {
+    const out = enrichConnectorFromTemplate(
+      { auth_type: "basic", config: { credential_hints: [{ field: "custom" }] } },
+      oauthTemplate,
+    );
+    const hints = (out.config?.credential_hints ?? []) as Array<{ field: string }>;
+    expect(hints.map((h) => h.field)).toEqual(["custom"]);
+  });
+});

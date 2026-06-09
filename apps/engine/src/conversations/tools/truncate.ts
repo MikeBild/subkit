@@ -49,7 +49,48 @@ const MAX_NESTED_ARRAY_LEN = 10;
 // ("output_preview is already capped"); this is the missing cap.
 const MAX_STEP_PREVIEW_CHARS = 1500;
 
-const rawStore = new Map<string, unknown>();
+// Raw-ref retention. Refs are looked up by `get_raw_result` later in the
+// same conversation, so eviction must be driven by AGE, not by a small
+// FIFO size cap — a busy session could otherwise drop an active ref
+// before the model fetched it, surfacing as `raw_ref_not_found`. We keep
+// each ref for RAW_REF_TTL_MS and only fall back to insertion-order
+// eviction once RAW_REF_MAX_ENTRIES is exceeded as a memory backstop.
+const RAW_REF_TTL_MS = 30 * 60_000; // 30 min
+// Backstop ceiling for the process-global store. Each entry can be a large
+// raw tool payload (>8 KB, sometimes 100s of KB), and this Map is shared
+// across every concurrent conversation in the process — so the ceiling is a
+// memory bound, not just a cleanliness cap. Kept conservative given the
+// engine's prior memory pressure; the per-set expired sweep frees stale
+// entries promptly so the resident set tracks "refs from the last TTL".
+const RAW_REF_MAX_ENTRIES = 512;
+
+interface RawEntry {
+  value: unknown;
+  expires_at: number;
+}
+
+const rawStore = new Map<string, RawEntry>();
+
+/**
+ * Insert a raw payload under `refId`, evicting expired entries first and
+ * then trimming by insertion order if still over the backstop ceiling.
+ * Shared by `truncateForLlm` and `rememberRaw` so the TTL + backstop
+ * policy lives in exactly one place.
+ */
+function storeRaw(refId: string, value: unknown): void {
+  const now = Date.now();
+  rawStore.set(refId, { value, expires_at: now + RAW_REF_TTL_MS });
+  // Evict by age first.
+  for (const [key, entry] of rawStore) {
+    if (entry.expires_at < now) rawStore.delete(key);
+  }
+  // Memory backstop: drop oldest by insertion order until under ceiling.
+  while (rawStore.size > RAW_REF_MAX_ENTRIES) {
+    const firstKey = rawStore.keys().next().value;
+    if (firstKey === undefined) break;
+    rawStore.delete(firstKey);
+  }
+}
 
 export interface TruncatedOutput {
   truncated: boolean;
@@ -84,7 +125,7 @@ function truncateNode(value: unknown, arrayDepth = 0): unknown {
     // items"` in fallback turns. Single-`_` keeps the marker
     // identifiable for tools that re-walk the structure but ensures it
     // never reaches the end-user view.
-    if (dropped > 0) mapped.push({ _truncated: `+${dropped} more items` });
+    if (dropped > 0) mapped.push({ _truncated: `+${dropped} more items (${value.length} total)` });
     return mapped;
   }
   const out: Record<string, unknown> = {};
@@ -185,12 +226,7 @@ export function truncateForLlm(output: unknown, cap: number = MAX_JSON_CHARS): T
     return { truncated: false, data: output };
   }
   const refId = `raw_${crypto.randomUUID().slice(0, 8)}`;
-  rawStore.set(refId, output);
-  // Evict older entries beyond a soft cap to prevent unbounded growth.
-  if (rawStore.size > 256) {
-    const firstKey = rawStore.keys().next().value;
-    if (firstKey !== undefined) rawStore.delete(firstKey);
-  }
+  storeRaw(refId, output);
   const pass1 = truncateNode(output);
   const { data: shortened, branchesOmitted, charsOmitted } = shrinkToCap(pass1, cap);
   const shortenedLen = approxJsonLength(shortened);
@@ -241,7 +277,13 @@ export function truncateStepPreviewForLlm(value: unknown): TruncatedOutput {
 }
 
 export function getRawResult(ref: string): unknown | undefined {
-  return rawStore.get(ref);
+  const entry = rawStore.get(ref);
+  if (entry === undefined) return undefined;
+  if (entry.expires_at < Date.now()) {
+    rawStore.delete(ref);
+    return undefined;
+  }
+  return entry.value;
 }
 
 export function clearRawStore(): void {
@@ -256,11 +298,7 @@ export function clearRawStore(): void {
  */
 export function rememberRaw(value: unknown): string {
   const refId = `raw_${crypto.randomUUID().slice(0, 8)}`;
-  rawStore.set(refId, value);
-  if (rawStore.size > 256) {
-    const firstKey = rawStore.keys().next().value;
-    if (firstKey !== undefined) rawStore.delete(firstKey);
-  }
+  storeRaw(refId, value);
   return refId;
 }
 
@@ -269,4 +307,6 @@ export const TRUNCATE_INTERNALS = {
   MAX_ARRAY_LEN,
   MAX_NESTED_ARRAY_LEN,
   MAX_STEP_PREVIEW_CHARS,
+  RAW_REF_TTL_MS,
+  RAW_REF_MAX_ENTRIES,
 };

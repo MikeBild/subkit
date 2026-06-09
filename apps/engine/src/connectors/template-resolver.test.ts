@@ -113,6 +113,9 @@ describe("buildTemplateBindingFields", () => {
       circuit_failure_count: 0,
       circuit_threshold: 5,
       circuit_reset_ms: 60_000,
+      needs_reauth: false,
+      auth_failed_at: null,
+      auth_failed_reason: null,
     };
     const serialized = serialize(view);
     const parsed = ConnectorSchema.safeParse(serialized);
