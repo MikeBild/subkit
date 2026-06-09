@@ -16,22 +16,21 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { readRequestSource } from "../../audit/index.ts";
-import { upsertCredential } from "../../credentials/service.ts";
-import { evictTenant, getTenantMcpTools } from "../../mcp/client/pool.ts";
-import type {
-  McpServerAuditCtx,
-  McpServerAuthConfig,
-  McpServerRow,
-} from "../../mcp/client/registry.ts";
+import { upsertCredential } from "../../credentials/index.ts";
 import {
   createMcpServer,
   deleteMcpServer,
+  evictTenant,
   getMcpServer,
+  getTenantMcpTools,
   listMcpServers,
+  type McpServerAuditCtx,
+  type McpServerAuthConfig,
+  type McpServerRow,
   parseAuthConfig,
   setMcpServerStatus,
   updateMcpServer,
-} from "../../mcp/client/registry.ts";
+} from "../../mcp/index.ts";
 import { NotFoundError, UnprocessableEntityError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
