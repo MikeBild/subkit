@@ -146,7 +146,12 @@ export const saveWorkflowDraftTool: ConversationTool = {
     const previewOverride =
       args.force_commit === true &&
       (!fullDraft.latest_preview || fullDraft.latest_preview.ok !== true);
-    if (workflow_id) {
+    // Idempotent re-commit: when commitWorkflowAtomic detected the def
+    // was unchanged from the current version, nothing was written — do
+    // not emit a `manual_re_issue` audit row for a no-op. Mirrors the
+    // `already_persisted` short-circuit in save-connector-draft.ts.
+    const alreadyPersisted = data.already_persisted === true;
+    if (workflow_id && !alreadyPersisted) {
       if (previewOverride) {
         await recordWorkflowCommitted({
           tenant_id: ctx.tenant_id,

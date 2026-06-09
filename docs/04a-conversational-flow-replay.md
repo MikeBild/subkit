@@ -60,7 +60,7 @@ Continuing from Flow A:
 › you   all tickets assigned to me
 
 ✓ Workflow draft ready · my-jira-tickets · 1 step
-  GET /rest/api/3/search → transform (key, summary, status, assignee, updated)
+  GET /rest/api/3/search/jql → transform (key, summary, status, assignee, updated)
 
 ✓ Preview complete · 1 step · 21 tickets · no warnings
 ✓ Workflow committed · my-jira-tickets v1 (audit reason: auto_persist_on_green_dry_run)

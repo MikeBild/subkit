@@ -123,6 +123,28 @@ describe("filterByAuthoringPalette — cleanup tools always reachable", () => {
     expect(names).toContain("update_schedule");
     expect(names).toContain("delete_schedule");
   });
+
+  // A dead connector credential can surface in ANY conversation, so the
+  // recovery tool must always be reachable. It is `draft_write` (the
+  // non-OAuth path stages a re-issue draft), so the `tenant_read` catch-all
+  // no longer keeps it visible — it must be in an always-available set.
+  // Without this assertion, flipping its category silently removes the
+  // repair path from chat (the regression this exact fix restored).
+  test("request_connector_reauth visible with no skills loaded", () => {
+    const draft: DraftDocument = {
+      workflow: { name: "", steps: [] } as never,
+    };
+    const tools = [
+      { name: "request_connector_reauth", category: "draft_write" },
+      { name: "save_connector_draft", category: "draft_write" }, // connector-skill required
+    ] as const;
+    const filtered = filterByAuthoringPalette(tools, draft, NO_SKILLS);
+    const names = filtered.map((t) => t.name);
+    expect(names).toContain("request_connector_reauth");
+    // Sanity: a genuinely skill-gated draft_write tool stays hidden, proving
+    // the inclusion above is the explicit allow-set entry, not a category leak.
+    expect(names).not.toContain("save_connector_draft");
+  });
 });
 
 describe("filterByAuthoringPalette — skill-gated authoring tools", () => {

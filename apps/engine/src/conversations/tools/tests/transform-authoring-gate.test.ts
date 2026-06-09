@@ -272,4 +272,89 @@ describe("evaluateTransformAuthoringGate", () => {
     expect(result.ok).toBe(false);
     expect(result.blocks[0]?.referenced_step_id).toBe("fetch");
   });
+
+  // Runtime/data-failure exemption. A transform whose referenced sibling
+  // dry-ran but died on a 404/410/403/401 (runtime/data error) has no
+  // output_preview because the request never returned a body — gating on it
+  // would freeze the authoring loop forever (the draft is structurally
+  // sound; only the remote test fixture failed). Same spirit as the
+  // control-flow exemption.
+  test("exempts a transform whose referenced step failed with a 404 runtime error", () => {
+    const result = evaluateTransformAuthoringGate(
+      {
+        steps: [
+          { id: "fetch", kind: "request" },
+          { id: "fmt", kind: "transform", expression: "$scope.fetch.data.items" },
+        ],
+      },
+      {
+        ok: false,
+        summary: "failed",
+        step_traces: [
+          {
+            step_id: "fetch",
+            kind: "request",
+            status: "failed",
+            request_meta: { status: 404 },
+            // No output_preview — the request returned 404
+          },
+        ],
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.blocks).toHaveLength(0);
+  });
+
+  test("exempts a transform whose referenced step failed with a 410 Gone runtime error", () => {
+    const result = evaluateTransformAuthoringGate(
+      {
+        steps: [
+          { id: "fetch", kind: "request" },
+          { id: "fmt", kind: "transform", expression: "$scope.fetch.data.items" },
+        ],
+      },
+      {
+        ok: false,
+        summary: "failed",
+        step_traces: [
+          {
+            step_id: "fetch",
+            kind: "request",
+            status: "error",
+            request_meta: { status: 410 },
+          },
+        ],
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.blocks).toHaveLength(0);
+  });
+
+  test("still blocks a transform if the referenced step failed with a config-invalid error (not runtime)", () => {
+    // An unresolved_identifier error means the draft itself is wrong —
+    // the exemption must NOT fire for config-invalid failures.
+    const result = evaluateTransformAuthoringGate(
+      {
+        steps: [
+          { id: "fetch", kind: "request" },
+          { id: "fmt", kind: "transform", expression: "$scope.fetch.data.items" },
+        ],
+      },
+      {
+        ok: false,
+        summary: "failed",
+        step_traces: [
+          {
+            step_id: "fetch",
+            kind: "request",
+            status: "error",
+            error_code: "unresolved_identifier",
+          },
+        ],
+      },
+    );
+    // The referenced step's failure is not a runtime/data error — gate holds.
+    expect(result.ok).toBe(false);
+    expect(result.blocks[0]?.referenced_step_id).toBe("fetch");
+  });
 });

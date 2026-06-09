@@ -14,9 +14,17 @@
 //     `connector_id` is omitted.
 //   - both omitted ⇒ `invalid_input` asking for one.
 //
-// RBAC: `connector:read` on the target connector — same gate + resolution
-// pattern `call_connector` uses (resolveConversationPrincipal + can(...)). A
-// principal that cannot read the connector cannot mint its reauth link.
+// For OAuth2 it returns the provider authorize URL. For non-OAuth
+// (basic/bearer/header/query) there is no working click-through form, so it
+// instead binds the saved connector into a re-issue draft (sets
+// `saved_connector_id`) and asks the LLM to collect the new secret via
+// `ask_user_form`; the submission rotates the credential on the SAME connector
+// row through the existing auto-persist path. The connector id never changes,
+// so workflows that reference it keep working.
+//
+// RBAC: `connector:write` on the target connector — the non-OAuth path stages
+// a credential rotation, so this is a write-class affordance (resolution
+// pattern still mirrors `call_connector`: resolveConversationPrincipal + can()).
 //
 // This is NOT a skill-gated tool: a broken credential can surface in any
 // conversation, so the recovery path must always be reachable.
@@ -29,6 +37,8 @@ import { getConnector } from "../../connectors/service.ts";
 import { roles, systemAccounts, users } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
+import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
+import { withConnectorDraft } from "../authoring-state.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 
 const RequestConnectorReauthInput = z
@@ -145,18 +155,22 @@ function structuredError(
 export const requestConnectorReauthTool: ConversationTool = {
   name: "request_connector_reauth",
   description:
-    "Return a one-click link to reconnect a connector whose credential is dead. Call this when a connector is flagged `needs_reauth`, or when a `call_connector` / `probe_connector` result came back `health: auth_failed` — then hand the returned `reauth_url` to the user so they can re-authenticate. Resolves by `connector_id` (uuid) or `slug`.",
+    "Repair a connector whose credential is dead — flagged `needs_reauth`, or a `call_connector`/`probe_connector` came back `health: auth_failed`. OAuth2 connectors → returns a provider authorize URL to open. Non-OAuth (basic/bearer/header/query) → starts an in-chat credential re-issue: it loads the saved connector into a draft and you then collect the new secret via `ask_user_form`; it rotates in place (same connector id, dependent workflows untouched) — no delete+recreate. Resolves by `connector_id` (uuid) or `slug`.",
   use_case:
-    "A saved connector's credential was revoked or rotated upstream and calls now fail with auth_failed — request_connector_reauth mints the reconnect link (OAuth authorize URL or credential-setup deep link) for the user to click.",
+    "A saved connector's credential was revoked or rotated upstream and calls now fail with auth_failed. For OAuth2, request_connector_reauth returns the authorize URL to open; for non-OAuth it binds a re-issue draft so the next ask_user_form submission rotates the credential on the existing connector.",
   important_notes: [
     "Pass either `connector_id` (uuid) or `slug`; `connector_id` wins when both are given.",
-    "`method` is `oauth2` (a provider authorize URL, expires in ~10 minutes) or `portal_setup` (a credential-setup deep link).",
-    "`reauth_url` is null only when the engine has no public origin configured — surface the `instructions` to the operator in that case.",
-    "Read-only recovery affordance: it mints a link, it does not change credentials. Requires `connector:read` on the connector.",
+    "OAuth2 → returns `method: oauth2` + a `reauth_url` (authorize URL) to open. Non-OAuth → returns `method: portal_setup`, `mode: credential_re_issue`, and stages a re-issue draft; follow with `ask_user_form(type: password, sensitive: true)` to collect the new secret and it rotates in place.",
+    "Never paste the secret in chat — always collect it through `ask_user_form(type: password, sensitive: true)`.",
+    "Requires `connector:write` on the connector (the non-OAuth path stages a credential rotation).",
   ],
   example_input: { slug: "digitalocean" },
   inputSchema: RequestConnectorReauthInput,
-  category: "tenant_read",
+  // draft_write: the non-OAuth path calls ctx.setDraft to stage a credential
+  // re-issue (same as probe_connector_draft / start_connector_*). The actual
+  // credential write happens downstream through the elicitation → auto-persist
+  // path, which carries its own gate.
+  category: "draft_write",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = RequestConnectorReauthInput.parse(rawArgs);
 
@@ -195,7 +209,7 @@ export const requestConnectorReauthTool: ConversationTool = {
     // RBAC: `connector:read` on the target connector (parity with
     // call_connector / probe_connector — no `connector:invoke` permission
     // exists, and minting a reauth link is a read-style affordance).
-    const auth = await requirePermission(ctx, "connector:read", {
+    const auth = await requirePermission(ctx, "connector:write", {
       type: "connector",
       id: connectorId,
     });
@@ -209,7 +223,7 @@ export const requestConnectorReauthTool: ConversationTool = {
         reason: auth.reason,
         error_code: "permission_denied",
       });
-      return structuredError("permission_denied", auth.reason, { permission: "connector:read" });
+      return structuredError("permission_denied", auth.reason, { permission: "connector:write" });
     }
 
     const connector = await getConnector(ctx.tenant_id, connectorId, ctx.db);
@@ -221,6 +235,63 @@ export const requestConnectorReauthTool: ConversationTool = {
 
     const { method, reauth_url, instructions } = buildReauthUrl(connector);
 
+    // Non-OAuth (basic/bearer/header/query) connectors have no working
+    // click-through credential form — the legacy `reauth_url` pointed at a
+    // POST-only `/credentials` endpoint that renders nothing on GET, so
+    // handing it to the user was a dead end (the bug behind the 3.2M-token
+    // repair ordeal). Instead, repair IN CHAT: bind the saved connector into
+    // a re-issue draft, then have the LLM collect the new secret via a masked
+    // `ask_user_form`. The submission flows through the existing auto-persist
+    // re-issue path (`saveConnectorAtomic` → `upsertCredential` →
+    // `clearConnectorReauth`), rotating the credential on the SAME connector
+    // id — no delete+recreate, no orphaned workflows. This is the non-OAuth
+    // counterpart of what `authenticate_oauth` does for OAuth.
+    if (method === "portal_setup") {
+      // A `none`-auth connector has no credential to rotate — staging a
+      // re-issue draft and asking for "the new none secret" is nonsensical.
+      // (Near-unreachable: a credential-less connector can't fail auth, but
+      // guard the tool boundary rather than emit a broken prompt.)
+      if (connector.auth_type === "none") {
+        return structuredError(
+          "no_credential_to_reissue",
+          `connector '${connector.slug}' uses auth_type 'none' — there is no credential to re-issue. If it is failing, the base_url or upstream is the issue, not auth.`,
+          { next_best_actions: ["probe_connector", "update_connector_draft"] },
+        );
+      }
+      const draftConnector = hydrateDraftFromSavedConnector(connector);
+      const nextDraft = withConnectorDraft(
+        ctx.getDraft(),
+        draftConnector,
+        "connector_reauth_started",
+      );
+      await ctx.setDraft(nextDraft);
+      logger.info({
+        module: "conversation_tool",
+        action: "request_connector_reauth.reissue_draft_bound",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        connector_id: connector.id,
+        auth_type: connector.auth_type,
+      });
+      return {
+        ok: true,
+        data: {
+          connector: connector.slug,
+          method,
+          mode: "credential_re_issue",
+          auth_type: connector.auth_type,
+          needs_reauth: connector.needs_reauth,
+          auth_failed_at: connector.auth_failed_at?.toISOString() ?? null,
+          next_best_actions: ["ask_user_form"],
+          next_prompt: `Collect the new ${connector.auth_type} secret for '${connector.slug}' via a masked ask_user_form (type: password, sensitive: true). It rotates in place on the existing connector — the id and every workflow that uses it stay intact.`,
+          instructions:
+            "Do not paste the secret in chat. Call ask_user_form(type: password, sensitive: true) to collect it; the harness persists it atomically onto the existing connector, clears needs_reauth, and re-probes.",
+        },
+      };
+    }
+
+    // OAuth2: the provider authorize URL is the correct affordance — the
+    // dance + callback persists fresh tokens. Unchanged.
     logger.info({
       module: "conversation_tool",
       action: "request_connector_reauth.succeeded",

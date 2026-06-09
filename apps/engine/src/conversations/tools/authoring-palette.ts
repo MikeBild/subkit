@@ -47,6 +47,12 @@ const ALWAYS_VISIBLE: ReadonlySet<string> = new Set([
   "list_skills",
   "load_skill",
   "preview_attachment",
+  // A dead connector credential can surface in ANY conversation, so the
+  // recovery tool must always be reachable. It is `draft_write` (the
+  // non-OAuth path stages a credential re-issue draft), so the
+  // `tenant_read` catch-all in filterByAuthoringPalette no longer keeps it
+  // visible — list it explicitly.
+  "request_connector_reauth",
   "search_knowledge",
   "suggest_connector_templates",
 ]);

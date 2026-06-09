@@ -272,7 +272,20 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     workflowIdForTurn !== null ||
     draft.summary?.active_target.kind === "workflow" ||
     draft.summary?.persisted_resources.some((resource) => resource.kind === "workflow") === true;
-  if (detectedIntent.startNewWorkflow === true && hasBoundSavedWorkflow) {
+  // Guard against the intent heuristic wiping a non-empty unsaved
+  // workflow draft. A "rebuild the workflow"-style message while an
+  // in-progress draft with authored steps is live must not destroy
+  // that work; only an already-persisted target may be reset here.
+  const hasInProgressWorkflowDraft =
+    (draft.workflow?.steps.length ?? 0) > 0 &&
+    !draft.summary?.persisted_resources.some(
+      (resource) => resource.kind === "workflow" && resource.slug === draft.workflow?.slug,
+    );
+  if (
+    detectedIntent.startNewWorkflow === true &&
+    hasBoundSavedWorkflow &&
+    !hasInProgressWorkflowDraft
+  ) {
     // An explicit "create a workflow" request starts a fresh draft.
     // Keeping the previous saved workflow target here would turn the
     // next commit into an in-place update of the old workflow.
