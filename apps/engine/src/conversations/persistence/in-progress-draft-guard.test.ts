@@ -16,21 +16,12 @@
 import { describe, expect, it } from "bun:test";
 import {
   createEmptyDraftDocument,
+  hasInProgressWorkflowDraft,
   startNewWorkflowDraft,
   withWorkflowDraft,
   withWorkflowPersisted,
 } from "../authoring-state.ts";
 import type { DraftDocument } from "../types.ts";
-
-/** Mirror of the condition in loop.ts ~line 279 */
-function hasInProgressWorkflowDraft(draft: DraftDocument): boolean {
-  return (
-    (draft.workflow?.steps.length ?? 0) > 0 &&
-    !draft.summary?.persisted_resources.some(
-      (resource) => resource.kind === "workflow" && resource.slug === draft.workflow?.slug,
-    )
-  );
-}
 
 function withSomeSteps(draft: DraftDocument, slug = "my-wf"): DraftDocument {
   return withWorkflowDraft(draft, {

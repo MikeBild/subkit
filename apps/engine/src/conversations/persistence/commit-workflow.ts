@@ -509,6 +509,18 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   }
   const persistScopeIndex = Object.keys(scopeIndex).length > 0 ? scopeIndex : null;
 
+  // Validate + annotate the def ONCE for the idempotency comparison. The
+  // closure below can run twice (the bound-target path and the same-slug
+  // adoption path), and validate/annotate are def-only — identical on each
+  // call — so hoist them out of the closure. `null` when the draft doesn't
+  // validate; the closure then treats it as "not idempotent" (falls through
+  // to the normal validate-and-commit path that surfaces the error).
+  const idempotencyValidation = validateWorkflowDef(def);
+  const idempotencyAnnotated =
+    idempotencyValidation.ok && idempotencyValidation.workflow
+      ? annotateRuntime(idempotencyValidation.workflow)
+      : null;
+
   // Idempotent re-commit. When the target row is already resolved and
   // the draft def is byte-identical to its current version, do NOT
   // append a redundant version (which churns history and unbinds
@@ -535,16 +547,14 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       .limit(1);
     const wf = wfRows[0];
     if (!wf?.current_version_id) return null;
-    const validation = validateWorkflowDef(def);
-    if (!validation.ok || !validation.workflow) return null;
-    const annotated = annotateRuntime(validation.workflow);
+    if (!idempotencyAnnotated) return null;
     const unchanged = await isUnchangedFromCurrentVersion({
       tx: ctx.db,
       tenant_id: ctx.tenant_id,
       workflow_id: workflowId,
       workflow_slug: wf.slug,
       current_version_id: wf.current_version_id,
-      def: annotated,
+      def: idempotencyAnnotated,
       scope_index: persistScopeIndex,
     });
     if (!unchanged) return null;
@@ -796,6 +806,12 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
         source: "harness_auto_persist",
         kind: "auto_persist",
         ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
+        ...(forceClearsPreview && runtimeDataFailure
+          ? {
+              forced_over_runtime_data: true,
+              ...(previewFailureClass ? { preview_failure_class: previewFailureClass } : {}),
+            }
+          : {}),
       });
     } else {
       await recordWorkflowCreated({
@@ -808,6 +824,12 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
         reason: p.reason ?? "auto_persist_on_confirmation",
         source: "harness_auto_persist",
         ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
+        ...(forceClearsPreview && runtimeDataFailure
+          ? {
+              forced_over_runtime_data: true,
+              ...(previewFailureClass ? { preview_failure_class: previewFailureClass } : {}),
+            }
+          : {}),
       });
     }
   }

@@ -356,6 +356,23 @@ export function withWorkflowDraft(
   return applyWorkflowMutation(draft, workflow, last_action);
 }
 
+/**
+ * True when the draft holds a non-empty WORKFLOW draft that is NOT already a
+ * persisted workflow (its slug doesn't match any persisted workflow resource).
+ * i.e. there is unsaved authored work in flight.
+ *
+ * Single source of truth for the guard that stops the `startNewWorkflow`
+ * intent heuristic in `loop.ts` from wiping in-progress authoring — shared
+ * with its unit test so the predicate can't drift between gate and test.
+ */
+export function hasInProgressWorkflowDraft(draft: DraftDocument): boolean {
+  if ((draft.workflow?.steps.length ?? 0) === 0) return false;
+  const slug = draft.workflow?.slug;
+  return !draft.summary?.persisted_resources.some(
+    (resource) => resource.kind === "workflow" && resource.slug === slug,
+  );
+}
+
 export function startNewWorkflowDraft(
   draft: DraftDocument,
   last_action: string | null = "workflow_target_reset",

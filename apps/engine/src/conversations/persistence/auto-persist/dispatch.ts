@@ -145,7 +145,15 @@ export async function dispatchDeleteConnector(
       next_best_actions: ["edit_workflow_patch", "delete_workflow"],
     };
   }
-  const ok = await ctx.engineClient.connectors.delete(id);
+  // An acknowledged-orphaning delete (confirm_orphan over live dependents)
+  // threads the dependent ids so the CONNECTOR_DELETED audit row records that
+  // the operator proceeded despite the warning.
+  const ok =
+    confirmedOrphan && dependents.length > 0
+      ? await ctx.engineClient.connectors.delete(id, {
+          orphaned_workflow_ids: dependents.map((w) => w.id),
+        })
+      : await ctx.engineClient.connectors.delete(id);
   if (!ok) {
     return {
       ok: false,

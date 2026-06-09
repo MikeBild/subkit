@@ -19,6 +19,8 @@
 // the caller emits the event exactly once, inside the same transaction.
 
 import { sql } from "drizzle-orm";
+import { auditAwait } from "../audit/audit.ts";
+import { AuditAction } from "../audit/types.ts";
 import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth2/redirect-uri.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
@@ -65,31 +67,60 @@ export async function markConnectorNeedsReauth(
 }
 
 /**
- * Idempotent reset of the re-auth flag, tenant-scoped. Called on a successful
- * authenticated request — the credential clearly works again, so clear the
- * flag and the failure provenance. Safe to call when the flag is already
- * clear (the UPDATE simply matches nothing meaningful).
+ * Idempotent reset of the re-auth flag, tenant-scoped. Called when a dead
+ * credential recovers — a successful authenticated request at runtime, or an
+ * in-chat credential rotation. Clears the flag + failure provenance.
+ *
+ * Only the genuine true→false edge does work: the UPDATE is gated on
+ * `needs_reauth = true`, so calling this when the flag is already clear is a
+ * cheap no-op (matches no row → early return, no audit). On a real transition
+ * it writes its OWN `CONNECTOR_REAUTH_CLEARED` audit row, so clearing this
+ * tenant-visible state is ALWAYS audited regardless of caller — the audit is
+ * structural, not dependent on a surrounding recorder. Symmetric with the
+ * false→true edge in `markConnectorNeedsReauth`.
+ *
+ * `actor_id` attributes the row to the operator when the clear is driven by an
+ * in-chat rotation; omit it for the runtime auto-recovery path (system actor).
  */
 export async function clearConnectorReauth(
   db: Executor,
   tenant_id: string,
   connector_id: string,
+  opts?: { actor_id?: string | null },
 ): Promise<void> {
-  await db.execute(sql`
+  const rows = await db.execute<{ id: string }>(sql`
     UPDATE connectors
        SET needs_reauth = false,
            auth_failed_at = NULL,
            auth_failed_reason = NULL
      WHERE id = ${connector_id}
        AND tenant_id = ${tenant_id}
+       AND needs_reauth = true
+    RETURNING id
   `);
-  logger.debug({
+  if (rows.rows.length === 0) return;
+  logger.info({
     module: "connectors",
     action: "connector.reauth.cleared",
     msg: "connector reauth flag cleared",
     tenant_id,
     connector_id,
   });
+  const actor_id = opts?.actor_id ?? null;
+  await auditAwait(
+    {
+      tenant_id,
+      actor_type: actor_id ? "user" : "system",
+      actor_id,
+      action: AuditAction.CONNECTOR_REAUTH_CLEARED,
+      resource_type: "connector",
+      resource_id: connector_id,
+      result: "success",
+      reason: "credential_recovered",
+      metadata: {},
+    },
+    db,
+  );
 }
 
 /**

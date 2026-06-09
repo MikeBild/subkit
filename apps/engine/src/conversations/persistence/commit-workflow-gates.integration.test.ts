@@ -213,6 +213,40 @@ describe("C.2 — preview-failure-class gate", () => {
     void data;
   });
 
+  test("force_commit over runtime_data threads forced_over_runtime_data into the workflow audit", async () => {
+    const conversationId = await freshConversation();
+    await seedApprovedConfirm(conversationId);
+    const draft = draftWithFailedPreview("runtime-fail-audit-wf", "runtime_data");
+
+    const result = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, draft),
+      forceCommit: true,
+      skipPriorApprovalCheck: true,
+      emitAutoPersistAudit: true,
+    });
+    expect(result.ok).toBe(true);
+    const workflowId = (result.data as { workflow_id?: string }).workflow_id;
+    expect(workflowId).toBeDefined();
+
+    // The committed-over-failed-preview signal must land in the audit row so
+    // operators can answer "was this committed over a failed dry-run?" without
+    // correlating logs by timestamp.
+    const rows = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.resource_id, workflowId as string)),
+      );
+    const forced = rows.find(
+      (r) =>
+        (r.metadata as { forced_over_runtime_data?: boolean }).forced_over_runtime_data === true,
+    );
+    expect(forced).toBeDefined();
+    expect((forced?.metadata as { preview_failure_class?: string }).preview_failure_class).toBe(
+      "runtime_data",
+    );
+  });
+
   test("force_commit:true + config_invalid failure (unresolved_identifier) → blocked", async () => {
     const conversationId = await freshConversation();
     await seedApprovedConfirm(conversationId);

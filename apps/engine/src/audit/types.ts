@@ -82,6 +82,12 @@ export const AuditAction = {
   // this row records "the LLM asked the operator to reauth" so the
   // audit trail closes on the conversation side too.
   CONNECTOR_REAUTH_REQUESTED: "connector.reauth_requested",
+  // The true→false edge of `connectors.needs_reauth`: a dead credential
+  // recovered (rotated in chat, or a live authed call succeeded). Emitted by
+  // `clearConnectorReauth` itself on transition so the tenant-visible state
+  // change is always audited, regardless of caller — symmetric with the
+  // false→true notification on `markConnectorNeedsReauth`.
+  CONNECTOR_REAUTH_CLEARED: "connector.reauth_cleared",
 
   WORKFLOW_CREATED: "workflow.created",
   WORKFLOW_UPDATED: "workflow.updated",

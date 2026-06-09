@@ -32,6 +32,18 @@ describe("extractCredentialFromFormOutput — bearer / basic / header / query", 
     ).toBeNull();
   });
 
+  it("prefers an explicit username over an email decoy when both are present", () => {
+    // `email` is accepted as a username alias (Atlassian-style forms), but an
+    // explicit `username` field must win — an unrelated contact-email field
+    // surfaced next to the credential must never be picked as the username.
+    const out = extractCredentialFromFormOutput(
+      "basic",
+      {},
+      { values: { username: "real", email: "decoy@x", password: "pw" } },
+    );
+    expect(out).toEqual({ mode: "basic", username: "real", password: "pw" });
+  });
+
   it("uses seedOverrides as a fallback for header_name", () => {
     const out = extractCredentialFromFormOutput(
       "header",
