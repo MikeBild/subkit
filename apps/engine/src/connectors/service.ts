@@ -432,6 +432,11 @@ export async function deleteConnector(
   id: string,
   actor_id: string | null,
   exec?: Executor,
+  // When the delete was confirmed despite live workflows binding this
+  // connector, the caller passes their ids so the single CONNECTOR_DELETED
+  // audit row records "operator was warned about N broken workflows and
+  // proceeded anyway" — the governance breadcrumb for an orphaning delete.
+  opts?: { orphaned_workflow_ids?: string[] },
 ): Promise<boolean> {
   const db = exec ?? getDb();
   // The transaction returns the row to evict (when one matches the
@@ -471,7 +476,16 @@ export async function deleteConnector(
         resource_type: "connector",
         resource_id: id,
         result: "success",
-        metadata: {},
+        ...((opts?.orphaned_workflow_ids?.length ?? 0) > 0
+          ? { reason: "delete_with_orphaned_workflows" }
+          : {}),
+        metadata:
+          (opts?.orphaned_workflow_ids?.length ?? 0) > 0
+            ? {
+                orphaned_workflow_ids: opts?.orphaned_workflow_ids,
+                orphaned_workflow_count: opts?.orphaned_workflow_ids?.length,
+              }
+            : {},
       },
       tx,
     );

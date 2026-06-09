@@ -119,7 +119,8 @@ export class EngineClient {
   connectors = {
     list: () => listConnectors(this.tenant_id, {}, this.db),
     get: (id: string) => getConnector(this.tenant_id, id, this.db),
-    delete: (id: string) => deleteConnector(this.tenant_id, id, this.actor_id, this.db),
+    delete: (id: string, opts?: { orphaned_workflow_ids?: string[] }) =>
+      deleteConnector(this.tenant_id, id, this.actor_id, this.db, opts),
     update: (id: string, patch: UpdateConnectorInput) =>
       updateConnector(this.tenant_id, id, patch, this.actor_id, this.db),
     count: async () => {

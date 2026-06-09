@@ -20,6 +20,13 @@ export interface RecordWorkflowCreatedParams extends RecorderBase {
   reason: string;
   source: "harness_auto_persist" | "tool_call" | "service";
   commit_intent_kind?: string;
+  /** Set when this version was committed over a failed dry-run via
+   *  force_commit (only the `runtime_data` class is force-eligible). Records
+   *  that the commit cleared a failed preview + which class, so the audit
+   *  trail answers "was this committed over a failed dry-run?" without
+   *  correlating logs by timestamp. */
+  forced_over_runtime_data?: boolean;
+  preview_failure_class?: string;
 }
 
 export async function recordWorkflowCreated(
@@ -40,6 +47,14 @@ export async function recordWorkflowCreated(
         slug: p.slug,
         version: p.version,
         ...(p.commit_intent_kind ? { commit_intent_kind: p.commit_intent_kind } : {}),
+        ...(p.forced_over_runtime_data
+          ? {
+              forced_over_runtime_data: true,
+              ...(p.preview_failure_class
+                ? { preview_failure_class: p.preview_failure_class }
+                : {}),
+            }
+          : {}),
       },
     },
     p.executor,
@@ -57,6 +72,10 @@ export interface RecordWorkflowUpdatedParams extends RecorderBase {
   kind?: string;
   tool?: string;
   commit_intent_kind?: string;
+  /** See RecordWorkflowCreatedParams — set when this version updated over a
+   *  force_commit-cleared runtime/data dry-run failure. */
+  forced_over_runtime_data?: boolean;
+  preview_failure_class?: string;
 }
 
 export async function recordWorkflowUpdated(
@@ -80,6 +99,14 @@ export async function recordWorkflowUpdated(
         ...(p.kind ? { kind: p.kind } : {}),
         ...(p.tool ? { tool: p.tool } : {}),
         ...(p.commit_intent_kind ? { commit_intent_kind: p.commit_intent_kind } : {}),
+        ...(p.forced_over_runtime_data
+          ? {
+              forced_over_runtime_data: true,
+              ...(p.preview_failure_class
+                ? { preview_failure_class: p.preview_failure_class }
+                : {}),
+            }
+          : {}),
       },
     },
     p.executor,

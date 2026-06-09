@@ -158,6 +158,12 @@ describe("request_connector_reauth + credential re-issue", () => {
       (r) => (r.metadata as { kind?: string }).kind === "credential_rotated",
     );
     expect(rotatedRow).toBeDefined();
+
+    // clearConnectorReauth self-audits the true→false transition, so the
+    // needs_reauth clear carries its own row independent of the credential
+    // rotation — the audit is structural, not comment-enforced.
+    const reauthClearedRow = auditRows.find((r) => r.action === "connector.reauth_cleared");
+    expect(reauthClearedRow).toBeDefined();
   });
 
   test("wrong tenant cannot re-issue: connector not found for a different tenant", async () => {

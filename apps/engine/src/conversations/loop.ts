@@ -65,7 +65,7 @@ import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
 import { resolveAttachmentSlugsInText } from "./attachments.ts";
 import { expandPriorFailuresFromToolCalls } from "./authoring-critic/prior-failures.ts";
-import { startNewWorkflowDraft } from "./authoring-state.ts";
+import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
@@ -276,15 +276,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // workflow draft. A "rebuild the workflow"-style message while an
   // in-progress draft with authored steps is live must not destroy
   // that work; only an already-persisted target may be reset here.
-  const hasInProgressWorkflowDraft =
-    (draft.workflow?.steps.length ?? 0) > 0 &&
-    !draft.summary?.persisted_resources.some(
-      (resource) => resource.kind === "workflow" && resource.slug === draft.workflow?.slug,
-    );
+  // (Predicate lives in authoring-state.ts so the gate and its unit test
+  // share one source of truth.)
   if (
     detectedIntent.startNewWorkflow === true &&
     hasBoundSavedWorkflow &&
-    !hasInProgressWorkflowDraft
+    !hasInProgressWorkflowDraft(draft)
   ) {
     // An explicit "create a workflow" request starts a fresh draft.
     // Keeping the previous saved workflow target here would turn the
