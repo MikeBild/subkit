@@ -1,4 +1,4 @@
-import type { ProviderKind } from "./model-init.ts";
+import { type ProviderKind, readOpenAiBaseUrl } from "./model-init.ts";
 
 export interface ModelCapabilities {
   supportsImage: boolean;
@@ -86,8 +86,28 @@ const STATIC_CAPABILITIES: Record<ProviderKind, ModelCapabilities> = {
   },
 };
 
+// The openai slot serves the real OpenAI Files API (and audio/video parts) only
+// when no custom base_url is set. Any custom base_url points at an arbitrary
+// OpenAI-compatible host that is assumed not to implement POST /v1/files (nor
+// audio/video inputs), so those are disabled and the assembler falls back to
+// inline file_part / text_extract. Read per call (not memoised) on purpose:
+// the base_url leaf is hot-reloadable via settings, and a cached value would
+// go stale after a reload. The lookup is a cheap config-leaf/env read, and
+// getStaticCapabilities runs once per content-assembly pass (bounded by the
+// turn's attachment count) — not inside a per-token loop — so the cost is
+// negligible. If it ever moves onto a hot path, memoise on the config
+// generation rather than caching unconditionally.
+function openaiHasCustomBaseUrl(): boolean {
+  const v = readOpenAiBaseUrl();
+  return Boolean(v && v.length > 0);
+}
+
 export function getStaticCapabilities(provider: ProviderKind): ModelCapabilities {
-  return STATIC_CAPABILITIES[provider] ?? STATIC_CAPABILITIES.gateway;
+  const base = STATIC_CAPABILITIES[provider] ?? STATIC_CAPABILITIES.gateway;
+  if (provider === "openai" && openaiHasCustomBaseUrl()) {
+    return { ...base, filesApiSupport: false, supportsAudio: false, supportsVideo: false };
+  }
+  return base;
 }
 
 // Resolve model capabilities. Falls back to static defaults on error.

@@ -11,6 +11,9 @@ const TRACKED = [
   "ANTHROPIC_MODEL",
   "OPENAI_API_KEY",
   "OPENAI_MODEL",
+  "OPENAI_BASE_URL",
+  "SUMMARIZE_LLM_PROVIDER",
+  "SUMMARIZE_MODEL",
   "GEMINI_API_KEY",
   "GEMINI_MODEL",
   "AZURE_API_KEY",
@@ -39,6 +42,18 @@ function restoreEnv() {
 }
 function clearEnv() {
   for (const k of TRACKED) delete process.env[k];
+}
+
+// The transport an AI-SDK model dispatches over. `@ai-sdk/openai` (pinned at
+// 3.0.x) tags chat-completions models `openai.chat` and Responses-API models
+// `openai.responses` on the public `provider` field — the cleanest stable
+// signal for which route resolveOpenAi pinned, without standing up an HTTP
+// stub. If a future SDK bump re-tags these, update the two constants below —
+// they are the single grep target for both assertions.
+const OPENAI_CHAT_TRANSPORT = "openai.chat"; // POST /chat/completions
+const OPENAI_RESPONSES_TRANSPORT = "openai.responses"; // POST /v1/responses
+function modelTransport(model: unknown): string {
+  return (model as { provider: string }).provider;
 }
 
 describe("initializeModel", () => {
@@ -97,6 +112,28 @@ describe("initializeModel", () => {
     expect(r.provider).toBe("openai");
     expect(r.modelId).toBe("gpt-4.1");
     expect(typeof r.model).toBe("object");
+  });
+
+  it("pins chat completions for an OpenAI-compatible custom base URL", async () => {
+    process.env.LLM_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "sk-compat-test";
+    process.env.OPENAI_MODEL = "qwen-3-32b";
+    process.env.OPENAI_BASE_URL = "https://llm.internal.example/v1";
+    const r = await initializeModel();
+    expect(r.provider).toBe("openai");
+    expect(r.modelId).toBe("qwen-3-32b");
+    // `.chat()` builds an `openai.chat` model (POST /chat/completions); the
+    // default callable would be `openai.responses` (POST /v1/responses), which
+    // a custom OpenAI-compatible host does not implement.
+    expect(modelTransport(r.model)).toBe(OPENAI_CHAT_TRANSPORT);
+  });
+
+  it("keeps the Responses API for real OpenAI (no base URL) — no regression", async () => {
+    process.env.LLM_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "sk-openai-test";
+    process.env.OPENAI_MODEL = "gpt-4.1";
+    const r = await initializeModel();
+    expect(modelTransport(r.model)).toBe(OPENAI_RESPONSES_TRANSPORT);
   });
 
   it("honours providerOverride over env-driven gateway selection", async () => {

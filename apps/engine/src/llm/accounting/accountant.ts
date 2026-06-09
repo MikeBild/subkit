@@ -123,16 +123,27 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
 
 /**
  * Best-effort provider classification from a model id. Anthropic's
- * `claude-*`, OpenAI's `gpt-*`, Google's `gemini-*` and a few others
- * are known prefixes; everything else lands as `other` so the
- * histogram label cardinality stays bounded.
+ * `claude-*`, OpenAI's `gpt-*`, Google's `gemini-*` plus common
+ * open-weight families (`qwen`, `ministral`/`mistral`, `glm`, `deepseek`,
+ * `llama`) are known prefixes; everything else lands as `other` so the
+ * histogram label cardinality stays bounded. Exported for unit assertion.
+ *
+ * The open-weight family list mirrors `contextCapFor` in `count.ts` — when
+ * adding a family here, add its context-window cap there too, and vice
+ * versa, so telemetry labels and token budgets stay in lockstep.
  */
-function inferProvider(model: string): string {
+export function inferProvider(model: string): string {
   const m = model.toLowerCase();
   if (m.startsWith("claude-") || m.includes("anthropic")) return "anthropic";
   if (m.startsWith("gpt-") || m.startsWith("o1-") || m.startsWith("o3-")) return "openai";
   if (m.startsWith("gemini")) return "google";
-  if (m.startsWith("mistral") || m.startsWith("mixtral")) return "mistral";
+  if (m.startsWith("qwen")) return "qwen";
+  if (m.startsWith("ministral") || m.startsWith("mistral") || m.startsWith("mixtral"))
+    return "mistral";
+  // Family-name label, consistent with the other open-weight buckets above
+  // (`qwen`/`deepseek`); the publisher is Zhipu.
+  if (m.startsWith("glm")) return "glm";
+  if (m.startsWith("deepseek")) return "deepseek";
   if (m.startsWith("llama")) return "meta";
   return "other";
 }

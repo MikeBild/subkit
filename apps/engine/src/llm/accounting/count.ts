@@ -87,6 +87,16 @@ function isOneMillionContextActive(id: string): boolean {
   return false;
 }
 
+/**
+ * The bare model id — the last path segment of a routing-style /-namespaced
+ * id (e.g. `together/llama-3.3-70b` → `llama-3.3-70b`), otherwise the id as
+ * given. Used to anchor family prefix matching so a vendor namespace can't
+ * shift which prefix a `startsWith` check sees.
+ */
+function bareModelId(id: string): string {
+  return id.includes("/") ? (id.split("/").pop() ?? id) : id;
+}
+
 /** Default effective context cap for a given model id. Conservative. */
 export function contextCapFor(model: string): number {
   // These are the usable-for-prompt caps per Anthropic/OpenAI. A 200k
@@ -98,6 +108,26 @@ export function contextCapFor(model: string): number {
   if (id.includes("gpt-4o")) return 120_000;
   if (id.includes("gpt-4")) return 110_000;
   if (id.includes("gpt-3.5")) return 15_000;
+  // Common open-weight / OpenAI-compatible families. Without these, such a
+  // model on the openai slot would fall to the 100k default below and
+  // truncate under its real window. Anchored on the bare (last-segment) id
+  // with `startsWith` so a merge id like `llama-mixtral-…` resolves to its
+  // leading family instead of colliding into `mixtral`; ids that don't begin
+  // with a known family token fall through to the conservative default.
+  // Values are deliberately conservative usable caps (128k-class → ~120k):
+  // under-fill is the safe direction — the budget trips early rather than
+  // overrunning the provider, and family names alone can't distinguish a
+  // long-context SKU from a small one (a per-endpoint window override is the
+  // proper lever for that; tracked as a follow-up). This family list mirrors
+  // `inferProvider` in `accountant.ts` — keep the two in lockstep.
+  const bare = bareModelId(id);
+  if (bare.startsWith("qwen")) return 120_000;
+  if (bare.startsWith("glm")) return 120_000;
+  if (bare.startsWith("deepseek")) return 120_000;
+  if (bare.startsWith("ministral") || bare.startsWith("mistral") || bare.startsWith("mixtral"))
+    return 110_000;
+  if (bare.startsWith("gpt-oss")) return 120_000;
+  if (bare.startsWith("llama")) return 120_000;
   // Mock model cap — sized to fit the full pre-loaded agent-skill
   // bundle (turn-rhythm + chat-first + confirmation-discipline +
   // error-recovery-and-rbac + conversational-authoring + …) plus a

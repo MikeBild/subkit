@@ -64,3 +64,35 @@ describe("contextCapFor · 1M Claude cap", () => {
     expect(contextCapFor("claude-sonnet-4-6")).toBe(180_000);
   });
 });
+
+describe("contextCapFor · open-weight / OpenAI-compatible families", () => {
+  test("128k-class open-weight families cap conservatively at ~120k", () => {
+    expect(contextCapFor("qwen-3.6-27b")).toBe(120_000);
+    expect(contextCapFor("qwen-3-32b")).toBe(120_000);
+    expect(contextCapFor("glm-4.6")).toBe(120_000);
+    expect(contextCapFor("deepseek-v3")).toBe(120_000);
+    expect(contextCapFor("gpt-oss-120b")).toBe(120_000);
+    expect(contextCapFor("llama-3.3-70b")).toBe(120_000);
+  });
+
+  test("mistral/ministral instruct families cap at 110k", () => {
+    expect(contextCapFor("ministral-8b-instruct")).toBe(110_000);
+    expect(contextCapFor("mistral-large")).toBe(110_000);
+    expect(contextCapFor("mixtral-8x7b")).toBe(110_000);
+  });
+
+  test("anchors on the leading family — a merge id does not collide", () => {
+    // `includes("mixtral")` would mis-bucket this to 110k; startsWith on the
+    // bare id resolves it to the leading `llama` family (120k).
+    expect(contextCapFor("llama-mixtral-8x22b")).toBe(120_000);
+  });
+
+  test("matches the bare last segment of slash-namespaced ids", () => {
+    expect(contextCapFor("vendor/qwen-3-32b")).toBe(120_000);
+    expect(contextCapFor("together/llama-3.3-70b")).toBe(120_000);
+  });
+
+  test("unknown ids keep the conservative 100k default", () => {
+    expect(contextCapFor("some-unknown-model")).toBe(100_000);
+  });
+});
