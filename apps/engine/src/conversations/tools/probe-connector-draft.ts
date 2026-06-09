@@ -17,7 +17,7 @@ import {
 import { saveConnectorAtomic } from "../persistence/save-connector.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
-import { pickProbeRecoveryActions as pickFromShared } from "./probe-recovery.ts";
+import { pickProbeRecoveryActions as pickFromShared, probeStatusHint } from "./probe-recovery.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 const inputSchema = z
@@ -517,7 +517,7 @@ export const probeConnectorDraftTool: ConversationTool = {
           summary:
             status >= 200 && status < 400
               ? `Probe succeeded with HTTP ${status}.`
-              : `Probe reached the system but returned HTTP ${status}.`,
+              : `Probe reached the system but returned HTTP ${status}.${probeStatusHint(status)}`,
           response_preview: truncated.data,
           probed_at,
         };

@@ -19,6 +19,7 @@
 // one round-trip.
 
 import { extractStepIdReferences } from "../../workflows/levenshtein.ts";
+import { traceFailedWithRuntimeDataError } from "../persistence/preview-failure-class.ts";
 import type { DraftDocument, WorkflowDraftStepPreview } from "../types.ts";
 
 export interface TransformGateBlock {
@@ -226,6 +227,14 @@ export function evaluateTransformAuthoringGate(
       // structural scope contract is what the transform reads here.
       if (controlFlowStepIds.has(ref) || controlFlowChildIds.has(ref)) continue;
       const trace = traceById.get(ref);
+      // Runtime/data-failure exemption: a successful `build_workflow`
+      // never records a runtime `output_preview`; only a dry_run does.
+      // When the referenced step WAS dry-run but died on a runtime/data
+      // error (404/410 on a deleted record, 401/403 on an un-granted
+      // scope), its `output_preview` is never recorded and the gate
+      // would fire forever. The draft itself is sound, so exempt it —
+      // same spirit as the control-flow and probe-evidence exemptions.
+      if (trace && traceFailedWithRuntimeDataError(trace)) continue;
       if (!trace || trace.output_preview === undefined || trace.output_preview === null) {
         blocks.push({
           transform_step_id: step.id,

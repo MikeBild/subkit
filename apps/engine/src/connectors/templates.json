@@ -9855,19 +9855,18 @@
               "kind": "request",
               "id": "search",
               "method": "GET",
-              "url": "${connector.jira.base_url}/search",
+              "url": "${connector.jira.base_url}/search/jql",
               "query": {
                 "jql": "assignee = currentUser() AND statusCategory != \"Done\" ORDER BY updated DESC",
                 "fields": "summary,status,priority,updated,issuetype",
                 "maxResults": 50
               },
               "pagination": {
-                "strategy": "offset",
-                "offset_param": "startAt",
-                "limit_param": "maxResults",
+                "strategy": "cursor",
+                "cursor_request_param": "nextPageToken",
+                "cursor_response_path": "nextPageToken",
                 "page_size": 50,
-                "items_path": "issues",
-                "total_path": "total"
+                "items_path": "issues"
               }
             }
           ]
@@ -9904,19 +9903,18 @@
               "kind": "request",
               "id": "search",
               "method": "GET",
-              "url": "${connector.jira.base_url}/search",
+              "url": "${connector.jira.base_url}/search/jql",
               "query": {
                 "jql": "assignee = currentUser() ORDER BY updated DESC",
                 "fields": "summary,status,priority,updated,issuetype",
                 "maxResults": 50
               },
               "pagination": {
-                "strategy": "offset",
-                "offset_param": "startAt",
-                "limit_param": "maxResults",
+                "strategy": "cursor",
+                "cursor_request_param": "nextPageToken",
+                "cursor_response_path": "nextPageToken",
                 "page_size": 50,
-                "items_path": "issues",
-                "total_path": "total"
+                "items_path": "issues"
               }
             }
           ]
@@ -9966,19 +9964,18 @@
               "kind": "request",
               "id": "search",
               "method": "GET",
-              "url": "${connector.jira.base_url}/search",
+              "url": "${connector.jira.base_url}/search/jql",
               "query": {
                 "jql": "${input.jql}",
                 "fields": "${input.fields}",
                 "maxResults": 50
               },
               "pagination": {
-                "strategy": "offset",
-                "offset_param": "startAt",
-                "limit_param": "maxResults",
+                "strategy": "cursor",
+                "cursor_request_param": "nextPageToken",
+                "cursor_response_path": "nextPageToken",
                 "page_size": 50,
-                "items_path": "issues",
-                "total_path": "total"
+                "items_path": "issues"
               }
             }
           ]

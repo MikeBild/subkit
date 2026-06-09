@@ -11,6 +11,7 @@ import { AuditAction } from "../../../audit/types.ts";
 import { listResolvedConnectorTemplates } from "../../../connectors/template-resolver.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/logger.ts";
+import { listWorkflowsUsingConnector } from "../../../workflows/connector-dependents.ts";
 import type { CommitIntent } from "../../tools/ask-user/commit-intent.ts";
 import type { ToolContext, ToolResult } from "../../tools/index.ts";
 import { inspectConnectorDraftTool } from "../../tools/inspect-connector-draft.ts";
@@ -115,6 +116,35 @@ export async function dispatchDeleteConnector(
       error_code: "invalid_payload",
       message: "delete_connector commit_intent requires payload.id",
       next_best_actions: ["ask_user"],
+    };
+  }
+  // Dependency backstop: deleting a connector that a live workflow's
+  // step binds to breaks that workflow at its next run. Refuse the
+  // delete and surface the dependents unless the operator explicitly
+  // acknowledged the orphaning via `payload.confirm_orphan === true`.
+  const dependents = await listWorkflowsUsingConnector(ctx.tenant_id, id, ctx.db);
+  const confirmedOrphan = intent.payload?.confirm_orphan === true;
+  if (dependents.length > 0 && !confirmedOrphan) {
+    logger.info({
+      module: "auto-persist",
+      action: "delete_connector.has_dependents",
+      msg: "refused connector delete — live workflows still bind this connector",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      connector_id: id,
+      dependent_count: dependents.length,
+      dependent_workflow_ids: dependents.map((w) => w.id),
+    });
+    return {
+      ok: false,
+      error_code: "connector_has_dependents",
+      message: `connector ${id} is used by ${dependents.length} live workflow${dependents.length === 1 ? "" : "s"} (${dependents
+        .map((w) => w.slug)
+        .join(
+          ", ",
+        )}). Edit those workflows off this connector first, or re-confirm the delete with confirm_orphan: true after the operator accepts that the workflows will break.`,
+      data: { dependents },
+      next_best_actions: ["edit_workflow_patch", "delete_workflow"],
     };
   }
   const ok = await ctx.engineClient.connectors.delete(id);

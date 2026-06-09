@@ -12,9 +12,12 @@
 
 import { and, eq, isNull } from "drizzle-orm";
 import { recordWorkflowCreated, recordWorkflowUpdated } from "../../audit/recorders/index.ts";
-import { conversations, workflows } from "../../db/schema/index.ts";
+import { conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { annotateRuntime } from "../../workflows/runtime-annotation.ts";
 import { createWorkflow, updateWorkflow } from "../../workflows/service.ts";
+import { validateWorkflowDef } from "../../workflows/validator.ts";
+import { isUnchangedFromCurrentVersion } from "../../workflows/version-dedup.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { getWorkflowDraft, withWorkflowPersisted } from "../authoring-state.ts";
 import {
@@ -23,6 +26,7 @@ import {
   missingFreshCheckpoints,
 } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { classifyPreviewFailure } from "./preview-failure-class.ts";
 import { findPriorSaveWorkflowApproval } from "./save-workflow-approval.ts";
 
 /**
@@ -310,9 +314,25 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   // Preview gate — a missing or failed dry-run blocks the commit
   // UNLESS the operator explicitly forces it. Mirrors the connector
   // probe-failed contract.
+  //
+  // A failed preview is classified so the gate reacts proportionally:
+  //   - `config_invalid` / `unknown` → the draft is broken (or the
+  //     failure could not be attributed to the remote world). Block
+  //     even when `force_commit` is set — persisting a known-broken DAG
+  //     is never what the operator means.
+  //   - `runtime_data` → the draft is structurally sound but the dry-run
+  //     hit a data/permission error (404/410 on a deleted record, 401/403
+  //     on an un-granted scope, a remote 5xx). Downgrade to a warning and
+  //     allow a `force_commit:true` clean commit; the structural
+  //     inspect/validate gates above still apply.
   const previewMissing = !latestPreview;
   const previewFailed = latestPreview?.ok === false;
-  if ((previewMissing || previewFailed) && p.forceCommit !== true) {
+  const previewFailureClass = previewFailed ? classifyPreviewFailure(latestPreview) : null;
+  // `runtime_data` is the only failed-preview class a force_commit may
+  // clear. config_invalid/unknown stay non-overridable.
+  const runtimeDataFailure = previewFailureClass === "runtime_data";
+  const forceClearsPreview = p.forceCommit === true && (previewMissing || runtimeDataFailure);
+  if ((previewMissing || previewFailed) && !forceClearsPreview) {
     return {
       ok: false,
       error_code: previewFailed ? "preview_failed" : "workflow_not_ready",
@@ -335,10 +355,24 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
           : ["dry_run_workflow"],
         extra: {
           latest_preview: latestPreview ?? null,
-          force_commit_available: previewFailed === true,
+          // A runtime/data failure is recoverable with force_commit; a
+          // config-invalid one is not (persisting a broken DAG is never
+          // the operator's intent). Missing previews are forceable.
+          force_commit_available: previewMissing || runtimeDataFailure,
+          ...(previewFailureClass ? { preview_failure_class: previewFailureClass } : {}),
         },
       }),
     };
+  }
+  if (forceClearsPreview && runtimeDataFailure) {
+    logger.info({
+      module: "conversation_persistence",
+      action: "commit_gate.runtime_data_force",
+      msg: "committing over a runtime/data dry-run failure with force_commit — draft is structurally valid",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      preview_failure_class: previewFailureClass,
+    });
   }
 
   const draft = getWorkflowDraft(fullDraft);
@@ -452,6 +486,112 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     }
   }
 
+  // Per-step authoring vocabulary captured from the most recent
+  // dry_run / run on this draft. Persisted next to the DAG so a
+  // follow-up authoring session can call inspect_workflow /
+  // suggest_jsonata_paths without re-running the workflow. Empty
+  // map when no preview was recorded — never undefined, so the
+  // column distinguishes "no preview" from "scope explicitly empty".
+  // Declared before the idempotent check below because that check
+  // feeds it into `isUnchangedFromCurrentVersion` (a fresher scope
+  // index on an otherwise-unchanged def is written in place there).
+  const scopeIndex: Record<
+    string,
+    { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
+  > = {};
+  for (const trace of latestPreview?.step_traces ?? []) {
+    if (!trace?.scope_at_step) continue;
+    scopeIndex[trace.step_id] = {
+      available_paths: trace.scope_at_step.available_paths ?? [],
+      shape_summary: trace.scope_at_step.shape_summary ?? "unknown",
+      primary_data_path: trace.scope_at_step.primary_data_path ?? null,
+    };
+  }
+  const persistScopeIndex = Object.keys(scopeIndex).length > 0 ? scopeIndex : null;
+
+  // Idempotent re-commit. When the target row is already resolved and
+  // the draft def is byte-identical to its current version, do NOT
+  // append a redundant version (which churns history and unbinds
+  // schedules) and do NOT re-record an audit row reporting "Created".
+  // Reuses the SAME `isUnchangedFromCurrentVersion` predicate that
+  // `updateWorkflow` uses internally — fed the validated + annotated
+  // def so the comparison is like-for-like with the stored dag.
+  // Mirrors the `already_persisted` shortcut in save-connector-draft.ts.
+  async function idempotentResultIfUnchanged(workflowId: string): Promise<ToolResult | null> {
+    const wfRows = await ctx.db
+      .select({
+        slug: workflows.slug,
+        name: workflows.name,
+        current_version_id: workflows.current_version_id,
+      })
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, ctx.tenant_id),
+          eq(workflows.id, workflowId),
+          isNull(workflows.deleted_at),
+        ),
+      )
+      .limit(1);
+    const wf = wfRows[0];
+    if (!wf?.current_version_id) return null;
+    const validation = validateWorkflowDef(def);
+    if (!validation.ok || !validation.workflow) return null;
+    const annotated = annotateRuntime(validation.workflow);
+    const unchanged = await isUnchangedFromCurrentVersion({
+      tx: ctx.db,
+      tenant_id: ctx.tenant_id,
+      workflow_id: workflowId,
+      workflow_slug: wf.slug,
+      current_version_id: wf.current_version_id,
+      def: annotated,
+      scope_index: persistScopeIndex,
+    });
+    if (!unchanged) return null;
+    const versionRows = await ctx.db
+      .select({ version: workflowVersions.version })
+      .from(workflowVersions)
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, ctx.tenant_id),
+          eq(workflowVersions.id, wf.current_version_id),
+        ),
+      )
+      .limit(1);
+    const version = versionRows[0]?.version ?? null;
+    await ctx.db
+      .update(conversations)
+      .set({ target_workflow_id: workflowId, updated_at: new Date() })
+      .where(eq(conversations.id, ctx.conversation_id));
+    logger.info({
+      module: "conversation_persistence",
+      action: "save_workflow_draft.already_persisted",
+      msg: "workflow def unchanged from current version — skipped redundant re-commit",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      workflow_id: workflowId,
+      version,
+    });
+    return {
+      ok: true,
+      data: {
+        already_persisted: true,
+        workflow_id: workflowId,
+        workflow_version_id: wf.current_version_id,
+        version,
+        slug: wf.slug,
+        name: wf.name,
+        next_best_actions: ["run_workflow", "inspect_workflow"],
+      },
+      committed_workflow_id: workflowId,
+    };
+  }
+
+  if (targetWorkflowId) {
+    const idempotent = await idempotentResultIfUnchanged(targetWorkflowId);
+    if (idempotent) return idempotent;
+  }
+
   if (!targetWorkflowId && def.slug) {
     const slugRows = await ctx.db
       .select({ id: workflows.id, name: workflows.name, slug: workflows.slug })
@@ -466,46 +606,61 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       .limit(1);
     const conflict = slugRows[0];
     if (conflict) {
-      return {
-        ok: false,
-        data: buildGateError(fullDraft, {
-          error_code: "slug_conflict_with_live_workflow",
-          message: `slug "${def.slug}" already belongs to workflow "${conflict.name}" (id=${conflict.id}). Ask the user whether to overwrite that workflow or pick a different slug — never assume.`,
-          recommended_mode: "workflow",
-          extra: {
-            attempted_slug: def.slug,
-            conflict: { workflow_id: conflict.id, slug: conflict.slug, name: conflict.name },
-            recovery: {
-              overwrite:
-                "After the user confirms in chat, call save_workflow_draft again with target_workflow_id=<conflict.workflow_id>",
-              rename:
-                "Otherwise rename the draft (update_param / build_workflow with a fresh slug) and re-validate before committing.",
+      // Same-slug recreate. Adopt the existing row as an in-place update
+      // ONLY when the conversation is provably bound to THIS workflow
+      // (same id) — the case the slug-based bound-resolution above misses
+      // when the bound ref carries a null slug (the `latest_execution`
+      // fallback in `persistedWorkflowResource`). A null binding, or a
+      // binding to a DIFFERENT live workflow, is a topic pivot / foreign
+      // collision: silently overwriting it would destroy a workflow this
+      // conversation isn't editing. subkit's contract is "never assume" —
+      // return the conflict and let the operator confirm an overwrite by
+      // re-committing with `target_workflow_id`. Compare by id, never slug.
+      const boundWf = fullDraft.state ? persistedWorkflowResource(fullDraft.state) : null;
+      const adoptInPlace = boundWf != null && boundWf.id === conflict.id;
+      if (adoptInPlace) {
+        logger.info({
+          module: "conversation_persistence",
+          action: "save_workflow_draft.adopt_same_slug",
+          msg: "draft slug matches a live workflow with no foreign-slug pivot — adopting it as an in-place update",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          workflow_id: conflict.id,
+          slug: def.slug,
+        });
+        targetWorkflowId = conflict.id;
+        await ctx.db
+          .update(conversations)
+          .set({ target_workflow_id: targetWorkflowId, updated_at: new Date() })
+          .where(eq(conversations.id, ctx.conversation_id));
+        // The adopted row may already hold this exact def (re-issuing
+        // the same draft against the same slug) — short-circuit so the
+        // adoption path is idempotent too, not just the explicit/bound
+        // target paths checked above.
+        const idempotent = await idempotentResultIfUnchanged(targetWorkflowId);
+        if (idempotent) return idempotent;
+      } else {
+        return {
+          ok: false,
+          data: buildGateError(fullDraft, {
+            error_code: "slug_conflict_with_live_workflow",
+            message: `slug "${def.slug}" already belongs to workflow "${conflict.name}" (id=${conflict.id}). Ask the user whether to overwrite that workflow or pick a different slug — never assume.`,
+            recommended_mode: "workflow",
+            extra: {
+              attempted_slug: def.slug,
+              conflict: { workflow_id: conflict.id, slug: conflict.slug, name: conflict.name },
+              recovery: {
+                overwrite:
+                  "After the user confirms in chat, call save_workflow_draft again with target_workflow_id=<conflict.workflow_id>",
+                rename:
+                  "Otherwise rename the draft (update_param / build_workflow with a fresh slug) and re-validate before committing.",
+              },
             },
-          },
-        }),
-      };
+          }),
+        };
+      }
     }
   }
-
-  // Per-step authoring vocabulary captured from the most recent
-  // dry_run / run on this draft. Persisted next to the DAG so a
-  // follow-up authoring session can call inspect_workflow /
-  // suggest_jsonata_paths without re-running the workflow. Empty
-  // map when no preview was recorded — never undefined, so the
-  // column distinguishes "no preview" from "scope explicitly empty".
-  const scopeIndex: Record<
-    string,
-    { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
-  > = {};
-  for (const trace of latestPreview?.step_traces ?? []) {
-    if (!trace?.scope_at_step) continue;
-    scopeIndex[trace.step_id] = {
-      available_paths: trace.scope_at_step.available_paths ?? [],
-      shape_summary: trace.scope_at_step.shape_summary ?? "unknown",
-      primary_data_path: trace.scope_at_step.primary_data_path ?? null,
-    };
-  }
-  const persistScopeIndex = Object.keys(scopeIndex).length > 0 ? scopeIndex : null;
 
   let result: Awaited<ReturnType<typeof createWorkflow>>;
   try {

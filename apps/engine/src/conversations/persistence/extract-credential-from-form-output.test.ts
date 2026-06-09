@@ -308,6 +308,48 @@ describe("extractCredentialFromFormOutput — mustache placeholder rejection", (
   });
 });
 
+describe("extractCredentialFromFormOutput — basic api_token / apitoken / token aliases", () => {
+  // Jira/Confluence and many other "Basic auth with an API token" providers label
+  // the secret `api_token`. Pre-fix an `api_token=…` form submission matched nothing
+  // and the credential was silently dropped → probe 401.
+
+  it("accepts api_token as the password field (Jira/Confluence pattern)", () => {
+    const out = extractCredentialFromFormOutput(
+      "basic",
+      {},
+      { values: { username: "e@x.com", api_token: "T" } },
+    );
+    expect(out).toEqual({ mode: "basic", username: "e@x.com", password: "T" });
+  });
+
+  it("accepts apitoken (no underscore) as the password field", () => {
+    const out = extractCredentialFromFormOutput(
+      "basic",
+      {},
+      { values: { username: "e@x.com", apitoken: "T2" } },
+    );
+    expect(out).toEqual({ mode: "basic", username: "e@x.com", password: "T2" });
+  });
+
+  it("accepts `token` as the password field for basic mode", () => {
+    const out = extractCredentialFromFormOutput(
+      "basic",
+      {},
+      { values: { username: "user1", token: "tok-abc" } },
+    );
+    expect(out).toEqual({ mode: "basic", username: "user1", password: "tok-abc" });
+  });
+
+  it("accepts `email` as a username alias (Atlassian/JIRA cloud pattern)", () => {
+    const out = extractCredentialFromFormOutput(
+      "basic",
+      {},
+      { values: { email: "me@example.com", api_token: "mytoken" } },
+    );
+    expect(out).toEqual({ mode: "basic", username: "me@example.com", password: "mytoken" });
+  });
+});
+
 describe("extractCredentialFromFormOutput — defensive", () => {
   it("returns null on an unknown seedMode", () => {
     expect(

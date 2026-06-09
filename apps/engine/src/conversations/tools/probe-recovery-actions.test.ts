@@ -15,16 +15,18 @@ describe("pickProbeRecoveryActions", () => {
     ]);
   });
 
-  test("401 → setup_connector_credentials + fetch_connector_docs", () => {
+  test("401 → setup_connector_credentials + update_connector_draft + fetch_connector_docs", () => {
     expect(pickProbeRecoveryActions({ status: 401 })).toEqual([
       "setup_connector_credentials",
+      "update_connector_draft",
       "fetch_connector_docs",
     ]);
   });
 
-  test("403 → setup_connector_credentials + fetch_connector_docs", () => {
+  test("403 → setup_connector_credentials + update_connector_draft + fetch_connector_docs", () => {
     expect(pickProbeRecoveryActions({ status: 403 })).toEqual([
       "setup_connector_credentials",
+      "update_connector_draft",
       "fetch_connector_docs",
     ]);
   });

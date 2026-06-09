@@ -4,6 +4,7 @@
 // no checkpoint logic — that lives in `summary.ts` and the parent
 // `authoring-state.ts` barrel.
 
+import type { ConnectorView } from "../../connectors/types.ts";
 import { isRecord } from "../../utils/type-guards.ts";
 import type { WorkflowTrigger } from "../../workflows/types.ts";
 import type {
@@ -64,6 +65,39 @@ export function createEmptyState(mode: AuthoringSurfaceMode): AuthoringState {
 export function modeFromLegacy(mode: AuthoringMode | undefined): AuthoringSurfaceMode {
   if (mode === "workflow_authoring" || mode === "resume_review") return "workflow";
   return "connector";
+}
+
+/**
+ * Build a re-issue-bound connector draft from an already-saved connector.
+ *
+ * Sets `saved_connector_id` to the live connector's id — the load-bearing
+ * field that routes the subsequent `ask_user_form` → auto-persist /
+ * `save_connector_draft` submission through the **re-issue branch**
+ * (`save-connector.ts` `existingSavedId` path), so a credential rotation
+ * lands on the SAME connector row and the connector id never changes.
+ *
+ * Used by `request_connector_reauth` to turn a dead-credential connector into
+ * an in-chat re-credential flow (the non-OAuth counterpart of
+ * `authenticate_oauth`). `latest_probe`/`validation` are intentionally omitted
+ * — the re-issue path re-runs `validateConnectorDraft` and a fresh probe.
+ */
+export function hydrateDraftFromSavedConnector(saved: ConnectorView): ConnectorDraftDocument {
+  const next: ConnectorDraftDocument = {
+    name: saved.display_name,
+    slug: saved.slug,
+    driver: saved.driver,
+    environment: saved.environment,
+    auth_type: saved.auth_type,
+    config: saved.config ?? {},
+    template_slug: saved.template_slug,
+    template_name: saved.template_name,
+    template_source: saved.template_source,
+    latest_probe: null,
+    saved_connector_id: saved.id,
+  };
+  if (saved.base_url) next.base_url = saved.base_url;
+  if (saved.dsn) next.dsn = saved.dsn;
+  return next;
 }
 
 export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {

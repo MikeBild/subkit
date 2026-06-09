@@ -16,6 +16,7 @@ import {
   recordConnectorUpdated,
 } from "../../audit/recorders/index.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
+import { clearConnectorReauth } from "../../connectors/reauth.ts";
 import { createConnector, getConnector, updateConnector } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import type { ConnectorView, UpdateConnectorInput } from "../../connectors/types.ts";
@@ -267,18 +268,34 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       // drop any leftover in-memory draft credential so a subsequent
       // probe doesn't keep using the cached value.
       clearDraftCredential(ctx.conversation_id);
+      // A fresh credential just landed on a connector that may have been
+      // flagged `needs_reauth` (the repair flow). Clear the flag + failure
+      // provenance so the connector reads healthy immediately, rather than
+      // waiting for the next live authed call. Gate on `credential_persisted`
+      // so a pure field-edit re-issue (no new secret) never falsely clears a
+      // genuinely-dead credential's flag.
+      if (credential_persisted) {
+        await clearConnectorReauth(ctx.db, ctx.tenant_id, existing.id);
+      }
       if (p.emitAutoPersistAudit) {
         await recordConnectorUpdated({
           tenant_id: ctx.tenant_id,
           actor_id: ctx.actor_id,
           executor: ctx.db,
           connector_id: existing.id,
-          kind: fieldsChanged ? "field_edit" : "auto_persist_idempotent",
+          // A rotated credential is auditably distinct from a field edit —
+          // surface `credential_rotated` so the audit trail names the secret
+          // change (parity with the save_connector_draft re-issue audit).
+          kind: credential_persisted
+            ? "credential_rotated"
+            : fieldsChanged
+              ? "field_edit"
+              : "auto_persist_idempotent",
           reason: p.reason ?? "auto_persist_on_confirmation",
           source: "harness_auto_persist",
           environment: existing.environment,
           credential_persisted,
-          idempotent: !fieldsChanged,
+          idempotent: !fieldsChanged && !credential_persisted,
           ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
         });
       }

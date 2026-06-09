@@ -127,20 +127,22 @@
   },
   "jira-basics": {
     "title": "Jira Cloud REST API Basics",
-    "body": "Authenticate via OAuth 2.0 (3LO) or Basic Auth with an API token. OAuth requires the audience=api.atlassian.com param and uses a Cloud ID in the base URL. Basic Auth uses a different base URL ({domain}.atlassian.net). Use JQL for issue queries via /search. Rate limits are 100 GET/s burst and 65K points/hr.",
+    "body": "Authenticate via OAuth 2.0 (3LO) or Basic Auth with an API token. OAuth requires the audience=api.atlassian.com param and uses a Cloud ID in the base URL. Basic Auth uses a different base URL ({domain}.atlassian.net). Use JQL for issue queries via /search/jql (the /search path returned HTTP 410 Gone as of 2025). Rate limits are 100 GET/s burst and 65K points/hr.",
     "examples": [
-      "GET /rest/api/3/search?jql=project=PROJ+ORDER+BY+created — search issues with JQL",
-      "GET /rest/api/3/search?jql=assignee=currentUser()+AND+statusCategory!=\"Done\"+ORDER+BY+updated+DESC — list open issues (locale-invariant)",
+      "GET /rest/api/3/search/jql?jql=project=PROJ+ORDER+BY+created — search issues with JQL",
+      "GET /rest/api/3/search/jql?jql=assignee=currentUser()+AND+statusCategory!=\"Done\"+ORDER+BY+updated+DESC — list open issues (locale-invariant)",
       "POST /rest/api/3/issue — create an issue"
     ],
     "best_practices": [
-      "Use JQL via /search endpoint for filtered queries instead of listing all issues",
-      "Use startAt + maxResults for offset pagination on search results",
+      "Use JQL via /search/jql endpoint for filtered queries instead of listing all issues — /search is deprecated and returns HTTP 410",
+      "Use cursor-based pagination: /search/jql returns nextPageToken in the response; pass it as the nextPageToken query param on subsequent requests. maxResults controls page size.",
+      "Before testing a by-key workflow (GET /rest/api/3/issue/{key}), fetch a real key first via /search/jql — never invent ticket IDs like EMOBXP-1, as they 404 and produce misleading permission errors.",
       "Filter by lifecycle state with statusCategory (`new` | `indeterminate` | `done`) — these three values are locale-invariant and stable across workspace customisations. `status.name` (Done, Closed, Erledigt, Fertig, Outdated, Resolved, …) varies per language and per project workflow and will silently leak issues when used as a `NOT IN` exclude list."
     ],
     "pitfalls": [
       "OAuth and Basic Auth use different base URLs — OAuth requires the cloudId path, Basic Auth uses {domain}.atlassian.net directly",
-      "`status in (Done, Closed)` and `status NOT IN (Done, Closed)` only cover the English-default workflow — German (Fertig, Erledigt), French (Terminé), and custom statuses (Outdated, Won't Fix, Resolved) bypass the filter. Always use `statusCategory != \"Done\"` for an open/closed split."
+      "`status in (Done, Closed)` and `status NOT IN (Done, Closed)` only cover the English-default workflow — German (Fertig, Erledigt), French (Terminé), and custom statuses (Outdated, Won't Fix, Resolved) bypass the filter. Always use `statusCategory != \"Done\"` for an open/closed split.",
+      "Do not invent Jira ticket keys (e.g. EMOBXP-1) when building or testing workflows — fabricated keys 404 and the error message looks like a permissions problem, masking the real cause. Always retrieve a real key from /search/jql first."
     ],
     "doc_refs": ["https://developer.atlassian.com/cloud/jira/platform/rest/v3/"]
   },

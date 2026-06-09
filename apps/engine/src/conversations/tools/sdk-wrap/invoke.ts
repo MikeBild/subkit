@@ -31,6 +31,7 @@ import {
   recordToolCircuitOpen,
 } from "../../../observability/instrumentation.ts";
 import { startToolSpan } from "../../../observability/langfuse-spans.ts";
+import { listWorkflowsUsingConnector } from "../../../workflows/connector-dependents.ts";
 import { FileNotFoundError, type ResolvedFile, walkAndResolve } from "../../attachments.ts";
 import { recordTransition } from "../../confirmation.ts";
 import { isDangerousTool } from "../../dangerous-tools.ts";
@@ -966,13 +967,42 @@ export function wrapOne(
           // atomically the moment the operator confirms — bypassing
           // the LLM re-issue round-trip entirely.
           const policyCommitIntent = buildPolicyGateCommitIntent(inner.name, rawArgs);
+          // Connector-delete dependency surface: when the target
+          // connector is still bound by live workflows, list them in the
+          // confirm card so the operator sees what will break before
+          // approving. The dispatcher backstop (dispatchDeleteConnector)
+          // refuses the auto-persist unless `confirm_orphan: true`, so
+          // this is the operator-facing half of the same guard.
+          let connectorDeleteDependents: Array<{ id: string; slug: string; name: string }> = [];
+          if (inner.name === "delete_connector") {
+            const connectorId =
+              rawArgs && typeof rawArgs === "object" && typeof rawArgs.id === "string"
+                ? rawArgs.id
+                : null;
+            if (connectorId) {
+              connectorDeleteDependents = await listWorkflowsUsingConnector(
+                ctx.tenant_id,
+                connectorId,
+                db,
+              );
+            }
+          }
+          const hasConnectorDeleteDependents = connectorDeleteDependents.length > 0;
           const elicitationInput: Record<string, unknown> = {
             kind: topLevelKind,
-            question: `Policy requires confirmation before running ${inner.name}. Proceed?`,
+            question: hasConnectorDeleteDependents
+              ? `Deleting this connector will break ${connectorDeleteDependents.length} live workflow${connectorDeleteDependents.length === 1 ? "" : "s"} (${connectorDeleteDependents.map((w) => w.slug).join(", ")}). Proceed anyway?`
+              : `Policy requires confirmation before running ${inner.name}. Proceed?`,
             target: { tool: inner.name, args: rawArgs },
             ...confirmationMetadataForTool(inner.name, rawArgs),
             ...(pendingOutput ? { pending_output: pendingOutput } : {}),
             ...(policyCommitIntent ? { commit_intent: policyCommitIntent } : {}),
+            ...(hasConnectorDeleteDependents
+              ? {
+                  dependents: connectorDeleteDependents,
+                  next_best_actions: ["edit_workflow_patch"],
+                }
+              : {}),
           };
           const elicitation = await createElicitation(
             {

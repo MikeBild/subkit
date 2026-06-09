@@ -161,8 +161,15 @@ export function extractCredentialFromFormOutput(
       return { mode: "bearer", token };
     }
     case "basic": {
-      const username = seedString("username") ?? pick(["username", "user", "login"]);
-      const password = seedString("password") ?? pick(["password", "pass", "secret"]);
+      const username = seedString("username") ?? pick(["username", "user", "email", "login"]);
+      // Jira/Confluence and many other "Basic auth with an API token" providers
+      // label the secret `api_token` (the connector template's own auth_option
+      // says "use email as username, token as password"). Without these aliases
+      // an `api_token=…` form submission matched nothing → the credential was
+      // silently dropped and the probe went out unauthenticated (HTTP 401).
+      const password =
+        seedString("password") ??
+        pick(["password", "pass", "api_token", "apitoken", "token", "secret"]);
       if (!username || !password) return null;
       return { mode: "basic", username, password };
     }
