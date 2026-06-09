@@ -17,6 +17,7 @@ import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { errorFields, logger } from "./logging/logger.ts";
+import { reconcileMcpServersFromConfig } from "./mcp/config-seed.ts";
 import {
   bootPhase,
   startBootHeartbeat,
@@ -487,6 +488,29 @@ async function runServer(): Promise<void> {
       }
     })();
   }
+
+  // External MCP server reconcile (#171). Converges the `mcp_servers` table
+  // to the `mcp.servers` config declarations for every tenant. Zero-conf:
+  // with no declarations this is a no-op. Idempotent + non-fatal — a bad
+  // decl is logged and never blocks serving the first request.
+  void (async () => {
+    try {
+      const r = await reconcileMcpServersFromConfig(db);
+      logger.info({
+        module: "mcp.config_seed",
+        action: "reconcile.applied",
+        msg: "external MCP servers reconciled from config",
+        ...r,
+      });
+    } catch (err) {
+      logger.warn({
+        module: "mcp.config_seed",
+        action: "reconcile.failed",
+        msg: "external MCP server reconcile failed (non-fatal)",
+        ...errorFields(err),
+      });
+    }
+  })();
 
   const app = createApp({ db, chatRegistry });
   const port = getConfig().server.port;

@@ -47,6 +47,18 @@ export async function dispatchInspectSlash(
       for (const t of tools.items) lines.push(`  ${t.name} — ${t.description}`);
       return panify(ctx, "mcp catalog", lines);
     }
+    case "mcp-servers": {
+      const r = await ctx.client.listMcpServers();
+      if (r.items.length === 0)
+        return "no external MCP servers registered — add one with `sk mcp-servers add`";
+      const lines = r.items.map((s) => {
+        const m = s as Record<string, unknown>;
+        const id = String(m.id ?? "").slice(0, 8);
+        const status = String(m.status ?? "");
+        return `${id}  ${String(m.name ?? "").padEnd(20)} ${String(m.namespace ?? "").padEnd(16)} ${String(m.transport ?? "").padEnd(5)} ${status}`;
+      });
+      return panify(ctx, "external MCP servers", lines, `${r.items.length} registered`);
+    }
     case "permissions": {
       // Ink host present → mount the SinglePane PermissionsCommand so
       // the user can change repl.permissionMode interactively. The

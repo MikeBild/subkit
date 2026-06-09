@@ -489,6 +489,66 @@ const EgressSection = z
   .prefault({})
   .describe("Egress filter");
 
+// External MCP server declaration — the zero-conf boot-reconcile shape.
+// `.strict()` rejects any inline secret key (client_secret/token/…) at parse
+// time: a config-declared server carries only its non-secret auth shape. The
+// secret never lives in config — it is supplied out-of-band (CLI/route writes
+// the `credentials` row keyed by mcp_server_id; an env-injected secret can
+// back a config-declared bearer server). So the decl's `auth` carries only
+// `{ kind }` plus the oauth2 non-secret fields (issuer/client_id/scope); there
+// is no `token_ref` here. A config-declared bearer/oauth2 server with no
+// usable secret simply fails handshake and parks — that is acceptable and
+// consistent (the CLI/route is the path for supplying secrets). The namespace
+// regex + `__`-run ban mirror the DB CHECK on `mcp_servers.namespace` and the
+// registry's `namespaceSchema`.
+const McpServerDeclSchema = z
+  .object({
+    name: z.string().min(1),
+    namespace: z
+      .string()
+      .regex(/^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$/)
+      .refine((s) => !s.includes("__"), "namespace must not contain '__'"),
+    transport: z.enum(["http", "sse"]),
+    url: z.string().url(),
+    auth: z
+      .object({
+        kind: z.enum(["none", "bearer", "oauth2"]),
+        // OAuth2 non-secret discovery fields (oauth2 only). The secret/token
+        // is never declared here — it is resolved from `credentials` at
+        // handshake time.
+        issuer: z.string().url().optional(),
+        client_id: z.string().optional(),
+        scope: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+// Reject duplicate namespaces within a single tenant's `mcp.servers` array at
+// PARSE time. Without this a copy-paste duplicate is a silent last-decl-wins
+// clobber at seed time (both decls map to the same `(tenant, namespace)` key);
+// catching it at the config boundary turns it into an explicit validation
+// error. Applied to every `mcp.servers` array (base section + tenant overlay).
+function rejectDuplicateNamespaces(
+  servers: ReadonlyArray<z.infer<typeof McpServerDeclSchema>>,
+  ctx: z.RefinementCtx,
+): void {
+  const seen = new Set<string>();
+  servers.forEach((s, i) => {
+    if (seen.has(s.namespace)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `duplicate mcp.servers namespace '${s.namespace}' within one tenant`,
+        path: [i, "namespace"],
+      });
+    }
+    seen.add(s.namespace);
+  });
+}
+
+const McpServersArray = z.array(McpServerDeclSchema).superRefine(rejectDuplicateNamespaces);
+
 const McpSection = z
   .object({
     api_key: z
@@ -496,9 +556,17 @@ const McpSection = z
       .default("")
       .meta(global({ secret: true })),
     read_only: z.boolean().default(false).meta(global()),
+    servers: McpServersArray.default([])
+      .meta(tenant())
+      .describe("External MCP servers to reconcile on boot"),
   })
   .prefault({})
   .describe("MCP transport");
+
+/** One external MCP server declaration as it appears under `mcp.servers`.
+ *  Re-exported so the boot reconcile (mcp/config-seed.ts) shares the exact
+ *  inferred shape, including `exactOptionalPropertyTypes` optionality. */
+export type McpServerDecl = z.infer<typeof McpServerDeclSchema>;
 
 const ErrorsSection = z
   .object({
@@ -936,6 +1004,15 @@ const TenantOverlaySchema = z
           .optional(),
       })
       .optional(),
+    // External MCP servers (#171) — the first tenant-scoped MCP leaf. A
+    // tenant overlay may declare its own external servers; the decl shape
+    // matches `McpServerDeclSchema` (strict, non-secret auth only). Duplicate
+    // namespaces within the overlay array are rejected at parse time.
+    mcp: z
+      .object({
+        servers: McpServersArray.optional(),
+      })
+      .optional(),
   })
   .describe("Per-tenant overrides — only scope:tenant leaves may appear");
 
@@ -977,6 +1054,7 @@ const TENANT_OVERLAY_KEYS = [
   "ui",
   "notifications",
   "connectors",
+  "mcp",
 ] as const;
 export type TenantOverlayKey = (typeof TENANT_OVERLAY_KEYS)[number];
 export const TENANT_OVERLAY_SECTION_KEYS: ReadonlyArray<TenantOverlayKey> = TENANT_OVERLAY_KEYS;

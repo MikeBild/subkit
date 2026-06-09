@@ -337,6 +337,13 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "mcp:read",
   },
   {
+    name: "mcp-servers",
+    help: "Manage external MCP servers (use `sk mcp-servers` for add/inspect/remove)",
+    category: "mcp",
+    routing: "engine",
+    requires: "mcp_server:manage",
+  },
+  {
     name: "config",
     help: "Open the Config tab of sk settings (every engine setting, searchable)",
     category: "util",

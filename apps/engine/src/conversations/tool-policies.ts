@@ -21,7 +21,7 @@ import {
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
 import { workflowInputObjectKeys } from "../workflows/run-input.ts";
-import { DANGEROUS_TOOLS_SET } from "./dangerous-tools.ts";
+import { isDangerousTool } from "./dangerous-tools.ts";
 
 /**
  * Audit context every state-mutating call must supply. The tenant
@@ -495,7 +495,7 @@ export function resolveToolMode(args: {
 }): ToolPolicyMode {
   const { tool, category, input, overrides, permission_mode } = args;
 
-  const isDangerous = DANGEROUS_TOOLS_SET.has(tool);
+  const isDangerous = isDangerousTool(tool);
   const def = TOOL_POLICIES[tool];
 
   // Inline-credential safeguard — fires before the permission_mode
@@ -546,6 +546,11 @@ export function resolveToolMode(args: {
 export type ApprovalMode = "auto" | "approval_before" | "approval_after";
 
 export function getApprovalMode(toolName: string): ApprovalMode {
+  // External MCP tools (`mcp_<ns>__<tool>`) are not in the static
+  // TOOL_POLICIES map — they're discovered per tenant at runtime. They
+  // always ask before running (they leave the tenant perimeter), so the
+  // /policy badge must read "Asks before running".
+  if (toolName.startsWith("mcp_")) return "approval_before";
   const def = TOOL_POLICIES[toolName];
   if (!def) return "auto";
   if (def.defaultMode === "confirm_before_execution") return "approval_before";

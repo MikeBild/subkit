@@ -27,8 +27,12 @@ export type DangerousTool = (typeof DANGEROUS_TOOLS)[number];
 
 export const DANGEROUS_TOOLS_SET: ReadonlySet<string> = new Set(DANGEROUS_TOOLS);
 
-/** True if `name` is on the dangerous-tools list. The policy resolver
- *  treats `true` as an unconditional confirm-before-execution gate. */
+/** True if `name` is on the dangerous-tools list, OR is an external MCP
+ *  tool (`mcp_<ns>__<tool>`). The policy resolver treats `true` as an
+ *  unconditional confirm-before-execution gate under auto/ask/plan: an
+ *  external MCP tool leaves the tenant perimeter to a third-party server,
+ *  so it asks before running by default (the exact-name set stays the
+ *  source of truth for the in-repo destructive tools). */
 export function isDangerousTool(name: string): boolean {
-  return DANGEROUS_TOOLS_SET.has(name);
+  return DANGEROUS_TOOLS_SET.has(name) || name.startsWith("mcp_");
 }

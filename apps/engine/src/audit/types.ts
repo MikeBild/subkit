@@ -487,6 +487,11 @@ export const AuditAction = {
   MCP_SERVER_ERRORED: "mcp_server.errored",
   MCP_SERVER_DELETED: "mcp_server.deleted",
   MCP_SERVER_HANDSHAKE_OK: "mcp_server.handshake_ok",
+  // A tool exposed by a registered external MCP server was invoked from
+  // the conversation loop. Distinct resource_type ("mcp_external_tool")
+  // so invocation volume can be aggregated apart from the lifecycle
+  // configuration rows above.
+  MCP_EXTERNAL_TOOL_INVOKED: "mcp_external_tool.invoked",
 
   // ---------------------------------------------------------------------
   // External non-LLM provider calls reserved for future opt-in,

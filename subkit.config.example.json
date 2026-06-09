@@ -19,6 +19,7 @@
     "summarize_provider": null,
     "summarize_model": "",
     "context_1m": false,
+    "web_search": true,
     "output_guard": "soft",
     "providers": {
       "anthropic": {
@@ -146,7 +147,8 @@
   },
   "mcp": {
     "api_key": "",
-    "read_only": false
+    "read_only": false,
+    "servers": []
   },
   "errors": {
     "ring_size": 100

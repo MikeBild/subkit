@@ -25,11 +25,13 @@
 import type { Tool } from "ai";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import { logger } from "../../logging/logger.ts";
 import type { PermissionMode, ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
 import { filterByAuthoringPalette } from "./authoring-palette.ts";
 import { filterBySkillGate } from "./gated.ts";
 import { listTools, type ToolContext } from "./index.ts";
+import { buildExternalMcpTools } from "./sdk-wrap/external-mcp-tools.ts";
 import { wrapOne } from "./sdk-wrap/invoke.ts";
 import type { TurnSignals, WrappedToolOutput } from "./sdk-wrap/state.ts";
 import { buildSyntheticWorkflowTools } from "./sdk-wrap/synthetic-workflow-tools.ts";
@@ -84,6 +86,26 @@ export async function wrapTools(
     });
     for (const [name, tool] of Object.entries(synthetic)) {
       out[name] = tool;
+    }
+  }
+  if (principal) {
+    // Best-effort: external MCP tools are an enrichment, not load-bearing.
+    // A DB error in `listConnectableMcpServersForTenant` or a pool failure
+    // must NEVER abort the whole turn or drop the in-repo + `wf_` tools
+    // already assembled above. Degrade to ZERO external tools and log.
+    try {
+      const mcpTools = await buildExternalMcpTools({ db, principal, ctx, signals, events });
+      for (const [name, t] of Object.entries(mcpTools)) {
+        out[name] = t;
+      }
+    } catch (err) {
+      logger.warn({
+        module: "conversation_tool",
+        action: "external_mcp.assembly_failed",
+        msg: "external MCP tool assembly failed; degrading to zero external tools for this turn",
+        tenant_id: ctx.tenant_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
   return out;

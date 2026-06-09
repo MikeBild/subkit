@@ -60,7 +60,11 @@ export interface ConnectorSystem {
    * is purely a lookup — it does not reach into the policy layer.
    */
   getCredentials(): Promise<{
-    row: { connector_id: string; mode: string; tenant_id: string };
+    // `connector_id` is nullable on the shared credentials row (an MCP
+    // server may own a row instead — see #171), but this facade only
+    // ever resolves connector-owned credentials via
+    // `getCredentialForConnector`, so in practice it is non-null here.
+    row: { connector_id: string | null; mode: string; tenant_id: string };
     value: DecryptedCredential;
   } | null>;
 

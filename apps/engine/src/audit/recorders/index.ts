@@ -57,6 +57,24 @@ export {
   recordKnowledgeSourceRefreshed,
 } from "./knowledge.ts";
 export {
+  type RecordMcpExternalToolInvokedParams,
+  type RecordMcpServerConfigUpdatedParams,
+  type RecordMcpServerDeletedParams,
+  type RecordMcpServerDisabledParams,
+  type RecordMcpServerErroredParams,
+  type RecordMcpServerHandshakeOkParams,
+  type RecordMcpServerReEnabledParams,
+  type RecordMcpServerRegisteredParams,
+  recordMcpExternalToolInvoked,
+  recordMcpServerConfigUpdated,
+  recordMcpServerDeleted,
+  recordMcpServerDisabled,
+  recordMcpServerErrored,
+  recordMcpServerHandshakeOk,
+  recordMcpServerReEnabled,
+  recordMcpServerRegistered,
+} from "./mcp-server.ts";
+export {
   type RecordToolPolicyConfirmationRequiredParams,
   recordToolPolicyConfirmationRequired,
 } from "./policy.ts";

@@ -108,6 +108,13 @@ function classify(inner: z.ZodTypeAny): { kind: LeafKind; enumValues?: string[] 
       const elementInner = unwrap(def.element).inner;
       const elementDef = (elementInner as { def?: { type?: string } }).def;
       if (elementDef?.type === "string") return { kind: "string-list" };
+      // Arrays of complex objects (e.g. `mcp.servers` — a declarative
+      // list of server records) are STRUCTURAL config, set via the
+      // config file + boot reconcile, not scalar settings-panel leaves.
+      // Returning null drops them from listConfigLeaves so the settings
+      // GET/PUT surface, the per-leaf sweep, and the settings doc only
+      // ever cover values the scalar settings API can actually round-trip.
+      if (elementDef?.type === "object") return null;
       return { kind: "string-array" };
     }
     case "union": {

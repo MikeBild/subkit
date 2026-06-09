@@ -67,6 +67,12 @@ function memberAllows(name: string): boolean {
   if (name === "stats:read") return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;
+  // mcp_server:manage registers tenant-wide external MCP servers carrying
+  // encrypted credential references — admin-only, like mcp:admin. Members
+  // opt in via a custom role grant. Mirrors memberPermissionFilter in
+  // seed.ts. mcp_external_tool:invoke stays a member permission (invoking
+  // an already-registered server's tool in chat).
+  if (name === "mcp_server:manage") return false;
   // chat_workspace:write / chat_identity:write install/remove tenant-wide
   // Slack/Teams/Google bindings (with encrypted bot credentials) and
   // bind external chat users to subkit principals — admin-only ops.

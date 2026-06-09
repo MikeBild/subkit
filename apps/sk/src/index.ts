@@ -35,6 +35,7 @@ import { initCommand } from "./commands/init.ts";
 import { installCommand } from "./commands/install.ts";
 import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
 import { logsCommand } from "./commands/logs.ts";
+import { mcpServersCommand } from "./commands/mcp-servers.ts";
 import { notificationsCommand } from "./commands/notifications.ts";
 import { patchCandidatesCommand } from "./commands/patch-candidates.ts";
 import { portalTokensCommand } from "./commands/portal-tokens.ts";
@@ -586,6 +587,7 @@ const mainCommand = defineCommand({
     // operator commands
     workflows: workflowsCommand,
     connectors: connectorsCommand,
+    "mcp-servers": mcpServersCommand,
     "connector-templates": connectorTemplatesCommand,
     credentials: credentialsCommand,
     skills: skillsCommand,
@@ -741,6 +743,7 @@ const PERM_TIER: Record<string, number> = {
   "workflow:read": 3,
   "connector:read": 3,
   "connector:write": 3,
+  "mcp_server:manage": 3,
   "credential:read": 3,
   "execution:read": 3,
   "notification:read": 3,
@@ -794,6 +797,7 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   // operator
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },
+  "mcp-servers": { command: mcpServersCommand, requires: "mcp_server:manage" },
   "connector-templates": { command: connectorTemplatesCommand, requires: "connector:read" },
   credentials: { command: credentialsCommand, requires: "credential:read" },
   skills: { command: skillsCommand, requires: "skill:read" },
