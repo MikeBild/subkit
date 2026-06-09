@@ -5,7 +5,19 @@
 // Teams and Google Chat implemented at parity for signing and
 // outbound API calls.
 
-export type ChatPlatform = "slack" | "teams" | "google_chat";
+// Platforms that ingest inbound traffic (verify → receive → dispatch).
+// These map 1:1 to a `chat_workspaces` row and the `chat_platform`
+// pgEnum, so any value that flows through `VerifiedEvent` / `ChatEvent`
+// or a `chat_workspaces.platform` comparison must be one of these.
+export type InboundChatPlatform = "slack" | "teams" | "google_chat";
+
+// `sk_cli` is an outbound-only, fallback-resolved pseudo-platform: the
+// `SkCliAdapter` turns a notification delivery into a local
+// `cli_notification_inbox` row. It never participates in inbound
+// verify/receive — there is no signing secret, no webhook ingress, no
+// `chat_workspaces` row — so it carries no rate ceiling (a local INSERT
+// needs none) and is excluded from `InboundChatPlatform`.
+export type ChatPlatform = InboundChatPlatform | "sk_cli";
 
 /**
  * Platform-tagged raw envelope. A request that has successfully
@@ -14,7 +26,7 @@ export type ChatPlatform = "slack" | "teams" | "google_chat";
  * interactions) — adapters do their own normalization in `receive()`.
  */
 export interface VerifiedEvent {
-  platform: ChatPlatform;
+  platform: InboundChatPlatform;
   raw: unknown;
 }
 
@@ -79,7 +91,7 @@ export interface ChatAdapterCapabilities {
 }
 
 export interface ChatEvent {
-  platform: ChatPlatform;
+  platform: InboundChatPlatform;
   workspace_id: string;
   channel_id: string;
   thread_id?: string;
@@ -105,6 +117,17 @@ export interface ChatDelivery {
   text?: string;
   blocks?: unknown;
   card?: ApprovalCard;
+  /** Structured notification context carried alongside the rendered
+   *  `text` when the delivery originates from the notification
+   *  dispatcher. Real chat adapters render `text`/`blocks` and ignore
+   *  this; the `sk_cli` adapter persists these fields verbatim into a
+   *  `cli_notification_inbox` row (the rendered text is for the chat
+   *  surface, the structured fields are for the pull-based CLI). */
+  notification?: {
+    severity: string;
+    event_type: string;
+    event_payload?: Record<string, unknown> | null;
+  };
 }
 
 export interface ApprovalCard {
@@ -129,4 +152,8 @@ export const CHAT_RATES: Record<ChatPlatform, { per_minute: number; burst: numbe
   slack: { per_minute: 60, burst: 20 },
   teams: { per_minute: 30, burst: 10 },
   google_chat: { per_minute: 60, burst: 20 },
+  // sk_cli is a local INSERT into `cli_notification_inbox` — no remote
+  // API, so no rate ceiling. The dispatcher skips the limiter entirely
+  // for this platform; the zeroes here only satisfy the Record contract.
+  sk_cli: { per_minute: 0, burst: 0 },
 };

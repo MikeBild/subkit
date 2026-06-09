@@ -32,9 +32,15 @@ import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "./delivery-worker
  * Build a notification AdapterResolver backed by a ChatAdapterRegistry.
  * Resolves on (tenant_id, platform, workspace_id). The registry lookup
  * is keyed by the channel row's `tenant_id` + `platform` + `workspace_id`
- * triple — exact match only; no fallbacks. Returning `null` forces
- * `dispatchEvent` to record a `skipped` delivery with reason
+ * triple — exact match only for real chat platforms; returning `null`
+ * forces `dispatchEvent` to record a `skipped` delivery with reason
  * `no_adapter`.
+ *
+ * The `sk_cli` pseudo-platform is the exception: it is never installed
+ * per workspace (there is no `chat_workspaces` row for `_cli`), so an
+ * exact lookup always misses. It is registered once at boot as a
+ * process-global fallback and scopes per tenant via `delivery.tenant_id`,
+ * so we fall back to the per-platform fallback adapter for it.
  */
 export function makeRegistryAdapterResolver(chatRegistry: ChatAdapterRegistry): AdapterResolver {
   return (channel) => {
@@ -44,6 +50,9 @@ export function makeRegistryAdapterResolver(chatRegistry: ChatAdapterRegistry): 
       platform,
       workspace_id: channel.workspace_id,
     });
+    if (!adapter && platform === "sk_cli") {
+      return chatRegistry.getFallback("sk_cli");
+    }
     return adapter;
   };
 }

@@ -6,7 +6,7 @@
 // `chat_workspaces` at boot; tests register adapters by hand.
 
 import type { ChatAdapter } from "./adapter.ts";
-import type { ChatPlatform } from "./types.ts";
+import type { ChatDelivery, ChatPlatform } from "./types.ts";
 
 export interface AdapterKey {
   tenant_id: string;
@@ -14,21 +14,43 @@ export interface AdapterKey {
   workspace_id: string;
 }
 
+/**
+ * Outbound-only fallback adapter. A full `ChatAdapter` satisfies it, as
+ * does the notification-only `SkCliAdapter` which implements just
+ * `platform` + `send` (no inbound verify/receive — the `sk_cli`
+ * pseudo-platform never ingests). The registry stores fallbacks under
+ * this widened type; `findVerifier` narrows back to real `ChatAdapter`s
+ * since only those can verify inbound requests.
+ */
+export interface OutboundFallbackAdapter {
+  readonly platform: ChatPlatform;
+  send(delivery: ChatDelivery): Promise<{ platform_message_id: string }>;
+}
+
 function keyOf(k: AdapterKey): string {
   return `${k.tenant_id}::${k.platform}::${k.workspace_id}`;
+}
+
+/** A full `ChatAdapter` can verify inbound requests; an outbound-only
+ *  fallback (e.g. `SkCliAdapter`) cannot. The presence of `verify`
+ *  distinguishes the two. */
+function isChatAdapter(adapter: OutboundFallbackAdapter): adapter is ChatAdapter {
+  return typeof (adapter as ChatAdapter).verify === "function";
 }
 
 export class ChatAdapterRegistry {
   private readonly adapters = new Map<string, ChatAdapter>();
   /** Fallback adapter per platform used when the workspace is
-   * unknown (e.g. verify happens before we know tenant_id). */
-  private readonly fallbackByPlatform = new Map<ChatPlatform, ChatAdapter>();
+   * unknown (e.g. verify happens before we know tenant_id) or when a
+   * platform is never installed per workspace (`sk_cli` is a single
+   * process-global outbound sink). */
+  private readonly fallbackByPlatform = new Map<ChatPlatform, OutboundFallbackAdapter>();
 
   register(k: AdapterKey, adapter: ChatAdapter): void {
     this.adapters.set(keyOf(k), adapter);
   }
 
-  registerFallback(platform: ChatPlatform, adapter: ChatAdapter): void {
+  registerFallback(platform: ChatPlatform, adapter: OutboundFallbackAdapter): void {
     this.fallbackByPlatform.set(platform, adapter);
   }
 
@@ -66,16 +88,18 @@ export class ChatAdapterRegistry {
     return this.adapters.get(keyOf(k)) ?? null;
   }
 
-  getFallback(platform: ChatPlatform): ChatAdapter | null {
+  getFallback(platform: ChatPlatform): OutboundFallbackAdapter | null {
     return this.fallbackByPlatform.get(platform) ?? null;
   }
 
   /** Resolve the best adapter to verify an incoming request with,
    * given only the platform. Returns the first fallback then any
-   * registered adapter for that platform. */
+   * registered adapter for that platform. Only full `ChatAdapter`s can
+   * verify inbound requests, so outbound-only fallbacks (e.g. `sk_cli`)
+   * are excluded — they never appear on an inbound ingestion path. */
   findVerifier(platform: ChatPlatform): ChatAdapter | null {
     const fallback = this.fallbackByPlatform.get(platform);
-    if (fallback) return fallback;
+    if (fallback && isChatAdapter(fallback)) return fallback;
     for (const adapter of this.adapters.values()) {
       if (adapter.platform === platform) return adapter;
     }

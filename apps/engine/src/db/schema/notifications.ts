@@ -8,6 +8,7 @@
 // breaker before handing off to the chat adapter.
 
 import {
+  bigserial,
   boolean,
   index,
   integer,
@@ -103,6 +104,32 @@ export const notificationDeliveries = pgTable(
   ],
 );
 
+// ----- cli_notification_inbox ----------------------------------------------
+//
+// Durable, pull-based notification inbox for the `sk` CLI. The default
+// rule (`_cli` / `_inbox`) routes every matching event into this table
+// via the `SkCliAdapter` — a local INSERT, no chat platform involved.
+// The CLI polls `GET /v1/notifications/inbox?since=<cursor>` and
+// acknowledges (deletes) consumed rows via `POST .../inbox/ack`. The
+// `(tenant_id, id)` index serves the monotonic cursor walk.
+
+export const cliNotificationInbox = pgTable(
+  "cli_notification_inbox",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    delivery_id: uuid("delivery_id").references(() => notificationDeliveries.id, {
+      onDelete: "set null",
+    }),
+    severity: text("severity").notNull(),
+    event_type: text("event_type").notNull(),
+    event_payload: jsonb("event_payload"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("cli_notification_inbox_tenant_cursor_idx").on(t.tenant_id, t.id)],
+);
+
 export type NotificationChannelRow = typeof notificationChannels.$inferSelect;
 export type NotificationRuleRow = typeof notificationRules.$inferSelect;
 export type NotificationDeliveryRow = typeof notificationDeliveries.$inferSelect;
+export type CliNotificationInboxRow = typeof cliNotificationInbox.$inferSelect;

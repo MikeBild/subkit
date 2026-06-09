@@ -2381,6 +2381,24 @@ export class EngineClient {
   ): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", "/v1/notifications/deliveries", undefined, query);
   }
+  getNotificationInbox(query: { since?: number; limit?: number } = {}): Promise<{
+    items: Array<{
+      id: number;
+      severity: string;
+      event_type: string;
+      event_payload: unknown;
+      created_at: string;
+    }>;
+    cursor: number;
+  }> {
+    return this.request("GET", "/v1/notifications/inbox", undefined, {
+      since: query.since,
+      limit: query.limit,
+    });
+  }
+  ackNotificationInbox(up_to_cursor: number): Promise<{ acked: number }> {
+    return this.request("POST", "/v1/notifications/inbox/ack", { up_to_cursor });
+  }
 
   // -------------------- Identity: Users --------------------
   listIdentityUsers(

@@ -293,6 +293,13 @@ export const AuditAction = {
   SK_CLI_LOGIN: "sk_cli.login",
   SK_CLI_LOGOUT: "sk_cli.logout",
   SK_CLI_TENANT_SWITCHED: "sk_cli.tenant_switched",
+  // The CLI acknowledged (consumed → DELETEd) a window of
+  // `cli_notification_inbox` rows up to a cursor. Emitted from
+  // `POST /v1/notifications/inbox/ack`. The DELETE is a state change, so
+  // AGENTS.md requires the audit row; metadata carries `up_to_cursor`
+  // and the `acked` rowcount so operators can reconstruct the consume
+  // watermark without reading the (now-deleted) rows.
+  SK_CLI_INBOX_ACKED: "sk_cli.inbox_acked",
 
   APPROVAL_REQUESTED: "approval.requested",
   APPROVAL_APPROVED: "approval.approved",

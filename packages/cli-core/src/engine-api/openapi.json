@@ -11116,6 +11116,74 @@
           "created_at"
         ]
       },
+      "CliNotificationInboxListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CliNotificationInboxItem"
+            }
+          },
+          "cursor": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "cursor"
+        ]
+      },
+      "CliNotificationInboxItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "event_payload": {
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "severity",
+          "event_type",
+          "created_at"
+        ]
+      },
+      "CliNotificationInboxAckResponse": {
+        "type": "object",
+        "properties": {
+          "acked": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "acked"
+        ]
+      },
+      "CliNotificationInboxAckRequest": {
+        "type": "object",
+        "properties": {
+          "up_to_cursor": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "up_to_cursor"
+        ]
+      },
       "OutboxEventListResponse": {
         "type": "object",
         "properties": {
@@ -21258,6 +21326,88 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotificationDeliveryListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/notifications/inbox": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Pull pending sk CLI inbox notifications",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0
+            },
+            "required": false,
+            "name": "since",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 500
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliNotificationInboxListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/notifications/inbox/ack": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Acknowledge (consume) sk CLI inbox notifications up to a cursor",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliNotificationInboxAckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliNotificationInboxAckResponse"
                 }
               }
             }

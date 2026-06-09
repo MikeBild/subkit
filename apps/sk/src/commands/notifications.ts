@@ -1,7 +1,11 @@
 import { exitCodeFor } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
+import {
+  getNotificationInboxCursor,
+  resolveProfile,
+  setNotificationInboxCursor,
+} from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 
 function makeClient() {
@@ -287,14 +291,100 @@ const deliveriesCmd = defineCommand({
   subCommands: { list: deliveriesListCmd },
 });
 
+// ---- inbox ----
+
+const inboxListArgs = {
+  all: { type: "boolean", description: "Show everything queued, ignoring the stored cursor" },
+  limit: { type: "string", description: "Max rows (<=500)" },
+  json: { type: "boolean", description: "JSON output" },
+} as const;
+
+async function runInboxList(args: {
+  all?: boolean | undefined;
+  limit?: string | undefined;
+  json?: boolean | undefined;
+}): Promise<void> {
+  const client = makeClient();
+  try {
+    const query: { since?: number; limit?: number } = {};
+    if (!args.all) query.since = getNotificationInboxCursor();
+    if (args.limit) query.limit = Number(args.limit);
+    const { items, cursor } = await client.getNotificationInbox(query);
+    emitList(
+      !!args.json,
+      ["id", "severity", "event_type", "created_at"],
+      items as unknown as Record<string, unknown>[],
+    );
+    // Advance the stored cursor so the next call only surfaces newer
+    // rows. `--all` still persists the high-water mark it observed.
+    setNotificationInboxCursor(cursor);
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(exitCodeFor(err));
+  }
+}
+
+const inboxListCmd = defineCommand({
+  meta: { name: "list", description: "Show queued inbox notifications since the last seen cursor" },
+  args: inboxListArgs,
+  run: ({ args }) => runInboxList(args),
+});
+
+const inboxAckCmd = defineCommand({
+  meta: { name: "ack", description: "Acknowledge (delete) inbox notifications up to a cursor" },
+  args: {
+    "up-to": {
+      type: "string",
+      description: "Cursor id to ack up to (defaults to the last-seen stored cursor)",
+    },
+    json: { type: "boolean", description: "JSON output" },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    let upToCursor: number;
+    if (args["up-to"] !== undefined) {
+      upToCursor = Number(args["up-to"]);
+      if (!Number.isFinite(upToCursor)) {
+        process.stderr.write("--up-to must be a number\n");
+        process.exit(1);
+      }
+    } else {
+      upToCursor = getNotificationInboxCursor();
+    }
+    try {
+      const result = await client.ackNotificationInbox(upToCursor);
+      if (args.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(`acked ${result.acked}\n`);
+      }
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      process.exit(exitCodeFor(err));
+    }
+  },
+});
+
+const inboxCmd = defineCommand({
+  meta: { name: "inbox", description: "Read and acknowledge queued notifications" },
+  args: inboxListArgs,
+  subCommands: {
+    list: inboxListCmd,
+    ack: inboxAckCmd,
+  },
+  // Default action when no subcommand is given: list.
+  run: ({ args }) => runInboxList(args),
+});
+
 export const notificationsCommand = defineCommand({
   meta: {
     name: "notifications",
-    description: "Manage notification channels, rules, and deliveries",
+    description: "Manage notification channels, rules, deliveries, and the inbox",
   },
   subCommands: {
     channels: channelsCmd,
     rules: rulesCmd,
     deliveries: deliveriesCmd,
+    inbox: inboxCmd,
   },
 });

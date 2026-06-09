@@ -229,8 +229,15 @@ export async function dispatchEvent(
 
   for (const rule of rules) {
     let channel: NotificationChannelRow;
+    // Derive the channel platform from the rule's target. The default
+    // sk CLI inbox rule targets the reserved `_cli` workspace; every
+    // other rule targets a real chat workspace (Slack is the only
+    // platform that auto-creates a channel row today). Hardcoding
+    // "slack" here previously mislabeled the sk_cli channel and routed
+    // a local-insert delivery through the full chat adapter path.
+    const platformHint = rule.row.target_workspace_id === "_cli" ? "sk_cli" : "slack";
     try {
-      channel = await ensureChannel(db, event.tenant_id, rule.row, "slack");
+      channel = await ensureChannel(db, event.tenant_id, rule.row, platformHint);
     } catch (err) {
       logger.error({
         module: "notifications",
@@ -263,57 +270,65 @@ export async function dispatchEvent(
       continue;
     }
 
-    const breakerCheck = canPass(channel, now);
-    if (!breakerCheck.allowed) {
-      const outcome: DeliveryOutcome = {
-        rule_id: rule.row.id,
-        channel_id: channel.id,
-        status: "breaker_open",
-        reason: "circuit_open",
-      };
-      result.outcomes.push(outcome);
-      await recordDelivery(db, {
-        tenant_id: event.tenant_id,
-        rule_id: rule.row.id,
-        channel_id: channel.id,
-        event,
-        severity: rule.severity,
-        status: "breaker_open",
-        reason: "circuit_open",
-      });
-      auditOutcome(event.tenant_id, outcome, event, db);
-      continue;
-    }
+    // The sk CLI inbox is a local INSERT — no remote API to throttle and
+    // no transient endpoint to circuit-break. Skip both gates so a
+    // healthy CLI inbox never records a spurious `rate_limited` /
+    // `breaker_open` outcome. Real chat platforms still pass through.
+    const isLocalInbox = channel.platform === "sk_cli";
 
-    const acquired = tryAcquire(
-      {
-        tenant_id: event.tenant_id,
-        workspace_id: channel.workspace_id,
-        channel_id: channel.channel_id,
-      },
-      channel.rate_limit_per_minute ?? 60,
-      1,
-      now,
-    );
-    if (!acquired.ok) {
-      const outcome: DeliveryOutcome = {
-        rule_id: rule.row.id,
-        channel_id: channel.id,
-        status: "rate_limited",
-        reason: `retry_after_ms=${acquired.retryAfterMs ?? 0}`,
-      };
-      result.outcomes.push(outcome);
-      await recordDelivery(db, {
-        tenant_id: event.tenant_id,
-        rule_id: rule.row.id,
-        channel_id: channel.id,
-        event,
-        severity: rule.severity,
-        status: "rate_limited",
-        ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
-      });
-      auditOutcome(event.tenant_id, outcome, event, db);
-      continue;
+    if (!isLocalInbox) {
+      const breakerCheck = canPass(channel, now);
+      if (!breakerCheck.allowed) {
+        const outcome: DeliveryOutcome = {
+          rule_id: rule.row.id,
+          channel_id: channel.id,
+          status: "breaker_open",
+          reason: "circuit_open",
+        };
+        result.outcomes.push(outcome);
+        await recordDelivery(db, {
+          tenant_id: event.tenant_id,
+          rule_id: rule.row.id,
+          channel_id: channel.id,
+          event,
+          severity: rule.severity,
+          status: "breaker_open",
+          reason: "circuit_open",
+        });
+        auditOutcome(event.tenant_id, outcome, event, db);
+        continue;
+      }
+
+      const acquired = tryAcquire(
+        {
+          tenant_id: event.tenant_id,
+          workspace_id: channel.workspace_id,
+          channel_id: channel.channel_id,
+        },
+        channel.rate_limit_per_minute ?? 60,
+        1,
+        now,
+      );
+      if (!acquired.ok) {
+        const outcome: DeliveryOutcome = {
+          rule_id: rule.row.id,
+          channel_id: channel.id,
+          status: "rate_limited",
+          reason: `retry_after_ms=${acquired.retryAfterMs ?? 0}`,
+        };
+        result.outcomes.push(outcome);
+        await recordDelivery(db, {
+          tenant_id: event.tenant_id,
+          rule_id: rule.row.id,
+          channel_id: channel.id,
+          event,
+          severity: rule.severity,
+          status: "rate_limited",
+          ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+        });
+        auditOutcome(event.tenant_id, outcome, event, db);
+        continue;
+      }
     }
 
     const adapter = deps.resolveAdapter?.(channel) ?? null;
@@ -343,14 +358,26 @@ export async function dispatchEvent(
       channel_id: channel.channel_id,
       kind: "message",
       text: buildText(event, rule.severity),
+      notification: {
+        // The CLI inbox is a consumer-facing queue, so it carries the EVENT's
+        // own severity (e.g. connector.auth_failed = "error"), not the rule's
+        // matching floor — otherwise a critical alert would read as "info".
+        // `rule.severity` (the floor) still drives the deliveries audit row and
+        // the Slack message header below, unchanged.
+        severity: event.severity ?? rule.severity,
+        event_type: event.type,
+        event_payload: (event.payload ?? null) as Record<string, unknown> | null,
+      },
     };
 
     try {
-      // Route through the chat dispatcher's shared `deliver` helper
-      // when a full ChatAdapter is supplied so metrics line up with
-      // conversation-driven sends. Otherwise fall back to the minimal
-      // `send` interface that test doubles implement.
-      if ("platform" in adapter && typeof adapter.platform === "string") {
+      // Route real chat platforms through the chat dispatcher's shared
+      // `deliver` helper so metrics line up with conversation-driven
+      // sends. The `sk_cli` adapter is a local INSERT (not a full
+      // ChatAdapter — it has no verify/receive/update/sendApproval), so
+      // it is invoked directly via the minimal `send` interface, the
+      // same path test doubles use.
+      if (adapter.platform && adapter.platform !== "sk_cli") {
         await chatDeliver(adapter as unknown as ChatAdapter, delivery);
       } else {
         await adapter.send(delivery);

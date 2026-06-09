@@ -23,6 +23,12 @@ export interface Profile {
   persona_hint?: "admin" | "operator" | "member" | "enduser" | "portal" | null;
   /** Locked to true for profiles authenticated via a portal token. */
   portal_locked?: boolean;
+  /**
+   * Highest notification-inbox row id this profile has seen. `sk
+   * notifications inbox` reads it as the `since` cursor so each call
+   * surfaces only newer rows, then persists the returned cursor back.
+   */
+  notification_inbox_cursor?: number;
 }
 
 export interface SkConfig {
@@ -145,7 +151,48 @@ export function resolveProfile(opts: ResolveOptions = {}): ResolvedProfile {
     active_tenant_id,
     ...(diskProfile.persona_hint ? { persona_hint: diskProfile.persona_hint } : {}),
     ...(diskProfile.portal_locked ? { portal_locked: diskProfile.portal_locked } : {}),
+    ...(typeof diskProfile.notification_inbox_cursor === "number"
+      ? { notification_inbox_cursor: diskProfile.notification_inbox_cursor }
+      : {}),
   };
+}
+
+/**
+ * Read the persisted notification-inbox cursor for a profile, or 0 when
+ * the profile has never paged the inbox. Resolves the profile name the
+ * same way `resolveProfile` does so `--profile` / env overrides apply.
+ */
+export function getNotificationInboxCursor(
+  opts: ResolveOptions = {},
+  path: string = configPath(),
+): number {
+  const disk = loadConfig(path);
+  const profileName =
+    opts.profile?.trim() ||
+    process.env.SK_PROFILE?.trim() ||
+    process.env.SUBKIT_PROFILE?.trim() ||
+    disk.active_profile ||
+    DEFAULT_PROFILE;
+  const cursor = disk.profiles[profileName]?.notification_inbox_cursor;
+  return typeof cursor === "number" ? cursor : 0;
+}
+
+/** Persist the notification-inbox cursor for the resolved profile. */
+export function setNotificationInboxCursor(
+  cursor: number,
+  opts: ResolveOptions = {},
+  path: string = configPath(),
+): void {
+  const disk = loadConfig(path);
+  const profileName =
+    opts.profile?.trim() ||
+    process.env.SK_PROFILE?.trim() ||
+    process.env.SUBKIT_PROFILE?.trim() ||
+    disk.active_profile ||
+    DEFAULT_PROFILE;
+  const existing = disk.profiles[profileName] ?? defaultProfile();
+  disk.profiles[profileName] = { ...existing, notification_inbox_cursor: cursor };
+  saveConfig(disk, path);
 }
 
 /** Persist an updated profile back to disk under its current name. */
@@ -170,6 +217,9 @@ export function saveProfile(updates: ResolvedProfile, path: string = configPath(
     active_tenant_id: updates.active_tenant_id,
     ...(updates.persona_hint ? { persona_hint: updates.persona_hint } : {}),
     ...(updates.portal_locked ? { portal_locked: updates.portal_locked } : {}),
+    ...(typeof updates.notification_inbox_cursor === "number"
+      ? { notification_inbox_cursor: updates.notification_inbox_cursor }
+      : {}),
   };
   if (trimmedKey.length === 0) {
     delete (disk.profiles[updates.name] as { api_key?: string }).api_key;

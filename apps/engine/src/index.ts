@@ -2,6 +2,7 @@ import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { serve } from "@hono/node-server";
 import { SYSTEM_TENANT_ID } from "./audit/index.ts";
 import { ChatAdapterRegistry } from "./chat/registry.ts";
+import { SkCliAdapter } from "./chat/sk-cli/adapter.ts";
 import { closeAllPools } from "./connectors/drivers/postgres.ts";
 import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
 import { closeDb, getDb } from "./db/client.ts";
@@ -161,6 +162,15 @@ async function runServer(): Promise<void> {
   // instance so notification dispatch can find adapters that were
   // registered via the /chat/install flow.
   const chatRegistry = new ChatAdapterRegistry();
+
+  // The sk CLI inbox is a single process-global outbound sink: it is
+  // never installed per workspace (there is no `chat_workspaces` row for
+  // the reserved `_cli` workspace), so it is registered once here as the
+  // `sk_cli` fallback adapter. Per-tenant isolation happens at send time
+  // via `delivery.tenant_id` — the adapter writes one
+  // `cli_notification_inbox` row scoped to that tenant. Distinct from the
+  // chat_workspaces-driven hydration in `hydrate.ts`.
+  chatRegistry.registerFallback("sk_cli", new SkCliAdapter(db));
 
   // OpenTelemetry tracer — bootstrap before anything that might emit
   // spans so the LLM `experimental_telemetry` calls, pg-boss handlers,

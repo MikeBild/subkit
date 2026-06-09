@@ -8187,6 +8187,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notifications/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull pending sk CLI inbox notifications */
+        get: {
+            parameters: {
+                query?: {
+                    since?: number | null;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CliNotificationInboxListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/notifications/inbox/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge (consume) sk CLI inbox notifications up to a cursor */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CliNotificationInboxAckRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CliNotificationInboxAckResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/events": {
         parameters: {
             query?: never;
@@ -11600,6 +11679,23 @@ export interface components {
             reason: string | null;
             error: string | null;
             created_at: string;
+        };
+        CliNotificationInboxListResponse: {
+            items: components["schemas"]["CliNotificationInboxItem"][];
+            cursor: number;
+        };
+        CliNotificationInboxItem: {
+            id: number;
+            severity: string;
+            event_type: string;
+            event_payload?: unknown;
+            created_at: string;
+        };
+        CliNotificationInboxAckResponse: {
+            acked: number;
+        };
+        CliNotificationInboxAckRequest: {
+            up_to_cursor: number;
         };
         OutboxEventListResponse: {
             items: components["schemas"]["OutboxEvent"][];

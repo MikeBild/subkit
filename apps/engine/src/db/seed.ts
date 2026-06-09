@@ -34,8 +34,15 @@ import {
   type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
 } from "../rbac/seed.ts";
-import type { Db } from "./client.ts";
-import { apiKeys, skills, systemAccounts, tenants, users } from "./schema/index.ts";
+import type { Db, Executor } from "./client.ts";
+import {
+  apiKeys,
+  notificationRules,
+  skills,
+  systemAccounts,
+  tenants,
+  users,
+} from "./schema/index.ts";
 
 const DEFAULT_TENANT_SLUG = "default";
 const BOOTSTRAP_SYS_ACCOUNT_NAME = "bootstrap-admin";
@@ -68,6 +75,48 @@ async function seedEssentials(db: Db): Promise<SeededRoleIds> {
   const rbacIds = await seedBuiltinRolesAndPermissions(db);
   await backfillRoleIds(db, rbacIds);
   return rbacIds;
+}
+
+/**
+ * Seed the default sk CLI inbox notification rule for a tenant. The rule
+ * routes every matching event (`*` / `*`, severity floor `info`) into the
+ * `cli_notification_inbox` via the reserved `_cli` / `_inbox` target. The
+ * `SkCliAdapter` is the process-global fallback that materialises each
+ * delivery as a local row.
+ *
+ * Idempotent: guarded by the same `(_cli, _inbox)` NOT EXISTS check as the
+ * 0042 backfill migration, so it is safe to re-run on every bootstrap /
+ * dev-fixtures pass (the bootstrap path is an upsert-by-slug and may run on
+ * every deploy).
+ */
+export async function seedDefaultCliNotificationRule(
+  tx: Executor,
+  tenant_id: string,
+): Promise<void> {
+  const existing = await tx
+    .select({ id: notificationRules.id })
+    .from(notificationRules)
+    .where(
+      and(
+        eq(notificationRules.tenant_id, tenant_id),
+        eq(notificationRules.target_workspace_id, "_cli"),
+        eq(notificationRules.target_channel_id, "_inbox"),
+      ),
+    )
+    .limit(1);
+  if (existing.length > 0) return;
+
+  await tx.insert(notificationRules).values({
+    tenant_id,
+    name: "sk CLI inbox (default)",
+    event_pattern: "*",
+    workflow_pattern: "*",
+    severity: "info",
+    request_source_filter: null,
+    target_workspace_id: "_cli",
+    target_channel_id: "_inbox",
+    active: true,
+  });
 }
 
 // --------------------------------------------------------------------------
@@ -171,6 +220,9 @@ export async function seedTenantBootstrap(
         tx,
       );
     }
+
+    // --- default sk CLI inbox notification rule (idempotent) ---
+    await seedDefaultCliNotificationRule(tx, tenant.id);
 
     // --- bootstrap-admin system account (upsert by tenant_id + name) ---
     let [sysAcct] = await tx
@@ -427,6 +479,9 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       },
       tx,
     );
+
+    // --- default sk CLI inbox notification rule (idempotent) ---
+    await seedDefaultCliNotificationRule(tx, tenant.id);
 
     // --- system account ---
     const [sysAcct] = await tx
