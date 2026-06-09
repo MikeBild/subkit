@@ -5,7 +5,7 @@
 // connector that a live workflow's step binds to would break that
 // workflow at its next run.
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { type Db, getDb } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 
@@ -22,10 +22,12 @@ export interface WorkflowConnectorDependent {
  * connector. Tenant-scoped on both the workflows and the
  * workflow_versions read.
  *
- * The DAG is `workflow_versions.dag` (JSON); a step binds a connector via
- * `steps[].connector_id` (a UUID). The candidate set is bounded by the
- * tenant's live workflows, so we join to the current version and filter
- * the step list in TS rather than reaching into the jsonb.
+ * The DAG is `workflow_versions.dag` (jsonb); a step binds a connector via
+ * `steps[].connector_id` (a UUID). The step-binding check is pushed into SQL
+ * via `jsonb_path_exists`, so the filter runs at constant per-row cost in
+ * postgres rather than deserialising every live workflow's DAG in-process —
+ * this path is hot (the delete confirm card and the dispatch backstop both
+ * call it). Tenant-scoped on both the workflows and workflow_versions reads.
  */
 export async function listWorkflowsUsingConnector(
   tenant_id: string,
@@ -38,7 +40,6 @@ export async function listWorkflowsUsingConnector(
       id: workflows.id,
       slug: workflows.slug,
       name: workflows.name,
-      dag: workflowVersions.dag,
     })
     .from(workflows)
     .innerJoin(
@@ -48,18 +49,15 @@ export async function listWorkflowsUsingConnector(
         eq(workflowVersions.id, workflows.current_version_id),
       ),
     )
-    .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)));
-  const dependents: WorkflowConnectorDependent[] = [];
-  for (const row of rows) {
-    const dag = row.dag as { steps?: unknown } | null;
-    const steps = Array.isArray(dag?.steps) ? dag.steps : [];
-    const usesConnector = steps.some(
-      (step) =>
-        typeof step === "object" &&
-        step !== null &&
-        (step as { connector_id?: unknown }).connector_id === connector_id,
+    .where(
+      and(
+        eq(workflows.tenant_id, tenant_id),
+        isNull(workflows.deleted_at),
+        // Matches any step whose connector_id equals the target. `$cid` is
+        // bound from the vars object so the uuid is parameterised, not
+        // string-interpolated into the jsonpath.
+        sql`jsonb_path_exists(${workflowVersions.dag}, '$.steps[*] ? (@.connector_id == $cid)', jsonb_build_object('cid', ${connector_id}::text))`,
+      ),
     );
-    if (usesConnector) dependents.push({ id: row.id, slug: row.slug, name: row.name });
-  }
-  return dependents;
+  return rows.map((row) => ({ id: row.id, slug: row.slug, name: row.name }));
 }

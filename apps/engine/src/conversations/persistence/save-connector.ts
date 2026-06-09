@@ -251,6 +251,14 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
         await updateConnector(ctx.tenant_id, existing.id, fieldPatch, ctx.actor_id, ctx.db);
       }
 
+      // Write-sequence contract: persistCredential → clearConnectorReauth →
+      // recordConnectorUpdated run as separate statements on `ctx.db`, NOT a
+      // single transaction (updateConnector/persistCredential each manage
+      // their own). This matches the pre-existing connector-save pattern; the
+      // failure mode is benign and self-healing — if a later step throws after
+      // the credential lands, the worst case is `needs_reauth` stays true (the
+      // next authed call clears it via clearConnectorReauth) and/or the
+      // credential_rotated audit row is missing. No partial credential write.
       let credential_persisted = false;
       if (p.credential) {
         await persistCredential({
