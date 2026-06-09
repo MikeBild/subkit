@@ -396,6 +396,10 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     )
     .limit(1);
   let targetWorkflowId = convRows[0]?.target_workflow_id ?? null;
+  // Set when the same-slug adoption path claims an existing live row, so the
+  // downstream audit row can distinguish an adoption-driven update from a
+  // normal in-place edit ("where did this version come from?").
+  let adoptedSameSlug = false;
 
   // Identity gate: the draft's slug is the source of truth for what
   // workflow row this commit targets. The conversation's stored
@@ -519,14 +523,22 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   }
   const persistScopeIndex = Object.keys(scopeIndex).length > 0 ? scopeIndex : null;
 
-  // Hoisted because the idempotency closure runs twice (bound target +
-  // same-slug adoption) against an identical def. `null` when the draft fails
-  // validation → the closure treats it as "not idempotent".
-  const idempotencyValidation = validateWorkflowDef(def);
-  const idempotencyAnnotated =
-    idempotencyValidation.ok && idempotencyValidation.workflow
-      ? annotateRuntime(idempotencyValidation.workflow)
-      : null;
+  // Lazy + memoised validate/annotate for the idempotency comparison: it runs
+  // at most once but only when actually needed. The closure can fire twice
+  // (bound target + same-slug adoption) and must not re-validate; but a
+  // happy-path first commit (no target, no slug conflict) never calls it, so
+  // we must not pay the validation cost there either (createWorkflow validates
+  // downstream). Returns null when the draft fails validation → "not idempotent".
+  let idemComputed = false;
+  let idemAnnotated: ReturnType<typeof annotateRuntime> | null = null;
+  const idempotencyAnnotated = (): ReturnType<typeof annotateRuntime> | null => {
+    if (!idemComputed) {
+      idemComputed = true;
+      const v = validateWorkflowDef(def);
+      idemAnnotated = v.ok && v.workflow ? annotateRuntime(v.workflow) : null;
+    }
+    return idemAnnotated;
+  };
 
   // Idempotent re-commit. When the target row is already resolved and
   // the draft def is byte-identical to its current version, do NOT
@@ -554,14 +566,17 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       .limit(1);
     const wf = wfRows[0];
     if (!wf?.current_version_id) return null;
-    if (!idempotencyAnnotated) return null;
+    // Validate only now that the cheap current_version_id lookup confirmed
+    // there is something to compare against.
+    const annotated = idempotencyAnnotated();
+    if (!annotated) return null;
     const unchanged = await isUnchangedFromCurrentVersion({
       tx: ctx.db,
       tenant_id: ctx.tenant_id,
       workflow_id: workflowId,
       workflow_slug: wf.slug,
       current_version_id: wf.current_version_id,
-      def: idempotencyAnnotated,
+      def: annotated,
       scope_index: persistScopeIndex,
     });
     if (!unchanged) return null;
@@ -652,6 +667,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
           slug: def.slug,
         });
         targetWorkflowId = conflict.id;
+        adoptedSameSlug = true;
         await ctx.db
           .update(conversations)
           .set({ target_workflow_id: targetWorkflowId, updated_at: new Date() })
@@ -811,7 +827,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
         workflow_version_id: workflow.current_version_id,
         reason: p.reason ?? "auto_persist_on_confirmation",
         source: "harness_auto_persist",
-        kind: "auto_persist",
+        kind: adoptedSameSlug ? "same_slug_adoption" : "auto_persist",
         ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
         ...(forceClearsPreview && runtimeDataFailure
           ? {

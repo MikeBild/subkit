@@ -253,12 +253,16 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
 
       // Write-sequence contract: persistCredential → clearConnectorReauth →
       // recordConnectorUpdated run as separate statements on `ctx.db`, NOT a
-      // single transaction (updateConnector/persistCredential each manage
-      // their own). This matches the pre-existing connector-save pattern; the
-      // failure mode is benign and self-healing — if a later step throws after
-      // the credential lands, the worst case is `needs_reauth` stays true (the
-      // next authed call clears it via clearConnectorReauth) and/or the
-      // credential_rotated audit row is missing. No partial credential write.
+      // single transaction. A wrapping `ctx.db.transaction(...)` is
+      // deliberately NOT used: `upsertCredential` (via persistCredential)
+      // already opens its OWN transaction (credentials/service.ts), so an
+      // outer transaction would nest — not cleanly supported by the executor
+      // abstraction here, and the same pattern the pre-existing connector-save
+      // path uses. The failure mode is benign and self-healing — if a later
+      // step throws after the credential lands, the worst case is
+      // `needs_reauth` stays true (the next authed call clears it via
+      // clearConnectorReauth) and/or the connector-side credential_rotated
+      // audit row is missing. There is never a partial credential write.
       let credential_persisted = false;
       if (p.credential) {
         await persistCredential({
