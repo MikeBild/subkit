@@ -1,5 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { _resetConfigForTests } from "../../../config/loader.ts";
 import {
+  chooseFileStrategy,
   getStaticCapabilities,
   pickPdfStrategy,
   resolveModelCapabilities,
@@ -49,6 +51,62 @@ describe("getStaticCapabilities", () => {
     expect(caps.supportsFile).toBe(true);
     expect(caps.filesApiSupport).toBe(false);
     expect(caps.maxPdfPages).toBe(100);
+  });
+});
+
+describe("getStaticCapabilities — OpenAI-compatible custom base_url gate", () => {
+  let savedBaseUrl: string | undefined;
+  beforeEach(() => {
+    savedBaseUrl = process.env.OPENAI_BASE_URL;
+    delete process.env.OPENAI_BASE_URL;
+    // The predicate reads getConfig() first; drop any leaked config state so
+    // the env-driven assertions below are authoritative.
+    _resetConfigForTests();
+  });
+  afterEach(() => {
+    if (savedBaseUrl === undefined) delete process.env.OPENAI_BASE_URL;
+    else process.env.OPENAI_BASE_URL = savedBaseUrl;
+    _resetConfigForTests();
+  });
+
+  it("disables Files API + audio/video for openai when a custom base_url is set", () => {
+    process.env.OPENAI_BASE_URL = "https://llm.internal.example/v1";
+    const caps = getStaticCapabilities("openai");
+    expect(caps.filesApiSupport).toBe(false);
+    expect(caps.supportsAudio).toBe(false);
+    expect(caps.supportsVideo).toBe(false);
+    // Inline paths and page cap are intentionally preserved.
+    expect(caps.supportsImage).toBe(true);
+    expect(caps.supportsFile).toBe(true);
+    expect(caps.maxPdfPages).toBe(100);
+  });
+
+  it("leaves real OpenAI (no base_url) fully capable", () => {
+    const caps = getStaticCapabilities("openai");
+    expect(caps.filesApiSupport).toBe(true);
+    expect(caps.supportsAudio).toBe(true);
+    expect(caps.supportsVideo).toBe(true);
+  });
+
+  it("does not affect other providers when a custom openai base_url is set", () => {
+    process.env.OPENAI_BASE_URL = "https://llm.internal.example/v1";
+    expect(getStaticCapabilities("anthropic").filesApiSupport).toBe(true);
+    expect(getStaticCapabilities("azure").filesApiSupport).toBe(false);
+  });
+
+  it("propagates the gate through resolveModelCapabilities", async () => {
+    process.env.OPENAI_BASE_URL = "https://llm.internal.example/v1";
+    const caps = await resolveModelCapabilities("openai", "qwen-3-32b");
+    expect(caps.filesApiSupport).toBe(false);
+  });
+
+  it("routes files to inline/text-extract once Files API is gated off", () => {
+    process.env.OPENAI_BASE_URL = "https://llm.internal.example/v1";
+    const caps = getStaticCapabilities("openai"); // maxFileSizeMB stays 32
+    // 6MB would have been file_api on real OpenAI; now inlined as file_part.
+    expect(chooseFileStrategy(caps, 6 * 1024 * 1024)).toBe("file_part");
+    // Oversized (> maxFileSizeMB) falls back to text extraction.
+    expect(chooseFileStrategy(caps, 40 * 1024 * 1024)).toBe("text_extract");
   });
 });
 

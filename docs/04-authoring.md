@@ -197,6 +197,28 @@ The platform routes to the best available provider based on operator configurati
 
 The AI provider is an implementation detail of the authoring layer. Once a workflow is approved and committed, the execution engine runs it without any AI involvement. The provider you chose during authoring has no bearing on what runs in production.
 
+### OpenAI-compatible endpoints
+
+The `openai` provider also drives any **OpenAI-compatible** endpoint — a self-hosted open-weight model, an internal gateway, or a third-party API that speaks the OpenAI wire format. Point the slot at the endpoint:
+
+```
+llm.provider                  = openai
+llm.providers.openai.base_url = https://llm.internal.example/v1   # your endpoint
+llm.providers.openai.api_key  = <key>                             # sent as a Bearer token
+llm.providers.openai.model    = <model-id>
+llm.summarize_provider        = openai                            # optional
+llm.summarize_model           = <fast-model-id>                   # optional
+```
+
+Two behaviours switch on automatically whenever `base_url` is non-empty, because a custom host generally implements only a subset of the OpenAI surface:
+
+- **Transport.** Requests use `POST <base_url>/chat/completions` (Chat Completions), not the OpenAI Responses API — which custom endpoints typically do not implement.
+- **Attachments.** The Files API upload path and audio/video inputs are disabled; files fall back to inline content or extracted text. Inline images and small documents still work.
+
+Leaving `base_url` empty keeps the slot on real OpenAI with its full Responses API and Files API behaviour unchanged. Structured-output authoring works on any tool-calling endpoint — it runs through a provider-agnostic tool loop rather than relying on OpenAI-specific JSON-schema response formats.
+
+> **Known limitation.** The attachment downgrade is a conservative default: it assumes an arbitrary custom endpoint serves text and inline images only. Some OpenAI-compatible servers (e.g. vLLM, SGLang) do serve vision/audio and a real Files API — there is currently no per-endpoint opt-back-in, so those richer capabilities aren't used on a custom `base_url`. A per-endpoint capability override is a tracked follow-up.
+
 ---
 
 ## Skills: Curated Context

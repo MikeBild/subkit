@@ -300,18 +300,35 @@ export function buildAnthropicWebSearchTool(maxUses: number): Tool {
   return provider.tools.webSearch_20250305({ maxUses }) as unknown as Tool;
 }
 
+/**
+ * The configured OpenAI base URL (empty/undefined ⇒ real OpenAI). Single
+ * source of truth for the `OPENAI_BASE_URL ↔ llm.providers.openai.base_url`
+ * mapping — it routes through `readEnv`, the same config-leaf → process.env
+ * cascade every other provider read uses, so capability gating and model
+ * construction can never drift on the env-name or the config path. Returns
+ * `undefined` when no custom endpoint is configured.
+ */
+export function readOpenAiBaseUrl(): string | undefined {
+  return readEnv("OPENAI_BASE_URL");
+}
+
 function resolveOpenAi(defaultModel: string, modelOverride?: string): ResolvedModel {
   const modelId = modelOverride ?? readEnv("OPENAI_MODEL") ?? defaultModel;
   const openaiOptions: Record<string, unknown> = {
     apiKey: requireEnv("OPENAI_API_KEY", "openai"),
   };
-  const baseURL = readEnv("OPENAI_BASE_URL");
+  const baseURL = readOpenAiBaseUrl();
   if (baseURL) openaiOptions.baseURL = baseURL;
   const provider = createOpenAI(openaiOptions);
+  // Custom OpenAI-compatible endpoints implement /chat/completions, not the
+  // Responses API (the AI-SDK default callable since v5). Pin `.chat` when a
+  // base URL is set so the default Responses route never 404s; real OpenAI
+  // (no base URL) keeps the Responses default — no behavioural change.
+  const model = (baseURL ? provider.chat(modelId) : provider(modelId)) as unknown as LanguageModel;
   return {
     provider: "openai",
     modelId,
-    model: provider(modelId) as unknown as LanguageModel,
+    model,
   };
 }
 
