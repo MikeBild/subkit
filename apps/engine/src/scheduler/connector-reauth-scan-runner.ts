@@ -3,28 +3,23 @@
 // Extracted out of `reconciler.ts` (same split as `proactive-drift-scan-runner.ts`)
 // to keep that file under the 1000-LOC ceiling. The reconciler owns the
 // cadence + CAS-stamp logic; this module owns the per-tenant sweep: select
-// candidate connectors, perform a lightweight authenticated probe, classify
-// the response, and atomically flag connectors whose credentials are rejected.
+// candidate connectors, perform a driver-native probe via `probeConnector`,
+// and atomically flag connectors whose credentials are rejected.
 //
-// Only `classifyConnectorHealth === "auth_failed"` sets the flag. Network
-// errors (thrown before a status is received) are logged and swallowed — a
-// transient DNS or TCP failure must not be misread as a credential rejection.
+// Flag predicate: `result.ok === false && result.error_code` is either
+// "credential_invalid" or "credential_expired". Every other outcome
+// (ok:true, credential_missing, scope_insufficient, remote_*, network
+// throw, unknown_upstream_error) is left alone — a transient DNS or TCP
+// failure, a missing config, or an upstream outage must not be misread
+// as a credential rejection.
 
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
-import { executeConnectorHttpRequest } from "../connectors/drivers/http.ts";
-import { classifyConnectorHealth } from "../connectors/health.ts";
+import { and, eq, isNull, ne } from "drizzle-orm";
+import { probeConnector } from "../connectors/drivers/index.ts";
 import { flagConnectorAuthFailure } from "../connectors/reauth.ts";
-import { getConnectorProbeEndpoint } from "../connectors/template-binding.ts";
 import type { AuthType, ConnectorView, DriverName } from "../connectors/types.ts";
 import type { Db } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
-
-// Auth types whose credentials can expire / be revoked and therefore
-// benefit from a proactive probe. "none" and "aws_sigv4" are excluded:
-// "none" has no credential to check; aws_sigv4 signs each request with
-// short-lived STS tokens that are self-healing through the SDK.
-const PROBEABLE_AUTH_TYPES = ["oauth2", "bearer", "basic", "header", "query"] as const;
 
 /**
  * Execute one proactive connector re-auth scan for a single tenant.
@@ -34,17 +29,17 @@ const PROBEABLE_AUTH_TYPES = ["oauth2", "bearer", "basic", "header", "query"] as
  *   - do not already need re-auth
  *   - have a non-open circuit (an open circuit means the endpoint is
  *     already known-broken; probing it again is unhelpful)
- *   - use an auth type that can expire (oauth2/bearer/basic/header/query)
+ *   - have an auth_type other than "none" (no credential to check on
+ *     auth_type=none connectors)
  *
- * For each candidate, issues a lightweight authenticated GET (or the
- * connector's configured `probe_endpoint`) via `executeConnectorHttpRequest`
- * and classifies the response with `classifyConnectorHealth`. On an
- * `auth_failed` verdict the connector is atomically flagged and an
- * operator notification is emitted — both inside the same transaction so
- * the state change and the outbox event are always consistent.
+ * For each candidate, issues a driver-native probe via `probeConnector`
+ * and flags the connector when the result carries `error_code` of
+ * "credential_invalid" or "credential_expired". All other outcomes
+ * (ok:true, network throws, credential_missing, scope_insufficient,
+ * remote_*, unknown_upstream_error) are skipped.
  *
- * Each connector's probe is wrapped in its own try/catch so a network
- * error on one connector does not abort the sweep for the rest.
+ * Each connector's probe is wrapped in its own try/catch so a driver bug
+ * that throws does not abort the sweep for the rest.
  */
 export async function runConnectorReauthScanForTenant(
   tenant_id: string,
@@ -61,7 +56,7 @@ export async function runConnectorReauthScanForTenant(
         isNull(connectors.deleted_at),
         eq(connectors.needs_reauth, false),
         ne(connectors.circuit_state, "open"),
-        inArray(connectors.auth_type, [...PROBEABLE_AUTH_TYPES]),
+        ne(connectors.auth_type, "none"),
       ),
     );
 
@@ -77,23 +72,9 @@ export async function runConnectorReauthScanForTenant(
   let auth_failed = 0;
 
   for (const row of candidates) {
-    // Derive probe target from the connector's configured probe_endpoint,
-    // falling back to GET /. Mirrors exactly the logic in probeHttpConnector.
-    const rawProbe = getConnectorProbeEndpoint(row);
-    const probeConfig =
-      rawProbe &&
-      typeof rawProbe === "object" &&
-      "path" in rawProbe &&
-      "expected_status" in rawProbe
-        ? (rawProbe as { method?: string; path: string; expected_status: [number, number] })
-        : null;
-    const method = probeConfig?.method ?? "GET";
-    // Empty path means probe the base_url directly.
-    const pathOrUrl = probeConfig !== null && probeConfig.path !== "" ? probeConfig.path : "/";
-
-    // Build a ConnectorView from the DB row so executeConnectorHttpRequest
-    // receives the full typed shape it expects. The `driver` column is
-    // stored as plain text in the schema; cast to DriverName here.
+    // Build a ConnectorView from the DB row so probeConnector receives the
+    // full typed shape it expects. The `driver` column is stored as plain
+    // text in the schema; cast to DriverName here.
     const connector: ConnectorView = {
       id: row.id,
       tenant_id: row.tenant_id,
@@ -123,37 +104,18 @@ export async function runConnectorReauthScanForTenant(
       auth_failed_reason: row.auth_failed_reason,
     };
 
-    if (!connector.base_url) {
-      // No base_url — nothing to probe; skip silently.
-      continue;
-    }
-
-    let status: number;
-    let headers: Record<string, string>;
+    let result: Awaited<ReturnType<typeof probeConnector>>;
 
     try {
-      const res = await executeConnectorHttpRequest({
-        db,
-        tenant_id,
-        connector,
-        method,
-        path_or_url: pathOrUrl,
-        // 10 s is enough to distinguish auth failure from slow vendor.
-        timeout_ms: 10_000,
-      });
-      status = res.status;
-      // HttpExecutionResult.headers keys are already lowercase (the HTTP driver
-      // normalizes them via Headers.forEach). Pass through directly — the contract
-      // that classifyConnectorHealth expects lowercase keys is already satisfied.
-      headers = res.headers;
+      result = await probeConnector({ db, tenant_id, connector });
       probed += 1;
     } catch (err) {
-      // Network-level error (DNS, TCP, timeout) — not a credential verdict.
+      // Driver threw unexpectedly (bug, not a credential verdict).
       // Log and continue; the connector is NOT flagged.
       logger.warn({
         module: "scheduler",
-        action: "connector_reauth_scan.probe_network_error",
-        msg: "probe threw a network error — not flagging connector",
+        action: "connector_reauth_scan.probe_error",
+        msg: "probe threw — not flagging connector",
         tenant_id,
         connector_id: row.id,
         connector_slug: row.slug,
@@ -162,28 +124,29 @@ export async function runConnectorReauthScanForTenant(
       continue;
     }
 
-    const health = classifyConnectorHealth(status, headers);
+    // Only "credential_invalid" and "credential_expired" are definitive
+    // proof that the stored credential is dead. Everything else is either
+    // healthy, ambiguous, or infrastructure noise.
+    if (
+      result.ok === false &&
+      (result.error_code === "credential_invalid" || result.error_code === "credential_expired")
+    ) {
+      auth_failed += 1;
 
-    if (health !== "auth_failed") {
-      // ok / degraded / endpoint_gone — none of these are credential failures.
-      continue;
-    }
-
-    auth_failed += 1;
-
-    try {
-      await flagConnectorAuthFailure(db, connector, {
-        reason: "proactive probe: credential rejected",
-      });
-    } catch (err) {
-      logger.error({
-        module: "scheduler",
-        action: "connector_reauth_scan.flag_failed",
-        msg: "failed to flag connector needs_reauth — will retry on next scan",
-        tenant_id,
-        connector_id: row.id,
-        ...errorFields(err),
-      });
+      try {
+        await flagConnectorAuthFailure(db, connector, {
+          reason: `proactive probe: credential rejected (${result.error_code})`,
+        });
+      } catch (err) {
+        logger.error({
+          module: "scheduler",
+          action: "connector_reauth_scan.flag_failed",
+          msg: "failed to flag connector needs_reauth — will retry on next scan",
+          tenant_id,
+          connector_id: row.id,
+          ...errorFields(err),
+        });
+      }
     }
   }
 

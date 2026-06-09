@@ -57,6 +57,12 @@ export interface ProbeResult {
   provider_action_url?: string;
 }
 
+/** Shared return type for every per-driver probe function. */
+export type DriverProbeResult = Pick<
+  ProbeResult,
+  "ok" | "latency_ms" | "status" | "detail" | "error_code"
+>;
+
 export async function probeConnector(p: {
   db: Db;
   tenant_id: string;

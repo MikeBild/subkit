@@ -11,6 +11,8 @@ import { Writable } from "node:stream";
 import * as ftp from "basic-ftp";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
+import type { DriverProbeResult } from "./index.ts";
+import { classifyFtpProbeError } from "./probe-classify.ts";
 
 export type FtpCommand = "LIST" | "GET" | "PUT" | "DELETE";
 
@@ -62,10 +64,16 @@ async function withClient<T>(
   }
 }
 
-export async function probeFtpConnector(
-  connector: ConnectorView,
-): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {
+export async function probeFtpConnector(connector: ConnectorView): Promise<DriverProbeResult> {
   const start = Date.now();
+  if (!connector.dsn) {
+    return {
+      ok: false,
+      latency_ms: 0,
+      detail: "connector has no dsn",
+      error_code: "credential_missing",
+    };
+  }
   try {
     await withClient(connector, async (client) => {
       await client.pwd();
@@ -76,6 +84,7 @@ export async function probeFtpConnector(
       ok: false,
       latency_ms: Date.now() - start,
       detail: err instanceof Error ? err.message : String(err),
+      error_code: classifyFtpProbeError(err),
     };
   }
 }

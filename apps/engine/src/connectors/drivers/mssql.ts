@@ -13,6 +13,8 @@ import mssql from "mssql";
 import { logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
+import type { DriverProbeResult } from "./index.ts";
+import { classifyMssqlProbeError } from "./probe-classify.ts";
 
 const pools = new Map<string, mssql.ConnectionPool>();
 
@@ -65,10 +67,16 @@ async function getPool(connector: ConnectorView): Promise<mssql.ConnectionPool> 
   return pool;
 }
 
-export async function probeMssqlConnector(
-  connector: ConnectorView,
-): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {
+export async function probeMssqlConnector(connector: ConnectorView): Promise<DriverProbeResult> {
   const start = Date.now();
+  if (!connector.dsn) {
+    return {
+      ok: false,
+      latency_ms: 0,
+      detail: "connector has no dsn",
+      error_code: "credential_missing",
+    };
+  }
   try {
     const pool = await getPool(connector);
     const res = await pool.request().query("SELECT 1 AS ok");
@@ -81,6 +89,7 @@ export async function probeMssqlConnector(
       ok: false,
       latency_ms: Date.now() - start,
       detail: err instanceof Error ? err.message : String(err),
+      error_code: classifyMssqlProbeError(err),
     };
   }
 }

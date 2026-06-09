@@ -11,6 +11,8 @@
 import SMB2 from "@marsaud/smb2";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
+import type { DriverProbeResult } from "./index.ts";
+import { classifySmbProbeError } from "./probe-classify.ts";
 
 export type SmbCommand = "LIST" | "GET" | "PUT" | "DELETE";
 
@@ -66,12 +68,10 @@ function toSmbPath(parts: DsnParts, p: string): string {
   return parts.basePath ? `${parts.basePath}\\${rel}`.replace(/\\+/g, "\\") : rel;
 }
 
-export async function probeSmbConnector(
-  connector: ConnectorView,
-): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {
+export async function probeSmbConnector(connector: ConnectorView): Promise<DriverProbeResult> {
   const start = Date.now();
   if (!connector.dsn) {
-    return { ok: false, latency_ms: 0, detail: "missing dsn" };
+    return { ok: false, latency_ms: 0, detail: "missing dsn", error_code: "credential_missing" };
   }
   const parts = parseDsn(connector.dsn);
   const client = makeClient(parts);
@@ -83,6 +83,7 @@ export async function probeSmbConnector(
       ok: false,
       latency_ms: Date.now() - start,
       detail: err instanceof Error ? err.message : String(err),
+      error_code: classifySmbProbeError(err),
     };
   } finally {
     try {

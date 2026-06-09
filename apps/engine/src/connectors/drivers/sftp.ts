@@ -10,6 +10,8 @@
 import SftpClient from "ssh2-sftp-client";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
+import type { DriverProbeResult } from "./index.ts";
+import { classifySftpProbeError } from "./probe-classify.ts";
 
 export type SftpCommand = "LIST" | "GET" | "PUT" | "DELETE";
 
@@ -62,10 +64,16 @@ async function withClient<T>(
   }
 }
 
-export async function probeSftpConnector(
-  connector: ConnectorView,
-): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {
+export async function probeSftpConnector(connector: ConnectorView): Promise<DriverProbeResult> {
   const start = Date.now();
+  if (!connector.dsn) {
+    return {
+      ok: false,
+      latency_ms: 0,
+      detail: "connector has no dsn",
+      error_code: "credential_missing",
+    };
+  }
   try {
     await withClient(connector, async (client) => {
       await client.cwd();
@@ -76,6 +84,7 @@ export async function probeSftpConnector(
       ok: false,
       latency_ms: Date.now() - start,
       detail: err instanceof Error ? err.message : String(err),
+      error_code: classifySftpProbeError(err),
     };
   }
 }

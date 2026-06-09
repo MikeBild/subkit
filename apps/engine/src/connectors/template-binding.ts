@@ -3,6 +3,7 @@ import { getOAuth2ClientCredential } from "../credentials/service.ts";
 import type { Db } from "../db/client.ts";
 import { getTemplateOAuthCredentials } from "./template-credentials.ts";
 import { parseTemplateSnapshot } from "./template-resolver.ts";
+import { getBuiltinTemplate } from "./templates.ts";
 import type { ConnectorView } from "./types.ts";
 
 type ConnectorConfig = Record<string, unknown>;
@@ -20,11 +21,29 @@ export function getConnectorTemplateSnapshot(connector: Pick<ConnectorView, "tem
 }
 
 export function getConnectorProbeEndpoint(
-  connector: Pick<ConnectorView, "config" | "template_snapshot">,
+  connector: Pick<ConnectorView, "config" | "template_snapshot"> & {
+    template_slug?: string | null;
+  },
 ) {
+  // Resolve the authenticated health/identity endpoint in precedence order, so
+  // a probe (operator-initiated or the proactive re-auth scan) hits an endpoint
+  // that actually exercises the credential rather than the public base root.
+  //
+  // An explicit per-connector value wins — INCLUDING an explicit `null`, which
+  // is the operator's "do not probe" opt-out (key present, value null). Only
+  // when the connector config declares nothing (key absent) do we fall back to
+  // the captured template snapshot, then the LIVE builtin template — so a
+  // connector created before its template declared a probe endpoint still
+  // resolves one (the snapshot is a point-in-time copy that never back-fills).
   const cfg = connectorConfig(connector);
-  if (cfg.probe_endpoint !== undefined) return cfg.probe_endpoint;
-  return getConnectorTemplateSnapshot(connector)?.probe_endpoint ?? null;
+  if ("probe_endpoint" in cfg) return cfg.probe_endpoint ?? null;
+  const fromSnapshot = getConnectorTemplateSnapshot(connector)?.probe_endpoint;
+  if (fromSnapshot != null) return fromSnapshot;
+  if (connector.template_slug) {
+    const fromBuiltin = getBuiltinTemplate(connector.template_slug)?.probe_endpoint;
+    if (fromBuiltin != null) return fromBuiltin;
+  }
+  return null;
 }
 
 export function getConnectorCapabilities(

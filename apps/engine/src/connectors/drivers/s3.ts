@@ -19,6 +19,8 @@ import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
+import type { DriverProbeResult } from "./index.ts";
+import { classifyS3ProbeError } from "./probe-classify.ts";
 
 export interface S3ConnectorConfig {
   region: string;
@@ -472,7 +474,7 @@ export async function probeS3Connector(p: {
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
-}): Promise<{ ok: boolean; latency_ms: number; status?: number; detail?: string }> {
+}): Promise<DriverProbeResult> {
   const start = Date.now();
   try {
     // Guard: auth-required connectors must have a persisted credential row.
@@ -488,6 +490,7 @@ export async function probeS3Connector(p: {
           ok: false,
           latency_ms: 0,
           detail: "credential_required",
+          error_code: "credential_missing",
         };
       }
     }
@@ -513,6 +516,7 @@ export async function probeS3Connector(p: {
         latency_ms,
         status: res.status,
         detail: `LIST returned HTTP ${res.status}`,
+        error_code: classifyS3ProbeError({ statusCode: res.status }),
       };
     }
     logger.debug({
@@ -533,6 +537,11 @@ export async function probeS3Connector(p: {
       latency_ms,
       error: err instanceof Error ? err.message : String(err),
     });
-    return { ok: false, latency_ms, detail: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      latency_ms,
+      detail: err instanceof Error ? err.message : String(err),
+      error_code: classifyS3ProbeError(err),
+    };
   }
 }

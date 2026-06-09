@@ -24,6 +24,8 @@ import {
   resolveConnectorCredential,
   validateOutboundHeaders,
 } from "./http.ts";
+import type { DriverProbeResult } from "./index.ts";
+import { classifyGraphqlProbe } from "./probe-classify.ts";
 
 export interface GraphQLConnectorConfig {
   endpoint: string;
@@ -313,7 +315,7 @@ export async function probeGraphQLConnector(p: {
   connector: ConnectorView;
   fetchImpl?: typeof fetch;
   credential_override?: DecryptedCredential | null;
-}): Promise<{ ok: boolean; latency_ms: number; status?: number; detail?: string }> {
+}): Promise<DriverProbeResult> {
   const start = Date.now();
   try {
     // Guard: auth-required connectors must have a persisted credential row
@@ -333,6 +335,7 @@ export async function probeGraphQLConnector(p: {
           ok: false,
           latency_ms: 0,
           detail: "credential_required",
+          error_code: "credential_missing",
         };
       }
     }
@@ -347,7 +350,13 @@ export async function probeGraphQLConnector(p: {
     if (p.credential_override !== undefined) args.credential_override = p.credential_override;
     const res = await executeGraphQLRequest(args);
     if (res.status === 501) {
-      return { ok: false, latency_ms: Date.now() - start, status: 501 };
+      return {
+        ok: false,
+        latency_ms: Date.now() - start,
+        status: 501,
+        detail: "graphql endpoint returned 501 (not implemented)",
+        error_code: "unknown_upstream_error",
+      };
     }
     const data = (res.body as { data?: { __typename?: unknown } }).data;
     const typeName = data?.__typename;
@@ -361,8 +370,18 @@ export async function probeGraphQLConnector(p: {
       latency_ms,
       status: res.status,
     });
+    if (!ok) {
+      const msgs = graphqlErrorMessages(res.body);
+      return {
+        ok,
+        latency_ms,
+        status: res.status,
+        error_code: classifyGraphqlProbe(res.status, msgs),
+      };
+    }
     return { ok, latency_ms, status: res.status };
   } catch (err) {
+    // Network-level error: not classifiable as a credential verdict.
     const latency_ms = Date.now() - start;
     logger.warn({
       module: "connector",
@@ -371,6 +390,14 @@ export async function probeGraphQLConnector(p: {
       latency_ms,
       error: err instanceof Error ? err.message : String(err),
     });
-    return { ok: false, latency_ms, detail: err instanceof Error ? err.message : String(err) };
+    // Consistent with the other drivers' catch paths: a transport failure is
+    // not a credential verdict, so it must NOT flag — but stamp the neutral
+    // unknown_upstream_error so every ok:false result carries an error_code.
+    return {
+      ok: false,
+      latency_ms,
+      detail: err instanceof Error ? err.message : String(err),
+      error_code: "unknown_upstream_error",
+    };
   }
 }

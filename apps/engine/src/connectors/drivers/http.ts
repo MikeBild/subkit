@@ -1117,6 +1117,13 @@ export async function probeHttpConnector(p: {
           code: "PROBE_AMBIGUOUS",
           message: `Fallback probe GET / returned ${res.status}; connectivity likely OK but endpoint unknown.`,
         });
+      } else if (res.status === 401 || res.status === 403) {
+        // An auth rejection is unambiguous even on the fallback "GET /" probe:
+        // the service answered and rejected the credential. Mark not-ok so the
+        // classifier below stamps credential_invalid / scope_insufficient —
+        // otherwise a dead credential on a connector without an explicit probe
+        // endpoint (the common case) would read as healthy (401 < 500).
+        ok = false;
       } else {
         ok = res.status < 500;
       }

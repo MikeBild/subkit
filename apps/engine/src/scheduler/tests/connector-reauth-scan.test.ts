@@ -1,11 +1,14 @@
 // Integration tests for runConnectorReauthScanForTenant.
 //
-// The scan makes live HTTP probes — we use Bun.serve on an ephemeral port so
-// each scenario can return a real 401 or 200 without a full engine execution.
+// The scan makes live HTTP probes — we use node:http createMockServer on an
+// ephemeral port so each scenario can return a real 401 or 200 without a full
+// engine execution.
 //
 // Coverage:
-//   - 401 probe → connector flagged + 1 connector.auth_failed event.
-//   - 200 probe → connector stays healthy (no event, no flag).
+//   - 401 probe (with a seeded credential) → connector flagged + 1
+//     connector.auth_failed event.
+//   - bearer connector with NO credential row → credential_missing, NOT flagged.
+//   - 200 probe (with credential) → connector stays healthy (no event, no flag).
 //   - Already-flagged connector is skipped (needs_reauth=true is excluded from
 //     the candidate selection); a second scan must NOT emit a second event.
 //   - Tenant isolation: the scan is scoped to a single tenant; a connector
@@ -13,6 +16,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { upsertCredential } from "../../credentials/service.ts";
 import { connectors, events, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
@@ -96,6 +100,29 @@ async function seedConnector(opts: {
   return c!.id;
 }
 
+/**
+ * Seed a bearer credential for a connector so probeHttpConnector will
+ * proceed past the credential-required guard and reach the target server.
+ * Without this, the probe returns credential_missing (not credential_invalid)
+ * and the connector is never flagged.
+ */
+async function seedBearerCredential(opts: {
+  tenantId: string;
+  connectorId: string;
+}): Promise<void> {
+  await upsertCredential(
+    {
+      tenant_id: opts.tenantId,
+      connector_id: opts.connectorId,
+      environment: "dev",
+      mode: "bearer",
+      value: { mode: "bearer", token: "test-token" },
+      actor_id: null,
+    },
+    db.db,
+  );
+}
+
 async function queryAuthFailedEventsForTenant(tid: string) {
   return db.db
     .select()
@@ -109,11 +136,15 @@ async function queryAuthFailedEventsForTenant(tid: string) {
 
 describe("runConnectorReauthScanForTenant — 401 connector flagged", () => {
   test("connector whose probe returns 401 is flagged and emits one event", async () => {
-    // Point the connector at the always-401 server.
+    // Point the connector at the always-401 server and seed a credential so
+    // probeHttpConnector proceeds past the credential-required guard and
+    // actually reaches the server, getting back a 401 that classifies as
+    // credential_invalid.
     const connectorId = await seedConnector({
       slug: "scan-401",
       base_url: unauthBaseUrl,
     });
+    await seedBearerCredential({ tenantId, connectorId });
 
     const eventsBefore = await queryAuthFailedEventsForTenant(tenantId);
     const countBefore = eventsBefore.length;
@@ -133,12 +164,39 @@ describe("runConnectorReauthScanForTenant — 401 connector flagged", () => {
   });
 });
 
+describe("runConnectorReauthScanForTenant — bearer connector with no credential", () => {
+  test("connector with auth_type bearer but no credential row is not flagged (credential_missing)", async () => {
+    // Seed a bearer connector with NO credential row — the probe returns
+    // credential_missing, not credential_invalid. The runner must NOT flag it
+    // because a missing credential is not the same as a dead one.
+    const connectorId = await seedConnector({
+      slug: "scan-no-cred",
+      base_url: unauthBaseUrl,
+    });
+    // Intentionally: no seedBearerCredential call here.
+
+    const eventsBefore = await queryAuthFailedEventsForTenant(tenantId);
+    const countBefore = eventsBefore.length;
+
+    await runConnectorReauthScanForTenant(tenantId, NOW, db.db);
+
+    const rows = await db.db.select().from(connectors).where(eq(connectors.id, connectorId));
+    expect(rows[0]!.needs_reauth).toBe(false);
+    expect(rows[0]!.auth_failed_at).toBeNull();
+
+    // No event emitted for credential_missing.
+    const eventsAfter = await queryAuthFailedEventsForTenant(tenantId);
+    expect(eventsAfter.length).toBe(countBefore);
+  });
+});
+
 describe("runConnectorReauthScanForTenant — 200 connector untouched", () => {
   test("connector whose probe returns 200 stays healthy", async () => {
     const connectorId = await seedConnector({
       slug: "scan-200",
       base_url: okBaseUrl,
     });
+    await seedBearerCredential({ tenantId, connectorId });
 
     const eventsBefore = await queryAuthFailedEventsForTenant(tenantId);
     const countBefore = eventsBefore.length;
@@ -188,6 +246,10 @@ describe("runConnectorReauthScanForTenant — tenant isolation", () => {
       base_url: unauthBaseUrl,
       tenantIdOverride: otherTenantId,
     });
+    // Seed a credential for the other tenant's connector so, if the scan
+    // incorrectly crosses the tenant boundary, the probe would reach 401
+    // and flag it — making the isolation assertion meaningful.
+    await seedBearerCredential({ tenantId: otherTenantId, connectorId: otherConnectorId });
 
     // Run scan only for tenantId (NOT otherTenantId).
     await runConnectorReauthScanForTenant(tenantId, NOW, db.db);

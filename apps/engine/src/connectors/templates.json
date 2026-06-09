@@ -9788,7 +9788,12 @@
     "url_pattern": "^https://api\\.atlassian\\.com/ex/jira/\\[\\^/\\]\\+/rest/api/3(\\/|$)",
     "keywords": [],
     "inline_schema": null,
-    "probe_endpoint": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/rest/api/3/myself",
+      "expected_status": [200, 200],
+      "description": "Fetch the authenticated user (validates the credential; an invalid token returns 401 or a Seraph anonymous 200)"
+    },
     "credential_hints": [
       {
         "field": "client_id",

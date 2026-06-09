@@ -189,7 +189,15 @@ export function enrichConnectorFromTemplate(
   }
 
   // Runtime + authoring metadata.
-  if (cfg.probe_endpoint === undefined) cfg.probe_endpoint = template.probe_endpoint;
+  // Only capture a probe_endpoint when the template actually declares one. A
+  // captured `null` would later read as a deliberate operator opt-out in
+  // getConnectorProbeEndpoint ("key present, value null" = do-not-probe),
+  // masking the live builtin template's probe endpoint from the proactive
+  // re-auth scan. Leaving the key absent lets the resolver fall through to the
+  // snapshot/builtin.
+  if (cfg.probe_endpoint === undefined && template.probe_endpoint != null) {
+    cfg.probe_endpoint = template.probe_endpoint;
+  }
   if (cfg.pagination_defaults === undefined) cfg.pagination_defaults = template.pagination_defaults;
   if (cfg.capabilities === undefined) cfg.capabilities = template.capabilities;
   if (cfg.credential_hints === undefined) {
