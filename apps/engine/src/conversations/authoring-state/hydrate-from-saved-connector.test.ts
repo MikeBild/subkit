@@ -100,4 +100,13 @@ describe("hydrateDraftFromSavedConnector", () => {
     );
     expect(draft.dsn).toBe("postgres://localhost/mydb");
   });
+
+  it("does NOT carry operator_quirks — the re-issue persists to the same row that retains them", () => {
+    const draft = hydrateDraftFromSavedConnector(
+      makeView({ operator_quirks: { auth: "send token as X-Token header" } }),
+    );
+    // ConnectorDraftDocument has no operator_quirks field; the saved row keeps
+    // its quirks, so the re-issue draft intentionally drops them (no loss).
+    expect("operator_quirks" in draft).toBe(false);
+  });
 });

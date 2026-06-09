@@ -80,6 +80,9 @@ export function modeFromLegacy(mode: AuthoringMode | undefined): AuthoringSurfac
  * an in-chat re-credential flow (the non-OAuth counterpart of
  * `authenticate_oauth`). `latest_probe`/`validation` are intentionally omitted
  * — the re-issue path re-runs `validateConnectorDraft` and a fresh probe.
+ * `operator_quirks` is intentionally NOT carried (ConnectorDraftDocument has
+ * no such field anyway): the re-issue persists to the SAME saved row, which
+ * already holds its quirks, so nothing is lost.
  */
 export function hydrateDraftFromSavedConnector(saved: ConnectorView): ConnectorDraftDocument {
   const next: ConnectorDraftDocument = {

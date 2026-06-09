@@ -47,6 +47,10 @@ const RUNTIME_DATA_CODES: ReadonlySet<string> = new Set([
   // "proof before proposal" reason as 401/403 in isRuntimeDataHttpStatus:
   // an auth failure is not a data-fixture problem and must not be
   // force-committed away.
+  //
+  // NB: this set is shared with the transform-authoring gate via
+  // `traceFailedWithRuntimeDataError` — adding/removing a code here also
+  // changes which sibling steps that gate exempts from the preview requirement.
   "http_404",
   "http_410",
 ]);

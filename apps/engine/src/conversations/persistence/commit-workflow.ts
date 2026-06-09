@@ -333,31 +333,41 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   const runtimeDataFailure = previewFailureClass === "runtime_data";
   const forceClearsPreview = p.forceCommit === true && (previewMissing || runtimeDataFailure);
   if ((previewMissing || previewFailed) && !forceClearsPreview) {
+    // A config-invalid failure is NOT forceable (persisting a broken DAG is
+    // never the operator's intent). Say so explicitly in the message and drop
+    // save_workflow_draft from the recovery actions, so a future agent does
+    // not keep retrying force_commit against an unresolved reference / bad
+    // expression / cycle. Runtime/data failures and missing previews stay
+    // forceable and keep the force_commit hint.
+    const configInvalid = previewFailureClass === "config_invalid";
+    const recovery = configInvalid
+      ? ["dry_run_workflow", "inspect_workflow"]
+      : previewFailed
+        ? ["dry_run_workflow", "ask_user_confirm", "save_workflow_draft"]
+        : ["dry_run_workflow"];
+    const topMessage = configInvalid
+      ? `the dry-run failed because the workflow itself is invalid (${previewFailureClass}) — force_commit cannot bypass a config-invalid failure; fix the draft (resolve the step reference / expression / cycle) and re-run dry_run_workflow`
+      : previewFailed
+        ? "the most recent dry-run was unsuccessful — re-run dry_run_workflow successfully, or call save_workflow_draft again with force_commit: true after the operator explicitly confirms"
+        : "workflow commit is blocked until a successful dry_run_workflow has run";
     return {
       ok: false,
       error_code: previewFailed ? "preview_failed" : "workflow_not_ready",
-      message: previewFailed
-        ? "the most recent dry-run was unsuccessful — re-run dry_run_workflow successfully, or call save_workflow_draft again with force_commit: true after the operator explicitly confirms"
-        : "workflow commit is blocked until a successful dry_run_workflow has run",
-      next_best_actions: previewFailed
-        ? ["dry_run_workflow", "ask_user_confirm", "save_workflow_draft"]
-        : ["dry_run_workflow"],
+      message: topMessage,
+      next_best_actions: recovery,
       ...(latestPreview ? { details: latestPreview } : {}),
       data: buildGateError(fullDraft, {
         error_code: previewFailed ? "preview_failed" : "workflow_not_ready",
-        message: previewFailed
-          ? "preview failed — re-run dry_run_workflow, or call save_workflow_draft again with force_commit: true after the operator explicitly confirms"
-          : "workflow commit is blocked until dry_run_workflow has produced a fresh preview",
+        message: configInvalid
+          ? `preview failed: the workflow is invalid (${previewFailureClass}) — force_commit cannot bypass this class; fix the draft and re-run dry_run_workflow`
+          : previewFailed
+            ? "preview failed — re-run dry_run_workflow, or call save_workflow_draft again with force_commit: true after the operator explicitly confirms"
+            : "workflow commit is blocked until dry_run_workflow has produced a fresh preview",
         stale_checkpoints: previewFailed ? [] : ["workflow_previewed"],
         recommended_mode: "workflow",
-        next_best_actions: previewFailed
-          ? ["dry_run_workflow", "ask_user_confirm", "save_workflow_draft"]
-          : ["dry_run_workflow"],
+        next_best_actions: recovery,
         extra: {
           latest_preview: latestPreview ?? null,
-          // A runtime/data failure is recoverable with force_commit; a
-          // config-invalid one is not (persisting a broken DAG is never
-          // the operator's intent). Missing previews are forceable.
           force_commit_available: previewMissing || runtimeDataFailure,
           ...(previewFailureClass ? { preview_failure_class: previewFailureClass } : {}),
         },
@@ -509,12 +519,9 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   }
   const persistScopeIndex = Object.keys(scopeIndex).length > 0 ? scopeIndex : null;
 
-  // Validate + annotate the def ONCE for the idempotency comparison. The
-  // closure below can run twice (the bound-target path and the same-slug
-  // adoption path), and validate/annotate are def-only — identical on each
-  // call — so hoist them out of the closure. `null` when the draft doesn't
-  // validate; the closure then treats it as "not idempotent" (falls through
-  // to the normal validate-and-commit path that surfaces the error).
+  // Hoisted because the idempotency closure runs twice (bound target +
+  // same-slug adoption) against an identical def. `null` when the draft fails
+  // validation → the closure treats it as "not idempotent".
   const idempotencyValidation = validateWorkflowDef(def);
   const idempotencyAnnotated =
     idempotencyValidation.ok && idempotencyValidation.workflow
@@ -635,7 +642,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       const boundWf = fullDraft.state ? persistedWorkflowResource(fullDraft.state) : null;
       const adoptInPlace = boundWf != null && boundWf.id === conflict.id;
       if (adoptInPlace) {
-        logger.info({
+        logger.debug({
           module: "conversation_persistence",
           action: "save_workflow_draft.adopt_same_slug",
           msg: "draft slug matches a live workflow with no foreign-slug pivot — adopting it as an in-place update",

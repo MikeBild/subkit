@@ -186,4 +186,53 @@ describe("dispatchDeleteConnector — dependency backstop", () => {
 
     expect(result.ok).toBe(true);
   });
+
+  test("tenant isolation: deleting a connector from the wrong tenant → connector_not_found", async () => {
+    // RBAC (connector:delete) is enforced upstream in deleteConnectorTool;
+    // this pins that the dispatch backstop is tenant-scoped — a wrong-tenant
+    // delete neither surfaces the connector's dependents nor deletes the row.
+    const connectorId = await seedConnector("dep-cross-tenant-api");
+    await seedWorkflowWithConnector("dep-cross-tenant-wf", connectorId);
+
+    const created = await createConversation(
+      { tenant_id: ctx.tenant_id, actor_id: ctx.user_id, title: "cross-tenant-del" },
+      ctx.testDb.db,
+    );
+    let draft: DraftDocument = { workflow: { name: "", steps: [] } };
+    const wrongTenant = "00000000-0000-0000-0000-000000000000";
+    const fakeTenantCtx = {
+      db: ctx.testDb.db,
+      tenant_id: wrongTenant,
+      conversation_id: created.conversation.id,
+      actor_id: ctx.user_id,
+      connector_id: null,
+      workflow_id: null,
+      permission_mode: null,
+      engineClient: new EngineClient({
+        tenant_id: wrongTenant,
+        actor_id: ctx.user_id,
+        actor_type: "user",
+        db: ctx.testDb.db,
+      }),
+      getDraft: () => draft,
+      setDraft: async (next: DraftDocument) => {
+        draft = next;
+      },
+    };
+    const intent: CommitIntent = {
+      kind: "delete_connector",
+      payload: { id: connectorId },
+      description: "cross-tenant delete",
+    };
+    const result = await dispatchDeleteConnector(fakeTenantCtx, intent);
+    expect(result.ok).toBe(false);
+    expect((result as { error_code?: string }).error_code).toBe("connector_not_found");
+
+    // The connector in the real tenant must remain live (not soft-deleted).
+    const stillLive = await ctx.testDb.db
+      .select({ deleted_at: connectors.deleted_at })
+      .from(connectors)
+      .where(eq(connectors.id, connectorId));
+    expect(stillLive[0]?.deleted_at).toBeNull();
+  });
 });
