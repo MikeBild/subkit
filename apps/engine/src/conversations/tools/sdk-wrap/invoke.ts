@@ -975,10 +975,7 @@ export function wrapOne(
           // this is the operator-facing half of the same guard.
           let connectorDeleteDependents: Array<{ id: string; slug: string; name: string }> = [];
           if (inner.name === "delete_connector") {
-            const connectorId =
-              rawArgs && typeof rawArgs === "object" && typeof rawArgs.id === "string"
-                ? rawArgs.id
-                : null;
+            const connectorId = typeof rawArgs.id === "string" ? rawArgs.id : null;
             if (connectorId) {
               connectorDeleteDependents = await listWorkflowsUsingConnector(
                 ctx.tenant_id,

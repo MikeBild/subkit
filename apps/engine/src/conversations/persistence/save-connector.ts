@@ -274,6 +274,15 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       // waiting for the next live authed call. Gate on `credential_persisted`
       // so a pure field-edit re-issue (no new secret) never falsely clears a
       // genuinely-dead credential's flag.
+      //
+      // AUDIT INVARIANT: clearing needs_reauth/auth_failed_* is a
+      // tenant-visible state change, but `clearConnectorReauth` itself only
+      // debug-logs. The audit row is the `recordConnectorUpdated({ kind:
+      // "credential_rotated" })` emitted below (auto-persist path, when
+      // `emitAutoPersistAudit` is set) or by the `save_connector_draft` tool
+      // path. `credential_persisted` here therefore implies an audit row from
+      // one of those two callers — do NOT invoke `clearConnectorReauth` from a
+      // saveConnectorAtomic call site that emits neither.
       if (credential_persisted) {
         await clearConnectorReauth(ctx.db, ctx.tenant_id, existing.id);
       }

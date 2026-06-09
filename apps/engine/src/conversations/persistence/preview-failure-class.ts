@@ -25,27 +25,30 @@ import type { DraftDocument, WorkflowDraftStepPreview } from "../types.ts";
 export type PreviewFailureClass = "config_invalid" | "runtime_data" | "unknown";
 
 /** HTTP statuses that mean "the remote world, not the draft, is the
- *  problem": resource gone/forbidden/unauthorized, or a server-side
- *  fault. */
+ *  problem" AND are safe to force-commit over: the record is gone (404/410)
+ *  or a transient server-side fault (5xx).
+ *
+ *  401/403 are deliberately EXCLUDED. An auth rejection is negative proof
+ *  that the workflow has never successfully authenticated against the
+ *  destination; subkit's "proof before proposal" contract means it must not
+ *  be silently force-committed (nor exempt a transform that references the
+ *  unauthorised step). Auth failures fall through to `unknown` → block. */
 function isRuntimeDataHttpStatus(status: number): boolean {
-  return (
-    status === 404 ||
-    status === 410 ||
-    status === 401 ||
-    status === 403 ||
-    (status >= 500 && status <= 599)
-  );
+  return status === 404 || status === 410 || (status >= 500 && status <= 599);
 }
 
 /** Warning/error codes that signal a runtime/data failure rather than a
  *  malformed draft. Kept in one place so the commit gate and the
  *  transform gate share the same vocabulary. */
 const RUNTIME_DATA_CODES: ReadonlySet<string> = new Set([
-  "http_4xx",
+  // Only "the record is gone" codes are force-committable. `http_4xx` is
+  // intentionally absent — it's too coarse (it also covers 401/403), and
+  // `auth_failed` / `permission_denied` are excluded for the same
+  // "proof before proposal" reason as 401/403 in isRuntimeDataHttpStatus:
+  // an auth failure is not a data-fixture problem and must not be
+  // force-committed away.
   "http_404",
   "http_410",
-  "permission_denied",
-  "auth_failed",
 ]);
 
 /** Codes that mean the draft is structurally wrong — `force_commit`
