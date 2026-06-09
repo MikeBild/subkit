@@ -5,6 +5,7 @@
 // orchestrator entry because they share local state with the audit
 // row.
 
+import { z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
@@ -105,25 +106,37 @@ export async function maybeAutoProbeForSave(ctx: ToolContext, tenant_id: string)
   }
 }
 
+// LLM-emitted commit-intent payloads cross the policy-gate → dispatcher seam,
+// so validate the delete shape here rather than reading fields off `any`.
+// Tolerant of extra fields; `id` (a connector uuid) is required and
+// `confirm_orphan` is the explicit opt-in to proceed past live dependents.
+const DeleteConnectorPayloadSchema = z
+  .object({
+    id: z.string().uuid(),
+    confirm_orphan: z.boolean().optional(),
+  })
+  .passthrough();
+
 export async function dispatchDeleteConnector(
   ctx: ToolContext,
   intent: CommitIntent,
 ): Promise<ToolResult> {
-  const id = readString(intent.payload, "id");
-  if (!id) {
+  const parsedPayload = DeleteConnectorPayloadSchema.safeParse(intent.payload);
+  if (!parsedPayload.success) {
     return {
       ok: false,
       error_code: "invalid_payload",
-      message: "delete_connector commit_intent requires payload.id",
+      message: "delete_connector commit_intent requires payload.id (a connector uuid)",
       next_best_actions: ["ask_user"],
     };
   }
+  const id = parsedPayload.data.id;
   // Dependency backstop: deleting a connector that a live workflow's
   // step binds to breaks that workflow at its next run. Refuse the
   // delete and surface the dependents unless the operator explicitly
   // acknowledged the orphaning via `payload.confirm_orphan === true`.
   const dependents = await listWorkflowsUsingConnector(ctx.tenant_id, id, ctx.db);
-  const confirmedOrphan = intent.payload?.confirm_orphan === true;
+  const confirmedOrphan = parsedPayload.data.confirm_orphan === true;
   if (dependents.length > 0 && !confirmedOrphan) {
     logger.info({
       module: "auto-persist",
