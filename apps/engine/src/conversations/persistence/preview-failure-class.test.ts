@@ -55,25 +55,29 @@ describe("classifyPreviewFailure", () => {
     expect(result).toBe("runtime_data");
   });
 
-  it("returns 'runtime_data' for a step trace with HTTP 401", () => {
+  // "proof before proposal": an auth rejection (401/403/auth_failed) is
+  // negative proof the workflow never authenticated against the destination.
+  // It must NOT be force-committable the way a 404/410 (record gone) is — so
+  // it classifies as `unknown`, which the commit gate blocks even with force.
+  it("returns 'unknown' (not force-committable) for a step trace with HTTP 401", () => {
     const result = classifyPreviewFailure(
       failedPreview([trace({ status: "failed", request_meta: { status: 401 } })]),
     );
-    expect(result).toBe("runtime_data");
+    expect(result).toBe("unknown");
   });
 
-  it("returns 'runtime_data' for a step trace with HTTP 403", () => {
+  it("returns 'unknown' (not force-committable) for a step trace with HTTP 403", () => {
     const result = classifyPreviewFailure(
       failedPreview([trace({ status: "failed", request_meta: { status: 403 } })]),
     );
-    expect(result).toBe("runtime_data");
+    expect(result).toBe("unknown");
   });
 
-  it("returns 'runtime_data' for a step with error_code=auth_failed", () => {
+  it("returns 'unknown' (not force-committable) for a step with error_code=auth_failed", () => {
     const result = classifyPreviewFailure(
       failedPreview([trace({ status: "error", error_code: "auth_failed" })]),
     );
-    expect(result).toBe("runtime_data");
+    expect(result).toBe("unknown");
   });
 
   it("returns 'runtime_data' when a warning has code=http_404", () => {
@@ -147,10 +151,13 @@ describe("traceFailedWithRuntimeDataError", () => {
     ).toBe(false);
   });
 
-  it("returns true for a failed trace with error_code=auth_failed", () => {
+  it("returns false for a failed trace with error_code=auth_failed (auth is not a force/exempt signal)", () => {
+    // Auth failures are excluded from the runtime-data set on purpose — a
+    // transform referencing a step that never authenticated has no proven
+    // shape to author against, so the gate must hold rather than exempt it.
     expect(
       traceFailedWithRuntimeDataError(trace({ status: "failed", error_code: "auth_failed" })),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("returns false for a failed trace with no recognisable runtime signal", () => {

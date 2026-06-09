@@ -206,9 +206,10 @@ export const requestConnectorReauthTool: ConversationTool = {
       );
     }
 
-    // RBAC: `connector:read` on the target connector (parity with
-    // call_connector / probe_connector — no `connector:invoke` permission
-    // exists, and minting a reauth link is a read-style affordance).
+    // RBAC: `connector:write` on the target connector. The non-OAuth path
+    // stages a credential re-issue (a write-class affordance), so reading
+    // the connector is not enough — a principal who can only read it must
+    // not be able to start a credential rotation against it.
     const auth = await requirePermission(ctx, "connector:write", {
       type: "connector",
       id: connectorId,

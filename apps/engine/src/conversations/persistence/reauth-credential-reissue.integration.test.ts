@@ -14,8 +14,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { markConnectorNeedsReauth } from "../../connectors/reauth.ts";
-import { auditLog, connectors, credentials } from "../../db/schema/index.ts";
+import { auditLog, connectors, credentials, users } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { createConversation } from "../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import { requestConnectorReauthTool } from "../tools/request-connector-reauth.ts";
@@ -188,5 +189,67 @@ describe("request_connector_reauth + credential re-issue", () => {
     expect(result.ok).toBe(false);
     const err = result as { error_code?: string };
     expect(err.error_code).toBe("connector_not_found");
+  });
+
+  // In-tenant RBAC: the tool now requires connector:write (it stages a
+  // credential rotation). A member who can READ the connector but lacks
+  // connector:write must be denied — and the draft must NOT be staged.
+  // (The more likely real-world failure mode than the cross-tenant case.)
+  test("in-tenant principal with connector:read but not connector:write is denied", async () => {
+    const connectorId = await seedBasicConnector("basic-reauth-rbac-deny");
+
+    const role = await createRole(
+      ctx.testDb.db,
+      ctx.tenant_id,
+      "reauth_reader_only",
+      "can read connectors but not write them",
+    );
+    await grantPermissionToRole(ctx.testDb.db, ctx.tenant_id, role.id, "connector:read");
+
+    const [member] = await ctx.testDb.db
+      .insert(users)
+      .values({
+        tenant_id: ctx.tenant_id,
+        email: "reauth-reader-only@example.test",
+        role: "member",
+        role_id: role.id,
+      })
+      .returning();
+    if (!member) throw new Error("seed member failed");
+
+    const created = await createConversation(
+      { tenant_id: ctx.tenant_id, actor_id: member.id, title: "rbac-deny-test" },
+      ctx.testDb.db,
+    );
+    let draft: DraftDocument = { workflow: { name: "", steps: [] } };
+    const memberCtx = {
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id: created.conversation.id,
+      actor_id: member.id,
+      connector_id: null,
+      workflow_id: null,
+      permission_mode: null,
+      engineClient: new EngineClient({
+        tenant_id: ctx.tenant_id,
+        actor_id: member.id,
+        actor_type: "user",
+        db: ctx.testDb.db,
+      }),
+      getDraft: () => draft,
+      setDraft: async (next: DraftDocument) => {
+        draft = next;
+      },
+    };
+
+    const result = await requestConnectorReauthTool.execute(memberCtx, {
+      connector_id: connectorId,
+    });
+    expect(result.ok).toBe(false);
+    const err = result as { error_code?: string; permission?: string };
+    expect(err.error_code).toBe("permission_denied");
+    expect(err.permission).toBe("connector:write");
+    // The re-issue draft must NOT have been staged for an unauthorised principal.
+    expect(draft.connector?.saved_connector_id).toBeUndefined();
   });
 });

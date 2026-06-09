@@ -135,14 +135,12 @@ export async function dispatchDeleteConnector(
       dependent_count: dependents.length,
       dependent_workflow_ids: dependents.map((w) => w.id),
     });
+    const dependentSlugs = dependents.map((w) => w.slug).join(", ");
+    const plural = dependents.length === 1 ? "" : "s";
     return {
       ok: false,
       error_code: "connector_has_dependents",
-      message: `connector ${id} is used by ${dependents.length} live workflow${dependents.length === 1 ? "" : "s"} (${dependents
-        .map((w) => w.slug)
-        .join(
-          ", ",
-        )}). Edit those workflows off this connector first, or re-confirm the delete with confirm_orphan: true after the operator accepts that the workflows will break.`,
+      message: `connector ${id} is used by ${dependents.length} live workflow${plural} (${dependentSlugs}). Edit those workflows off this connector first, or re-confirm the delete with confirm_orphan: true after the operator accepts that the workflows will break.`,
       data: { dependents },
       next_best_actions: ["edit_workflow_patch", "delete_workflow"],
     };

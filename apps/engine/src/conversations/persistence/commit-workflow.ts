@@ -559,6 +559,12 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       )
       .limit(1);
     const version = versionRows[0]?.version ?? null;
+    // Rebinding the conversation's target_workflow_id is conversation-scoped
+    // bookkeeping, not a tenant-resource mutation — it is intentionally NOT
+    // audited (the immutable audit log tracks workflow versions/credentials,
+    // not which workflow a conversation is currently pointed at; service.ts
+    // does not audit this column anywhere). The workflow itself is unchanged
+    // here, so there is deliberately no WORKFLOW_* audit row on this path.
     await ctx.db
       .update(conversations)
       .set({ target_workflow_id: workflowId, updated_at: new Date() })
