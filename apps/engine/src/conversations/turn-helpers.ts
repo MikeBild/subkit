@@ -270,7 +270,21 @@ function describeToolOutput(output: Record<string, unknown>): string {
         (k) => !k.startsWith("_"),
       );
       parts.push(keys.length > 0 ? `output: ${keys.slice(0, 5).join(", ")}` : "output: structured");
-    } else if (wfOutput === null || wfOutput === undefined) parts.push("no output");
+    } else if (wfOutput === null || wfOutput === undefined) {
+      // A big result gets stripped from the LLM-facing envelope by the
+      // outer 8KB truncate pass — that is NOT "no output". Saying so sent
+      // production operators chasing phantom failures while their 95-row
+      // result sat behind the raw_ref. Point at the retrieval path.
+      if (output._truncated === true || typeof output._raw_ref === "string") {
+        parts.push(
+          typeof output._raw_ref === "string"
+            ? `output too large for chat — fetch it with get_raw_result(ref="${output._raw_ref}")`
+            : "output too large for chat — run diagnose_latest_execution or inspect_execution_step to see it",
+        );
+      } else {
+        parts.push("no output");
+      }
+    }
     return parts.join(" · ");
   }
   // Lifecycle envelope (build*Payload from authoring-contract.ts) —
