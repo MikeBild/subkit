@@ -342,7 +342,11 @@ export const callConnectorTool: ConversationTool = {
         connector_id: args.connector_id,
         error_code: "connector_not_found",
       });
-      return structuredError("connector_not_found", `no connector with id '${args.connector_id}'`);
+      return structuredError(
+        "connector_not_found",
+        `no connector with id '${args.connector_id}' — it may have been deleted or never persisted (drafts are not callable). Call list_connectors for the live catalog, or find_connector to resolve by name/slug; do NOT retry this id.`,
+        { next_best_actions: ["list_connectors", "find_connector"] },
+      );
     }
 
     // Credential check — required for all auth_type !== "none" connectors.
