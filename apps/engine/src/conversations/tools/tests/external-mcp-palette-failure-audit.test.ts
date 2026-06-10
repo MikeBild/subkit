@@ -72,7 +72,7 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
 
-describe("external MCP palette-assembly failure audit (W5)", () => {
+describe("external MCP palette-assembly failure audit", () => {
   test("degrades to in-repo tools AND writes mcp_external_tool.palette_assembly_failed", async () => {
     const events: TurnEvent[] = [];
     const db = ctx.db as unknown as Db;

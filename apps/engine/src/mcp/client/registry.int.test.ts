@@ -614,7 +614,7 @@ describe("setMcpServerStatus last_error redaction", () => {
   });
 });
 
-// ── recordMcpServerHandshakeState — auto-recovery audit (W2) ──────────────────
+// ── recordMcpServerHandshakeState — auto-recovery audit ────────────────────
 
 describe("recordMcpServerHandshakeState auto-recovery audit", () => {
   test("error → active flip emits mcp_server.re_enabled with reason auto_recovered_via_handshake", async () => {

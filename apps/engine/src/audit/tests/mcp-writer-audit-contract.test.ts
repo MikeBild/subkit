@@ -96,7 +96,7 @@ describe("issue #166 W2 — reserved audit-action constants", () => {
     expect(AuditAction.MCP_EXTERNAL_TOOL_INVOKED).toBe("mcp_external_tool.invoked");
   });
 
-  it("reserves the mcp_external_tool.palette_assembly_failed constant (W5)", () => {
+  it("reserves the mcp_external_tool.palette_assembly_failed constant", () => {
     expect(AuditAction.MCP_EXTERNAL_TOOL_PALETTE_ASSEMBLY_FAILED).toBe(
       "mcp_external_tool.palette_assembly_failed",
     );
@@ -300,7 +300,7 @@ describe("#171 — external MCP server audit writers", () => {
     expect((row.metadata as Record<string, unknown>).byte_count_bucket).toBe(bucketSize(200));
   });
 
-  it("recordMcpExternalToolPaletteAssemblyFailed writes palette_assembly_failed with result=error + reason (W5)", async () => {
+  it("recordMcpExternalToolPaletteAssemblyFailed writes palette_assembly_failed with result=error + reason", async () => {
     // resource_id is the tenant id (no single server to attribute to) — use
     // the seeded tenant so the row is queryable by it.
     await recordMcpExternalToolPaletteAssemblyFailed({
