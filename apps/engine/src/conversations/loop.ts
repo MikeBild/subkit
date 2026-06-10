@@ -60,6 +60,7 @@ import {
   recordLlmTokens,
   recordToolHallucinatedAbsence,
 } from "../observability/instrumentation.ts";
+import { timePhase, timePhaseAsync } from "../observability/runtime-telemetry.ts";
 import { now } from "../utils/clock.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
@@ -584,61 +585,71 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   }
   const combinedPriorFailures = [...priorFailuresFromPreview, ...expanded.entries];
 
-  const prompt = await assembleEnhancedPrompt(
-    {
-      tenant_id: p.tenant_id,
-      flow: "converse",
-      ...(p.connector_id ? { connector_id: p.connector_id } : {}),
-      ...(workflowIdForTurn ? { workflow_id: workflowIdForTurn } : {}),
-      user_turns: await (async () => {
-        const parts = await buildUserContentParts(
-          p.db,
-          p.tenant_id,
-          p.conversation_id,
-          currentUserText,
-          route.provider,
-        );
-        return [
-          Array.isArray(parts)
-            ? { role: "user" as const, content: currentUserText, content_parts: parts }
-            : { role: "user" as const, content: currentUserText },
-        ];
-      })(),
-      max_tokens: route.context_cap,
-      model: effectiveModel,
-      ...(p.user_memory ? { user_memory: p.user_memory } : {}),
-      ...(loadedSkillSlugs.length > 0 ? { loaded_skill_slugs: loadedSkillSlugs } : {}),
-      ...(p.surface ? { surface: p.surface } : {}),
-      ...(authoringContext ? { authoring_context: authoringContext } : {}),
-      ...(authoringHint ? { authoring_hint: authoringHint } : {}),
-      ...(combinedPriorFailures.length > 0 ? { prior_failures: combinedPriorFailures } : {}),
-      conversation_id: p.conversation_id,
-      ...(p.runtime_context
-        ? {
-            runtime_context: {
-              ...(p.runtime_context.engine_url ? { engine_url: p.runtime_context.engine_url } : {}),
-              ...(p.runtime_context.tenant_slug
-                ? { tenant_slug: p.runtime_context.tenant_slug }
-                : {}),
-              ...(p.runtime_context.actor_email
-                ? { actor_email: p.runtime_context.actor_email }
-                : {}),
-              ...(p.runtime_context.actor_role ? { actor_role: p.runtime_context.actor_role } : {}),
-              ...(p.surface ? { surface: p.surface } : {}),
-              ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
-            },
-          }
-        : p.permission_mode
-          ? { runtime_context: { permission_mode: p.permission_mode } }
-          : {}),
-    },
-    p.db,
+  const prompt = await timePhaseAsync("converse.assemble_prompt", async () =>
+    assembleEnhancedPrompt(
+      {
+        tenant_id: p.tenant_id,
+        flow: "converse",
+        ...(p.connector_id ? { connector_id: p.connector_id } : {}),
+        ...(workflowIdForTurn ? { workflow_id: workflowIdForTurn } : {}),
+        user_turns: await (async () => {
+          const parts = await buildUserContentParts(
+            p.db,
+            p.tenant_id,
+            p.conversation_id,
+            currentUserText,
+            route.provider,
+          );
+          return [
+            Array.isArray(parts)
+              ? { role: "user" as const, content: currentUserText, content_parts: parts }
+              : { role: "user" as const, content: currentUserText },
+          ];
+        })(),
+        max_tokens: route.context_cap,
+        model: effectiveModel,
+        ...(p.user_memory ? { user_memory: p.user_memory } : {}),
+        ...(loadedSkillSlugs.length > 0 ? { loaded_skill_slugs: loadedSkillSlugs } : {}),
+        ...(p.surface ? { surface: p.surface } : {}),
+        ...(authoringContext ? { authoring_context: authoringContext } : {}),
+        ...(authoringHint ? { authoring_hint: authoringHint } : {}),
+        ...(combinedPriorFailures.length > 0 ? { prior_failures: combinedPriorFailures } : {}),
+        conversation_id: p.conversation_id,
+        ...(p.runtime_context
+          ? {
+              runtime_context: {
+                ...(p.runtime_context.engine_url
+                  ? { engine_url: p.runtime_context.engine_url }
+                  : {}),
+                ...(p.runtime_context.tenant_slug
+                  ? { tenant_slug: p.runtime_context.tenant_slug }
+                  : {}),
+                ...(p.runtime_context.actor_email
+                  ? { actor_email: p.runtime_context.actor_email }
+                  : {}),
+                ...(p.runtime_context.actor_role
+                  ? { actor_role: p.runtime_context.actor_role }
+                  : {}),
+                ...(p.surface ? { surface: p.surface } : {}),
+                ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
+              },
+            }
+          : p.permission_mode
+            ? { runtime_context: { permission_mode: p.permission_mode } }
+            : {}),
+      },
+      p.db,
+    ),
   );
-  const messages = await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
-    conversationEnvelope: true,
-    conversation_id: p.conversation_id,
-  });
-  const messageTokens = countModelMessagesTokens(messages);
+  const messages = await timePhaseAsync("converse.build_model_messages", () =>
+    buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
+      conversationEnvelope: true,
+      conversation_id: p.conversation_id,
+    }),
+  );
+  const messageTokens = timePhase("converse.count_message_tokens", () =>
+    countModelMessagesTokens(messages),
+  );
   const estimatedPromptTokens = prompt.token_counts.total + messageTokens;
   const estimated = estimatedPromptTokens + budget * 1024;
 
@@ -875,7 +886,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         route.provider === "bedrock" ||
         route.provider === "gateway") &&
       /claude/i.test(modelId);
-    const cacheBlocks = splitPromptIntoBlocks(prompt, "converse");
+    const cacheBlocks = timePhase("converse.split_cache_blocks", () =>
+      splitPromptIntoBlocks(prompt, "converse"),
+    );
     // The converse flow always opts into caching when the provider
     // supports it — the per-tenant `enable_prompt_cache` setting still
     // gates the one-shot flows (generate / repair / extract) via

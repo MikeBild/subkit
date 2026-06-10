@@ -253,6 +253,61 @@ export function startMemorySampler(opts?: { intervalMs?: number }): () => void {
  * `process.event_loop.lag` warn only when lag crosses `thresholdMs` (so the
  * steady state is quiet). Returns a stop fn. Timer is `unref`'d.
  */
+/**
+ * Synchronous-phase profiler for the event-loop-lag hunt. Wraps a hot-path
+ * phase and logs a structured warn when it exceeds `thresholdMs` — the
+ * production lag warnings (median ~1.6s) name the SYMPTOM but not the
+ * blocking phase; these markers name the phase. Near-zero overhead on the
+ * fast path (two Date.now() calls), so they stay in permanently.
+ */
+export function timePhase<T>(phase: string, fn: () => T, thresholdMs = 250): T {
+  const start = Date.now();
+  try {
+    return fn();
+  } finally {
+    const duration = Date.now() - start;
+    if (duration >= thresholdMs) {
+      safe(() =>
+        logger.warn({
+          module: "process",
+          action: "phase.slow",
+          msg: "synchronous phase exceeded the event-loop budget",
+          phase,
+          duration_ms: duration,
+        }),
+      );
+    }
+  }
+}
+
+/** Async variant — measures wall time of the awaited phase. A slow result
+ *  here means "this phase took long", not necessarily "blocked the loop";
+ *  correlate with event_loop.lag timestamps to tell I/O waits from sync
+ *  stalls. */
+export async function timePhaseAsync<T>(
+  phase: string,
+  fn: () => Promise<T>,
+  thresholdMs = 250,
+): Promise<T> {
+  const start = Date.now();
+  try {
+    return await fn();
+  } finally {
+    const duration = Date.now() - start;
+    if (duration >= thresholdMs) {
+      safe(() =>
+        logger.warn({
+          module: "process",
+          action: "phase.slow",
+          msg: "phase exceeded the latency budget",
+          phase,
+          duration_ms: duration,
+        }),
+      );
+    }
+  }
+}
+
 export function startEventLoopLagMonitor(opts?: {
   intervalMs?: number;
   thresholdMs?: number;

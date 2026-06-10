@@ -140,9 +140,25 @@ interface BranchHandle {
   replace: (marker: unknown) => void;
 }
 
+// Root-level keys pass-2 must NEVER null when the envelope declares its
+// output as pre-sampled (`output_sampled: true`). The sampler already
+// bounded `output` to a few KB of REAL rows — pass-2 picking it as the
+// "heaviest branch" (it usually is) re-created the production
+// "status=succeeded · no output" failure with the sample in place. Step
+// traces and other branches are recoverable via inspect_execution_step;
+// the user's actual result is the one thing the envelope exists to carry.
+const SAMPLED_OUTPUT_PROTECTED_KEYS = new Set(["output", "output_note", "output_raw_ref"]);
+
 function collectHeaviestBranches(root: unknown): BranchHandle[] {
   const handles: BranchHandle[] = [];
-  function walk(node: unknown): void {
+  const rootProtected =
+    root !== null &&
+    typeof root === "object" &&
+    !Array.isArray(root) &&
+    (root as Record<string, unknown>).output_sampled === true
+      ? SAMPLED_OUTPUT_PROTECTED_KEYS
+      : null;
+  function walk(node: unknown, protectedKeys: Set<string> | null = null): void {
     if (node === null || typeof node !== "object") return;
     if (Array.isArray(node)) {
       for (let i = 0; i < node.length; i++) {
@@ -161,6 +177,7 @@ function collectHeaviestBranches(root: unknown): BranchHandle[] {
     }
     const obj = node as Record<string, unknown>;
     for (const k of Object.keys(obj)) {
+      if (protectedKeys?.has(k)) continue;
       const child = obj[k];
       if (child !== null && (typeof child === "object" || typeof child === "string")) {
         handles.push({
@@ -173,7 +190,7 @@ function collectHeaviestBranches(root: unknown): BranchHandle[] {
       }
     }
   }
-  walk(root);
+  walk(root, rootProtected);
   // Heaviest first — replacing the biggest branch with a small marker
   // gets us under cap fastest with the least information loss elsewhere.
   handles.sort((a, b) => b.size - a.size);
