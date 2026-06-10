@@ -165,6 +165,15 @@ export interface SaveConnectorAtomicParams {
   emitAutoPersistAudit?: boolean;
   /** Used by the auto-persist audit row only. */
   commitIntentKind?: string;
+  /**
+   * Suppress the fire-and-forget post-save discovery warm-up. Set by the
+   * green-probe auto-persist path: the probe already proved the endpoint
+   * live and the conversation continues immediately — an untracked
+   * background introspection there outlives the tool call. Explicit saves
+   * keep the warm-up; discovery stays available on demand via
+   * `discover_connector_endpoints`.
+   */
+  skipBackgroundDiscovery?: boolean;
 }
 
 /**
@@ -662,7 +671,16 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   // fires unauth introspection, fails, and logs a noisy warn. The
   // post-`authenticate_oauth` path is responsible for kicking discovery
   // once the access token is bound.
-  const skipGraphqlDiscovery = saved.auth_type === "oauth2" && credential_persisted !== true;
+  //
+  // Also skipped when the caller opted out (`skipBackgroundDiscovery`) —
+  // the green-probe auto-persist path does: the probe already proved the
+  // endpoint live, the conversation continues immediately, and an
+  // untracked background introspection there outlives the tool call (it
+  // raced subsequent test/server fetches). Discovery still runs on
+  // explicit saves and on demand via `discover_connector_endpoints`.
+  const skipGraphqlDiscovery =
+    p.skipBackgroundDiscovery === true ||
+    (saved.auth_type === "oauth2" && credential_persisted !== true);
   if (saved.driver === "graphql" && saved.base_url && !skipGraphqlDiscovery) {
     void runDiscoveryCached(
       {

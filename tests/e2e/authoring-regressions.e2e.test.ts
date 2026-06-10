@@ -22,11 +22,18 @@ beforeAll(async () => {
     port: 0,
     async fetch(req) {
       const url = new URL(req.url);
-      if (url.pathname === "/health") return Response.json({ ok: true, source: "authoring-e2e" });
-      if (url.pathname === "/protected") {
+      // Suffix matching: each connector-creating test uses a DISTINCT
+      // base_url prefix (e.g. /papi, /zxqp) on this one server, because a
+      // green probe AUTO-PERSISTS its connector and
+      // start_connector_from_description dedupes by base_url — two tests
+      // sharing the exact base_url would short-circuit into the reuse
+      // envelope instead of exercising a fresh draft.
+      if (url.pathname.endsWith("/health"))
+        return Response.json({ ok: true, source: "authoring-e2e" });
+      if (url.pathname.endsWith("/protected")) {
         return Response.json({ error: "unauthorized" }, { status: 401 });
       }
-      if (url.pathname === "/slow") {
+      if (url.pathname.endsWith("/slow")) {
         // Simulates a 250ms upstream RTT — must exceed the 100ms probe
         // timeout used by the probe-timeout test below, and long enough
         // to let the cancel-race test (line ~470) preempt the request.
@@ -230,7 +237,7 @@ describe("authoring regressions", () => {
           name: "Pending Approval API",
           driver: "http",
           environment: "dev",
-          base_url: httpBaseUrl,
+          base_url: `${httpBaseUrl}/papi`,
           auth_type: "none",
         },
       },
@@ -315,7 +322,7 @@ describe("authoring regressions", () => {
           name: "zxqprotected",
           driver: "http",
           environment: "dev",
-          base_url: httpBaseUrl,
+          base_url: `${httpBaseUrl}/zxqp`,
           auth_type: "none",
         },
       },
@@ -333,7 +340,7 @@ describe("authoring regressions", () => {
           name: "zxqslow",
           driver: "http",
           environment: "dev",
-          base_url: httpBaseUrl,
+          base_url: `${httpBaseUrl}/zxqs`,
           auth_type: "none",
         },
       },

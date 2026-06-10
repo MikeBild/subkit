@@ -354,6 +354,10 @@ export const probeConnectorDraftTool: ConversationTool = {
         reason: "auto_persist_on_green_probe",
         emitAutoPersistAudit: true,
         commitIntentKind: "save_connector",
+        // The probe just proved the endpoint live; a fire-and-forget
+        // introspection here would outlive this tool call. Discovery
+        // remains available via discover_connector_endpoints.
+        skipBackgroundDiscovery: true,
       });
       if (!saveResult.ok) {
         logger.warn({
