@@ -90,7 +90,9 @@ jobs:
           # Previously this step always dispatched a fresh run and waited
           # 30 min; ci.yml itself takes ~30+ min, so the wait timed out
           # and failed the release even though ci.yml went green. The
-          # 45-min budget below comfortably exceeds ci.yml's runtime.
+          # 100-min budget below comfortably exceeds ci.yml's runtime
+          # (the full suite grew past 45 min — releases 6.13.5-6.13.8 all
+          # timed out here while ci itself went on to succeed).
           latest_run() {
             gh run list \
               --repo "$GITHUB_REPOSITORY" \
@@ -122,8 +124,8 @@ jobs:
           else
             echo "Found an existing ci.yml run for $SHA — waiting for it."
           fi
-          # Wait up to 45 min for the ci.yml run on this SHA to complete.
-          deadline=$(( $(date +%s) + 2700 ))
+          # Wait up to 100 min for the ci.yml run on this SHA to complete.
+          deadline=$(( $(date +%s) + 6000 ))
           while [ "$(date +%s)" -lt "$deadline" ]; do
             sleep 30
             row=$(latest_run)
@@ -139,7 +141,7 @@ jobs:
               exit 1
             fi
           done
-          echo "Timed out (45 min) waiting for ci.yml run on $SHA."
+          echo "Timed out (100 min) waiting for ci.yml run on $SHA."
           exit 1
 
   # ── Multi-platform CLI binaries ──
