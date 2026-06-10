@@ -276,6 +276,93 @@ export function truncateStepPreviewForLlm(value: unknown): TruncatedOutput {
   return truncateForLlm(value, MAX_STEP_PREVIEW_CHARS);
 }
 
+// Budget for the workflow `output` field inside the run_workflow /
+// dry_run_workflow envelope. Sized so a sampled output + step traces +
+// lifecycle fields fit comfortably under MAX_JSON_CHARS — pre-fix a large
+// output survived intact until the OUTER pass-2 nulled the whole field
+// ("status=succeeded · no output" for a 95-row result). Sampling keeps
+// REAL rows in front of the model/user with explicit in-band markers.
+const MAX_WORKFLOW_OUTPUT_CHARS = 5000;
+const SAMPLE_STRING_HEAD_CHARS = 400;
+
+export interface SampledOutput {
+  value: unknown;
+  sampled: boolean;
+  raw_ref?: string;
+}
+
+/** Recursively cap arrays/strings for display, marking what was sampled
+ *  IN-BAND so the model (and the user reading the summary) knows the
+ *  payload is partial — never mistaking the sample for the full result. */
+function sampleNode(value: unknown, maxItems: number): unknown {
+  if (typeof value === "string") {
+    return value.length > SAMPLE_STRING_HEAD_CHARS
+      ? `${value.slice(0, SAMPLE_STRING_HEAD_CHARS)}… [${value.length - SAMPLE_STRING_HEAD_CHARS} more chars]`
+      : value;
+  }
+  if (Array.isArray(value)) {
+    const items = value.slice(0, maxItems).map((v) => sampleNode(v, maxItems));
+    if (value.length > maxItems) {
+      items.push(`… sampled ${maxItems} of ${value.length} items`);
+    }
+    return items;
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = sampleNode(v, maxItems);
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Shrink a workflow output to a chat-presentable sample. Small outputs
+ * pass through untouched. Large ones return REAL leading rows with
+ * explicit sampling markers plus a raw_ref to the full payload — the
+ * model can answer "show me the top 5" from the sample directly and
+ * fetch the rest via get_raw_result only when genuinely needed.
+ */
+export function sampleWorkflowOutputForLlm(output: unknown): SampledOutput {
+  if (output === null || output === undefined) return { value: output, sampled: false };
+  let json: string;
+  try {
+    json = JSON.stringify(output) ?? String(output);
+  } catch {
+    return { value: output, sampled: false };
+  }
+  if (json.length <= MAX_WORKFLOW_OUTPUT_CHARS) return { value: output, sampled: false };
+  const raw_ref = rememberRaw(output);
+  for (const maxItems of [20, 10, 5, 3, 1]) {
+    const sampled = sampleNode(output, maxItems);
+    try {
+      json = JSON.stringify(sampled) ?? "";
+    } catch {
+      break;
+    }
+    if (json.length <= MAX_WORKFLOW_OUTPUT_CHARS) {
+      logger.debug({
+        module: "conversation_tool",
+        action: "truncate.output_sampled",
+        msg: "workflow output sampled for LLM context",
+        original_chars: JSON.stringify(output)?.length ?? 0,
+        sampled_chars: json.length,
+        max_items: maxItems,
+        raw_ref,
+      });
+      return { value: sampled, sampled: true, raw_ref };
+    }
+  }
+  // Pathological shape (single huge object, no arrays to sample) — fall
+  // back to a head excerpt rather than dropping the field entirely.
+  return {
+    value: `${json.slice(0, 2000)}… [output too large to inline]`,
+    sampled: true,
+    raw_ref,
+  };
+}
+
 export function getRawResult(ref: string): unknown | undefined {
   const entry = rawStore.get(ref);
   if (entry === undefined) return undefined;

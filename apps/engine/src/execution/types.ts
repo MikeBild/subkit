@@ -94,7 +94,14 @@ export type StepWarningCode =
   // picks "else" every run and the LLM never sees a typo. Carries
   // `did_you_mean` candidates so the next retry can fix the
   // reference.
-  | "branch_when_unresolved";
+  | "branch_when_unresolved"
+  // Emitted by the paginated request driver when the accumulated page
+  // bodies hit the in-memory byte cap and pagination stopped early.
+  // Without the cap a single step could buffer MAX_PAGES × large-page
+  // bodies (observed: 545KB pages → multi-GB RSS) and stall/kill the
+  // engine; with it the step returns the bounded prefix plus this
+  // warning naming how much was fetched and how to narrow the query.
+  | "pagination_truncated";
 
 export interface StepWarning {
   code: StepWarningCode;

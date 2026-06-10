@@ -1823,6 +1823,15 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     let prev: unknown = null;
     let pageIdx = 0;
     let pages_fetched = 0;
+    // In-memory byte cap for the accumulator. MAX_PAGES alone is not a
+    // memory bound — 1000 pages × 545KB bodies (the observed GitHub page
+    // size) would buffer ~545MB in one step and was a confirmed driver of
+    // the engine's multi-GB RSS. `bytes_in` per page is already measured
+    // by the driver; when the running total crosses the cap, pagination
+    // stops with a loud `pagination_truncated` warning instead of an OOM.
+    const ACC_BYTE_CAP = 64 * 1024 * 1024;
+    let accBytes = 0;
+    let paginationTruncated = false;
     // Most recent page's response headers — the deprecation early-warning on
     // the paginated success path reads Deprecation/Sunset from here.
     let lastPageHeaders: Record<string, string> = {};
@@ -1831,6 +1840,20 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     // position even though the actual write to the row is fire-and-forget.
     let latestCheckpoint: PaginationCheckpoint | null = null;
     while (pageIdx < MAX_PAGES) {
+      if (accBytes >= ACC_BYTE_CAP) {
+        paginationTruncated = true;
+        logger.warn({
+          module: "execution",
+          action: "request.pagination_truncated",
+          msg: "pagination stopped at the in-memory byte cap",
+          execution_id: p.ctx.execution_id,
+          step_id: p.step.id,
+          pages_fetched,
+          accumulated_bytes: accBytes,
+          byte_cap: ACC_BYTE_CAP,
+        });
+        break;
+      }
       const next = strat.next(prev, pageIdx);
       if (next.done) break;
       const callPage = () =>
@@ -1887,6 +1910,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       strat.merge(acc, body);
       prev = body;
       lastPageHeaders = res.headers;
+      accBytes += res.bytes_in;
       pageIdx += 1;
       pages_fetched += 1;
       // Logical page number = "what page have we now finished" across the
@@ -2038,6 +2062,17 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       output: acc,
       retry_count: retryCounter.value,
       duration_ms: Date.now() - start,
+      ...(paginationTruncated
+        ? {
+            warnings: [
+              {
+                code: "pagination_truncated" as const,
+                message: `pagination stopped after ${pages_fetched} pages at the ${Math.round(ACC_BYTE_CAP / (1024 * 1024))}MB in-memory cap — the result is a bounded prefix. Narrow the query (filters, date range, per_page) or process pages incrementally.`,
+                details: { pages_fetched, accumulated_bytes: accBytes, byte_cap: ACC_BYTE_CAP },
+              },
+            ],
+          }
+        : {}),
       request_meta: {
         ...last_meta,
         pages_fetched: resumePageIdx + pages_fetched,

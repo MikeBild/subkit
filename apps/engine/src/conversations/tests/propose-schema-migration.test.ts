@@ -141,6 +141,10 @@ describe("propose_schema_migration tool", () => {
 
   test("history_count + first/latest seen_at surface chronological context", async () => {
     const ek = "GET /v1/migration-history";
+    // The two recordings must differ in SHAPE (number -> string), not just
+    // value: identical shapes dedup into one row now (a workflow on a
+    // minute schedule must not grow schema_versions by one row per run),
+    // so history_count counts shape CHANGES.
     await recordSuccessShape(
       {
         tenant_id: ctx.tenant_id,
@@ -155,7 +159,7 @@ describe("propose_schema_migration tool", () => {
         tenant_id: ctx.tenant_id,
         connector_id: connId,
         endpoint_key: ek,
-        value: { v: 2 },
+        value: { v: "two" },
       },
       ctx.testDb.db,
     );

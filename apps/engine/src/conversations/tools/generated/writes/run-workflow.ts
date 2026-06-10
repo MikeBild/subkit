@@ -23,7 +23,7 @@ import {
 } from "../../../authoring-state.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
-import { truncateStepPreviewForLlm } from "../../truncate.ts";
+import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
 
 /**
  * Codes that count toward the repair-loop circuit breaker. Each one
@@ -705,6 +705,13 @@ export const runWorkflowTool: ConversationTool = {
             ? ((firstFailedStep.error as { message: string }).message ?? null)
             : null
           : null;
+      // Sample a large output BEFORE the outer LLM-budget truncate sees the
+      // envelope. Pre-fix the outer pass nulled the heaviest branch — which
+      // was always `output` — so a 95-row success surfaced to the user as
+      // "no output". A sample keeps REAL leading rows in front of the model
+      // (it can answer "show the top 5" directly) with the full payload one
+      // get_raw_result call away.
+      const sampledOutput = sampleWorkflowOutputForLlm(result.output);
       return {
         ok: result.status === "succeeded" && !isPartialSuccess,
         data: withStatus(
@@ -724,7 +731,14 @@ export const runWorkflowTool: ConversationTool = {
                 }
               : {}),
             status: payloadStatus,
-            output: result.output,
+            output: sampledOutput.value,
+            ...(sampledOutput.sampled
+              ? {
+                  output_sampled: true,
+                  output_note: `output is a sample (in-band "… sampled N of M" markers mark the cut points); full payload via get_raw_result(ref="${sampledOutput.raw_ref}") or inspect_execution_step. Present the sampled rows to the user directly — do NOT re-run the workflow to "get" the output.`,
+                  ...(sampledOutput.raw_ref ? { output_raw_ref: sampledOutput.raw_ref } : {}),
+                }
+              : {}),
             error: result.error,
             diagnosis_available: diagnosisAvailable,
             requires_repair: requiresRepair,
