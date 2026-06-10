@@ -67,7 +67,17 @@ export interface McpServerAuthConfig {
   scope?: string;
 }
 
-/** Audit envelope every mutating function threads through to the recorder. */
+/**
+ * Audit envelope every mutating function threads through to the recorder.
+ *
+ * `executor` is ASYMMETRIC BY DESIGN: the route layer always threads the
+ * request-scoped db (or its open transaction) so audit rows land on the
+ * same pool/tx the route already uses — required for atomic commit with
+ * the domain write and for integration-test isolation. The boot
+ * config-seed path (`config-seed.ts`) intentionally OMITS it: boot
+ * reconciliation is non-transactional, and `auditAwait` then falls back
+ * to `getDb()`. Do not "fix" a missing executor on the seed path.
+ */
 export interface McpServerAuditCtx {
   actor_id: string | null;
   request_source: RequestSource;
@@ -387,6 +397,16 @@ export async function setMcpServerStatus(
  * `auto_recovered_via_handshake`) — the same row a manual enable lands —
  * so the auto-recovery edge isn't a silent UPDATE with no trail. The prior
  * status is read off the existing row BEFORE the UPDATE.
+ *
+ * SOLE-WRITER CONTRACT (`tools_manifest_hash`): observed-handshake state is
+ * the ONLY legitimate origin of this column — this function (every
+ * successful handshake) and the schema-drift reconciler
+ * (`schema-drift.ts reconcileManifestHash`, which persists the drifted hash
+ * it just observed). `updatePatchSchema` / `updateMcpServer` deliberately
+ * EXCLUDE it: the operator PATCH surface must never write the hash, so a
+ * `mcp_server.config_updated` audit row whose `changed_fields` is exactly
+ * `["tools_manifest_hash"]` can ONLY mean drift — the SIEM discriminator
+ * documented on `RecordMcpServerConfigUpdatedParams` depends on that.
  */
 export async function recordMcpServerHandshakeState(
   db: Executor,

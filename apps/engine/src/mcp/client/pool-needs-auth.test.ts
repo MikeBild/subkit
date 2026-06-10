@@ -20,8 +20,12 @@
 // not contain a URL with a query string (redact_safe check).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { and, eq } from "drizzle-orm";
+import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { closeDb } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
@@ -92,6 +96,19 @@ beforeAll(async () => {
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
 
+  // The oauth2 handshake needs the canonical OAuth redirect URI
+  // (`server.public_base_url`) to even construct its auth provider —
+  // without it the pool parks the server BEFORE connect. The first suites
+  // here exercise the UnauthorizedError-on-connect path, so configure a
+  // public origin; the no-public-origin park has its own describe below.
+  const cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-pool-needs-auth-"));
+  _resetConfigForTests();
+  await loadConfig({
+    env: { DATABASE_URL: ctx.url, NODE_ENV: "test" },
+    configPathOverride: join(cfgDir, "subkit.config.json"),
+  });
+  await setConfigKey("server.public_base_url", "https://engine.poolauth.example", { force: true });
+
   const [t] = await ctx.db
     .insert(tenants)
     .values({ slug: "t-pool-auth", display_name: "Pool Auth Tenant" })
@@ -104,6 +121,7 @@ afterAll(async () => {
   // leaked non-null factory would still poison sibling test files).
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
+  _resetConfigForTests();
 
   // Close the global pool that was pointed at the test DB, then restore the
   // original DATABASE_URL so subsequent test files in this worker can dial
@@ -213,5 +231,51 @@ describe("pool: within backoff window the tokenless server stays absent", () => 
     // OAuth2 server is still absent (inside backoff window).
     const oauth2Set = sets.find((s) => s.namespace === "oauth2server");
     expect(oauth2Set).toBeUndefined();
+  });
+});
+
+// ── no public origin → oauth2 server parks BEFORE connect ────────────────────
+//
+// With no `server.public_base_url` there is no canonical OAuth redirect URI.
+// A fallback derived from the server's own origin would DCR-register a
+// redirect_uri the interactive /authorize route (which 400s in the same
+// condition) can never use — a permanent redirect_uri_mismatch. The pool
+// must instead park the server with a stable, redact-safe last_error.
+
+describe("pool: oauth2 server with no public_base_url parks with a redirect-URI error", () => {
+  test("getTenantMcpTools parks the server with the typed last_error and does not connect", async () => {
+    // Clear the public origin so the canonical redirect URI cannot resolve.
+    await setConfigKey("server.public_base_url", "", { force: true });
+    __resetMcpClientPoolForTests();
+
+    const server = await createMcpServer(
+      ctx.db,
+      {
+        tenant_id: tenantId,
+        name: "AcmeAuth No-Origin OAuth2 Server",
+        namespace: "noorigin",
+        transport: "http",
+        url: "https://noorigin.acmeauth.test/mcp",
+        auth_config: { kind: "oauth2", issuer: "https://auth.acmeauth.test" },
+      },
+      auditCtx(),
+    );
+
+    // Must not throw — the server is simply absent from the palette.
+    const sets = await getTenantMcpTools(ctx.db, tenantId, { environment: "prod" });
+    expect(sets.find((s) => s.mcp_server_id === server.id)).toBeUndefined();
+
+    const { mcpServers } = await import("../../db/schema/index.ts");
+    const rows = await ctx.db
+      .select({ status: mcpServers.status, last_error: mcpServers.last_error })
+      .from(mcpServers)
+      .where(and(eq(mcpServers.tenant_id, tenantId), eq(mcpServers.id, server.id)))
+      .limit(1);
+    expect(rows[0]!.status).toBe("error");
+    const lastError = rows[0]!.last_error ?? "";
+    expect(lastError).toContain("no canonical OAuth redirect URI");
+    expect(lastError).toContain("server.public_base_url");
+    // Redact-safe: never a URL with a query string.
+    expect(lastError).not.toContain("?");
   });
 });

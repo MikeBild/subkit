@@ -15,7 +15,7 @@
 // Config injection: uses _resetConfigForTests + loadConfig with a temp
 // config file (same approach as egress-guard.test.ts).
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +23,7 @@ import { eq } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
 import { auditLog, mcpServers, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { logger } from "../logging/logger.ts";
 import { createMcpServer } from "./client/registry.ts";
 import { reconcileMcpServersFromConfig } from "./config-seed.ts";
 
@@ -408,6 +409,71 @@ describe("audit log", () => {
 
     const after = await ctx.db.select().from(auditLog);
     expect(after.length).toBe(countBefore);
+  });
+});
+
+// ── seeded-but-credential-less operator warning ───────────────────────────────
+
+describe("bearer/oauth2 decl without a credential warns the operator", () => {
+  test("seed succeeds AND logger.warn fires with seed.credential_missing", async () => {
+    const warnSpy = spyOn(logger, "warn");
+    try {
+      await loadCfg(
+        writeConfigFor([
+          {
+            name: "Credless Bearer MCP",
+            namespace: "credlessseed",
+            transport: "http",
+            url: "https://credless.seed.test",
+            auth: { kind: "bearer" },
+          },
+        ]),
+      );
+      const outcome = await reconcileMcpServersFromConfig(ctx.db);
+      // The missing credential is a WARNING, never a failure — the row is
+      // seeded and the handshake path surfaces the real error later.
+      expect(outcome.inserted).toBe(1);
+      expect(outcome.failed).toBe(0);
+
+      const fields = warnSpy.mock.calls
+        .map((c) => c[0] as Record<string, unknown>)
+        .find((f) => f.action === "seed.credential_missing" && f.namespace === "credlessseed");
+      expect(fields).toBeDefined();
+      expect(fields!.module).toBe("mcp.config_seed");
+      expect(fields!.tenant_id).toBe(tenantA);
+      expect(fields!.auth_kind).toBe("bearer");
+      expect(String(fields!.msg)).toContain("sk mcp-servers set-credential");
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("a re-run with unchanged config stays a no-op (no spurious warn on unchanged rows)", async () => {
+    const warnSpy = spyOn(logger, "warn");
+    try {
+      await loadCfg(
+        writeConfigFor([
+          {
+            name: "Credless Bearer MCP",
+            namespace: "credlessseed",
+            transport: "http",
+            url: "https://credless.seed.test",
+            auth: { kind: "bearer" },
+          },
+        ]),
+      );
+      const rerun = await reconcileMcpServersFromConfig(ctx.db);
+      expect(rerun.unchanged).toBe(1);
+      expect(rerun.failed).toBe(0);
+      const fired = warnSpy.mock.calls
+        .map((c) => c[0] as Record<string, unknown>)
+        .some((f) => f.action === "seed.credential_missing" && f.namespace === "credlessseed");
+      // The hint fires on insert/update only — an unchanged row writes
+      // nothing and warns nothing (idempotency contract).
+      expect(fired).toBe(false);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
 

@@ -12,6 +12,9 @@
 -- `authorization_url` / `as_issuer` start NULL and are filled in by the
 -- headless provider's redirect callback (`as_issuer` is the origin of the
 -- authorization endpoint, re-checked against RFC 9207 `iss` at callback).
+-- `started_by_actor_id` carries the principal that began the flow so the
+-- unauthenticated callback can attribute the authorized / failed audit
+-- rows to the flow's originator.
 
 CREATE TABLE "mcp_oauth_states" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -23,6 +26,7 @@ CREATE TABLE "mcp_oauth_states" (
   "authorization_url" text,
   "as_issuer" text,
   "requested_scopes" text,
+  "started_by_actor_id" uuid,
   "expires_at" timestamp with time zone NOT NULL,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL
 );

@@ -263,18 +263,28 @@ const inspectCommand = defineCommand({
   },
 });
 
-// Fire-and-forget browser open, mirroring apps/sk/src/install/*.ts. The CLI
-// never depends on the open succeeding — the URL is always printed so a
-// headless / SSH operator can copy it by hand.
+// Fire-and-forget browser open. The CLI never depends on the open
+// succeeding — the URL is always printed so a headless / SSH operator can
+// copy it by hand. `spawn` with an argv array (NOT a shell string): the URL
+// is handed to the opener as a single argument, so no URL content can ever
+// reach a shell. On win32 `start` is a cmd builtin, so it runs via
+// `cmd /c start "" <url>` — the empty "" is start's window-title slot,
+// keeping the URL out of that position. Detached + ignored stdio + unref so
+// the CLI never waits on the browser process; a missing opener binary
+// surfaces as an ignored 'error' event, not a crash.
 async function openBrowser(url: string): Promise<void> {
-  const { exec } = await import("node:child_process");
-  const cmd =
+  const { spawn } = await import("node:child_process");
+  const [cmd, args]: [string, string[]] =
     process.platform === "darwin"
-      ? `open "${url}"`
+      ? ["open", [url]]
       : process.platform === "win32"
-        ? `start "${url}"`
-        : `xdg-open "${url}"`;
-  exec(cmd);
+        ? ["cmd", ["/c", "start", "", url]]
+        : ["xdg-open", [url]];
+  const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
+  child.on("error", () => {
+    /* fire-and-forget: the URL was already printed for manual open */
+  });
+  child.unref();
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));

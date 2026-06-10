@@ -60,6 +60,13 @@ export const mcpOauthStates = pgTable(
     // Space-separated scopes requested on this round, raw from the OAuth2
     // `scope` parameter — mirrors `connectorOauthStates.requested_scopes`.
     requested_scopes: text("requested_scopes"),
+    // The principal that started this flow (the authorize route's
+    // `principal.id`). The UNAUTHENTICATED callback reads it off the
+    // claimed row and threads it as `actor_id` into the authorized /
+    // authorization_failed audit recorders, so the lifecycle attributes
+    // to the flow's originator instead of a blurred system actor. Nullable:
+    // a flow without a resolvable originator stays a system-actor trail.
+    started_by_actor_id: uuid("started_by_actor_id"),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

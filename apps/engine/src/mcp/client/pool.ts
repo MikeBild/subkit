@@ -28,7 +28,7 @@ import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { McpDbOAuthClientProvider } from "./oauth-provider.ts";
-import { buildMcpOAuthRedirectUri, MCP_OAUTH_CALLBACK_PATH } from "./oauth-redirect.ts";
+import { buildMcpOAuthRedirectUri } from "./oauth-redirect.ts";
 import {
   getMcpServer,
   listConnectableMcpServersForTenant,
@@ -261,17 +261,20 @@ async function resolveAuthHeaders(
  * CRITICAL (redirect_uri parity): this MUST be byte-identical to the value
  * the interactive authorize route registers (both go through
  * `buildMcpOAuthRedirectUri` → `MCP_OAUTH_CALLBACK_PATH`). If the pool's DCR
- * registered the connector callback while the authorize flow used the MCP
+ * registered any other redirect_uri while the authorize flow used the MCP
  * callback, the IdP would reject the authorization request with
- * `redirect_uri_mismatch`. Prefer the engine-canonical MCP callback
- * (`public_base_url` + `MCP_OAUTH_CALLBACK_PATH`); when no public origin is
- * configured, fall back to the server's own origin + the SAME MCP path so we
- * always yield a parseable URL rather than throwing the whole handshake.
+ * `redirect_uri_mismatch`. There is deliberately NO fallback when no public
+ * origin is configured: the interactive /authorize route 400s in the same
+ * condition, so a fallback here would DCR-register a redirect_uri the
+ * authorize flow can never use — a permanent `redirect_uri_mismatch`.
+ * Instead we throw; `connectClient`'s catch parks the server in
+ * error+backoff with this message as its redact-safe `last_error`, the
+ * same degradation as any other handshake failure.
  */
-function oauthRedirectUriFor(row: McpServerRow): string {
+function oauthRedirectUriFor(): string {
   const canonical = buildMcpOAuthRedirectUri();
   if (canonical) return canonical;
-  return `${new URL(row.url).origin}${MCP_OAUTH_CALLBACK_PATH}`;
+  throw new Error("no canonical OAuth redirect URI — set server.public_base_url");
 }
 
 /** Detect an Unauthorized/401 from a remote tool call. Matches both the
@@ -309,7 +312,10 @@ async function invalidateOAuth2TokenForServer(
     tenant_id,
     mcp_server_id,
     environment,
-    redirect_uri: oauthRedirectUriFor(row),
+    // Reaching a mid-session 401 implies this oauth2 server connected in
+    // this process, which requires the canonical redirect URI to resolve —
+    // so this cannot throw here (config is fixed for the process lifetime).
+    redirect_uri: oauthRedirectUriFor(),
     state: "",
     auth,
     interactive: false,
@@ -397,7 +403,9 @@ async function connectClient(
             tenant_id,
             mcp_server_id: row.id,
             environment,
-            redirect_uri: oauthRedirectUriFor(row),
+            // Throws when no canonical redirect URI is configured — caught
+            // below and parked as a redact-safe last_error + backoff.
+            redirect_uri: oauthRedirectUriFor(),
             // No mcp_oauth_states row exists for the palette handshake; the
             // state value is unused in non-interactive mode.
             state: "",
@@ -614,6 +622,11 @@ export async function connectServerById(
 export interface InvokeRemoteToolInput {
   db: Db;
   tenant_id: string;
+  /** Principal that drove this invocation (chat user / system account),
+   *  or null for a genuinely actor-less system path. Threaded into the
+   *  `mcp_external_tool.invoked` audit row so a real user's invocation is
+   *  attributed to that user, not blurred into a system actor. */
+  actor_id: string | null;
   mcp_server_id: string;
   namespace: string;
   remote_tool: string;
@@ -732,7 +745,7 @@ export async function invokeRemoteTool(
 
   await recordMcpExternalToolInvoked({
     tenant_id: args.tenant_id,
-    actor_id: null,
+    actor_id: args.actor_id,
     mcp_server_id: args.mcp_server_id,
     namespace: args.namespace,
     remote_tool: args.remote_tool,

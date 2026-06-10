@@ -31,6 +31,7 @@
 
 import { getConfig } from "../config/loader.ts";
 import type { McpServerDecl } from "../config/schema.ts";
+import { getCredentialForMcpServer } from "../credentials/service.ts";
 import type { Db } from "../db/client.ts";
 import { getDb } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
@@ -38,6 +39,7 @@ import { errorFields, logger } from "../logging/logger.ts";
 import {
   createMcpServer,
   getMcpServerByNamespace,
+  MCP_CREDENTIAL_ENVIRONMENT,
   type McpServerAuditCtx,
   type McpServerAuthConfig,
   type McpServerRow,
@@ -117,6 +119,49 @@ function rowMatchesDecl(row: McpServerRow, decl: McpServerDecl): boolean {
 }
 
 /**
+ * Best-effort operator hint: a config-declared bearer/oauth2 server whose
+ * secret was never supplied out-of-band (no `credentials` row) will fail
+ * its first handshake and park in error+backoff with no up-front signal.
+ * Warn at seed time so the operator acts BEFORE the first dark turn.
+ * Non-fatal by contract: a credential-store read failure is swallowed —
+ * the seed itself already succeeded and the handshake path surfaces the
+ * real error later.
+ */
+async function warnWhenCredentialMissing(
+  db: Db,
+  tenant_id: string,
+  row: McpServerRow,
+  kind: "bearer" | "oauth2",
+): Promise<void> {
+  try {
+    const cred = await getCredentialForMcpServer(tenant_id, row.id, MCP_CREDENTIAL_ENVIRONMENT, db);
+    if (cred) return;
+    logger.warn({
+      module: "mcp.config_seed",
+      action: "seed.credential_missing",
+      msg:
+        kind === "oauth2"
+          ? "config-declared MCP server has no oauth2 credential; run `sk mcp-servers authorize <id>` (or `sk mcp-servers set-credential <id>`) before its first handshake"
+          : "config-declared MCP server has no bearer credential; run `sk mcp-servers set-credential <id>` before its first handshake",
+      tenant_id,
+      mcp_server_id: row.id,
+      namespace: row.namespace,
+      auth_kind: kind,
+    });
+  } catch (err) {
+    logger.warn({
+      module: "mcp.config_seed",
+      action: "seed.credential_check_failed",
+      msg: "could not verify whether a credential exists for a config-declared MCP server",
+      tenant_id,
+      mcp_server_id: row.id,
+      namespace: row.namespace,
+      ...errorFields(err),
+    });
+  }
+}
+
+/**
  * Reconcile every tenant's declared `mcp.servers` into the `mcp_servers`
  * table. Idempotent; non-fatal by contract (the caller swallows errors so a
  * bad decl never blocks boot). Returns the aggregate insert/update/unchanged
@@ -158,7 +203,7 @@ export async function reconcileMcpServersFromConfig(
         const existing = await getMcpServerByNamespace(db, t.id, decl.namespace);
         const authConfig = mapAuth(decl.auth);
         if (!existing) {
-          await createMcpServer(
+          const created = await createMcpServer(
             db,
             {
               tenant_id: t.id,
@@ -171,13 +216,16 @@ export async function reconcileMcpServersFromConfig(
             SEED_AUDIT_CTX,
           );
           inserted++;
+          if (authConfig && authConfig.kind !== "none") {
+            await warnWhenCredentialMissing(db, t.id, created, authConfig.kind);
+          }
           continue;
         }
         if (rowMatchesDecl(existing, decl)) {
           unchanged++;
           continue;
         }
-        await updateMcpServer(
+        const updatedRow = await updateMcpServer(
           db,
           t.id,
           existing.id,
@@ -190,6 +238,9 @@ export async function reconcileMcpServersFromConfig(
           SEED_AUDIT_CTX,
         );
         updated++;
+        if (updatedRow && authConfig && authConfig.kind !== "none") {
+          await warnWhenCredentialMissing(db, t.id, updatedRow, authConfig.kind);
+        }
       } catch (err) {
         failed++;
         logger.error({

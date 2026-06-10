@@ -53,7 +53,7 @@ import { mcpOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/index.ts";
 import {
   buildMcpOAuthRedirectUri,
-  evictTenant,
+  evictServer,
   getMcpServer,
   MCP_CREDENTIAL_ENVIRONMENT,
   MCP_OAUTH_CALLBACK_PATH,
@@ -186,6 +186,10 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       code_verifier: "",
       redirect_uri,
       requested_scopes: auth.scope ?? null,
+      // Attribution hand-off: the callback is unauthenticated, so the
+      // flow's originator rides the state row and is threaded back into
+      // the authorized / failed audit rows at callback time.
+      started_by_actor_id: principal.id,
       expires_at: new Date(now() + STATE_TTL_MS),
     });
 
@@ -332,6 +336,11 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const tenant_id = stateRow.tenant_id;
     const mcp_server_id = stateRow.mcp_server_id;
+    // The flow's originator, persisted at authorize time. The callback has
+    // no principal of its own (state-token auth), so this is what lets the
+    // authorized / failed audit rows attribute to the human who started
+    // the flow instead of a system actor.
+    const started_by_actor_id = stateRow.started_by_actor_id ?? null;
     const requestSource: RequestSource = readRequestSource(c) ?? "api";
     const server = await getMcpServer(db, tenant_id, mcp_server_id);
     // namespace/issuer for the audit trail; fall back to safe placeholders
@@ -344,7 +353,7 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     const failAudit = (reason: string): Promise<unknown> =>
       recordMcpServerAuthorizationFailed({
         tenant_id,
-        actor_id: null,
+        actor_id: started_by_actor_id,
         request_source: requestSource,
         mcp_server_id,
         namespace,
@@ -467,7 +476,7 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id,
         mcp_server_id,
         "active",
-        callbackAuditCtx(db, requestSource),
+        callbackAuditCtx(db, requestSource, started_by_actor_id),
         {
           reason: "oauth_authorized",
         },
@@ -475,7 +484,7 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
 
       await recordMcpServerAuthorized({
         tenant_id,
-        actor_id: null,
+        actor_id: started_by_actor_id,
         request_source: requestSource,
         mcp_server_id,
         namespace,
@@ -483,13 +492,14 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         executor: db,
       });
 
-      // Evict the tenant's pooled clients so the NEXT palette handshake
-      // reconnects fresh with the token just written. Without this the
-      // in-memory backoff window armed when the server was un-authorized
-      // would keep skipping it for minutes — the server would stay dark
-      // despite being authorized. evictTenant drops the cached client AND
-      // the backoff entry, so the new token is used immediately.
-      evictTenant(tenant_id);
+      // Evict ONLY this server's pooled client so the NEXT palette
+      // handshake reconnects fresh with the token just written. Without
+      // this the in-memory backoff window armed when the server was
+      // un-authorized would keep skipping it for minutes — the server would
+      // stay dark despite being authorized. evictServer drops the cached
+      // client AND the backoff entry for just this server, so the new token
+      // is used immediately while the tenant's other servers stay warm.
+      evictServer(tenant_id, mcp_server_id);
 
       logger.info({
         module: LOG_MODULE,
@@ -542,12 +552,18 @@ function sameOrigin(a: string, b: string): boolean {
   }
 }
 
-/** Audit envelope for the callback — there is no principal (anonymous
- *  browser hit). `actor_id: null` resolves to `actor_type: "system"`. The
- *  request-scoped db is the executor so audit writes land on the same pool
- *  the route already uses (required for integration-test isolation). */
-function callbackAuditCtx(db: Db, requestSource: RequestSource): McpServerAuditCtx {
-  return { actor_id: null, request_source: requestSource, executor: db };
+/** Audit envelope for the callback — there is no live principal (anonymous
+ *  browser hit), so the actor is the flow's originator read off the claimed
+ *  state row (`started_by_actor_id`), or null (→ `actor_type: "system"`)
+ *  when the row predates attribution. The request-scoped db is the executor
+ *  so audit writes land on the same pool the route already uses (required
+ *  for integration-test isolation). */
+function callbackAuditCtx(
+  db: Db,
+  requestSource: RequestSource,
+  actorId: string | null,
+): McpServerAuditCtx {
+  return { actor_id: actorId, request_source: requestSource, executor: db };
 }
 
 interface CallbackPage {

@@ -672,11 +672,11 @@ export function registerMcpServerRoutes(app: OpenAPIHono<AppEnv>): void {
       await setMcpServerStatus(db, principal.tenant_id, id, "active", auditCtx(c, principal.id));
     }
 
-    // Force a fresh handshake by evicting any cached client first, then
-    // letting the pool lazily reconnect every active server for this tenant.
-    // evictTenant drops EVERY pooled client for the tenant (plus backoff
-    // windows), not just this server's.
-    evictTenant(principal.tenant_id);
+    // Force a fresh handshake by evicting ONLY this server's cached client
+    // (plus its backoff window), then letting the pool lazily reconnect it.
+    // Other healthy servers in the tenant pool stay warm — an operator
+    // inspecting one server must not force a cold reconnect of its siblings.
+    evictServer(principal.tenant_id, id);
     const sets = await getTenantMcpTools(db, principal.tenant_id, {
       requestSource: readRequestSource(c) ?? "api",
     });

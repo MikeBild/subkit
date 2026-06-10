@@ -94,6 +94,9 @@ export const mcpServers = pgTable(
     // Namespace must start + end with alphanumeric, allow `_`/`-`
     // inside, and forbid `__` runs so the `mcp_<ns>__<tool>` split
     // convention stays deterministic.
+    // Runtime mirror: MCP_NAMESPACE_REGEX in apps/engine/src/api/
+    // common-schemas.ts is the single runtime source of this shape; the
+    // SQL literal below stays as applied (migrations don't change).
     check(
       "mcp_servers_namespace_shape_check",
       sql`${t.namespace} ~ '^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$' AND ${t.namespace} !~ '__'`,

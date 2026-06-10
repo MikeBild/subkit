@@ -119,6 +119,7 @@ async function seedStateRow(opts: {
   codeVerifier?: string;
   authorizationUrl?: string;
   asIssuer?: string;
+  startedByActorId?: string;
 }): Promise<void> {
   await ctx.db.insert(mcpOauthStates).values({
     tenant_id: ctx.tenantId,
@@ -128,6 +129,7 @@ async function seedStateRow(opts: {
     redirect_uri: `${ctx.baseUrl}/v1/mcp-servers/oauth/callback`,
     authorization_url: opts.authorizationUrl ?? null,
     as_issuer: opts.asIssuer ?? null,
+    started_by_actor_id: opts.startedByActorId ?? null,
     expires_at: STATE_EXPIRY_AT,
   });
 }
@@ -151,17 +153,20 @@ describe("POST /authorize", () => {
     expect(typeof body.state).toBe("string");
     expect(body.state.length).toBeGreaterThan(0);
 
-    // The state row must exist with the persisted authorization_url + code_verifier.
+    // The state row must exist with the persisted authorization_url +
+    // code_verifier, and carry the flow originator for callback attribution.
     const stateRows = await ctx.db
       .select({
         authorization_url: mcpOauthStates.authorization_url,
         code_verifier: mcpOauthStates.code_verifier,
+        started_by_actor_id: mcpOauthStates.started_by_actor_id,
       })
       .from(mcpOauthStates)
       .where(and(eq(mcpOauthStates.tenant_id, ctx.tenantId), eq(mcpOauthStates.state, body.state)));
     expect(stateRows.length).toBe(1);
     expect(stateRows[0]!.authorization_url).toBe(STUB_AUTH_URL);
     expect(stateRows[0]!.code_verifier).toBe("stub-pkce-verifier");
+    expect(stateRows[0]!.started_by_actor_id).toBe(ctx.userId);
 
     // Audit: authorization_started must have been written.
     const auditRows = await ctx.db
@@ -187,7 +192,9 @@ describe("GET /oauth/callback — happy path (pre-seeded state row)", () => {
   test("callback with code + pre-seeded state → success HTML; state row deleted; credential written; server active; audit written", async () => {
     const serverId = await registerOAuth2Server("roundtripcallback1");
     const state = `callback-state-${nextStateSuffix()}`;
-    await seedStateRow({ serverId, state });
+    // Seed the originator exactly as the authorize route would, so the
+    // callback's audit attribution can be asserted below.
+    await seedStateRow({ serverId, state, startedByActorId: ctx.userId });
 
     // Simulate callback from external AS. The stub driver exchanges the
     // code by calling provider.saveTokens and returns "AUTHORIZED".
@@ -230,9 +237,11 @@ describe("GET /oauth/callback — happy path (pre-seeded state row)", () => {
       .limit(1);
     expect(serverRows[0]!.status).toBe("active");
 
-    // Audit: authorized must have been written.
+    // Audit: authorized must have been written, attributed to the actor
+    // that STARTED the flow (read off the claimed state row — the callback
+    // itself is unauthenticated).
     const auditRows = await ctx.db
-      .select({ action: auditLog.action })
+      .select({ action: auditLog.action, actor_id: auditLog.actor_id })
       .from(auditLog)
       .where(
         and(
@@ -242,6 +251,7 @@ describe("GET /oauth/callback — happy path (pre-seeded state row)", () => {
         ),
       );
     expect(auditRows.length).toBeGreaterThanOrEqual(1);
+    expect(auditRows[0]!.actor_id).toBe(ctx.userId);
   });
 });
 

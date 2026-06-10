@@ -313,6 +313,9 @@ async function executeExternalMcpTool(
   const invoked = await invokeRemoteTool({
     db,
     tenant_id: ctx.tenant_id,
+    // Attribute the `mcp_external_tool.invoked` audit row to the chat
+    // principal that drove this turn — never a blurred system actor.
+    actor_id: principal.id,
     mcp_server_id,
     namespace,
     remote_tool: descriptor.name,
