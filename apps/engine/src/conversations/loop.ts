@@ -1242,12 +1242,33 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         timePhaseAsync("converse.on_step_finish", async () => {
           {
             const m = process.memoryUsage();
+            const external_mb = Math.round(m.external / (1024 * 1024));
+            // When the step ended with >768MB external, name WHO holds it:
+            // bun:jsc heapStats counts live objects by type — the brackets
+            // located a ~1.5GB allocation inside the first step of a turn;
+            // the type counts turn "something big" into a class name.
+            let heap_top: Array<[string, number]> | undefined;
+            let heap_size_mb: number | undefined;
+            if (external_mb > 768) {
+              try {
+                const { heapStats } = await import("bun:jsc");
+                const h = heapStats();
+                heap_size_mb = Math.round(h.heapSize / (1024 * 1024));
+                heap_top = Object.entries(h.objectTypeCounts)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 8) as Array<[string, number]>;
+              } catch {
+                // bun:jsc unavailable (plain node tooling) — skip attribution.
+              }
+            }
             logger.info({
               module: "process",
               action: "step.memory",
               at: "finish",
-              external_mb: Math.round(m.external / (1024 * 1024)),
+              external_mb,
               rss_mb: Math.round(m.rss / (1024 * 1024)),
+              ...(heap_size_mb !== undefined ? { heap_size_mb } : {}),
+              ...(heap_top ? { heap_top } : {}),
             });
           }
           const u = readStepUsage(step);
