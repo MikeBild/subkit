@@ -13,7 +13,9 @@ import {
   applyTurnEvent,
   initialSessionState,
   lastAssistantText,
+  lastExecutionResult,
   readSse,
+  renderExecutionOutput,
   type SkSessionState,
   type TurnEvent,
 } from "@cli-core/index.ts";
@@ -435,7 +437,16 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   const assistantText = lastAssistantText(streamState);
   if (opts.output === "text") {
     const text = assistantText.trim();
-    if (text) writeLine(stdout, text);
+    if (text) {
+      writeLine(stdout, text);
+    } else {
+      // Tool-only turn: the model ran the work but produced no prose
+      // (production sessions saw `sk -p "run X and show results"` exit
+      // SILENTLY while the data sat in toolCalls[].result). Render the
+      // last succeeded execution payload so text mode always answers.
+      const exec = lastExecutionResult(streamState);
+      if (exec) writeLine(stdout, renderExecutionOutput(exec));
+    }
     // Surface mention warnings for the operator.
     for (const w of resolved.warnings) stderr.write(`sk: ${w}\n`);
   } else if (opts.output === "json") {

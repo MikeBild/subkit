@@ -118,6 +118,11 @@ export const probeConnectorDraftTool: ConversationTool = {
       needs_reauth: false,
       auth_failed_at: null,
       auth_failed_reason: null,
+      health_state: "ok",
+      health_reason: null,
+      health_error_code: null,
+      sunset_at: null,
+      successor_uri: null,
     };
 
     // Non-HTTP drivers run their dedicated read-only probe (connect +

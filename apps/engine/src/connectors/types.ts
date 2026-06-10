@@ -288,4 +288,13 @@ export interface ConnectorView {
   needs_reauth: boolean;
   auth_failed_at: Date | null;
   auth_failed_reason: string | null;
+  /** Rolled-up health (ok | degraded | needs_update | needs_reauth) — see
+   *  connectors/health-state.ts. Snapshot at read time; the dispatcher uses
+   *  it as an in-memory guard so steady-state requests skip the no-op
+   *  health UPDATE. */
+  health_state: string;
+  health_reason: string | null;
+  health_error_code: string | null;
+  sunset_at: Date | null;
+  successor_uri: string | null;
 }

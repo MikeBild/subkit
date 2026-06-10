@@ -75,6 +75,27 @@ export const connectors = pgTable(
     needs_reauth: boolean("needs_reauth").notNull().default(false),
     auth_failed_at: timestamp("auth_failed_at", { withTimezone: true }),
     auth_failed_reason: text("auth_failed_reason"),
+    // Rolled-up connector health: ok | degraded | needs_update | needs_reauth.
+    // Written ONLY through connectors/health-state.ts (atomic edge-guarded
+    // transitions, one notification + audit row per transition — same
+    // discipline as needs_reauth). `needs_reauth` (bool) stays the
+    // credential-specific flag; health_state is the presentation rollup that
+    // also covers removed/deprecated endpoints (needs_update) and repeated
+    // vendor failures (degraded). Read through effectiveConnectorHealth() so
+    // circuit_state / needs_reauth / health_state never disagree in displays.
+    health_state: text("health_state").notNull().default("ok"),
+    health_reason: text("health_reason"),
+    // Stable machine code for the current non-ok state (e.g.
+    // endpoint_removed | endpoint_deprecated | auth_rejected | vendor_degraded).
+    health_error_code: text("health_error_code"),
+    health_changed_at: timestamp("health_changed_at", { withTimezone: true }),
+    // Vendor-announced removal date (RFC 8594 `Sunset` header) for the
+    // deprecated-endpoint case — lets doctor/notifications say "migrate
+    // before <date>" instead of a bare warning.
+    sunset_at: timestamp("sunset_at", { withTimezone: true }),
+    // Replacement endpoint/docs URI from the vendor's `Link
+    // rel="successor-version"|"deprecation"` header, when announced.
+    successor_uri: text("successor_uri"),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

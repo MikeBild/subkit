@@ -75,6 +75,7 @@ function freshSignals(): TurnSignals {
     totalLoopWarnings: 0,
     consecutiveFailures: 0,
     lastAssistantText: "",
+    lastExecutionSuccess: null,
   };
 }
 

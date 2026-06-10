@@ -373,10 +373,20 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       }),
     };
   }
-  const staleCheckpoints = missingFreshCheckpoints(draft, [
+  const staleCheckpointsRaw = missingFreshCheckpoints(draft, [
     "connector_inspected",
     "connector_validated",
   ]);
+  // A FRESH GREEN probe supersedes stale inspect/validate checkpoints:
+  // the probe exercised the real endpoint with the real credential —
+  // strictly stronger evidence than the static checks this gate fronts.
+  // Pre-fix, the green-probe auto-persist failed `connector_not_ready`
+  // (×29 in one production authoring session) because probing never
+  // refreshes the inspect/validate checkpoints, so a connector that had
+  // just PROVEN itself live could not be saved.
+  const probeCheckpointFresh = missingFreshCheckpoints(draft, ["connector_probed"]).length === 0;
+  const probeIsGreen = connector.latest_probe?.ok === true;
+  const staleCheckpoints = probeCheckpointFresh && probeIsGreen ? [] : staleCheckpointsRaw;
   // OAuth2 drafts cannot probe before `authenticate_oauth` completes —
   // there is no access token yet, every probe will 401. The documented
   // lifecycle is save → authenticate_oauth → probe (docs/05-connectors.md),
@@ -491,8 +501,11 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     const probedAtRaw = connector.latest_probe.probed_at;
     const probedAtMs = probedAtRaw ? Date.parse(probedAtRaw) : Number.NaN;
     const haveTimestamp = Number.isFinite(probedAtMs);
-    const ageMs = haveTimestamp ? now() - probedAtMs : 0;
-    const insideCooldown = haveTimestamp && ageMs >= 0 && ageMs < FORCE_SAVE_COOLDOWN_MS;
+    // Clamp a future-dated probe (clock skew) to age 0: a negative age must
+    // count as inside-cooldown, not bypass it — otherwise skew lets the LLM
+    // force-save the exact credential a probe just rejected.
+    const ageMs = haveTimestamp ? Math.max(0, now() - probedAtMs) : 0;
+    const insideCooldown = haveTimestamp && ageMs < FORCE_SAVE_COOLDOWN_MS;
     if (!haveTimestamp || insideCooldown) {
       const remainingMs = haveTimestamp ? FORCE_SAVE_COOLDOWN_MS - ageMs : FORCE_SAVE_COOLDOWN_MS;
       const message = haveTimestamp

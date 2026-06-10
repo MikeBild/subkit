@@ -77,6 +77,28 @@ function pickRequestErrorMeta(err: unknown): {
     : out;
 }
 
+function pickHealthHint(err: unknown): {
+  health: string;
+  error_code?: string;
+  suggestion?: string;
+  next_best_actions?: string[];
+} | null {
+  if (!err || typeof err !== "object") return null;
+  const meta = (err as { meta?: Record<string, unknown> }).meta;
+  const hint = meta?.health_hint;
+  if (!hint || typeof hint !== "object") return null;
+  const h = hint as Record<string, unknown>;
+  if (typeof h.health !== "string") return null;
+  return {
+    health: h.health,
+    ...(typeof h.error_code === "string" ? { error_code: h.error_code } : {}),
+    ...(typeof h.suggestion === "string" ? { suggestion: h.suggestion } : {}),
+    ...(Array.isArray(h.next_best_actions)
+      ? { next_best_actions: h.next_best_actions.filter((a): a is string => typeof a === "string") }
+      : {}),
+  };
+}
+
 function pickResolvedUrl(meta: RequestMeta | null | undefined): string | undefined {
   if (!meta) return undefined;
   if (meta.driver === "http" || meta.driver === "connectorless") {
@@ -175,6 +197,19 @@ export function buildStepErrorDetail(opts: BuildStepErrorOptions): StepErrorDeta
     }
     const headers = safeHeaders(reqMeta.headers);
     if (headers) detail.response_headers = headers;
+  }
+  // Connector-health verdict + actionable hint attached at the dispatch
+  // throw site (`meta.health_hint`). This is what turns a bare `http 410`
+  // in chat into "the vendor removed this endpoint — check docs for the
+  // replacement" — the LLM/operator can act instead of guessing.
+  const healthHint = pickHealthHint(err);
+  if (healthHint) {
+    detail.health = healthHint.health;
+    if (healthHint.error_code) detail.health_error_code = healthHint.error_code;
+    if (healthHint.suggestion) detail.guidance = healthHint.suggestion;
+    if (healthHint.next_best_actions && healthHint.next_best_actions.length > 0) {
+      detail.next_best_actions = healthHint.next_best_actions;
+    }
   }
   const resolvedUrl = pickResolvedUrl(request_meta);
   if (resolvedUrl) detail.resolved_url = resolvedUrl;

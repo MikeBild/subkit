@@ -86,13 +86,20 @@ async function queryAuthFailedEvents() {
 }
 
 async function resetConnector() {
-  // Reset state between tests that share the same connector row.
+  // Reset state between tests that share the same connector row. The circuit
+  // columns must reset too: each test here intentionally fails requests, and
+  // the (now actually persisting) circuit breaker would otherwise open
+  // mid-suite and block later tests with circuit_open instead of exercising
+  // the reauth path under test.
   await ctx.testDb.db
     .update(connectors)
     .set({
       needs_reauth: false,
       auth_failed_at: null,
       auth_failed_reason: null,
+      circuit_state: "closed",
+      circuit_failure_count: 0,
+      circuit_opened_at: null,
     })
     .where(eq(connectors.id, connectorId));
 }

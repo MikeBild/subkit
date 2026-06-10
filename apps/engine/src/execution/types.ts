@@ -273,6 +273,17 @@ export interface StepErrorDetail {
   response_body_excerpt?: string;
   /** Safe subset of upstream response headers (auth-bearing names dropped). */
   response_headers?: Record<string, string>;
+  /** Connector-health verdict for the failing response
+   *  (auth_failed | endpoint_gone | not_found | rate_limited | degraded). */
+  health?: string;
+  /** Stable machine code from the health hint (endpoint_removed | ...). */
+  health_error_code?: string;
+  /** Actionable human/LLM guidance — "endpoint removed, check docs for the
+   *  replacement", "'x' may be a user, try /users/x" — instead of a bare
+   *  `http 410`. */
+  guidance?: string;
+  /** Tool names the LLM should reach for next (fetch_connector_docs, ...). */
+  next_best_actions?: string[];
 }
 
 export interface StepResult {

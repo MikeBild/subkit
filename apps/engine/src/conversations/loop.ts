@@ -760,6 +760,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     totalLoopWarnings: 0,
     consecutiveFailures: 0,
     lastAssistantText: "",
+    lastExecutionSuccess: null,
   };
   const wrappedTools = await wrapTools(
     ctx,
@@ -937,7 +938,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     // `converse.failed` ×3 in session 0498925e). The decision lives in
     // `llm/core/thinking-policy.ts` so step-router can read the same
     // policy when it considers escalating to `toolChoice: "required"`.
-    const turnForcesTool = preferredTool !== undefined;
+    // `preferredTool` is `string | null` — compare against null, not
+    // undefined (a `!== undefined` check is always true here and would
+    // suppress thinking on EVERY turn, including the hard stages above).
+    const turnForcesTool = preferredTool != null;
     const thinkingDecision = resolveThinking({
       enableThinking: turnEnableThinking,
       forcesTool: turnForcesTool,
@@ -2010,10 +2014,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   for (const key of Object.keys(wrappedTools)) {
     delete (wrappedTools as Record<string, unknown>)[key];
   }
+  // ASYNC GC hint only. A synchronous full GC (`Bun.gc(true)`) on a
+  // multi-GB heap stalls the event loop for hundreds of ms PER TURN —
+  // production showed event_loop.lag warnings (median ~1s) with every
+  // turn-end as one contributor. The async variant lets the collector
+  // schedule the pass off the hot return path; RSS reclamation still
+  // happens, just not at the cost of blocking every concurrent request.
   const maybeBun = (globalThis as { Bun?: { gc?: (sync: boolean) => void } }).Bun;
   if (typeof maybeBun?.gc === "function") {
     try {
-      maybeBun.gc(true);
+      maybeBun.gc(false);
     } catch {
       // GC hint is best-effort; never block the turn return on it.
     }

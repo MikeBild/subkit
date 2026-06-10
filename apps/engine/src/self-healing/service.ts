@@ -37,7 +37,7 @@
 // from pg-boss telemetry alone. Audit rows are written for the four
 // enumerated lifecycle events in docs/19.
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { audit, auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -290,27 +290,19 @@ async function autoApplyPatch(
     },
   };
 
-  const maxRows = (await tx
-    .select({
-      max_version: workflowVersions.version,
-    })
-    .from(workflowVersions)
-    .where(
-      and(
-        eq(workflowVersions.tenant_id, params.tenant_id),
-        eq(workflowVersions.workflow_id, params.workflow_id),
-      ),
-    )
-    .orderBy(desc(workflowVersions.version))
-    .limit(1)) as Array<{ max_version: number }>;
-  const next = (maxRows[0]?.max_version ?? 0) + 1;
-
+  // DB-side MAX(version)+1 in the INSERT itself — a read-then-insert
+  // computed in JS loses the race when two reactive repairs for the same
+  // workflow run concurrently (both read the same max, both insert the
+  // same version → unique violation rolls one repair back).
   const [inserted] = await tx
     .insert(workflowVersions)
     .values({
       tenant_id: params.tenant_id,
       workflow_id: params.workflow_id,
-      version: next,
+      version: sql<number>`(SELECT COALESCE(MAX(${workflowVersions.version}), 0) + 1
+         FROM ${workflowVersions}
+        WHERE ${workflowVersions.tenant_id} = ${params.tenant_id}
+          AND ${workflowVersions.workflow_id} = ${params.workflow_id})`,
       dag: newDag,
       note: `self-healing auto-apply of patch ${params.candidate_id}`,
     })

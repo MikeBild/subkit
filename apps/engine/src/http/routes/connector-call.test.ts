@@ -211,12 +211,16 @@ describe("POST /v1/connectors/{id}/call", () => {
     const body = (await res.json()) as {
       status: number;
       health: string;
+      health_suggestion?: string;
       body: { error: { code: string } };
     };
     expect(body.status).toBe(404);
     expect(body.body.error.code).toBe("not_found");
-    // 404 is inspectable — health stays "ok" so the caller decides.
-    expect(body.health).toBe("ok");
+    // 404 is still inspectable (route 200, body carried), but the verdict is
+    // now `not_found` so the caller gets path/identifier guidance instead of
+    // mistaking a wrong path for a healthy empty result.
+    expect(body.health).toBe("not_found");
+    expect(body.health_suggestion).toContain("not a broken connector");
   });
 
   test("401 — auth failure surfaces health:auth_failed with next_best_actions", async () => {

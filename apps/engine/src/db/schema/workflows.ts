@@ -52,6 +52,14 @@ export const workflows = pgTable(
     // reachable via the always-available `run_workflow(workflow=<slug>)`
     // fallback. Null until the first run lands.
     last_executed_at: timestamp("last_executed_at", { withTimezone: true }),
+    // Rolled-up workflow health: ok | needs_attention | degraded. Flipped to
+    // needs_attention when a connector this workflow depends on becomes
+    // unusable (needs_update/needs_reauth) or a preflight/contract probe
+    // fails — so the operator learns BEFORE an unattended run yields
+    // "0 results". Written only through connectors/health-state.ts.
+    health_state: text("health_state").notNull().default("ok"),
+    health_reason: text("health_reason"),
+    health_changed_at: timestamp("health_changed_at", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

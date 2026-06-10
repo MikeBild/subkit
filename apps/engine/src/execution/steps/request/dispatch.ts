@@ -10,7 +10,7 @@
 //   - GET / HEAD / OPTIONS: retry on 5xx + 429 + connection errors
 //   - POST / PUT / PATCH / DELETE: retry only on 429 + connection errors
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { evaluateHook } from "../../../auth/hooks.ts";
@@ -33,7 +33,15 @@ import {
 import { executeS3Request, type S3Method } from "../../../connectors/drivers/s3.ts";
 import { withEgressAudit } from "../../../connectors/egress.ts";
 import { EgressBlockedError, RobotsDisallowedError } from "../../../connectors/egress-guard.ts";
-import { classifyConnectorHealth } from "../../../connectors/health.ts";
+import {
+  classifyConnectorHealth,
+  connectorHealthHint,
+  parseDeprecation,
+} from "../../../connectors/health.ts";
+import {
+  clearConnectorHealthOnSuccess,
+  flagConnectorContractFailure,
+} from "../../../connectors/health-state.ts";
 import { clearConnectorReauth, flagConnectorAuthFailure } from "../../../connectors/reauth.ts";
 import { getConnectorForEnvironment } from "../../../connectors/service.ts";
 import type { Db } from "../../../db/client.ts";
@@ -104,6 +112,88 @@ function clearReauthOnSuccess(db: Db, connector: { tenant_id: string; id: string
       error: err instanceof Error ? err.message : String(err),
     });
   });
+}
+
+/**
+ * Persist a circuit-breaker state write. Drizzle builders are lazy — a bare
+ * `void db.update(...)` never dispatches SQL — so every circuit write must be
+ * awaited (or `.catch()`-chained) to take effect. The returned promise never
+ * rejects: the step result must not depend on circuit bookkeeping, and on the
+ * failure path a DB error here must not mask the original request error.
+ */
+async function persistCircuitState(
+  db: Db,
+  connector: { tenant_id: string; id: string },
+  set: { circuit_state: "closed" | "half-open"; circuit_failure_count?: number },
+): Promise<void> {
+  try {
+    await db.update(connectors).set(set).where(eq(connectors.id, connector.id));
+    logger.info({
+      module: "connectors",
+      action: "connector.circuit.transition",
+      tenant_id: connector.tenant_id,
+      connector_id: connector.id,
+      circuit_state: set.circuit_state,
+    });
+  } catch (err) {
+    logger.warn({
+      module: "connectors",
+      action: "connector.circuit.update_failed",
+      msg: "circuit-breaker state write failed",
+      tenant_id: connector.tenant_id,
+      connector_id: connector.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * Record a request failure against the connector's circuit breaker in ONE
+ * atomic statement: the increment reads the column (not a stale snapshot, so
+ * concurrent failures cannot lose updates) and the same UPDATE flips the
+ * circuit open when the new count reaches the threshold. Logs exactly once on
+ * the open transition. Never rejects (see persistCircuitState).
+ */
+async function recordCircuitFailure(
+  db: Db,
+  connector: { tenant_id: string; id: string },
+): Promise<void> {
+  try {
+    const rows = await db
+      .update(connectors)
+      .set({
+        circuit_failure_count: sql`${connectors.circuit_failure_count} + 1`,
+        circuit_opened_at: sql`CASE WHEN ${connectors.circuit_failure_count} + 1 >= ${connectors.circuit_threshold} AND ${connectors.circuit_state} <> 'open' THEN now() ELSE ${connectors.circuit_opened_at} END`,
+        circuit_state: sql`CASE WHEN ${connectors.circuit_failure_count} + 1 >= ${connectors.circuit_threshold} THEN 'open' ELSE ${connectors.circuit_state} END`,
+      })
+      .where(eq(connectors.id, connector.id))
+      .returning({
+        circuit_state: connectors.circuit_state,
+        circuit_failure_count: connectors.circuit_failure_count,
+        circuit_threshold: connectors.circuit_threshold,
+      });
+    const row = rows[0];
+    if (row?.circuit_state === "open" && row.circuit_failure_count === row.circuit_threshold) {
+      logger.warn({
+        module: "connectors",
+        action: "connector.circuit.opened",
+        msg: "connector circuit breaker opened — requests blocked until reset",
+        tenant_id: connector.tenant_id,
+        connector_id: connector.id,
+        circuit_failure_count: row.circuit_failure_count,
+        circuit_threshold: row.circuit_threshold,
+      });
+    }
+  } catch (err) {
+    logger.warn({
+      module: "connectors",
+      action: "connector.circuit.update_failed",
+      msg: "circuit-breaker failure write failed",
+      tenant_id: connector.tenant_id,
+      connector_id: connector.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 interface FetchAttemptResult {
@@ -186,6 +276,8 @@ interface DoOnePageParams {
   retry_counter: { value: number };
   tenant_id: string;
   connector_id?: string | null;
+  /** Names the connector in failure hints ("Connector 'jira' returned 410…"). */
+  connector_slug?: string | null;
   retry_policy: RetryPolicy;
   /** When set on a non-idempotent method, an `Idempotency-Key` header is
    *  injected per attempt as `${base}:${attempt}` so each retry is a fresh
@@ -195,6 +287,49 @@ interface DoOnePageParams {
    *  request step copies the value into `request_meta.idempotency_key` for
    *  audit. Stays null when no key was emitted (GET / HEAD / OPTIONS). */
   last_idempotency_key?: { value: string | null };
+}
+
+/**
+ * Build the `health_hint` meta attached to a failing RequestError so
+ * `buildStepErrorDetail` can surface actionable guidance on `step.failed`
+ * instead of a bare `http 410`/`http 404`. Returns undefined when the
+ * verdict carries no hint (plain inspectable 4xx like 409/422).
+ */
+function healthHintMeta(
+  status: number,
+  headers: Record<string, string>,
+  opts: {
+    slug?: string | null | undefined;
+    url?: string | undefined;
+    retry_after_s?: number | null | undefined;
+  },
+): Record<string, unknown> | undefined {
+  const health = classifyConnectorHealth(status, headers);
+  if (health === "ok" || health === "deprecated") return undefined;
+  let path: string | null = null;
+  if (opts.url) {
+    try {
+      path = new URL(opts.url).pathname;
+    } catch {
+      path = null;
+    }
+  }
+  const deprecation = parseDeprecation(headers);
+  const hint = connectorHealthHint(health, opts.slug ?? "this connector", {
+    path,
+    deprecation,
+    retry_after_s: opts.retry_after_s ?? null,
+  });
+  if (!hint) return undefined;
+  return {
+    health,
+    error_code: hint.error_code,
+    suggestion: hint.suggestion,
+    next_best_actions: hint.next_best_actions,
+    // Parsed Deprecation/Sunset/Link signal — the 410 rollup reads the
+    // vendor-announced successor URI from here.
+    ...(deprecation ? { deprecation } : {}),
+  };
 }
 
 async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
@@ -257,7 +392,14 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
           60 * 60_000,
         );
         if (attempt >= p.max_attempts) {
-          throw new RequestError(`http 429`, "http_429", 429, { headers: res.headers });
+          throw new RequestError(`http 429`, "http_429", 429, {
+            headers: res.headers,
+            health_hint: healthHintMeta(429, res.headers, {
+              slug: p.connector_slug,
+              url: p.url,
+              retry_after_s: after != null ? Math.round(after / 1000) : null,
+            }),
+          });
         }
         logger.info({
           module: "execution",
@@ -279,10 +421,20 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       }
       if (res.status >= 500) {
         if (!isIdempotent(p.method) && !is_additional_retry_status) {
-          throw new RequestError(`http ${res.status}`, "http_5xx", res.status);
+          throw new RequestError(`http ${res.status}`, "http_5xx", res.status, {
+            health_hint: healthHintMeta(res.status, res.headers, {
+              slug: p.connector_slug,
+              url: p.url,
+            }),
+          });
         }
         if (attempt >= p.max_attempts) {
-          throw new RequestError(`http ${res.status}`, "http_5xx", res.status);
+          throw new RequestError(`http ${res.status}`, "http_5xx", res.status, {
+            health_hint: healthHintMeta(res.status, res.headers, {
+              slug: p.connector_slug,
+              url: p.url,
+            }),
+          });
         }
         const wait = backoffMs(attempt, p.retry_policy.backoff_base_ms);
         logger.info({
@@ -304,7 +456,13 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       // 4xx (non-429): retryable only if explicitly opted in via retry_on_status.
       if (is_additional_retry_status) {
         if (attempt >= p.max_attempts) {
-          throw new RequestError(`http ${res.status}`, "http_4xx", res.status, { body: res.body });
+          throw new RequestError(`http ${res.status}`, "http_4xx", res.status, {
+            body: res.body,
+            health_hint: healthHintMeta(res.status, res.headers, {
+              slug: p.connector_slug,
+              url: p.url,
+            }),
+          });
         }
         const wait = backoffMs(attempt, p.retry_policy.backoff_base_ms);
         logger.info({
@@ -323,7 +481,13 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         await sleep(wait, p.signal);
         continue;
       }
-      throw new RequestError(`http ${res.status}`, "http_4xx", res.status, { body: res.body });
+      throw new RequestError(`http ${res.status}`, "http_4xx", res.status, {
+        body: res.body,
+        health_hint: healthHintMeta(res.status, res.headers, {
+          slug: p.connector_slug,
+          url: p.url,
+        }),
+      });
     } catch (err) {
       lastErr = err;
       if (err instanceof HttpRequestInvalidError) {
@@ -1143,10 +1307,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           }
         }
         // Reset period elapsed — transition to half-open
-        void p.ctx.db
-          .update(connectors)
-          .set({ circuit_state: "half-open" })
-          .where(eq(connectors.id, connector.id));
+        await persistCircuitState(p.ctx.db, connector, { circuit_state: "half-open" });
       }
       // Track the connector so circuit state can be updated after the request.
       activeConnector = connector;
@@ -1430,6 +1591,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           retry_total_ms: retryTotal,
           retry_counter: retryCounter,
           connector_id: p.step.connector_id ?? null,
+          connector_slug: activeConnector?.slug ?? null,
           retry_policy,
           last_idempotency_key: lastIdempotencyKey,
           tenant_id: p.ctx.tenant_id,
@@ -1517,10 +1679,10 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         activeConnector &&
         (activeConnector.circuit_state === "half-open" || activeConnector.circuit_failure_count > 0)
       ) {
-        void p.ctx.db
-          .update(connectors)
-          .set({ circuit_state: "closed", circuit_failure_count: 0 })
-          .where(eq(connectors.id, activeConnector.id));
+        await persistCircuitState(p.ctx.db, activeConnector, {
+          circuit_state: "closed",
+          circuit_failure_count: 0,
+        });
       }
       // Re-auth clear: a successful authenticated response proves the
       // credential is live. This is a SEPARATE concern from the circuit
@@ -1528,6 +1690,61 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       // clear unconditionally on success (outside the circuit-state guard).
       if (activeConnector) {
         clearReauthOnSuccess(p.ctx.db, activeConnector);
+      }
+      // Deprecation early-warning: a SUCCESSFUL response that carries
+      // Deprecation/Sunset headers means the vendor announced this
+      // endpoint's removal — flag it now, months before the eventual 410,
+      // so the migration happens inside the vendor's warning window instead
+      // of as a production outage. Otherwise recover transient health
+      // (degraded) on success. Both are edge-guarded; the in-memory
+      // snapshot guards skip the no-op write on the steady state.
+      if (activeConnector) {
+        const deprecation = parseDeprecation(res.headers);
+        if (deprecation && activeConnector.health_state !== "needs_update") {
+          logger.warn({
+            module: "connectors",
+            action: "connector.endpoint.deprecated",
+            msg: "vendor announced endpoint deprecation on a successful response",
+            tenant_id: p.ctx.tenant_id,
+            connector_id: activeConnector.id,
+            step_id: p.step.id,
+            sunset: deprecation.sunset,
+            successor_uri: deprecation.successor_uri,
+          });
+          await flagConnectorContractFailure(p.ctx.db, activeConnector, {
+            error_code: "endpoint_deprecated",
+            reason: `vendor announced deprecation of an endpoint this connector uses${deprecation.sunset ? ` (sunset: ${deprecation.sunset})` : ""}`,
+            deprecation,
+            workflow_id: p.ctx.workflow_id ?? null,
+          });
+        } else if (
+          !deprecation &&
+          (activeConnector.health_state === "degraded" ||
+            activeConnector.health_state === "needs_reauth")
+        ) {
+          await clearConnectorHealthOnSuccess(p.ctx.db, activeConnector);
+        }
+      }
+      // Record success shape for drift detection / migration tooling —
+      // the same call the s3/postgres branches already make. HTTP is the
+      // most common driver; without this `getLatestShape` is always null
+      // for HTTP connectors and the self-healing drift signals
+      // (http_status_new_shape / schema_diff) can never fire.
+      // Best-effort — observability, not load-bearing.
+      if (activeConnector && res.status >= 200 && res.status < 300) {
+        try {
+          await recordSuccessShape(
+            {
+              tenant_id: p.ctx.tenant_id,
+              connector_id: activeConnector.id,
+              endpoint_key: `${p.step.method ?? "GET"} ${baseUrl.pathname}`,
+              value: res.body,
+            },
+            p.ctx.db,
+          );
+        } catch {
+          // tolerated
+        }
       }
       last_meta = connectorResolution
         ? {
@@ -1606,6 +1823,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     let prev: unknown = null;
     let pageIdx = 0;
     let pages_fetched = 0;
+    // Most recent page's response headers — the deprecation early-warning on
+    // the paginated success path reads Deprecation/Sunset from here.
+    let lastPageHeaders: Record<string, string> = {};
     // Local mirror of the most recently issued checkpoint write. Carried
     // forward into `last_meta` so the failure path persists the resume
     // position even though the actual write to the row is fire-and-forget.
@@ -1624,6 +1844,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           retry_total_ms: retryTotal,
           retry_counter: retryCounter,
           connector_id: p.step.connector_id ?? null,
+          connector_slug: activeConnector?.slug ?? null,
           retry_policy,
           last_idempotency_key: lastIdempotencyKey,
           tenant_id: p.ctx.tenant_id,
@@ -1665,6 +1886,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
       strat.merge(acc, body);
       prev = body;
+      lastPageHeaders = res.headers;
       pageIdx += 1;
       pages_fetched += 1;
       // Logical page number = "what page have we now finished" across the
@@ -1748,11 +1970,68 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
     }
     if (inFlightCheckpoint) await inFlightCheckpoint;
-    // Re-auth clear on the PAGINATED success path (the single-page path clears
-    // above). A paginated workflow — e.g. a Jira JQL search — that recovers
-    // after a credential fix must clear needs_reauth too.
+    // Circuit-breaker reset + re-auth clear on the PAGINATED success path (the
+    // single-page path does both above). A paginated workflow — e.g. a Jira
+    // JQL search — that recovers after a credential fix must clear both too.
+    if (
+      activeConnector &&
+      (activeConnector.circuit_state === "half-open" || activeConnector.circuit_failure_count > 0)
+    ) {
+      await persistCircuitState(p.ctx.db, activeConnector, {
+        circuit_state: "closed",
+        circuit_failure_count: 0,
+      });
+    }
     if (activeConnector) {
       clearReauthOnSuccess(p.ctx.db, activeConnector);
+    }
+    // Deprecation early-warning / health recovery on the paginated success
+    // path — same contract as the single-page path above.
+    if (activeConnector) {
+      const deprecation = parseDeprecation(lastPageHeaders);
+      if (deprecation && activeConnector.health_state !== "needs_update") {
+        logger.warn({
+          module: "connectors",
+          action: "connector.endpoint.deprecated",
+          msg: "vendor announced endpoint deprecation on a successful response",
+          tenant_id: p.ctx.tenant_id,
+          connector_id: activeConnector.id,
+          step_id: p.step.id,
+          sunset: deprecation.sunset,
+          successor_uri: deprecation.successor_uri,
+        });
+        await flagConnectorContractFailure(p.ctx.db, activeConnector, {
+          error_code: "endpoint_deprecated",
+          reason: `vendor announced deprecation of an endpoint this connector uses${deprecation.sunset ? ` (sunset: ${deprecation.sunset})` : ""}`,
+          deprecation,
+          workflow_id: p.ctx.workflow_id ?? null,
+        });
+      } else if (
+        !deprecation &&
+        (activeConnector.health_state === "degraded" ||
+          activeConnector.health_state === "needs_reauth")
+      ) {
+        await clearConnectorHealthOnSuccess(p.ctx.db, activeConnector);
+      }
+    }
+    // Record success shape (drift detection) on the paginated path too.
+    // The LAST page's body is shape-representative for the endpoint —
+    // deriving from the full accumulator would walk every page for no
+    // additional contract signal. Best-effort.
+    if (activeConnector && prev !== null) {
+      try {
+        await recordSuccessShape(
+          {
+            tenant_id: p.ctx.tenant_id,
+            connector_id: activeConnector.id,
+            endpoint_key: `${p.step.method ?? "GET"} ${baseUrl.pathname}`,
+            value: prev,
+          },
+          p.ctx.db,
+        );
+      } catch {
+        // tolerated
+      }
     }
     return {
       status: "succeeded",
@@ -1782,24 +2061,11 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         // Already logged; swallow to keep the original error in flight.
       }
     }
-    // Circuit breaker: record failure and potentially open the circuit
+    // Circuit breaker: record failure and potentially open the circuit.
+    // Atomic increment-and-flip — never read-then-write (concurrent failures
+    // would lose updates and the threshold would be unreachable).
     if (activeConnector) {
-      const newCount = activeConnector.circuit_failure_count + 1;
-      if (newCount >= activeConnector.circuit_threshold) {
-        void p.ctx.db
-          .update(connectors)
-          .set({
-            circuit_state: "open",
-            circuit_opened_at: new Date(),
-            circuit_failure_count: newCount,
-          })
-          .where(eq(connectors.id, activeConnector.id));
-      } else {
-        void p.ctx.db
-          .update(connectors)
-          .set({ circuit_failure_count: newCount })
-          .where(eq(connectors.id, activeConnector.id));
-      }
+      await recordCircuitFailure(p.ctx.db, activeConnector);
     }
     // Re-auth flag: an authentication rejection (401/403) means the
     // credential is dead until a human re-authenticates — a SEPARATE concern
@@ -1815,6 +2081,31 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     ) {
       await flagConnectorAuthFailure(p.ctx.db, activeConnector, {
         reason: "request rejected authentication (401/403)",
+        workflow_id: p.ctx.workflow_id ?? null,
+      });
+    }
+    // Contract-failure rollup: 410 Gone means the vendor REMOVED the endpoint
+    // — flip connector health to needs_update on the transition edge (one
+    // notification + audit row, however many runs keep hitting it), carrying
+    // the vendor's announced successor URI when the 410 response included
+    // deprecation Link headers. This is what converts the silent
+    // "0 results forever" failure mode into an operator-visible state.
+    if (
+      activeConnector &&
+      activeConnector.health_state !== "needs_update" &&
+      err instanceof RequestError &&
+      err.cause_kind === "http_4xx" &&
+      err.status === 410
+    ) {
+      const hint = (err.meta?.health_hint ?? null) as {
+        suggestion?: string;
+        deprecation?: { deprecated: string; sunset: string | null; successor_uri: string | null };
+      } | null;
+      await flagConnectorContractFailure(p.ctx.db, activeConnector, {
+        error_code: "endpoint_removed",
+        reason:
+          hint?.suggestion ?? "request returned 410 Gone — the vendor removed this endpoint/path",
+        deprecation: hint?.deprecation ?? null,
         workflow_id: p.ctx.workflow_id ?? null,
       });
     }

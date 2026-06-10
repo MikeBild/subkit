@@ -34,6 +34,11 @@ function makeView(overrides: Partial<ConnectorView> = {}): ConnectorView {
     needs_reauth: true,
     auth_failed_at: new Date("2024-01-02"),
     auth_failed_reason: "token_expired",
+    health_state: "ok",
+    health_reason: null,
+    health_error_code: null,
+    sunset_at: null,
+    successor_uri: null,
     ...overrides,
   };
 }

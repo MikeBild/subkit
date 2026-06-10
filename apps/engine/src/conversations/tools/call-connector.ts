@@ -55,7 +55,11 @@ import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import { pgQueryWithCount } from "../../connectors/drivers/postgres.ts";
 import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts";
 import { executeSftpCommand } from "../../connectors/drivers/sftp.ts";
-import { classifyConnectorHealth, connectorHealthHint } from "../../connectors/health.ts";
+import {
+  classifyConnectorHealth,
+  connectorHealthHint,
+  parseDeprecation,
+} from "../../connectors/health.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import { roles, systemAccounts, users } from "../../db/schema/index.ts";
@@ -277,7 +281,7 @@ export const callConnectorTool: ConversationTool = {
     "Connector must be persisted; for drafts use `probe_connector_draft`.",
     "Auth/credential is injected from the saved row — additional `headers` are merged on top (HTTP).",
     "4xx/5xx responses still return `ok:true` with the upstream status — the LLM should inspect the body and decide.",
-    "`health` is `ok|auth_failed|endpoint_gone|degraded`. When it is NOT `ok`, the connector itself is unusable: an empty body means 'auth failed / endpoint removed', NOT 'no data'. Use `health_suggestion` + `next_best_actions` and tell the user to fix the connector rather than reporting empty results.",
+    "`health` is `ok|auth_failed|endpoint_gone|deprecated|not_found|rate_limited|degraded`. `auth_failed`/`endpoint_gone` mean the connector itself is unusable: an empty body means 'auth failed / endpoint removed', NOT 'no data' — tell the user to fix the connector. `not_found`/`rate_limited` are request-level (wrong path / throttled); `deprecated` means the call SUCCEEDED but the vendor announced removal — surface the migration hint. Always use `health_suggestion` + `next_best_actions`.",
     "Response bodies > 8KB are truncated; full payload is available via `get_raw_result(ref=raw_ref)`.",
     "Postgres: writes (INSERT/UPDATE/DELETE/DROP/…) are rejected unless `allow_writes:true` is passed. `row_limit` defaults to 100; queries with an existing LIMIT pass through unchanged.",
     "SFTP: `op` is one of list/get/put. `get` and `put` cap the body at 1 MB.",
@@ -672,7 +676,9 @@ export const callConnectorTool: ConversationTool = {
       url_host: usedHost,
       status_code: status,
       latency_ms,
-      outcome: errorDetail || health !== "ok" ? "error" : "success",
+      // `deprecated` is a successful response that merely announces a future
+      // removal — it must audit as success, not error.
+      outcome: errorDetail || (health !== "ok" && health !== "deprecated") ? "error" : "success",
       conversation_id: ctx.conversation_id,
     });
 
@@ -737,7 +743,10 @@ export const callConnectorTool: ConversationTool = {
     }
     // When the connector is unusable, tell the LLM explicitly so it reports
     // "auth failed / endpoint gone", not "no results".
-    const hint = connectorHealthHint(health, connector.slug);
+    const hint = connectorHealthHint(health, connector.slug, {
+      path: args.path ?? null,
+      deprecation: parseDeprecation(responseHeaders),
+    });
     if (hint) {
       data.health_suggestion = hint.suggestion;
       data.next_best_actions = hint.next_best_actions;

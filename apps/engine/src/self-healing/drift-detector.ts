@@ -239,6 +239,15 @@ export function renderDriftDiff(signal: DriftSignal): string {
         `expression: ${signal.expression}`,
         `actual_value: ${JSON.stringify(signal.actual_value)}`,
       ].join("\n");
+    case "endpoint_contract": {
+      const lines: string[] = [`kind: endpoint_contract`, `severity: ${signal.severity}`];
+      if (signal.request.method) lines.push(`request.method: ${signal.request.method}`);
+      if (signal.request.url) lines.push(`request.url: ${signal.request.url}`);
+      if (signal.request.path) lines.push(`request.path: ${signal.request.path}`);
+      if (signal.sunset) lines.push(`sunset: ${signal.sunset}`);
+      if (signal.successor_uri) lines.push(`successor_uri: ${signal.successor_uri}`);
+      return lines.join("\n");
+    }
   }
 }
 

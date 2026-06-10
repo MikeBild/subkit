@@ -146,10 +146,20 @@ export const ConnectorCallResponseSchema = z
     truncated: z.boolean(),
     body_byte_count: z.number().int().nonnegative(),
     raw_ref: z.string().optional(),
-    // Connector-response health. "ok" for any inspectable result; non-ok
-    // verdicts mean the connector is unusable (rejected credential, removed
-    // endpoint, vendor 5xx) and an empty body must not be read as "no data".
-    health: z.enum(["ok", "auth_failed", "endpoint_gone", "degraded"]),
+    // Connector-response health. Connector-level faults (auth_failed /
+    // endpoint_gone) mean the connector is unusable — an empty body must not
+    // be read as "no data". Request-level verdicts (not_found / rate_limited),
+    // the `deprecated` early warning, and transient `degraded` carry guidance
+    // while the connector itself stays usable.
+    health: z.enum([
+      "ok",
+      "auth_failed",
+      "endpoint_gone",
+      "deprecated",
+      "not_found",
+      "rate_limited",
+      "degraded",
+    ]),
     health_suggestion: z.string().optional(),
     next_best_actions: z.array(z.string()).optional(),
     metadata: ConnectorCallMetadataSchema,

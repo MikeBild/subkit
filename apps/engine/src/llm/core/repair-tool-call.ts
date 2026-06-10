@@ -52,6 +52,35 @@ export async function repairToolCall<TOOLS extends ToolSet>(
   });
   const tool = (tools as Record<string, Tool>)[toolCall.toolName];
   if (!tool) {
+    // `wf_<slug>` hallucination: the model named a per-workflow tool that
+    // is not in this turn's palette (LRU-capped catalog, or an invented
+    // name like `wf_org_top_repos`). The INTENT is unambiguous — run that
+    // workflow — and `run_workflow` is always available, so rewrite the
+    // call instead of dead-ending. If the de-prefixed slug doesn't match
+    // a real workflow, run_workflow returns its own instructional
+    // workflow-not-found error, which still beats a silent skip.
+    // (Production: 3 such hallucinations in one 4h window, each a wasted
+    // turn.)
+    if (toolCall.toolName.startsWith("wf_") && (tools as Record<string, Tool>).run_workflow) {
+      const slug = toolCall.toolName.slice(3).replace(/_/g, "-");
+      const rawInput =
+        typeof toolCall.input === "string" && toolCall.input.trim().length > 0
+          ? toolCall.input
+          : JSON.stringify(toolCall.input ?? {});
+      logger.info({
+        module: "llm",
+        action: "repair_tool_call.wf_alias_rewrite",
+        msg: "model called a wf_* tool missing from the palette — rewriting to run_workflow",
+        tool: toolCall.toolName,
+        workflow: slug,
+      });
+      onRepair?.();
+      return {
+        ...toolCall,
+        toolName: "run_workflow",
+        input: JSON.stringify({ workflow: slug, input: rawInput }),
+      };
+    }
     logger.warn({
       module: "llm",
       action: "repair_tool_call.unknown_tool",

@@ -61,6 +61,11 @@ function toView(row: typeof connectors.$inferSelect): ConnectorView {
     needs_reauth: row.needs_reauth ?? false,
     auth_failed_at: row.auth_failed_at ?? null,
     auth_failed_reason: row.auth_failed_reason ?? null,
+    health_state: row.health_state ?? "ok",
+    health_reason: row.health_reason ?? null,
+    health_error_code: row.health_error_code ?? null,
+    sunset_at: row.sunset_at ?? null,
+    successor_uri: row.successor_uri ?? null,
   };
 }
 

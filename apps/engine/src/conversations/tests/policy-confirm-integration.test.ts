@@ -47,6 +47,7 @@ describe("policy confirm_before_execution wiring", () => {
       totalLoopWarnings: 0,
       consecutiveFailures: 0,
       lastAssistantText: "",
+      lastExecutionSuccess: null,
     };
     const engineClient = new EngineClient({
       tenant_id: ctx.tenant_id,
@@ -139,6 +140,7 @@ describe("policy confirm_before_execution wiring", () => {
       totalLoopWarnings: 0,
       consecutiveFailures: 0,
       lastAssistantText: "",
+      lastExecutionSuccess: null,
     };
     const engineClient = new EngineClient({
       tenant_id: ctx.tenant_id,

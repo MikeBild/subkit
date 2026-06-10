@@ -206,6 +206,20 @@ function looksLikeLifecyclePayload(output: Record<string, unknown>): boolean {
 }
 
 function describeToolOutput(output: Record<string, unknown>): string {
+  // Loop-abort envelope that carries the IDENTICAL call's earlier success:
+  // describe the finished run, not the abort. Pre-fix the abort envelope
+  // replaced the success in `latestPerTool` and the user read
+  // "status=succeeded · no output" for a run whose data existed all along.
+  if (
+    (output.reason === "tool_loop_detected" || output.reason === "turn_loop_budget_exhausted") &&
+    output.prior_success_output !== undefined &&
+    output.prior_success_output !== null &&
+    typeof output.prior_success_output === "object"
+  ) {
+    return `already succeeded this turn — ${describeToolOutput(
+      output.prior_success_output as Record<string, unknown>,
+    )}`;
+  }
   // Auto-act envelopes carry an explicit `auto_saved` / `auto_committed`
   // flag. Surface that as the headline so the user sees "saved" / "committed"
   // before any list / lifecycle / fields fallback — task #4 result.

@@ -131,6 +131,18 @@ function _classify(proposal: PatchProposal, signal: DriftSignal | null): PatchDe
     reasons.push(`validation_failed: invariant '${signal.expression}' did not hold`);
     return { classification: "unsafe", reasons };
   }
+  if (signal && signal.kind === "endpoint_contract") {
+    // A removed/deprecated endpoint needs a path rewrite — that changes
+    // request semantics (pagination shape, required params, response
+    // envelope can all differ on the successor endpoint), so it is never
+    // safe to auto-apply even when the vendor announced the replacement.
+    // The patch candidate exists to hand the operator/agent the successor
+    // URI for a reviewed migration.
+    reasons.push(
+      `endpoint_contract: vendor ${signal.severity === "removed" ? "removed" : "deprecated"} ${signal.request.path ?? signal.request.url ?? "the endpoint"}`,
+    );
+    return { classification: "unsafe", reasons };
+  }
   reasons.push("rename/widening/optional-only patch");
   return { classification: "safe", reasons };
 }

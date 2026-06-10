@@ -522,16 +522,30 @@ export function wrapOne(
               : `tool.loop_detected: ${inner.name} called with identical args ${repeatCount}× in a row — change approach or ask the user`,
             ts: new Date().toISOString(),
           });
+          // When the IDENTICAL call already succeeded this turn, the work
+          // is done — hand its result back on the abort envelope so the
+          // model (and the fallback synthesis) presents the data instead
+          // of "no output". Production A2: a re-issued run_workflow
+          // tripped the guard and the finished run's output vanished.
+          const priorSuccess =
+            signals.lastExecutionSuccess &&
+            signals.lastExecutionSuccess.tool === inner.name &&
+            signals.lastExecutionSuccess.args_hash === argsHash
+              ? signals.lastExecutionSuccess.output
+              : undefined;
           return {
             ok: false,
             data: {
               error_code: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
-              message: turnBudgetReached
-                ? `this turn called tools ${signals.totalLoopWarnings}× past the loop-warning budget — stop, summarise what you already know, and end the turn with a single question for the user (use ask_user_choice or ask_user_text, not prose).`
-                : `${inner.name} has been called with identical args ${repeatCount}× in a row in this turn — change the args or stop and ask the user via ask_user_choice / ask_user_text. Do NOT retry with the SAME shape.`,
+              message: priorSuccess
+                ? `${inner.name} already succeeded with these exact args this turn — its result is attached as prior_success_output. Present THAT result to the user; do NOT run it again.`
+                : turnBudgetReached
+                  ? `this turn called tools ${signals.totalLoopWarnings}× past the loop-warning budget — stop, summarise what you already know, and end the turn with a single question for the user (use ask_user_choice or ask_user_text, not prose).`
+                  : `${inner.name} has been called with identical args ${repeatCount}× in a row in this turn — change the args or stop and ask the user via ask_user_choice / ask_user_text. Do NOT retry with the SAME shape.`,
               reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
               tool: inner.name,
               repeat_count: repeatCount,
+              ...(priorSuccess !== undefined ? { prior_success_output: priorSuccess } : {}),
               next_best_actions: ["ask_user_choice", "ask_user_text", "diagnose_latest_execution"],
             },
           };
@@ -1387,6 +1401,18 @@ export function wrapOne(
           signals.toolErrorCodeRepeat.delete(inner.name);
           // First success resets the global consecutive-failures counter.
           signals.consecutiveFailures = 0;
+          // Remember the last successful execution result keyed by args
+          // hash. If the model re-issues the IDENTICAL call and trips the
+          // loop guard, the abort envelope hands this back as
+          // `prior_success_output` instead of hiding the finished run
+          // behind "no output".
+          if (argsHash && (inner.name === "run_workflow" || inner.name.startsWith("wf_"))) {
+            signals.lastExecutionSuccess = {
+              tool: inner.name,
+              args_hash: argsHash,
+              output: resultPayload,
+            };
+          }
         } else {
           const errObj = (resultPayload ?? {}) as Record<string, unknown>;
           const reason =

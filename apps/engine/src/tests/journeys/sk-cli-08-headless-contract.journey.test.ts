@@ -80,8 +80,11 @@ describe("journey: sk headless output contract", () => {
     });
     expect(result.exitCode).toBe(0);
     expect(result.conversation_id).not.toBeNull();
-    // Text output may be empty when the mock returns no assistant
-    // text, but stderr must never carry an error line.
+    // Text output may be empty ONLY when the turn produced neither
+    // assistant text nor a succeeded execution result — when a
+    // run_workflow/wf_* call succeeded, headless renders its payload
+    // (see turn-event.execution-result.test.ts). stderr must never
+    // carry an error line either way.
     expect(stderr.toString()).not.toContain("sk:");
   });
 

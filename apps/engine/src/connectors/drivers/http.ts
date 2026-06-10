@@ -680,16 +680,11 @@ function parseCsvBody(text: string): Array<Record<string, string>> {
   }
 }
 
+// Platform `AbortSignal.any` — NOT hand-rolled addEventListener wiring,
+// which leaked one listener per request onto the long-lived caller signal
+// (never removed on completion → MaxListenersExceededWarning + retention).
 function mergeSignals(signals: AbortSignal[]): AbortSignal {
-  const controller = new AbortController();
-  for (const signal of signals) {
-    if (signal.aborted) {
-      controller.abort(signal.reason);
-      return controller.signal;
-    }
-    signal.addEventListener("abort", () => controller.abort(signal.reason), { once: true });
-  }
-  return controller.signal;
+  return AbortSignal.any(signals);
 }
 
 export interface ResolvedFilePart {

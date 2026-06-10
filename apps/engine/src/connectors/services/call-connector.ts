@@ -31,7 +31,12 @@ import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { query as graphqlQuery } from "../drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../drivers/http.ts";
-import { type ConnectorHealth, classifyConnectorHealth, connectorHealthHint } from "../health.ts";
+import {
+  type ConnectorHealth,
+  classifyConnectorHealth,
+  connectorHealthHint,
+  parseDeprecation,
+} from "../health.ts";
 import { getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 
@@ -65,10 +70,11 @@ export interface CallConnectorOk {
   truncated: boolean;
   raw_ref?: string;
   /**
-   * Connector-response health. "ok" for any inspectable result (incl.
-   * non-auth 4xx the caller may legitimately handle). Non-ok verdicts
-   * (auth_failed / endpoint_gone / degraded) mean the connector itself is
-   * unusable — the caller must NOT read an empty body as "no data".
+   * Connector-response health. Connector-level faults (auth_failed /
+   * endpoint_gone) mean the connector itself is unusable — the caller must
+   * NOT read an empty body as "no data". Request-level verdicts (not_found /
+   * rate_limited), the `deprecated` early warning, and transient `degraded`
+   * carry guidance but the connector itself is fine.
    */
   health: ConnectorHealth;
   /** Present only when `health !== "ok"`. */
@@ -344,7 +350,9 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
     url_host,
     status_code: status,
     latency_ms,
-    outcome: errorDetail || health !== "ok" ? "error" : "success",
+    // `deprecated` is a successful response that merely announces a future
+    // removal — it must audit as success, not error.
+    outcome: errorDetail || (health !== "ok" && health !== "deprecated") ? "error" : "success",
     ...(req.conversation_id ? { conversation_id: req.conversation_id } : {}),
   });
 
@@ -408,7 +416,10 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
   if (truncatedBody.truncated && truncatedBody.raw_ref) {
     ok.raw_ref = truncatedBody.raw_ref;
   }
-  const hint = connectorHealthHint(health, connector.slug);
+  const hint = connectorHealthHint(health, connector.slug, {
+    path: req.path,
+    deprecation: dispatch ? parseDeprecation(dispatch.headers) : null,
+  });
   if (hint) {
     ok.health_suggestion = hint.suggestion;
     ok.next_best_actions = hint.next_best_actions;

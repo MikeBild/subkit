@@ -266,17 +266,11 @@ function clipCorpus(text: string): string {
   return buf.subarray(0, MAX_CORPUS_BYTES).toString("utf8");
 }
 
+// Platform `AbortSignal.any` — the hand-rolled version leaked a listener
+// onto the long-lived caller signal per crawl (never removed on completion).
 function combineSignals(walltime: AbortSignal, caller: AbortSignal | undefined): AbortSignal {
   if (!caller) return walltime;
-  const controller = new AbortController();
-  const onAbort = (): void => controller.abort();
-  if (walltime.aborted || caller.aborted) {
-    controller.abort();
-    return controller.signal;
-  }
-  walltime.addEventListener("abort", onAbort, { once: true });
-  caller.addEventListener("abort", onAbort, { once: true });
-  return controller.signal;
+  return AbortSignal.any([walltime, caller]);
 }
 
 interface CrawlContext {

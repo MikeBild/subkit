@@ -11063,7 +11063,7 @@ export interface components {
             body_byte_count: number;
             raw_ref?: string;
             /** @enum {string} */
-            health: "ok" | "auth_failed" | "endpoint_gone" | "degraded";
+            health: "ok" | "auth_failed" | "endpoint_gone" | "deprecated" | "not_found" | "rate_limited" | "degraded";
             health_suggestion?: string;
             next_best_actions?: string[];
             metadata: components["schemas"]["ConnectorCallMetadata"];
@@ -12098,7 +12098,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape";
+            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape" | "endpoint_contract";
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
@@ -12106,7 +12106,7 @@ export interface components {
         };
         SelfHealingScanUnanchored: {
             /** @enum {string} */
-            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape";
+            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape" | "endpoint_contract";
             /** @enum {string} */
             reason: "hook_surface_not_supported" | "no_workflow_anchor";
             resource_id: string;

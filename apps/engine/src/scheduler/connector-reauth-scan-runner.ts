@@ -102,6 +102,11 @@ export async function runConnectorReauthScanForTenant(
       needs_reauth: row.needs_reauth,
       auth_failed_at: row.auth_failed_at,
       auth_failed_reason: row.auth_failed_reason,
+      health_state: row.health_state ?? "ok",
+      health_reason: row.health_reason ?? null,
+      health_error_code: row.health_error_code ?? null,
+      sunset_at: row.sunset_at ?? null,
+      successor_uri: row.successor_uri ?? null,
     };
 
     let result: Awaited<ReturnType<typeof probeConnector>>;

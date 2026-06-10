@@ -191,6 +191,15 @@ export interface TurnSignals {
    * visible message when the turn ended with no text but tool results.
    */
   lastAssistantText: string;
+  /**
+   * Last SUCCESSFUL execution-shaped tool result of the turn
+   * (run_workflow / wf_<slug>), keyed by its args hash. When the loop
+   * guard aborts an IDENTICAL re-issued call, the abort envelope attaches
+   * this as `prior_success_output` — the run already succeeded; hiding its
+   * result behind "no output" was the production A2 failure mode (the
+   * loop-abort envelope replaced the success in the fallback summary).
+   */
+  lastExecutionSuccess: { tool: string; args_hash: string; output: unknown } | null;
 }
 
 /**

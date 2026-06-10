@@ -90,6 +90,7 @@ describe("conversations/hardening", () => {
       totalLoopWarnings: 0,
       consecutiveFailures: 0,
       lastAssistantText: "",
+      lastExecutionSuccess: null,
     };
     const events: TurnEvent[] = [];
     // Register a fake tool via wrapOne-like closure by reusing wrapTools

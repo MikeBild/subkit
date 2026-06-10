@@ -57,6 +57,7 @@ const SignalTypeEnum = z.enum([
   "validation_failed",
   "jsonata_path_miss",
   "http_status_new_shape",
+  "endpoint_contract",
 ]);
 
 const ScanCandidateSchema = z

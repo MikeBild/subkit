@@ -70,12 +70,8 @@ export async function runSingleStep(p: RunSingleStepParams): Promise<RunResult> 
   }
 }
 
+// Platform `AbortSignal.any` — the hand-rolled version leaked one listener
+// per call onto the long-lived caller signal (never removed on completion).
 function mergeSignals(a: AbortSignal, b: AbortSignal): AbortSignal {
-  const ctrl = new AbortController();
-  const onAbort = (reason: unknown) => ctrl.abort(reason);
-  if (a.aborted) ctrl.abort(a.reason);
-  else a.addEventListener("abort", () => onAbort(a.reason), { once: true });
-  if (b.aborted) ctrl.abort(b.reason);
-  else b.addEventListener("abort", () => onAbort(b.reason), { once: true });
-  return ctrl.signal;
+  return AbortSignal.any([a, b]);
 }

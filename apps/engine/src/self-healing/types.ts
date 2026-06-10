@@ -72,6 +72,28 @@ export type DriftSignal =
       kind: "validation_failed";
       expression: string;
       actual_value: unknown;
+    }
+  | {
+      // Vendor removed or announced removal of an endpoint a committed
+      // workflow references. Emitted by the runtime request path (410 Gone /
+      // Deprecation headers on a live response) and by the proactive
+      // endpoint-contract scan — the months-early warning that converts
+      // "discover the removal when an unattended run returns 0 results"
+      // into "discover it inside the migration window". Always classified
+      // never-auto: an endpoint path rewrite changes request semantics and
+      // must go through a reviewed Patch Candidate, even when the vendor
+      // announced a successor URI.
+      kind: "endpoint_contract";
+      severity: "removed" | "deprecated";
+      request: {
+        method?: string | undefined;
+        url?: string | undefined;
+        path?: string | undefined;
+      };
+      /** Vendor-announced removal date (Sunset header), when known. */
+      sunset: string | null;
+      /** Vendor-announced replacement URI, when known. */
+      successor_uri: string | null;
     };
 
 // The classifier output. A PatchDecision says whether the engine may

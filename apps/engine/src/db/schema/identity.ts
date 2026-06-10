@@ -59,6 +59,14 @@ export const tenants = pgTable(
     last_connector_reauth_scan_at: timestamp("last_connector_reauth_scan_at", {
       withTimezone: true,
     }),
+    // Stamp set by the scheduler when the endpoint-contract scan (probing the
+    // actual operations committed workflows reference, classifying 410/
+    // deprecation BEFORE a live run hits them) last fired for this tenant.
+    // Same atomic compare-and-set claim pattern as the other last_*_scan_at
+    // columns. NULL means "never scanned" — the next pass fires immediately.
+    last_endpoint_contract_scan_at: timestamp("last_endpoint_contract_scan_at", {
+      withTimezone: true,
+    }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

@@ -68,6 +68,27 @@ export interface RecordShapeParams {
 export async function recordSuccessShape(p: RecordShapeParams, exec?: Executor): Promise<string> {
   const db: Executor = exec ?? getDb();
   const shape = deriveShape(p.value);
+  // Dedup: skip the insert when the latest recorded shape is identical.
+  // Without this a workflow on a minute schedule writes one row per run
+  // forever (unbounded table growth) while `getLatestShape` only ever
+  // reads the newest row — the steady state is one row per actual shape
+  // CHANGE, which is exactly the granularity the drift detector needs.
+  const latest = await db
+    .select({ id: schemaVersions.id, schema: schemaVersions.schema })
+    .from(schemaVersions)
+    .where(
+      and(
+        eq(schemaVersions.tenant_id, p.tenant_id),
+        eq(schemaVersions.connector_id, p.connector_id),
+        eq(schemaVersions.endpoint_key, p.endpoint_key),
+      ),
+    )
+    .orderBy(desc(schemaVersions.seen_at))
+    .limit(1);
+  const latestRow = latest[0];
+  if (latestRow && JSON.stringify(latestRow.schema) === JSON.stringify(shape)) {
+    return latestRow.id;
+  }
   const [row] = await db
     .insert(schemaVersions)
     .values({

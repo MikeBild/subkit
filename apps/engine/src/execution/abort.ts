@@ -28,20 +28,15 @@ export function cancel(executionId: string, reason = "cancelled"): boolean {
 
 // Combine an external signal (e.g. parent execution's abort) with a
 // per-step timeout signal so the step honors whichever fires first.
+//
+// Uses the platform `AbortSignal.any` rather than hand-rolled
+// addEventListener wiring: the manual version registered a listener on
+// each LONG-LIVED parent signal (the execution-scoped controller) per
+// step and never removed it, so listeners — and the per-step closures
+// they captured — accumulated on the parent for the whole execution
+// (MaxListenersExceededWarning + memory retention on long runs).
+// `AbortSignal.any` manages its source subscriptions internally and
+// releases them when the derived signal becomes unreachable.
 export function combineSignals(signals: AbortSignal[]): AbortSignal {
-  const ctrl = new AbortController();
-  for (const s of signals) {
-    if (s.aborted) {
-      ctrl.abort((s as AbortSignal & { reason?: unknown }).reason ?? "aborted");
-      return ctrl.signal;
-    }
-    s.addEventListener(
-      "abort",
-      () => {
-        ctrl.abort((s as AbortSignal & { reason?: unknown }).reason ?? "aborted");
-      },
-      { once: true },
-    );
-  }
-  return ctrl.signal;
+  return AbortSignal.any(signals);
 }

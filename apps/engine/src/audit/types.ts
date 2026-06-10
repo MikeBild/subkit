@@ -88,6 +88,16 @@ export const AuditAction = {
   // change is always audited, regardless of caller — symmetric with the
   // false→true notification on `markConnectorNeedsReauth`.
   CONNECTOR_REAUTH_CLEARED: "connector.reauth_cleared",
+  // Any edge of `connectors.health_state` (ok | degraded | needs_update |
+  // needs_reauth) — written by connectors/health-state.ts on the transition
+  // edge only, so one removed/deprecated endpoint hammered N times audits
+  // exactly once. Metadata carries from/to states + the structured
+  // health_error_code (endpoint_removed | endpoint_deprecated | ...).
+  CONNECTOR_HEALTH_CHANGED: "connector.health_changed",
+  // Any edge of `workflows.health_state` (ok | needs_attention | degraded) —
+  // the workflow-level rollup of a dependency's health change or a failed
+  // preflight/contract probe.
+  WORKFLOW_HEALTH_CHANGED: "workflow.health_changed",
 
   WORKFLOW_CREATED: "workflow.created",
   WORKFLOW_UPDATED: "workflow.updated",

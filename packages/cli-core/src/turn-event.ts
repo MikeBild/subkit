@@ -763,6 +763,99 @@ export function lastAssistantText(state: SkSessionState): string {
   return "";
 }
 
+// Tools whose result payload IS the deliverable the user asked for. When a
+// turn ends with no assistant prose (tool-only turn / synthesized fallback),
+// `--output text` renders the last succeeded one of these instead of
+// printing nothing — production sessions repeatedly saw `sk -p "run X and
+// show results"` exit silently while the data sat in `toolCalls[i].result`.
+const EXECUTION_TOOL_NAMES = new Set([
+  "run_workflow",
+  "dry_run_workflow",
+  "call_connector",
+  "tenant_call_connector",
+]);
+
+function isExecutionTool(name: string): boolean {
+  // `wf_<slug>` are the per-workflow product tools.
+  return EXECUTION_TOOL_NAMES.has(name) || name.startsWith("wf_");
+}
+
+export interface ExecutionResultRender {
+  tool: string;
+  output: unknown;
+}
+
+/**
+ * Last succeeded execution-shaped tool result of the turn, or null. Failed
+ * calls (`status==="failed"` or an `ok:false` envelope) never match — a
+ * failure must fall through to the error/guidance text, not render as data.
+ */
+export function lastExecutionResult(state: SkSessionState): ExecutionResultRender | null {
+  for (let i = state.toolCalls.length - 1; i >= 0; i--) {
+    const c = state.toolCalls[i];
+    if (!c || c.status !== "done" || !isExecutionTool(c.name)) continue;
+    const envelope = c.result;
+    if (envelope === undefined || envelope === null) continue;
+    if (typeof envelope === "object") {
+      const env = envelope as { ok?: unknown; data?: unknown };
+      if (env.ok === false) continue;
+      const output = "data" in env ? env.data : envelope;
+      if (output === undefined || output === null) continue;
+      return { tool: c.name, output };
+    }
+    return { tool: c.name, output: envelope };
+  }
+  return null;
+}
+
+/** Recursively cap arrays for display, marking what was sampled IN-BAND so a
+ *  human (or downstream agent) reading the text knows the payload is partial
+ *  rather than mistaking the sample for the full result. */
+function sampleForRender(value: unknown, maxItems: number): unknown {
+  if (Array.isArray(value)) {
+    const items = value.slice(0, maxItems).map((v) => sampleForRender(v, maxItems));
+    if (value.length > maxItems) {
+      items.push(`… sampled ${maxItems} of ${value.length} items`);
+    }
+    return items;
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = sampleForRender(v, maxItems);
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Compact, metadata-preserving text rendering of an execution result.
+ * Arrays are sampled (marker appended in-band), the whole body is capped,
+ * and the tool name headers the block so the output is self-describing.
+ */
+export function renderExecutionOutput(
+  r: ExecutionResultRender,
+  opts?: { maxArrayItems?: number; maxChars?: number },
+): string {
+  const maxItems = opts?.maxArrayItems ?? 20;
+  const maxChars = opts?.maxChars ?? 20000;
+  let body: string;
+  if (typeof r.output === "string") {
+    body = r.output;
+  } else {
+    try {
+      body = JSON.stringify(sampleForRender(r.output, maxItems), null, 2) ?? String(r.output);
+    } catch {
+      body = String(r.output);
+    }
+  }
+  if (body.length > maxChars) {
+    body = `${body.slice(0, maxChars)}\n… [truncated ${body.length - maxChars} chars]`;
+  }
+  return `[${r.tool}] result:\n${body}`;
+}
+
 /**
  * Translate an engine `error` SSE frame into the synthetic `TurnEvent`s
  * the session reducer should apply.
