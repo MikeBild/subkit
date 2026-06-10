@@ -42,6 +42,7 @@ import { portalTokensCommand } from "./commands/portal-tokens.ts";
 import { profileCommand } from "./commands/profile.ts";
 import { rbacCommand } from "./commands/rbac.ts";
 import { reviewCommand } from "./commands/review.ts";
+import { schedulesCommand } from "./commands/schedules.ts";
 import { selfHealingCommand } from "./commands/self-healing.ts";
 import { sessionsCommand, skLs, skRename, skRm, skShow } from "./commands/sessions.ts";
 import { settingsCommand } from "./commands/settings.ts";
@@ -595,6 +596,7 @@ const mainCommand = defineCommand({
     "knowledge-sources": knowledgeSourcesCommand,
     discovery: discoveryCommand,
     executions: executionsCommand,
+    schedules: schedulesCommand,
     "patch-candidates": patchCandidatesCommand,
     review: reviewCommand,
     "self-healing": selfHealingCommand,
@@ -805,6 +807,7 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   "knowledge-sources": { command: knowledgeSourcesCommand, requires: "knowledge:read" },
   discovery: { command: discoveryCommand, requires: "discovery:read" },
   executions: { command: executionsCommand, requires: "execution:read" },
+  schedules: { command: schedulesCommand, requires: "workflow:read" },
   "patch-candidates": { command: patchCandidatesCommand, requires: "workflow:read" },
   review: { command: reviewCommand, requires: "workflow:read" },
   "self-healing": { command: selfHealingCommand, requires: "workflow:write" },

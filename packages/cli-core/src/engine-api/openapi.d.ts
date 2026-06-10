@@ -2541,6 +2541,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List scheduled workflow runs (cron, timezone, paused) */
+        get: {
+            parameters: {
+                query?: {
+                    workflow_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows/validate": {
         parameters: {
             query?: never;
@@ -10252,6 +10290,19 @@ export interface components {
             tz: string;
             business_days_only?: boolean;
             skip_dates?: string[];
+        };
+        ScheduleListResponse: {
+            schedules: components["schemas"]["ScheduleEntry"][];
+        };
+        ScheduleEntry: {
+            id: string;
+            workflow_id: string;
+            workflow_slug: string | null;
+            workflow_name: string | null;
+            cron: string;
+            timezone: string;
+            paused: boolean;
+            created_at: string;
         };
         CreateWorkflowBody: {
             name: string;

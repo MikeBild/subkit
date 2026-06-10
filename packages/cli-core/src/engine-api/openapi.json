@@ -2970,6 +2970,61 @@
           "cron"
         ]
       },
+      "ScheduleListResponse": {
+        "type": "object",
+        "properties": {
+          "schedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduleEntry"
+            }
+          }
+        },
+        "required": [
+          "schedules"
+        ]
+      },
+      "ScheduleEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workflow_id": {
+            "type": "string"
+          },
+          "workflow_slug": {
+            "type": "string",
+            "nullable": true
+          },
+          "workflow_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "cron": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_id",
+          "workflow_slug",
+          "workflow_name",
+          "cron",
+          "timezone",
+          "paused",
+          "created_at"
+        ]
+      },
       "CreateWorkflowBody": {
         "type": "object",
         "properties": {
@@ -15236,6 +15291,42 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/schedules": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "List scheduled workflow runs (cron, timezone, paused)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "workflow_id",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleListResponse"
                 }
               }
             }

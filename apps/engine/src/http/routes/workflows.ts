@@ -2,6 +2,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { listSchedules } from "../../scheduler/index.ts";
 import * as svc from "../../workflows/index.ts";
 import {
   synthesizeInputSchema,
@@ -228,6 +229,39 @@ const historyRoute = createRoute({
   },
 });
 
+const ScheduleEntry = z
+  .object({
+    id: z.string(),
+    workflow_id: z.string(),
+    workflow_slug: z.string().nullable(),
+    workflow_name: z.string().nullable(),
+    cron: z.string(),
+    timezone: z.string(),
+    paused: z.boolean(),
+    created_at: z.string(),
+  })
+  .openapi("ScheduleEntry");
+const ScheduleListResponse = z
+  .object({ schedules: z.array(ScheduleEntry) })
+  .openapi("ScheduleListResponse");
+
+const listSchedulesRoute = createRoute({
+  method: "get",
+  path: "/v1/schedules",
+  tags: ["workflows"],
+  summary: "List scheduled workflow runs (cron, timezone, paused)",
+  security: [{ bearerAuth: [] }],
+  request: {
+    query: z.object({ workflow_id: z.string().uuid().optional() }).openapi("ListSchedulesQuery"),
+  },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: ScheduleListResponse } },
+    },
+  },
+});
+
 const restoreRoute = createRoute({
   method: "post",
   path: "/v1/workflows/{id}/restore/{version}",
@@ -310,6 +344,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   });
   // /v1/workflows/validate is a read-only utility; operators that can read
   // workflows can validate a draft without write perms.
+  app.use("/v1/schedules", requirePermission("workflow:read"));
   app.use("/v1/workflows/validate", async (c, next) => {
     if (c.req.method === "POST") return requirePermission("workflow:read")(c, next);
     return next();
@@ -347,6 +382,37 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.name_contains !== undefined) opts.name_contains = q.name_contains;
     const items = await svc.listWorkflows(principal.tenant_id, opts, db);
     return c.json({ items: items.map(serializeWorkflow) }, 200);
+  });
+
+  app.openapi(listSchedulesRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const q = c.req.valid("query");
+    const rows = await listSchedules(db, principal.tenant_id, q.workflow_id);
+    // Resolve workflow slugs/names in one pass so `sk schedules` can show
+    // WHAT fires, not just an opaque workflow_id.
+    const ids = [...new Set(rows.map((r) => r.workflow_id))];
+    const named = ids.length
+      ? await Promise.all(ids.map((id) => svc.getWorkflow(principal.tenant_id, id, db)))
+      : [];
+    const nameById = new Map(
+      named.filter((w) => w !== null).map((w) => [w.id, { slug: w.slug, name: w.name }]),
+    );
+    return c.json(
+      {
+        schedules: rows.map((r) => ({
+          id: r.id,
+          workflow_id: r.workflow_id,
+          workflow_slug: nameById.get(r.workflow_id)?.slug ?? null,
+          workflow_name: nameById.get(r.workflow_id)?.name ?? null,
+          cron: r.cron,
+          timezone: r.timezone,
+          paused: r.paused,
+          created_at: r.created_at.toISOString(),
+        })),
+      },
+      200,
+    );
   });
 
   app.openapi(createRouteSpec, async (c) => {

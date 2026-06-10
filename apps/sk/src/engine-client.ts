@@ -855,6 +855,22 @@ export class EngineClient {
    * binary and the embedded migrations whose hash isn't in the DB
    * (informational — the boot path applies these on the same boot).
    */
+  listSchedules(query: { workflow_id?: string } = {}): Promise<{
+    schedules: Array<{
+      id: string;
+      workflow_id: string;
+      workflow_slug: string | null;
+      workflow_name: string | null;
+      cron: string;
+      timezone: string;
+      paused: boolean;
+      created_at: string;
+    }>;
+  }> {
+    const qs = query.workflow_id ? `?workflow_id=${encodeURIComponent(query.workflow_id)}` : "";
+    return this.request("GET", `/v1/schedules${qs}`);
+  }
+
   integrationsHealth(): Promise<{
     connectors: Array<{
       id: string;
