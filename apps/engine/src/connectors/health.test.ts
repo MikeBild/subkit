@@ -117,6 +117,14 @@ describe("parseDeprecation", () => {
     expect(sig?.sunset).toBe("Sat, 31 Jan 2026 23:59:59 GMT");
   });
 
+  test("a successor-version Link ALONE is a signal (vendors attach only it to the final 410)", () => {
+    const sig = parseDeprecation({
+      link: '<https://api.example/v3/search/jql>; rel="successor-version"',
+    });
+    expect(sig?.successor_uri).toBe("https://api.example/v3/search/jql");
+    expect(sig?.deprecated).toBe("true");
+  });
+
   test("Link rel=deprecation carries the docs URI", () => {
     const sig = parseDeprecation({
       deprecation: "true",

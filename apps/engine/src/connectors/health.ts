@@ -62,16 +62,24 @@ export interface DeprecationSignal {
  * Parse vendor deprecation headers. `headers` must use lowercased keys (the
  * HTTP driver normalizes them via `Headers.forEach`). Returns null when the
  * response carries no deprecation signal.
+ *
+ * A `Link` carrying rel="successor-version" / rel="deprecation" counts as a
+ * signal even WITHOUT a `Deprecation`/`Sunset` header — vendors commonly
+ * attach only the successor link to the final 410, and harvesting it is the
+ * difference between "endpoint removed, good luck" and "migrate to <uri>".
+ * The rel matching is narrow, so generic pagination Link headers never
+ * trigger this.
  */
 export function parseDeprecation(headers?: Record<string, string>): DeprecationSignal | null {
   if (!headers) return null;
   const deprecation = headers.deprecation?.trim();
   const sunset = headers.sunset?.trim() || null;
-  if (!deprecation && !sunset) return null;
+  const successor_uri = parseDeprecationLink(headers.link);
+  if (!deprecation && !sunset && !successor_uri) return null;
   return {
     deprecated: deprecation || "true",
     sunset,
-    successor_uri: parseDeprecationLink(headers.link),
+    successor_uri,
   };
 }
 

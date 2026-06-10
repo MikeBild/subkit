@@ -31,6 +31,7 @@ import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { runChatDedupCleanup } from "./chat-dedup-cleanup-runner.ts";
 import { runConnectorReauthScanForTenant } from "./connector-reauth-scan-runner.ts";
 import { parseCronExpression } from "./cron.ts";
+import { runEndpointContractScanForTenant } from "./endpoint-contract-scan-runner.ts";
 import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
@@ -47,6 +48,10 @@ const PROACTIVE_DRIFT_SCAN_CADENCE_MS = 60 * 60 * 1000;
  *  ensures exactly-once firing per cadence across multi-instance
  *  deployments. */
 const CONNECTOR_REAUTH_SCAN_CADENCE_MS = 60 * 60 * 1000;
+// Endpoint-contract probes hit external vendors with real GETs — a 6h
+// cadence catches a removal/deprecation within the day while staying
+// polite (the migration windows these probes exist to exploit are weeks).
+const ENDPOINT_CONTRACT_SCAN_CADENCE_MS = 6 * 60 * 60 * 1000;
 
 /** Fixed cadence for the unified-files cleanup cron. The sweeps are
  *  idempotent and bounded by a 7-day soft-delete grace, so an hour
@@ -365,6 +370,20 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "connector_reauth_scan_failed",
         msg: "scheduler connector re-auth scan pass failed",
+        ...errorFields(err),
+      });
+    });
+    // Proactive endpoint-contract scan. Per-tenant CAS-stamp on
+    // `tenants.last_endpoint_contract_scan_at`; each due tenant gets the
+    // distinct GET operations its committed workflows reference probed
+    // through the normal authed path — a vendor's 410 or Deprecation/
+    // Sunset announcement flips connector+workflow health BEFORE an
+    // unattended run returns "0 results".
+    await this.reconcileEndpointContractScans().catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "endpoint_contract_scan_failed",
+        msg: "scheduler endpoint-contract scan pass failed",
         ...errorFields(err),
       });
     });
@@ -805,6 +824,43 @@ export class SchedulerReconciler {
    * cadence rather than hot-looping; the sweep keeps walking the other
    * tenants.
    */
+  /**
+   * Proactive endpoint-contract scan. Same microsecond-safe CAS-stamp
+   * claim as the re-auth scan, on `last_endpoint_contract_scan_at`. The
+   * per-tenant sweep lives in `endpoint-contract-scan-runner.ts`.
+   */
+  async reconcileEndpointContractScans(now: Date = new Date()): Promise<void> {
+    // tenant-filter:exempt — contract scan sweeps every tenant; row carries tenant_id forward
+    const cadenceCutoff = new Date(now.getTime() - ENDPOINT_CONTRACT_SCAN_CADENCE_MS);
+    const claimed = await this.opts.db
+      .update(tenants)
+      .set({ last_endpoint_contract_scan_at: now })
+      .where(
+        and(
+          isNull(tenants.deleted_at),
+          or(
+            isNull(tenants.last_endpoint_contract_scan_at),
+            lt(tenants.last_endpoint_contract_scan_at, cadenceCutoff),
+          ),
+        ),
+      )
+      .returning({ id: tenants.id });
+
+    for (const tenant of claimed) {
+      try {
+        await runEndpointContractScanForTenant(tenant.id, now, this.opts.db);
+      } catch (err) {
+        logger.error({
+          module: "scheduler",
+          action: "endpoint_contract_scan_failed",
+          msg: "endpoint-contract scan threw for tenant — continuing with the rest",
+          tenant_id: tenant.id,
+          ...errorFields(err),
+        });
+      }
+    }
+  }
+
   async reconcileSkillCandidateAnalysis(now: Date = new Date()): Promise<void> {
     await runSkillCandidateAnalysisSweep(now, this.opts.db, this.opts.boss);
   }
