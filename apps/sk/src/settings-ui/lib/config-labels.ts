@@ -135,6 +135,8 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   // ── MCP transport ──────────────────────────────────────────────
   "mcp.api_key": "MCP API key",
   "mcp.read_only": "Read-only MCP",
+  "mcp.client.per_server_manifest_byte_cap": "External MCP manifest cap",
+  "mcp.client.remote_tool_call_timeout_ms": "External MCP call timeout",
 
   // ── Errors / spec / queue / tokens ─────────────────────────────
   "errors.ring_size": "Error buffer size",
