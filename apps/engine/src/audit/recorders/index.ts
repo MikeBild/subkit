@@ -58,6 +58,10 @@ export {
 } from "./knowledge.ts";
 export {
   type RecordMcpExternalToolInvokedParams,
+  type RecordMcpExternalToolPaletteAssemblyFailedParams,
+  type RecordMcpServerAuthorizationFailedParams,
+  type RecordMcpServerAuthorizationStartedParams,
+  type RecordMcpServerAuthorizedParams,
   type RecordMcpServerConfigUpdatedParams,
   type RecordMcpServerDeletedParams,
   type RecordMcpServerDisabledParams,
@@ -66,6 +70,10 @@ export {
   type RecordMcpServerReEnabledParams,
   type RecordMcpServerRegisteredParams,
   recordMcpExternalToolInvoked,
+  recordMcpExternalToolPaletteAssemblyFailed,
+  recordMcpServerAuthorizationFailed,
+  recordMcpServerAuthorizationStarted,
+  recordMcpServerAuthorized,
   recordMcpServerConfigUpdated,
   recordMcpServerDeleted,
   recordMcpServerDisabled,

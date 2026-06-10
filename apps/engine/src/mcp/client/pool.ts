@@ -13,6 +13,7 @@
 // connection, manifest, and tool result lives under its tenant's bucket.
 
 import { createHash } from "node:crypto";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -22,11 +23,12 @@ import {
   recordMcpServerHandshakeOk,
 } from "../../audit/recorders/index.ts";
 import { assertEgressAllowed } from "../../connectors/egress-guard.ts";
-import { isTokenExpired, runRefreshTokenGrant } from "../../credentials/oauth2/client.ts";
-import { getCredentialForMcpServer, rotateOAuth2Tokens } from "../../credentials/service.ts";
+import { getCredentialForMcpServer } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
+import { McpDbOAuthClientProvider } from "./oauth-provider.ts";
+import { buildMcpOAuthRedirectUri, MCP_OAUTH_CALLBACK_PATH } from "./oauth-redirect.ts";
 import {
   getMcpServer,
   listConnectableMcpServersForTenant,
@@ -151,6 +153,10 @@ function capManifest(
     kept.push(weighted[0].tool);
     dropped = tools.length - 1;
   }
+  // Capture the effective cap into a local so the audit/log line reflects
+  // the value actually enforced — a future per-tenant cap would change
+  // this binding without silently logging the module-level literal.
+  const effectiveCapBytes = PER_SERVER_MANIFEST_BYTE_CAP;
   logger.warn({
     module: "mcp_client",
     action: "manifest.token_cap_truncated",
@@ -158,7 +164,7 @@ function capManifest(
     tenant_id,
     mcp_server_id,
     namespace,
-    cap_bytes: PER_SERVER_MANIFEST_BYTE_CAP,
+    cap_bytes: effectiveCapBytes,
     original_tool_count: tools.length,
     kept_tool_count: kept.length,
     dropped_tool_count: dropped,
@@ -172,11 +178,14 @@ function backoffWindow(failures: number): number {
 }
 
 /**
- * Resolve the `Authorization` header (if any) for a server's auth_config,
- * reading secrets by reference from the AES-256-GCM credentials table.
- * For oauth2, if the cached access token is expired and a refresh token +
- * issuer are present, runs a refresh-token grant first. Returns the
- * header map to mount on the transport's `requestInit`, or `{}` for none.
+ * Resolve the static `Authorization` header (if any) for a server's
+ * auth_config, reading the secret by reference from the AES-256-GCM
+ * credentials table. Handles ONLY the static-header kinds — `none` (empty)
+ * and `bearer`. The `oauth2` kind is NOT resolved here: it is driven end
+ * to end by the SDK transport's `authProvider` (see
+ * `McpDbOAuthClientProvider`), which owns token replay, pre-expiry
+ * refresh, and persistence. Returns the header map to mount on the
+ * transport's `requestInit`, or `{}` for none.
  */
 async function resolveAuthHeaders(
   db: Db,
@@ -186,6 +195,8 @@ async function resolveAuthHeaders(
   environment: "dev" | "prod",
 ): Promise<Record<string, string>> {
   if (auth.kind === "none") return {};
+  // oauth2 carries no static header — the authProvider supplies the token.
+  if (auth.kind === "oauth2") return {};
 
   const resolved = await getCredentialForMcpServer(tenant_id, mcp_server_id, environment, db);
   if (!resolved) {
@@ -195,58 +206,90 @@ async function resolveAuthHeaders(
   }
   const { value } = resolved;
 
-  if (auth.kind === "bearer") {
-    if (value.mode !== "bearer") {
-      throw new Error(`expected bearer credential for server, got mode '${value.mode}'`);
-    }
-    return { Authorization: `Bearer ${value.token}` };
+  // bearer
+  if (value.mode !== "bearer") {
+    throw new Error(`expected bearer credential for server, got mode '${value.mode}'`);
   }
+  return { Authorization: `Bearer ${value.token}` };
+}
 
-  // oauth2
-  if (value.mode !== "oauth2") {
-    throw new Error(`expected oauth2 credential for server, got mode '${value.mode}'`);
+/**
+ * Canonical OAuth callback URL handed to the (non-interactive) handshake
+ * provider as its `redirect_uri`. The palette handshake never opens a
+ * browser or runs a code exchange, so this value is only used to populate
+ * the SDK's `clientMetadata.redirect_uris` on a DCR (RFC 7591) registration.
+ *
+ * CRITICAL (redirect_uri parity): this MUST be byte-identical to the value
+ * the interactive authorize route registers (both go through
+ * `buildMcpOAuthRedirectUri` → `MCP_OAUTH_CALLBACK_PATH`). If the pool's DCR
+ * registered the connector callback while the authorize flow used the MCP
+ * callback, the IdP would reject the authorization request with
+ * `redirect_uri_mismatch`. Prefer the engine-canonical MCP callback
+ * (`public_base_url` + `MCP_OAUTH_CALLBACK_PATH`); when no public origin is
+ * configured, fall back to the server's own origin + the SAME MCP path so we
+ * always yield a parseable URL rather than throwing the whole handshake.
+ */
+function oauthRedirectUriFor(row: McpServerRow): string {
+  const canonical = buildMcpOAuthRedirectUri();
+  if (canonical) return canonical;
+  return `${new URL(row.url).origin}${MCP_OAUTH_CALLBACK_PATH}`;
+}
+
+/** Detect an Unauthorized/401 from a remote tool call. Matches both the
+ *  SDK's typed `UnauthorizedError` and a generic 401 surfaced as a message
+ *  (some transports raise a plain Error carrying the HTTP status). */
+function isUnauthorized(err: unknown): boolean {
+  if (err instanceof UnauthorizedError) return true;
+  if (err instanceof Error) {
+    if (err.name === "UnauthorizedError") return true;
+    if (/\b401\b|\bunauthorized\b/i.test(err.message)) return true;
   }
-  let accessToken = value.access_token;
-  if (isTokenExpired({ expires_at: value.expires_at }) && value.refresh_token && auth.issuer) {
-    const bundle = await runRefreshTokenGrant(
-      {
-        issuer_url: auth.issuer,
-        client_id: auth.client_id ?? "",
-        scope: auth.scope,
-      },
-      value.refresh_token,
-    );
-    accessToken = bundle.access_token;
-    // Persist the rotated bundle back to the credentials row keyed by this
-    // mcp_server. The connector refresh-worker skips mcp-owned rows, so if
-    // we don't write it here a rotating-refresh-token IdP (one that issues
-    // a fresh refresh_token on every grant and invalidates the old one)
-    // breaks after a single handshake. `rotateOAuth2Tokens` is the same
-    // upsert the connector OAuth refresh path uses; we feed the credential
-    // id `getCredentialForMcpServer` resolved. Carry the prior refresh
-    // token forward when the IdP did not return a new one (non-rotating
-    // IdPs omit it), so we never wipe a still-valid refresh token.
-    await rotateOAuth2Tokens(
-      {
-        tenant_id,
-        credential_id: resolved.row.id,
-        access_token: bundle.access_token,
-        token_type: bundle.token_type,
-        scope: bundle.scope ?? undefined,
-        refresh_token: bundle.refresh_token ?? value.refresh_token,
-        expires_at: bundle.expires_at,
-        actor_id: null,
-      },
-      db,
-    );
-  }
-  return { Authorization: `Bearer ${accessToken}` };
+  return false;
+}
+
+/**
+ * Drop the oauth2 access/refresh token credential for a server after a
+ * mid-session 401, so the next handshake re-authorizes instead of replaying
+ * the dead token. No-op for non-oauth2 servers (no token to invalidate) or
+ * a vanished server row. Tenant/server-scoped via the provider's own
+ * tenant-filtered delete.
+ */
+async function invalidateOAuth2TokenForServer(
+  db: Db,
+  tenant_id: string,
+  mcp_server_id: string,
+  environment: "dev" | "prod",
+): Promise<void> {
+  const row = await getMcpServer(db, tenant_id, mcp_server_id);
+  if (!row) return;
+  const auth = parseAuthConfig(row.auth_config ?? null);
+  if (auth.kind !== "oauth2") return;
+  const provider = new McpDbOAuthClientProvider({
+    db,
+    tenant_id,
+    mcp_server_id,
+    environment,
+    redirect_uri: oauthRedirectUriFor(row),
+    state: "",
+    auth,
+    interactive: false,
+  });
+  await provider.invalidateCredentials("tokens");
+  logger.warn({
+    module: "mcp_client",
+    action: "tool.invoke.token_invalidated",
+    msg: "external MCP tool call returned 401; invalidated oauth2 token so the next handshake re-authorizes",
+    tenant_id,
+    mcp_server_id,
+    namespace: row.namespace,
+  });
 }
 
 function buildTransport(
   tenant_id: string,
   row: McpServerRow,
   headers: Record<string, string>,
+  authProvider?: McpDbOAuthClientProvider,
 ): StreamableHTTPClientTransport | SSEClientTransport {
   const url = new URL(row.url);
   // SSRF / egress guard at the connection boundary: block loopback,
@@ -260,10 +303,14 @@ function buildTransport(
   const requestInit: RequestInit = Object.keys(headers).length > 0 ? { headers } : {};
   switch (row.transport) {
     case "http":
-      return new StreamableHTTPClientTransport(url, { requestInit });
+      return new StreamableHTTPClientTransport(url, {
+        requestInit,
+        ...(authProvider ? { authProvider } : {}),
+      });
     case "sse":
       return new SSEClientTransport(url, {
         requestInit,
+        ...(authProvider ? { authProvider } : {}),
         eventSourceInit: { fetch: (u, init) => fetch(u, { ...init, headers }) },
       });
     case "stdio":
@@ -295,7 +342,29 @@ async function connectClient(
   try {
     const auth = parseAuthConfig(row.auth_config ?? null);
     const headers = await resolveAuthHeaders(db, tenant_id, row.id, auth, environment);
-    const transport = buildTransport(tenant_id, row, headers);
+    // For oauth2 servers the SDK transport's authProvider owns the whole
+    // token lifecycle (replay cached token, refresh pre-expiry, persist).
+    // It is constructed `interactive: false`: a palette handshake against
+    // an un-authorized server must NEVER open a browser or persist an
+    // authorization URL — the provider's redirectToAuthorization no-ops
+    // and the transport raises UnauthorizedError on connect, which the
+    // catch below parks in backoff. bearer/none keep the static header.
+    const authProvider =
+      auth.kind === "oauth2"
+        ? new McpDbOAuthClientProvider({
+            db,
+            tenant_id,
+            mcp_server_id: row.id,
+            environment,
+            redirect_uri: oauthRedirectUriFor(row),
+            // No mcp_oauth_states row exists for the palette handshake; the
+            // state value is unused in non-interactive mode.
+            state: "",
+            auth,
+            interactive: false,
+          })
+        : undefined;
+    const transport = buildTransport(tenant_id, row, headers, authProvider);
     const client = new Client({ name: "subkit-mcp-client", version: "1" });
     // The concrete transport classes implement `Transport`; the cast
     // satisfies `exactOptionalPropertyTypes`, where the class's optional
@@ -320,10 +389,14 @@ async function connectClient(
       mcp_server_id: row.id,
       observed_hash: manifest_hash,
       observed_tool_count: tools.length,
-      auditCtx: { actor_id: null, request_source: requestSource },
+      auditCtx: { actor_id: null, request_source: requestSource, executor: db },
     });
 
-    await recordMcpServerHandshakeState(db, tenant_id, row.id, manifest_hash);
+    await recordMcpServerHandshakeState(db, tenant_id, row.id, manifest_hash, {
+      actor_id: null,
+      request_source: requestSource,
+      executor: db,
+    });
     await recordMcpServerHandshakeOk({
       tenant_id,
       actor_id: null,
@@ -332,6 +405,7 @@ async function connectClient(
       tool_count: tools.length,
       manifest_hash,
       request_source: requestSource,
+      executor: db,
     });
 
     const pooled: PooledClient = {
@@ -348,7 +422,20 @@ async function connectClient(
     bucket.backoff.delete(row.id);
     return pooled;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // An oauth2 server with no usable token makes the SDK transport raise
+    // UnauthorizedError on connect (its authProvider.redirectToAuthorization
+    // no-ops in non-interactive mode, so no browser opens and no URL leaks).
+    // Surface a stable, URL-free reason and park the server in error+backoff
+    // exactly like any other handshake failure — getTenantMcpTools skips
+    // error+backoff servers, so the turn proceeds with this server absent
+    // rather than crashing. The operator triggers the interactive authorize
+    // flow (owned by the route layer) to mint a token.
+    const message =
+      err instanceof UnauthorizedError
+        ? "authorization required"
+        : err instanceof Error
+          ? err.message
+          : String(err);
     const prior =
       bucket.backoff.get(row.id)?.consecutive_failures ??
       bucket.clients.get(row.id)?.consecutive_failures ??
@@ -369,7 +456,7 @@ async function connectClient(
       tenant_id,
       row.id,
       "error",
-      { actor_id: null, request_source: requestSource },
+      { actor_id: null, request_source: requestSource, executor: db },
       { last_error: message },
     );
     logger.warn({
@@ -536,6 +623,7 @@ export async function invokeRemoteTool(
   const started = Date.now();
   let outcome: "success" | "error" = "success";
   let transportFailed = false;
+  let unauthorized = false;
   let content: unknown;
   try {
     // Bounded timeout via the SDK RequestOptions. Without it a hung remote
@@ -558,6 +646,7 @@ export async function invokeRemoteTool(
     // against a stale connection.
     outcome = "error";
     transportFailed = true;
+    unauthorized = isUnauthorized(err);
     content = { error: err instanceof Error ? err.message : String(err) };
   }
 
@@ -576,6 +665,21 @@ export async function invokeRemoteTool(
 
   if (transportFailed) {
     invalidateCachedManifest(args.tenant_id, args.mcp_server_id);
+    // A mid-session 401 means the cached token is dead. Evicting the client
+    // alone is not enough: the next connect would replay the SAME
+    // locally-not-yet-expired token and 401 forever. Invalidate the oauth2
+    // token credential so the next handshake has no token → the SDK raises
+    // UnauthorizedError on connect → the pool parks "authorization required"
+    // (operator re-runs the interactive authorize flow) instead of looping.
+    // Tenant/server-scoped, oauth2 only — bearer/none have no token to drop.
+    if (unauthorized) {
+      await invalidateOAuth2TokenForServer(
+        args.db,
+        args.tenant_id,
+        args.mcp_server_id,
+        environment,
+      );
+    }
   }
 
   await recordMcpExternalToolInvoked({
@@ -588,6 +692,7 @@ export async function invokeRemoteTool(
     duration_ms: Date.now() - started,
     byte_count: rawBytes,
     request_source: requestSource,
+    executor: args.db,
   });
 
   return { ok: outcome === "success", content, bytes: rawBytes };
@@ -603,6 +708,27 @@ export function evictTenant(tenant_id: string): void {
     void pooled.client.close().catch(() => {});
   }
   POOL.delete(tenant_id);
+}
+
+/**
+ * Drop just ONE server's cached client + backoff window from its tenant
+ * pool, leaving every other server in that tenant untouched. Use this on a
+ * single-server mutation (PATCH / disable) so rotating one server's
+ * credential or disabling it doesn't force a cold reconnect of every other
+ * healthy server in the same tenant. The whole-tenant drop (`evictTenant`)
+ * is reserved for tenant-wide operations (DELETE, or a genuine tenant-scope
+ * change). Closes the live socket and clears any armed backoff so the next
+ * `getTenantMcpTools` reconnects this server fresh.
+ */
+export function evictServer(tenant_id: string, mcp_server_id: string): void {
+  const bucket = POOL.get(tenant_id);
+  if (!bucket) return;
+  const pooled = bucket.clients.get(mcp_server_id);
+  if (pooled) {
+    bucket.clients.delete(mcp_server_id);
+    void pooled.client.close().catch(() => {});
+  }
+  bucket.backoff.delete(mcp_server_id);
 }
 
 /** Drop the cached manifest (and live Client) for a single server so the

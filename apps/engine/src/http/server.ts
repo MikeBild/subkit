@@ -65,6 +65,7 @@ import { registerInstallBinaryRoute } from "./routes/install-binary.ts";
 import { registerKnowledgeSourceRoutes } from "./routes/knowledge-sources.ts";
 import { registerMcpCatalogRoutes } from "./routes/mcp-catalog.ts";
 import { registerMcpServerRoutes } from "./routes/mcp-servers.ts";
+import { registerMcpServerOAuthRoutes } from "./routes/mcp-servers-oauth.ts";
 import { registerMetricsRoute } from "./routes/metrics.ts";
 import { registerNotificationRoutes } from "./routes/notifications/index.ts";
 import { registerMcpOAuthRoutes } from "./routes/oauth.ts";
@@ -226,6 +227,11 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerOAuthClientAdminRoutes(app);
   // Tenant-scoped CRUD for external MCP servers (#171), gated mcp_server:manage.
   registerMcpServerRoutes(app);
+  // Interactive OAuth 2.1 onboarding for OAuth-only external MCP servers
+  // (#171 follow-up). The authorize route is gated mcp_server:manage; the
+  // GET callback is UNAUTHENTICATED (state-token-authed, not API-key) —
+  // it opts out of requireAuth exactly like the connector OAuth callback.
+  registerMcpServerOAuthRoutes(app);
   registerWhoamiRoute(app);
   registerSkBootstrapRoute(app);
   registerWorkflowRoutes(app);

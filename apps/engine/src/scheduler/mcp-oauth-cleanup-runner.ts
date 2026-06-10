@@ -1,6 +1,6 @@
-// Retention sweep for the four mcp_oauth_* tables.
+// Retention sweep for the mcp_oauth_* tables.
 //
-// Fires every hour from the scheduler reconciler. Four DELETE sweeps run
+// Fires every hour from the scheduler reconciler. Five DELETE sweeps run
 // in dependency order so FK constraints are never violated:
 //
 //   1) mcp_oauth_access_tokens — expired or revoked rows older than 7 days.
@@ -15,6 +15,12 @@
 //   4) mcp_oauth_clients — DCR clients created more than 30 days ago that
 //      never completed an authorization (no row in authorization_codes).
 //      Uses a NOT EXISTS subquery to detect "registered but never used".
+//
+//   5) mcp_oauth_states — in-flight CLIENT-direction authorization rows
+//      (subkit acting as an OAuth client against an external MCP server)
+//      whose `expires_at` has passed. These are short-lived (10-min TTL);
+//      an expired row is a dead in-flight flow the callback can no longer
+//      claim, so it is swept immediately past expiry (no extra grace).
 //
 // After the sweeps a single summary audit row is emitted under
 // SYSTEM_TENANT_ID with the row counts from each sweep.
@@ -31,6 +37,7 @@ import {
   mcpOauthAuthorizationCodes,
   mcpOauthClients,
   mcpOauthRefreshTokens,
+  mcpOauthStates,
 } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
@@ -60,6 +67,7 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
   let refresh_tokens_deleted = 0;
   let codes_deleted = 0;
   let clients_deleted = 0;
+  let states_deleted = 0;
 
   // ── Sweep 1: access tokens ─────────────────────────────────────────────────
   // tenant-filter:exempt — cross-tenant retention sweep
@@ -160,6 +168,28 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
+  // ── Sweep 5: expired client-direction in-flight authorization states ──────
+  // tenant-filter:exempt — cross-tenant retention sweep
+  // CLIENT direction (subkit → external MCP server). 10-min TTL rows; an
+  // expired row is a dead in-flight flow the callback can no longer claim
+  // (its DELETE … WHERE expires_at > now() guard would never match), so
+  // sweep it immediately past expiry without extra grace.
+  try {
+    const deleted = await db
+      .delete(mcpOauthStates)
+      .where(lt(mcpOauthStates.expires_at, sql`now()`))
+      .returning({ id: mcpOauthStates.id });
+    states_deleted = deleted.length;
+  } catch (err) {
+    logger.error({
+      module: "scheduler",
+      action: "mcp_oauth_cleanup.states_failed",
+      msg: "MCP OAuth client-direction state sweep failed",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
   // ── Summary audit row ──────────────────────────────────────────────────────
   try {
     await auditAwait(
@@ -176,6 +206,7 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
           access_tokens_deleted,
           refresh_tokens_deleted,
           clients_deleted,
+          states_deleted,
         },
       },
       db,
@@ -200,6 +231,7 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     access_tokens_deleted,
     refresh_tokens_deleted,
     clients_deleted,
+    states_deleted,
     duration_ms,
   });
 }

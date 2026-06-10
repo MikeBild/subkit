@@ -25,9 +25,14 @@ import { and, eq } from "drizzle-orm";
 import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { bucketSize } from "../buckets.ts";
 import {
   AuditAction,
   recordMcpExternalToolInvoked,
+  recordMcpExternalToolPaletteAssemblyFailed,
+  recordMcpServerAuthorizationFailed,
+  recordMcpServerAuthorizationStarted,
+  recordMcpServerAuthorized,
   recordMcpServerConfigUpdated,
   recordMcpServerDeleted,
   recordMcpServerDisabled,
@@ -89,6 +94,18 @@ describe("issue #166 W2 — reserved audit-action constants", () => {
 
   it("reserves the mcp_external_tool.invoked constant", () => {
     expect(AuditAction.MCP_EXTERNAL_TOOL_INVOKED).toBe("mcp_external_tool.invoked");
+  });
+
+  it("reserves the mcp_external_tool.palette_assembly_failed constant (W5)", () => {
+    expect(AuditAction.MCP_EXTERNAL_TOOL_PALETTE_ASSEMBLY_FAILED).toBe(
+      "mcp_external_tool.palette_assembly_failed",
+    );
+  });
+
+  it("reserves the three mcp_server.authorization* constants (#171 follow-up)", () => {
+    expect(AuditAction.MCP_SERVER_AUTHORIZATION_STARTED).toBe("mcp_server.authorization_started");
+    expect(AuditAction.MCP_SERVER_AUTHORIZED).toBe("mcp_server.authorized");
+    expect(AuditAction.MCP_SERVER_AUTHORIZATION_FAILED).toBe("mcp_server.authorization_failed");
   });
 
   it("reserves the two external_provider.* constants", () => {
@@ -257,8 +274,10 @@ describe("#171 — external MCP server audit writers", () => {
     expect(meta.remote_tool).toBe("search_pages");
     expect(meta.outcome).toBe("success");
     expect(meta.duration_ms).toBe(842);
-    // Coarse bucket, never the raw byte count.
-    expect(meta.byte_count_bucket).toBe("<10MB");
+    // Coarse bucket, never the raw byte count. Bind to the live function so
+    // a future bucket-boundary change keeps the assertion honest instead of
+    // pinning a stale string literal.
+    expect(meta.byte_count_bucket).toBe(bucketSize(2_000_000));
     expect(meta.byte_count).toBeUndefined();
   });
 
@@ -278,6 +297,89 @@ describe("#171 — external MCP server audit writers", () => {
     });
     const row = await rowFor("mcp_external_tool.invoked", mcp_server_id);
     expect(row.result).toBe("error");
-    expect((row.metadata as Record<string, unknown>).byte_count_bucket).toBe("<1KB");
+    expect((row.metadata as Record<string, unknown>).byte_count_bucket).toBe(bucketSize(200));
+  });
+
+  it("recordMcpExternalToolPaletteAssemblyFailed writes palette_assembly_failed with result=error + reason (W5)", async () => {
+    // resource_id is the tenant id (no single server to attribute to) — use
+    // the seeded tenant so the row is queryable by it.
+    await recordMcpExternalToolPaletteAssemblyFailed({
+      tenant_id,
+      actor_id,
+      reason: "connectable-server enumeration failed",
+      request_source: "chat",
+      executor: ctx.db,
+    });
+    const row = await rowFor("mcp_external_tool.palette_assembly_failed", tenant_id);
+    expect(row.resource_type).toBe("mcp_external_tool");
+    expect(row.result).toBe("error");
+    expect(row.reason).toBe("connectable-server enumeration failed");
+    expect((row.metadata as Record<string, unknown>).request_source).toBe("chat");
+  });
+
+  it("recordMcpServerAuthorizationStarted writes mcp_server.authorization_started with host-only issuer", async () => {
+    const mcp_server_id = uuid();
+    await recordMcpServerAuthorizationStarted({
+      tenant_id,
+      actor_id,
+      mcp_server_id,
+      namespace: "rovo",
+      issuer: "https://auth.atlassian.example.com/authorize?client_id=abc&state=SECRET456",
+      request_source: "cli",
+      executor: ctx.db,
+    });
+    const row = await rowFor("mcp_server.authorization_started", mcp_server_id);
+    expect(row.resource_type).toBe("mcp_server");
+    expect(row.result).toBe("success");
+    const meta = row.metadata as Record<string, unknown>;
+    expect(meta.namespace).toBe("rovo");
+    expect(meta.request_source).toBe("cli");
+    // Host-only — no scheme, path, query, or state leaked.
+    expect(meta.issuer_host).toBe("auth.atlassian.example.com");
+    const metaStr = JSON.stringify(meta);
+    expect(metaStr).not.toContain("SECRET456");
+    expect(metaStr).not.toContain("client_id=");
+    expect(metaStr).not.toContain("/authorize");
+  });
+
+  it("recordMcpServerAuthorized writes mcp_server.authorized with host-only issuer", async () => {
+    const mcp_server_id = uuid();
+    await recordMcpServerAuthorized({
+      tenant_id,
+      actor_id,
+      mcp_server_id,
+      namespace: "rovo",
+      issuer: "https://auth.atlassian.example.com/token",
+      request_source: "api",
+      executor: ctx.db,
+    });
+    const row = await rowFor("mcp_server.authorized", mcp_server_id);
+    expect(row.resource_type).toBe("mcp_server");
+    expect(row.result).toBe("success");
+    const meta = row.metadata as Record<string, unknown>;
+    expect(meta.namespace).toBe("rovo");
+    expect(meta.issuer_host).toBe("auth.atlassian.example.com");
+    // Never the full token endpoint URL.
+    expect(JSON.stringify(meta)).not.toContain("/token");
+  });
+
+  it("recordMcpServerAuthorizationFailed writes mcp_server.authorization_failed with result=error + reason", async () => {
+    const mcp_server_id = uuid();
+    await recordMcpServerAuthorizationFailed({
+      tenant_id,
+      actor_id,
+      mcp_server_id,
+      namespace: "rovo",
+      issuer: "https://auth.atlassian.example.com/authorize",
+      reason: "issuer mismatch between callback and resource metadata",
+      request_source: "cli",
+      executor: ctx.db,
+    });
+    const row = await rowFor("mcp_server.authorization_failed", mcp_server_id);
+    expect(row.resource_type).toBe("mcp_server");
+    expect(row.result).toBe("error");
+    expect(row.reason).toBe("issuer mismatch between callback and resource metadata");
+    const meta = row.metadata as Record<string, unknown>;
+    expect(meta.issuer_host).toBe("auth.atlassian.example.com");
   });
 });

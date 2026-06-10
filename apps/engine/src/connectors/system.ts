@@ -61,10 +61,12 @@ export interface ConnectorSystem {
    */
   getCredentials(): Promise<{
     // `connector_id` is nullable on the shared credentials row (an MCP
-    // server may own a row instead — see #171), but this facade only
-    // ever resolves connector-owned credentials via
-    // `getCredentialForConnector`, so in practice it is non-null here.
-    row: { connector_id: string | null; mode: string; tenant_id: string };
+    // server may own a row instead — see #171), but this facade ONLY ever
+    // resolves connector-owned rows via `getCredentialForConnector`. We
+    // re-narrow to non-null at the facade boundary (fail-fast in the impl
+    // if the resolved row ever lacks a connector_id) so callers never see
+    // the MCP-widened type.
+    row: { connector_id: string; mode: string; tenant_id: string };
     value: DecryptedCredential;
   } | null>;
 
@@ -101,7 +103,21 @@ export async function loadConnectorSystem(
     environment: resolvedEnv,
     connector,
     async getCredentials() {
-      return getCredentialForConnector(tenant_id, connector.id, resolvedEnv, exec);
+      const resolved = await getCredentialForConnector(tenant_id, connector.id, resolvedEnv, exec);
+      if (!resolved) return null;
+      // Re-narrow connector_id at the facade: this lookup only ever returns
+      // connector-owned rows, so a null connector_id is a contract
+      // violation (an MCP-owned row leaked through the connector resolver).
+      // Fail fast rather than hand back a non-connector row typed as one.
+      if (resolved.row.connector_id === null) {
+        throw new Error(
+          `connector facade resolved a credential row with no connector_id for connector ${connector.id}`,
+        );
+      }
+      return {
+        row: { ...resolved.row, connector_id: resolved.row.connector_id },
+        value: resolved.value,
+      };
     },
     async getDocumentation() {
       const rows = await listConnectorDocs({ tenant_id, connector_id: connector.id }, exec);

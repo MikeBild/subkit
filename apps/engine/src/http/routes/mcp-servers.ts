@@ -14,12 +14,13 @@
 // redacted to `{ kind, has_credential }` on every read path.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { ErrorSchema, IdParam, mcpNamespaceSchema } from "../../api/common-schemas.ts";
 import { readRequestSource } from "../../audit/index.ts";
 import { upsertCredential } from "../../credentials/index.ts";
 import {
   createMcpServer,
   deleteMcpServer,
+  evictServer,
   evictTenant,
   getMcpServer,
   getTenantMcpTools,
@@ -38,15 +39,10 @@ import type { AppEnv } from "../openapi.ts";
 
 // ── Zod schemas ──────────────────────────────────────────────────────────────
 
-// Mirrors the DB CHECK on `mcp_servers.namespace` EXACTLY so a bad slug is a
-// 422-able boundary error, not a raw 23514 SQL error downstream.
-const NamespaceSchema = z
-  .string()
-  .regex(
-    /^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$/,
-    "namespace must be a URL-safe slug (alphanumeric, _ or - inside)",
-  )
-  .refine((s) => !s.includes("__"), "namespace must not contain '__'");
+// Mirrors the DB CHECK on `mcp_servers.namespace` EXACTLY (shared single
+// source of truth in `api/common-schemas.ts`) so a bad slug is a 422-able
+// boundary error, not a raw 23514 SQL error downstream.
+const NamespaceSchema = mcpNamespaceSchema;
 
 // `auth_config` carries ONLY the non-secret shape. `.strict()` rejects
 // any inline secret key (token, client_secret, api_key, …) at the
@@ -275,10 +271,53 @@ function auditCtx(
   };
 }
 
+/** `none`: no secret field of either kind may be present. */
+function assertNoneSecretShape(token: string | undefined, refresh_token: string | undefined): void {
+  if (token !== undefined || refresh_token !== undefined) {
+    throw new UnprocessableEntityError("auth_config.kind 'none' must not carry a secret");
+  }
+}
+
+/** `bearer`: the secret is `token`; `refresh_token` is the wrong field.
+ *  When `requireSecret`, a `token` must be supplied. */
+function assertBearerSecretShape(
+  token: string | undefined,
+  refresh_token: string | undefined,
+  requireSecret: boolean,
+): void {
+  if (refresh_token !== undefined) {
+    throw new UnprocessableEntityError(
+      "auth_config.kind 'bearer' uses the 'token' field, not 'refresh_token'",
+    );
+  }
+  if (requireSecret && token === undefined) {
+    throw new UnprocessableEntityError("auth_config.kind 'bearer' requires a 'token'");
+  }
+}
+
+/** `oauth2`: the secret is `refresh_token`; `token` is the wrong field.
+ *  When `requireSecret`, a `refresh_token` must be supplied. */
+function assertOAuth2SecretShape(
+  token: string | undefined,
+  refresh_token: string | undefined,
+  requireSecret: boolean,
+): void {
+  if (token !== undefined) {
+    throw new UnprocessableEntityError(
+      "auth_config.kind 'oauth2' uses the 'refresh_token' field, not 'token'",
+    );
+  }
+  if (requireSecret && refresh_token === undefined) {
+    throw new UnprocessableEntityError("auth_config.kind 'oauth2' requires a 'refresh_token'");
+  }
+}
+
 /** Reject a create/patch whose write-only secret does not match the
- *  declared `auth_config.kind`. Never echoes the secret. `requireSecret`
- *  defaults to true (create path); the patch path passes false when no
- *  rotation was requested so an unchanged-secret kind is allowed. */
+ *  declared `auth_config.kind`, dispatching to the named per-kind shape
+ *  check so the error message is unambiguous about which field belongs to
+ *  which kind. Never echoes the secret. `requireSecret` defaults to true
+ *  (create path); the patch path passes false when no rotation was
+ *  requested so an unchanged-secret kind is allowed. */
 function assertSecretMatchesKind(
   kind: "none" | "bearer" | "oauth2",
   token: string | undefined,
@@ -286,27 +325,16 @@ function assertSecretMatchesKind(
   opts?: { requireSecret?: boolean },
 ): void {
   const requireSecret = opts?.requireSecret ?? true;
-  if (kind === "none") {
-    if (token !== undefined || refresh_token !== undefined) {
-      throw new UnprocessableEntityError("auth_config.kind 'none' must not carry a secret");
-    }
-    return;
-  }
-  if (kind === "bearer") {
-    if (refresh_token !== undefined) {
-      throw new UnprocessableEntityError("bearer auth uses 'token', not 'refresh_token'");
-    }
-    if (requireSecret && token === undefined) {
-      throw new UnprocessableEntityError("auth_config.kind 'bearer' requires a 'token'");
-    }
-    return;
-  }
-  // oauth2
-  if (token !== undefined) {
-    throw new UnprocessableEntityError("oauth2 auth uses 'refresh_token', not 'token'");
-  }
-  if (requireSecret && refresh_token === undefined) {
-    throw new UnprocessableEntityError("auth_config.kind 'oauth2' requires a 'refresh_token'");
+  switch (kind) {
+    case "none":
+      assertNoneSecretShape(token, refresh_token);
+      return;
+    case "bearer":
+      assertBearerSecretShape(token, refresh_token, requireSecret);
+      return;
+    case "oauth2":
+      assertOAuth2SecretShape(token, refresh_token, requireSecret);
+      return;
   }
 }
 
@@ -590,9 +618,11 @@ export function registerMcpServerRoutes(app: OpenAPIHono<AppEnv>): void {
       return updated;
     });
     if (!row) throw new NotFoundError("mcp_server");
-    // Evict any live client so the next handshake picks up the rotated
-    // credential / changed auth shape instead of a stale in-memory header.
-    if (hasSecret || body.auth_config !== undefined) evictTenant(principal.tenant_id);
+    // Evict just THIS server's live client so the next handshake picks up
+    // the rotated credential / changed auth shape instead of a stale
+    // in-memory header — without cold-reconnecting every other healthy
+    // server in the tenant pool.
+    if (hasSecret || body.auth_config !== undefined) evictServer(principal.tenant_id, id);
     return c.json(toResponse(row), 200);
   });
 
@@ -623,9 +653,10 @@ export function registerMcpServerRoutes(app: OpenAPIHono<AppEnv>): void {
       auditCtx(c, principal.id),
     );
     if (!row) throw new NotFoundError("mcp_server");
-    // Drop the live client(s) so the disabled server stops being reachable
-    // and its resolved credential header is no longer held in memory.
-    evictTenant(principal.tenant_id);
+    // Drop just this server's live client so the disabled server stops
+    // being reachable and its resolved credential header is no longer held
+    // in memory — other servers in the tenant pool stay warm.
+    evictServer(principal.tenant_id, id);
     return c.json(toResponse(row), 200);
   });
 

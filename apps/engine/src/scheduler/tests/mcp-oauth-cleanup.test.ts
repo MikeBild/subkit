@@ -15,6 +15,8 @@ import {
   mcpOauthClients,
   mcpOauthRefreshTokens,
 } from "../../db/schema/mcp_oauth.ts";
+import { mcpOauthStates } from "../../db/schema/mcp_oauth_states.ts";
+import { mcpServers } from "../../db/schema/mcp_servers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { runMcpOAuthCleanup } from "../mcp-oauth-cleanup-runner.ts";
 
@@ -29,6 +31,15 @@ const staleClientAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000); // 31 day
 // Fresh timestamps — should survive the sweep.
 const freshExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now allow-wall-clock
 const _freshCreatedAt = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1 day ago allow-wall-clock
+
+// Deterministic monotonic counter for unique `state` strings — the
+// uniqueness must not ride the wall clock (two inserts in the same ms would
+// also collide). Mirrors the config-seed test's `configFileSeq`.
+let stateSeq = 0;
+function nextState(prefix: string): string {
+  stateSeq += 1;
+  return `${prefix}-${stateSeq}`;
+}
 
 beforeAll(async () => {
   srv = await createHttpTestServer("mcp-oauth-cleanup");
@@ -312,6 +323,73 @@ describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
   });
 });
 
+describe("runMcpOAuthCleanup — expired client-direction in-flight states", () => {
+  /** Seed an mcp_server so mcp_oauth_states' FK is satisfied. */
+  async function seedServer(namespace: string): Promise<string> {
+    const [row] = await srv.db
+      .insert(mcpServers)
+      .values({
+        tenant_id: srv.tenantId,
+        name: `cleanup ${namespace}`,
+        namespace,
+        transport: "http",
+        url: "https://examplemcp.cleanup.test/mcp",
+        auth_config: { kind: "oauth2", issuer: "https://auth.cleanup.test" },
+      })
+      .returning();
+    if (!row) throw new Error("seed server failed");
+    return row.id;
+  }
+
+  test("deletes mcp_oauth_states rows whose expires_at has passed", async () => {
+    const serverId = await seedServer("states-expired");
+    const [row] = await srv.db
+      .insert(mcpOauthStates)
+      .values({
+        tenant_id: srv.tenantId,
+        mcp_server_id: serverId,
+        state: nextState("expired-state"),
+        code_verifier: "",
+        redirect_uri: "https://engine.cleanup.test/v1/mcp-servers/oauth/callback",
+        expires_at: new Date(Date.now() - 60_000), // already expired allow-wall-clock
+      })
+      .returning();
+    if (!row) throw new Error("seed state failed");
+
+    await runMcpOAuthCleanup(new Date(), srv.db); // allow-wall-clock
+
+    const remaining = await srv.db
+      .select()
+      .from(mcpOauthStates)
+      .where(eq(mcpOauthStates.id, row.id));
+    expect(remaining).toHaveLength(0);
+  });
+
+  test("keeps mcp_oauth_states rows that are still in-flight (future expiry)", async () => {
+    const serverId = await seedServer("states-fresh");
+    const [row] = await srv.db
+      .insert(mcpOauthStates)
+      .values({
+        tenant_id: srv.tenantId,
+        mcp_server_id: serverId,
+        state: nextState("fresh-state"),
+        code_verifier: "",
+        redirect_uri: "https://engine.cleanup.test/v1/mcp-servers/oauth/callback",
+        expires_at: freshExpiry,
+      })
+      .returning();
+    if (!row) throw new Error("seed state failed");
+
+    await runMcpOAuthCleanup(new Date(), srv.db); // allow-wall-clock
+
+    const remaining = await srv.db
+      .select()
+      .from(mcpOauthStates)
+      .where(eq(mcpOauthStates.id, row.id));
+    expect(remaining).toHaveLength(1);
+  });
+});
+
 describe("runMcpOAuthCleanup — summary audit row", () => {
   test("emits MCP_OAUTH_EXPIRED_PRUNED audit row after every run", async () => {
     const before = new Date(); // allow-wall-clock
@@ -332,5 +410,6 @@ describe("runMcpOAuthCleanup — summary audit row", () => {
     expect(typeof meta.access_tokens_deleted).toBe("number");
     expect(typeof meta.refresh_tokens_deleted).toBe("number");
     expect(typeof meta.clients_deleted).toBe("number");
+    expect(typeof meta.states_deleted).toBe("number");
   });
 });

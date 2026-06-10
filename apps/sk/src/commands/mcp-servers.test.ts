@@ -48,6 +48,13 @@ const STUB_SERVER_DISABLED = { ...STUB_SERVER, status: "disabled" };
 let lastCreateBody: Record<string, unknown> | null = null;
 let lastPatchBody: Record<string, unknown> | null = null;
 
+// Drives the authorize poll loop: each getMcpServer call advances a status
+// script so a test can make the loop terminate deterministically (active /
+// error / still-pending) without real wall-clock dependence.
+let authorizeUrlReturned: { authorization_url: string; state: string } | null = null;
+let getMcpServerScript: Array<Record<string, unknown>> = [];
+let getMcpServerCalls = 0;
+
 mock.module("../engine-client.ts", () => ({
   ...ORIGINAL_ENGINE_CLIENT,
   EngineClient: class StubEngineClient {
@@ -63,7 +70,17 @@ mock.module("../engine-client.ts", () => ({
       return { items: [STUB_SERVER] };
     }
     async getMcpServer(_id: string) {
+      if (getMcpServerScript.length > 0) {
+        const idx = Math.min(getMcpServerCalls, getMcpServerScript.length - 1);
+        getMcpServerCalls++;
+        return getMcpServerScript[idx]!;
+      }
       return STUB_SERVER;
+    }
+    async authorizeMcpServer(_id: string) {
+      const res = { authorization_url: "https://idp.test/authorize?x=1", state: "state-abc" };
+      authorizeUrlReturned = res;
+      return res;
     }
     async disableMcpServer(_id: string) {
       return STUB_SERVER_DISABLED;
@@ -322,6 +339,57 @@ describe("sk mcp-servers remove · --yes flag", () => {
     const remove = getSub("remove");
     await remove.run!({ args: { id: STUB_SERVER.id, yes: true } });
     expect(stdoutBuf).toContain("deleted");
+  });
+});
+
+// ── authorize ─────────────────────────────────────────────────────────────────
+
+describe("sk mcp-servers authorize · OAuth consent flow", () => {
+  beforeEach(() => {
+    authorizeUrlReturned = null;
+    getMcpServerScript = [];
+    getMcpServerCalls = 0;
+  });
+
+  test("--json emits { authorization_url, state }, no polling, stderr empty", async () => {
+    const authorize = getSub("authorize");
+    await authorize.run!({ args: { id: STUB_SERVER.id, json: true } });
+    expect(() => JSON.parse(stdoutBuf.trim())).not.toThrow();
+    const parsed = JSON.parse(stdoutBuf.trim()) as Record<string, unknown>;
+    expect(parsed.authorization_url).toBe("https://idp.test/authorize?x=1");
+    expect(parsed.state).toBe("state-abc");
+    expect(stderrBuf).toBe("");
+    // No poll in --json mode.
+    expect(getMcpServerCalls).toBe(0);
+  });
+
+  test("prints the authorization URL and calls authorizeMcpServer", async () => {
+    const authorize = getSub("authorize");
+    // --no-wait avoids the 2s poll; --no-open avoids spawning a browser.
+    await authorize.run!({
+      args: { id: STUB_SERVER.id, "no-open": true, "no-wait": true },
+    });
+    expect(authorizeUrlReturned).not.toBeNull();
+    expect(stdoutBuf).toContain("https://idp.test/authorize?x=1");
+    expect(stdoutBuf).toContain("Open this URL");
+    // --no-wait skips polling entirely.
+    expect(getMcpServerCalls).toBe(0);
+  });
+
+  test("polling stops with success when status flips to active", async () => {
+    getMcpServerScript = [{ status: "active" }];
+    const authorize = getSub("authorize");
+    await authorize.run!({ args: { id: STUB_SERVER.id, "no-open": true } });
+    expect(getMcpServerCalls).toBe(1);
+    expect(stdoutBuf).toContain("active");
+  });
+
+  test("polling stops and surfaces last_error when status is error", async () => {
+    getMcpServerScript = [{ status: "error", last_error: "consent denied" }];
+    const authorize = getSub("authorize");
+    await authorize.run!({ args: { id: STUB_SERVER.id, "no-open": true } });
+    expect(getMcpServerCalls).toBe(1);
+    expect(stdoutBuf).toContain("consent denied");
   });
 });
 

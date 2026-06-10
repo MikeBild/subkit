@@ -337,10 +337,13 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "mcp:read",
   },
   {
+    // No explicit `routing`: this is a CLI→inspect handoff (the
+    // `dispatchInspectSlash` "mcp-servers" case lists via
+    // `client.listMcpServers()`), not a distinct engine-routed command —
+    // matching the sibling `mcp` inspect slash, which also omits `routing`.
     name: "mcp-servers",
     help: "Manage external MCP servers (use `sk mcp-servers` for add/inspect/remove)",
     category: "mcp",
-    routing: "engine",
     requires: "mcp_server:manage",
   },
   {

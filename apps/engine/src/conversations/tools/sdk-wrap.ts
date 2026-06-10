@@ -23,6 +23,7 @@
 //   end-to-end picture.
 
 import type { Tool } from "ai";
+import { recordMcpExternalToolPaletteAssemblyFailed } from "../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
@@ -99,13 +100,35 @@ export async function wrapTools(
         out[name] = t;
       }
     } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
       logger.warn({
         module: "conversation_tool",
         action: "external_mcp.assembly_failed",
         msg: "external MCP tool assembly failed; degrading to zero external tools for this turn",
         tenant_id: ctx.tenant_id,
-        error: err instanceof Error ? err.message : String(err),
+        error: reason,
       });
+      // Land a queryable audit row so the degradation isn't only a transient
+      // log line. Best-effort: the audit write must NEVER throw out of the
+      // turn (that would defeat the whole degrade-gracefully contract), so
+      // wrap it and swallow any failure into the same logger sink.
+      try {
+        await recordMcpExternalToolPaletteAssemblyFailed({
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.actor_id,
+          reason,
+          request_source: "chat",
+          executor: db,
+        });
+      } catch (auditErr) {
+        logger.warn({
+          module: "conversation_tool",
+          action: "external_mcp.assembly_failed_audit_failed",
+          msg: "failed to audit external MCP palette-assembly failure; continuing the turn",
+          tenant_id: ctx.tenant_id,
+          error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      }
     }
   }
   return out;

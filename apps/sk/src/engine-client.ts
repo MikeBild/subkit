@@ -1923,6 +1923,12 @@ export class EngineClient {
   inspectMcpServer(id: string): Promise<Record<string, unknown>> {
     return this.request("POST", `/v1/mcp-servers/${encodeURIComponent(id)}/inspect`);
   }
+  // Start the interactive OAuth consent flow for an oauth2-auth MCP server.
+  // The engine returns the authorize URL the user opens in a browser; the
+  // callback completes server-side and flips `status` to "active".
+  authorizeMcpServer(id: string): Promise<{ authorization_url: string; state: string }> {
+    return this.request("POST", `/v1/mcp-servers/${encodeURIComponent(id)}/authorize`);
+  }
   deleteMcpServer(id: string): Promise<void> {
     return this.request("DELETE", `/v1/mcp-servers/${encodeURIComponent(id)}`);
   }

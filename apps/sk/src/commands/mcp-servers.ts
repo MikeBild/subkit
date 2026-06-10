@@ -200,6 +200,91 @@ const inspectCommand = defineCommand({
   },
 });
 
+// Fire-and-forget browser open, mirroring apps/sk/src/install/*.ts. The CLI
+// never depends on the open succeeding — the URL is always printed so a
+// headless / SSH operator can copy it by hand.
+async function openBrowser(url: string): Promise<void> {
+  const { exec } = await import("node:child_process");
+  const cmd =
+    process.platform === "darwin"
+      ? `open "${url}"`
+      : process.platform === "win32"
+        ? `start "${url}"`
+        : `xdg-open "${url}"`;
+  exec(cmd);
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// Bounded, deterministic poll: 60 iterations × 2s ≈ 120s. No Date.now —
+// the iteration count is the sole clock so the test harness can flip
+// getMcpServer's status and have the loop terminate predictably.
+const AUTHORIZE_POLL_ATTEMPTS = 60;
+const AUTHORIZE_POLL_INTERVAL_MS = 2000;
+
+const authorizeCommand = defineCommand({
+  meta: {
+    name: "authorize",
+    description: "Run the interactive OAuth consent flow for an external MCP server",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "MCP server id" },
+    json: { type: "boolean", description: "JSON-only output (no browser open, no polling)" },
+    "no-open": { type: "boolean", description: "Print the URL but do not auto-open a browser" },
+    "no-wait": { type: "boolean", description: "Skip polling for authorization to complete" },
+  },
+  async run({ args }) {
+    const jsonMode = Boolean(args.json);
+    const client = makeClient();
+    try {
+      const { authorization_url, state } = await client.authorizeMcpServer(String(args.id));
+
+      // Machine consumers handle the browser + poll themselves: emit the
+      // contract fields and stop. No stderr, no browser, no waiting.
+      if (jsonMode) {
+        printJson({ authorization_url, state });
+        return;
+      }
+
+      process.stdout.write(`Open this URL in your browser to authorize:\n  ${authorization_url}\n`);
+      if (!args["no-open"]) {
+        await openBrowser(authorization_url);
+      }
+
+      if (args["no-wait"]) {
+        process.stdout.write(
+          "\nAfter authorizing, run `sk mcp-servers inspect <id>` to confirm the server is active.\n",
+        );
+        return;
+      }
+
+      process.stdout.write("\nWaiting for authorization to complete (up to 120s)...\n");
+      for (let attempt = 0; attempt < AUTHORIZE_POLL_ATTEMPTS; attempt++) {
+        await sleep(AUTHORIZE_POLL_INTERVAL_MS);
+        const server = (await client.getMcpServer(String(args.id))) as {
+          status?: string;
+          last_error?: string | null;
+        };
+        if (server.status === "active") {
+          process.stdout.write("authorized — server is active\n");
+          return;
+        }
+        if (server.status === "error") {
+          process.stdout.write(
+            `authorization failed${server.last_error ? `: ${server.last_error}` : ""}\n`,
+          );
+          return;
+        }
+      }
+      process.stdout.write(
+        "timed out waiting for authorization — complete the browser step, then run `sk mcp-servers inspect <id>`\n",
+      );
+    } catch (err) {
+      reportError(err, jsonMode);
+    }
+  },
+});
+
 const enableCommand = defineCommand({
   meta: { name: "enable", description: "Re-enable a disabled external MCP server" },
   args: {
@@ -266,6 +351,7 @@ export const mcpServersCommand = defineCommand({
     list: listCommand,
     get: getCommand,
     inspect: inspectCommand,
+    authorize: authorizeCommand,
     enable: enableCommand,
     disable: disableCommand,
     remove: removeCommand,

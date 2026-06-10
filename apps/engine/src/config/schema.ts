@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mcpNamespaceSchema } from "../api/common-schemas.ts";
 
 export type FieldScope = "global" | "tenant";
 
@@ -504,10 +505,9 @@ const EgressSection = z
 const McpServerDeclSchema = z
   .object({
     name: z.string().min(1),
-    namespace: z
-      .string()
-      .regex(/^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$/)
-      .refine((s) => !s.includes("__"), "namespace must not contain '__'"),
+    // Shared single source of truth (api/common-schemas.ts) — mirrors the DB
+    // CHECK on `mcp_servers.namespace` and the route/registry decls exactly.
+    namespace: mcpNamespaceSchema,
     transport: z.enum(["http", "sse"]),
     url: z.string().url(),
     auth: z

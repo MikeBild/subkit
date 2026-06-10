@@ -24,6 +24,7 @@ import {
   listMcpServers,
   type McpServerAuditCtx,
   parseAuthConfig,
+  recordMcpServerHandshakeState,
   setMcpServerStatus,
   updateMcpServer,
 } from "./registry.ts";
@@ -610,5 +611,65 @@ describe("setMcpServerStatus last_error redaction", () => {
     expect(after!.last_error).not.toContain("LEAKED_SECRET");
     expect(after!.last_error).not.toContain("?token");
     expect(after!.last_error).toContain("https://redact.example.com");
+  });
+});
+
+// ── recordMcpServerHandshakeState — auto-recovery audit (W2) ──────────────────
+
+describe("recordMcpServerHandshakeState auto-recovery audit", () => {
+  test("error → active flip emits mcp_server.re_enabled with reason auto_recovered_via_handshake", async () => {
+    const row = await createMcpServer(
+      ctx.db,
+      {
+        tenant_id: tenantA,
+        name: "Recover MCP",
+        namespace: "recoverns",
+        transport: "http",
+        url: "https://recover.example.com",
+      },
+      auditCtx(),
+    );
+    // Park it in error first (the prior state the recovery edge fires on).
+    await setMcpServerStatus(ctx.db, tenantA, row.id, "error", auditCtx(), {
+      last_error: "transient handshake failure",
+    });
+
+    // A successful handshake recovers it to active — this MUST audit the edge.
+    const recovered = await recordMcpServerHandshakeState(
+      ctx.db,
+      tenantA,
+      row.id,
+      "sha256:recovered-hash",
+      auditCtx(),
+    );
+    expect(recovered!.status).toBe("active");
+    expect(recovered!.tools_manifest_hash).toBe("sha256:recovered-hash");
+
+    const reEnabledRows = await ctx.db
+      .select({ action: auditLog.action, reason: auditLog.reason })
+      .from(auditLog)
+      .where(eq(auditLog.resource_id, row.id));
+    const reEnabled = reEnabledRows.filter((r) => r.action === "mcp_server.re_enabled");
+    expect(reEnabled.length).toBe(1);
+    expect(reEnabled[0]!.reason).toBe("auto_recovered_via_handshake");
+  });
+
+  test("active → active handshake does NOT emit a re_enabled row (no spurious recovery audit)", async () => {
+    const row = await createMcpServer(
+      ctx.db,
+      {
+        tenant_id: tenantA,
+        name: "Steady MCP",
+        namespace: "steadyns",
+        transport: "http",
+        url: "https://steady.example.com",
+      },
+      auditCtx(),
+    );
+    // Row is created `active`; a handshake from active must not re-enable.
+    await recordMcpServerHandshakeState(ctx.db, tenantA, row.id, "sha256:steady", auditCtx());
+
+    const actions = await auditActionsFor(tenantA, row.id);
+    expect(actions).not.toContain("mcp_server.re_enabled");
   });
 });

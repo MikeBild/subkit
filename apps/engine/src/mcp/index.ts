@@ -8,6 +8,12 @@
 // The MCP *server* side (server.ts, adapter.ts, …) is consumed via its own
 // explicit imports and is not aggregated here to keep the barrel light.
 
+export {
+  McpDbOAuthClientProvider,
+  type McpDbOAuthClientProviderInput,
+  makeMcpOAuthProvider,
+} from "./client/oauth-provider.ts";
+export { buildMcpOAuthRedirectUri, MCP_OAUTH_CALLBACK_PATH } from "./client/oauth-redirect.ts";
 export * from "./client/pool.ts";
 export * from "./client/registry.ts";
 export * from "./client/schema-drift.ts";

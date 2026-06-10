@@ -643,6 +643,54 @@ export async function getOAuth2ClientCredential(
   return { client_id: value.client_id, client_secret: value.client_secret };
 }
 
+/** Load the `oauth2_client` credential for an external MCP server (#171
+ *  follow-up) — i.e. the client_id (+ optional client_secret) issued by
+ *  the server's IdP, either pre-provisioned or via RFC 7591 dynamic
+ *  client registration. Mirrors `getOAuth2ClientCredential` (the
+ *  connector variant) but scopes the row by `mcp_server_id`. Returns null
+ *  when the server has no registration slot yet. AAD-bound by
+ *  `aadFor(tenant_id, credential_id)`; the `client_secret` lives only in
+ *  the encrypted `credentials` row, never on the `mcp_oauth_states` flow
+ *  row or in `mcp_servers.auth_config` (secret-by-reference). */
+export async function getOAuth2ClientCredentialForMcpServer(
+  tenant_id: string,
+  mcp_server_id: string,
+  environment: "dev" | "prod",
+  exec?: Executor,
+): Promise<{ client_id: string; client_secret: string | undefined } | null> {
+  if (!UUID_RE.test(mcp_server_id)) return null;
+  const db = exec ?? getDb();
+  const rows = await db
+    .select()
+    .from(credentials)
+    .where(
+      and(
+        eq(credentials.tenant_id, tenant_id),
+        eq(credentials.mcp_server_id, mcp_server_id),
+        eq(credentials.environment, environment),
+        eq(credentials.mode, "oauth2_client"),
+      ),
+    )
+    // Deterministic pick — mirrors `getCredentialForMcpServer`. The
+    // partial unique index makes a duplicate transient at most, but the
+    // ORDER BY keeps the resolved client stable regardless of row order.
+    .orderBy(desc(credentials.created_at), desc(credentials.id))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  const plain = decryptSecret(
+    {
+      ciphertext: row.ciphertext,
+      iv: row.iv,
+      auth_tag: row.auth_tag,
+    },
+    aadFor(tenant_id, row.id),
+  );
+  const value = deserializePlain("oauth2_client", plain);
+  if (value.mode !== "oauth2_client") return null;
+  return { client_id: value.client_id, client_secret: value.client_secret };
+}
+
 export async function deleteCredential(
   tenant_id: string,
   credential_id: string,

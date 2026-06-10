@@ -17,6 +17,7 @@
 
 import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
+import { mcpNamespaceSchema } from "../../api/common-schemas.ts";
 import { recordMcpServerConfigUpdated } from "../../audit/recorders/index.ts";
 import {
   recordMcpServerDeleted,
@@ -81,15 +82,12 @@ export interface UpdateMcpServerPatch {
   auth_config?: McpServerAuthConfig | null;
 }
 
-// Namespace regex mirrors the DB CHECK on `mcp_servers.namespace` EXACTLY
-// (`^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$` plus a `__`-run ban)
-// so bad input fails Zod validation as a 422-able error at the boundary,
-// not as a raw 23514 SQL error / 500 downstream.
-const NAMESPACE_RE = /^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$/;
-const namespaceSchema = z
-  .string()
-  .regex(NAMESPACE_RE, "namespace must be a URL-safe slug (alphanumeric, _ or - inside)")
-  .refine((v) => !v.includes("__"), "namespace must not contain '__'");
+// Namespace constraint mirrors the DB CHECK on `mcp_servers.namespace`
+// EXACTLY (`^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$` plus a `__`-run
+// ban). Imported from the shared single source of truth in
+// `api/common-schemas.ts` so the route / registry / config decls can never
+// drift apart.
+const namespaceSchema = mcpNamespaceSchema;
 
 // `auth_config` is the NON-SECRET shape only. The bearer/oauth2 secret
 // lives in `credentials` keyed by `mcp_server_id` — never on this row.
@@ -372,13 +370,23 @@ export async function setMcpServerStatus(
  * `last_error`, and persist the observed `tools_manifest_hash`. The
  * handshake-ok audit row is emitted by the pool (which holds the
  * tool_count); this function only writes the durable row state.
+ *
+ * AUTO-RECOVERY AUDIT: a successful handshake recovers a server that was
+ * parked in `error` back to `active` via the direct UPDATE below. That
+ * status flip is an operator-visible state change, so when the PRIOR status
+ * was `error` we ALSO emit `mcp_server.re_enabled` (reason
+ * `auto_recovered_via_handshake`) — the same row a manual enable lands —
+ * so the auto-recovery edge isn't a silent UPDATE with no trail. The prior
+ * status is read off the existing row BEFORE the UPDATE.
  */
 export async function recordMcpServerHandshakeState(
   db: Executor,
   tenant_id: string,
   id: string,
   tools_manifest_hash: string,
+  auditCtx: McpServerAuditCtx,
 ): Promise<McpServerRow | null> {
+  const existing = await getMcpServer(db, tenant_id, id);
   const [row] = await db
     .update(mcpServers)
     .set({
@@ -392,7 +400,19 @@ export async function recordMcpServerHandshakeState(
     })
     .where(and(eq(mcpServers.tenant_id, tenant_id), eq(mcpServers.id, id)))
     .returning();
-  return row ?? null;
+  if (!row) return null;
+
+  // The handshake recovered an errored server to active — audit the edge
+  // exactly as a manual enable would, so the auto-recovery is queryable.
+  if (existing?.status === "error") {
+    await recordMcpServerReEnabled({
+      ...auditBase(tenant_id, auditCtx),
+      mcp_server_id: id,
+      namespace: row.namespace,
+      reason: "auto_recovered_via_handshake",
+    });
+  }
+  return row;
 }
 
 export async function deleteMcpServer(
