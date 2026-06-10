@@ -22,14 +22,24 @@ import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
 
+// Restore (never DELETE) the ambient LLM_PROVIDER: bun runs every e2e file
+// in one process, and several suites (tier4-edge-cases, audit-trail, …) call
+// boot() relying on the CI-level LLM_PROVIDER=mock. Deleting it here made
+// any of them that happened to be SCHEDULED AFTER this file fail boot()'s
+// provider validation — a test-order flake that took the 6.13.4 release CI
+// down while 6.13.2 passed on a lucky order.
+let priorLlmProvider: string | undefined;
+
 beforeAll(async () => {
+  priorLlmProvider = process.env.LLM_PROVIDER;
   process.env.LLM_PROVIDER = "mock";
   env = await boot("mcp-servers-crud");
 }, 90_000);
 
 afterAll(async () => {
   await shutdown(env);
-  delete process.env.LLM_PROVIDER;
+  if (priorLlmProvider === undefined) delete process.env.LLM_PROVIDER;
+  else process.env.LLM_PROVIDER = priorLlmProvider;
 }, 30_000);
 
 // ── helpers ───────────────────────────────────────────────────────────────────

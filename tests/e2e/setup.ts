@@ -316,7 +316,10 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   };
 }
 
-export const shutdown = (env: E2EEnv) => env.cleanup();
+// Tolerate an undefined env: when boot() throws in beforeAll the suite's
+// afterAll still runs with the variable unassigned — crashing here buried
+// the REAL boot error under a TypeError in the CI log.
+export const shutdown = (env: E2EEnv | undefined) => env?.cleanup() ?? Promise.resolve();
 
 // ---------------------------------------------------------------------------
 // CLI runner
