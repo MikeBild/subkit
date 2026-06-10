@@ -26,8 +26,10 @@
 // "asks before running" under auto/ask/plan.
 
 import { jsonSchema, type Tool, tool } from "ai";
+import { recordMcpExternalToolPaletteAssemblyFailed } from "../../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
+import { logger } from "../../../logging/logger.ts";
 import { gateTenantToolCall } from "../../../mcp/capabilities/policy-gate.ts";
 import {
   getTenantMcpTools,
@@ -53,6 +55,25 @@ export interface BuildExternalMcpToolsParams {
   events: TurnEvent[];
 }
 
+// ── TEST SEAM ────────────────────────────────────────────────────────────────
+// Replaces the whole palette assembly (`buildExternalMcpTools` consults the
+// override on entry). Production never sets this; tests inject a failing/fake
+// builder WITHOUT bun's `mock.module` (module mocks are process-global and
+// leak into every other test file in the same worker). Null by default, so a
+// missed restore can never alter production behavior — but tests MUST still
+// restore null in afterAll. The override must not call back into
+// `buildExternalMcpTools` itself (it would recurse).
+
+type ExternalMcpToolsBuilder = (
+  p: BuildExternalMcpToolsParams,
+) => Promise<Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>>;
+
+let builderOverride: ExternalMcpToolsBuilder | null = null;
+
+export function __setExternalMcpToolsBuilderForTests(fn: ExternalMcpToolsBuilder | null): void {
+  builderOverride = fn;
+}
+
 /**
  * Build `mcp_<ns>__<tool>` SDK tools for the principal's tenant. Returned
  * map is keyed by the prefixed name and ready to splice into the AI SDK
@@ -63,6 +84,9 @@ export interface BuildExternalMcpToolsParams {
 export async function buildExternalMcpTools(
   p: BuildExternalMcpToolsParams,
 ): Promise<Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>> {
+  // TEST SEAM consumption (see `__setExternalMcpToolsBuilderForTests` above):
+  // production always falls through to the real assembly.
+  if (builderOverride) return builderOverride(p);
   const servers = await getTenantMcpTools(p.db, p.principal.tenant_id, { requestSource: "chat" });
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   for (const server of servers) {
@@ -134,6 +158,26 @@ async function executeExternalMcpTool(
   // upstream refactor broke the invariant; fail loud at the dispatch
   // boundary rather than write audit / invoke rows for the wrong tenant.
   if (ctx.tenant_id !== principal.tenant_id) {
+    // Land a durable trail under the auth-resolved tenant before failing.
+    // Best-effort: a broken invariant must surface as the throw below — the
+    // audit write can never mask it.
+    try {
+      await recordMcpExternalToolPaletteAssemblyFailed({
+        tenant_id: principal.tenant_id,
+        actor_id: ctx.actor_id,
+        reason: "tenant_mismatch",
+        request_source: "chat",
+        executor: db,
+      });
+    } catch (auditErr) {
+      logger.warn({
+        module: "conversation_tool",
+        action: "external_mcp.tenant_mismatch_audit_failed",
+        msg: "failed to audit external MCP tenant mismatch; the dispatch still fails loud",
+        tenant_id: principal.tenant_id,
+        error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
     throw new Error(
       `external mcp dispatch: ctx.tenant_id (${ctx.tenant_id}) !== principal.tenant_id (${principal.tenant_id})`,
     );
@@ -220,16 +264,29 @@ async function executeExternalMcpTool(
   });
 
   if (gate.kind === "pending") {
+    // Operator-facing confirm summary: tool identity + input FIELD NAMES
+    // only, mirroring run_workflow's buildPendingOutput (`input_keys`).
+    // NEVER the input values — external tool args are bound for a
+    // third-party server and may carry sensitive data, so the pending
+    // envelope must not echo them back as a raw JSON blob. The LLM
+    // re-issues the original call itself after the operator confirms, so
+    // the echoed target needs no args either.
+    const { __policy_confirmed: _marker, ...pendingInput } = rawArgs;
     const output: Record<string, unknown> = {
       pending: true,
       status: "awaiting_confirmation",
       policy_mode: "confirm_before_execution",
       confirm_required: true,
-      target: gate.envelope.target,
+      target: { tool: gate.envelope.target.tool },
       tool_call_id: gate.envelope.tool_call_id,
       resume: gate.envelope.resume,
       namespace,
       remote_tool: descriptor.name,
+      pending_output: {
+        namespace,
+        remote_tool: descriptor.name,
+        input_keys: Object.keys(pendingInput),
+      },
     };
     await updateToolCallOutput(db, toolCallId, output);
     events.push({

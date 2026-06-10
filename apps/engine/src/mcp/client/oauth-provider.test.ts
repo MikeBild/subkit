@@ -82,6 +82,7 @@ function makeInteractiveProvider(tenantId: string, serverId: string, state: stri
     state,
     auth: { kind: "oauth2", issuer: FAKE_ISSUER, scope: "read write" },
     interactive: true,
+    request_source: "api",
   });
 }
 
@@ -96,6 +97,7 @@ function makeNonInteractiveProvider(tenantId: string, serverId: string) {
     state: "",
     auth: { kind: "oauth2", issuer: FAKE_ISSUER },
     interactive: false,
+    request_source: "api",
   });
 }
 
@@ -141,6 +143,7 @@ describe("McpDbOAuthClientProvider.clientMetadata", () => {
       state: "state-meta2",
       auth: { kind: "oauth2", issuer: FAKE_ISSUER, scope: "read" },
       interactive: true,
+      request_source: "api",
     });
     expect(provider.clientMetadata.scope).toBe("read");
   });
@@ -156,6 +159,7 @@ describe("McpDbOAuthClientProvider.clientMetadata", () => {
       state: "state-meta3",
       auth: { kind: "oauth2", issuer: FAKE_ISSUER },
       interactive: true,
+      request_source: "api",
     });
     expect(provider.clientMetadata.scope).toBeUndefined();
   });
@@ -236,6 +240,7 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
       state: "state-scl4",
       auth: { kind: "oauth2", issuer: FAKE_ISSUER, client_id: "preprov-client-id" },
       interactive: true,
+      request_source: "api",
     });
 
     const info = await provider.clientInformation();
@@ -594,6 +599,7 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
       state: "state-iso-b",
       auth: { kind: "oauth2", issuer: FAKE_ISSUER },
       interactive: true,
+      request_source: "api",
     });
     await providerB.saveTokens({ access_token: "b-only-token", token_type: "Bearer" });
 
@@ -608,6 +614,7 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
       state: "state-iso-a",
       auth: { kind: "oauth2", issuer: FAKE_ISSUER },
       interactive: true,
+      request_source: "api",
     });
 
     // A has no tokens — should NOT see B's token.
@@ -626,6 +633,7 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
       state: "state-iso-client-b",
       auth: { kind: "oauth2", issuer: FAKE_ISSUER },
       interactive: true,
+      request_source: "api",
     });
     await providerB.saveClientInformation({ client_id: "b-client-id" });
 
@@ -639,6 +647,7 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
       state: "state-iso-client-a",
       auth: { kind: "oauth2", issuer: FAKE_ISSUER },
       interactive: true,
+      request_source: "api",
     });
 
     // A has no client credential row; without a pre-provisioned client_id on

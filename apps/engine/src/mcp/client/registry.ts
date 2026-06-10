@@ -36,6 +36,15 @@ import type { RequestSource } from "../../observability/service-metadata.ts";
 /** Drizzle executor — a `Db` or an open transaction. */
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
+/**
+ * The single environment every MCP-server credential is written under and
+ * resolved from. `mcp_servers` rows carry no per-server environment, so
+ * the writer (routes / OAuth callback) and the reader (the client pool's
+ * handshake) MUST share this constant — a writer/reader mismatch would
+ * store a secret the pool can never find.
+ */
+export const MCP_CREDENTIAL_ENVIRONMENT = "prod" as const;
+
 /** Row mirror of `mcpServers.$inferSelect`. Re-exported so the loop +
  *  route layers don't have to reach into the schema module. */
 export type McpServerRow = typeof mcpServers.$inferSelect;

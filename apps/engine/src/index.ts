@@ -493,6 +493,9 @@ async function runServer(): Promise<void> {
   // to the `mcp.servers` config declarations for every tenant. Zero-conf:
   // with no declarations this is a no-op. Idempotent + non-fatal — a bad
   // decl is logged and never blocks serving the first request.
+  // Fire-and-forget: the first few turns after boot may see a partial
+  // external-MCP palette until this reconcile completes (same posture as
+  // the skills seed above).
   void (async () => {
     try {
       const r = await reconcileMcpServersFromConfig(db);

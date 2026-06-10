@@ -1,8 +1,12 @@
 // Full authorize → callback round-trip integration tests for the interactive
-// MCP OAuth 2.1 onboarding routes (#171 follow-up).
+// MCP OAuth 2.1 onboarding routes.
 //
-// The SDK `auth()` function is mocked via mock.module so no real authorization
-// server is needed. The mock is installed before the test server is constructed.
+// INJECTION PATTERN: the routes call the SDK's `auth()` driver through the
+// documented TEST SEAM `sdkAuth` (apps/engine/src/mcp/client/sdk-auth.ts).
+// `__setSdkAuthForTests` swaps the driver in-process so no real authorization
+// server is needed — NO bun `mock.module` (module mocks are process-global
+// and leak into every other test file in the same worker). The seam is set in
+// beforeAll and restored to null in afterAll.
 //
 // Coverage strategy:
 //   - authorize route: state row created + code_verifier + authorization_url written.
@@ -11,22 +15,25 @@
 //   - iss mismatch: error HTML, no credential, authorization_failed audit.
 //   - single-use: second callback with same state → 400 expired page.
 //
-// The authorize route calls the SDK auth() which is mocked to:
-//   - call provider.saveCodeVerifier + provider.redirectToAuthorization → return "REDIRECT".
-// The callback route calls the SDK auth() with authorizationCode which is mocked to:
-//   - call provider.saveTokens → return "AUTHORIZED".
+// The authorize route drives the stub `auth()` with no authorizationCode:
+//   - it calls provider.saveCodeVerifier + provider.redirectToAuthorization
+//     → returns "REDIRECT".
+// The callback route drives it WITH authorizationCode:
+//   - it calls provider.saveTokens → returns "AUTHORIZED".
 
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { and, eq } from "drizzle-orm";
 import { auditLog, credentials, mcpOauthStates } from "../../db/schema/index.ts";
+import { __setSdkAuthForTests } from "../../mcp/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
 // Deterministic, wall-clock-free seams. The callback's guarded delete is
 // `WHERE state = ? AND expires_at > now()` against the REAL db `now()`, so a
 // seeded in-flight state row needs a FIXED far-future absolute expiry
 // (stable across runs, always ahead of real now) — not a wall-clock offset.
-// Per-state uniqueness, which previously rode `Date.now()`, rides a
-// deterministic monotonic counter so each flow gets a collision-free state.
+// Per-state uniqueness rides a deterministic monotonic counter so each flow
+// gets a collision-free state.
 const STATE_EXPIRY_AT = new Date("2999-01-01T00:00:00.000Z");
 let stateSeq = 0;
 function nextStateSuffix(): number {
@@ -34,60 +41,39 @@ function nextStateSuffix(): number {
   return stateSeq;
 }
 
-// ── SDK mock ──────────────────────────────────────────────────────────────────
-//
-// mock.module patches the live ESM binding in the module namespace. In bun,
-// this affects all modules that have imported the binding — including those
-// already loaded via static imports — so the route's `mcpAuth` call sees the
-// stub. The mock is installed before the test server setup so the route closure
-// that captures `mcpAuth` sees the replacement.
-
 const STUB_AUTH_URL = "https://auth.acmeauth.test/authorize?response_type=code&state=OPAQUE_STUB";
 
-mock.module("@modelcontextprotocol/sdk/client/auth.js", () => ({
-  auth: async (
-    provider: {
-      saveCodeVerifier: (v: string) => Promise<void>;
-      redirectToAuthorization: (u: URL) => Promise<void>;
-      saveTokens: (t: {
-        access_token: string;
-        token_type: string;
-        refresh_token?: string;
-        expires_in?: number;
-      }) => Promise<void>;
-    },
-    opts?: { authorizationCode?: string },
-  ): Promise<"REDIRECT" | "AUTHORIZED"> => {
-    if (opts?.authorizationCode) {
-      await provider.saveTokens({
-        access_token: "stub-access-token-from-exchange",
-        token_type: "Bearer",
-        refresh_token: "stub-refresh-token-from-exchange",
-        expires_in: 3600,
-      });
-      return "AUTHORIZED";
-    }
-    await provider.saveCodeVerifier("stub-pkce-verifier");
-    await provider.redirectToAuthorization(new URL(STUB_AUTH_URL));
-    return "REDIRECT";
-  },
-  UnauthorizedError: class UnauthorizedError extends Error {
-    constructor(message = "unauthorized") {
-      super(message);
-      this.name = "UnauthorizedError";
-    }
-  },
-}));
+async function stubSdkAuth(
+  provider: OAuthClientProvider,
+  options: { serverUrl: string | URL; authorizationCode?: string },
+): Promise<"AUTHORIZED" | "REDIRECT"> {
+  if (options.authorizationCode) {
+    await provider.saveTokens({
+      access_token: "stub-access-token-from-exchange",
+      token_type: "Bearer",
+      refresh_token: "stub-refresh-token-from-exchange",
+      expires_in: 3600,
+    });
+    return "AUTHORIZED";
+  }
+  await provider.saveCodeVerifier("stub-pkce-verifier");
+  await provider.redirectToAuthorization(new URL(STUB_AUTH_URL));
+  return "REDIRECT";
+}
 
 // ── Test server setup ─────────────────────────────────────────────────────────
 
 let ctx: HttpTestServer;
 
 beforeAll(async () => {
+  __setSdkAuthForTests(stubSdkAuth);
   ctx = await createHttpTestServer("mcp-oauth-roundtrip");
 }, 30_000);
 
 afterAll(async () => {
+  // ALWAYS restore the seam (null-by-default protects production, but a
+  // leaked non-null driver would still poison sibling test files).
+  __setSdkAuthForTests(null);
   await ctx.cleanup();
 }, 30_000);
 
@@ -124,9 +110,8 @@ async function registerOAuth2Server(namespace: string): Promise<string> {
 
 /**
  * Seed a pre-built mcp_oauth_states row directly to simulate what the
- * authorize route would have inserted. Used for callback tests that need to
- * bypass the authorize route's SDK call (which may not be mockable via
- * mock.module when the binding was already resolved at static import time).
+ * authorize route would have inserted. Used for callback tests that
+ * exercise the callback route's contract in isolation.
  */
 async function seedStateRow(opts: {
   serverId: string;
@@ -158,16 +143,7 @@ describe("POST /authorize", () => {
       headers: adminAuth(),
     });
 
-    // The mock SDK returns "REDIRECT", so the route should succeed with 200.
-    // If mock.module could not patch the live binding (bun limitation), the
-    // SDK would try real discovery and likely fail with a 502. We accept that
-    // edge and assert 200 here; the test is skipped naturally on failure.
-    if (res.status === 502) {
-      // Real SDK was invoked (mock.module didn't patch the live binding) —
-      // skip this assertion path rather than failing the whole suite.
-      // The callback-only tests below still provide meaningful coverage.
-      return;
-    }
+    // The stub driver returns "REDIRECT", so the route must succeed with 200.
     expect(res.status).toBe(200);
 
     const body = (await res.json()) as { authorization_url: string; state: string };
@@ -204,8 +180,8 @@ describe("POST /authorize", () => {
 
 // ── Test 2: callback happy path ───────────────────────────────────────────────
 //
-// We seed the state row directly to bypass the authorize route's SDK call
-// and test the callback route's full contract in isolation.
+// We seed the state row directly to test the callback route's full contract
+// in isolation from the authorize route.
 
 describe("GET /oauth/callback — happy path (pre-seeded state row)", () => {
   test("callback with code + pre-seeded state → success HTML; state row deleted; credential written; server active; audit written", async () => {
@@ -213,24 +189,12 @@ describe("GET /oauth/callback — happy path (pre-seeded state row)", () => {
     const state = `callback-state-${nextStateSuffix()}`;
     await seedStateRow({ serverId, state });
 
-    // Simulate callback from external AS.
+    // Simulate callback from external AS. The stub driver exchanges the
+    // code by calling provider.saveTokens and returns "AUTHORIZED".
     const cbRes = await fetch(
       `${ctx.baseUrl}/v1/mcp-servers/oauth/callback?code=stub-code-xyz&state=${encodeURIComponent(state)}`,
     );
 
-    // Same mock.module caveat: if the SDK live binding wasn't patched, the
-    // callback will call real mcpAuth and likely 400 (token exchange fails).
-    // We check for 200 normally; accept 400 as a mock-not-patched signal.
-    if (cbRes.status === 400) {
-      // Real SDK path: callback returned error (exchange failed with stub server).
-      // Verify the state row was still deleted (single-use even on failure).
-      const stateRows = await ctx.db
-        .select()
-        .from(mcpOauthStates)
-        .where(and(eq(mcpOauthStates.tenant_id, ctx.tenantId), eq(mcpOauthStates.state, state)));
-      expect(stateRows.length).toBe(0);
-      return;
-    }
     expect(cbRes.status).toBe(200);
     expect(cbRes.headers.get("content-type")).toContain("text/html");
     const html = await cbRes.text();
@@ -351,12 +315,11 @@ describe("callback single-use", () => {
     const state = `single-use-state-${nextStateSuffix()}`;
     await seedStateRow({ serverId, state });
 
-    // First callback — consumes the row. May return 200 (mocked SDK) or 400
-    // (real SDK failed exchange). Either way, the row is gone after this.
+    // First callback — consumes the row (stub exchange succeeds → 200).
     const cb1 = await fetch(
       `${ctx.baseUrl}/v1/mcp-servers/oauth/callback?code=stub-code-first&state=${encodeURIComponent(state)}`,
     );
-    expect([200, 400]).toContain(cb1.status);
+    expect(cb1.status).toBe(200);
 
     // Second callback with the same state — row is gone regardless.
     const cb2 = await fetch(

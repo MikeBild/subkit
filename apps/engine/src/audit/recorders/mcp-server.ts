@@ -301,8 +301,10 @@ export async function recordMcpExternalToolInvoked(
 }
 
 export interface RecordMcpExternalToolPaletteAssemblyFailedParams extends RecorderBase {
-  /** Why the palette assembly failed (DB error, pool fault). Free text;
-   *  scrubbed for secrets by the audit write path. */
+  /** Why the palette assembly failed (DB error, pool fault). The CALLER
+   *  pre-redacts this value (`redactLastError`: embedded URLs reduced to
+   *  host-only, length-capped) before passing it in — never hand a raw
+   *  transport/DB error message to this recorder. */
   reason: string;
   request_source: RequestSource;
 }

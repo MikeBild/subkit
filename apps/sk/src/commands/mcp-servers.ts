@@ -14,6 +14,7 @@
 import * as prompts from "@clack/prompts";
 import { emitList, emitOne, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
+import { z } from "zod";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 
@@ -40,21 +41,83 @@ function makeClient() {
   });
 }
 
-// Build the create/patch request body from the auth flags. The secret
-// (--token / --refresh-token) is a WRITE-ONLY top-level field — the engine
-// encrypts it into the credentials table keyed by the server id and never
-// echoes it back. `auth_config` carries only the non-secret shape.
+// Validated shape of the `--auth-kind` flag family. Mirrors the engine's
+// per-kind secret rules so a mismatched flag combination fails locally with
+// a friendly message instead of an engine 422:
+//   none   → no secret of either kind
+//   bearer → the secret is --token; --refresh-token is the wrong flag
+//            (--token itself is optional: set-credential may rotate only
+//            the non-secret shape; the engine enforces required-at-create)
+//   oauth2 → the secret is --refresh-token; --token is the wrong flag
+const AuthFlagsSchema = z
+  .object({
+    kind: z.enum(["none", "bearer", "oauth2"], {
+      message: "--auth-kind must be one of: none, bearer, oauth2",
+    }),
+    token: z.string().min(1, "--token must not be empty").optional(),
+    refresh_token: z.string().min(1, "--refresh-token must not be empty").optional(),
+    issuer: z.string().optional(),
+    client_id: z.string().optional(),
+    scope: z.string().optional(),
+  })
+  .superRefine((v, issues) => {
+    if (v.kind === "none" && (v.token !== undefined || v.refresh_token !== undefined)) {
+      issues.addIssue({
+        code: "custom",
+        message: "--auth-kind none must not carry --token or --refresh-token",
+      });
+    }
+    if (v.kind === "bearer" && v.refresh_token !== undefined) {
+      issues.addIssue({
+        code: "custom",
+        message: "--auth-kind bearer uses --token, not --refresh-token",
+      });
+    }
+    if (v.kind === "oauth2" && v.token !== undefined) {
+      issues.addIssue({
+        code: "custom",
+        message: "--auth-kind oauth2 uses --refresh-token, not --token",
+      });
+    }
+  });
+
+// Build the create/patch request body from the auth flags, after validating
+// the kind + secret combination locally. The secret (--token /
+// --refresh-token) is a WRITE-ONLY top-level field — the engine encrypts it
+// into the credentials table keyed by the server id and never echoes it
+// back. `auth_config` carries only the non-secret shape. Throws a friendly
+// Error (never echoing a secret value) on a mismatched combination.
 function buildAuthBody(args: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   const authKind = args["auth-kind"] as string | undefined;
-  if (!authKind) return body;
-  const auth_config: Record<string, unknown> = { kind: authKind };
-  if (args.issuer) auth_config.issuer = args.issuer;
-  if (args["client-id"]) auth_config.client_id = args["client-id"];
-  if (args.scope) auth_config.scope = args.scope;
+  if (!authKind) {
+    // A secret with no --auth-kind has no kind to bind to — reject locally
+    // with the actionable message (the engine would 422 anyway).
+    if (args.token || args["refresh-token"]) {
+      throw new Error("--token / --refresh-token requires --auth-kind (bearer or oauth2)");
+    }
+    return body;
+  }
+  const parsed = AuthFlagsSchema.safeParse({
+    kind: authKind,
+    token: args.token === undefined ? undefined : String(args.token),
+    refresh_token: args["refresh-token"] === undefined ? undefined : String(args["refresh-token"]),
+    issuer: args.issuer === undefined ? undefined : String(args.issuer),
+    client_id: args["client-id"] === undefined ? undefined : String(args["client-id"]),
+    scope: args.scope === undefined ? undefined : String(args.scope),
+  });
+  if (!parsed.success) {
+    // Issue messages name only flags, never the secret values.
+    throw new Error(parsed.error.issues.map((i) => i.message).join("; "));
+  }
+  const flags = parsed.data;
+  const auth_config: Record<string, unknown> = { kind: flags.kind };
+  if (flags.issuer) auth_config.issuer = flags.issuer;
+  if (flags.client_id) auth_config.client_id = flags.client_id;
+  if (flags.scope) auth_config.scope = flags.scope;
   body.auth_config = auth_config;
-  if (args.token) body.token = args.token;
-  if (args["refresh-token"]) body.refresh_token = args["refresh-token"];
+  if (flags.token) body.token = flags.token;
+  if (flags.refresh_token) body.refresh_token = flags.refresh_token;
   return body;
 }
 

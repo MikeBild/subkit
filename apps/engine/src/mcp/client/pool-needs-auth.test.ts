@@ -1,101 +1,69 @@
 // Integration test: pool "needs authorization" behavior for oauth2 servers
-// with no tokens (#171 follow-up).
+// with no tokens.
 //
 // An oauth2 MCP server with no usable token must NOT crash the turn. The
-// pool parks it in error status (backoff) after the SDK transport raises
+// pool parks it in error status (backoff) after the transport raises
 // UnauthorizedError on connect, and getTenantMcpTools returns only the
 // healthy servers' tool sets. The failed server is absent from the result
 // but the pool does not throw.
 //
-// The SDK Client.connect() is mocked so no real MCP server is needed.
-// For the oauth2 server the mock throws UnauthorizedError; for the bearer
-// server it returns tools normally. This covers the risk that a bad oauth2
-// server drags the whole turn down.
+// INJECTION PATTERN: the pool's documented TEST SEAM
+// (`__setMcpPoolFactoriesForTests`) swaps the SDK Client construction for an
+// in-process fake — NO bun `mock.module` (module mocks are process-global
+// and leak into every other test file in the same worker). The fake throws
+// the REAL SDK `UnauthorizedError` for the oauth2 server (so the pool's
+// `instanceof` mapping to "authorization required" is exercised for real);
+// for the bearer server it returns tools normally. This covers the risk
+// that a bad oauth2 server drags the whole turn down.
 //
 // SECRET-DISCIPLINE assertion: last_error stored for the failed server must
 // not contain a URL with a query string (redact_safe check).
-//
-// MOCK PATTERN: mock.module() calls run BEFORE the dynamic import of pool.ts
-// so the pool module resolves the stubbed SDK when it first loads. Static
-// import declarations are hoisted; dynamic await import() is not.
 
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { and, eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/service.ts";
 import { closeDb } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import {
+  __resetMcpClientPoolForTests,
+  __setMcpPoolFactoriesForTests,
+  getTenantMcpTools,
+  type McpClientLike,
+} from "./pool.ts";
 import { createMcpServer } from "./registry.ts";
 
-// ── SDK Client mock ───────────────────────────────────────────────────────────
-//
-// The pool constructs `new Client(...)` from the SDK, then calls
-// `client.connect(transport)`. We intercept at the SDK Client level.
-//
-// Capture originals before mocking so we can restore in afterAll.
-const realSdkIndex = await import("@modelcontextprotocol/sdk/client/index.js");
-const realSdkAuth = await import("@modelcontextprotocol/sdk/client/auth.js");
-const realSdkStreamableHttp = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
-
-class StubUnauthorizedError extends Error {
-  constructor(message = "unauthorized") {
-    super(message);
-    this.name = "UnauthorizedError";
-  }
+// The factory seam hands the fake client its server row, so the fake can
+// branch per server: the oauth2 server (namespace "oauth2server") fails its
+// handshake with the SDK's real UnauthorizedError; the bearer server
+// connects and lists one tool.
+function makeFakeClient(namespace: string): McpClientLike {
+  return {
+    async connect() {
+      if (namespace === "oauth2server") {
+        // No usable token → the transport surfaces the SDK's typed error.
+        throw new UnauthorizedError("no usable token");
+      }
+      // Bearer server: connect succeeds, no-op.
+    },
+    async listTools() {
+      return {
+        tools: [
+          {
+            name: "acme_tool",
+            description: "A stub tool from the bearer server",
+            inputSchema: { type: "object", properties: {} },
+          },
+        ],
+      };
+    },
+    async callTool() {
+      return { content: [], isError: false };
+    },
+    async close() {},
+  };
 }
-
-// Track which server URL the active stub transport targets. The pool
-// constructs a new transport per connect attempt, so this cell always
-// reflects the most recent attempt — and our tests run serially.
-let activeTransportUrl = "";
-
-class StubStreamableHTTPTransport {
-  #url: URL;
-  constructor(url: URL) {
-    this.#url = url;
-    activeTransportUrl = url.toString();
-  }
-}
-
-class StubClient {
-  async connect(_transport: unknown): Promise<void> {
-    // Throw for the oauth2 server (no token → UnauthorizedError).
-    if (activeTransportUrl.includes("oauth2server")) {
-      throw new StubUnauthorizedError("no usable token");
-    }
-    // Bearer server: connect succeeds, no-op.
-  }
-  async listTools() {
-    return {
-      tools: [
-        {
-          name: "acme_tool",
-          description: "A stub tool from the bearer server",
-          inputSchema: { type: "object", properties: {} },
-        },
-      ],
-    };
-  }
-  async close(): Promise<void> {}
-}
-
-mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
-  ...realSdkIndex,
-  Client: StubClient,
-}));
-
-mock.module("@modelcontextprotocol/sdk/client/auth.js", () => ({
-  ...realSdkAuth,
-  UnauthorizedError: StubUnauthorizedError,
-}));
-
-mock.module("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
-  ...realSdkStreamableHttp,
-  StreamableHTTPClientTransport: StubStreamableHTTPTransport,
-}));
-
-// Dynamic import AFTER mocks: pool.ts resolves the stubbed SDK on first load.
-const { getTenantMcpTools, __resetMcpClientPoolForTests } = await import("./pool.ts");
 
 // ── Test DB setup ─────────────────────────────────────────────────────────────
 
@@ -114,6 +82,7 @@ function auditCtx() {
 const _origDatabaseUrl = process.env.DATABASE_URL;
 
 beforeAll(async () => {
+  __setMcpPoolFactoriesForTests({ makeClient: (row) => makeFakeClient(row.namespace) });
   ctx = await createTestDb("mcp-pool-needs-auth");
 
   // Pin DATABASE_URL + reset the global pool so getDb() inside pool.ts →
@@ -131,6 +100,11 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
+  // ALWAYS restore the seam (null-by-default protects production, but a
+  // leaked non-null factory would still poison sibling test files).
+  __setMcpPoolFactoriesForTests(null);
+  __resetMcpClientPoolForTests();
+
   // Close the global pool that was pointed at the test DB, then restore the
   // original DATABASE_URL so subsequent test files in this worker can dial
   // their own databases correctly.
@@ -140,11 +114,6 @@ afterAll(async () => {
   } else {
     process.env.DATABASE_URL = _origDatabaseUrl;
   }
-
-  // Restore SDK modules.
-  mock.module("@modelcontextprotocol/sdk/client/index.js", () => realSdkIndex);
-  mock.module("@modelcontextprotocol/sdk/client/auth.js", () => realSdkAuth);
-  mock.module("@modelcontextprotocol/sdk/client/streamableHttp.js", () => realSdkStreamableHttp);
 
   await ctx.cleanup();
 }, 30_000);

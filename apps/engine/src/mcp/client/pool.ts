@@ -32,6 +32,7 @@ import { buildMcpOAuthRedirectUri, MCP_OAUTH_CALLBACK_PATH } from "./oauth-redir
 import {
   getMcpServer,
   listConnectableMcpServersForTenant,
+  MCP_CREDENTIAL_ENVIRONMENT,
   type McpServerAuthConfig,
   type McpServerRow,
   parseAuthConfig,
@@ -65,8 +66,46 @@ export interface RemoteToolDescriptor {
   inputSchema: Record<string, unknown>;
 }
 
+// ── TEST SEAM ────────────────────────────────────────────────────────────────
+// Overrides the SDK client/transport construction inside `connectClient`.
+// Production never sets this; tests inject in-process fakes WITHOUT bun's
+// `mock.module` (module mocks are process-global and leak into every other
+// test file that builds an SDK Client in the same worker). Null by default,
+// so even a missed restore can never alter production behavior — but tests
+// MUST still restore null in afterAll so a fake doesn't bleed into sibling
+// test files that also set the seam.
+
+/** Structural slice of the SDK `Client` the pool actually uses. */
+export interface McpClientLike {
+  connect(transport: Transport): Promise<void>;
+  listTools(): Promise<{
+    tools: Array<{ name: string; description?: string | undefined; inputSchema: unknown }>;
+  }>;
+  callTool(
+    params: { name: string; arguments?: Record<string, unknown> },
+    resultSchema?: undefined,
+    options?: { timeout?: number },
+  ): Promise<{ [key: string]: unknown; content?: unknown; isError?: unknown }>;
+  close(): Promise<void>;
+}
+
+export interface McpPoolTestFactories {
+  /** Replaces `new Client(...)`. Receives the server row so a fake can
+   *  branch per server (URL / namespace) without touching the transport. */
+  makeClient?: (row: McpServerRow) => McpClientLike;
+  /** Replaces `buildTransport(...)` (including its egress guard — the guard
+   *  has its own dedicated tests). */
+  makeTransport?: (row: McpServerRow, headers: Record<string, string>) => Transport;
+}
+
+let testFactories: McpPoolTestFactories | null = null;
+
+export function __setMcpPoolFactoriesForTests(f: McpPoolTestFactories | null): void {
+  testFactories = f;
+}
+
 interface PooledClient {
-  client: Client;
+  client: McpClientLike;
   namespace: string;
   mcp_server_id: string;
   tools: RemoteToolDescriptor[];
@@ -259,6 +298,7 @@ async function invalidateOAuth2TokenForServer(
   tenant_id: string,
   mcp_server_id: string,
   environment: "dev" | "prod",
+  requestSource: RequestSource,
 ): Promise<void> {
   const row = await getMcpServer(db, tenant_id, mcp_server_id);
   if (!row) return;
@@ -273,6 +313,7 @@ async function invalidateOAuth2TokenForServer(
     state: "",
     auth,
     interactive: false,
+    request_source: requestSource,
   });
   await provider.invalidateCredentials("tokens");
   logger.warn({
@@ -362,10 +403,16 @@ async function connectClient(
             state: "",
             auth,
             interactive: false,
+            request_source: requestSource,
           })
         : undefined;
-    const transport = buildTransport(tenant_id, row, headers, authProvider);
-    const client = new Client({ name: "subkit-mcp-client", version: "1" });
+    // TEST SEAM consumption (see header above `McpPoolTestFactories`):
+    // production always takes the `??` fallback — real transport, real Client.
+    const transport =
+      testFactories?.makeTransport?.(row, headers) ??
+      buildTransport(tenant_id, row, headers, authProvider);
+    const client: McpClientLike =
+      testFactories?.makeClient?.(row) ?? new Client({ name: "subkit-mcp-client", version: "1" });
     // The concrete transport classes implement `Transport`; the cast
     // satisfies `exactOptionalPropertyTypes`, where the class's optional
     // `requestInit?` props don't structurally widen to the interface's.
@@ -498,7 +545,7 @@ export async function getTenantMcpTools(
   tenant_id: string,
   opts?: { environment?: "dev" | "prod"; requestSource?: RequestSource },
 ): Promise<TenantMcpToolSet[]> {
-  const environment = opts?.environment ?? "prod";
+  const environment = opts?.environment ?? MCP_CREDENTIAL_ENVIRONMENT;
   const requestSource: RequestSource = opts?.requestSource ?? "chat";
   const bucket = tenantBucket(tenant_id);
   const servers = await listConnectableMcpServersForTenant(db, tenant_id);
@@ -549,7 +596,7 @@ export async function connectServerById(
   mcp_server_id: string,
   opts?: { environment?: "dev" | "prod"; requestSource?: RequestSource },
 ): Promise<TenantMcpToolSet | null> {
-  const environment = opts?.environment ?? "prod";
+  const environment = opts?.environment ?? MCP_CREDENTIAL_ENVIRONMENT;
   const requestSource: RequestSource = opts?.requestSource ?? "chat";
   const row = await getMcpServer(db, tenant_id, mcp_server_id);
   if (!row || row.status === "disabled") return null;
@@ -599,7 +646,7 @@ export interface InvokeRemoteToolResult {
 export async function invokeRemoteTool(
   args: InvokeRemoteToolInput,
 ): Promise<InvokeRemoteToolResult> {
-  const environment = args.environment ?? "prod";
+  const environment = args.environment ?? MCP_CREDENTIAL_ENVIRONMENT;
   const requestSource: RequestSource = args.requestSource ?? "chat";
   const bucket = tenantBucket(args.tenant_id);
   let pooled = bucket.clients.get(args.mcp_server_id);
@@ -678,6 +725,7 @@ export async function invokeRemoteTool(
         args.tenant_id,
         args.mcp_server_id,
         environment,
+        requestSource,
       );
     }
   }

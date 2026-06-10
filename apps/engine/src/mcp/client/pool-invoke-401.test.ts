@@ -1,44 +1,37 @@
 // Integration test: a mid-session 401 from a remote tool call invalidates
 // the oauth2 token credential so the next handshake re-authorizes instead of
-// replaying the dead token forever (#171 follow-up, fix #4).
+// replaying the dead token forever.
 //
-// The SDK Client is mocked: connect() succeeds, listTools() returns one tool,
-// and callTool() throws an UnauthorizedError to simulate a token the IdP
-// revoked mid-session. The pool must:
+// INJECTION PATTERN: the pool's documented TEST SEAM
+// (`__setMcpPoolFactoriesForTests`) swaps the SDK Client construction for an
+// in-process fake — NO bun `mock.module` (module mocks are process-global
+// and leak into every other test file in the same worker). The fake's
+// connect() succeeds, listTools() returns one tool, and callTool() throws
+// the REAL SDK UnauthorizedError to simulate a token the IdP revoked
+// mid-session. The pool must:
 //   - surface a tool error (never throw out of the turn),
 //   - evict the cached client,
 //   - DELETE the oauth2 token credential for that tenant/server.
-//
-// MOCK PATTERN matches pool-needs-auth.test.ts: mock.module() before the
-// dynamic import of pool.ts so the pool resolves the stubbed SDK.
 
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { and, eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/service.ts";
 import { closeDb } from "../../db/client.ts";
 import { credentials, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import {
+  __resetMcpClientPoolForTests,
+  __setMcpPoolFactoriesForTests,
+  invokeRemoteTool,
+  type McpClientLike,
+} from "./pool.ts";
 import { createMcpServer } from "./registry.ts";
 
-const realSdkIndex = await import("@modelcontextprotocol/sdk/client/index.js");
-const realSdkAuth = await import("@modelcontextprotocol/sdk/client/auth.js");
-const realSdkStreamableHttp = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
-
-class StubUnauthorizedError extends Error {
-  constructor(message = "unauthorized") {
-    super(message);
-    this.name = "UnauthorizedError";
-  }
-}
-
-// The pool calls `new StreamableHTTPClientTransport(url, opts)`; the stub
-// ignores both args. No constructor needed.
-class StubStreamableHTTPTransport {}
-
-class StubClient {
-  async connect(_transport: unknown): Promise<void> {
+const fakeClient: McpClientLike = {
+  async connect() {
     // Connect succeeds — there IS a (now stale) token at connect time.
-  }
+  },
   async listTools() {
     return {
       tools: [
@@ -49,28 +42,13 @@ class StubClient {
         },
       ],
     };
-  }
-  async callTool(): Promise<never> {
+  },
+  async callTool() {
     // The IdP revoked the token mid-session → 401 on the actual call.
-    throw new StubUnauthorizedError("401 Unauthorized");
-  }
-  async close(): Promise<void> {}
-}
-
-mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
-  ...realSdkIndex,
-  Client: StubClient,
-}));
-mock.module("@modelcontextprotocol/sdk/client/auth.js", () => ({
-  ...realSdkAuth,
-  UnauthorizedError: StubUnauthorizedError,
-}));
-mock.module("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
-  ...realSdkStreamableHttp,
-  StreamableHTTPClientTransport: StubStreamableHTTPTransport,
-}));
-
-const { invokeRemoteTool, __resetMcpClientPoolForTests } = await import("./pool.ts");
+    throw new UnauthorizedError("401 Unauthorized");
+  },
+  async close() {},
+};
 
 let ctx: TestDb;
 let tenantId: string;
@@ -91,6 +69,7 @@ function auditCtx() {
 }
 
 beforeAll(async () => {
+  __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   ctx = await createTestDb("mcp-pool-invoke-401");
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
@@ -102,12 +81,13 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
+  // ALWAYS restore the seam (null-by-default protects production, but a
+  // leaked non-null factory would still poison sibling test files).
+  __setMcpPoolFactoriesForTests(null);
+  __resetMcpClientPoolForTests();
   await closeDb();
   if (_origDatabaseUrl === undefined) delete process.env.DATABASE_URL;
   else process.env.DATABASE_URL = _origDatabaseUrl;
-  mock.module("@modelcontextprotocol/sdk/client/index.js", () => realSdkIndex);
-  mock.module("@modelcontextprotocol/sdk/client/auth.js", () => realSdkAuth);
-  mock.module("@modelcontextprotocol/sdk/client/streamableHttp.js", () => realSdkStreamableHttp);
   await ctx.cleanup();
 }, 30_000);
 

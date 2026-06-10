@@ -25,6 +25,7 @@ import {
   getMcpServer,
   getTenantMcpTools,
   listMcpServers,
+  MCP_CREDENTIAL_ENVIRONMENT,
   type McpServerAuditCtx,
   type McpServerAuthConfig,
   type McpServerRow,
@@ -164,12 +165,6 @@ function normalizeAuthConfig(input: z.infer<typeof AuthConfigInput>): McpServerA
   if (input.scope !== undefined) out.scope = input.scope;
   return out;
 }
-
-/** Environment the pool resolves an MCP-server credential under. The pool
- *  (getTenantMcpTools / invokeRemoteTool) defaults to "prod"; mcp_servers
- *  carry no per-server environment, so the credential is written under the
- *  same constant the resolver reads. */
-const MCP_CREDENTIAL_ENVIRONMENT = "prod" as const;
 
 /**
  * Persist the write-only secret a create/patch supplied into the
@@ -679,6 +674,8 @@ export function registerMcpServerRoutes(app: OpenAPIHono<AppEnv>): void {
 
     // Force a fresh handshake by evicting any cached client first, then
     // letting the pool lazily reconnect every active server for this tenant.
+    // evictTenant drops EVERY pooled client for the tenant (plus backoff
+    // windows), not just this server's.
     evictTenant(principal.tenant_id);
     const sets = await getTenantMcpTools(db, principal.tenant_id, {
       requestSource: readRequestSource(c) ?? "api",
@@ -708,6 +705,8 @@ export function registerMcpServerRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const deleted = await deleteMcpServer(db, principal.tenant_id, id, auditCtx(c, principal.id));
     if (!deleted) throw new NotFoundError("mcp_server");
+    // evictTenant drops EVERY pooled client for the tenant: the deleted
+    // server stops being reachable and no stale sibling state survives.
     evictTenant(principal.tenant_id);
     return c.body(null, 204);
   });

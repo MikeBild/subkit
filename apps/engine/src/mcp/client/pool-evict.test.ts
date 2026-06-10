@@ -1,4 +1,4 @@
-// Granular vs. tenant-wide pool eviction (#226 S3).
+// Granular vs. tenant-wide pool eviction.
 //
 // `evictServer(tenant, server)` must drop ONLY the targeted server's cached
 // client + backoff window, leaving every other server in the same tenant
@@ -7,64 +7,52 @@
 // evicted server re-handshakes on the next `getTenantMcpTools`; a server
 // left warm does not.
 //
-// MOCK PATTERN: mock.module() runs BEFORE the dynamic import of pool.ts so
-// the stubbed SDK is resolved on first load (static imports hoist; the
-// dynamic await import() below does not).
+// INJECTION PATTERN: the pool's documented TEST SEAM
+// (`__setMcpPoolFactoriesForTests`) swaps the SDK Client construction for an
+// in-process fake. NO bun `mock.module` — module mocks are process-global
+// and leak into every other test file in the same worker.
 
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { closeDb } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import {
+  __resetMcpClientPoolForTests,
+  __setMcpPoolFactoriesForTests,
+  evictServer,
+  evictTenant,
+  getTenantMcpTools,
+  type McpClientLike,
+} from "./pool.ts";
 import { createMcpServer } from "./registry.ts";
 
-const realSdkIndex = await import("@modelcontextprotocol/sdk/client/index.js");
-const realSdkAuth = await import("@modelcontextprotocol/sdk/client/auth.js");
-const realSdkStreamableHttp = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
-
-// Per-URL connect (handshake) counter. The pool builds a fresh transport
-// per connect attempt; the stub transport records the target URL so the
-// stub client can bump the counter for the right server. Tests run serially.
+// Per-URL connect (handshake) counter. The factory seam hands the fake
+// client its server row, so each connect bumps the counter for the right
+// server. Tests run serially.
 const connectCounts = new Map<string, number>();
-let activeTransportUrl = "";
 
-class StubStreamableHTTPTransport {
-  constructor(url: URL) {
-    activeTransportUrl = url.toString();
-  }
+function makeFakeClient(url: string): McpClientLike {
+  return {
+    async connect() {
+      connectCounts.set(url, (connectCounts.get(url) ?? 0) + 1);
+    },
+    async listTools() {
+      return {
+        tools: [
+          {
+            name: "stub_tool",
+            description: "stub",
+            inputSchema: { type: "object", properties: {} },
+          },
+        ],
+      };
+    },
+    async callTool() {
+      return { content: [], isError: false };
+    },
+    async close() {},
+  };
 }
-
-class StubClient {
-  #url = "";
-  async connect(_transport: unknown): Promise<void> {
-    this.#url = activeTransportUrl;
-    connectCounts.set(this.#url, (connectCounts.get(this.#url) ?? 0) + 1);
-  }
-  async listTools() {
-    return {
-      tools: [
-        {
-          name: "stub_tool",
-          description: "stub",
-          inputSchema: { type: "object", properties: {} },
-        },
-      ],
-    };
-  }
-  async close(): Promise<void> {}
-}
-
-mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
-  ...realSdkIndex,
-  Client: StubClient,
-}));
-mock.module("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
-  ...realSdkStreamableHttp,
-  StreamableHTTPClientTransport: StubStreamableHTTPTransport,
-}));
-
-const { getTenantMcpTools, evictServer, evictTenant, __resetMcpClientPoolForTests } = await import(
-  "./pool.ts"
-);
 
 let ctx: TestDb;
 let tenantId: string;
@@ -90,6 +78,7 @@ async function seedServer(namespace: string, host: string): Promise<{ id: string
 }
 
 beforeAll(async () => {
+  __setMcpPoolFactoriesForTests({ makeClient: (row) => makeFakeClient(row.url) });
   ctx = await createTestDb("mcp-pool-evict");
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
@@ -101,12 +90,13 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
+  // ALWAYS restore the seam (null-by-default protects production, but a
+  // leaked non-null factory would still poison sibling test files).
+  __setMcpPoolFactoriesForTests(null);
+  __resetMcpClientPoolForTests();
   await closeDb();
   if (_origDatabaseUrl === undefined) delete process.env.DATABASE_URL;
   else process.env.DATABASE_URL = _origDatabaseUrl;
-  mock.module("@modelcontextprotocol/sdk/client/index.js", () => realSdkIndex);
-  mock.module("@modelcontextprotocol/sdk/client/auth.js", () => realSdkAuth);
-  mock.module("@modelcontextprotocol/sdk/client/streamableHttp.js", () => realSdkStreamableHttp);
   await ctx.cleanup();
 }, 30_000);
 

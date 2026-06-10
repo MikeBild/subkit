@@ -1,15 +1,18 @@
-// W5 (#226): a failure assembling the external-MCP tool palette must land a
-// queryable audit row, not only a transient log line. `wrapTools` wraps
+// A failure assembling the external-MCP tool palette must land a queryable
+// audit row, not only a transient log line. `wrapTools` wraps
 // `buildExternalMcpTools` in a best-effort try/catch; on failure it degrades
 // to zero external tools AND emits `mcp_external_tool.palette_assembly_failed`.
 //
-// We mock the external-mcp-tools module to throw BEFORE importing sdk-wrap so
-// the catch path runs deterministically, then assert: (1) the turn still
-// returns its in-repo tools (no abort), and (2) the audit row is written.
-//
-// MOCK PATTERN: mock.module() runs before the dynamic import of sdk-wrap.
+// INJECTION PATTERN: the documented TEST SEAM
+// `__setExternalMcpToolsBuilderForTests` (external-mcp-tools.ts) replaces the
+// palette builder with one that throws — NO bun `mock.module` (module mocks
+// are process-global and leak into every other test file in the same worker).
+// The catch path then runs deterministically, and we assert: (1) the turn
+// still returns its in-repo tools (no abort), and (2) the audit row is
+// written with a PRE-REDACTED reason — any URL embedded in the raw error is
+// reduced to host-only (no path, no query string) before it is persisted.
 
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
@@ -18,17 +21,8 @@ import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
-import type { TurnSignals } from "../sdk-wrap.ts";
-
-// Force buildExternalMcpTools to throw — simulates a DB error enumerating
-// connectable servers / a pool fault.
-mock.module("../sdk-wrap/external-mcp-tools.ts", () => ({
-  buildExternalMcpTools: async () => {
-    throw new Error("enumeration blew up");
-  },
-}));
-
-const { wrapTools } = await import("../sdk-wrap.ts");
+import { __setExternalMcpToolsBuilderForTests } from "../sdk-wrap/external-mcp-tools.ts";
+import { type TurnSignals, wrapTools } from "../sdk-wrap.ts";
 
 function freshSignals(): TurnSignals {
   return {
@@ -53,6 +47,15 @@ let actor_id: string;
 let conversation_id: string;
 
 beforeAll(async () => {
+  // Force the palette assembly to throw — simulates a transport fault whose
+  // raw message embeds the request URL WITH a query string (the shape a
+  // fetch error produces). The persisted audit reason must carry host-only.
+  __setExternalMcpToolsBuilderForTests(async () => {
+    throw new Error(
+      "enumeration blew up: GET https://mcp.example.test/rpc?session=topsecret123 returned 500",
+    );
+  });
+
   ctx = await createTestDb("external-mcp-palette-failure");
   const [t] = await ctx.db
     .insert(tenants)
@@ -68,7 +71,9 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  mock.restore();
+  // ALWAYS restore the seam (null-by-default protects production, but a
+  // leaked non-null builder would still poison sibling test files).
+  __setExternalMcpToolsBuilderForTests(null);
   await ctx.cleanup();
 }, 30_000);
 
@@ -114,6 +119,13 @@ describe("external MCP palette-assembly failure audit", () => {
     const failure = rows.filter((r) => r.action === "mcp_external_tool.palette_assembly_failed");
     expect(failure.length).toBe(1);
     expect(failure[0]!.result).toBe("error");
-    expect(failure[0]!.reason).toBe("enumeration blew up");
+    // The reason is pre-redacted: the embedded URL is reduced to host-only —
+    // no path segment and no query string (which can carry session/token
+    // material) ever reaches the audit row.
+    expect(failure[0]!.reason).toBe(
+      "enumeration blew up: GET https://mcp.example.test returned 500",
+    );
+    expect(failure[0]!.reason).not.toContain("topsecret123");
+    expect(failure[0]!.reason).not.toContain("/rpc");
   });
 });

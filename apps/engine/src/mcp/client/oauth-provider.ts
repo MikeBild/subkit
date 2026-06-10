@@ -58,6 +58,7 @@ import {
 import type { Db } from "../../db/client.ts";
 import { credentials, mcpOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import type { RequestSource } from "../../observability/service-metadata.ts";
 import { now } from "../../utils/clock.ts";
 import type { McpServerAuthConfig } from "./registry.ts";
 import { updateMcpServer } from "./registry.ts";
@@ -88,6 +89,12 @@ export interface McpDbOAuthClientProviderInput {
    *  the pool's palette handshake — `redirectToAuthorization` no-ops and
    *  the verifier callbacks have no row to read/write. */
   interactive: boolean;
+  /** Surface that drove this flow (route → api/cli, pool handshake →
+   *  chat, …). Stamped onto the `mcp_server.config_updated` audit rows
+   *  the provider writes when it mirrors / clears the registered
+   *  client_id on `auth_config`, so those rows attribute to the real
+   *  entry point instead of a hard-coded one. */
+  request_source: RequestSource;
 }
 
 export class McpDbOAuthClientProvider implements OAuthClientProvider {
@@ -99,6 +106,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
   private readonly _state: string;
   private readonly auth: McpServerAuthConfig;
   private readonly interactive: boolean;
+  private readonly request_source: RequestSource;
 
   constructor(input: McpDbOAuthClientProviderInput) {
     this.db = input.db;
@@ -109,6 +117,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     this._state = input.state;
     this.auth = input.auth;
     this.interactive = input.interactive;
+    this.request_source = input.request_source;
   }
 
   get redirectUrl(): string {
@@ -193,7 +202,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       this.tenant_id,
       this.mcp_server_id,
       { auth_config: next },
-      { actor_id: null, request_source: "chat", executor: this.db },
+      { actor_id: null, request_source: this.request_source, executor: this.db },
     );
     logger.info({
       module: "mcp_oauth",
@@ -438,7 +447,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
         this.tenant_id,
         this.mcp_server_id,
         { auth_config: next },
-        { actor_id: null, request_source: "chat", executor: this.db },
+        { actor_id: null, request_source: this.request_source, executor: this.db },
       );
     }
     if (scope === "verifier" && this.interactive) {

@@ -231,6 +231,40 @@ describe("sk mcp-servers add · --json contract", () => {
   });
 });
 
+describe("sk mcp-servers add · auth flag validation", () => {
+  test("rejects --token with --auth-kind oauth2 before any request leaves the CLI", async () => {
+    lastCreateBody = null;
+    const SECRET = "sk-wrong-field-secret-9999";
+    const add = getSub("add");
+    let threw = false;
+    try {
+      await add.run!({
+        args: {
+          name: "Mismatch MCP",
+          namespace: "mismatchmcp",
+          transport: "http",
+          url: "https://mismatch.mcp.test",
+          "auth-kind": "oauth2",
+          token: SECRET,
+          json: true,
+        },
+      });
+    } catch {
+      threw = true;
+    }
+    // reportError re-throws so the dispatcher sets the exit code.
+    expect(threw).toBe(true);
+    // The request never left the CLI — validation fired first.
+    expect(lastCreateBody).toBeNull();
+    // Friendly, flag-naming error on stdout in --json mode…
+    const out = JSON.parse(stdoutBuf.trim()) as { error?: string };
+    expect(out.error).toContain("--auth-kind oauth2 uses --refresh-token, not --token");
+    // …and the secret value itself is never echoed anywhere.
+    expect(stdoutBuf).not.toContain(SECRET);
+    expect(stderrBuf).not.toContain(SECRET);
+  });
+});
+
 describe("sk mcp-servers set-credential · rotation", () => {
   test("--token rotates via patchMcpServer and never prints the secret", async () => {
     const SECRET = "sk-cli-rotate-secret-5678";

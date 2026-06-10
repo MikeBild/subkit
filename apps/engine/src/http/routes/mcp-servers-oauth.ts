@@ -40,7 +40,6 @@
 // server URL.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { auth as mcpAuth } from "@modelcontextprotocol/sdk/client/auth.js";
 import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import {
@@ -56,10 +55,13 @@ import {
   buildMcpOAuthRedirectUri,
   evictTenant,
   getMcpServer,
+  MCP_CREDENTIAL_ENVIRONMENT,
   MCP_OAUTH_CALLBACK_PATH,
   type McpServerAuditCtx,
   makeMcpOAuthProvider,
   parseAuthConfig,
+  redactLastError,
+  sdkAuth,
   setMcpServerStatus,
 } from "../../mcp/index.ts";
 import type { RequestSource } from "../../observability/index.ts";
@@ -70,10 +72,6 @@ import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const LOG_MODULE = "mcp_oauth";
-
-/** The pool resolves an MCP-server credential under "prod"; this flow must
- *  write the token under the same constant the resolver reads. */
-const MCP_OAUTH_ENVIRONMENT = "prod" as const;
 
 /** A pending authorization is short-lived: the operator must complete the
  *  browser round-trip before the row expires. */
@@ -197,17 +195,18 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         db,
         tenant_id: principal.tenant_id,
         mcp_server_id: id,
-        environment: MCP_OAUTH_ENVIRONMENT,
+        environment: MCP_CREDENTIAL_ENVIRONMENT,
         redirect_uri,
         state,
         auth,
         interactive: true,
+        request_source: requestSource,
       });
       // Drive PRM → AS discovery → DCR → PKCE. With no authorizationCode the
       // driver builds the authorization URL, calls provider.saveCodeVerifier
       // + provider.redirectToAuthorization (which persists the URL on the
       // row), and returns "REDIRECT".
-      const result = await mcpAuth(provider, { serverUrl: server.url });
+      const result = await sdkAuth(provider, { serverUrl: server.url });
       if (result !== "REDIRECT") {
         // "AUTHORIZED" here would mean a live token already satisfied the
         // server with no browser step — not the interactive contract this
@@ -278,7 +277,10 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         mcp_server_id: id,
         namespace: server.namespace,
-        error: err instanceof Error ? err.message : String(err),
+        error_class: err instanceof Error ? err.name : "Error",
+        // Raw discovery/DCR errors can embed a full URL with its query
+        // string; reduce every embedded URL to host-only + length-cap.
+        error: redactLastError(err instanceof Error ? err.message : String(err)),
       });
       // 502: the failure is almost always a remote discovery / DCR fault
       // (the external AS), not a malformed client request. No URL/secret in
@@ -303,6 +305,9 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     // `state` (unique index on mcp_oauth_states.state) IS the auth proof;
     // tenant_id is read from the matched row and used for every subsequent
     // write.
+    // pattern: state-token-auth-callback — see also the connector OAuth
+    // callback (http/routes/connectors/oauth.ts), which applies the same
+    // claim-then-derive-tenant discipline.
     const claimed = await db
       .delete(mcpOauthStates)
       .where(and(eq(mcpOauthStates.state, q.state), gt(mcpOauthStates.expires_at, new Date(now()))))
@@ -437,16 +442,17 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         db,
         tenant_id,
         mcp_server_id,
-        environment: MCP_OAUTH_ENVIRONMENT,
+        environment: MCP_CREDENTIAL_ENVIRONMENT,
         redirect_uri: stateRow.redirect_uri,
         state: stateRow.state,
         auth,
         interactive: true,
+        request_source: requestSource,
       });
       // Exchange the code: the driver reads the PKCE verifier off the row
       // (provider.codeVerifier), exchanges with the RFC 8707 resource
       // indicator, and calls provider.saveTokens (encrypted credentials).
-      const result = await mcpAuth(provider, {
+      const result = await sdkAuth(provider, {
         serverUrl: server.url,
         authorizationCode: q.code,
       });
@@ -508,7 +514,10 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id,
         mcp_server_id,
         state_prefix: stateRow.state.slice(0, 8),
-        error: err instanceof Error ? err.message : String(err),
+        error_class: err instanceof Error ? err.name : "Error",
+        // Raw exchange errors can embed the token-endpoint URL with its
+        // query string; reduce every embedded URL to host-only + length-cap.
+        error: redactLastError(err instanceof Error ? err.message : String(err)),
       });
       await failAudit("token_exchange_failed");
       return renderCallbackPage(c, {

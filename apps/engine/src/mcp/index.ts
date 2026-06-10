@@ -17,4 +17,5 @@ export { buildMcpOAuthRedirectUri, MCP_OAUTH_CALLBACK_PATH } from "./client/oaut
 export * from "./client/pool.ts";
 export * from "./client/registry.ts";
 export * from "./client/schema-drift.ts";
+export { __setSdkAuthForTests, sdkAuth } from "./client/sdk-auth.ts";
 export { reconcileMcpServersFromConfig } from "./config-seed.ts";

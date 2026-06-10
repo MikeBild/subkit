@@ -27,6 +27,7 @@ import { recordMcpExternalToolPaletteAssemblyFailed } from "../../audit/recorder
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
+import { redactLastError } from "../../mcp/client/registry.ts";
 import type { PermissionMode, ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
 import { filterByAuthoringPalette } from "./authoring-palette.ts";
@@ -100,7 +101,10 @@ export async function wrapTools(
         out[name] = t;
       }
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
+      // Reduce any URL embedded in the raw pool/DB error to host-only and
+      // length-cap it BEFORE it reaches the log line or the audit row — a
+      // transport error can echo a server URL with its query string.
+      const reason = redactLastError(err instanceof Error ? err.message : String(err));
       logger.warn({
         module: "conversation_tool",
         action: "external_mcp.assembly_failed",
