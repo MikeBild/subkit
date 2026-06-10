@@ -12091,6 +12091,131 @@
           "embedded_migrations_count"
         ]
       },
+      "DiagnosticsIntegrationsResponse": {
+        "type": "object",
+        "properties": {
+          "connectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticsConnectorHealth"
+            }
+          },
+          "workflows_attention": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticsWorkflowHealth"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "connectors_total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "connectors_attention": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "workflows_attention": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "connectors_total",
+              "connectors_attention",
+              "workflows_attention"
+            ]
+          }
+        },
+        "required": [
+          "connectors",
+          "workflows_attention",
+          "summary"
+        ]
+      },
+      "DiagnosticsConnectorHealth": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "effective_health": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "needs_update",
+              "needs_reauth"
+            ]
+          },
+          "health_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "health_error_code": {
+            "type": "string",
+            "nullable": true
+          },
+          "sunset_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "successor_uri": {
+            "type": "string",
+            "nullable": true
+          },
+          "needs_reauth": {
+            "type": "boolean"
+          },
+          "circuit_state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "environment",
+          "effective_health",
+          "health_reason",
+          "health_error_code",
+          "sunset_at",
+          "successor_uri",
+          "needs_reauth",
+          "circuit_state"
+        ]
+      },
+      "DiagnosticsWorkflowHealth": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "health_state": {
+            "type": "string"
+          },
+          "health_reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "health_state",
+          "health_reason"
+        ]
+      },
       "LogTailResponse": {
         "type": "object",
         "properties": {
@@ -22948,6 +23073,51 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DiagnosticsVersionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/diagnostics/integrations": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Connector/workflow health rollup (reauth, removed/deprecated endpoints, degraded)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsIntegrationsResponse"
                 }
               }
             }

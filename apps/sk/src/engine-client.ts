@@ -855,6 +855,34 @@ export class EngineClient {
    * binary and the embedded migrations whose hash isn't in the DB
    * (informational — the boot path applies these on the same boot).
    */
+  integrationsHealth(): Promise<{
+    connectors: Array<{
+      id: string;
+      slug: string;
+      environment: string;
+      effective_health: "ok" | "degraded" | "needs_update" | "needs_reauth";
+      health_reason: string | null;
+      health_error_code: string | null;
+      sunset_at: string | null;
+      successor_uri: string | null;
+      needs_reauth: boolean;
+      circuit_state: string;
+    }>;
+    workflows_attention: Array<{
+      id: string;
+      slug: string;
+      health_state: string;
+      health_reason: string | null;
+    }>;
+    summary: {
+      connectors_total: number;
+      connectors_attention: number;
+      workflows_attention: number;
+    };
+  }> {
+    return this.request("GET", "/v1/diagnostics/integrations");
+  }
+
   driftReport(): Promise<{
     engine_version: string;
     embedded_migration_count: number;

@@ -303,6 +303,68 @@ export const doctorCommand = defineCommand({
       });
     }
 
+    // -------- 7. Integrations health (connectors / workflows) --------
+    // The find-out-early surface: a connector pointing at a removed or
+    // deprecated endpoint, a dead credential, or a workflow flagged
+    // needs_attention shows up HERE — before an unattended run returns
+    // "0 results". Older engines without the route degrade to a dim note.
+    try {
+      const integ = await client.integrationsHealth();
+      const attention = integ.connectors.filter((c) => c.effective_health !== "ok");
+      if (attention.length === 0 && integ.summary.workflows_attention === 0) {
+        results.push({
+          name: "integrations",
+          status: "ok",
+          detail: `${integ.summary.connectors_total} connector(s) healthy; no workflows need attention`,
+        });
+      } else {
+        const parts: string[] = [];
+        for (const c of attention.slice(0, 6)) {
+          const why = c.health_error_code ?? c.effective_health;
+          const extra =
+            c.effective_health === "needs_update" && c.successor_uri
+              ? ` → migrate to ${c.successor_uri}`
+              : c.sunset_at
+                ? ` (sunset ${c.sunset_at.slice(0, 10)})`
+                : "";
+          parts.push(`${c.slug}: ${why}${extra}`);
+        }
+        for (const w of integ.workflows_attention.slice(0, 4)) {
+          parts.push(`workflow ${w.slug}: ${w.health_state}`);
+        }
+        const hasHardFault = attention.some(
+          (c) => c.effective_health === "needs_reauth" || c.effective_health === "needs_update",
+        );
+        results.push({
+          name: "integrations",
+          status: hasHardFault ? "blocked" : "warn",
+          detail: parts.join("; "),
+          hint:
+            "needs_reauth → re-authenticate the connector; needs_update → the vendor removed/deprecated " +
+            "an endpoint a workflow uses (the successor URI above is the migration target); " +
+            "degraded → transient vendor failures, retry later",
+        });
+      }
+    } catch (err) {
+      if (err instanceof SkEngineError && err.status === 404) {
+        results.push({
+          name: "integrations",
+          status: "warn",
+          detail: "engine does not expose /v1/diagnostics/integrations",
+          hint: "upgrade the engine to a build with the connector-health rollup",
+        });
+      } else if (err instanceof SkEngineError && err.status === 403) {
+        results.push({
+          name: "integrations",
+          status: "warn",
+          detail: "connector:read (or audit:read) permission required",
+        });
+      } else {
+        const detail = err instanceof Error ? err.message : String(err);
+        results.push({ name: "integrations", status: "warn", detail: `unavailable: ${detail}` });
+      }
+    }
+
     const overall = worst(results);
 
     if (args.json) {

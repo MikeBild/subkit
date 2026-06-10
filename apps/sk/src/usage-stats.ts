@@ -22,7 +22,13 @@ import { z } from "zod";
 // which is fragile under parallel `bun test` because the dev's real
 // ~/.sk/prefs.json would get written across the entire suite.
 function prefsDir(): string {
-  return join(homedir(), ".sk");
+  // Prefer $HOME explicitly: Bun's os.homedir() ignores a RUNTIME change
+  // to process.env.HOME (it resolves the passwd entry), which silently
+  // defeated the "test setup can override HOME" contract documented
+  // above — the ink-app autocomplete tests were being ranked by the
+  // developer's real ~/.sk/prefs.json usage counts and failed on any
+  // machine with heavy slash history while passing on clean CI runners.
+  return join(process.env.HOME ?? homedir(), ".sk");
 }
 function prefsPath(): string {
   return join(prefsDir(), "prefs.json");

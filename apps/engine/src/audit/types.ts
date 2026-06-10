@@ -476,6 +476,11 @@ export const AuditAction = {
   // the response exposes engine version, latest available release,
   // and schema-drift posture, so compliance teams want a paper trail.
   DIAGNOSTICS_VERSION_READ: "diagnostics.version_read",
+  // `/v1/diagnostics/integrations` — emitted on every read of the
+  // connector/workflow health rollup. Mirrors DIAGNOSTICS_VERSION_READ:
+  // the response exposes which integrations are broken/deprecated, so
+  // compliance wants the same observability window.
+  DIAGNOSTICS_INTEGRATIONS_READ: "diagnostics.integrations_read",
   // `engine --self-update` lifecycle. The binary self-mutates from a
   // host shell with no HTTP context; the audit row is the only evidence
   // a privileged change happened. Tenant: SYSTEM_TENANT_ID. Actor:
@@ -702,6 +707,18 @@ export const DiagnosticsVersionReadMetadataSchema = z.object({
   schema_drift: z.boolean(),
 });
 export type DiagnosticsVersionReadMetadata = z.infer<typeof DiagnosticsVersionReadMetadataSchema>;
+
+/** `/v1/diagnostics/integrations` — connector/workflow health rollup read.
+ *  Counts only (no slugs) so the audit row stays small while still
+ *  evidencing WHAT posture the caller saw. */
+export const DiagnosticsIntegrationsReadMetadataSchema = z.object({
+  connectors_total: z.number().int().nonnegative(),
+  connectors_attention: z.number().int().nonnegative(),
+  workflows_attention: z.number().int().nonnegative(),
+});
+export type DiagnosticsIntegrationsReadMetadata = z.infer<
+  typeof DiagnosticsIntegrationsReadMetadataSchema
+>;
 
 // ---------------------------------------------------------------------------
 // `FILE_*` metadata schemas — pinned so SIEM/BI consumers have a stable

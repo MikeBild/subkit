@@ -260,23 +260,47 @@ export function startMemorySampler(opts?: { intervalMs?: number }): () => void {
  * blocking phase; these markers name the phase. Near-zero overhead on the
  * fast path (two Date.now() calls), so they stay in permanently.
  */
+// Allocation attribution: memory.sample showed ~700MB of EXTERNAL (native
+// string) allocation per conversation turn with no slow phase — GC over that
+// churn is the residual event_loop.lag. Each marker therefore also reports
+// the phase's external-memory delta when it crosses this floor, so the log
+// stream names the ALLOCATOR, not just slow code.
+const ALLOC_DELTA_FLOOR_BYTES = 64 * 1024 * 1024;
+
+function reportPhase(
+  phase: string,
+  start: number,
+  externalBefore: number,
+  thresholdMs: number,
+  blocking: boolean,
+): void {
+  const duration = Date.now() - start;
+  const externalDelta = process.memoryUsage().external - externalBefore;
+  if (duration < thresholdMs && externalDelta < ALLOC_DELTA_FLOOR_BYTES) return;
+  safe(() =>
+    logger.warn({
+      module: "process",
+      action: duration >= thresholdMs ? "phase.slow" : "phase.alloc",
+      msg:
+        duration >= thresholdMs
+          ? blocking
+            ? "synchronous phase exceeded the event-loop budget"
+            : "phase exceeded the latency budget"
+          : "phase allocated heavily (external/native memory)",
+      phase,
+      duration_ms: duration,
+      external_delta_mb: Math.round(externalDelta / (1024 * 1024)),
+    }),
+  );
+}
+
 export function timePhase<T>(phase: string, fn: () => T, thresholdMs = 250): T {
   const start = Date.now();
+  const externalBefore = process.memoryUsage().external;
   try {
     return fn();
   } finally {
-    const duration = Date.now() - start;
-    if (duration >= thresholdMs) {
-      safe(() =>
-        logger.warn({
-          module: "process",
-          action: "phase.slow",
-          msg: "synchronous phase exceeded the event-loop budget",
-          phase,
-          duration_ms: duration,
-        }),
-      );
-    }
+    reportPhase(phase, start, externalBefore, thresholdMs, true);
   }
 }
 
@@ -290,21 +314,11 @@ export async function timePhaseAsync<T>(
   thresholdMs = 250,
 ): Promise<T> {
   const start = Date.now();
+  const externalBefore = process.memoryUsage().external;
   try {
     return await fn();
   } finally {
-    const duration = Date.now() - start;
-    if (duration >= thresholdMs) {
-      safe(() =>
-        logger.warn({
-          module: "process",
-          action: "phase.slow",
-          msg: "phase exceeded the latency budget",
-          phase,
-          duration_ms: duration,
-        }),
-      );
-    }
+    reportPhase(phase, start, externalBefore, thresholdMs, false);
   }
 }
 

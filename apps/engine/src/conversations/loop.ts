@@ -1083,104 +1083,105 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       // activeTools narrowing, extended-thinking enablement. Returns
       // undefined to mean "no override" so the loop's existing config
       // wins on routine steps.
-      prepareStep: async ({ stepNumber, steps, messages: stepMessages, model: stepModel }) => {
-        const liveStage = draft.summary?.stage;
-        if (liveStage !== undefined) stepRouterSignals.stage = liveStage;
-        // Live persisted-workflow gate — recomputed every step so a
-        // mid-turn `save_workflow_draft` flips the palette over to
-        // include `requires_persisted_workflow` tools immediately on
-        // the next step. Mirrors the `hasBoundSavedWorkflow` check at
-        // turn-start (target_workflow_id || active_target persisted ||
-        // persisted_resources includes a workflow).
-        stepRouterSignals.hasPersistedWorkflow =
-          workflowIdForTurn !== null ||
-          (draft.summary?.active_target.kind === "workflow" &&
-            draft.summary?.active_target.lifecycle_state === "persisted") ||
-          draft.summary?.persisted_resources.some((resource) => resource.kind === "workflow") ===
-            true;
-        const decision = routerPrepareStep({
-          stepNumber,
-          steps,
-          messages: stepMessages,
-          model: stepModel,
-          tenantDefaultModelId: modelId,
-          provider: route.provider,
-          toolsByName,
-          signals: stepRouterSignals,
-          turnThinkingEnabled: thinkingThisTurn,
-          // Thread the turn-level forced tool so `activeTools` narrowing
-          // can never drop it — the AI SDK validates the forced tool
-          // against every step's `activeTools` set.
-          forcedTool: preferredTool,
-        });
-        if (!decision) return {};
-        const result: Record<string, unknown> = {};
-        if (decision.modelId && decision.modelId !== modelId) {
-          try {
-            result.model = await resolveLanguageModel(route.provider, decision.modelId);
-            logger.info({
+      prepareStep: async ({ stepNumber, steps, messages: stepMessages, model: stepModel }) =>
+        timePhaseAsync("converse.prepare_step", async () => {
+          const liveStage = draft.summary?.stage;
+          if (liveStage !== undefined) stepRouterSignals.stage = liveStage;
+          // Live persisted-workflow gate — recomputed every step so a
+          // mid-turn `save_workflow_draft` flips the palette over to
+          // include `requires_persisted_workflow` tools immediately on
+          // the next step. Mirrors the `hasBoundSavedWorkflow` check at
+          // turn-start (target_workflow_id || active_target persisted ||
+          // persisted_resources includes a workflow).
+          stepRouterSignals.hasPersistedWorkflow =
+            workflowIdForTurn !== null ||
+            (draft.summary?.active_target.kind === "workflow" &&
+              draft.summary?.active_target.lifecycle_state === "persisted") ||
+            draft.summary?.persisted_resources.some((resource) => resource.kind === "workflow") ===
+              true;
+          const decision = routerPrepareStep({
+            stepNumber,
+            steps,
+            messages: stepMessages,
+            model: stepModel,
+            tenantDefaultModelId: modelId,
+            provider: route.provider,
+            toolsByName,
+            signals: stepRouterSignals,
+            turnThinkingEnabled: thinkingThisTurn,
+            // Thread the turn-level forced tool so `activeTools` narrowing
+            // can never drop it — the AI SDK validates the forced tool
+            // against every step's `activeTools` set.
+            forcedTool: preferredTool,
+          });
+          if (!decision) return {};
+          const result: Record<string, unknown> = {};
+          if (decision.modelId && decision.modelId !== modelId) {
+            try {
+              result.model = await resolveLanguageModel(route.provider, decision.modelId);
+              logger.info({
+                module: "llm",
+                action: "step_router.model_swapped",
+                msg: "per-step model upgraded",
+                conversation_id: p.conversation_id,
+                tenant_id: p.tenant_id,
+                step_number: stepNumber,
+                from_model: modelId,
+                to_model: decision.modelId,
+                stage: stepRouterSignals.stage ?? "idle",
+                had_repair: stepRouterSignals.hadRepairThisTurn === true,
+                prior_critic_fail: stepRouterSignals.priorCriticFail === true,
+                strong_run_intent: stepRouterSignals.strongRunIntent === true,
+                reason: decision.reason ?? null,
+                ...(stepRouterSignals.repairAttribution
+                  ? {
+                      repair_tool: stepRouterSignals.repairAttribution.tool,
+                      ...(stepRouterSignals.repairAttribution.error_kind
+                        ? { repair_error_kind: stepRouterSignals.repairAttribution.error_kind }
+                        : {}),
+                    }
+                  : {}),
+              });
+            } catch (err) {
+              logger.warn({
+                module: "llm",
+                action: "step_router.resolve_failed",
+                msg: "could not resolve upgraded model — sticking with tenant default",
+                conversation_id: p.conversation_id,
+                tenant_id: p.tenant_id,
+                provider: route.provider,
+                target: decision.modelId,
+                fallback_model: modelId,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          if (decision.activeTools !== undefined) {
+            result.activeTools = decision.activeTools;
+            logger.debug({
               module: "llm",
-              action: "step_router.model_swapped",
-              msg: "per-step model upgraded",
+              action: "step_router.tools_narrowed",
+              msg: "per-step tool palette restricted by stage",
               conversation_id: p.conversation_id,
-              tenant_id: p.tenant_id,
               step_number: stepNumber,
-              from_model: modelId,
-              to_model: decision.modelId,
               stage: stepRouterSignals.stage ?? "idle",
-              had_repair: stepRouterSignals.hadRepairThisTurn === true,
-              prior_critic_fail: stepRouterSignals.priorCriticFail === true,
-              strong_run_intent: stepRouterSignals.strongRunIntent === true,
-              reason: decision.reason ?? null,
-              ...(stepRouterSignals.repairAttribution
-                ? {
-                    repair_tool: stepRouterSignals.repairAttribution.tool,
-                    ...(stepRouterSignals.repairAttribution.error_kind
-                      ? { repair_error_kind: stepRouterSignals.repairAttribution.error_kind }
-                      : {}),
-                  }
-                : {}),
-            });
-          } catch (err) {
-            logger.warn({
-              module: "llm",
-              action: "step_router.resolve_failed",
-              msg: "could not resolve upgraded model — sticking with tenant default",
-              conversation_id: p.conversation_id,
-              tenant_id: p.tenant_id,
-              provider: route.provider,
-              target: decision.modelId,
-              fallback_model: modelId,
-              error: err instanceof Error ? err.message : String(err),
+              active_tool_count: decision.activeTools.length,
+              full_tool_count: Object.keys(toolsByName).length,
             });
           }
-        }
-        if (decision.activeTools !== undefined) {
-          result.activeTools = decision.activeTools;
-          logger.debug({
-            module: "llm",
-            action: "step_router.tools_narrowed",
-            msg: "per-step tool palette restricted by stage",
-            conversation_id: p.conversation_id,
-            step_number: stepNumber,
-            stage: stepRouterSignals.stage ?? "idle",
-            active_tool_count: decision.activeTools.length,
-            full_tool_count: Object.keys(toolsByName).length,
-          });
-        }
-        if (decision.reason) {
-          logger.debug({
-            module: "llm",
-            action: "step_router.decision",
-            msg: "step router emitted a non-default decision",
-            conversation_id: p.conversation_id,
-            step_number: stepNumber,
-            target_model: decision.modelId ?? modelId,
-            reason: decision.reason,
-          });
-        }
-        return result;
-      },
+          if (decision.reason) {
+            logger.debug({
+              module: "llm",
+              action: "step_router.decision",
+              msg: "step router emitted a non-default decision",
+              conversation_id: p.conversation_id,
+              step_number: stepNumber,
+              target_model: decision.modelId ?? modelId,
+              reason: decision.reason,
+            });
+          }
+          return result;
+        }),
       stopWhen: [
         stepCountIs(budget),
         hasToolCall("ask_user_choice"),
@@ -1215,110 +1216,115 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       onError: ({ error }) => {
         if (!capturedError) capturedError = error;
       },
-      onStepFinish: async (step) => {
-        const u = readStepUsage(step);
-        const stepEndedAt = now();
-        const latency_ms = Math.max(0, stepEndedAt - lastStepEnd);
-        lastStepEnd = stepEndedAt;
-        await recordUsage(
-          {
+      onStepFinish: async (step) =>
+        timePhaseAsync("converse.on_step_finish", async () => {
+          const u = readStepUsage(step);
+          const stepEndedAt = now();
+          const latency_ms = Math.max(0, stepEndedAt - lastStepEnd);
+          lastStepEnd = stepEndedAt;
+          await recordUsage(
+            {
+              tenant_id: p.tenant_id,
+              flow: "converse",
+              model: modelId,
+              prompt_tokens: u.inputTokens,
+              completion_tokens: u.outputTokens,
+              cache_read_tokens: u.cacheReadTokens,
+              cache_creation_tokens: u.cacheCreationTokens,
+              latency_ms,
+              result: "success",
+            },
+            p.db,
+          );
+          recordLlmTokens({
             tenant_id: p.tenant_id,
-            flow: "converse",
             model: modelId,
+            flow: "converse",
             prompt_tokens: u.inputTokens,
             completion_tokens: u.outputTokens,
-            cache_read_tokens: u.cacheReadTokens,
-            cache_creation_tokens: u.cacheCreationTokens,
-            latency_ms,
-            result: "success",
-          },
-          p.db,
-        );
-        recordLlmTokens({
-          tenant_id: p.tenant_id,
-          model: modelId,
-          flow: "converse",
-          prompt_tokens: u.inputTokens,
-          completion_tokens: u.outputTokens,
-        });
-        // Always insert an assistant message when the step produced text
-        // OR when the wrapper recorded children (tool calls, elicitations)
-        // that need a causal anchor in the timeline. Empty assistant
-        // rows act as the parent for tool-only steps so the read path
-        // can render those tool calls in chronological position.
-        const hasText = !!step.text && step.text.length > 0;
-        const hasPendingChildren =
-          signals.pendingChildToolCallIds.length > 0 ||
-          signals.pendingChildElicitationIds.length > 0;
-        if (hasText || hasPendingChildren) {
-          // Pass every assistant text block through the grounded-output
-          // guard. In `soft` (default) mode the guard logs violations
-          // and rewrites placeholder fragments in place; in `hard`
-          // mode (CI / scenario tests) it throws LlmOutputViolation
-          // which propagates out of streamText. The persisted message
-          // carries the (possibly rewritten) text plus the violation
-          // list so replay tests + the capability-gap analytics can
-          // read them back without re-scanning.
-          const guarded = hasText
-            ? runOutputGuard(step.text, {
-                ...(p.runtime_context?.engine_url
-                  ? { engine_url: p.runtime_context.engine_url }
-                  : {}),
-                ...(p.runtime_context?.tenant_slug
-                  ? { tenant_slug: p.runtime_context.tenant_slug }
-                  : {}),
-              })
-            : { text: "", violations: [] };
-          const assistantContent =
-            hasText || guarded.violations.length > 0
-              ? {
-                  ...(hasText ? { text: guarded.text } : {}),
-                  ...(guarded.violations.length > 0
-                    ? {
-                        _violations: guarded.violations.map((v) => ({
-                          kind: v.kind,
-                          message: v.message,
-                        })),
-                      }
-                    : {}),
-                }
-              : {};
-          const assistantMessageId =
-            signals.assistantMessageId ??
-            (await appendMessage(
-              p.db,
-              p.tenant_id,
-              p.conversation_id,
-              "assistant",
-              assistantContent,
-            ));
-          if (signals.assistantMessageId) {
-            await updateMessageContent(p.db, assistantMessageId, assistantContent);
-          }
-          // Back-fill parent_message_id on every child row created during
-          // this step so the read path can interleave them under this
-          // assistant message in chronological order.
-          await setToolCallParentMessage(p.db, signals.pendingChildToolCallIds, assistantMessageId);
-          await setElicitationParentMessage(
-            p.db,
-            signals.pendingChildElicitationIds,
-            assistantMessageId,
-          );
-          signals.pendingChildToolCallIds = [];
-          signals.pendingChildElicitationIds = [];
-          signals.assistantMessageId = null;
-          if (hasText) {
-            signals.lastAssistantText = guarded.text;
-          }
-          events.push({
-            type: "message",
-            role: "assistant",
-            content: assistantContent,
-            id: assistantMessageId,
-            parent_message_id: assistantMessageId,
           });
-        }
-      },
+          // Always insert an assistant message when the step produced text
+          // OR when the wrapper recorded children (tool calls, elicitations)
+          // that need a causal anchor in the timeline. Empty assistant
+          // rows act as the parent for tool-only steps so the read path
+          // can render those tool calls in chronological position.
+          const hasText = !!step.text && step.text.length > 0;
+          const hasPendingChildren =
+            signals.pendingChildToolCallIds.length > 0 ||
+            signals.pendingChildElicitationIds.length > 0;
+          if (hasText || hasPendingChildren) {
+            // Pass every assistant text block through the grounded-output
+            // guard. In `soft` (default) mode the guard logs violations
+            // and rewrites placeholder fragments in place; in `hard`
+            // mode (CI / scenario tests) it throws LlmOutputViolation
+            // which propagates out of streamText. The persisted message
+            // carries the (possibly rewritten) text plus the violation
+            // list so replay tests + the capability-gap analytics can
+            // read them back without re-scanning.
+            const guarded = hasText
+              ? runOutputGuard(step.text, {
+                  ...(p.runtime_context?.engine_url
+                    ? { engine_url: p.runtime_context.engine_url }
+                    : {}),
+                  ...(p.runtime_context?.tenant_slug
+                    ? { tenant_slug: p.runtime_context.tenant_slug }
+                    : {}),
+                })
+              : { text: "", violations: [] };
+            const assistantContent =
+              hasText || guarded.violations.length > 0
+                ? {
+                    ...(hasText ? { text: guarded.text } : {}),
+                    ...(guarded.violations.length > 0
+                      ? {
+                          _violations: guarded.violations.map((v) => ({
+                            kind: v.kind,
+                            message: v.message,
+                          })),
+                        }
+                      : {}),
+                  }
+                : {};
+            const assistantMessageId =
+              signals.assistantMessageId ??
+              (await appendMessage(
+                p.db,
+                p.tenant_id,
+                p.conversation_id,
+                "assistant",
+                assistantContent,
+              ));
+            if (signals.assistantMessageId) {
+              await updateMessageContent(p.db, assistantMessageId, assistantContent);
+            }
+            // Back-fill parent_message_id on every child row created during
+            // this step so the read path can interleave them under this
+            // assistant message in chronological order.
+            await setToolCallParentMessage(
+              p.db,
+              signals.pendingChildToolCallIds,
+              assistantMessageId,
+            );
+            await setElicitationParentMessage(
+              p.db,
+              signals.pendingChildElicitationIds,
+              assistantMessageId,
+            );
+            signals.pendingChildToolCallIds = [];
+            signals.pendingChildElicitationIds = [];
+            signals.assistantMessageId = null;
+            if (hasText) {
+              signals.lastAssistantText = guarded.text;
+            }
+            events.push({
+              type: "message",
+              role: "assistant",
+              content: assistantContent,
+              id: assistantMessageId,
+              parent_message_id: assistantMessageId,
+            });
+          }
+        }),
     });
     try {
       // Composing-phase heartbeat. The activity ticker would otherwise

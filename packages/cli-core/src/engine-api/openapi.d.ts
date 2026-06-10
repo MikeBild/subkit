@@ -9375,6 +9375,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/diagnostics/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Connector/workflow health rollup (reauth, removed/deprecated endpoints, degraded) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DiagnosticsIntegrationsResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/diagnostics/logs": {
         parameters: {
             query?: never;
@@ -12539,6 +12593,34 @@ export interface components {
             update_available: boolean;
             schema_drift: boolean;
             embedded_migrations_count: number;
+        };
+        DiagnosticsIntegrationsResponse: {
+            connectors: components["schemas"]["DiagnosticsConnectorHealth"][];
+            workflows_attention: components["schemas"]["DiagnosticsWorkflowHealth"][];
+            summary: {
+                connectors_total: number;
+                connectors_attention: number;
+                workflows_attention: number;
+            };
+        };
+        DiagnosticsConnectorHealth: {
+            id: string;
+            slug: string;
+            environment: string;
+            /** @enum {string} */
+            effective_health: "ok" | "degraded" | "needs_update" | "needs_reauth";
+            health_reason: string | null;
+            health_error_code: string | null;
+            sunset_at: string | null;
+            successor_uri: string | null;
+            needs_reauth: boolean;
+            circuit_state: string;
+        };
+        DiagnosticsWorkflowHealth: {
+            id: string;
+            slug: string;
+            health_state: string;
+            health_reason: string | null;
         };
         LogTailResponse: {
             entries: components["schemas"]["LogRingEntry"][];

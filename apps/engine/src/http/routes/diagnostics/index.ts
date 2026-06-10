@@ -11,6 +11,7 @@
 //   GET /v1/diagnostics/setup         — operator-facing setup validation
 //   GET /v1/diagnostics/drift         — schema-drift report (#149)
 //   GET /v1/diagnostics/version       — engine version + update posture (#151)
+//   GET /v1/diagnostics/integrations  — connector/workflow health rollup
 //   GET /v1/diagnostics/logs          — paginated log tail
 //   GET /v1/diagnostics/logs/stream   — SSE live log tail
 
@@ -19,6 +20,7 @@ import { requireAnyPermission, requirePermission } from "../../middleware/requir
 import type { AppEnv } from "../../openapi.ts";
 import { registerDriftRoute } from "./drift.ts";
 import { registerErrorsRoutes } from "./errors.ts";
+import { registerIntegrationsRoute } from "./integrations.ts";
 import { registerLlmRoutes } from "./llm.ts";
 import { registerLogsRoutes } from "./logs.ts";
 import { registerSetupRoutes } from "./setup.ts";
@@ -30,6 +32,7 @@ export function registerDiagnosticsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/diagnostics/setup", requireAnyPermission(["audit:read", "identity:read"]));
   app.use("/v1/diagnostics/drift", requirePermission("audit:read"));
   app.use("/v1/diagnostics/version", requirePermission("audit:read"));
+  app.use("/v1/diagnostics/integrations", requireAnyPermission(["connector:read", "audit:read"]));
   app.use("/v1/diagnostics/logs", requirePermission("audit:read"));
   app.use("/v1/diagnostics/logs/stream", requirePermission("audit:read"));
 
@@ -38,5 +41,6 @@ export function registerDiagnosticsRoutes(app: OpenAPIHono<AppEnv>): void {
   registerSetupRoutes(app);
   registerDriftRoute(app);
   registerVersionRoute(app);
+  registerIntegrationsRoute(app);
   registerLogsRoutes(app);
 }
