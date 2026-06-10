@@ -21,7 +21,7 @@ import {
   auditAwait,
   DiagnosticsIntegrationsReadMetadataSchema,
 } from "../../../audit/index.ts";
-import { effectiveConnectorHealth } from "../../../connectors/health-state.ts";
+import { effectiveConnectorHealth } from "../../../connectors/index.ts";
 import { getDb } from "../../../db/client.ts";
 import { connectors, workflows } from "../../../db/schema/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
