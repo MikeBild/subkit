@@ -30,40 +30,59 @@ function getEnc(): Tiktoken {
 // countModelMessagesTokens (the full history, recounted EVERY step).
 //
 // Two mitigations, both count-preserving where it matters:
-//  1. Memoize per-string counts. The message history is append-only and the
-//     stable prompt blocks recur verbatim across steps, so all but the
-//     newest strings hit the cache. FIFO-bounded so dead history strings
-//     don't pin memory forever.
+//  1. Memoize per-string counts KEYED BY A 64-BIT HASH, never the string.
+//     The first version of this cache keyed by the string itself — that
+//     pinned up to 4096 history/prompt strings (~700MB of malloc'd string
+//     memory, confirmed by step.memory brackets in production) and traded
+//     the BPE compute pauses for GC pauses over the pinned set. A wyhash
+//     key retains 16 bytes per entry instead of the string. Collisions at
+//     4096 entries over a 64-bit space are ~5e-13 — and a collision only
+//     mis-counts an ADVISORY budget, never corrupts data.
 //  2. Estimate above a size threshold. A single >64KB block costs hundreds
 //     of ms to BPE-encode even once; budgets only need to know "how close to
 //     the cap are we", so a chars/3.5 estimate (deliberately OVERcounting —
 //     the budget trips early, never late) replaces the exact count there.
-//     The threshold is far above every budget-baseline fixture, so pinned
-//     test counts are unaffected.
+//     Estimates are O(1) and are NOT cached — no reason to spend entries
+//     on them. The threshold is far above every budget-baseline fixture,
+//     so pinned test counts are unaffected.
 // ---------------------------------------------------------------------------
 const COUNT_CACHE_LIMIT = 4096;
-const countCache = new Map<string, number>();
+const countCache = new Map<bigint, number>();
 const ESTIMATE_THRESHOLD_CHARS = 65_536;
 // JSON-ish content runs ~3.5-4 chars/token; /3.5 leans high on purpose.
 const ESTIMATE_CHARS_PER_TOKEN = 3.5;
 
-function remember(text: string, tokens: number): number {
+/** 64-bit content hash. Bun.hash (wyhash, native, ~GB/s) when available;
+ *  FNV-1a fallback keeps the module portable to plain-node tooling. */
+function contentKey(text: string): bigint {
+  const bunHash = (globalThis as { Bun?: { hash?: (s: string) => number | bigint } }).Bun?.hash;
+  if (bunHash) return BigInt(bunHash(text));
+  let h = 0xcbf29ce484222325n;
+  for (let i = 0; i < text.length; i++) {
+    h ^= BigInt(text.charCodeAt(i));
+    h = (h * 0x100000001b3n) & 0xffffffffffffffffn;
+  }
+  return h;
+}
+
+function remember(key: bigint, tokens: number): number {
   if (countCache.size >= COUNT_CACHE_LIMIT) {
     const oldest = countCache.keys().next().value;
     if (oldest !== undefined) countCache.delete(oldest);
   }
-  countCache.set(text, tokens);
+  countCache.set(key, tokens);
   return tokens;
 }
 
 export function countTokens(text: string): number {
   if (!text) return 0;
-  const hit = countCache.get(text);
-  if (hit !== undefined) return hit;
   if (text.length > ESTIMATE_THRESHOLD_CHARS) {
-    return remember(text, Math.ceil(text.length / ESTIMATE_CHARS_PER_TOKEN));
+    return Math.ceil(text.length / ESTIMATE_CHARS_PER_TOKEN);
   }
-  return remember(text, getEnc().encode(text).length);
+  const key = contentKey(text);
+  const hit = countCache.get(key);
+  if (hit !== undefined) return hit;
+  return remember(key, getEnc().encode(text).length);
 }
 
 export function countMessagesTokens(messages: UserTurn[]): number {
