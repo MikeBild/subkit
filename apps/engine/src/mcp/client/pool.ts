@@ -22,6 +22,7 @@ import {
   recordMcpExternalToolInvoked,
   recordMcpServerHandshakeOk,
 } from "../../audit/recorders/index.ts";
+import { getConfig } from "../../config/loader.ts";
 import { assertEgressAllowed } from "../../connectors/egress-guard.ts";
 import { getCredentialForMcpServer } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
@@ -44,7 +45,9 @@ import { reconcileManifestHash } from "./schema-drift.ts";
 // A tool manifest, serialized, larger than this is truncated before it is
 // handed to the loop layer (which spends it on the prompt budget). ~30 KB
 // per server keeps a handful of registered servers from blowing the
-// context window on their own.
+// context window on their own. DEFAULT for the tenant-scoped
+// `mcp.client.per_server_manifest_byte_cap` config leaf (read at use via
+// `manifestByteCap`); the schema default mirrors this value.
 const PER_SERVER_MANIFEST_BYTE_CAP = 30_000;
 // Exponential backoff on handshake failure: base * 2^(failures-1), capped.
 const BACKOFF_BASE_MS = 5_000;
@@ -55,7 +58,31 @@ const BACKOFF_MAX_MS = 5 * 60_000;
 // long enough for a legitimately slow tool, short enough that a dead
 // remote surfaces a clean tool error instead of an indefinite hang. On
 // expiry the SDK raises an McpError(RequestTimeout) we catch below.
+// DEFAULT for the tenant-scoped `mcp.client.remote_tool_call_timeout_ms`
+// config leaf (read at use via `remoteToolCallTimeoutMs`); the schema
+// default mirrors this value.
 const REMOTE_TOOL_CALL_TIMEOUT_MS = 30_000;
+
+/** Effective per-server manifest byte cap for a tenant. Falls back to the
+ *  module default when the config loader is not initialised (unit tests) —
+ *  same guard pattern as loop.ts's `webSearchSetting`. */
+function manifestByteCap(tenant_id: string): number {
+  try {
+    return getConfig(tenant_id).mcp.client.per_server_manifest_byte_cap;
+  } catch {
+    return PER_SERVER_MANIFEST_BYTE_CAP;
+  }
+}
+
+/** Effective remote `tools/call` timeout for a tenant. Falls back to the
+ *  module default when the config loader is not initialised (unit tests). */
+function remoteToolCallTimeoutMs(tenant_id: string): number {
+  try {
+    return getConfig(tenant_id).mcp.client.remote_tool_call_timeout_ms;
+  } catch {
+    return REMOTE_TOOL_CALL_TIMEOUT_MS;
+  }
+}
 
 /** A remote tool, reduced to the fields the loop layer needs to convert
  *  it into an AI SDK `Tool`. `ai@6` ships no `createMCPClient`, so the
@@ -167,7 +194,10 @@ function capManifest(
   mcp_server_id: string,
   tools: RemoteToolDescriptor[],
 ): RemoteToolDescriptor[] {
-  if (canonicalJson(tools).length <= PER_SERVER_MANIFEST_BYTE_CAP) return tools;
+  // Per-tenant cap from `mcp.client.per_server_manifest_byte_cap`; the
+  // same value drives the admission loop and the log line below.
+  const effectiveCapBytes = manifestByteCap(tenant_id);
+  if (canonicalJson(tools).length <= effectiveCapBytes) return tools;
   // Sort ascending by serialized weight so we greedily admit the lightest
   // tools first and the heaviest are the ones dropped when the budget runs
   // out — fitting the most tools under the cap.
@@ -178,7 +208,7 @@ function capManifest(
   let dropped = 0;
   for (const { tool } of weighted) {
     const candidate = [...kept, tool];
-    if (canonicalJson(candidate).length > PER_SERVER_MANIFEST_BYTE_CAP) {
+    if (canonicalJson(candidate).length > effectiveCapBytes) {
       dropped += 1;
       continue;
     }
@@ -192,10 +222,6 @@ function capManifest(
     kept.push(weighted[0].tool);
     dropped = tools.length - 1;
   }
-  // Capture the effective cap into a local so the audit/log line reflects
-  // the value actually enforced — a future per-tenant cap would change
-  // this binding without silently logging the module-level literal.
-  const effectiveCapBytes = PER_SERVER_MANIFEST_BYTE_CAP;
   logger.warn({
     module: "mcp_client",
     action: "manifest.token_cap_truncated",
@@ -491,10 +517,10 @@ async function connectClient(
         : err instanceof Error
           ? err.message
           : String(err);
-    const prior =
-      bucket.backoff.get(row.id)?.consecutive_failures ??
-      bucket.clients.get(row.id)?.consecutive_failures ??
-      0;
+    // Prior failures live only in the backoff map: a pooled client's own
+    // counter is always 0 (a successful connect resets it), so there is no
+    // clients-map fallback to consult.
+    const prior = bucket.backoff.get(row.id)?.consecutive_failures ?? 0;
     const failures = prior + 1;
     bucket.backoff.set(row.id, {
       consecutive_failures: failures,
@@ -688,13 +714,14 @@ export async function invokeRemoteTool(
   try {
     // Bounded timeout via the SDK RequestOptions. Without it a hung remote
     // never returns and the held toolChain mutex wedges the entire turn.
+    // Per-tenant value from `mcp.client.remote_tool_call_timeout_ms`.
     const res = await pooled.client.callTool(
       {
         name: args.remote_tool,
         arguments: args.input,
       },
       undefined,
-      { timeout: REMOTE_TOOL_CALL_TIMEOUT_MS },
+      { timeout: remoteToolCallTimeoutMs(args.tenant_id) },
     );
     content = res.content;
     if (res.isError) outcome = "error";
@@ -759,9 +786,10 @@ export async function invokeRemoteTool(
   return { ok: outcome === "success", content, bytes: rawBytes };
 }
 
-/** Drop + close every Client for a tenant. Called on disable/delete so a
- *  removed server stops being reachable and its credential header is no
- *  longer held in memory. */
+/** Drop + close every Client for a tenant — the tenant-wide eviction
+ *  primitive (e.g. tenant teardown). Single-server mutations (PATCH /
+ *  disable / DELETE / inspect) use `evictServer` instead so siblings stay
+ *  warm. */
 export function evictTenant(tenant_id: string): void {
   const bucket = POOL.get(tenant_id);
   if (!bucket) return;
@@ -774,12 +802,12 @@ export function evictTenant(tenant_id: string): void {
 /**
  * Drop just ONE server's cached client + backoff window from its tenant
  * pool, leaving every other server in that tenant untouched. Use this on a
- * single-server mutation (PATCH / disable) so rotating one server's
- * credential or disabling it doesn't force a cold reconnect of every other
- * healthy server in the same tenant. The whole-tenant drop (`evictTenant`)
- * is reserved for tenant-wide operations (DELETE, or a genuine tenant-scope
- * change). Closes the live socket and clears any armed backoff so the next
- * `getTenantMcpTools` reconnects this server fresh.
+ * single-server mutation (PATCH / disable / DELETE / inspect) so rotating
+ * one server's credential, disabling, or deleting it doesn't force a cold
+ * reconnect of every other healthy server in the same tenant. The
+ * whole-tenant drop (`evictTenant`) is reserved for genuine tenant-wide
+ * operations. Closes the live socket and clears any armed backoff so the
+ * next `getTenantMcpTools` reconnects this server fresh.
  */
 export function evictServer(tenant_id: string, mcp_server_id: string): void {
   const bucket = POOL.get(tenant_id);

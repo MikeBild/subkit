@@ -300,12 +300,25 @@ export async function recordMcpExternalToolInvoked(
   );
 }
 
+/**
+ * Why an external-MCP tool palette failed to assemble. Low-cardinality and
+ * queryable, so SIEM rules can branch on the failure class:
+ *   - `tenant_mismatch` — the dispatch-boundary tenant invariant broke
+ *     (ctx.tenant_id !== principal.tenant_id).
+ *   - `db_error` — the connectable-server enumeration failed at the DB.
+ *   - `pool_fault` — the client pool faulted while assembling manifests
+ *     (also the catch-all where DB vs. pool cannot be told apart).
+ */
+export type PaletteAssemblyFailureReason = "tenant_mismatch" | "db_error" | "pool_fault";
+
 export interface RecordMcpExternalToolPaletteAssemblyFailedParams extends RecorderBase {
-  /** Why the palette assembly failed (DB error, pool fault). The CALLER
+  /** Typed failure class — lands in the audit `reason` column. */
+  reason: PaletteAssemblyFailureReason;
+  /** Optional human-readable detail, kept in metadata. The CALLER
    *  pre-redacts this value (`redactLastError`: embedded URLs reduced to
    *  host-only, length-capped) before passing it in — never hand a raw
    *  transport/DB error message to this recorder. */
-  reason: string;
+  detail?: string;
   request_source: RequestSource;
 }
 
@@ -332,6 +345,7 @@ export async function recordMcpExternalToolPaletteAssemblyFailed(
       reason: p.reason,
       metadata: {
         request_source: p.request_source,
+        ...(p.detail !== undefined ? { detail: p.detail } : {}),
       },
     },
     p.executor,

@@ -47,6 +47,15 @@ import type { TurnSignals, WrappedToolOutput } from "./state.ts";
 const TOOL_PREFIX = "mcp_";
 const NAMESPACE_SEP = "__";
 
+/** Remove the `__policy_confirmed` confirmation marker from a raw args
+ *  object. Used both for the pending envelope (the echoed field names must
+ *  not include the marker) and for the input forwarded to the remote tool
+ *  (its input contract stays clean). */
+function stripPolicyMarker(args: Record<string, unknown>): Record<string, unknown> {
+  const { __policy_confirmed: _marker, ...rest } = args;
+  return rest;
+}
+
 export interface BuildExternalMcpToolsParams {
   db: Db;
   principal: ResolvedPrincipal;
@@ -183,8 +192,8 @@ async function executeExternalMcpTool(
     );
   }
 
-  // Anchor an assistant message + tool-call row so this dispatch shows up
-  // in the same persisted trail real tool calls produce.
+  // Anchor an assistant message so this dispatch shows up in the same
+  // persisted trail real tool calls produce.
   const ensureAnchor = async (): Promise<string> => {
     if (signals.assistantMessageId) return signals.assistantMessageId;
     const messageId = await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "assistant", {});
@@ -192,37 +201,41 @@ async function executeExternalMcpTool(
     return messageId;
   };
   const assistantMessageId = await ensureAnchor();
-  const toolCallId = await insertToolCall(db, {
-    tenant_id: ctx.tenant_id,
-    conversation_id: ctx.conversation_id,
-    parent_message_id: assistantMessageId,
-    tool: name,
-    input: rawArgs,
-    approval_required: false,
-  });
-  events.push({
-    type: "tool_call_start",
-    call_id: toolCallId,
-    tool: name,
-    input_partial: rawArgs,
-    parent_message_id: assistantMessageId,
-  });
-  events.push({
-    type: "tool_call_end",
-    call_id: toolCallId,
-    input: rawArgs,
-    parent_message_id: assistantMessageId,
-  });
 
   // RBAC gate — members may invoke tools an admin already registered, but
   // a principal lacking `mcp_external_tool:invoke` is refused before any
-  // outbound call leaves the tenant perimeter.
+  // outbound call leaves the tenant perimeter. The check runs BEFORE the
+  // tool-call row is inserted so a denied principal's raw arguments
+  // (possibly PII bound for a third-party server) are never persisted —
+  // the denied row carries `{ denied: true }` as its input instead.
   const decision = await can(db, {
     tenant_id: principal.tenant_id,
     principal,
     permission: "mcp_external_tool:invoke",
   });
   if (!decision.allow) {
+    const deniedInput: Record<string, unknown> = { denied: true };
+    const toolCallId = await insertToolCall(db, {
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      parent_message_id: assistantMessageId,
+      tool: name,
+      input: deniedInput,
+      approval_required: false,
+    });
+    events.push({
+      type: "tool_call_start",
+      call_id: toolCallId,
+      tool: name,
+      input_partial: deniedInput,
+      parent_message_id: assistantMessageId,
+    });
+    events.push({
+      type: "tool_call_end",
+      call_id: toolCallId,
+      input: deniedInput,
+      parent_message_id: assistantMessageId,
+    });
     const output: Record<string, unknown> = {
       ok: false,
       denied: true,
@@ -246,6 +259,31 @@ async function executeExternalMcpTool(
     });
     return { ok: false, data: output };
   }
+
+  // Tool-call row for the allowed dispatch. The full rawArgs are persisted
+  // on purpose — the determinism contract (`buildModelMessages` replay)
+  // rehydrates the exact input the remote tool received.
+  const toolCallId = await insertToolCall(db, {
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    parent_message_id: assistantMessageId,
+    tool: name,
+    input: rawArgs,
+    approval_required: false,
+  });
+  events.push({
+    type: "tool_call_start",
+    call_id: toolCallId,
+    tool: name,
+    input_partial: rawArgs,
+    parent_message_id: assistantMessageId,
+  });
+  events.push({
+    type: "tool_call_end",
+    call_id: toolCallId,
+    input: rawArgs,
+    parent_message_id: assistantMessageId,
+  });
 
   // Policy gate — identical contract to MCP's `gateTenantToolCall` and the
   // synthetic `wf_<slug>` palette. The LLM re-issues with
@@ -271,7 +309,7 @@ async function executeExternalMcpTool(
     // envelope must not echo them back as a raw JSON blob. The LLM
     // re-issues the original call itself after the operator confirms, so
     // the echoed target needs no args either.
-    const { __policy_confirmed: _marker, ...pendingInput } = rawArgs;
+    const pendingInput = stripPolicyMarker(rawArgs);
     const output: Record<string, unknown> = {
       pending: true,
       status: "awaiting_confirmation",
@@ -285,7 +323,9 @@ async function executeExternalMcpTool(
       pending_output: {
         namespace,
         remote_tool: descriptor.name,
-        input_keys: Object.keys(pendingInput),
+        // Sorted so the envelope is deterministic regardless of the order
+        // the LLM emitted the argument keys in.
+        input_keys: Object.keys(pendingInput).sort(),
       },
     };
     await updateToolCallOutput(db, toolCallId, output);
@@ -307,7 +347,7 @@ async function executeExternalMcpTool(
 
   // Strip the confirmation marker before forwarding the args to the
   // remote tool so its input contract stays clean.
-  const { __policy_confirmed: _confirmed, ...remoteInput } = rawArgs;
+  const remoteInput = stripPolicyMarker(rawArgs);
 
   ctx.onLog?.("info", `invoking external MCP tool ${name}`);
   const invoked = await invokeRemoteTool({

@@ -191,6 +191,9 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
   }
 
   // ── Summary audit row ──────────────────────────────────────────────────────
+  // The counts (incl. states_deleted) intentionally aggregate across ALL
+  // tenants under SYSTEM_TENANT_ID — SIEM authors should not expect
+  // per-tenant rows for this action.
   try {
     await auditAwait(
       {

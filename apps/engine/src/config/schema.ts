@@ -549,6 +549,33 @@ function rejectDuplicateNamespaces(
 
 const McpServersArray = z.array(McpServerDeclSchema).superRefine(rejectDuplicateNamespaces);
 
+// External MCP client-pool budgets. The defaults mirror the module-level
+// constants in `mcp/client/pool.ts`, which stay as the fallback when the
+// config loader is not initialised (unit tests).
+const McpClientSection = z
+  .object({
+    per_server_manifest_byte_cap: z
+      .number()
+      .int()
+      .min(1_000)
+      .max(1_000_000)
+      .default(30_000)
+      .describe(
+        "Byte cap on one external MCP server's serialized tool manifest; the heaviest tools are dropped first when exceeded",
+      )
+      .meta(tenant()),
+    remote_tool_call_timeout_ms: z
+      .number()
+      .int()
+      .min(1_000)
+      .max(300_000)
+      .default(30_000)
+      .describe("Bounded timeout (ms) for one remote external MCP tools/call invocation")
+      .meta(tenant()),
+  })
+  .prefault({})
+  .describe("External MCP client pool");
+
 const McpSection = z
   .object({
     api_key: z
@@ -559,6 +586,7 @@ const McpSection = z
     servers: McpServersArray.default([])
       .meta(tenant())
       .describe("External MCP servers to reconcile on boot"),
+    client: McpClientSection,
   })
   .prefault({})
   .describe("MCP transport");
@@ -1004,13 +1032,20 @@ const TenantOverlaySchema = z
           .optional(),
       })
       .optional(),
-    // External MCP servers (#171) — the first tenant-scoped MCP leaf. A
-    // tenant overlay may declare its own external servers; the decl shape
-    // matches `McpServerDeclSchema` (strict, non-secret auth only). Duplicate
-    // namespaces within the overlay array are rejected at parse time.
+    // External MCP servers (#171) — tenant-scoped MCP leaves. A tenant
+    // overlay may declare its own external servers; the decl shape matches
+    // `McpServerDeclSchema` (strict, non-secret auth only). Duplicate
+    // namespaces within the overlay array are rejected at parse time. The
+    // `client` budgets mirror `McpClientSection` (same bounds, optional).
     mcp: z
       .object({
         servers: McpServersArray.optional(),
+        client: z
+          .object({
+            per_server_manifest_byte_cap: z.number().int().min(1_000).max(1_000_000).optional(),
+            remote_tool_call_timeout_ms: z.number().int().min(1_000).max(300_000).optional(),
+          })
+          .optional(),
       })
       .optional(),
   })

@@ -25,7 +25,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { and, eq } from "drizzle-orm";
 import { auditLog, credentials, mcpOauthStates } from "../../db/schema/index.ts";
-import { __setSdkAuthForTests } from "../../mcp/index.ts";
+import { __setSdkAuthForTests } from "../../mcp/client/sdk-auth.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
 // Deterministic, wall-clock-free seams. The callback's guarded delete is

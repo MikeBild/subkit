@@ -104,23 +104,29 @@ export async function wrapTools(
       // Reduce any URL embedded in the raw pool/DB error to host-only and
       // length-cap it BEFORE it reaches the log line or the audit row — a
       // transport error can echo a server URL with its query string.
-      const reason = redactLastError(err instanceof Error ? err.message : String(err));
+      const detail = redactLastError(err instanceof Error ? err.message : String(err));
       logger.warn({
         module: "conversation_tool",
         action: "external_mcp.assembly_failed",
         msg: "external MCP tool assembly failed; degrading to zero external tools for this turn",
         tenant_id: ctx.tenant_id,
-        error: reason,
+        error: detail,
       });
       // Land a queryable audit row so the degradation isn't only a transient
       // log line. Best-effort: the audit write must NEVER throw out of the
       // turn (that would defeat the whole degrade-gracefully contract), so
       // wrap it and swallow any failure into the same logger sink.
+      // `pool_fault` is the catch-all class here: at this layer a drizzle
+      // enumeration error and an SDK pool fault both surface as one thrown
+      // Error from `buildExternalMcpTools`, so a reliable db_error /
+      // pool_fault split is not possible — the redacted message lands in
+      // metadata.detail for the operator to tell them apart.
       try {
         await recordMcpExternalToolPaletteAssemblyFailed({
           tenant_id: ctx.tenant_id,
           actor_id: ctx.actor_id,
-          reason,
+          reason: "pool_fault",
+          detail,
           request_source: "chat",
           executor: db,
         });

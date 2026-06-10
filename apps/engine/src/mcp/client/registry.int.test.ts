@@ -654,6 +654,39 @@ describe("recordMcpServerHandshakeState auto-recovery audit", () => {
     expect(reEnabled[0]!.reason).toBe("auto_recovered_via_handshake");
   });
 
+  test("concurrent handshakes on one errored server emit exactly ONE re_enabled row", async () => {
+    const row = await createMcpServer(
+      ctx.db,
+      {
+        tenant_id: tenantA,
+        name: "Race MCP",
+        namespace: "racens",
+        transport: "http",
+        url: "https://race.example.com",
+      },
+      auditCtx(),
+    );
+    await setMcpServerStatus(ctx.db, tenantA, row.id, "error", auditCtx(), {
+      last_error: "transient handshake failure",
+    });
+
+    // The prior status is captured atomically inside the UPDATE (FOR UPDATE
+    // subselect): the second caller blocks on the row lock and re-reads the
+    // already-recovered status, so only one caller observes `error`.
+    await Promise.all([
+      recordMcpServerHandshakeState(ctx.db, tenantA, row.id, "sha256:race-a", auditCtx()),
+      recordMcpServerHandshakeState(ctx.db, tenantA, row.id, "sha256:race-b", auditCtx()),
+    ]);
+
+    const reEnabledRows = await ctx.db
+      .select({ action: auditLog.action, reason: auditLog.reason })
+      .from(auditLog)
+      .where(eq(auditLog.resource_id, row.id));
+    const reEnabled = reEnabledRows.filter((r) => r.action === "mcp_server.re_enabled");
+    expect(reEnabled.length).toBe(1);
+    expect(reEnabled[0]!.reason).toBe("auto_recovered_via_handshake");
+  });
+
   test("active → active handshake does NOT emit a re_enabled row (no spurious recovery audit)", async () => {
     const row = await createMcpServer(
       ctx.db,

@@ -79,6 +79,13 @@ export const mcpServers = pgTable(
     // Hash of the most recently observed tool manifest; used by the
     // schema-drift tracker to invalidate the tool cache when the remote
     // server changes its tools.
+    // SOLE WRITERS: only the handshake/drift paths write this column —
+    // `recordMcpServerHandshakeState` (mcp/client/registry.ts) and the
+    // schema-drift reconciler (mcp/client/schema-drift.ts). The operator
+    // PATCH surface (`updatePatchSchema` / `updateMcpServer`) deliberately
+    // excludes it: the SIEM discriminator on `mcp_server.config_updated`
+    // (changed_fields === ["tools_manifest_hash"] ⇒ drift, not a human
+    // edit) depends on no other writer ever touching the hash.
     tools_manifest_hash: text("tools_manifest_hash"),
     ...timestamps,
   },

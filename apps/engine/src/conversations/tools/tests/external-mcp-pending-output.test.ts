@@ -178,11 +178,13 @@ describe("external MCP tool confirm envelope", () => {
     expect(data.pending).toBe(true);
     expect(data.status).toBe("awaiting_confirmation");
 
-    // Operator-facing summary: identity + field names only.
+    // Operator-facing summary: identity + field names only. `input_keys`
+    // is sorted, so the envelope is deterministic regardless of the order
+    // the LLM emitted the argument keys in.
     expect(data.pending_output).toEqual({
       namespace: "examplemcp",
       remote_tool: "create_page",
-      input_keys: ["title", "body"],
+      input_keys: ["body", "title"],
     });
 
     // No input VALUE appears anywhere in the pending envelope.

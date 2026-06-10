@@ -57,6 +57,7 @@ export {
   recordKnowledgeSourceRefreshed,
 } from "./knowledge.ts";
 export {
+  type PaletteAssemblyFailureReason,
   type RecordMcpExternalToolInvokedParams,
   type RecordMcpExternalToolPaletteAssemblyFailedParams,
   type RecordMcpServerAuthorizationFailedParams,

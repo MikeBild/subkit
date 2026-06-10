@@ -300,21 +300,25 @@ describe("#171 — external MCP server audit writers", () => {
     expect((row.metadata as Record<string, unknown>).byte_count_bucket).toBe(bucketSize(200));
   });
 
-  it("recordMcpExternalToolPaletteAssemblyFailed writes palette_assembly_failed with result=error + reason", async () => {
+  it("recordMcpExternalToolPaletteAssemblyFailed writes palette_assembly_failed with typed reason + detail in metadata", async () => {
     // resource_id is the tenant id (no single server to attribute to) — use
-    // the seeded tenant so the row is queryable by it.
+    // the seeded tenant so the row is queryable by it. `reason` is the
+    // typed failure class; the pre-redacted message rides in metadata.detail.
     await recordMcpExternalToolPaletteAssemblyFailed({
       tenant_id,
       actor_id,
-      reason: "connectable-server enumeration failed",
+      reason: "pool_fault",
+      detail: "connectable-server enumeration failed",
       request_source: "chat",
       executor: ctx.db,
     });
     const row = await rowFor("mcp_external_tool.palette_assembly_failed", tenant_id);
     expect(row.resource_type).toBe("mcp_external_tool");
     expect(row.result).toBe("error");
-    expect(row.reason).toBe("connectable-server enumeration failed");
-    expect((row.metadata as Record<string, unknown>).request_source).toBe("chat");
+    expect(row.reason).toBe("pool_fault");
+    const meta = row.metadata as Record<string, unknown>;
+    expect(meta.request_source).toBe("chat");
+    expect(meta.detail).toBe("connectable-server enumeration failed");
   });
 
   it("recordMcpServerAuthorizationStarted writes mcp_server.authorization_started with host-only issuer", async () => {

@@ -44,7 +44,10 @@ export const mcpOauthStates = pgTable(
     // PKCE verifier. Mirrors `connectorOauthStates.code_verifier`
     // (NOT NULL). The headless provider may INSERT with an empty string
     // and UPDATE once PKCE is generated, so the column is NOT NULL with a
-    // default of '' rather than nullable.
+    // default of '' rather than nullable. The `'' = not-yet-set` default is
+    // deliberate (INSERT placeholder → UPDATE on PKCE generation, same as
+    // connector_oauth_states); oauth-provider's `codeVerifier()` rejects the
+    // empty string, so a half-initialised row can never drive an exchange.
     code_verifier: text("code_verifier").notNull().default(""),
     redirect_uri: text("redirect_uri").notNull(),
     // The full authorization URL the provider directs the browser to.

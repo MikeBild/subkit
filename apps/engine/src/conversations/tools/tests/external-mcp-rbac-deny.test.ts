@@ -19,9 +19,10 @@
 // worker). Mirrors external-mcp-pending-output.test.ts.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { closeDb, type Db } from "../../../db/client.ts";
-import { conversations, tenants } from "../../../db/schema/index.ts";
+import { conversations, conversationToolCalls, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import {
@@ -196,6 +197,21 @@ describe("external MCP tool RBAC deny", () => {
     // The deny surfaced as a persisted tool_result event too.
     const resultEvent = events.find((e) => e.type === "tool_result");
     expect(resultEvent).toBeDefined();
+
+    // The persisted tool-call row carries `{ denied: true }` as its input —
+    // NEVER the denied principal's raw argument values (possible PII bound
+    // for a third-party server). RBAC resolves BEFORE the row is inserted.
+    const persisted = await ctx.db
+      .select({ tool: conversationToolCalls.tool, input: conversationToolCalls.input })
+      .from(conversationToolCalls)
+      .where(eq(conversationToolCalls.tenant_id, tenant_id));
+    const denyRow = persisted.find((r) => r.tool === toolName);
+    expect(denyRow).toBeDefined();
+    expect(denyRow!.input).toEqual({ denied: true });
+    const persistedInput = JSON.stringify(denyRow!.input);
+    expect(persistedInput).not.toContain("Anything");
+    expect(persistedInput).not.toContain("title");
+    expect(persistedInput).not.toContain("__policy_confirmed");
 
     // The remote tool was NEVER invoked — the deny precedes any outbound call.
     expect(remoteCallToolCalls).toBe(0);

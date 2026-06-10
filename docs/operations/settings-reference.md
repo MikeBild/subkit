@@ -156,6 +156,8 @@ MCP transport
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `mcp.api_key` | string | `""` | global | yes | no |  |
+| `mcp.client.per_server_manifest_byte_cap` | number | `30000` | tenant | no | no | Byte cap on one external MCP server's serialized tool manifest; the heaviest tools are dropped first when exceeded |
+| `mcp.client.remote_tool_call_timeout_ms` | number | `30000` | tenant | no | no | Bounded timeout (ms) for one remote external MCP tools/call invocation |
 | `mcp.read_only` | boolean | `false` | global | no | no |  |
 
 ## errors

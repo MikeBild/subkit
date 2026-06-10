@@ -148,7 +148,11 @@
   "mcp": {
     "api_key": "",
     "read_only": false,
-    "servers": []
+    "servers": [],
+    "client": {
+      "per_server_manifest_byte_cap": 30000,
+      "remote_tool_call_timeout_ms": 30000
+    }
   },
   "errors": {
     "ring_size": 100

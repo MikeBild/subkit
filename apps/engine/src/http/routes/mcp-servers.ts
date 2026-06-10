@@ -21,7 +21,6 @@ import {
   createMcpServer,
   deleteMcpServer,
   evictServer,
-  evictTenant,
   getMcpServer,
   getTenantMcpTools,
   listMcpServers,
@@ -705,9 +704,11 @@ export function registerMcpServerRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const deleted = await deleteMcpServer(db, principal.tenant_id, id, auditCtx(c, principal.id));
     if (!deleted) throw new NotFoundError("mcp_server");
-    // evictTenant drops EVERY pooled client for the tenant: the deleted
-    // server stops being reachable and no stale sibling state survives.
-    evictTenant(principal.tenant_id);
+    // Drop just THIS server's live client + backoff window so the deleted
+    // server stops being reachable and its resolved credential header is no
+    // longer held in memory — parity with PATCH/disable/inspect; the other
+    // healthy servers in the tenant pool stay warm.
+    evictServer(principal.tenant_id, id);
     return c.body(null, 204);
   });
 }

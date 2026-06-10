@@ -8,9 +8,10 @@
 // palette builder with one that throws — NO bun `mock.module` (module mocks
 // are process-global and leak into every other test file in the same worker).
 // The catch path then runs deterministically, and we assert: (1) the turn
-// still returns its in-repo tools (no abort), and (2) the audit row is
-// written with a PRE-REDACTED reason — any URL embedded in the raw error is
-// reduced to host-only (no path, no query string) before it is persisted.
+// still returns its in-repo tools (no abort), and (2) the audit row carries
+// the typed `pool_fault` reason plus a PRE-REDACTED metadata.detail — any
+// URL embedded in the raw error is reduced to host-only (no path, no query
+// string) before it is persisted.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -113,19 +114,27 @@ describe("external MCP palette-assembly failure audit", () => {
 
     // The degradation landed a queryable audit row (resource_id = tenant_id).
     const rows = await ctx.db
-      .select({ action: auditLog.action, result: auditLog.result, reason: auditLog.reason })
+      .select({
+        action: auditLog.action,
+        result: auditLog.result,
+        reason: auditLog.reason,
+        metadata: auditLog.metadata,
+      })
       .from(auditLog)
       .where(eq(auditLog.resource_id, tenant_id));
     const failure = rows.filter((r) => r.action === "mcp_external_tool.palette_assembly_failed");
     expect(failure.length).toBe(1);
     expect(failure[0]!.result).toBe("error");
-    // The reason is pre-redacted: the embedded URL is reduced to host-only —
-    // no path segment and no query string (which can carry session/token
-    // material) ever reaches the audit row.
-    expect(failure[0]!.reason).toBe(
-      "enumeration blew up: GET https://mcp.example.test returned 500",
-    );
-    expect(failure[0]!.reason).not.toContain("topsecret123");
-    expect(failure[0]!.reason).not.toContain("/rpc");
+    // `reason` is the typed failure class (pool_fault is the catch-all for
+    // a thrown palette assembly).
+    expect(failure[0]!.reason).toBe("pool_fault");
+    // The detail in metadata is pre-redacted: the embedded URL is reduced to
+    // host-only — no path segment and no query string (which can carry
+    // session/token material) ever reaches the audit row.
+    const meta = failure[0]!.metadata as Record<string, unknown>;
+    expect(meta.detail).toBe("enumeration blew up: GET https://mcp.example.test returned 500");
+    const metaStr = JSON.stringify(meta);
+    expect(metaStr).not.toContain("topsecret123");
+    expect(metaStr).not.toContain("/rpc");
   });
 });

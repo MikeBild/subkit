@@ -14,8 +14,26 @@ export {
   makeMcpOAuthProvider,
 } from "./client/oauth-provider.ts";
 export { buildMcpOAuthRedirectUri, MCP_OAUTH_CALLBACK_PATH } from "./client/oauth-redirect.ts";
-export * from "./client/pool.ts";
+// Production surface of the client pool ONLY. The pool's `__set*ForTests` /
+// `__reset*ForTests` seams (and the structural fake types backing them) are
+// deliberately NOT re-exported — tests import them from the inner module
+// (`./client/pool.ts`) so the barrel never advertises a test seam to
+// production consumers.
+export {
+  connectServerById,
+  evictServer,
+  evictTenant,
+  getTenantMcpTools,
+  type InvokeRemoteToolInput,
+  type InvokeRemoteToolResult,
+  invalidateCachedManifest,
+  invokeRemoteTool,
+  type RemoteToolDescriptor,
+  type TenantMcpToolSet,
+} from "./client/pool.ts";
 export * from "./client/registry.ts";
 export * from "./client/schema-drift.ts";
-export { __setSdkAuthForTests, sdkAuth } from "./client/sdk-auth.ts";
+// `__setSdkAuthForTests` stays on the inner module (`./client/sdk-auth.ts`)
+// for the same reason — only the production wrapper is barrel-visible.
+export { sdkAuth } from "./client/sdk-auth.ts";
 export { reconcileMcpServersFromConfig } from "./config-seed.ts";

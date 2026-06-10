@@ -15,7 +15,7 @@
 // by `mcp_server_id`; the client pool (pool.ts) resolves it at handshake
 // via `getCredentialForMcpServer`.
 
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { mcpNamespaceSchema } from "../../api/common-schemas.ts";
 import { recordMcpServerConfigUpdated } from "../../audit/recorders/index.ts";
@@ -42,6 +42,10 @@ type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
  * the writer (routes / OAuth callback) and the reader (the client pool's
  * handshake) MUST share this constant — a writer/reader mismatch would
  * store a secret the pool can never find.
+ *
+ * If per-server environments are ever needed, add an `environment` column
+ * to `mcp_servers` and thread it through here instead of widening this
+ * constant.
  */
 export const MCP_CREDENTIAL_ENVIRONMENT = "prod" as const;
 
@@ -396,7 +400,11 @@ export async function setMcpServerStatus(
  * was `error` we ALSO emit `mcp_server.re_enabled` (reason
  * `auto_recovered_via_handshake`) — the same row a manual enable lands —
  * so the auto-recovery edge isn't a silent UPDATE with no trail. The prior
- * status is read off the existing row BEFORE the UPDATE.
+ * status is captured ATOMICALLY inside the UPDATE statement itself (a
+ * `FOR UPDATE` subselect joined into the UPDATE, returned alongside the
+ * new row): a separate read-then-update would race a concurrent status
+ * flip (e.g. the inspect route's own error→active recovery) and could
+ * emit a double `mcp_server.re_enabled` for one recovery.
  *
  * SOLE-WRITER CONTRACT (`tools_manifest_hash`): observed-handshake state is
  * the ONLY legitimate origin of this column — this function (every
@@ -415,25 +423,39 @@ export async function recordMcpServerHandshakeState(
   tools_manifest_hash: string,
   auditCtx: McpServerAuditCtx,
 ): Promise<McpServerRow | null> {
-  const existing = await getMcpServer(db, tenant_id, id);
-  const [row] = await db
-    .update(mcpServers)
-    .set({
-      last_handshake_at: new Date(),
-      last_error: null,
-      // A successful handshake means the server is reachable; if it was
-      // parked in `error` from a prior failure, recover it to active.
-      status: "active",
-      tools_manifest_hash,
-      updated_at: new Date(),
-    })
-    .where(and(eq(mcpServers.tenant_id, tenant_id), eq(mcpServers.id, id)))
-    .returning();
-  if (!row) return null;
+  // One atomic statement: the `FOR UPDATE` subselect locks the row and
+  // captures its pre-UPDATE status, the joined UPDATE flips it, and
+  // RETURNING hands both back (plain RETURNING exposes only NEW values,
+  // hence the joined `prior.old_status`). A blocked concurrent caller
+  // re-reads the committed row after the lock releases, so exactly one
+  // caller ever observes `old_status = 'error'` for one recovery.
+  const now = new Date();
+  const result = await db.execute(sql`
+    UPDATE "mcp_servers" AS m
+    SET "last_handshake_at" = ${now},
+        "last_error" = NULL,
+        "status" = 'active',
+        "tools_manifest_hash" = ${tools_manifest_hash},
+        "updated_at" = ${now}
+    FROM (
+      SELECT "id", "status" AS "old_status"
+      FROM "mcp_servers"
+      WHERE "tenant_id" = ${tenant_id} AND "id" = ${id}
+      FOR UPDATE
+    ) AS prior
+    WHERE m."id" = prior."id" AND m."tenant_id" = ${tenant_id}
+    RETURNING m.*, prior."old_status"
+  `);
+  const rows = (result as unknown as { rows?: Array<Record<string, unknown>> }).rows ?? [];
+  const first = rows[0];
+  if (!first) return null;
+  const { old_status, ...rowData } = first;
+  const row = rowData as unknown as McpServerRow;
 
   // The handshake recovered an errored server to active — audit the edge
   // exactly as a manual enable would, so the auto-recovery is queryable.
-  if (existing?.status === "error") {
+  // Gated on the ATOMICALLY captured prior status, never a separate read.
+  if ((old_status as McpServerStatus) === "error") {
     await recordMcpServerReEnabled({
       ...auditBase(tenant_id, auditCtx),
       mcp_server_id: id,
