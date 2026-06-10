@@ -23,10 +23,13 @@ import { logger } from "../logging/logger.ts";
 
 interface TracingState {
   started: boolean;
+  /** True only when at least one exporter (OTLP / Langfuse) is configured
+   *  and the SDK started — i.e. spans actually go somewhere. */
+  active: boolean;
   shutdown?: () => Promise<void>;
 }
 
-const state: TracingState = { started: false };
+const state: TracingState = { started: false, active: false };
 
 /**
  * Start OpenTelemetry if any exporter is configured. Returns a
@@ -47,6 +50,7 @@ export async function startTracing(): Promise<() => Promise<void>> {
       action: "tracing.disabled",
       msg: "no OTel exporter configured — skipping tracer bootstrap",
     });
+    state.active = false;
     const noop = async () => {};
     state.shutdown = noop;
     return noop;
@@ -83,6 +87,7 @@ export async function startTracing(): Promise<() => Promise<void>> {
 
   try {
     sdk.start();
+    state.active = true;
     logger.info({
       module: "observability",
       action: "tracing.started",
@@ -99,6 +104,7 @@ export async function startTracing(): Promise<() => Promise<void>> {
       msg: "OpenTelemetry tracer failed to start — continuing without tracing",
       error: err instanceof Error ? err.message : String(err),
     });
+    state.active = false;
     const noop = async () => {};
     state.shutdown = noop;
     return noop;
@@ -122,6 +128,19 @@ export async function startTracing(): Promise<() => Promise<void>> {
 
 export function isTracingStarted(): boolean {
   return state.started;
+}
+
+/**
+ * True only when spans actually reach an exporter. The AI SDK's
+ * `experimental_telemetry` EAGERLY stringifies the full prompt (every
+ * message, system block, tool definition) and output into span
+ * attributes on every call — per STEP for streaming — even when the
+ * tracer is a noop. Callers gate `recordInputs`/`recordOutputs` on this
+ * so a no-exporter deployment doesn't pay megabytes of serialization
+ * garbage per turn for attributes nobody ever sees.
+ */
+export function isTracingActive(): boolean {
+  return state.active;
 }
 
 /**
@@ -191,6 +210,7 @@ export async function reconfigureTracing(): Promise<void> {
   }
   const prev = state.shutdown;
   state.started = false;
+  state.active = false;
   delete state.shutdown;
   if (prev) {
     await awaitWithTimeout(

@@ -14,6 +14,7 @@
 import { generateText, jsonSchema, NoSuchToolError, type Tool, tool } from "ai";
 import { logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
+import { isTracingActive } from "../../observability/tracing.ts";
 import { classifyProviderError, isFallbackEligible } from "../provider-errors.ts";
 import type {
   SubkitLlm,
@@ -207,6 +208,10 @@ export class AiSdkModel implements SubkitLlm {
     if (params.metadata) {
       callOpts.experimental_telemetry = {
         isEnabled: true,
+        // See loop.ts: full-IO span attributes are stringified eagerly
+        // even into noop spans — only record them when an exporter exists.
+        recordInputs: isTracingActive(),
+        recordOutputs: isTracingActive(),
         functionId: String(params.metadata.flow ?? "unknown"),
         metadata: params.metadata as Record<string, string | number | boolean>,
       };

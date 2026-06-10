@@ -61,6 +61,7 @@ import {
   recordToolHallucinatedAbsence,
 } from "../observability/instrumentation.ts";
 import { timePhase, timePhaseAsync } from "../observability/runtime-telemetry.ts";
+import { isTracingActive } from "../observability/tracing.ts";
 import { now } from "../utils/clock.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
@@ -1085,6 +1086,21 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       // wins on routine steps.
       prepareStep: async ({ stepNumber, steps, messages: stepMessages, model: stepModel }) =>
         timePhaseAsync("converse.prepare_step", async () => {
+          // Step-boundary memory bracket. With every loop phase exonerated
+          // by phase.slow/phase.alloc, these absolute samples localize the
+          // ~700MB/turn external churn to within-step (provider call + tool
+          // execution) vs between-step work — read the journal pairs.
+          {
+            const m = process.memoryUsage();
+            logger.info({
+              module: "process",
+              action: "step.memory",
+              at: "prepare",
+              step_number: stepNumber,
+              external_mb: Math.round(m.external / (1024 * 1024)),
+              rss_mb: Math.round(m.rss / (1024 * 1024)),
+            });
+          }
           const liveStage = draft.summary?.stage;
           if (liveStage !== undefined) stepRouterSignals.stage = liveStage;
           // Live persisted-workflow gate — recomputed every step so a
@@ -1205,6 +1221,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       abortSignal: streamAbortSignal,
       experimental_telemetry: {
         isEnabled: true,
+        // Record full prompt/output span attributes ONLY when an exporter
+        // is configured: the SDK stringifies them eagerly per step even
+        // into noop spans — megabytes of serialization garbage per turn
+        // on a no-exporter deployment, for attributes nobody sees.
+        recordInputs: isTracingActive(),
+        recordOutputs: isTracingActive(),
         functionId: "converse",
         metadata: {
           tenant_id: p.tenant_id,
@@ -1218,6 +1240,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       },
       onStepFinish: async (step) =>
         timePhaseAsync("converse.on_step_finish", async () => {
+          {
+            const m = process.memoryUsage();
+            logger.info({
+              module: "process",
+              action: "step.memory",
+              at: "finish",
+              external_mb: Math.round(m.external / (1024 * 1024)),
+              rss_mb: Math.round(m.rss / (1024 * 1024)),
+            });
+          }
           const u = readStepUsage(step);
           const stepEndedAt = now();
           const latency_ms = Math.max(0, stepEndedAt - lastStepEnd);
