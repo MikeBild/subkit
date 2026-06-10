@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -13,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { bytea, tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
+import { mcpServers } from "./mcp_servers.ts";
 
 export const environmentEnum = pgEnum("environment", ["dev", "prod"]);
 export const credentialModeEnum = pgEnum("credential_mode", [
@@ -141,9 +143,13 @@ export const credentials = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    connector_id: uuid("connector_id")
-      .notNull()
-      .references(() => connectors.id, { onDelete: "cascade" }),
+    // Owning resource — EXACTLY ONE of (connector_id, mcp_server_id) is
+    // non-null (enforced by the `credentials_owner_xor_check` below).
+    // Connector credentials reference `connectors`; external-MCP-server
+    // credentials (bearer / OAuth tokens referenced from a server's
+    // `auth_config.token_ref`) reference `mcp_servers`.
+    connector_id: uuid("connector_id").references(() => connectors.id, { onDelete: "cascade" }),
+    mcp_server_id: uuid("mcp_server_id").references(() => mcpServers.id, { onDelete: "cascade" }),
     environment: environmentEnum("environment").notNull(),
     mode: credentialModeEnum("mode").notNull(),
     // AES-256-GCM ciphertext (see apps/engine/src/crypto/aes-gcm.ts). Writers call encryptSecret(), readers decryptSecret(), keyed by env.MASTER_KEY.
@@ -165,7 +171,24 @@ export const credentials = pgTable(
     ...timestamps,
   },
   (t) => [
-    uniqueIndex("credentials_connector_env_mode_key").on(t.connector_id, t.environment, t.mode),
+    // Connector-credential slot uniqueness. Partial so it only governs
+    // rows that actually belong to a connector — the XOR check guarantees
+    // such rows have a null `mcp_server_id`, and the predicate keeps the
+    // index from spanning MCP-server credential rows.
+    uniqueIndex("credentials_connector_env_mode_key")
+      .on(t.connector_id, t.environment, t.mode)
+      .where(sql`${t.connector_id} IS NOT NULL`),
+    // External-MCP-server credential slot uniqueness — mirrors the
+    // connector index for rows owned by an `mcp_servers` row.
+    uniqueIndex("credentials_mcp_server_env_mode_key")
+      .on(t.mcp_server_id, t.environment, t.mode)
+      .where(sql`${t.mcp_server_id} IS NOT NULL`),
+    // Owner XOR: EXACTLY ONE of (connector_id, mcp_server_id) is set.
+    // Postgres `<>` on booleans is logical XOR.
+    check(
+      "credentials_owner_xor_check",
+      sql`(${t.connector_id} IS NOT NULL) <> (${t.mcp_server_id} IS NOT NULL)`,
+    ),
   ],
 );
 

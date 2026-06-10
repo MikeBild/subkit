@@ -57,6 +57,33 @@ export {
   recordKnowledgeSourceRefreshed,
 } from "./knowledge.ts";
 export {
+  type PaletteAssemblyFailureReason,
+  type RecordMcpExternalToolInvokedParams,
+  type RecordMcpExternalToolPaletteAssemblyFailedParams,
+  type RecordMcpServerAuthorizationFailedParams,
+  type RecordMcpServerAuthorizationStartedParams,
+  type RecordMcpServerAuthorizedParams,
+  type RecordMcpServerConfigUpdatedParams,
+  type RecordMcpServerDeletedParams,
+  type RecordMcpServerDisabledParams,
+  type RecordMcpServerErroredParams,
+  type RecordMcpServerHandshakeOkParams,
+  type RecordMcpServerReEnabledParams,
+  type RecordMcpServerRegisteredParams,
+  recordMcpExternalToolInvoked,
+  recordMcpExternalToolPaletteAssemblyFailed,
+  recordMcpServerAuthorizationFailed,
+  recordMcpServerAuthorizationStarted,
+  recordMcpServerAuthorized,
+  recordMcpServerConfigUpdated,
+  recordMcpServerDeleted,
+  recordMcpServerDisabled,
+  recordMcpServerErrored,
+  recordMcpServerHandshakeOk,
+  recordMcpServerReEnabled,
+  recordMcpServerRegistered,
+} from "./mcp-server.ts";
+export {
   type RecordToolPolicyConfirmationRequiredParams,
   recordToolPolicyConfirmationRequired,
 } from "./policy.ts";

@@ -19,6 +19,7 @@
     "summarize_provider": null,
     "summarize_model": "",
     "context_1m": false,
+    "web_search": true,
     "output_guard": "soft",
     "providers": {
       "anthropic": {
@@ -146,7 +147,12 @@
   },
   "mcp": {
     "api_key": "",
-    "read_only": false
+    "read_only": false,
+    "servers": [],
+    "client": {
+      "per_server_manifest_byte_cap": 30000,
+      "remote_tool_call_timeout_ms": 30000
+    }
   },
   "errors": {
     "ring_size": 100

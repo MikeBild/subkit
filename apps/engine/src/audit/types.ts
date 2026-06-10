@@ -487,6 +487,27 @@ export const AuditAction = {
   MCP_SERVER_ERRORED: "mcp_server.errored",
   MCP_SERVER_DELETED: "mcp_server.deleted",
   MCP_SERVER_HANDSHAKE_OK: "mcp_server.handshake_ok",
+  // A tool exposed by a registered external MCP server was invoked from
+  // the conversation loop. Distinct resource_type ("mcp_external_tool")
+  // so invocation volume can be aggregated apart from the lifecycle
+  // configuration rows above.
+  MCP_EXTERNAL_TOOL_INVOKED: "mcp_external_tool.invoked",
+  // Assembling the external-MCP tool palette for a conversation turn
+  // failed (a DB error enumerating connectable servers, or a pool fault).
+  // The turn degrades to zero external tools rather than aborting; this
+  // row is the queryable signal that the degradation happened, so an
+  // operator isn't left with only a transient log line.
+  MCP_EXTERNAL_TOOL_PALETTE_ASSEMBLY_FAILED: "mcp_external_tool.palette_assembly_failed",
+  // Interactive browser OAuth 2.1 onboarding for an OAuth-only external
+  // MCP server (#171 follow-up). `authorization_started` is emitted when
+  // a pending `mcp_oauth_states` flow row is created; `authorized` on a
+  // successful callback + token write; `authorization_failed` when the
+  // callback is rejected (bad state, issuer mismatch, exchange error).
+  // Metadata carries `issuer_host` (HOST ONLY — never the token or full
+  // authorization URL), secret-by-reference like every mcp_server.* row.
+  MCP_SERVER_AUTHORIZATION_STARTED: "mcp_server.authorization_started",
+  MCP_SERVER_AUTHORIZED: "mcp_server.authorized",
+  MCP_SERVER_AUTHORIZATION_FAILED: "mcp_server.authorization_failed",
 
   // ---------------------------------------------------------------------
   // External non-LLM provider calls reserved for future opt-in,

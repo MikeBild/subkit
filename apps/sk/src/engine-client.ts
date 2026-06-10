@@ -1894,6 +1894,45 @@ export class EngineClient {
     return this.request("DELETE", `/v1/credentials/${encodeURIComponent(credentialId)}`);
   }
 
+  // -------------------- External MCP servers (#171) --------------------
+  // Inverse of sk's own MCP server: tenants register external MCP servers
+  // whose tools the conversation loop can call. The auth secret (token /
+  // refresh_token) is a write-only create/patch field stored encrypted in
+  // the credentials table; `auth_config` is redacted server-side to
+  // `{ kind, has_credential }` on every read path and never echoes a secret.
+  listMcpServers(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/mcp-servers", undefined, query);
+  }
+  getMcpServer(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/mcp-servers/${encodeURIComponent(id)}`);
+  }
+  createMcpServer(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/mcp-servers", body);
+  }
+  patchMcpServer(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/mcp-servers/${encodeURIComponent(id)}`, body);
+  }
+  enableMcpServer(id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/mcp-servers/${encodeURIComponent(id)}/enable`);
+  }
+  disableMcpServer(id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/mcp-servers/${encodeURIComponent(id)}/disable`);
+  }
+  inspectMcpServer(id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/mcp-servers/${encodeURIComponent(id)}/inspect`);
+  }
+  // Start the interactive OAuth consent flow for an oauth2-auth MCP server.
+  // The engine returns the authorize URL the user opens in a browser; the
+  // callback completes server-side and flips `status` to "active".
+  authorizeMcpServer(id: string): Promise<{ authorization_url: string; state: string }> {
+    return this.request("POST", `/v1/mcp-servers/${encodeURIComponent(id)}/authorize`);
+  }
+  deleteMcpServer(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/mcp-servers/${encodeURIComponent(id)}`);
+  }
+
   // -------------------- Connector Templates --------------------
   listConnectorTemplates(
     query: Record<string, string | undefined> = {},

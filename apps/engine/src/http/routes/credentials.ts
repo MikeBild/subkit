@@ -92,7 +92,17 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
       });
     }
 
-    const connector = await connectorSvc.getConnector(principal.tenant_id, row.connector_id, db);
+    // This route rotates connector-owned oauth2 credentials. MCP-server
+    // credentials (connector_id null) are not rotatable here — their
+    // refresh path is driven through the MCP client subsystem.
+    if (row.connector_id == null) {
+      throw new BadRequestError("cannot_rotate_non_connector_credential", {
+        hint: "credential is not owned by a connector",
+      });
+    }
+    const connectorId = row.connector_id;
+
+    const connector = await connectorSvc.getConnector(principal.tenant_id, connectorId, db);
     if (!connector) throw new NotFoundError("connector");
 
     const cfg = await resolveConnectorOAuthConfig(db, principal.tenant_id, connector);
@@ -105,7 +115,7 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
     // refresh triple.
     const fetched = await getCredentialForConnector(
       principal.tenant_id,
-      row.connector_id,
+      connectorId,
       row.environment as "dev" | "prod",
       db,
     );
@@ -145,7 +155,7 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
       {
         id: updated.id,
         tenant_id: updated.tenant_id,
-        connector_id: updated.connector_id,
+        connector_id: connectorId,
         environment: updated.environment,
         mode: updated.mode,
         oauth2_expires_at: updated.oauth2_expires_at

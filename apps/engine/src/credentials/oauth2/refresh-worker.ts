@@ -52,6 +52,11 @@ export async function refreshIfStale(
   decrypted: DecryptedCredential & { mode: "oauth2" },
 ): Promise<DecryptedCredential> {
   if (!decrypted.refresh_token) return decrypted;
+  // oauth2 access tokens refreshed here are always connector-owned. A
+  // null connector_id means the row belongs to an external MCP server
+  // (#171) whose refresh path lives in the MCP client subsystem — skip.
+  const connectorId = credRow.connector_id;
+  if (connectorId == null) return decrypted;
   const now = Date.now();
   const expiresMs = decrypted.expires_at ? decrypted.expires_at.getTime() : 0;
   // Need the connector config to build an oauth client.
@@ -59,7 +64,7 @@ export async function refreshIfStale(
   const connRows = await db
     .select()
     .from(connectors)
-    .where(eq(connectors.id, credRow.connector_id))
+    .where(eq(connectors.id, connectorId))
     .limit(1);
   const connector = connRows[0];
   if (!connector) return decrypted;
@@ -215,7 +220,7 @@ export async function refreshIfStale(
     // connector at the source so it is marked *before* the doomed request; the
     // shared helper emits the operator notification once on the false→true edge
     // (the dedup guard ensures the later request-site 401 won't double-emit).
-    const connector = await getConnector(tenant_id, credRow.connector_id, db);
+    const connector = await getConnector(tenant_id, connectorId, db);
     if (connector) {
       await flagConnectorAuthFailure(db, connector, {
         reason: "oauth2 refresh token rejected by the IdP",
@@ -279,6 +284,10 @@ async function handleRefreshJob(db: Db, data: RefreshOAuthJob): Promise<void> {
   const row = rows[0];
   if (!row) return;
   if (!row.oauth2_refresh_ciphertext) return;
+  // This refresh job only services connector-owned oauth2 credentials.
+  // MCP-server credentials (#171) carry a null connector_id and are
+  // refreshed elsewhere.
+  if (row.connector_id == null) return;
   // Decrypt via the service to keep AAD logic in one place. Lazy import
   // to avoid a cycle with the HTTP driver.
   const { getCredentialForConnector } = await import("../service.ts");
