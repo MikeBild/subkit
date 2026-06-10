@@ -2027,19 +2027,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   for (const key of Object.keys(wrappedTools)) {
     delete (wrappedTools as Record<string, unknown>)[key];
   }
-  // ASYNC GC hint only. A synchronous full GC (`Bun.gc(true)`) on a
-  // multi-GB heap stalls the event loop for hundreds of ms PER TURN —
-  // production showed event_loop.lag warnings (median ~1s) with every
-  // turn-end as one contributor. The async variant lets the collector
-  // schedule the pass off the hot return path; RSS reclamation still
-  // happens, just not at the cost of blocking every concurrent request.
-  const maybeBun = (globalThis as { Bun?: { gc?: (sync: boolean) => void } }).Bun;
-  if (typeof maybeBun?.gc === "function") {
-    try {
-      maybeBun.gc(false);
-    } catch {
-      // GC hint is best-effort; never block the turn return on it.
-    }
-  }
+  // NO manual GC hint — not even the async variant. Live profiling
+  // (memory.sample) showed each turn allocates ~700MB of EXTERNAL native
+  // memory; forcing a collection over that churn every turn produced
+  // multi-second pauses that surfaced as event_loop.lag with no slow
+  // phase attributed (GC pauses appear in no phase). JSC schedules its
+  // own collections far better against an allocation-heavy workload; the
+  // explicit-ref drop above is what actually makes the palette
+  // reclaimable. The remaining work is reducing the per-turn external
+  // allocation itself (provider stream buffers / prompt copies), tracked
+  // as the open headroom item.
   return out;
 }

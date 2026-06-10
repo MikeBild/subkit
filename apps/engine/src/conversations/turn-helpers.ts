@@ -266,10 +266,30 @@ function describeToolOutput(output: Record<string, unknown>): string {
     }
     if (Array.isArray(wfOutput)) parts.push(`output: ${wfOutput.length} rows`);
     else if (wfOutput && typeof wfOutput === "object") {
-      const keys = Object.keys(wfOutput as Record<string, unknown>).filter(
-        (k) => !k.startsWith("_"),
-      );
-      parts.push(keys.length > 0 ? `output: ${keys.slice(0, 5).join(", ")}` : "output: structured");
+      // A pre-sampled output carries REAL rows — show them, not just key
+      // names. The fallback is often the only text the user sees on a
+      // tool-only turn; "output: org, count, repos" answers nothing while
+      // the actual top rows sit one field away.
+      if (output.output_sampled === true) {
+        let snippet = "";
+        try {
+          snippet = JSON.stringify(wfOutput) ?? "";
+        } catch {
+          snippet = "";
+        }
+        if (snippet.length > 0) {
+          parts.push(
+            `output (sampled): ${snippet.length > 1200 ? `${snippet.slice(0, 1200)}…` : snippet}`,
+          );
+        }
+      } else {
+        const keys = Object.keys(wfOutput as Record<string, unknown>).filter(
+          (k) => !k.startsWith("_"),
+        );
+        parts.push(
+          keys.length > 0 ? `output: ${keys.slice(0, 5).join(", ")}` : "output: structured",
+        );
+      }
     } else if (wfOutput === null || wfOutput === undefined) {
       // A big result gets stripped from the LLM-facing envelope by the
       // outer 8KB truncate pass — that is NOT "no output". Saying so sent
