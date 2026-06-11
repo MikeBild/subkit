@@ -40,8 +40,10 @@ import { logger } from "../logging/logger.ts";
 import { gateTenantToolCall } from "../mcp/capabilities/policy-gate.ts";
 import { recordConversationToolCall } from "../observability/instrumentation.ts";
 import { can } from "../rbac/evaluator.ts";
+import { resolveWorkflowInputContract } from "../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
+import { getWorkflow } from "../workflows/service.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "./persist.ts";
 import type { ConversationStatus, TurnEvent } from "./types.ts";
 
@@ -694,6 +696,22 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         // Unknown slug — fall through to LLM (the model can suggest
         // alternatives or surface the right slug). Same shape as the
         // run_workflow tool's "workflow_not_found" branch handles it.
+        return null;
+      }
+      // The fast path always runs with `input: null` — a workflow whose
+      // input contract (see resolveWorkflowInputContract) requires keys
+      // cannot complete here. Defer to the LLM loop, where run_workflow
+      // pauses with the auto-generated input form. Pre-fix this branch
+      // ran anyway and failed with "$input: required field missing".
+      const wfView = await getWorkflow(p.tenant_id, resolved.id, p.db);
+      if (wfView && resolveWorkflowInputContract(wfView.definition) !== null) {
+        logger.info({
+          module: "conversation",
+          action: "fast_path.deferred_input_required",
+          tenant_id: p.tenant_id,
+          conversation_id: p.conversation_id,
+          workflow_id: resolved.id,
+        });
         return null;
       }
       // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`

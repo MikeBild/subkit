@@ -12,7 +12,7 @@ import {
 import { runExecution } from "../../../../execution/engine.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
-import { synthesizeInputSchema } from "../../../../workflows/input-schema-synth.ts";
+import { resolveWorkflowInputContract } from "../../../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../../../../workflows/rbac.ts";
 import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
@@ -233,25 +233,7 @@ export const runWorkflowTool: ConversationTool = {
     // (Pre-fix a placeholder-driven workflow without a declared schema
     // skipped the gate and failed at runtime with
     // "$input: required field '<k>' is missing".)
-    const declaredInputSchema =
-      wf.definition && typeof wf.definition === "object" && "input_schema" in wf.definition
-        ? ((wf.definition as { input_schema?: unknown }).input_schema as
-            | Record<string, unknown>
-            | null
-            | undefined)
-        : undefined;
-    const wfInputSchema =
-      declaredInputSchema && Object.keys(declaredInputSchema).length > 0
-        ? declaredInputSchema
-        : ((synthesizeInputSchema(wf.definition as WorkflowDef) as Record<
-            string,
-            unknown
-          > | null) ?? undefined);
-    const wfHasInputContract =
-      wfInputSchema !== undefined &&
-      wfInputSchema !== null &&
-      typeof wfInputSchema === "object" &&
-      Object.keys(wfInputSchema).length > 0;
+    const inputContract = resolveWorkflowInputContract(wf.definition as WorkflowDef);
     const suppliedInput = args.input;
     const suppliedInputIsEmpty =
       suppliedInput === null ||
@@ -260,20 +242,13 @@ export const runWorkflowTool: ConversationTool = {
         !Array.isArray(suppliedInput) &&
         Object.keys(suppliedInput as Record<string, unknown>).length === 0) ||
       (typeof suppliedInput === "string" && suppliedInput.trim().length === 0);
-    if (wfHasInputContract) {
+    if (inputContract) {
       const properties =
-        wfInputSchema.properties && typeof wfInputSchema.properties === "object"
-          ? (wfInputSchema.properties as Record<string, unknown>)
+        inputContract.schema.properties && typeof inputContract.schema.properties === "object"
+          ? (inputContract.schema.properties as Record<string, unknown>)
           : {};
-      const propertyNames = Object.keys(properties);
-      // When the schema declares no `required` array (synthesized
-      // schemas never do), treat every declared input as required —
-      // a placeholder substituting null/undefined at runtime is worse
-      // than one extra confirmation.
-      const requiredKeys =
-        Array.isArray(wfInputSchema.required) && wfInputSchema.required.length > 0
-          ? wfInputSchema.required.filter((k): k is string => typeof k === "string")
-          : propertyNames;
+      const propertyNames = inputContract.properties;
+      const requiredKeys = inputContract.required;
       // Stringified-JSON input is normalized downstream by the runtime;
       // mirror that here so a '{"date":"…"}' string counts as supplied.
       let suppliedMap: Record<string, unknown> = {};
@@ -351,7 +326,7 @@ export const runWorkflowTool: ConversationTool = {
       }
     }
     const inputIgnored =
-      !wfHasInputContract &&
+      inputContract === null &&
       !suppliedInputIsEmpty &&
       typeof suppliedInput === "object" &&
       suppliedInput !== null;

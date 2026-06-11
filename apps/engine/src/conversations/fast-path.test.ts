@@ -208,6 +208,46 @@ describe("tryFastPath — list intents render under an authenticated principal",
 // run <slug> two-turn confirmation gate (T10 from manifest)
 // ---------------------------------------------------------------------------
 
+describe("tryFastPath — run <slug> with a required input contract defers to the LLM loop", () => {
+  test("a placeholder-driven workflow falls through (the run_workflow tool pauses with the auto-form)", async () => {
+    // The fast path always runs with input:null, so any workflow whose
+    // contract (declared input_schema, else synthesized from
+    // `${input.*}` placeholders) requires a key cannot complete here.
+    // Pre-fix it ran anyway and failed at runtime with
+    // "$input: required field '<k>' is missing" (live
+    // get-jira-ticket-details run, 2026-06-11).
+    const [wf] = await tdb.db
+      .insert(workflows)
+      .values({
+        tenant_id: tenantId,
+        slug: "needs-input",
+        name: "needs-input",
+        lifecycle: "active",
+      })
+      .returning();
+    if (!wf) throw new Error("seed workflow failed");
+    const [v] = await tdb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: tenantId,
+        workflow_id: wf.id,
+        version: 1,
+        dag: {
+          name: "needs-input",
+          slug: "needs-input",
+          steps: [{ id: "s1", kind: "request", url: "https://example.com/items/${input.item_id}" }],
+        },
+      })
+      .returning();
+    if (!v) throw new Error("seed version failed");
+    await tdb.db.update(workflows).set({ current_version_id: v.id }).where(eq(workflows.id, wf.id));
+
+    const result = await tryFastPath(makeParams("run needs-input"));
+    expect(result).toBeNull();
+    expect(getMockProvider().calls.length).toBe(0);
+  });
+});
+
 describe("tryFastPath — run <slug> confirmation gate", () => {
   test("first turn: emits pending envelope, status=awaiting_input, NO runExecution call", async () => {
     const wf = await seedMinimalWorkflow("conf-gate-wf");

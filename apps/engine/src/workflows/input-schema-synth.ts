@@ -119,3 +119,44 @@ export function synthesizeInputSchema(dag: WorkflowDef): JsonSchemaObject | null
   for (const n of [...names].sort()) properties[n] = { type: "string" };
   return { type: "object", properties, additionalProperties: true };
 }
+
+export interface WorkflowInputContract {
+  /** Declared `input_schema` when present, else the synthesized one. */
+  schema: Record<string, unknown>;
+  /** Declared property names. */
+  properties: string[];
+  /** Keys a run must supply. From `schema.required` when declared
+   *  non-empty; otherwise EVERY property — synthesized schemas never
+   *  carry `required`, and a placeholder substituting null/undefined
+   *  at runtime is worse than one extra confirmation. */
+  required: string[];
+}
+
+/**
+ * The workflow's effective input contract — the SAME source everywhere:
+ * the `wf_<slug>` tool schema, the persist-envelope usage block, the
+ * `run_workflow` missing-input gate, and the chat fast-path all read
+ * this, so no surface can disagree about what a run needs.
+ * Returns `null` when the workflow takes no input.
+ */
+export function resolveWorkflowInputContract(dag: WorkflowDef): WorkflowInputContract | null {
+  const declared =
+    dag.input_schema && typeof dag.input_schema === "object"
+      ? (dag.input_schema as Record<string, unknown>)
+      : null;
+  const schema =
+    declared && Object.keys(declared).length > 0
+      ? declared
+      : ((synthesizeInputSchema(dag) as Record<string, unknown> | null) ?? null);
+  if (!schema) return null;
+  const properties =
+    schema.properties && typeof schema.properties === "object"
+      ? Object.keys(schema.properties as Record<string, unknown>)
+      : [];
+  if (properties.length === 0) return null;
+  const required =
+    Array.isArray(schema.required) && schema.required.length > 0
+      ? schema.required.filter((k): k is string => typeof k === "string")
+      : properties;
+  return { schema, properties, required };
+}
