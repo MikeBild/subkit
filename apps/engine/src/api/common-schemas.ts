@@ -16,6 +16,11 @@ export const ErrorSchema = z
   .object({
     code: z.string(),
     message: z.string(),
+    /** Operator-friendly remediation hint — mirrors `HttpErrorBody.hint`
+     *  (apps/engine/src/http/errors.ts); the sk CLI renders it verbatim. */
+    hint: z.string().optional(),
+    /** Seconds the client should wait before retrying. Set on 429/503. */
+    retry_after: z.number().optional(),
     trace_id: z.string().optional(),
     details: z.record(z.string(), z.any()).optional(),
   })

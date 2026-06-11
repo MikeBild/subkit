@@ -205,7 +205,7 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
     expect(failed[0]!.result).toBe("denied");
   });
 
-  test("expired token is rejected", async () => {
+  test("expired token is rejected, a fresh token is re-minted, and the new token redeems", async () => {
     const minted = await run(tdb.db, { stdout: { write: () => undefined } });
     // Manually rewrite the envelope's expiry into the past.
     const envelope = await _internal.readSetting<{ token_sha256: string; expires_at_ms: number }>(
@@ -217,6 +217,7 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
       expires_at_ms: getTestNow() - 1_000,
     });
 
+    const captured: string[] = [];
     const outcome = await consume(
       tdb.db,
       rbacIds,
@@ -226,10 +227,45 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
         llm_provider: "mock",
         llm_api_key: "x",
       },
-      { token: minted.plaintext_token!, ip: "127.0.0.1" },
+      {
+        token: minted.plaintext_token!,
+        ip: "127.0.0.1",
+        stdout: { write: (c) => captured.push(c) },
+      },
     );
     expect(outcome.status).toBe("failed");
-    if (outcome.status === "failed") expect(outcome.code).toBe("token_expired");
+    if (outcome.status === "failed") {
+      expect(outcome.code).toBe("token_expired");
+      expect(outcome.hint).toContain("fresh token");
+    }
+
+    // A fresh token was minted (new hash, future expiry) and the banner
+    // was reprinted with the new plaintext.
+    const reminted = await _internal.readSetting<{ token_sha256: string; expires_at_ms: number }>(
+      tdb.db,
+      BOOTSTRAP_TOKEN_KEY,
+    );
+    expect(reminted).toBeDefined();
+    expect(reminted!.token_sha256).not.toBe(envelope!.token_sha256);
+    expect(reminted!.expires_at_ms).toBeGreaterThan(getTestNow());
+    const banner = captured.join("");
+    expect(banner).toContain("sk init --token");
+    const tokenMatch = /sk init --token ([0-9a-f]{64})/.exec(banner);
+    expect(tokenMatch).not.toBeNull();
+
+    // The re-minted token is single-use and actually redeems.
+    const retry = await consume(
+      tdb.db,
+      rbacIds,
+      {
+        admin_email: "ops@example.com",
+        tenant_name: "Acme",
+        llm_provider: "mock",
+        llm_api_key: "x",
+      },
+      { token: tokenMatch![1]!, ip: "127.0.0.1" },
+    );
+    expect(retry.status).toBe("ok");
   });
 
   test("malformed payload returns validation_failed via Zod", async () => {

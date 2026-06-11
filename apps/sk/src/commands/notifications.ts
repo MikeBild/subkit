@@ -1,4 +1,4 @@
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import {
@@ -30,8 +30,7 @@ const channelsListCmd = defineCommand({
       const { items } = await client.listNotificationChannels();
       emitList(!!args.json, ["id", "name", "kind", "active"], items as Record<string, unknown>[]);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -54,8 +53,7 @@ const channelsGetCmd = defineCommand({
         ),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -81,8 +79,7 @@ const channelsCreateCmd = defineCommand({
         await client.createNotificationChannel({ name: args.name, kind: args.kind, config }),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -105,8 +102,7 @@ const channelsUpdateCmd = defineCommand({
     try {
       printJson(await client.patchNotificationChannel(args.id, body));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -122,8 +118,7 @@ const channelsDeleteCmd = defineCommand({
       await client.deleteNotificationChannel(args.id);
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -156,8 +151,7 @@ const rulesListCmd = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -180,8 +174,7 @@ const rulesGetCmd = defineCommand({
         ),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -202,8 +195,7 @@ const rulesCreateCmd = defineCommand({
         }),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -226,8 +218,7 @@ const rulesUpdateCmd = defineCommand({
     try {
       printJson(await client.patchNotificationRule(args.id, body));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -243,8 +234,7 @@ const rulesDeleteCmd = defineCommand({
       await client.deleteNotificationRule(args.id);
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -280,8 +270,7 @@ const deliveriesListCmd = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -319,8 +308,7 @@ async function runInboxList(args: {
     // rows. `--all` still persists the high-water mark it observed.
     setNotificationInboxCursor(cursor);
   } catch (err) {
-    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-    process.exit(exitCodeFor(err));
+    reportCommandError(err, { json: Boolean(args.json) });
   }
 }
 
@@ -359,8 +347,7 @@ const inboxAckCmd = defineCommand({
         process.stdout.write(`acked ${result.acked}\n`);
       }
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });

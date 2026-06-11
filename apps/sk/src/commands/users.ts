@@ -1,5 +1,5 @@
 import * as prompts from "@clack/prompts";
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
@@ -32,8 +32,7 @@ const listCmd = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -46,8 +45,7 @@ const getCmd = defineCommand({
     try {
       printJson(await client.getIdentityUser(String(args.id)));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -67,8 +65,7 @@ const patchCmd = defineCommand({
         }),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -84,8 +81,7 @@ const deleteCmd = defineCommand({
       await client.deleteIdentityUser(String(args.id));
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });

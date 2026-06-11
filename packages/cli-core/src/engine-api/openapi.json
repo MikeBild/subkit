@@ -349,10 +349,14 @@
         "properties": {
           "pending": {
             "type": "boolean"
+          },
+          "token_expired": {
+            "type": "boolean"
           }
         },
         "required": [
-          "pending"
+          "pending",
+          "token_expired"
         ]
       },
       "SetupResponse": {
@@ -388,6 +392,12 @@
           },
           "message": {
             "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          },
+          "retry_after": {
+            "type": "number"
           },
           "trace_id": {
             "type": "string"
@@ -4011,6 +4021,17 @@
           "pattern"
         ]
       },
+      "RerunExecutionBody": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "nullable": true
+          },
+          "async": {
+            "type": "boolean"
+          }
+        }
+      },
       "ExecutionListResponse": {
         "type": "object",
         "properties": {
@@ -4066,6 +4087,9 @@
           },
           "parent_execution_id": {
             "type": "string",
+            "nullable": true
+          },
+          "input": {
             "nullable": true
           },
           "started_at": {
@@ -7650,6 +7674,73 @@
           }
         }
       },
+      "SkillHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillHistoryEntry"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "SkillHistoryEntry": {
+        "type": "object",
+        "properties": {
+          "audit_entry_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "lifecycle": {
+            "type": "string",
+            "nullable": true
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "actor_id": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "has_snapshot": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "audit_entry_id",
+          "version",
+          "title",
+          "lifecycle",
+          "updated_at",
+          "actor_id",
+          "has_snapshot"
+        ]
+      },
+      "RestoreSkillBody": {
+        "type": "object",
+        "properties": {
+          "audit_entry_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "audit_entry_id"
+        ]
+      },
       "KnowledgeSourceListResponse": {
         "type": "object",
         "properties": {
@@ -7709,6 +7800,10 @@
               "error"
             ]
           },
+          "last_error": {
+            "type": "string",
+            "nullable": true
+          },
           "source_type": {
             "type": "string"
           },
@@ -7761,6 +7856,7 @@
           "scope",
           "workflow_id",
           "status",
+          "last_error",
           "source_type",
           "source_uri",
           "mime_type",
@@ -10305,6 +10401,171 @@
           "fixture_id",
           "created_at",
           "updated_at"
+        ]
+      },
+      "PatchCandidatePreview": {
+        "type": "object",
+        "properties": {
+          "candidate_id": {
+            "type": "string"
+          },
+          "workflow_id": {
+            "type": "string"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "safe",
+              "unsafe"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "applied",
+              "rejected",
+              "superseded"
+            ]
+          },
+          "drift_summary": {
+            "type": "string",
+            "nullable": true
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/PatchProposal"
+          },
+          "fixture_available": {
+            "type": "boolean"
+          },
+          "proposal_dry_run": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "before_step": {
+            "$ref": "#/components/schemas/PatchCandidateStepShape"
+          },
+          "after_step": {
+            "$ref": "#/components/schemas/PatchCandidateStepShape"
+          },
+          "changed_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "candidate_id",
+          "workflow_id",
+          "classification",
+          "status",
+          "drift_summary",
+          "proposal",
+          "fixture_available",
+          "proposal_dry_run",
+          "before_step",
+          "after_step",
+          "changed_paths"
+        ]
+      },
+      "PatchProposal": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "classification": {
+            "type": "string",
+            "enum": [
+              "safe",
+              "unsafe"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "update_field_path",
+              "rename_param",
+              "change_type",
+              "add_header",
+              "rate_limited",
+              "other"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "patch": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "reasoning": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "classification",
+          "kind",
+          "description",
+          "patch",
+          "reasoning"
+        ]
+      },
+      "PatchCandidateStepShape": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "request",
+              "transform"
+            ]
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "expression": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ]
+      },
+      "PatchCandidateDryRunResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          },
+          "value_preview": {
+            "nullable": true
+          },
+          "fixture_source": {
+            "type": "string",
+            "enum": [
+              "recorded",
+              "synthesized"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "error",
+          "fixture_source"
         ]
       },
       "RejectPatchCandidateBody": {
@@ -15792,6 +16053,15 @@
             "required": false,
             "name": "request_source",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "parent_execution_id",
+            "in": "query"
           }
         ],
         "responses": {
@@ -15852,6 +16122,82 @@
           },
           "422": {
             "description": "Transform / filter raised",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/executions/{id}/rerun": {
+      "post": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "Rerun an execution with lineage to the original",
+        "description": "Runs the SAME workflow version as the original execution with the original input (overridable). The new execution's parent_execution_id points at the original, so the chain is queryable via GET /v1/executions?parent_execution_id=.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerunExecutionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rerun completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionRunResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Rerun queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionRunResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Original execution is not rerunnable",
             "content": {
               "application/json": {
                 "schema": {
@@ -17863,6 +18209,117 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/skills/{id}/history": {
+      "get": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "List a skill's version history (audit-derived, newest first)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHistoryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/skills/{id}/restore": {
+      "post": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "Restore a skill to a prior audited snapshot",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreSkillBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -20865,6 +21322,109 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/patch-candidates/{id}/preview": {
+      "get": {
+        "tags": [
+          "patch-candidates"
+        ],
+        "summary": "Human-readable before/after preview of a patch candidate",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchCandidatePreview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/patch-candidates/{id}/dry-run": {
+      "post": {
+        "tags": [
+          "patch-candidates"
+        ],
+        "summary": "Replay a patch candidate against a recorded or synthesized fixture",
+        "description": "Never mutates the candidate's status — this is a pre-approval check. Uses the fixture recorded at proposal time, or synthesizes one from the failing step's persisted request/response material.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dry-run ran",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchCandidateDryRunResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No fixture / step material to replay against",
             "content": {
               "application/json": {
                 "schema": {

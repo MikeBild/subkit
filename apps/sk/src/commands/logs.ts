@@ -17,12 +17,13 @@
 // without SSH-ing into the container.
 
 import { exitCodeFor } from "@cli-core/errors";
+import { isEngineError, TransportError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { colorizeLogLevel } from "@cli-core/log-levels";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
-import { EngineClient, SkEngineError, SkTransportError } from "../engine-client.ts";
+import { EngineClient } from "../engine-client.ts";
 
 interface LogEntry {
   ts: number;
@@ -148,7 +149,7 @@ export const logsCommand = defineCommand({
       // Live tail picks up where the window left off.
       since_ms = window.next_since_ms;
     } catch (err) {
-      if (err instanceof SkEngineError && err.status === 404) {
+      if (isEngineError(err) && err.status === 404) {
         process.stderr.write(
           "engine does not expose /v1/diagnostics/logs — upgrade the engine to a build that includes the #149 observability work.\n",
         );
@@ -178,7 +179,7 @@ export const logsCommand = defineCommand({
         signal: ac.signal,
       });
     } catch (err) {
-      throw new SkTransportError(
+      throw new TransportError(
         `logs stream connect failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }

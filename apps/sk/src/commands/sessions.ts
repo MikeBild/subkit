@@ -8,6 +8,7 @@
 
 import { existsSync, unlinkSync } from "node:fs";
 import { defineCommand } from "citty";
+import Fuse from "fuse.js";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import {
@@ -25,6 +26,50 @@ function fmtRelative(iso: string): string {
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
+}
+
+interface SessionRow {
+  conversation_id: string;
+  alias?: string | null;
+  title?: string | null;
+  last_used_at: string;
+}
+
+function printSessionRows(rows: SessionRow[], totalMatched: number): void {
+  if (rows.length === 0) {
+    process.stdout.write("no cached sessions\n");
+    return;
+  }
+  process.stdout.write(
+    `${pc.bold("ID")}         ${pc.bold("ALIAS")}            ${pc.bold("TITLE")}              ${pc.bold("LAST USED")}\n`,
+  );
+  for (const r of rows) {
+    const id = r.conversation_id.slice(0, 8);
+    const alias = (r.alias ?? "-").padEnd(16);
+    const title = (r.title ?? "(untitled)").slice(0, 20).padEnd(20);
+    const when = fmtRelative(r.last_used_at);
+    process.stdout.write(`${id}   ${alias} ${title} ${when}\n`);
+  }
+  if (totalMatched > rows.length) {
+    process.stdout.write(`... ${totalMatched - rows.length} more (use --limit)\n`);
+  }
+}
+
+/** Pure fuzzy ranking over cached session metadata (title/alias/id). */
+export function rankSessions<T extends SessionRow>(rows: T[], query: string, limit: number): T[] {
+  const fuse = new Fuse(rows, {
+    threshold: 0.4,
+    ignoreLocation: true,
+    keys: [
+      { name: "title", weight: 3 },
+      { name: "alias", weight: 3 },
+      { name: "conversation_id", weight: 1 },
+    ],
+  });
+  return fuse
+    .search(query)
+    .slice(0, limit)
+    .map((r) => r.item);
 }
 
 const lsCommand = defineCommand({
@@ -54,25 +99,32 @@ const lsCommand = defineCommand({
         )
       : rows;
     const limit = Math.max(1, Number.parseInt(args.limit, 10) || 20);
-    const shown = filtered.slice(0, limit);
-    if (shown.length === 0) {
-      process.stdout.write("no cached sessions\n");
-      return;
-    }
-    // Header
-    process.stdout.write(
-      `${pc.bold("ID")}         ${pc.bold("ALIAS")}            ${pc.bold("TITLE")}              ${pc.bold("LAST USED")}\n`,
-    );
-    for (const r of shown) {
-      const id = r.conversation_id.slice(0, 8);
-      const alias = (r.alias ?? "-").padEnd(16);
-      const title = (r.title ?? "(untitled)").slice(0, 20).padEnd(20);
-      const when = fmtRelative(r.last_used_at);
-      process.stdout.write(`${id}   ${alias} ${title} ${when}\n`);
-    }
-    if (filtered.length > shown.length) {
-      process.stdout.write(`... ${filtered.length - shown.length} more (use --limit)\n`);
-    }
+    printSessionRows(filtered.slice(0, limit), filtered.length);
+  },
+});
+
+const searchCommand = defineCommand({
+  meta: {
+    name: "search",
+    description: "Fuzzy-search cached sessions by title / alias / id",
+  },
+  args: {
+    query: { type: "positional", required: true, description: "Search text" },
+    limit: { type: "string", description: "Max rows", default: "20" },
+    all: { type: "boolean", description: "Search every profile, not just the active one" },
+  },
+  run({ args }) {
+    const profile = resolveProfile();
+    const filter = args.all
+      ? undefined
+      : {
+          engine_url: profile.engine_url,
+          tenant_id: profile.active_tenant_id ?? null,
+        };
+    const rows = listSessionMetadata(filter);
+    const limit = Math.max(1, Number.parseInt(args.limit, 10) || 20);
+    const matched = rankSessions(rows, String(args.query), limit);
+    printSessionRows(matched, matched.length);
   },
 });
 
@@ -182,6 +234,7 @@ export const sessionsCommand = defineCommand({
   meta: { name: "sessions", description: "Manage locally-cached conversation sessions" },
   subCommands: {
     ls: lsCommand,
+    search: searchCommand,
     show: showCommand,
     rename: renameCommand,
     rm: rmCommand,

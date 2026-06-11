@@ -289,7 +289,9 @@ describe("journey 42: sk executions CLI", () => {
 
   test("AC6: executions get with wrong-tenant id returns an error", async () => {
     // Use a valid-looking UUID that belongs to no execution in this tenant.
-    const fakeId = "00000000-0000-0000-0000-000000000042";
+    // RFC-4122-compliant — the pinned contract is the tenant-scoped
+    // not-found, not the uuid-shape 400 (see journey 37's note).
+    const fakeId = "00000000-0000-4000-8000-000000000042";
     const { message, captured } = await runExpectError(executionsCommand, ["get", fakeId]);
     const combined = `${message}\n${captured.stderr}`.toLowerCase();
     expect(

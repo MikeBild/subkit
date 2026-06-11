@@ -1,4 +1,4 @@
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
@@ -26,8 +26,7 @@ const listCmd = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -89,8 +88,7 @@ const createCmd = defineCommand({
       process.stderr.write("warning: the key value is shown only once — store it securely\n");
       printJson(result);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -105,8 +103,7 @@ const rotateCmd = defineCommand({
       process.stderr.write("warning: the new key value is shown only once — store it securely\n");
       printJson(result);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -120,8 +117,7 @@ const revokeCmd = defineCommand({
       await client.revokeApiKey(String(args.id));
       process.stdout.write("revoked\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });

@@ -208,7 +208,9 @@ describe("journey 39: sk users CLI", () => {
   });
 
   test("users get with non-existent id returns an error", async () => {
-    const fakeId = "00000000-0000-0000-0000-000000000077";
+    // RFC-4122-compliant — see journey 37's note: the pinned contract
+    // is the tenant-scoped not-found, not the uuid-shape 400.
+    const fakeId = "00000000-0000-4000-8000-000000000077";
     const { message, captured } = await runExpectError(usersCommand, ["get", fakeId]);
     const combined = `${message}\n${captured.stderr}`.toLowerCase();
     expect(

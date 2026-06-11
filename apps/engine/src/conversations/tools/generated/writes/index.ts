@@ -9,6 +9,7 @@ import { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidat
 import { cleanupWriteTools } from "./cleanup.ts";
 import { createApiKeyTool } from "./create-api-key.ts";
 import { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
+import { rerunExecutionTool } from "./rerun-execution.ts";
 import { runWorkflowTool } from "./run-workflow.ts";
 import { scheduleTools } from "./schedules.ts";
 import { updateConnectorTool } from "./update-connector.ts";
@@ -28,6 +29,7 @@ export {
 } from "./cleanup.ts";
 export { createApiKeyTool } from "./create-api-key.ts";
 export { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
+export { rerunExecutionTool } from "./rerun-execution.ts";
 export { runWorkflowTool } from "./run-workflow.ts";
 export {
   createScheduleTool,
@@ -42,6 +44,7 @@ export { updateWorkflowTool } from "./update-workflow.ts";
 
 export const ALL_GENERATED_WRITE_TOOLS: ConversationTool[] = [
   runWorkflowTool,
+  rerunExecutionTool,
   approveSkillCandidateTool,
   approvePatchCandidateTool,
   createApiKeyTool,

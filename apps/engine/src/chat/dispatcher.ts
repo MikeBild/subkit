@@ -579,6 +579,7 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
       source_ref: null,
       request_source: "chat",
       parent_execution_id: null,
+      input: parsed.args,
     });
 
     if (deps.enqueueRun) {

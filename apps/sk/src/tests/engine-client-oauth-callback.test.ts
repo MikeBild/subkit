@@ -231,8 +231,9 @@ describe("EngineClient.subscribeConnectorOAuthCallback", () => {
     controllerRef.close();
   });
 
-  test("raises SkTransportError on non-2xx response", async () => {
-    const { EngineClient, SkTransportError } = await import("../engine-client.ts");
+  test("raises TransportError on non-2xx response", async () => {
+    const { EngineClient } = await import("../engine-client.ts");
+    const { TransportError } = await import("@cli-core/errors.ts");
     const fakeFetch: FetchLike = async () =>
       new Response("nope", { status: 401, headers: { "content-type": "text/plain" } });
     const client = new EngineClient({
@@ -249,6 +250,6 @@ describe("EngineClient.subscribeConnectorOAuthCallback", () => {
     } catch (e) {
       err = e;
     }
-    expect(err).toBeInstanceOf(SkTransportError);
+    expect(err).toBeInstanceOf(TransportError);
   });
 });

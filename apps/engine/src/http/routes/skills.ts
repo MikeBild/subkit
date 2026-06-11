@@ -8,6 +8,8 @@
 //   DELETE /v1/skills/:id                — hard delete (prefer /archive)
 //   POST   /v1/skills/:id/activate       — flip lifecycle → active
 //   POST   /v1/skills/:id/archive        — flip lifecycle → archived
+//   GET    /v1/skills/:id/history        — version history (audit-derived)
+//   POST   /v1/skills/:id/restore        — restore a prior audited snapshot
 //
 // Every mutation writes an audit entry via the service layer.
 
@@ -20,7 +22,9 @@ import {
   createSkill,
   deleteSkill,
   getSkill,
+  listSkillHistory,
   listSkills,
+  restoreSkill,
   SkillLifecycleSchema,
   SkillSchema,
   SkillScopeSchema,
@@ -138,6 +142,61 @@ const archiveRoute = createRoute({
   },
 });
 
+const SkillHistoryEntrySchema = z
+  .object({
+    audit_entry_id: z.string().uuid(),
+    version: z.number().int().nullable(),
+    title: z.string().nullable(),
+    lifecycle: z.string().nullable(),
+    updated_at: z.string(),
+    actor_id: z.string().uuid().nullable(),
+    /** False for entries written before audit snapshots carried the full
+     *  skill view — those entries are listed but not restorable. */
+    has_snapshot: z.boolean(),
+  })
+  .openapi("SkillHistoryEntry");
+
+const SkillHistoryResponse = z
+  .object({ items: z.array(SkillHistoryEntrySchema) })
+  .openapi("SkillHistoryResponse");
+
+const RestoreSkillBody = z
+  .object({ audit_entry_id: z.string().uuid() })
+  .openapi("RestoreSkillBody");
+
+const historyRoute = createRoute({
+  method: "get",
+  path: "/v1/skills/{id}/history",
+  tags: ["skills"],
+  summary: "List a skill's version history (audit-derived, newest first)",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: SkillHistoryResponse } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const restoreRoute = createRoute({
+  method: "post",
+  path: "/v1/skills/{id}/restore",
+  tags: ["skills"],
+  summary: "Restore a skill to a prior audited snapshot",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    body: { content: { "application/json": { schema: RestoreSkillBody } } },
+  },
+  responses: {
+    200: { description: "OK", content: { "application/json": { schema: SkillSchema } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Conflict", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
   // RBAC gating for skills.
   app.use("/v1/skills", async (c, next) => {
@@ -165,6 +224,14 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/skills/:id/archive", async (c, next) => {
     const id = c.req.param("id");
     return requirePermission("skill:archive", () => ({ type: "skill", id }))(c, next);
+  });
+  app.use("/v1/skills/:id/history", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("skill:read", () => ({ type: "skill", id }))(c, next);
+  });
+  app.use("/v1/skills/:id/restore", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("skill:write", () => ({ type: "skill", id }))(c, next);
   });
 
   app.openapi(listRoute, async (c) => {
@@ -241,5 +308,25 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
     const s = await archiveSkill(principal.tenant_id, id, principal.id, db);
     if (!s) throw new NotFoundError("skill");
     return c.json(s, 200);
+  });
+
+  app.openapi(historyRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const skill = await getSkill(principal.tenant_id, id, db);
+    if (!skill) throw new NotFoundError("skill");
+    const items = await listSkillHistory(principal.tenant_id, id, db);
+    return c.json({ items }, 200);
+  });
+
+  app.openapi(restoreRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const { audit_entry_id } = c.req.valid("json");
+    const restored = await restoreSkill(principal.tenant_id, id, audit_entry_id, principal.id, db);
+    if (!restored) throw new NotFoundError("skill");
+    return c.json(restored, 200);
   });
 }

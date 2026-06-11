@@ -1,4 +1,4 @@
-import { exitCodeFor } from "@cli-core/errors";
+import { exitCodeFor, reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -8,6 +8,8 @@ import {
   type RunExecutionBody,
   type RunExecutionResponse,
 } from "../engine-client.ts";
+import { pickId } from "../lib/pick.ts";
+import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type {
   PlanStep,
@@ -90,25 +92,6 @@ function printRunResult(result: RunExecutionResponse): void {
   }
 }
 
-// In jsonMode the contract is "stdout = JSON, stderr = silent" so a
-// downstream consumer can pipe the create command into jq or another
-// script. The error path must therefore route the failure message to
-// stdout as `{ "error": <msg> }` and keep stderr empty; otherwise the
-// pipe sees a JSON body on success and unparseable text on failure.
-// After writing the error envelope, the function re-throws so the
-// top-level `sk` dispatcher sets `process.exitCode` — handlers must
-// never short-circuit via process.exit (see the discipline test in
-// `tests/commands/knowledge-sources-error-discipline.test.ts`).
-function reportError(err: unknown, jsonMode: boolean): never {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (jsonMode) {
-    process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
-  } else {
-    process.stderr.write(`${msg}\n`);
-  }
-  throw err instanceof Error ? err : new Error(msg);
-}
-
 function makeClient() {
   const profile = resolveProfile();
   return new EngineClient({
@@ -117,6 +100,16 @@ function makeClient() {
     tenant: profile.active_tenant_id,
   });
 }
+
+/** Candidate rows for the interactive workflow picker (TTY only). */
+const fetchWorkflowRows = async (client: EngineClient) => {
+  const { items } = await client.listWorkflows({ limit: 50 });
+  return (items as Record<string, unknown>[]).map((r) => ({
+    id: String(r.id),
+    name: typeof r.name === "string" ? r.name : null,
+    detail: typeof r.slug === "string" ? r.slug : null,
+  }));
+};
 
 type SnippetLang = "curl" | "node" | "python";
 
@@ -256,8 +249,7 @@ const listCommand = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -265,12 +257,17 @@ const listCommand = defineCommand({
 const getCommand = defineCommand({
   meta: { name: "get", description: "Get a workflow by id" },
   args: {
-    id: { type: "positional", required: true, description: "Workflow id" },
+    id: { type: "positional", required: false, description: "Workflow id" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      const workflow = await client.getWorkflow(args.id);
+      const id = await pickId({
+        label: "workflow id",
+        argValue: args.id,
+        fetch: () => fetchWorkflowRows(client),
+      });
+      const workflow = await client.getWorkflow(id);
       printJson(workflow);
       // First-class summary of the workflow-level trigger so operators
       // don't have to grep the JSON. Always print a line so absence
@@ -298,8 +295,7 @@ const getCommand = defineCommand({
         process.stderr.write(`\n${pc.dim("trigger:")} request\n`);
       }
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -341,10 +337,25 @@ const runCommand = defineCommand({
       type: "string",
       description: "Optional workflow_slug for --step runs (cosmetic)",
     },
+    follow: {
+      type: "boolean",
+      description:
+        "Queue the run and stream its progress live (step-by-step JSON lines). Saved workflows only.",
+    },
   },
   async run({ args }) {
     const client = makeClient();
     const { readFileSync } = await import("node:fs");
+
+    // --follow rides the queued (async) execution path, which the
+    // engine only supports for saved workflows — draft and step runs
+    // have no persisted workflow for a queue worker to rehydrate.
+    if (args.follow && (args.draft || args.step)) {
+      process.stderr.write(
+        "--follow requires a saved workflow id; draft and step runs execute inline and return their result directly\n",
+      );
+      process.exit(1);
+    }
 
     // Parse the --input JSON blob once; it is reused across all three
     // source kinds. The `@<path>` prefix opts into file-backed input
@@ -442,30 +453,44 @@ const runCommand = defineCommand({
         return;
       }
 
-      // Saved workflow (default).
-      if (!args.id) {
-        process.stderr.write(
-          "workflow id is required (positional) unless --draft or --step is provided\n",
-        );
-        process.exit(1);
-      }
+      // Saved workflow (default). An omitted id opens an interactive
+      // picker in a TTY; non-TTY keeps the informative required error.
+      const workflowId = await pickId({
+        label: "workflow id (positional, unless --draft or --step is provided)",
+        argValue: args.id,
+        fetch: () => fetchWorkflowRows(client),
+      });
       // Use the engine's `RunExecutionBody` so the body shape is
       // type-checked against the canonical POST /v1/executions schema.
       const body: Extract<RunExecutionBody, { source: "saved" }> = {
         source: "saved",
-        workflow_id: String(args.id),
+        workflow_id: workflowId,
         ...(input !== null ? { input } : {}),
         request_source: "cli",
       };
+      if (args.follow) {
+        // Queue the run (202 + execution_id), then tail its outbox
+        // events live. The engine closes the stream right after the
+        // terminal frame; the exit code mirrors the run's outcome.
+        const queued = await client.runExecution({ ...body, async: true });
+        process.stderr.write(`execution ${queued.execution_id} queued — following\n`);
+        const terminal = await tailExecution(client, queued.execution_id);
+        if (terminal !== "succeeded") {
+          process.stderr.write(
+            `\n${pc.dim("Tip:")} sk executions get ${queued.execution_id} shows the full result\n`,
+          );
+        }
+        process.exitCode = exitCodeForTerminalStatus(terminal);
+        return;
+      }
       printRunResult(await client.runExecution(body));
       // Discovery hint for saved-workflow runs: the same workflow can be
       // triggered from the operator's own app/CI via invoke-snippet.
       process.stderr.write(
-        `\n${pc.dim("Tip:")} sk workflows invoke-snippet ${String(args.id)} --lang node\n`,
+        `\n${pc.dim("Tip:")} sk workflows invoke-snippet ${workflowId} --lang node\n`,
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -495,8 +520,7 @@ const validateCommand = defineCommand({
       }
       process.exit(1);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -538,8 +562,7 @@ const previewCommand = defineCommand({
       };
       printRunResult(await client.runExecution(body));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -547,16 +570,20 @@ const previewCommand = defineCommand({
 const deleteCommand = defineCommand({
   meta: { name: "delete", description: "Delete a workflow" },
   args: {
-    id: { type: "positional", required: true, description: "Workflow id" },
+    id: { type: "positional", required: false, description: "Workflow id" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      await client.deleteWorkflow(args.id);
+      const id = await pickId({
+        label: "workflow id",
+        argValue: args.id,
+        fetch: () => fetchWorkflowRows(client),
+      });
+      await client.deleteWorkflow(id);
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -577,8 +604,7 @@ const historyCommand = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -594,8 +620,7 @@ const restoreCommand = defineCommand({
     try {
       printJson(await client.restoreWorkflowVersion(args.id, Number(args.version)));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -728,16 +753,18 @@ const createCommand = defineCommand({
       };
       await renderSummary(summary, { jsonMode });
 
-      // Discovery hint: lead operators to the invoke-snippet so they can
-      // run this workflow from their own app/CI. Stderr keeps stdout a
-      // clean JSON body for pipes; suppressed in jsonMode for the same reason.
+      // Next-step hints: the exact run command (with the fresh id filled
+      // in) plus the invoke-snippet for app/CI callers. Stderr keeps
+      // stdout a clean JSON body for pipes; suppressed in jsonMode for
+      // the same reason.
       if (!jsonMode && summary.id !== "(unknown)") {
         process.stderr.write(
-          `\n${pc.dim("Tip:")} sk workflows invoke-snippet ${summary.id} --lang node\n`,
+          `\n${pc.dim("Next:")} sk workflows run ${summary.id} --follow\n` +
+            `${pc.dim("Tip:")} sk workflows invoke-snippet ${summary.id} --lang node\n`,
         );
       }
     } catch (err) {
-      reportError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });

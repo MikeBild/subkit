@@ -33,6 +33,7 @@ import type { CreateKnowledgeSourceInput, UpdateKnowledgeSourceInput } from "../
 import { currentMonthBucket, monthlyUsage } from "../llm/accounting/index.ts";
 import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import * as rbacRoles from "../rbac/roles.ts";
+import * as selfHealingSvc from "../self-healing/index.ts";
 import * as skillCandidatesSvc from "../skill-candidates/service.ts";
 import * as skillsSvc from "../skills/service.ts";
 import * as inboundSvc from "../webhooks/inbound/service.ts";
@@ -198,6 +199,12 @@ export class EngineClient {
         .limit(1);
       return rows[0] ?? null;
     },
+    preview: (id: string) => selfHealingSvc.previewPatchCandidate(this.tenant_id, id, this.db),
+    dryRun: (id: string) =>
+      selfHealingSvc.dryRunPatchCandidate(
+        { tenant_id: this.tenant_id, candidate_id: id, actor_id: this.actor_id },
+        this.db,
+      ),
   };
 
   knowledgeSources = {

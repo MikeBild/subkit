@@ -20,6 +20,8 @@ export const ExecSchema = z
     status: z.string(),
     request_source: z.string(),
     parent_execution_id: z.string().nullable(),
+    /** The caller-supplied run input (null when the run had none). */
+    input: z.unknown().nullable(),
     started_at: z.string().nullable(),
     finished_at: z.string().nullable(),
     created_at: z.string(),
@@ -231,6 +233,7 @@ export function serializeExec(row: typeof executions.$inferSelect) {
     status: row.status,
     request_source: row.request_source,
     parent_execution_id: row.parent_execution_id ?? null,
+    input: row.input ?? null,
     started_at: row.started_at ? row.started_at.toISOString() : null,
     finished_at: row.finished_at ? row.finished_at.toISOString() : null,
     created_at: row.created_at.toISOString(),

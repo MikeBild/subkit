@@ -25,10 +25,13 @@ export {
 } from "./engine-api/client.ts";
 export {
   EngineError,
-  type EngineErrorBody,
   exitCodeFor,
   formatError,
+  isEngineError,
+  isTransportError,
+  reportCommandError,
   TransportError,
+  wasReported,
 } from "./errors.ts";
 export {
   emitList,

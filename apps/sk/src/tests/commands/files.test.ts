@@ -99,8 +99,8 @@ describe("sk files list", () => {
     expect(capturedUrl).toContain("limit=10");
   });
 
-  test("wrong tenant gets 403 → SkEngineError", async () => {
-    const { SkEngineError } = await import("../../engine-client.ts");
+  test("wrong tenant gets 403 → EngineError", async () => {
+    const { EngineError } = await import("@cli-core/errors.ts");
     const client = new EngineClient({
       engine_url: "http://engine.local",
       api_key: "wf_live_wrong",
@@ -111,7 +111,7 @@ describe("sk files list", () => {
           headers: { "content-type": "application/json" },
         }),
     });
-    await expect(client.listFiles()).rejects.toBeInstanceOf(SkEngineError);
+    await expect(client.listFiles()).rejects.toBeInstanceOf(EngineError);
   });
 });
 
@@ -135,8 +135,8 @@ describe("sk files get", () => {
     expect(result.status).toBe("ready");
   });
 
-  test("404 for unknown id → SkEngineError status 404", async () => {
-    const { SkEngineError } = await import("../../engine-client.ts");
+  test("404 for unknown id → EngineError status 404", async () => {
+    const { EngineError } = await import("@cli-core/errors.ts");
     const client = new EngineClient({
       engine_url: "http://engine.local",
       api_key: "wf_live_test",
@@ -148,8 +148,8 @@ describe("sk files get", () => {
         }),
     });
     const err = await client.getFile("fid_nonexistent").catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(SkEngineError);
-    expect((err as InstanceType<typeof SkEngineError>).status).toBe(404);
+    expect(err).toBeInstanceOf(EngineError);
+    expect((err as InstanceType<typeof EngineError>).status).toBe(404);
   });
 });
 
@@ -239,7 +239,7 @@ describe("sk files delete", () => {
   });
 
   test("delete on wrong tenant gets 403", async () => {
-    const { SkEngineError } = await import("../../engine-client.ts");
+    const { EngineError } = await import("@cli-core/errors.ts");
     const client = new EngineClient({
       engine_url: "http://engine.local",
       api_key: "wf_live_wrong",
@@ -250,7 +250,7 @@ describe("sk files delete", () => {
           headers: { "content-type": "application/json" },
         }),
     });
-    await expect(client.deleteFile("fid_x")).rejects.toBeInstanceOf(SkEngineError);
+    await expect(client.deleteFile("fid_x")).rejects.toBeInstanceOf(EngineError);
   });
 });
 
@@ -327,7 +327,7 @@ describe("sk files stats", () => {
   });
 
   test("wrong tenant → 403", async () => {
-    const { SkEngineError } = await import("../../engine-client.ts");
+    const { EngineError } = await import("@cli-core/errors.ts");
     const client = new EngineClient({
       engine_url: "http://engine.local",
       api_key: "bad-key",
@@ -338,6 +338,6 @@ describe("sk files stats", () => {
           headers: { "content-type": "application/json" },
         }),
     });
-    await expect(client.getFileStats()).rejects.toBeInstanceOf(SkEngineError);
+    await expect(client.getFileStats()).rejects.toBeInstanceOf(EngineError);
   });
 });

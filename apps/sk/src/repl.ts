@@ -17,6 +17,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
 import { hyperlink } from "@chat-ui/index.ts";
+import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import {
   applyTurnEvent,
   initialSessionState,
@@ -38,7 +39,7 @@ import {
   classifyElicitationIntent,
   looksLikeAssistantConfirmRequest,
 } from "./elicitation-intent.ts";
-import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
+import { EngineClient } from "./engine-client.ts";
 import { BrowserUrlSchema, defaultOpenBrowser } from "./lib/open-browser.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
@@ -504,9 +505,9 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         },
         traceContext(),
       );
-      if (err instanceof SkEngineError) {
+      if (isEngineError(err)) {
         writeErr(`sk: engine error ${err.status}: ${err.message}\n`);
-      } else if (err instanceof SkTransportError) {
+      } else if (isTransportError(err)) {
         writeErr(`sk: transport error: ${err.message}\n`);
       } else {
         writeErr(`sk: ${err instanceof Error ? err.message : String(err)}\n`);

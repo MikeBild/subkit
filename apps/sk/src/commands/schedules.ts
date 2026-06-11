@@ -5,10 +5,9 @@
 // `sk schedules list` with "Unknown command" — observed in the production
 // session that motivated the runtime-diagnosis work.
 
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList } from "@cli-core/format";
 import { defineCommand } from "citty";
-import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 
@@ -31,10 +30,7 @@ const listCommand = defineCommand({
         schedules as unknown as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });

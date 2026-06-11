@@ -22,12 +22,13 @@
 // JSON object so a CI gate can parse it.
 
 import { exitCodeFor } from "@cli-core/errors";
+import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
-import { EngineClient, SkEngineError, SkTransportError } from "../engine-client.ts";
+import { EngineClient } from "../engine-client.ts";
 
 type CheckStatus = "ok" | "warn" | "blocked";
 
@@ -117,12 +118,11 @@ export const doctorCommand = defineCommand({
         ...(h.db_connected ? {} : { hint: "engine is up but cannot reach the database" }),
       };
     } catch (err) {
-      const detail =
-        err instanceof SkTransportError
-          ? `cannot reach engine — ${err.message}`
-          : err instanceof Error
-            ? err.message
-            : String(err);
+      const detail = isTransportError(err)
+        ? `cannot reach engine — ${err.message}`
+        : err instanceof Error
+          ? err.message
+          : String(err);
       reachability = {
         name: "reachability",
         status: "blocked",
@@ -166,7 +166,7 @@ export const doctorCommand = defineCommand({
             : {}),
         });
       } catch (err) {
-        if (err instanceof SkEngineError && err.status === 401) {
+        if (isEngineError(err) && err.status === 401) {
           results.push({
             name: "authn",
             status: "blocked",
@@ -250,7 +250,7 @@ export const doctorCommand = defineCommand({
           });
         }
       } catch (err) {
-        if (err instanceof SkEngineError && err.status === 404) {
+        if (isEngineError(err) && err.status === 404) {
           // Older engine without the drift endpoint. Fall back to the
           // health flag — we only got here because the field was missing
           // OR true; either way the operator should upgrade.
@@ -260,7 +260,7 @@ export const doctorCommand = defineCommand({
             detail: "engine does not expose /v1/diagnostics/drift",
             hint: "upgrade the engine to a build that includes the #149 fix",
           });
-        } else if (err instanceof SkEngineError && err.status === 403) {
+        } else if (isEngineError(err) && err.status === 403) {
           results.push({
             name: "schema_drift",
             status: "warn",
@@ -346,14 +346,14 @@ export const doctorCommand = defineCommand({
         });
       }
     } catch (err) {
-      if (err instanceof SkEngineError && err.status === 404) {
+      if (isEngineError(err) && err.status === 404) {
         results.push({
           name: "integrations",
           status: "warn",
           detail: "engine does not expose /v1/diagnostics/integrations",
           hint: "upgrade the engine to a build with the connector-health rollup",
         });
-      } else if (err instanceof SkEngineError && err.status === 403) {
+      } else if (isEngineError(err) && err.status === 403) {
         results.push({
           name: "integrations",
           status: "warn",

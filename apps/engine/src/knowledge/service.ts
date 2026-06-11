@@ -79,6 +79,7 @@ function toView(row: typeof knowledgeSources.$inferSelect): KnowledgeSourceView 
     scope: row.scope,
     workflow_id: row.workflow_id,
     status: row.status,
+    last_error: row.last_error,
     source_type: row.source_type,
     source_uri: row.source_uri,
     mime_type: row.mime_type,
@@ -600,6 +601,7 @@ export async function ingestKnowledgeSource(
         mime_type: p.upload.mime ?? null,
         last_refreshed_at: new Date(),
         status: "active",
+        last_error: null,
         updated_at: new Date(),
       })
       .where(eq(knowledgeSources.id, p.knowledge_source_id));

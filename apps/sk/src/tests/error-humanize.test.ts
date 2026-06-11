@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "bun:test";
-import { SkEngineError, SkTransportError } from "../engine-client.ts";
+import { EngineError, TransportError } from "@cli-core/errors.ts";
 import {
   classifyEngineError,
   findErrorHint,
@@ -156,15 +156,15 @@ describe("findErrorHint pattern table", () => {
 });
 
 describe("humanizeRequestError surfaces hints", () => {
-  test("HTTP 401 SkEngineError carries the auth hint", () => {
-    const err = new SkEngineError(401, { code: "unauthorized", message: "invalid_grant" });
+  test("HTTP 401 EngineError carries the auth hint", () => {
+    const err = new EngineError(401, { code: "unauthorized", message: "invalid_grant" });
     const out = humanizeRequestError(err);
     expect(out).toContain("HTTP 401");
     expect(out).toContain("auth refresh");
   });
 
   test("provider-limited errors prefer the provider hint over the budget hint", () => {
-    const err = new SkEngineError(429, {
+    const err = new EngineError(429, {
       code: "llm_provider_limited",
       message:
         "You have reached your specified API usage limits. You will regain access on 2026-05-01 at 00:00 UTC.",
@@ -178,7 +178,7 @@ describe("humanizeRequestError surfaces hints", () => {
   });
 
   test("provider-unavailable errors get a provider-specific hint", () => {
-    const err = new SkEngineError(503, {
+    const err = new EngineError(503, {
       code: "llm_provider_unavailable",
       message: "upstream overloaded",
     });
@@ -187,7 +187,7 @@ describe("humanizeRequestError surfaces hints", () => {
   });
 
   test("pending elicitation conflicts explain that the open dialog must be resolved", () => {
-    const err = new SkEngineError(409, {
+    const err = new EngineError(409, {
       code: "pending_elicitation_blocked",
       message: "resolve the pending dialog before sending another prompt",
     });
@@ -197,7 +197,7 @@ describe("humanizeRequestError surfaces hints", () => {
   });
 
   test("transport error matching a known pattern uses the matched hint", () => {
-    const err = new SkTransportError(new Error("fetch failed: ECONNREFUSED"));
+    const err = new TransportError(new Error("fetch failed: ECONNREFUSED"));
     const out = humanizeRequestError(err);
     expect(out).toContain("cannot reach engine");
     expect(out).toContain("unreachable");
@@ -222,7 +222,7 @@ describe("humanizeRequestError surfaces hints", () => {
       "The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()",
     );
     (cause as { code?: string }).code = "ECONNRESET";
-    const err = new SkTransportError(cause);
+    const err = new TransportError(cause);
     const out = humanizeRequestError(err);
     expect(out).toContain("engine connection dropped");
     expect(out).toContain("recovering");
@@ -240,7 +240,7 @@ describe("humanizeRequestError surfaces hints", () => {
     // listening at all, so the "engine unreachable" framing is right.
     const cause = new Error("fetch failed: ECONNREFUSED");
     (cause as { code?: string }).code = "ECONNREFUSED";
-    const err = new SkTransportError(cause);
+    const err = new TransportError(cause);
     const out = humanizeRequestError(err);
     expect(out).toContain("cannot reach engine");
     expect(out).toContain("unreachable");
@@ -250,7 +250,7 @@ describe("humanizeRequestError surfaces hints", () => {
   test("verbose-fetch suffix is stripped from any transport error message", () => {
     // Even non-transient transport errors should not leak the bun
     // verbose-fetch hint into the operator-visible banner.
-    const err = new SkTransportError(
+    const err = new TransportError(
       new Error(
         "getaddrinfo ENOTFOUND. For more information, pass `verbose: true` in the second argument to fetch()",
       ),

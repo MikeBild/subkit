@@ -1,29 +1,13 @@
 import * as prompts from "@clack/prompts";
-import { exitCodeFor } from "@cli-core/errors";
+import { exitCodeFor, reportCommandError } from "@cli-core/errors";
 import { emitList, printJson, printTable } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { pickId } from "../lib/pick.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/types.ts";
-
-// See workflows.ts:reportError — same contract: jsonMode keeps stderr
-// silent so callers can pipe `sk connectors create --json` into jq.
-// The function then re-throws so the top-level `sk` dispatcher (not
-// this handler) sets `process.exitCode`. Handlers must NEVER call
-// `process.exit` directly — the discipline test in
-// `tests/commands/knowledge-sources-error-discipline.test.ts` enforces
-// the same contract across all create surfaces.
-function reportError(err: unknown, jsonMode: boolean): never {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (jsonMode) {
-    process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
-  } else {
-    process.stderr.write(`${msg}\n`);
-  }
-  throw err instanceof Error ? err : new Error(msg);
-}
 
 function makeClient() {
   const profile = resolveProfile();
@@ -33,6 +17,16 @@ function makeClient() {
     tenant: profile.active_tenant_id,
   });
 }
+
+/** Candidate rows for the interactive connector picker (TTY only). */
+const fetchConnectorRows = async (client: EngineClient) => {
+  const { items } = await client.listConnectors({ limit: 50 });
+  return (items as Record<string, unknown>[]).map((r) => ({
+    id: String(r.id),
+    name: typeof r.name === "string" ? r.name : null,
+    detail: typeof r.slug === "string" ? r.slug : null,
+  }));
+};
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List connectors" },
@@ -50,8 +44,7 @@ const listCommand = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -59,15 +52,19 @@ const listCommand = defineCommand({
 const getCommand = defineCommand({
   meta: { name: "get", description: "Get a connector by id" },
   args: {
-    id: { type: "positional", required: true, description: "Connector id" },
+    id: { type: "positional", required: false, description: "Connector id" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      printJson(await client.getConnector(args.id));
+      const id = await pickId({
+        label: "connector id",
+        argValue: args.id,
+        fetch: () => fetchConnectorRows(client),
+      });
+      printJson(await client.getConnector(id));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -172,8 +169,21 @@ const createCommand = defineCommand({
         ...(probe ? { probe } : {}),
       };
       await renderSummary(summary, { jsonMode });
+
+      // Next-step hint with the fresh id filled in, so the operator
+      // never has to copy-paste it out of the JSON body. OAuth-backed
+      // connectors need the browser handshake before anything else;
+      // everything else is ready for a workflow. Stderr, suppressed in
+      // jsonMode (the --json contract keeps stderr silent).
+      if (!jsonMode && typeof created.id === "string") {
+        const authType = typeof created.auth_type === "string" ? created.auth_type : "";
+        const next = authType.startsWith("oauth")
+          ? `sk auth --connector-id ${created.id}`
+          : `sk "create a workflow using ${typeof created.slug === "string" ? created.slug : args.template}"`;
+        process.stderr.write(`\n${pc.dim("Next:")} ${next}\n`);
+      }
     } catch (err) {
-      reportError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });
@@ -187,17 +197,21 @@ const probeCommand = defineCommand({
     description: "Probe a connector's upstream boundary (alias of `test`).",
   },
   args: {
-    id: { type: "positional", required: true, description: "Connector id" },
+    id: { type: "positional", required: false, description: "Connector id" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      const result = await client.testConnector(args.id);
+      const id = await pickId({
+        label: "connector id",
+        argValue: args.id,
+        fetch: () => fetchConnectorRows(client),
+      });
+      const result = await client.testConnector(id);
       process.stdout.write(`ok: ${result.ok}\n`);
       if (!result.ok) process.exit(1);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -210,15 +224,19 @@ const inspectCommand = defineCommand({
     description: "Inspect a connector resource (alias of `get`).",
   },
   args: {
-    id: { type: "positional", required: true, description: "Connector id" },
+    id: { type: "positional", required: false, description: "Connector id" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      printJson(await client.getConnector(args.id));
+      const id = await pickId({
+        label: "connector id",
+        argValue: args.id,
+        fetch: () => fetchConnectorRows(client),
+      });
+      printJson(await client.getConnector(id));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -236,8 +254,7 @@ const patchCommand = defineCommand({
       if (args.name) body.name = args.name;
       printJson(await client.patchConnector(args.id, body));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -245,21 +262,25 @@ const patchCommand = defineCommand({
 const deleteCommand = defineCommand({
   meta: { name: "delete", description: "Delete a connector" },
   args: {
-    id: { type: "positional", required: true, description: "Connector id" },
+    id: { type: "positional", required: false, description: "Connector id" },
     yes: { type: "boolean", description: "Skip confirmation" },
   },
   async run({ args }) {
-    if (!args.yes) {
-      const confirmed = await prompts.confirm({ message: `Delete connector "${args.id}"?` });
-      if (!confirmed || prompts.isCancel(confirmed)) return;
-    }
     const client = makeClient();
     try {
-      await client.deleteConnector(args.id);
+      const id = await pickId({
+        label: "connector id",
+        argValue: args.id,
+        fetch: () => fetchConnectorRows(client),
+      });
+      if (!args.yes) {
+        const confirmed = await prompts.confirm({ message: `Delete connector "${id}"?` });
+        if (!confirmed || prompts.isCancel(confirmed)) return;
+      }
+      await client.deleteConnector(id);
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -267,16 +288,20 @@ const deleteCommand = defineCommand({
 const testCommand = defineCommand({
   meta: { name: "test", description: "Test a connector connection" },
   args: {
-    id: { type: "positional", required: true, description: "Connector id" },
+    id: { type: "positional", required: false, description: "Connector id" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      const result = await client.testConnector(args.id);
+      const id = await pickId({
+        label: "connector id",
+        argValue: args.id,
+        fetch: () => fetchConnectorRows(client),
+      });
+      const result = await client.testConnector(id);
       process.stdout.write(`ok: ${result.ok}\n`);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -292,8 +317,7 @@ const docsIngestCommand = defineCommand({
     try {
       printJson(await client.ingestConnectorDocs(args.id, { url: args.url }));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -310,8 +334,7 @@ const docsListCommand = defineCommand({
       const { items } = await client.listConnectorDocs(args.id);
       emitList(!!args.json, ["id", "title", "url"], items);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -335,8 +358,7 @@ const docsSearchCommand = defineCommand({
         })),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -353,8 +375,7 @@ const docsDeleteCommand = defineCommand({
       await client.deleteConnectorDoc(args.id, args["doc-id"]);
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });

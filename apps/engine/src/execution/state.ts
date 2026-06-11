@@ -28,6 +28,9 @@ export interface CreateExecutionParams {
   request_source: RequestSource;
   parent_execution_id?: string | null;
   execution_mode?: ExecutionMode;
+  /** The caller-supplied run input — persisted so a rerun can default
+   *  to the original instead of silently running with nothing. */
+  input?: unknown;
 }
 
 export async function createExecution(db: Db, params: CreateExecutionParams): Promise<string> {
@@ -44,6 +47,7 @@ export async function createExecution(db: Db, params: CreateExecutionParams): Pr
         request_source: params.request_source,
         execution_mode: params.execution_mode ?? "dev",
         parent_execution_id: params.parent_execution_id ?? null,
+        input: params.input ?? null,
       })
       .returning({ id: executions.id });
     assertInsertRow(row, "executions");
@@ -184,20 +188,38 @@ export async function insertStepRow(
     kind: string;
   },
 ): Promise<string> {
-  const [row] = await db
-    .insert(executionSteps)
-    .values({
+  // The step event commits atomically with the step row so an SSE
+  // follower never sees a step that isn't persisted (or vice versa).
+  // Payload carries `execution_id` — the outbox tail's per-execution
+  // filter picks step frames up with no extra plumbing.
+  return await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(executionSteps)
+      .values({
+        tenant_id: params.tenant_id,
+        execution_id: params.execution_id,
+        step_key: params.step_key,
+        step_index: params.step_index,
+        kind: params.kind,
+        status: "running",
+        started_at: new Date(),
+      })
+      .returning({ id: executionSteps.id });
+    assertInsertRow(row, "execution_steps");
+    await writeEvent(tx, {
       tenant_id: params.tenant_id,
-      execution_id: params.execution_id,
-      step_key: params.step_key,
-      step_index: params.step_index,
-      kind: params.kind,
-      status: "running",
-      started_at: new Date(),
-    })
-    .returning({ id: executionSteps.id });
-  assertInsertRow(row, "execution_steps");
-  return row.id;
+      channel: "execution.status",
+      type: "execution.step.started",
+      payload: {
+        execution_id: params.execution_id,
+        step_key: params.step_key,
+        step_index: params.step_index,
+        kind: params.kind,
+        status: "running",
+      },
+    });
+    return row.id;
+  });
 }
 
 export async function finalizeStepRow(
@@ -211,18 +233,43 @@ export async function finalizeStepRow(
     result_storage_uri: string | null;
   },
 ): Promise<void> {
-  await db
-    .update(executionSteps)
-    .set({
-      status,
-      finished_at: new Date(),
-      duration_ms: result.duration_ms,
-      retry_count: result.retry_count,
-      output_preview: options.output_preview ?? null,
-      result_preview: options.result_preview,
-      result_storage_uri: options.result_storage_uri,
-      request_meta: result.request_meta ?? null,
-      error: result.error ?? null,
-    })
-    .where(eq(executionSteps.id, step_row_id));
+  await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(executionSteps)
+      .set({
+        status,
+        finished_at: new Date(),
+        duration_ms: result.duration_ms,
+        retry_count: result.retry_count,
+        output_preview: options.output_preview ?? null,
+        result_preview: options.result_preview,
+        result_storage_uri: options.result_storage_uri,
+        request_meta: result.request_meta ?? null,
+        error: result.error ?? null,
+      })
+      .where(eq(executionSteps.id, step_row_id))
+      .returning({
+        tenant_id: executionSteps.tenant_id,
+        execution_id: executionSteps.execution_id,
+        step_key: executionSteps.step_key,
+        step_index: executionSteps.step_index,
+        kind: executionSteps.kind,
+      });
+    const row = updated[0];
+    if (!row) return;
+    await writeEvent(tx, {
+      tenant_id: row.tenant_id,
+      channel: "execution.status",
+      type: "execution.step.finished",
+      payload: {
+        execution_id: row.execution_id,
+        step_key: row.step_key,
+        step_index: row.step_index,
+        kind: row.kind,
+        status,
+        duration_ms: result.duration_ms,
+        ...(result.error ? { error_code: result.error.code } : {}),
+      },
+    });
+  });
 }

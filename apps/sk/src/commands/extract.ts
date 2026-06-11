@@ -1,4 +1,4 @@
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
@@ -59,8 +59,7 @@ export const extractCommand = defineCommand({
       const result = await client.extract(extractBody);
       printJson(result);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });

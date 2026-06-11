@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -11,27 +12,11 @@ import type { KnowledgeSourceIntent, KnowledgeSourceSummary, PlanStep } from "..
 import { detectMime } from "../utils/mime.ts";
 import { uploadPath } from "./files.ts";
 
-// Read/list/search/delete handlers throw rather than calling
-// process.exit — the top-level `sk` dispatcher renders the error and
-// sets `process.exitCode`, which keeps Citty's runCommand composable
-// from test harnesses.
-//
-// The `create` flow honors the `--json` contract: on jsonMode the error
-// is emitted as `{ "error": <msg> }` on stdout (so a downstream `jq`
-// always reads valid JSON), stderr stays silent. The function then
-// re-throws so the dispatcher (not this handler) decides the exit code
-// — the discipline test in
-// `tests/commands/knowledge-sources-error-discipline.test.ts` enforces
-// that handlers never short-circuit via process.exit.
-function reportCreateError(err: unknown, jsonMode: boolean): never {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (jsonMode) {
-    process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
-  } else {
-    process.stderr.write(`${pc.red("error")}: ${msg}\n`);
-  }
-  throw err instanceof Error ? err : new Error(msg);
-}
+// Handlers throw rather than calling process.exit — errors render once
+// via `reportCommandError` (which honors the `--json` contract) and the
+// top-level `sk` dispatcher sets `process.exitCode`. The discipline
+// test in `tests/commands/knowledge-sources-error-discipline.test.ts`
+// enforces that handlers never short-circuit via process.exit.
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List knowledge sources" },
@@ -56,10 +41,7 @@ const listCommand = defineCommand({
       }));
       emitList(false, ["id", "name", "tags", "chunk_count", "status"], rows);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      throw err;
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -76,10 +58,7 @@ const getCommand = defineCommand({
       const ks = await client.getKnowledgeSource(args.id);
       printJson(ks);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      throw err;
+      reportCommandError(err);
     }
   },
 });
@@ -102,10 +81,7 @@ const searchCommand = defineCommand({
       });
       emitList(!!args.json, ["source_name", "title", "rank"], hits as Record<string, unknown>[]);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      throw err;
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -227,7 +203,7 @@ const createCommand = defineCommand({
       };
       await renderSummary(summary, { jsonMode });
     } catch (err) {
-      reportCreateError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });
@@ -263,10 +239,7 @@ const patchCommand = defineCommand({
       const ks = await client.patchKnowledgeSource(args.id, body);
       printJson(ks);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      throw err;
+      reportCommandError(err);
     }
   },
 });
@@ -287,10 +260,7 @@ const analyzeCommand = defineCommand({
       const result = await client.analyzeKnowledgeSource(args.id, { force: Boolean(args.force) });
       printJson(result);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      throw err;
+      reportCommandError(err);
     }
   },
 });
@@ -307,10 +277,7 @@ const deleteCommand = defineCommand({
       await client.deleteKnowledgeSource(args.id);
       process.stdout.write(`${pc.green("deleted")}\n`);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      throw err;
+      reportCommandError(err);
     }
   },
 });

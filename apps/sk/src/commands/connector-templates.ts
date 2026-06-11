@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
+import Fuse from "fuse.js";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 
@@ -25,8 +26,62 @@ const listCommand = defineCommand({
       const { items } = await client.listConnectorTemplates();
       emitList(!!args.json, ["id", "slug", "name", "driver", "source", "version"], items);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
+/**
+ * Pure ranking helper — fuzzy-match a query against the template
+ * catalog. Client-side on purpose: the catalog is ~90 rows, one fetch,
+ * and fuse gives "hub" → hubspot/github-style matching the exact
+ * `?slug=` filter on the list route can't.
+ */
+export function rankTemplates(
+  items: Record<string, unknown>[],
+  query: string,
+  limit: number,
+): Record<string, unknown>[] {
+  const fuse = new Fuse(items, {
+    includeScore: true,
+    threshold: 0.4,
+    ignoreLocation: true,
+    keys: [
+      { name: "slug", weight: 3 },
+      { name: "name", weight: 3 },
+      { name: "aliases", weight: 2 },
+      { name: "keywords", weight: 2 },
+      { name: "tags", weight: 1 },
+      { name: "category", weight: 1 },
+      { name: "description", weight: 1 },
+    ],
+  });
+  return fuse
+    .search(query)
+    .slice(0, limit)
+    .map((r) => ({ ...r.item, score: Number((1 - (r.score ?? 0)).toFixed(2)) }));
+}
+
+const searchCommand = defineCommand({
+  meta: { name: "search", description: "Fuzzy-search connector templates by name/alias/keyword" },
+  args: {
+    query: { type: "positional", required: true, description: "Search text (e.g. 'hub')" },
+    limit: { type: "string", description: "Max results", default: "10" },
+    json: { type: "boolean", description: "JSON output" },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    try {
+      const { items } = await client.listConnectorTemplates();
+      const ranked = rankTemplates(items, String(args.query), Number(args.limit));
+      if (ranked.length === 0 && !args.json) {
+        process.stderr.write(
+          `no templates match '${args.query}' — browse the full catalog with: sk connector-templates list\n`,
+        );
+      }
+      emitList(!!args.json, ["slug", "name", "driver", "category", "score"], ranked);
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -96,8 +151,7 @@ const createCommand = defineCommand({
     try {
       printJson(await client.createConnectorTemplate(await loadTemplateBodyFromArgs(args)));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -122,8 +176,7 @@ const setOauthCommand = defineCommand({
         }),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -139,8 +192,7 @@ const deleteCommand = defineCommand({
       await client.deleteConnectorTemplate(args.id);
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -172,8 +224,7 @@ const recipesListCommand = defineCommand({
       }
       emitList(false, ["slug", "title", "category", "difficulty", "version"], recipes);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -278,8 +329,7 @@ const recipeShowCommand = defineCommand({
         process.stdout.write(`  trigger:      request (on-demand)\n`);
       }
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -314,8 +364,7 @@ const recipePackCommand = defineCommand({
         data.recipes,
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -324,6 +373,7 @@ export const connectorTemplatesCommand = defineCommand({
   meta: { name: "connector-templates", description: "Manage connector templates" },
   subCommands: {
     list: listCommand,
+    search: searchCommand,
     create: createCommand,
     "set-oauth": setOauthCommand,
     delete: deleteCommand,

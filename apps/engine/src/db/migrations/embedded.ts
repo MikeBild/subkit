@@ -63,6 +63,8 @@ import sql0042CliNotificationInbox from "./0042_cli_notification_inbox.sql" with
 import sql0043CredentialsMcpServerOwner from "./0043_credentials_mcp_server_owner.sql" with { type: "text" };
 import sql0044McpOauthStates from "./0044_mcp_oauth_states.sql" with { type: "text" };
 import sql0045ConnectorHealthState from "./0045_connector_health_state.sql" with { type: "text" };
+import sql0046KnowledgeSourceLastError from "./0046_knowledge_source_last_error.sql" with { type: "text" };
+import sql0047ExecutionsInput from "./0047_executions_input.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -133,6 +135,8 @@ const SQL_BY_TAG: Record<string, string> = {
   "0043_credentials_mcp_server_owner": sql0043CredentialsMcpServerOwner,
   "0044_mcp_oauth_states": sql0044McpOauthStates,
   "0045_connector_health_state": sql0045ConnectorHealthState,
+  "0046_knowledge_source_last_error": sql0046KnowledgeSourceLastError,
+  "0047_executions_input": sql0047ExecutionsInput,
 };
 
 const journal = journalMeta as unknown as Journal;

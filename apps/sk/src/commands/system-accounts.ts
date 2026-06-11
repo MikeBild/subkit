@@ -1,5 +1,5 @@
 import * as prompts from "@clack/prompts";
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
@@ -23,8 +23,7 @@ const listCmd = defineCommand({
       const { items } = await client.listSystemAccounts();
       emitList(!!args.json, ["id", "name", "created_at"], items as Record<string, unknown>[]);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -37,8 +36,7 @@ const createCmd = defineCommand({
     try {
       printJson(await client.createSystemAccount({ name: String(args.name) }));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -54,8 +52,7 @@ const deleteCmd = defineCommand({
       await client.deleteSystemAccount(String(args.id));
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });

@@ -3,8 +3,11 @@
 // The job payload carries IDs + upload content. The handler calls
 // ingestKnowledgeSource from the knowledge service.
 
+import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
+import { knowledgeSources } from "../../db/schema/index.ts";
 import { ingestKnowledgeSource } from "../../knowledge/service.ts";
 import { log } from "../../logging/logger.ts";
 
@@ -24,7 +27,12 @@ export interface RegisterIngestKnowledgeOptions {
   db: Db;
 }
 
-async function handleOne(job: Job<IngestKnowledgeJob>, db: Db): Promise<void> {
+/** Process one `knowledge.ingest` job. Exported as the unit seam — the
+ *  worker loop below and the DB-backed tests both drive it. */
+export async function processIngestKnowledgeJob(
+  job: Job<IngestKnowledgeJob>,
+  db: Db,
+): Promise<void> {
   const data = job.data;
   log.queue.job.dequeued({
     msg: "knowledge.ingest job dequeued",
@@ -66,7 +74,56 @@ async function handleOne(job: Job<IngestKnowledgeJob>, db: Db): Promise<void> {
       error: message,
       duration_ms: Date.now() - started,
     });
+    // Surface the failure on the source row so the operator sees it in
+    // `sk knowledge-sources list/get` instead of only in the logs. The
+    // rethrow below keeps pg-boss retry semantics; a later successful
+    // ingest clears both fields again (service.ts sets status='active',
+    // last_error=null).
+    await markIngestFailed(db, data.tenant_id, data.knowledge_source_id, message);
     throw err;
+  }
+}
+
+async function markIngestFailed(
+  db: Db,
+  tenant_id: string,
+  knowledge_source_id: string,
+  message: string,
+): Promise<void> {
+  try {
+    const updated = await db
+      .update(knowledgeSources)
+      .set({ status: "error", last_error: message.slice(0, 2_000), updated_at: new Date() })
+      .where(
+        and(
+          eq(knowledgeSources.tenant_id, tenant_id),
+          eq(knowledgeSources.id, knowledge_source_id),
+        ),
+      )
+      .returning({ id: knowledgeSources.id, status: knowledgeSources.status });
+    if (!updated[0]) return;
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.KNOWLEDGE_SOURCE_UPDATED,
+        resource_type: "knowledge_source",
+        resource_id: knowledge_source_id,
+        result: "success",
+        metadata: { status: "error", last_error: message.slice(0, 2_000) },
+      },
+      db,
+    );
+  } catch (markErr) {
+    // Best-effort: failing to mark the row must not mask the original
+    // ingest error (the rethrow above carries it to pg-boss).
+    log.queue.job.failed({
+      msg: "knowledge.ingest failed to mark source row as error",
+      queue: INGEST_KNOWLEDGE_QUEUE,
+      knowledge_source_id,
+      error: markErr instanceof Error ? markErr.message : String(markErr),
+    });
   }
 }
 
@@ -79,7 +136,7 @@ export async function registerIngestKnowledgeHandler(
     { batchSize: 1, pollingIntervalSeconds: 2 },
     async (jobs: Job<IngestKnowledgeJob>[]) => {
       for (const job of jobs) {
-        await handleOne(job, db);
+        await processIngestKnowledgeJob(job, db);
       }
     },
   );

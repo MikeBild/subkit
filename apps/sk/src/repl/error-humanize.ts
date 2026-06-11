@@ -7,8 +7,8 @@
 // validation panel, the ToolCard failure block, and the prompt-error
 // banner stay consistent.
 
+import { type EngineError, isEngineError, isTransportError } from "@cli-core/errors.ts";
 import { debugLogPath, isDebugVerbose } from "../debug.ts";
-import { type SkEngineError, SkTransportError } from "../engine-client.ts";
 
 const VALID_KINDS = [
   "request",
@@ -286,7 +286,7 @@ function readRetryAt(details: unknown): string | null {
   return typeof retryAt === "string" && retryAt.length > 0 ? retryAt : null;
 }
 
-function providerHint(err: SkEngineError): string | null {
+function providerHint(err: EngineError): string | null {
   if (err.code === "pending_elicitation_blocked") {
     return "resolve the open dialog first — the conversation is paused and waiting for your input";
   }
@@ -323,26 +323,20 @@ function providerHint(err: SkEngineError): string | null {
 
 /**
  * Format any thrown error from the prompt / slash pipeline into a
- * banner the user can act on. Backend `SkEngineError`s become a single
+ * banner the user can act on. Backend `EngineError`s become a single
  * line with the HTTP status, error code, and trace_id; transport
  * errors are flagged as connectivity issues; everything else falls
  * back to the raw message. Pattern-matched hints are preferred when
  * the error message matches a known signature.
  *
- * Uses `err.name` instead of `instanceof` for the SkEngineError /
- * SkTransportError branches: under bun's parallel test runner the
- * `engine-client.ts` module can be loaded by two workers concurrently,
- * yielding two distinct class identities for the same import specifier.
- * `instanceof` then returns false even though the error has the right
- * shape. Checking `name` (set in each constructor) is robust to that.
+ * Branches via the name-based guards from `@cli-core/errors` rather
+ * than `instanceof`: under bun's parallel test runner a module can be
+ * loaded by two workers concurrently, yielding two distinct class
+ * identities for the same import specifier.
  */
 export function humanizeRequestError(err: unknown): string {
-  if (
-    err instanceof Error &&
-    err.name === "SkEngineError" &&
-    typeof (err as SkEngineError).status === "number"
-  ) {
-    const e = err as SkEngineError;
+  if (isEngineError(err)) {
+    const e = err;
     const head = `sk: HTTP ${e.status} ${e.code} — ${e.message || "(no detail)"}`;
     const trace = e.trace_id ? ` · trace_id ${e.trace_id}` : "";
     const matched = providerHint(e) ?? findErrorHint(`${e.code} ${e.message}`);
@@ -353,7 +347,7 @@ export function humanizeRequestError(err: unknown): string {
         : `\n  ↳ ${debugLogPath()} has the request — \`/debug on\` adds bodies, \`/logs\` tails the engine`;
     return `${head}${trace}${hint}`;
   }
-  if (err instanceof Error && err.name === "SkTransportError") {
+  if (isTransportError(err)) {
     // Strip the bun-fetch verbose suffix unconditionally — it's noise
     // for every transport error, not just the socket-drop family.
     const cleanedMessage = stripFetchVerboseHint(err.message);
@@ -375,7 +369,3 @@ export function humanizeRequestError(err: unknown): string {
   }
   return `sk: ${String(err)}`;
 }
-
-// Touch unused imports to keep the type information visible to call
-// sites even though we now match by name + duck-type.
-void SkTransportError;

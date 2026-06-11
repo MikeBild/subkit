@@ -173,7 +173,7 @@ describe("workflows run --input-file", () => {
   });
 
   test("wrong tenant upload fails → upload error propagated", async () => {
-    const { SkEngineError } = await import("../../engine-client.ts");
+    const { EngineError } = await import("@cli-core/errors.ts");
     const client = new EngineClient({
       engine_url: "http://engine.local",
       api_key: "wf_live_wrong",
@@ -187,6 +187,6 @@ describe("workflows run --input-file", () => {
 
     const fp = join(tmpDir, "deny.bin");
     writeFileSync(fp, "x");
-    await expect(uploadPath(client, fp, { quiet: true })).rejects.toBeInstanceOf(SkEngineError);
+    await expect(uploadPath(client, fp, { quiet: true })).rejects.toBeInstanceOf(EngineError);
   });
 });

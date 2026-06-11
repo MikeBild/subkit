@@ -59,7 +59,7 @@ describe("sk binary smoke (v3.5)", () => {
   });
 
   test("`sk settings configure --non-interactive` against an unreachable engine fails loudly with output", () => {
-    // The expected failure mode is a structured SkTransportError
+    // The expected failure mode is a structured TransportError
     // exit, NOT a TTY hang or a React render. We use TCP port 1
     // which always rejects; the response timing is sub-second.
     const r = run([

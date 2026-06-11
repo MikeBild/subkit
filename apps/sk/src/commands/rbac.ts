@@ -1,5 +1,5 @@
 import * as prompts from "@clack/prompts";
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
@@ -29,8 +29,7 @@ const permissionsListCmd = defineCommand({
       }
       for (const p of items) process.stdout.write(`${p}\n`);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -55,8 +54,7 @@ const rolesListCmd = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -69,8 +67,7 @@ const rolesGetCmd = defineCommand({
     try {
       printJson(await client.getRole(String(args.id)));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -88,8 +85,7 @@ const rolesCreateCmd = defineCommand({
         await client.createRole({ name: String(args.name), description: args.description }),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -110,8 +106,7 @@ const rolesDeleteCmd = defineCommand({
       await client.deleteRole(String(args.id));
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -127,8 +122,7 @@ const rolesGrantCmd = defineCommand({
     try {
       printJson(await client.grantRolePermission(String(args.id), String(args.permission)));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -145,8 +139,7 @@ const rolesRevokeCmd = defineCommand({
       await client.revokeRolePermission(String(args.id), String(args.permission));
       process.stdout.write("revoked\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -176,8 +169,7 @@ const usersAssignCmd = defineCommand({
     try {
       printJson(await client.assignUserRole(String(args.id), { role_id: String(args.role) }));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -202,8 +194,7 @@ const grantsListCmd = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -233,8 +224,7 @@ const grantsCreateCmd = defineCommand({
         }),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -255,8 +245,7 @@ const grantsDeleteCmd = defineCommand({
       await client.deleteGrant(String(args.id));
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -281,8 +270,7 @@ const groupsListCmd = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -300,8 +288,7 @@ const groupsCreateCmd = defineCommand({
         await client.createGroup({ name: String(args.name), description: args.description }),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -322,8 +309,7 @@ const groupsDeleteCmd = defineCommand({
       await client.deleteGroup(String(args.id));
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -340,8 +326,7 @@ const groupsAddMemberCmd = defineCommand({
       await client.addGroupMember(String(args.id), String(args.user));
       process.stdout.write("added\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -358,8 +343,7 @@ const groupsRemoveMemberCmd = defineCommand({
       await client.removeGroupMember(String(args.id), String(args.user));
       process.stdout.write("removed\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -376,8 +360,7 @@ const groupsAssignRoleCmd = defineCommand({
       await client.assignGroupRole(String(args.id), String(args.role));
       process.stdout.write("assigned\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -409,8 +392,7 @@ const requestHooksListCmd = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -428,8 +410,7 @@ const requestHooksCreateCmd = defineCommand({
         await client.createRequestHook({ url: String(args.url), event_type: String(args.event) }),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -450,8 +431,7 @@ const requestHooksDeleteCmd = defineCommand({
       await client.deleteRequestHook(String(args.id));
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -497,8 +477,7 @@ const canCmd = defineCommand({
         process.stdout.write(`${result.allow}\n`);
       }
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });

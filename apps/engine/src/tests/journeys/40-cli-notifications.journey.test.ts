@@ -325,7 +325,9 @@ describe("journey 40: sk notifications CLI", () => {
   });
 
   test("AC10: deleting a non-existent channel id returns an error", async () => {
-    const fakeId = "00000000-0000-0000-0000-000000000099";
+    // RFC-4122-compliant — the pinned contract is the tenant-scoped
+    // not-found, not the uuid-shape 400 (see journey 37's note).
+    const fakeId = "00000000-0000-4000-8000-000000000099";
     const { message, captured } = await runExpectError(notificationsCommand, [
       "channels",
       "delete",

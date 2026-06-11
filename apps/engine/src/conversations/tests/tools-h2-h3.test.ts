@@ -90,6 +90,8 @@ describe("conversation tools — registration", () => {
     "get_skill_candidate",
     "list_patch_candidates",
     "get_patch_candidate",
+    "preview_patch_candidate",
+    "dry_run_patch_candidate",
     "list_knowledge_sources",
     "get_knowledge_source",
     "search_knowledge_v2",
@@ -117,6 +119,7 @@ describe("conversation tools — registration", () => {
     "approve_discovery_artifact",
     // Hand-written write tools
     "run_workflow",
+    "rerun_execution",
     "delete_workflow",
     "delete_connector",
     "delete_knowledge_source",

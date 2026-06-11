@@ -11,11 +11,12 @@
 // to enter the REPL.
 
 import * as prompts from "@clack/prompts";
-import { exitCodeFor } from "@cli-core/errors";
+import { exitCodeFor, isEngineError, wasReported } from "@cli-core/errors";
 import { runBrowserLogin, runDeviceFlow } from "@cli-core/index.ts";
 import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { defineCommand, runCommand, showUsage } from "citty";
+import pc from "picocolors";
 import { apiKeysCommand } from "./commands/apikeys.ts";
 import { auditCommand } from "./commands/audit.ts";
 import { authCommand } from "./commands/auth.ts";
@@ -65,6 +66,7 @@ import {
 import { EngineClient } from "./engine-client.ts";
 import type { OutputFormat } from "./headless.ts";
 import { runHeadless } from "./headless.ts";
+import { suggestCommand } from "./lib/suggest.ts";
 import { runMcpProxy } from "./mcp-proxy.ts";
 
 // `runInkRepl` is loaded lazily — its module graph pulls in Ink, React,
@@ -863,6 +865,18 @@ async function dispatch(): Promise<void> {
     await runCommand(sub.command, { rawArgs: rawArgs.slice(1) });
     return;
   }
+  // A near-miss of a known command (e.g. `sk conectors list`) must NOT
+  // fall through to the REPL with the typo as a prompt — fail fast with
+  // a suggestion instead. A quoted natural-language prompt arrives as
+  // one space-containing arg and is unaffected.
+  if (first && !first.startsWith("-") && !first.includes(" ")) {
+    const suggestion = suggestCommand(first, Object.keys(SUB_COMMANDS));
+    if (suggestion) {
+      process.stderr.write(`sk: unknown command '${first}' — did you mean '${suggestion}'?\n`);
+      process.exitCode = 2;
+      return;
+    }
+  }
   await runCommand(mainCommand, { rawArgs });
 }
 
@@ -871,7 +885,19 @@ dispatch().catch((err: unknown) => {
   // typed exit code comes from `exitCodeFor`, which maps EngineError
   // status codes (400/409/422 → 1, others → 2) and TransportError → 2.
   // Setting `process.exitCode` lets the process drain stdout/stderr
-  // naturally; we still print a top-line message for the operator.
-  process.stderr.write(`sk: ${err instanceof Error ? err.message : String(err)}\n`);
+  // naturally.
+  //
+  // Rendering happens exactly once: handlers that route their catch
+  // through `reportCommandError` already printed the error (with the
+  // engine envelope's remediation hint + trace id), so the dispatcher
+  // only renders errors that never passed through it.
+  if (!wasReported(err)) {
+    const lines = [`sk: ${err instanceof Error ? err.message : String(err)}`];
+    if (isEngineError(err)) {
+      if (err.hint) lines.push(pc.dim(`  hint: ${err.hint}`));
+      if (err.trace_id) lines.push(pc.dim(`  trace: ${err.trace_id}`));
+    }
+    process.stderr.write(`${lines.join("\n")}\n`);
+  }
   process.exitCode = exitCodeFor(err);
 });

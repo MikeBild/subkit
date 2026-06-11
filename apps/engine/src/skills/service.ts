@@ -8,16 +8,18 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
-import { skills } from "../db/schema/index.ts";
+import { auditLog, skills } from "../db/schema/index.ts";
+import { HttpError, NotFoundError } from "../http/errors.ts";
 import { log } from "../logging/logger.ts";
-import type {
-  CreateSkillInput,
-  Skill,
-  SkillExamplesBlob,
-  SkillLifecycle,
-  SkillScope,
-  SkillSource,
-  UpdateSkillInput,
+import {
+  type CreateSkillInput,
+  type Skill,
+  type SkillExamplesBlob,
+  type SkillLifecycle,
+  SkillSchema,
+  type SkillScope,
+  type SkillSource,
+  type UpdateSkillInput,
 } from "./types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -267,8 +269,10 @@ export async function updateSkill(
         resource_type: "skill",
         resource_id: id,
         result: "success",
-        before: { lifecycle: prior.lifecycle, version: prior.version, title: prior.title },
-        after: { lifecycle: row.lifecycle, version: row.version, title: row.title },
+        // Full serialized skill view (the GET-route shape) so the audit
+        // trail doubles as restorable version history — see restoreSkill.
+        before: rowToSkill(prior),
+        after: rowToSkill(row),
         metadata: {},
       },
       tx,
@@ -414,6 +418,124 @@ export async function deleteSkill(
     });
     return true;
   });
+}
+
+// ---- version history (read-time aggregation over audit_log) ---------------
+
+export interface SkillHistoryEntry {
+  audit_entry_id: string;
+  version: number | null;
+  title: string | null;
+  lifecycle: string | null;
+  updated_at: string;
+  actor_id: string | null;
+  /** False for `skill.updated` rows written before snapshots were widened
+   *  to the full skill view — those entries are not restorable. */
+  has_snapshot: boolean;
+}
+
+const MAX_HISTORY_ROWS = 500;
+
+function snapshotFromAudit(value: unknown): Skill | null {
+  const parsed = SkillSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+export async function listSkillHistory(
+  tenant_id: string,
+  skill_id: string,
+  exec?: Executor,
+): Promise<SkillHistoryEntry[]> {
+  const db = exec ?? getDb();
+  const tenantConds = [
+    eq(auditLog.tenant_id, tenant_id),
+    eq(auditLog.action, AuditAction.SKILL_UPDATED),
+    eq(auditLog.resource_type, "skill"),
+    eq(auditLog.resource_id, skill_id),
+  ];
+  const rows = await db
+    .select()
+    .from(auditLog)
+    .where(and(...tenantConds))
+    .orderBy(desc(auditLog.ts))
+    .limit(MAX_HISTORY_ROWS);
+  return rows.map((row) => {
+    const snapshot = snapshotFromAudit(row.after);
+    // Pre-snapshot rows carry the legacy thin {lifecycle, version, title}
+    // shape — surface those fields so the history view stays readable.
+    const thin = (row.after ?? {}) as { lifecycle?: unknown; version?: unknown; title?: unknown };
+    return {
+      audit_entry_id: row.id,
+      version: snapshot?.version ?? (typeof thin.version === "number" ? thin.version : null),
+      title: snapshot?.title ?? (typeof thin.title === "string" ? thin.title : null),
+      lifecycle: snapshot?.status ?? (typeof thin.lifecycle === "string" ? thin.lifecycle : null),
+      updated_at: row.ts.toISOString(),
+      actor_id: row.actor_id,
+      has_snapshot: snapshot !== null,
+    };
+  });
+}
+
+/**
+ * Restores a skill to the `after` snapshot of a prior `skill.updated`
+ * audit entry. Delegates the write to `updateSkill`, so the restore
+ * itself bumps `version` and lands its own audit row + snapshot.
+ */
+export async function restoreSkill(
+  tenant_id: string,
+  id: string,
+  audit_entry_id: string,
+  actor_id: string | null,
+  exec?: Executor,
+): Promise<Skill | null> {
+  const db = exec ?? getDb();
+  const rows = await db
+    .select()
+    .from(auditLog)
+    .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.id, audit_entry_id)))
+    .limit(1);
+  const entry = rows[0];
+  if (!entry) throw new NotFoundError("audit entry");
+  if (entry.action !== AuditAction.SKILL_UPDATED || entry.resource_id !== id) {
+    throw HttpError.withEnvelope(
+      409,
+      "conflict",
+      "audit entry does not reference an update of this skill",
+      { hint: `Pick an audit_entry_id from GET /v1/skills/${id}/history.` },
+    );
+  }
+  const snapshot = snapshotFromAudit(entry.after);
+  if (!snapshot) {
+    throw HttpError.withEnvelope(
+      409,
+      "conflict",
+      "audit entry predates full skill snapshots and cannot be restored",
+      { hint: `Pick a history entry with has_snapshot=true from GET /v1/skills/${id}/history.` },
+    );
+  }
+  return await updateSkill(
+    tenant_id,
+    id,
+    {
+      title: snapshot.title,
+      body: snapshot.body,
+      examples: snapshot.examples,
+      best_practices: snapshot.best_practices,
+      pitfalls: snapshot.pitfalls,
+      doc_refs: snapshot.doc_refs,
+      gates_tools: snapshot.gates_tools,
+      activates_when: snapshot.activates_when,
+      input_schema: snapshot.input_schema,
+      output_schema: snapshot.output_schema,
+      side_effects: snapshot.side_effects,
+      idempotency: snapshot.idempotency,
+      maturity: snapshot.maturity,
+      tags: snapshot.tags,
+      status: snapshot.status,
+    },
+    actor_id,
+    db,
+  );
 }
 
 // ---- retrieval helpers (used by Context Enhancement) ----------------------

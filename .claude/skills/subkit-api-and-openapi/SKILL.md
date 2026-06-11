@@ -55,3 +55,17 @@ edit the OpenAPI output by hand.
 - **Do not bypass the audit log** for state-mutating endpoints.
 - **Do not return raw error messages** containing secrets. Use the shared error shape
   in `apps/engine/src/http/` (it redacts via `crypto/redaction`).
+
+## Remediation hints on error envelopes
+
+The error envelope (`HttpErrorBody` in `apps/engine/src/http/errors.ts`, mirrored by
+`ErrorSchema` in `apps/engine/src/api/common-schemas.ts`) carries an optional `hint`
+field that the sk CLI renders verbatim under the error line. Convention:
+
+- Every throw site whose failure has a **non-obvious next step** should set a hint via
+  `HttpError.withEnvelope(status, code, message, { hint })` — name the exact command or
+  endpoint that resolves it (e.g. `GET /v1/workflows/{id}/input-schema`,
+  `sk patch-candidates list`).
+- Hints are operator-facing prose, one sentence, no secrets, no internal file paths.
+- 4xx responses built with bare `c.json({...}, status)` (non-throwing handlers) include
+  the same optional `hint` key so the shape stays uniform.

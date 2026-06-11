@@ -252,7 +252,7 @@ describe("sk mcp-servers add · auth flag validation", () => {
     } catch {
       threw = true;
     }
-    // reportError re-throws so the dispatcher sets the exit code.
+    // reportCommandError re-throws so the dispatcher sets the exit code.
     expect(threw).toBe(true);
     // The request never left the CLI — validation fired first.
     expect(lastCreateBody).toBeNull();
@@ -453,7 +453,7 @@ describe("sk mcp-servers · error discipline", () => {
     } catch {
       threw = true;
     }
-    // reportError re-throws so the dispatcher can set exitCode.
+    // reportCommandError re-throws so the dispatcher can set exitCode.
     expect(threw).toBe(true);
     expect(() => JSON.parse(stdoutBuf.trim())).not.toThrow();
     const out = JSON.parse(stdoutBuf.trim()) as Record<string, unknown>;

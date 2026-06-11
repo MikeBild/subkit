@@ -18,7 +18,7 @@ import {
 } from "../../../execution/index.ts";
 import type { ExecutionRunJob } from "../../../queue/index.ts";
 import { EXECUTION_RUN_QUEUE, getBoss } from "../../../queue/index.ts";
-import { BadRequestError, ForbiddenError, NotFoundError } from "../../errors.ts";
+import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -51,16 +51,18 @@ const runExecutionRoute = createRoute({
   },
 });
 
-async function enforceWorkflowAllowlist(
+/** Enduser allowlist gate for saved-workflow runs. Shared with the
+ *  rerun route (rerun.ts), which targets the original execution's
+ *  workflow. */
+export async function enforceSavedWorkflowAllowlist(
   principal: ResolvedPrincipal,
-  body: z.infer<typeof RuntimeRunBodySchema>,
+  workflow_id: string,
   db: AppEnv["Variables"]["db"],
 ): Promise<void> {
-  if (body.source !== "saved") return;
   if (!principal.roles?.includes("enduser")) return;
 
   const allow = principal.allowed_workflows;
-  const permitted = allow === "all" || (Array.isArray(allow) && allow.includes(body.workflow_id));
+  const permitted = allow === "all" || (Array.isArray(allow) && allow.includes(workflow_id));
   if (permitted) return;
 
   try {
@@ -71,7 +73,7 @@ async function enforceWorkflowAllowlist(
         actor_id: principal.id,
         action: AuditAction.POLICY_DENIED,
         resource_type: "workflow",
-        resource_id: body.workflow_id,
+        resource_id: workflow_id,
         result: "denied",
         reason: "workflow_not_in_allowlist",
         metadata: {
@@ -85,7 +87,18 @@ async function enforceWorkflowAllowlist(
     // Preserve the deny even if audit persistence fails.
   }
 
-  throw new ForbiddenError("workflow_not_in_allowlist");
+  throw HttpError.withEnvelope(403, "forbidden", "workflow_not_in_allowlist", {
+    hint: "your account's allowed_workflows grant does not include this workflow — ask an operator to add it (sk rbac / api-key allowed_workflows) or run a workflow you are granted",
+  });
+}
+
+async function enforceWorkflowAllowlist(
+  principal: ResolvedPrincipal,
+  body: z.infer<typeof RuntimeRunBodySchema>,
+  db: AppEnv["Variables"]["db"],
+): Promise<void> {
+  if (body.source !== "saved") return;
+  return enforceSavedWorkflowAllowlist(principal, body.workflow_id, db);
 }
 
 export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
@@ -164,6 +177,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         request_source: body.request_source ?? "api",
         parent_execution_id: null,
         execution_mode,
+        input: body.input ?? null,
       });
       const trace_id = c.get("trace_id") ?? null;
       const job: ExecutionRunJob = {
@@ -214,9 +228,19 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         code === "draft_invalid" ||
         code === "step_invalid"
       ) {
-        throw new BadRequestError((err as Error).message, {
-          code,
-          ...(details ? { details } : {}),
+        // Remediation hint: a schema violation on a saved run is almost
+        // always "the caller didn't know the expected input shape" —
+        // point at the endpoint that prints it.
+        const hint =
+          code === "input_schema_violation" && body.source === "saved"
+            ? `the workflow declares an input schema — inspect it with GET /v1/workflows/${body.workflow_id}/input-schema (or sk workflows get ${body.workflow_id})`
+            : undefined;
+        throw HttpError.withEnvelope(400, "bad_request", (err as Error).message, {
+          ...(hint ? { hint } : {}),
+          details: {
+            code,
+            ...(details ? { details } : {}),
+          },
         });
       }
       if ((err as Error).message?.startsWith("workflow not found")) {

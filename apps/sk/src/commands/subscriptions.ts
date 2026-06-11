@@ -1,4 +1,4 @@
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
@@ -28,8 +28,7 @@ const listCommand = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -44,8 +43,7 @@ const getCommand = defineCommand({
     try {
       printJson(await client.getSubscription(args.id));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -66,8 +64,7 @@ const createCommand = defineCommand({
         }),
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -83,8 +80,7 @@ const patchCommand = defineCommand({
     try {
       printJson(await client.patchSubscription(args.id, { active: args.active === "true" }));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -100,8 +96,7 @@ const deleteCommand = defineCommand({
       await client.deleteSubscription(args.id);
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -117,8 +112,7 @@ const deliveriesCommand = defineCommand({
       const sub = await client.getSubscription(args.id);
       printJson((sub as Record<string, unknown>).deliveries ?? []);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -135,8 +129,7 @@ const replayCommand = defineCommand({
       await client.replaySubscriptionDelivery(args["sub-id"], args["delivery-id"]);
       process.stdout.write("replayed\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });

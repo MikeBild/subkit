@@ -5,13 +5,14 @@
 //   GET /v1/executions/{id}/steps
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { executionSteps, executions } from "../../../db/schema/index.ts";
+import { events, executionSteps, executions } from "../../../db/schema/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { streamOutboxTail } from "../sse-outbox-tail.ts";
 import {
   ExecListResponse,
   ExecSchema,
@@ -33,6 +34,8 @@ const listExecutionsRoute = createRoute({
         workflow_id: z.string().uuid().optional(),
         status: z.string().optional(),
         request_source: z.string().optional(),
+        /** Lineage filter: list the reruns spawned from this execution. */
+        parent_execution_id: z.string().uuid().optional(),
       })
       .openapi("ListExecutionsQuery"),
   },
@@ -96,6 +99,8 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.status)
       tenantConds.push(eq(executions.status, q.status as typeof executions.$inferSelect.status));
     if (q.request_source) tenantConds.push(eq(executions.request_source, q.request_source));
+    if (q.parent_execution_id)
+      tenantConds.push(eq(executions.parent_execution_id, q.parent_execution_id));
     const rows = await db
       .select()
       .from(executions)
@@ -132,4 +137,45 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
       .orderBy(asc(executionSteps.started_at));
     return c.json({ items: rows.map(serializeStep) }, 200);
   });
+
+  // -----------------------------------------------------------------
+  // GET /v1/executions/{id}/stream — per-execution SSE follow.
+  //
+  // Gated by the resource-scoped `execution:read` middleware above —
+  // following your own run must not require the `audit:read`
+  // compliance permission the tenant-wide /v1/events/stream carries.
+  // Replays the execution's full event history (queued → step frames
+  // → terminal status), then tails live and closes right after the
+  // terminal frame so followers of a finished run exit immediately.
+  // Hand-rolled outside the openapi() surface like /v1/events/stream
+  // (documented in docs/03-input-surfaces.md).
+  // -----------------------------------------------------------------
+  app.get("/v1/executions/:id/stream", async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const id = c.req.param("id");
+    const found = await db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, principal.tenant_id), eq(executions.id, id)))
+      .limit(1);
+    if (!found[0]) throw new NotFoundError("execution");
+    return streamOutboxTail(c, {
+      db,
+      replay: "all",
+      conds: () => [
+        eq(events.tenant_id, principal.tenant_id),
+        eq(events.channel, "execution.status"),
+        sql`${events.payload}->>'execution_id' = ${id}`,
+      ],
+      closeAfter: (row) => TERMINAL_EXECUTION_EVENTS.has(row.type),
+    });
+  });
 }
+
+const TERMINAL_EXECUTION_EVENTS = new Set([
+  "execution.succeeded",
+  "execution.failed",
+  "execution.aborted",
+  "execution.timed_out",
+]);

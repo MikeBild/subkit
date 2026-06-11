@@ -157,6 +157,19 @@ export async function isBootstrapPending(db: Db): Promise<boolean> {
 }
 
 /**
+ * `true` when bootstrap is still pending but the banner token on file
+ * has expired. `GET /v1/setup` surfaces this so `sk init` can explain
+ * the failure mode up front (a retry against `POST /v1/setup` re-mints
+ * the token and reprints the banner).
+ */
+export async function isBootstrapTokenExpired(db: Db): Promise<boolean> {
+  if (!(await isBootstrapPending(db))) return false;
+  const envelope = await readSetting<TokenEnvelope>(db, BOOTSTRAP_TOKEN_KEY);
+  if (!envelope) return false;
+  return envelope.expires_at_ms < now();
+}
+
+/**
  * Mint a fresh 32-byte hex token, persist its sha256 + expiry, and
  * return the plaintext for banner printing.  The plaintext never
  * round-trips through storage.
@@ -251,11 +264,16 @@ export type ConsumeOutcome =
       status: "failed";
       code: ConsumeFailureCode;
       message: string;
+      /** Remediation hint surfaced on the HTTP error envelope. */
+      hint?: string;
     };
 
 export interface ConsumeOptions {
   ip?: string;
   user_agent?: string | null;
+  /** Override stdout for tests — the expired-token path reprints the
+   *  bootstrap banner with a freshly minted token. */
+  stdout?: { write: (chunk: string) => unknown };
 }
 
 /**
@@ -308,8 +326,29 @@ export async function consume(
     return { status: "failed", code: "invalid_token", message: "no active bootstrap token" };
   }
   if (envelope.expires_at_ms < now()) {
-    await emitFailure(db, "token_expired", "bootstrap token expired", opts);
-    return { status: "failed", code: "token_expired", message: "bootstrap token expired" };
+    // Bootstrap is still pending (the sentinel + tenant gate above
+    // passed) — the operator just took longer than the TTL. Mint a
+    // fresh token and reprint the banner so the remediation is "copy
+    // the new command from the engine logs", not "restart the engine".
+    // The plaintext never crosses HTTP — log/stdout only, preserving
+    // the trust model.
+    const reminted = await mintToken(db);
+    (opts.stdout ?? process.stdout).write(
+      buildBootstrapBanner(reminted.plaintext, reminted.expires_at),
+    );
+    logger.warn({
+      module: "onboarding.bootstrap",
+      action: "bootstrap.token_reminted",
+      msg: "expired bootstrap token redeemed; fresh token minted and banner reprinted",
+      expires_at: reminted.expires_at.toISOString(),
+    });
+    await emitFailure(db, "token_expired", "bootstrap token expired — fresh token minted", opts);
+    return {
+      status: "failed",
+      code: "token_expired",
+      message: "bootstrap token expired",
+      hint: "a fresh token was just printed to the engine logs — copy the new `sk init --token <token>` command from there and re-run it",
+    };
   }
   if (!constantTimeEquals(sha256Hex(opts.token), envelope.token_sha256)) {
     await emitFailure(db, "invalid_token", "token mismatch", opts);

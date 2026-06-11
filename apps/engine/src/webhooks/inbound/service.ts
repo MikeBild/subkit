@@ -743,6 +743,7 @@ export async function handleInbound(
     source_ref: null,
     request_source: "webhook",
     parent_execution_id: null,
+    input: inputPayload,
   });
   const job: ExecutionRunJob = {
     tenant_id: row.tenant_id,

@@ -23,6 +23,8 @@ export const KnowledgeSourceSchema = z
     scope: KnowledgeSourceScopeSchema,
     workflow_id: z.string().nullable(),
     status: KnowledgeSourceStatusSchema,
+    /** Terminal ingest-failure message; null when the last ingest succeeded. */
+    last_error: z.string().nullable(),
     source_type: z.string(),
     source_uri: z.string(),
     mime_type: z.string().nullable(),

@@ -1,5 +1,5 @@
 import * as prompts from "@clack/prompts";
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -23,10 +23,7 @@ const listCommand = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -43,10 +40,7 @@ const getCommand = defineCommand({
       const skill = await client.getSkill(args.id);
       printJson(skill);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -65,10 +59,7 @@ const createCommand = defineCommand({
       const skill = await client.createSkill(body);
       printJson(skill);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -93,10 +84,7 @@ const patchCommand = defineCommand({
       const skill = await client.patchSkill(args.id, body);
       printJson(skill);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -113,10 +101,7 @@ const activateCommand = defineCommand({
       await client.activateSkill(args.id);
       process.stdout.write(`${pc.green("activated")}\n`);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -133,10 +118,51 @@ const archiveCommand = defineCommand({
       await client.archiveSkill(args.id);
       process.stdout.write(`${pc.green("archived")}\n`);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
+      reportCommandError(err);
+    }
+  },
+});
+
+const historyCommand = defineCommand({
+  meta: { name: "history", description: "Show a skill's version history (newest first)" },
+  args: {
+    id: { type: "positional", required: true, description: "Skill id" },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    try {
+      const { items } = await client.skillHistory(args.id);
+      emitList(
+        !!args.json,
+        ["audit_entry_id", "version", "title", "lifecycle", "updated_at", "has_snapshot"],
+        items as Record<string, unknown>[],
       );
-      process.exit(exitCodeFor(err));
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
+const restoreCommand = defineCommand({
+  meta: { name: "restore", description: "Restore a skill to a prior audited snapshot" },
+  args: {
+    id: { type: "positional", required: true, description: "Skill id" },
+    to: {
+      type: "string",
+      required: true,
+      description: "audit_entry_id from `sk skills history`",
+    },
+  },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    try {
+      const skill = await client.restoreSkill(args.id, String(args.to));
+      printJson(skill);
+    } catch (err) {
+      reportCommandError(err);
     }
   },
 });
@@ -157,10 +183,7 @@ const deleteCommand = defineCommand({
       await client.deleteSkill(args.id);
       process.stdout.write(`${pc.green("deleted")}\n`);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -175,6 +198,8 @@ export const skillsCommand = defineCommand({
     edit: patchCommand,
     activate: activateCommand,
     archive: archiveCommand,
+    history: historyCommand,
+    restore: restoreCommand,
     delete: deleteCommand,
   },
 });

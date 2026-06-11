@@ -5,10 +5,11 @@
 //
 // Reuses SearchInput, SettingItem, FieldEditor from settings-ui/components.
 
+import { isEngineError } from "@cli-core/errors.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
-import { type EngineClient, SkEngineError } from "../../engine-client.ts";
+import type { EngineClient } from "../../engine-client.ts";
 import { ConfirmModal } from "../components/ConfirmModal.tsx";
 import { FieldEditor } from "../components/FieldEditor.tsx";
 import { SearchInput } from "../components/SearchInput.tsx";
@@ -63,7 +64,7 @@ interface PendingRestart {
 }
 
 function isRestartRequiredError(err: unknown): { message: string } | null {
-  if (err instanceof SkEngineError && err.code === "restart_required") {
+  if (isEngineError(err) && err.code === "restart_required") {
     return { message: err.message };
   }
   return null;

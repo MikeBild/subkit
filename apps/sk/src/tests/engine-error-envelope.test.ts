@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { SkEngineError } from "../engine-client.ts";
+import { EngineError } from "@cli-core/errors.ts";
 
-describe("SkEngineError parses the engine error envelope", () => {
+describe("EngineError parses the engine error envelope", () => {
   test("plain envelope leaves hint/retry_after null", () => {
-    const e = new SkEngineError(404, { code: "not_found", message: "missing" });
+    const e = new EngineError(404, { code: "not_found", message: "missing" });
     expect(e.code).toBe("not_found");
     expect(e.message).toBe("missing");
     expect(e.hint).toBeNull();
@@ -12,7 +12,7 @@ describe("SkEngineError parses the engine error envelope", () => {
   });
 
   test("hint string is captured verbatim", () => {
-    const e = new SkEngineError(409, {
+    const e = new EngineError(409, {
       code: "conflict",
       message: "stale write",
       hint: "refetch the resource",
@@ -21,7 +21,7 @@ describe("SkEngineError parses the engine error envelope", () => {
   });
 
   test("retry_after numeric value is preserved (rounded up)", () => {
-    const e = new SkEngineError(429, {
+    const e = new EngineError(429, {
       code: "llm_provider_limited",
       message: "rate limited",
       retry_after: 12,
@@ -30,7 +30,7 @@ describe("SkEngineError parses the engine error envelope", () => {
   });
 
   test("retry_after fractional is ceiled", () => {
-    const e = new SkEngineError(429, {
+    const e = new EngineError(429, {
       code: "rate_limited",
       message: "slow",
       retry_after: 4.2,
@@ -39,7 +39,7 @@ describe("SkEngineError parses the engine error envelope", () => {
   });
 
   test("retry_after negative is clamped to 0", () => {
-    const e = new SkEngineError(429, {
+    const e = new EngineError(429, {
       code: "rate_limited",
       message: "slow",
       retry_after: -3,
@@ -48,7 +48,7 @@ describe("SkEngineError parses the engine error envelope", () => {
   });
 
   test("non-numeric retry_after is ignored", () => {
-    const e = new SkEngineError(429, {
+    const e = new EngineError(429, {
       code: "rate_limited",
       message: "slow",
       retry_after: "soon" as unknown as number,
@@ -57,7 +57,7 @@ describe("SkEngineError parses the engine error envelope", () => {
   });
 
   test("trace_id and details flow through", () => {
-    const e = new SkEngineError(500, {
+    const e = new EngineError(500, {
       code: "internal_error",
       message: "boom",
       trace_id: "abc-123",
@@ -68,7 +68,7 @@ describe("SkEngineError parses the engine error envelope", () => {
   });
 
   test("missing/empty hint resolves to null (not empty string)", () => {
-    const e = new SkEngineError(400, { code: "bad_request", message: "x", hint: "" });
+    const e = new EngineError(400, { code: "bad_request", message: "x", hint: "" });
     expect(e.hint).toBeNull();
   });
 });

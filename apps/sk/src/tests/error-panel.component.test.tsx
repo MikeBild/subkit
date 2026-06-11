@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
-import { SkEngineError, SkTransportError } from "../engine-client.ts";
+import { EngineError, TransportError } from "@cli-core/errors.ts";
 import { ErrorPanel, errorToPanel } from "../shell/ErrorPanel.tsx";
 import { flush, renderInk } from "./helpers/ink.tsx";
 
@@ -121,8 +121,8 @@ describe("<ErrorPanel>", () => {
 });
 
 describe("errorToPanel routing", () => {
-  test("maps SkEngineError 429 -> rate-limit kind", () => {
-    const err = new SkEngineError(429, {
+  test("maps EngineError 429 -> rate-limit kind", () => {
+    const err = new EngineError(429, {
       code: "llm_provider_limited",
       message: "slow down",
       hint: "raise the quota",
@@ -134,21 +134,21 @@ describe("errorToPanel routing", () => {
     expect((r.payload as { retry_after?: number }).retry_after).toBe(30);
   });
 
-  test("maps SkEngineError 401 -> auth kind", () => {
-    const err = new SkEngineError(401, { code: "unauthorized", message: "bad token" });
+  test("maps EngineError 401 -> auth kind", () => {
+    const err = new EngineError(401, { code: "unauthorized", message: "bad token" });
     const r = errorToPanel(err);
     expect(r.kind).toBe("auth");
     expect((r.payload as { status: number }).status).toBe(401);
   });
 
-  test("maps SkEngineError 500 -> engine kind", () => {
-    const err = new SkEngineError(500, { code: "internal_error", message: "boom" });
+  test("maps EngineError 500 -> engine kind", () => {
+    const err = new EngineError(500, { code: "internal_error", message: "boom" });
     const r = errorToPanel(err);
     expect(r.kind).toBe("engine");
   });
 
-  test("maps SkTransportError -> network kind", () => {
-    const r = errorToPanel(new SkTransportError(new Error("ECONNRESET")));
+  test("maps TransportError -> network kind", () => {
+    const r = errorToPanel(new TransportError(new Error("ECONNRESET")));
     expect(r.kind).toBe("network");
     expect((r.payload as { message: string }).message).toContain("ECONNRESET");
   });

@@ -45,6 +45,9 @@ interface SetupOk {
 interface SetupErrorBody {
   code?: string;
   message?: string;
+  /** Engine remediation hint — e.g. the expired-token path re-mints a
+   *  fresh token and points the operator at the reprinted banner. */
+  hint?: string;
 }
 
 interface SetupPayload {
@@ -129,6 +132,13 @@ export async function runInit(opts: RunInitOptions): Promise<RunInitResult> {
   const code = parsed.code ?? `http_${res.status}`;
   const message = parsed.message ?? `setup failed with HTTP ${res.status}`;
   err(`sk init: ${message} (code=${code}, http=${res.status})\n`);
+  if (parsed.hint) {
+    err(`  hint: ${parsed.hint}\n`);
+  } else if (code === "token_expired") {
+    err(
+      "  hint: the bootstrap token expires 15 minutes after engine boot — the engine reprints a fresh banner on an expired attempt; copy the new `sk init --token <token>` command from the engine logs and re-run it.\n",
+    );
+  }
   if (res.status === 410) {
     err("sk init: this engine has already been bootstrapped — run 'sk login' instead.\n");
   }

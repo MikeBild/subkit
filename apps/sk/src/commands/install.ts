@@ -1,4 +1,4 @@
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
@@ -17,8 +17,7 @@ function makeWizardCommand(name: string, description: string, wizardModule: stri
         const mod = await import(wizardModule);
         await mod.run(client);
       } catch (err) {
-        process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-        process.exit(exitCodeFor(err));
+        reportCommandError(err);
       }
     },
   });

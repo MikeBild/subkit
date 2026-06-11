@@ -71,6 +71,11 @@ export const knowledgeSources = pgTable(
     scope: knowledgeSourceScopeEnum("scope").notNull().default("global"),
     workflow_id: uuid("workflow_id").references(() => workflows.id, { onDelete: "set null" }),
     status: knowledgeSourceStatusEnum("status").notNull().default("active"),
+    // Terminal ingest-failure message. Set (with status='error') by the
+    // knowledge.ingest queue handler on a failed run; cleared on the
+    // next successful ingest. Surfaces on the list/get views so an
+    // operator can see *why* a refresh broke without reading logs.
+    last_error: text("last_error"),
     source_type: text("source_type").notNull(), // file_upload | url | inline | discovery_endpoint_index
     source_uri: text("source_uri").notNull(), // original filename or URL
     // Unified-files pointer. Populated for `source_type='file_upload'`;

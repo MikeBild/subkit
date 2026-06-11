@@ -344,6 +344,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
           {
             code: "content_too_large",
             message: `Content exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes`,
+            hint: `content is ${byteSize} bytes, limit is ${KNOWLEDGE_SOURCE_MAX_BYTES} — split the document into smaller sources`,
           },
           413,
         );
@@ -399,7 +400,10 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
 
     if (file.size > KNOWLEDGE_SOURCE_MAX_BYTES) {
       return c.json(
-        { error: `File exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes` },
+        {
+          error: `File exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes`,
+          hint: `file is ${file.size} bytes, limit is ${KNOWLEDGE_SOURCE_MAX_BYTES} — split the document into smaller sources`,
+        },
         413,
       );
     }

@@ -118,6 +118,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         request_source,
         parent_execution_id,
         execution_mode,
+        input: normalizedInput ?? null,
       });
 
   await auditAwait(

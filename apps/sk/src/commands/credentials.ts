@@ -1,4 +1,4 @@
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
@@ -29,8 +29,7 @@ const listCommand = defineCommand({
       const credentials = (connector.credentials ?? []) as Record<string, unknown>[];
       emitList(!!args.json, ["id", "kind", "created_at"], credentials);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -46,8 +45,7 @@ const rotateCommand = defineCommand({
       await client.rotateCredential(args["credential-id"]);
       process.stdout.write("rotated\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -63,8 +61,7 @@ const deleteCommand = defineCommand({
       await client.deleteCredential(args["credential-id"]);
       process.stdout.write("deleted\n");
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });

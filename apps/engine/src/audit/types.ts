@@ -158,6 +158,7 @@ export const AuditAction = {
   PATCH_CANDIDATE_AUTO_APPLIED: "patch_candidate.auto_applied",
   PATCH_CANDIDATE_APPROVED: "patch_candidate.approved",
   PATCH_CANDIDATE_REJECTED: "patch_candidate.rejected",
+  PATCH_CANDIDATE_DRY_RUN_REQUESTED: "patch_candidate.dry_run_requested",
 
   // Proactive self-healing drift scan lifecycle (admin HTTP, scheduler tick, MCP).
   //  - TRIGGERED is emitted before the scan runs, with metadata.source =

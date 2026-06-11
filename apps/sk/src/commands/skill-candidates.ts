@@ -1,4 +1,4 @@
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -22,10 +22,7 @@ const listCommand = defineCommand({
         items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -42,10 +39,7 @@ const getCommand = defineCommand({
       const candidate = await client.getSkillCandidate(args.id);
       printJson(candidate);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -62,10 +56,7 @@ const approveCommand = defineCommand({
       await client.approveSkillCandidate(args.id);
       process.stdout.write(`${pc.green("approved")}\n`);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -85,10 +76,7 @@ const rejectCommand = defineCommand({
       await client.rejectSkillCandidate(args.id, body);
       process.stdout.write(`${pc.green("rejected")}\n`);
     } catch (err) {
-      process.stderr.write(
-        `${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });

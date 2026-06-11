@@ -20,7 +20,12 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { getDb } from "../../db/client.ts";
-import { BOOTSTRAP_LLM_PROVIDERS, consume, isBootstrapPending } from "../../onboarding/index.ts";
+import {
+  BOOTSTRAP_LLM_PROVIDERS,
+  consume,
+  isBootstrapPending,
+  isBootstrapTokenExpired,
+} from "../../onboarding/index.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
@@ -48,6 +53,10 @@ const SetupResponse = z
 const SetupStatusResponse = z
   .object({
     pending: z.boolean(),
+    /** True when bootstrap is pending but the banner token has expired.
+     *  A POST /v1/setup attempt re-mints the token and reprints the
+     *  banner to the engine logs. */
+    token_expired: z.boolean(),
   })
   .openapi("SetupStatusResponse");
 
@@ -114,7 +123,8 @@ export function registerSetupRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(statusRoute, async (c) => {
     const db = c.get("db") ?? getDb();
     const pending = await isBootstrapPending(db);
-    return c.json({ pending }, 200);
+    const token_expired = pending ? await isBootstrapTokenExpired(db) : false;
+    return c.json({ pending, token_expired }, 200);
   });
 
   app.openapi(postRoute, async (c) => {
@@ -158,7 +168,14 @@ export function registerSetupRoute(app: OpenAPIHono<AppEnv>): void {
         return c.json({ code: "rate_limit_exceeded", message: outcome.message }, 429);
       case "invalid_token":
       case "token_expired":
-        return c.json({ code: outcome.code, message: outcome.message }, 401);
+        return c.json(
+          {
+            code: outcome.code,
+            message: outcome.message,
+            ...(outcome.hint ? { hint: outcome.hint } : {}),
+          },
+          401,
+        );
       case "validation_failed":
         return c.json({ code: "validation_failed", message: outcome.message }, 400);
     }

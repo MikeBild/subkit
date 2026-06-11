@@ -8,29 +8,16 @@
 // Pattern mirrors `connectors.ts`: Citty `defineCommand` with nested
 // `subCommands`, `makeClient()` from `resolveProfile`, `emitList` /
 // `emitOne` / `printJson` from cli-core, and the `--json` silent-stderr
-// contract. Handlers THROW via `reportError` (never `process.exit`); the
+// contract. Handlers THROW via `reportCommandError` (never `process.exit`); the
 // top-level `sk` dispatcher sets the exit code.
 
 import * as prompts from "@clack/prompts";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, emitOne, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { z } from "zod";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
-
-// Same contract as connectors.ts:reportError — jsonMode keeps stderr
-// silent so callers can pipe `sk mcp-servers list --json` into jq, then
-// re-throws so the top-level dispatcher (not this handler) sets
-// `process.exitCode`. Handlers must NEVER call `process.exit` directly.
-function reportError(err: unknown, jsonMode: boolean): never {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (jsonMode) {
-    process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
-  } else {
-    process.stderr.write(`${msg}\n`);
-  }
-  throw err instanceof Error ? err : new Error(msg);
-}
 
 function makeClient() {
   const profile = resolveProfile();
@@ -159,7 +146,7 @@ const addCommand = defineCommand({
       };
       emitOne(jsonMode, (await client.createMcpServer(body)) as Record<string, unknown>);
     } catch (err) {
-      reportError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });
@@ -181,7 +168,7 @@ const setCredentialCommand = defineCommand({
       const body = buildAuthBody(args);
       emitOne(jsonMode, (await client.patchMcpServer(args.id, body)) as Record<string, unknown>);
     } catch (err) {
-      reportError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });
@@ -202,7 +189,7 @@ const listCommand = defineCommand({
         items,
       );
     } catch (err) {
-      reportError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });
@@ -219,7 +206,7 @@ const getCommand = defineCommand({
     try {
       emitOne(jsonMode, (await client.getMcpServer(args.id)) as Record<string, unknown>);
     } catch (err) {
-      reportError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });
@@ -258,7 +245,7 @@ const inspectCommand = defineCommand({
         `\nstatus: ${result.status ?? "?"}${result.last_error ? `  error: ${result.last_error}` : ""}\n`,
       );
     } catch (err) {
-      reportError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });
@@ -353,7 +340,7 @@ const authorizeCommand = defineCommand({
         "timed out waiting for authorization — complete the browser step, then run `sk mcp-servers inspect <id>`\n",
       );
     } catch (err) {
-      reportError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });
@@ -370,7 +357,7 @@ const enableCommand = defineCommand({
     try {
       emitOne(jsonMode, (await client.enableMcpServer(args.id)) as Record<string, unknown>);
     } catch (err) {
-      reportError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });
@@ -390,7 +377,7 @@ const disableCommand = defineCommand({
     try {
       emitOne(jsonMode, (await client.disableMcpServer(args.id)) as Record<string, unknown>);
     } catch (err) {
-      reportError(err, jsonMode);
+      reportCommandError(err, { json: jsonMode });
     }
   },
 });
@@ -411,7 +398,7 @@ const removeCommand = defineCommand({
       await client.deleteMcpServer(args.id);
       process.stdout.write("deleted\n");
     } catch (err) {
-      reportError(err, false);
+      reportCommandError(err);
     }
   },
 });

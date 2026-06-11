@@ -17,6 +17,7 @@ import {
   DIAGNOSTICS_LOG_TAIL_PATH,
 } from "@cli-core/diagnostics-paths.ts";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+import { EngineError, TransportError } from "@cli-core/errors.ts";
 import { AUDIT_SOURCE_HEADER, type AuditSource } from "@shared/audit-source.ts";
 import { z } from "zod";
 
@@ -443,60 +444,6 @@ export interface RunExecutionResponse {
   warnings?: unknown[];
 }
 
-export class SkEngineError extends Error {
-  readonly status: number;
-  readonly code: string;
-  readonly trace_id: string | null;
-  readonly hint: string | null;
-  readonly retry_after: number | null;
-  readonly details: unknown;
-  readonly body: unknown;
-  constructor(status: number, body: unknown) {
-    const parsed =
-      typeof body === "object" && body !== null
-        ? (body as {
-            code?: unknown;
-            message?: unknown;
-            trace_id?: unknown;
-            hint?: unknown;
-            retry_after?: unknown;
-            details?: unknown;
-          })
-        : null;
-    const msg =
-      parsed && typeof parsed.message === "string"
-        ? parsed.message
-        : typeof body === "string"
-          ? body
-          : `HTTP ${status}`;
-    super(msg);
-    this.name = "SkEngineError";
-    this.status = status;
-    this.code = parsed && typeof parsed.code === "string" ? parsed.code : `http_${status}`;
-    this.trace_id =
-      parsed && typeof parsed.trace_id === "string" && parsed.trace_id.length > 0
-        ? parsed.trace_id
-        : null;
-    this.hint =
-      parsed && typeof parsed.hint === "string" && parsed.hint.length > 0 ? parsed.hint : null;
-    this.retry_after =
-      parsed && typeof parsed.retry_after === "number" && Number.isFinite(parsed.retry_after)
-        ? Math.max(0, Math.ceil(parsed.retry_after))
-        : null;
-    this.details = parsed?.details ?? null;
-    this.body = body;
-  }
-}
-
-export class SkTransportError extends Error {
-  override readonly cause: unknown;
-  constructor(cause: unknown) {
-    super(cause instanceof Error ? cause.message : String(cause));
-    this.name = "SkTransportError";
-    this.cause = cause;
-  }
-}
-
 export class EngineClient {
   private readonly base: string;
   private readonly apiKey: string;
@@ -597,7 +544,7 @@ export class EngineClient {
         },
         ctx,
       );
-      throw new SkTransportError(cause);
+      throw new TransportError(cause);
     }
     const text = await res.text();
     const duration_ms = Date.now() - startedAt;
@@ -625,7 +572,7 @@ export class EngineClient {
         },
         { ...ctx, trace_id: ctx.trace_id ?? trace_id },
       );
-      throw new SkEngineError(res.status, parsed);
+      throw new EngineError(res.status, parsed);
     }
     debugLog(
       "http.response",
@@ -721,7 +668,7 @@ export class EngineClient {
         },
         ctx,
       );
-      throw new SkTransportError(cause);
+      throw new TransportError(cause);
     }
   }
 
@@ -777,7 +724,7 @@ export class EngineClient {
         },
         ctx,
       );
-      throw new SkTransportError(cause);
+      throw new TransportError(cause);
     }
     const trace_id = extractTraceId(res.headers);
     if (!res.ok) {
@@ -801,7 +748,7 @@ export class EngineClient {
         },
         { ...ctx, trace_id: ctx.trace_id ?? trace_id },
       );
-      throw new SkEngineError(res.status, parsed);
+      throw new EngineError(res.status, parsed);
     }
     debugLog(
       "sse.open",
@@ -1011,11 +958,11 @@ export class EngineClient {
         signal: ac.signal,
       });
     } catch (err) {
-      throw new SkTransportError(err);
+      throw new TransportError(err);
     }
     if (!res.ok || !res.body) {
       cancel();
-      throw new SkTransportError(new Error(`oauth events stream returned HTTP ${res.status}`));
+      throw new TransportError(new Error(`oauth events stream returned HTTP ${res.status}`));
     }
     // Consume in background — caller awaits `cancel()` indirectly via
     // `onSucceeded` or signal. The reader loop self-terminates on
@@ -1412,8 +1359,8 @@ export class EngineClient {
       } catch (retryErr) {
         if (
           retryErr instanceof Error &&
-          retryErr.name === "SkEngineError" &&
-          (retryErr as SkEngineError).code === "elicitation_already_resolved"
+          retryErr.name === "EngineError" &&
+          (retryErr as EngineError).code === "elicitation_already_resolved"
         ) {
           // First POST already landed; the elicitation row moved on.
           // Pull the latest detail and synthesize a recovered outcome.
@@ -1604,7 +1551,7 @@ export class EngineClient {
         },
         ctx,
       );
-      throw new SkTransportError(cause);
+      throw new TransportError(cause);
     }
     const text = await res.text();
     const parsed = parseResponseBody(text);
@@ -1630,7 +1577,7 @@ export class EngineClient {
         },
         { ...ctx, trace_id: ctx.trace_id ?? trace_id },
       );
-      throw new SkEngineError(res.status, parsed);
+      throw new EngineError(res.status, parsed);
     }
     debugLog(
       "http.response",
@@ -1707,11 +1654,11 @@ export class EngineClient {
     try {
       res = await this.fetchImpl(fullUrl, init);
     } catch (cause) {
-      throw new SkTransportError(cause);
+      throw new TransportError(cause);
     }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new SkEngineError(res.status, parseResponseBody(text));
+      throw new EngineError(res.status, parseResponseBody(text));
     }
     // Surface a final "complete" tick for callers wiring progress UIs.
     if (onProgress) onProgress(0, 0);
@@ -1756,14 +1703,14 @@ export class EngineClient {
     try {
       res = await this.fetchImpl(url, { method: "GET", headers });
     } catch (cause) {
-      throw new SkTransportError(cause);
+      throw new TransportError(cause);
     }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new SkEngineError(res.status, parseResponseBody(text));
+      throw new EngineError(res.status, parseResponseBody(text));
     }
     if (!res.body) {
-      throw new SkTransportError(new Error("download response has no body"));
+      throw new TransportError(new Error("download response has no body"));
     }
     return {
       filename: meta.filename,
@@ -2045,6 +1992,14 @@ export class EngineClient {
   deleteSkill(id: string): Promise<void> {
     return this.request("DELETE", `/v1/skills/${encodeURIComponent(id)}`);
   }
+  skillHistory(id: string): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", `/v1/skills/${encodeURIComponent(id)}/history`);
+  }
+  restoreSkill(id: string, audit_entry_id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/skills/${encodeURIComponent(id)}/restore`, {
+      audit_entry_id,
+    });
+  }
 
   // -------------------- Skill Candidates --------------------
   listSkillCandidates(
@@ -2085,6 +2040,12 @@ export class EngineClient {
   }
   streamExecution(id: string): Promise<Response> {
     return this.stream(`/v1/executions/${encodeURIComponent(id)}/stream`);
+  }
+  rerunExecution(
+    id: string,
+    body: { input?: unknown; async?: boolean } = {},
+  ): Promise<RunExecutionResponse> {
+    return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/rerun`, body);
   }
 
   // -------------------- Patch Candidates --------------------
@@ -2424,7 +2385,7 @@ export class EngineClient {
     const res = await this.fetchImpl(`${this.base}/v1/extract`, init);
     const text = await res.text();
     const parsed = parseResponseBody(text);
-    if (!res.ok) throw new SkEngineError(res.status, parsed);
+    if (!res.ok) throw new EngineError(res.status, parsed);
     return (parsed ?? {}) as Record<string, unknown>;
   }
 

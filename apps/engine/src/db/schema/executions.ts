@@ -45,6 +45,10 @@ export const executions = pgTable(
     }),
     source_kind: text("source_kind").notNull().default("saved"),
     source_ref: jsonb("source_ref").$type<Record<string, unknown> | null>(),
+    // The run input as supplied by the caller (null when the run had
+    // none). Persisted so POST /v1/executions/{id}/rerun can default to
+    // the original input instead of silently re-running with nothing.
+    input: jsonb("input"),
     status: executionStatusEnum("status").notNull(),
     request_source: text("request_source").notNull(),
     execution_mode: executionModeEnum("execution_mode").notNull(),

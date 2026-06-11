@@ -308,6 +308,12 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
     reason: "Confirms when running outside dev",
   },
   {
+    name: "rerun_execution",
+    defaultMode: "confirm_before_execution",
+    confirmationKind: "external_call",
+    reason: "Re-invokes the workflow's external connector calls",
+  },
+  {
     name: "dry_run_workflow",
     defaultMode: "auto",
     computeModeFromInput: confirmIfUnresolvedPlaceholders,
@@ -380,6 +386,8 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   { name: "get_skill", defaultMode: "auto" },
   { name: "get_skill_candidate", defaultMode: "auto" },
   { name: "get_patch_candidate", defaultMode: "auto" },
+  { name: "preview_patch_candidate", defaultMode: "auto" },
+  { name: "dry_run_patch_candidate", defaultMode: "auto" },
   { name: "get_discovery_artifact", defaultMode: "auto" },
   { name: "get_audit_entry", defaultMode: "auto" },
   { name: "get_role", defaultMode: "auto" },

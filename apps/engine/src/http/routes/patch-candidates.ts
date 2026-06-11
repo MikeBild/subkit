@@ -14,8 +14,14 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { patchCandidates } from "../../db/schema/index.ts";
-import { approvePatchCandidate, rejectPatchCandidate } from "../../self-healing/index.ts";
-import { ConflictError, NotFoundError } from "../errors.ts";
+import {
+  approvePatchCandidate,
+  dryRunPatchCandidate,
+  PatchProposalSchema,
+  previewPatchCandidate,
+  rejectPatchCandidate,
+} from "../../self-healing/index.ts";
+import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -108,6 +114,75 @@ const approveRoute = createRoute({
   },
 });
 
+const StepShapeSchema = z
+  .object({
+    id: z.string(),
+    kind: z.enum(["request", "transform"]),
+    data_selector: z.string().optional(),
+    expression: z.string().optional(),
+  })
+  .openapi("PatchCandidateStepShape");
+
+const PreviewResponse = z
+  .object({
+    candidate_id: z.string(),
+    workflow_id: z.string(),
+    classification: z.enum(["safe", "unsafe"]),
+    status: z.enum(["proposed", "applied", "rejected", "superseded"]),
+    drift_summary: z.string().nullable(),
+    proposal: PatchProposalSchema.nullable(),
+    fixture_available: z.boolean(),
+    proposal_dry_run: z.record(z.string(), z.unknown()).nullable(),
+    before_step: StepShapeSchema.nullable(),
+    after_step: StepShapeSchema.nullable(),
+    changed_paths: z.array(z.string()),
+  })
+  .openapi("PatchCandidatePreview");
+
+const previewRoute = createRoute({
+  method: "get",
+  path: "/v1/patch-candidates/{id}/preview",
+  tags: ["patch-candidates"],
+  summary: "Human-readable before/after preview of a patch candidate",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: { description: "OK", content: { "application/json": { schema: PreviewResponse } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const DryRunResponse = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().nullable(),
+    value_preview: z.unknown(),
+    fixture_source: z.enum(["recorded", "synthesized"]),
+  })
+  .openapi("PatchCandidateDryRunResponse");
+
+const dryRunRoute = createRoute({
+  method: "post",
+  path: "/v1/patch-candidates/{id}/dry-run",
+  tags: ["patch-candidates"],
+  summary: "Replay a patch candidate against a recorded or synthesized fixture",
+  description:
+    "Never mutates the candidate's status — this is a pre-approval check. Uses the fixture recorded at proposal time, or synthesizes one from the failing step's persisted request/response material.",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "Dry-run ran",
+      content: { "application/json": { schema: DryRunResponse } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "No fixture / step material to replay against",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
 const rejectRoute = createRoute({
   method: "post",
   path: "/v1/patch-candidates/{id}/reject",
@@ -145,6 +220,13 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/patch-candidates/:id/reject", async (c, next) => {
     return requirePermission("workflow:write")(c, next);
   });
+  // Preview + dry-run are read-side: neither mutates the candidate.
+  app.use("/v1/patch-candidates/:id/preview", async (c, next) => {
+    return requirePermission("workflow:read")(c, next);
+  });
+  app.use("/v1/patch-candidates/:id/dry-run", async (c, next) => {
+    return requirePermission("workflow:read")(c, next);
+  });
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
@@ -176,6 +258,51 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(serialize(row), 200);
   });
 
+  app.openapi(previewRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const preview = await previewPatchCandidate(principal.tenant_id, id, db);
+    if (!preview) throw new NotFoundError("patch_candidate");
+    // biome-ignore lint/suspicious/noExplicitAny: unknown-vs-union widening at the OpenAPI boundary
+    return c.json(preview as any, 200);
+  });
+
+  app.openapi(dryRunRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const outcome = await dryRunPatchCandidate(
+      { tenant_id: principal.tenant_id, candidate_id: id, actor_id: principal.id },
+      db,
+    );
+    if (outcome.status === "not_found") throw new NotFoundError("patch_candidate");
+    if (outcome.status === "no_proposal" || outcome.status === "no_step") {
+      throw HttpError.withEnvelope(
+        409,
+        "conflict",
+        "patch candidate carries no replayable step material",
+        {
+          hint: "this candidate came from a proactive scan with no failing-step snapshot — run the workflow once so the engine captures one, then re-scan",
+        },
+      );
+    }
+    if (outcome.status === "no_fixture") {
+      throw HttpError.withEnvelope(409, "conflict", "no execution fixture to replay against", {
+        hint: "run the workflow once so the engine captures a fixture, then retry the dry-run",
+      });
+    }
+    return c.json(
+      {
+        ok: outcome.ok,
+        error: outcome.error,
+        value_preview: outcome.value_preview,
+        fixture_source: outcome.fixture_source,
+      },
+      200,
+    );
+  });
+
   app.openapi(approveRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -188,8 +315,13 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const row = rows[0];
     if (!row) throw new NotFoundError("patch_candidate");
     if (row.status !== "proposed") {
-      throw new ConflictError(
+      throw HttpError.withEnvelope(
+        409,
+        "conflict",
         `patch candidate is ${row.status}; only 'proposed' candidates can be approved`,
+        {
+          hint: "the candidate already reached a terminal status — a fresh drift scan may have superseded it; sk patch-candidates list shows what is still open",
+        },
       );
     }
     const versionId = await approvePatchCandidate(
@@ -212,8 +344,13 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const row = rows[0];
     if (!row) throw new NotFoundError("patch_candidate");
     if (row.status !== "proposed") {
-      throw new ConflictError(
+      throw HttpError.withEnvelope(
+        409,
+        "conflict",
         `patch candidate is ${row.status}; only 'proposed' candidates can be rejected`,
+        {
+          hint: "the candidate already reached a terminal status — nothing to do; sk patch-candidates list shows what is still open",
+        },
       );
     }
     const ok = await rejectPatchCandidate(

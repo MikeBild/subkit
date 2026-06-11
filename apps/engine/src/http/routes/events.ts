@@ -9,8 +9,7 @@
 //                       channel and/or type.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
-import { streamSSE } from "hono/streaming";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { ErrorSchema, paginatedResponse } from "../../api/common-schemas.ts";
 import { AuditAction, audit } from "../../audit/index.ts";
 import { writeEvent } from "../../db/events.ts";
@@ -21,6 +20,7 @@ import { BadRequestError, ForbiddenError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+import { streamOutboxTail } from "./sse-outbox-tail.ts";
 
 const EventSchema = z
   .object({
@@ -181,43 +181,19 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   // -----------------------------------------------------------------
-  // GET /v1/events/stream — tenant-wide SSE tail.
-  //
-  // Hand-rolled (outside the openapi() surface) because streamSSE
-  // commandeers the response. On connect we:
-  //
-  //   1. Flush the last N outbox rows for the tenant. When the client
-  //      supplied `Last-Event-ID`, we replay from the event immediately
-  //      after that id instead.
-  //   2. Poll the outbox every 250 ms for new rows. The poll is cheap
-  //      because the events table is indexed on `(tenant_id, id)` and
-  //      the query is always a `WHERE id > :cursor`.
-  //   3. Terminate on `AbortSignal` — the node-server layer fires it
-  //      when the client disconnects, so a closed client frees the
-  //      polling loop immediately.
-  //
-  // The endpoint purposely does not plug into the pub/sub emitter.
-  // Polling the outbox keeps replay and live semantics identical, and
-  // the small constant-time poll avoids a second lifecycle to babysit
-  // in the streaming code path.
+  // GET /v1/events/stream — tenant-wide SSE tail over the outbox.
+  // Replay + poll semantics live in the shared `streamOutboxTail`
+  // helper (also backing GET /v1/executions/{id}/stream).
   // -----------------------------------------------------------------
   app.get("/v1/events/stream", async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
     const tenantId = principal.tenant_id;
 
-    const lastHeader = c.req.header("last-event-id");
-    const lastEventId = lastHeader ? Number.parseInt(lastHeader, 10) : null;
-    const replayLimit = 50;
-
     // Optional narrowing filters. `execution_id` extracts
     // `payload->>'execution_id'` from the JSONB column — every event
-    // emitted by `apps/engine/src/execution/state.ts` carries that key,
-    // so the filter mirrors what `sk executions tail <id>` asks for
-    // without the CLI having to poll the executions row. `channel` and
-    // `type` parity with the `GET /v1/events` route so a client tailing
-    // a single execution can also filter to "only the started/completed
-    // events" or "only the workflow.chain channel".
+    // emitted by `apps/engine/src/execution/state.ts` carries that key.
+    // `channel` and `type` parity with the `GET /v1/events` route.
     const rawExecutionId = c.req.query("execution_id") ?? null;
     if (rawExecutionId !== null) {
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -228,87 +204,18 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const channelFilter = c.req.query("channel") ?? null;
     const typeFilter = c.req.query("type") ?? null;
 
-    const tenantFilterConds = () => {
-      const tenantConds = [eq(events.tenant_id, tenantId)];
-      if (rawExecutionId) {
-        tenantConds.push(sql`${events.payload}->>'execution_id' = ${rawExecutionId}`);
-      }
-      if (channelFilter) tenantConds.push(eq(events.channel, channelFilter));
-      if (typeFilter) tenantConds.push(eq(events.type, typeFilter));
-      return tenantConds;
-    };
-
-    return streamSSE(c, async (stream) => {
-      // Compose a serialisable frame from an outbox row.
-      const write = async (row: { id: number; type: string; payload: unknown }) => {
-        await stream.writeSSE({
-          id: String(row.id),
-          event: row.type,
-          data: JSON.stringify(row.payload ?? {}),
-        });
-      };
-
-      // 1. Replay. When a `Last-Event-ID` was supplied we replay every
-      //    row strictly after it; otherwise we flush the most-recent
-      //    `replayLimit` rows so fresh clients see recent history.
-      let cursor = 0;
-      if (Number.isFinite(lastEventId) && lastEventId !== null && lastEventId >= 0) {
-        const replay = await db
-          .select()
-          .from(events)
-          .where(and(...tenantFilterConds(), gt(events.id, lastEventId)))
-          .orderBy(asc(events.id))
-          .limit(1_000);
-        for (const row of replay) {
-          await write(row);
-          cursor = row.id;
+    return streamOutboxTail(c, {
+      db,
+      replay: "recent",
+      conds: () => {
+        const tenantConds = [eq(events.tenant_id, tenantId)];
+        if (rawExecutionId) {
+          tenantConds.push(sql`${events.payload}->>'execution_id' = ${rawExecutionId}`);
         }
-        if (cursor === 0) cursor = lastEventId;
-      } else {
-        const recent = await db
-          .select()
-          .from(events)
-          .where(and(...tenantFilterConds()))
-          .orderBy(desc(events.id))
-          .limit(replayLimit);
-        const ordered = recent.slice().reverse();
-        for (const row of ordered) {
-          await write(row);
-          cursor = Math.max(cursor, row.id);
-        }
-      }
-
-      // 2. Announce the current tail so fresh clients know where they
-      //    are. Mirrors the `hello` frame documented in
-      //    docs/03-input-surfaces.md.
-      await stream.writeSSE({
-        event: "hello",
-        data: JSON.stringify({ cursor }),
-      });
-
-      // 3. Poll loop. Stops as soon as the client disconnects.
-      const signal = c.req.raw.signal;
-      while (!signal.aborted) {
-        const newRows = await db
-          .select()
-          .from(events)
-          .where(and(...tenantFilterConds(), gt(events.id, cursor)))
-          .orderBy(asc(events.id))
-          .limit(200);
-        for (const row of newRows) {
-          await write(row);
-          cursor = row.id;
-        }
-        // Short poll cadence so live tests don't have to wait seconds
-        // between ticks.
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, 250);
-          signal.addEventListener("abort", () => {
-            clearTimeout(timer);
-            resolve();
-          });
-        });
-      }
+        if (channelFilter) tenantConds.push(eq(events.channel, channelFilter));
+        if (typeFilter) tenantConds.push(eq(events.type, typeFilter));
+        return tenantConds;
+      },
     });
   });
 }

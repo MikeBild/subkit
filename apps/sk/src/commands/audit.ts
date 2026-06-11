@@ -1,5 +1,5 @@
 import { createWriteStream } from "node:fs";
-import { exitCodeFor } from "@cli-core/errors";
+import { exitCodeFor, reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { readSse } from "@cli-core/index.ts";
 import { defineCommand } from "citty";
@@ -60,8 +60,7 @@ const queryCmd = defineCommand({
         result.items as Record<string, unknown>[],
       );
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -76,8 +75,7 @@ const showCmd = defineCommand({
     try {
       printJson(await client.getAuditEvent(String(args.id)));
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });
@@ -133,8 +131,7 @@ const exportCmd = defineCommand({
         (dest as ReturnType<typeof createWriteStream>).end();
       }
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err);
     }
   },
 });

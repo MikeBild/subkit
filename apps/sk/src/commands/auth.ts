@@ -5,7 +5,7 @@
 // Mirror that shape from the CLI: `sk auth --connector-id X` prints the
 // authorization URL the user opens in a browser to (re)approve access.
 
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
@@ -74,8 +74,7 @@ export const authCommand = defineCommand({
       }
       process.stdout.write(`then open this URL to authorize:\n  ${url}\n`);
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });

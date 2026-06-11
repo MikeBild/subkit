@@ -100,8 +100,8 @@ describe("integration: attach flow (upload + link)", () => {
     expect((calls[1]?.body as Record<string, unknown>)?.resource_type).toBe("conversation");
   });
 
-  test("wrong tenant on link call → 403 SkEngineError", async () => {
-    const { SkEngineError } = await import("../../engine-client.ts");
+  test("wrong tenant on link call → 403 EngineError", async () => {
+    const { EngineError } = await import("@cli-core/errors.ts");
 
     const fp = join(tmpDir, "fixture2.txt");
     writeFileSync(fp, "data");
@@ -141,11 +141,11 @@ describe("integration: attach flow (upload + link)", () => {
     await uploadPath(client, fp, { quiet: true });
     await expect(
       client.linkFile(FID, { resource_type: "conversation", resource_id: "other-conv" }),
-    ).rejects.toBeInstanceOf(SkEngineError);
+    ).rejects.toBeInstanceOf(EngineError);
   });
 
   test("upload failure short-circuits before link is called", async () => {
-    const { SkEngineError } = await import("../../engine-client.ts");
+    const { EngineError } = await import("@cli-core/errors.ts");
     let linkCalled = false;
 
     const fp = join(tmpDir, "fail.txt");
@@ -166,7 +166,7 @@ describe("integration: attach flow (upload + link)", () => {
     });
 
     // uploadPath throws on engine error.
-    await expect(uploadPath(client, fp, { quiet: true })).rejects.toBeInstanceOf(SkEngineError);
+    await expect(uploadPath(client, fp, { quiet: true })).rejects.toBeInstanceOf(EngineError);
     // The link endpoint must never have been reached.
     expect(linkCalled).toBe(false);
   });

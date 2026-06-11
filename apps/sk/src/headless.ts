@@ -9,6 +9,7 @@
 //   1 — engine returned an error (validation, bad request)
 //   2 — auth / permission / network failure
 
+import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import {
   applyTurnEvent,
   initialSessionState,
@@ -28,7 +29,7 @@ import {
   newDebugTurnId,
   serializeDebugError,
 } from "./debug.ts";
-import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
+import { EngineClient } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { saveSessionMetadata } from "./sessions.ts";
@@ -75,13 +76,13 @@ function writeLine(stream: { write: (s: string) => void } | undefined, line: str
 }
 
 function sanitizeError(err: unknown): { status: number; message: string; exit: 1 | 2 } {
-  if (err instanceof SkEngineError) {
+  if (isEngineError(err)) {
     // 400/422 → exit 1 (validation). 401/403/404 → exit 2 (auth/not-found).
     const exit: 1 | 2 =
       err.status >= 400 && err.status < 500 && err.status !== 401 && err.status !== 403 ? 1 : 2;
     return { status: err.status, message: err.message, exit };
   }
-  if (err instanceof SkTransportError) {
+  if (isTransportError(err)) {
     return { status: 0, message: err.message, exit: 2 };
   }
   const msg = err instanceof Error ? err.message : String(err);

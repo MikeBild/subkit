@@ -310,7 +310,11 @@ describe("journey 37: sk apikeys CLI", () => {
 
   test("wrong tenant: key id from a different context is not found by rotate", async () => {
     // Use a synthetic uuid that doesn't exist in this tenant.
-    const fakeId = "00000000-0000-0000-0000-000000000099";
+    // RFC-4122-compliant (version 4 / variant 8) so the route's
+    // IdParam uuid validation passes and the tenant-scoped lookup is
+    // what fails — the contract this test pins is "unknown id → not
+    // found", not "malformed uuid → 400".
+    const fakeId = "00000000-0000-4000-8000-000000000099";
     const { message, captured } = await runExpectError(apiKeysCommand, ["rotate", fakeId]);
     const combined = `${message}\n${captured.stderr}`.toLowerCase();
     expect(

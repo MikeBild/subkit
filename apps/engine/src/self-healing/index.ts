@@ -2,6 +2,10 @@
 // fixture dry-run gate, and safe-patches-only auto-apply policy.
 // Implemented in P9 — the full loop lives in `service.ts`.
 
+// Wire shape embedded in the candidate preview response — re-exported
+// so route files can stay on the subsystem entry point (route_layering).
+export { PatchProposalSchema } from "../llm/flows/repair.ts";
+export * from "./candidate-review.ts";
 export type { RateLimitPatchCandidate } from "./classifier.ts";
 export { classifyPatch, classifyRateLimitFromTemplate } from "./classifier.ts";
 export type { FailingStepSnapshot } from "./drift-detector.ts";
@@ -42,6 +46,7 @@ export {
   runSelfHealingLoop,
 } from "./service.ts";
 export { scanStdlibDrift } from "./stdlib-drift-scan.ts";
+export { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
 export type {
   DriftSignal,
   DryRunFixture,

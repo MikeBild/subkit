@@ -14,12 +14,12 @@
 // Every subcommand accepts `--tenant <id>` to operate on a tenant
 // overlay (only `scope: "tenant"` leaves may be written).
 
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
-import { EngineClient, SkEngineError, SkTransportError } from "../engine-client.ts";
+import { EngineClient } from "../engine-client.ts";
 import { runSettingsApp } from "../settings-ui/index.ts";
 
 function buildClient(args: Record<string, unknown>): EngineClient {
@@ -33,17 +33,6 @@ function buildClient(args: Record<string, unknown>): EngineClient {
     api_key: profile.api_key,
     tenant: profile.active_tenant_id,
   });
-}
-
-function reportError(err: unknown): never {
-  if (err instanceof SkEngineError) {
-    process.stderr.write(`sk: HTTP ${err.status} ${err.code} — ${err.message}\n`);
-  } else if (err instanceof SkTransportError) {
-    process.stderr.write(`sk: cannot reach engine — ${err.message}\n`);
-  } else {
-    process.stderr.write(`sk: ${err instanceof Error ? err.message : String(err)}\n`);
-  }
-  process.exit(exitCodeFor(err));
 }
 
 const commonArgs = {
@@ -89,7 +78,7 @@ const listCommand = defineCommand({
         );
       }
     } catch (err) {
-      reportError(err);
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -122,7 +111,7 @@ const getCommand = defineCommand({
       if (out.meta.description)
         process.stdout.write(`  description:     ${out.meta.description}\n`);
     } catch (err) {
-      reportError(err);
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -162,7 +151,7 @@ const setCommand = defineCommand({
           `  ${pc.red("requiresRestart — restart the engine for this to take effect")}\n`,
         );
     } catch (err) {
-      reportError(err);
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -214,7 +203,7 @@ const configureCommand = defineCommand({
       const exitCode = await runSettingsApp(opts);
       process.exit(exitCode);
     } catch (err) {
-      reportError(err);
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });

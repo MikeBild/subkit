@@ -269,7 +269,9 @@ describe("journey 41: sk portal-tokens CLI", () => {
   });
 
   test("AC5: revoking a non-existent token id returns an error", async () => {
-    const fakeId = "00000000-0000-0000-0000-000000000088";
+    // RFC-4122-compliant — the pinned contract is the tenant-scoped
+    // not-found, not the uuid-shape 400 (see journey 37's note).
+    const fakeId = "00000000-0000-4000-8000-000000000088";
     const { message, captured } = await runExpectError(portalTokensCommand, ["revoke", fakeId]);
     const combined = `${message}\n${captured.stderr}`.toLowerCase();
     expect(

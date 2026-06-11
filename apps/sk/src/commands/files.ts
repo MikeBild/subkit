@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
-import { exitCodeFor } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -34,11 +34,6 @@ import {
 function makeClient(): EngineClient {
   const { engine_url, api_key, active_tenant_id } = resolveProfile();
   return new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-}
-
-function reportError(err: unknown): never {
-  process.stderr.write(`${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(exitCodeFor(err));
 }
 
 function humanBytes(n: number): string {
@@ -239,7 +234,7 @@ const listCommand = defineCommand({
         process.stdout.write(`\n${pc.dim(`next: --cursor ${res.next_cursor}`)}\n`);
       }
     } catch (err) {
-      reportError(err);
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -274,7 +269,7 @@ const getCommand = defineCommand({
       if (row.deleted_at) lines.push(`  deleted_at   ${row.deleted_at}`);
       process.stdout.write(`${lines.join("\n")}\n`);
     } catch (err) {
-      reportError(err);
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -331,7 +326,7 @@ const uploadCommand = defineCommand({
         );
       }
     } catch (err) {
-      reportError(err);
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -383,7 +378,7 @@ const downloadCommand = defineCommand({
         );
       }
     } catch (err) {
-      reportError(err);
+      reportCommandError(err);
     }
   },
 });
@@ -412,7 +407,7 @@ const deleteCommand = defineCommand({
       await client.deleteFile(args.id);
       process.stdout.write(`${pc.green("deleted")}  ${args.id}\n`);
     } catch (err) {
-      reportError(err);
+      reportCommandError(err);
     }
   },
 });
@@ -446,7 +441,7 @@ const linkCommand = defineCommand({
       });
       printJson(link);
     } catch (err) {
-      reportError(err);
+      reportCommandError(err);
     }
   },
 });
@@ -490,7 +485,7 @@ const statsCommand = defineCommand({
       }
       process.stdout.write(`${lines.join("\n")}\n`);
     } catch (err) {
-      reportError(err);
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
@@ -558,7 +553,7 @@ export const attachCommand = defineCommand({
         );
       }
     } catch (err) {
-      reportError(err);
+      reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });

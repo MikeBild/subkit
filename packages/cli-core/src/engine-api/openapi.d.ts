@@ -2890,6 +2890,7 @@ export interface paths {
                     workflow_id?: string;
                     status?: string;
                     request_source?: string;
+                    parent_execution_id?: string;
                 };
                 header?: never;
                 path?: never;
@@ -3015,6 +3016,78 @@ export interface paths {
                 };
                 /** @description Transform / filter raised */
                 422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/executions/{id}/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rerun an execution with lineage to the original
+         * @description Runs the SAME workflow version as the original execution with the original input (overridable). The new execution's parent_execution_id points at the original, so the chain is queryable via GET /v1/executions?parent_execution_id=.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RerunExecutionBody"];
+                };
+            };
+            responses: {
+                /** @description Rerun completed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExecutionRunResponse"];
+                    };
+                };
+                /** @description Rerun queued */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExecutionRunResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Original execution is not rerunnable */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -4832,6 +4905,113 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a skill's version history (audit-derived, newest first) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SkillHistoryResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore a skill to a prior audited snapshot */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RestoreSkillBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Skill"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -7419,6 +7599,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/patch-candidates/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Human-readable before/after preview of a patch candidate */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PatchCandidatePreview"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/patch-candidates/{id}/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay a patch candidate against a recorded or synthesized fixture
+         * @description Never mutates the candidate's status — this is a pre-approval check. Uses the fixture recorded at proposal time, or synthesizes one from the failing step's persisted request/response material.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Dry-run ran */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PatchCandidateDryRunResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No fixture / step material to replay against */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/patch-candidates/{id}/approve": {
         parameters: {
             query?: never;
@@ -9642,6 +9928,7 @@ export interface components {
         };
         SetupStatusResponse: {
             pending: boolean;
+            token_expired: boolean;
         };
         SetupResponse: {
             /** Format: uuid */
@@ -9654,6 +9941,8 @@ export interface components {
         Error: {
             code: string;
             message: string;
+            hint?: string;
+            retry_after?: number;
             trace_id?: string;
             details?: {
                 [key: string]: unknown;
@@ -10604,6 +10893,10 @@ export interface components {
             /** @enum {string} */
             scope?: "FIELD" | "ITEM" | "ENTRY";
         };
+        RerunExecutionBody: {
+            input?: unknown;
+            async?: boolean;
+        };
         ExecutionListResponse: {
             items: components["schemas"]["Execution"][];
             next_cursor?: string | null;
@@ -10620,6 +10913,7 @@ export interface components {
             status: string;
             request_source: string;
             parent_execution_id: string | null;
+            input?: unknown;
             started_at: string | null;
             finished_at: string | null;
             created_at: string;
@@ -11557,6 +11851,24 @@ export interface components {
             /** @enum {string} */
             status?: "draft" | "active" | "archived";
         };
+        SkillHistoryResponse: {
+            items: components["schemas"]["SkillHistoryEntry"][];
+        };
+        SkillHistoryEntry: {
+            /** Format: uuid */
+            audit_entry_id: string;
+            version: number | null;
+            title: string | null;
+            lifecycle: string | null;
+            updated_at: string;
+            /** Format: uuid */
+            actor_id: string | null;
+            has_snapshot: boolean;
+        };
+        RestoreSkillBody: {
+            /** Format: uuid */
+            audit_entry_id: string;
+        };
         KnowledgeSourceListResponse: {
             items: components["schemas"]["KnowledgeSource"][];
         };
@@ -11572,6 +11884,7 @@ export interface components {
             workflow_id: string | null;
             /** @enum {string} */
             status: "active" | "inactive" | "processing" | "error";
+            last_error: string | null;
             source_type: string;
             source_uri: string;
             mime_type: string | null;
@@ -12202,6 +12515,48 @@ export interface components {
             diff?: unknown;
             created_at: string;
             updated_at: string;
+        };
+        PatchCandidatePreview: {
+            candidate_id: string;
+            workflow_id: string;
+            /** @enum {string} */
+            classification: "safe" | "unsafe";
+            /** @enum {string} */
+            status: "proposed" | "applied" | "rejected" | "superseded";
+            drift_summary: string | null;
+            proposal: components["schemas"]["PatchProposal"];
+            fixture_available: boolean;
+            proposal_dry_run: {
+                [key: string]: unknown;
+            } | null;
+            before_step: components["schemas"]["PatchCandidateStepShape"];
+            after_step: components["schemas"]["PatchCandidateStepShape"];
+            changed_paths: string[];
+        };
+        PatchProposal: {
+            /** @enum {string} */
+            classification: "safe" | "unsafe";
+            /** @enum {string} */
+            kind: "update_field_path" | "rename_param" | "change_type" | "add_header" | "rate_limited" | "other";
+            description: string;
+            patch: {
+                [key: string]: unknown;
+            };
+            reasoning: string;
+        } | null;
+        PatchCandidateStepShape: {
+            id: string;
+            /** @enum {string} */
+            kind: "request" | "transform";
+            data_selector?: string;
+            expression?: string;
+        } | null;
+        PatchCandidateDryRunResponse: {
+            ok: boolean;
+            error: string | null;
+            value_preview?: unknown;
+            /** @enum {string} */
+            fixture_source: "recorded" | "synthesized";
         };
         RejectPatchCandidateBody: {
             reason?: string;

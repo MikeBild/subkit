@@ -155,6 +155,12 @@ baseline contract is to fail fast on structural scope misuse.
 
 Queued (`async: true`) execution is available **only** for `source=saved` runs. In that case the engine inserts the execution row synchronously, enqueues the job on `pg-boss`, and returns `202 Accepted` with `{ execution_id, status: "queued" }`. A worker picks the job up and runs it through the same `runExecution()` core. Scheduler fires, webhook fan-out, and any other detached trigger also land on the queue — but every inline caller gets the run on the request path.
 
+### Following a run live
+
+`GET /v1/executions/:id/stream` is an SSE tail over the execution's outbox events, gated by the resource-scoped `execution:read` permission (following your own run does not require the tenant-wide `audit:read` that `GET /v1/events/stream` carries). The stream replays the run's full event history — `execution.queued` → `execution.started` → per-step `execution.step.started` / `execution.step.finished` frames (with `step_key`, `step_index`, `kind`, `status`, `duration_ms`, and `error_code` on failure) → the terminal `execution.<status>` frame — then tails live and closes right after the terminal frame. `Last-Event-ID` resumes after a dropped connection. `sk workflows run <id> --follow` and `sk executions tail <id>` consume this stream.
+
+Step frames are written transactionally with the `execution_steps` rows, so a follower never observes a step that isn't persisted.
+
 ---
 
 ## Per-step Request Meta

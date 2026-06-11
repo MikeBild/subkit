@@ -926,6 +926,7 @@ export class SchedulerReconciler {
       source_ref: null,
       request_source: "scheduler",
       parent_execution_id: null,
+      input: payload.input ?? null,
     });
     const job: ExecutionRunJob = { ...payload, execution_id, request_source: "scheduler" };
     await this.opts.boss.send(EXECUTION_RUN_QUEUE, job);
@@ -975,6 +976,7 @@ export class SchedulerReconciler {
       source_ref: null,
       request_source: "scheduler",
       parent_execution_id: null,
+      input: payload.input ?? null,
     });
     const job: ExecutionRunJob = { ...payload, execution_id, request_source: "scheduler" };
     await this.opts.boss.send(EXECUTION_RUN_QUEUE, job);

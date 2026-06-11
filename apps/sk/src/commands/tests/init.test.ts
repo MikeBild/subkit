@@ -140,6 +140,72 @@ describe("runInit — failure modes", () => {
     expect(result.error?.httpStatus).toBe(401);
   });
 
+  test("401 token_expired renders the engine's re-mint hint", async () => {
+    const errLines: string[] = [];
+    const result = await runInit({
+      payload: {
+        token: "a".repeat(64),
+        admin_email: "ops@example.com",
+        tenant_name: "Acme",
+        llm_provider: "mock",
+        llm_api_key: "x",
+      },
+      engine_url: "http://engine.test",
+      profile: "default",
+      out: () => undefined,
+      err: (line) => {
+        errLines.push(line);
+      },
+      fetchImpl: (() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              code: "token_expired",
+              message: "bootstrap token expired",
+              hint: "a fresh token was just printed to the engine logs — copy the new `sk init --token <token>` command from there and re-run it",
+            }),
+            { status: 401, headers: { "content-type": "application/json" } },
+          ),
+        )) as unknown as typeof fetch,
+      saveProfileImpl: () => undefined,
+    });
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("token_expired");
+    const all = errLines.join("");
+    expect(all).toContain("hint:");
+    expect(all).toContain("fresh token");
+  });
+
+  test("401 token_expired without an engine hint falls back to the fixed remediation", async () => {
+    const errLines: string[] = [];
+    await runInit({
+      payload: {
+        token: "a".repeat(64),
+        admin_email: "ops@example.com",
+        tenant_name: "Acme",
+        llm_provider: "mock",
+        llm_api_key: "x",
+      },
+      engine_url: "http://engine.test",
+      profile: "default",
+      out: () => undefined,
+      err: (line) => {
+        errLines.push(line);
+      },
+      fetchImpl: (() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ code: "token_expired", message: "expired" }), {
+            status: 401,
+            headers: { "content-type": "application/json" },
+          }),
+        )) as unknown as typeof fetch,
+      saveProfileImpl: () => undefined,
+    });
+    const all = errLines.join("");
+    expect(all).toContain("hint:");
+    expect(all).toContain("15 minutes");
+  });
+
   test("network error returns engine_unreachable", async () => {
     const result = await runInit({
       payload: {
