@@ -80,6 +80,22 @@ export function computeProbeFingerprint(
   const credentialSha256 = createHash("sha256")
     .update(stableStringify(credential ?? null))
     .digest("hex");
+  // Fingerprint the EFFECTIVE probe request, not the raw model args:
+  // only the http driver shapes its probe from args — graphql always
+  // fires the fixed `{ __typename }` introspection and postgres/s3
+  // probe the connection itself. Hashing raw args there lets per-turn
+  // arg jitter (path "/" vs omitted, ad-hoc headers) defeat the
+  // re-probe guard with an identical request on the wire.
+  const effectiveProbe =
+    draftView.driver === "http"
+      ? {
+          method: args.method,
+          path: args.path,
+          query: args.query ?? null,
+          body: args.body ?? null,
+          headers: args.headers ?? null,
+        }
+      : null;
   return createHash("sha256")
     .update(
       stableStringify({
@@ -89,13 +105,7 @@ export function computeProbeFingerprint(
         auth_type: draftView.auth_type,
         environment: draftView.environment,
         config: draftView.config,
-        probe: {
-          method: args.method,
-          path: args.path,
-          query: args.query ?? null,
-          body: args.body ?? null,
-          headers: args.headers ?? null,
-        },
+        probe: effectiveProbe,
         credential_sha256: credentialSha256,
       }),
     )

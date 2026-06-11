@@ -96,6 +96,20 @@ describe("scrubString — generic high-entropy pattern", () => {
   });
 });
 
+describe("scrubString — bearer pattern over prose", () => {
+  // The bearer pattern also runs over assistant prose via the
+  // output-guard secret pre-pass — common phrases must survive.
+  test('prose "bearer auth" / "Bearer tokens" is NOT matched (operand < 16 chars)', () => {
+    const text = "proceed with bearer auth — most vendors accept Bearer tokens here";
+    expect(scrubString(text)).toBe(text);
+  });
+
+  test("a real Authorization operand (>=16 token chars) IS matched", () => {
+    const out = scrubString("Authorization: Bearer abc123def456ghi789jkl0");
+    expect(out).toBe("Authorization: ***REDACTED:bearer***");
+  });
+});
+
 describe("findSecretSpans", () => {
   test("reports offsets, kind, and match for a token mid-sentence", () => {
     const text = `paste ${ATLASSIAN_TOKEN} here`;

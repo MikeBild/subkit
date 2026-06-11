@@ -68,7 +68,17 @@ export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
     kind: "jwt",
     regex: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
   },
-  { kind: "bearer", regex: /Bearer\s+[A-Za-z0-9._-]+/gi },
+  // The operand must be ≥8 token chars AND carry at least one digit /
+  // dot / underscore / hyphen — true Authorization operands (JWTs,
+  // PATs, opaque tokens) always do, while prose words ("bearer auth",
+  // "Bearer tokens", "bearer authentication") never do. Needed since
+  // this pattern also runs over assistant text via the output-guard
+  // secret pre-pass (caught live: "proceed with ***REDACTED:bearer***
+  // auth" in a connector-authoring reply).
+  {
+    kind: "bearer",
+    regex: /Bearer\s+(?=[A-Za-z0-9._-]*[0-9._-])[A-Za-z0-9._-]{8,}/gi,
+  },
   // Generic high-entropy token: a contiguous 32+ char run over the
   // token charset that mixes lower case, upper case, and at least two
   // digits. The lookaheads are confined to the token charset itself,

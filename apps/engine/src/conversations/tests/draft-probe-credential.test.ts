@@ -1230,6 +1230,69 @@ describe("probe_connector_draft + draft credential", () => {
     }
   });
 
+  // graphql probes always fire the fixed `{ __typename }` introspection,
+  // so model-side arg jitter (different path / ad-hoc headers between
+  // turns) must NOT defeat the guard — the request on the wire is
+  // identical. Caught live in conversation 2f1f1463: "probe it again"
+  // re-fired an identical failed introspection because the raw args
+  // were hashed into the fingerprint.
+  test("graphql re-probe with jittered args is still refused as probe_unchanged", async () => {
+    let hits = 0;
+    const server = await startLocalTargetServer(() => {
+      hits += 1;
+      return new Response(JSON.stringify({ message: "Bad credentials" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const conversation_id = await seedConversation();
+      const gqlDraft: DraftDocument = {
+        mode: "connector_authoring",
+        connector: {
+          name: "gql-jitter",
+          slug: "gql-jitter",
+          driver: "graphql",
+          environment: "dev",
+          auth_type: "bearer",
+          base_url: server.url,
+        },
+        workflow: { name: "", steps: [] },
+      };
+      const validated = withConnectorValidation(
+        withConnectorInspection(gqlDraft),
+        {
+          ...gqlDraft.connector,
+          validation: validateConnectorDraft(gqlDraft.connector ?? null),
+        },
+        true,
+        "validated",
+      );
+      const toolCtx = await buildToolCtx(conversation_id, validated);
+      setDraftCredential(conversation_id, { mode: "bearer", token: "gql-jitter-token" });
+
+      const first = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "POST",
+        path: "/",
+        timeout_ms: 5_000,
+      });
+      expect(first.ok).toBe(false);
+      expect(hits).toBe(1);
+
+      const second = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "POST",
+        path: "/graphql",
+        headers: { "x-debug": "1" },
+        timeout_ms: 5_000,
+      });
+      expect(second.ok).toBe(false);
+      expect(hits).toBe(1);
+      expect((second.data as { error_code?: string }).error_code).toBe("probe_unchanged");
+    } finally {
+      await server.stop();
+    }
+  });
+
   test("a transient 503 prior failure skips the probe_unchanged guard", async () => {
     let hits = 0;
     const server = await startLocalTargetServer(() => {
