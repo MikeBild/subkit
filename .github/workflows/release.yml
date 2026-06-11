@@ -93,6 +93,12 @@ jobs:
           # 100-min budget below comfortably exceeds ci.yml's runtime
           # (the full suite grew past 45 min — releases 6.13.5-6.13.8 all
           # timed out here while ci itself went on to succeed).
+          # `|| echo ""` — the step runs under `bash -e`, so a single
+          # transient GitHub API hiccup inside the polling loop would
+          # otherwise kill the whole gate (v6.15.1: one `dial tcp …
+          # i/o timeout` failed the release while ci.yml went green).
+          # An empty row is already handled by the callers as "not
+          # registered yet — keep polling".
           latest_run() {
             gh run list \
               --repo "$GITHUB_REPOSITORY" \
@@ -100,7 +106,7 @@ jobs:
               --commit "$SHA" \
               --limit 1 \
               --json conclusion,status \
-              --jq '.[0] // ""'
+              --jq '.[0] // ""' 2>/dev/null || echo ""
           }
           # Poll for the push-triggered ci.yml run to register instead
           # of a fixed `sleep 30`. The push trigger usually fires within
