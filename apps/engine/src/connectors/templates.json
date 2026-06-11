@@ -19179,7 +19179,7 @@
         "slug": "get-test-by-issue-id",
         "title": "Get Xray test by Jira issue ID",
         "description": "Fetch a single Xray test entity by its Jira issue ID.",
-        "intent_keywords": ["get xray test", "fetch test by id", "xray test issue", "xray getTest"],
+        "intent_keywords": ["get xray test", "fetch test by id", "xray test issue", "xray gettest"],
         "derived_from_skill": null,
         "category": "project-management",
         "tags": ["xray", "graphql", "test"],

@@ -40,6 +40,18 @@ beforeAll(async () => {
   if (!SHOULD_RUN) return;
   // Default mode = real LLM from .env. Throws clearly if misconfigured.
   env = await boot("tier1-real");
+  // Fail LOUDLY if the engine resolved the mock provider anyway — for a
+  // month the nightly silently tested the mock (config-default
+  // `llm.provider: "mock"` shadowed process.env; see setup.ts boot()).
+  // Every assertion below is meaningless against the mock, so refuse to
+  // run rather than produce a confusing tier-level failure.
+  const { detectConfiguredProvider } = await import("../../apps/engine/src/llm/core/model-init.ts");
+  const resolved = detectConfiguredProvider();
+  if (resolved === "mock" || resolved === "unconfigured") {
+    throw new Error(
+      `tier1 real-LLM suite booted with provider "${resolved}" — the engine config did not pick up the real provider; check boot()'s llm.provider write in tests/e2e/setup.ts`,
+    );
+  }
 }, 90_000);
 afterAll(async () => {
   if (!SHOULD_RUN) return;
@@ -184,7 +196,9 @@ describe.skipIf(!SHOULD_RUN)(
         "Use the start_connector_from_description tool to seed a connector draft " +
           "(name 'open-meteo', driver 'http', auth_type 'none', base_url " +
           "'https://api.open-meteo.com'). Then continue through the normal " +
-          "probe/save path before building the workflow.",
+          "probe/save path before building the workflow. When probing, use " +
+          "path '/v1/forecast' with query latitude=52.52, longitude=13.41, " +
+          "current_weather=true — the API root returns 400 by design.",
       );
 
       const detail = await getConversation(conversation_id);

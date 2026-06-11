@@ -189,7 +189,18 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
     const { resetMockProvider } = await import("../../apps/engine/src/llm/mock-provider.ts");
     resetMockProvider();
   } else {
-    detectRealProvider();
+    const detected = detectRealProvider();
+    // The engine resolves LLM_PROVIDER config-first (model-init readEnv)
+    // and the schema DEFAULTS `llm.provider` to "mock" — a non-empty leaf
+    // that shadows process.env. Without this write the "real LLM" track
+    // silently ran the mock provider (root cause of the nightly real-llm
+    // tier failing every night since 2026-05-05: 127ms "turns", no
+    // provider call). Gateway needs no write — its config leaves default
+    // empty (env fallback applies) and gateway resolution precedes the
+    // provider leaf.
+    if (detected.provider !== "gateway") {
+      await setConfigKey("llm.provider", detected.provider, { force: true });
+    }
   }
 
   const safeLabel = label.toLowerCase().replace(/[^a-z0-9]/g, "-");
