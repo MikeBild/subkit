@@ -217,8 +217,16 @@ export function normalizeConnectorDraft(raw: unknown): ConnectorDraftDocument | 
       ...(typeof probe.duration_ms === "number" ? { duration_ms: probe.duration_ms } : {}),
       summary: typeof probe.summary === "string" ? probe.summary : "Probe executed.",
       ...(probe.response_preview !== undefined ? { response_preview: probe.response_preview } : {}),
+      ...(isRecord(probe.response_headers)
+        ? { response_headers: probe.response_headers as Record<string, string> }
+        : {}),
       ...(typeof probe.failure_code === "string" ? { failure_code: probe.failure_code } : {}),
       ...(typeof probe.probed_at === "string" ? { probed_at: probe.probed_at } : {}),
+      // The re-probe guard compares this across turns — dropping it
+      // here silently disabled the guard in production while the
+      // in-memory test stub kept it alive (caught live on v6.15.2,
+      // conversation ad4dc8f7).
+      ...(typeof probe.fingerprint === "string" ? { fingerprint: probe.fingerprint } : {}),
     };
   }
   if (typeof connector.saved_connector_id === "string") {

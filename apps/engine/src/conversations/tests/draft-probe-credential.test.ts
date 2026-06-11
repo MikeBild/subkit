@@ -118,9 +118,15 @@ async function buildToolCtx(conversation_id: string, draft: DraftDocument): Prom
       db: ctx.db,
     }),
     getDraft: () => liveDraft,
+    // Mirror production: a draft written by one turn is read by the
+    // next via loadDraft, which round-trips through
+    // normalizeDraftDocument. Keeping the raw object alive in memory
+    // masked a real bug — the normalize whitelist dropped the probe
+    // `fingerprint`, silently disabling the re-probe guard in
+    // production while this suite stayed green.
     setDraft: async (next) => {
-      liveDraft = next;
       await appendSnapshot(tenant_id, conversation_id, next, ctx.db);
+      liveDraft = await loadDraft(tenant_id, conversation_id, ctx.db);
     },
   };
 }
