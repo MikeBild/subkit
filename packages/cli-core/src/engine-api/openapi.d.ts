@@ -5889,6 +5889,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Answer failed validation against the originating ask_user_* input — the elicitation stays pending; fix the flagged fields (details.field_errors) and re-submit */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -5934,6 +5943,15 @@ export interface paths {
                 };
                 /** @description Not found — no elicitation links to that tool_call */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Answer failed validation against the originating ask_user_* input — the elicitation stays pending; fix the flagged fields (details.field_errors) and re-submit */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };

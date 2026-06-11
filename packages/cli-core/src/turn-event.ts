@@ -877,7 +877,15 @@ export function errorFrameToEvents(payload: {
   const events: TurnEvent[] = [
     { type: "validation_error", errors: [{ path: payload.code, message: payload.message }] },
   ];
-  if (payload.code === "pending_elicitation_blocked") {
+  // Both codes ship a live pending dialog in `details.pending_elicitation`:
+  // `pending_elicitation_blocked` (a prompt arrived while input was
+  // pending) and `elicitation_validation_failed` (the answer was rejected
+  // server-side — the row stays pending and the re-sent input carries
+  // `error_message` pins on the offending fields).
+  if (
+    payload.code === "pending_elicitation_blocked" ||
+    payload.code === "elicitation_validation_failed"
+  ) {
     const pe = (payload.details as { pending_elicitation?: unknown } | null | undefined)
       ?.pending_elicitation;
     if (pe && typeof pe === "object") {

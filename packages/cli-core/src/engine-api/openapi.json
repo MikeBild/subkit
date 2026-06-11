@@ -19265,6 +19265,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Answer failed validation against the originating ask_user_* input — the elicitation stays pending; fix the flagged fields (details.field_errors) and re-submit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -19322,6 +19332,16 @@
           },
           "404": {
             "description": "Not found — no elicitation links to that tool_call",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Answer failed validation against the originating ask_user_* input — the elicitation stays pending; fix the flagged fields (details.field_errors) and re-submit",
             "content": {
               "application/json": {
                 "schema": {

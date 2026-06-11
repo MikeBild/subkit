@@ -247,16 +247,17 @@ describe("run_workflow tool", () => {
     expect((result.data as { error_code: string }).error_code).toBe("workflow_not_persisted");
   });
 
-  test("G1: refuses with input_required when workflow declares input_schema and caller passes no input", async () => {
+  test("G1: pauses with an auto-generated ask_user_form when workflow declares input_schema and caller passes no input", async () => {
     // Pre-fix calling run_workflow with empty/missing input on a
     // workflow that declares input_schema ran the workflow anyway and
     // produced byte-identical output regardless of what the user
     // asked for (session ed20f48d: "run it for tomorrow" returned the
     // same 2026-05-27 forecast because the date was hardcoded in the
     // request URL and the model had no signal that an input was
-    // ignored). Post-fix the tool refuses with a structured
-    // `input_required` envelope carrying the schema so the LLM can
-    // prompt the user via ask_user_form.
+    // ignored). First fix refused with an `input_required` envelope
+    // the LLM had to hand-translate into a form. Now the tool pauses
+    // directly with an ask_user_form synthesized from the schema; on
+    // resume the LLM re-issues run_workflow with the answers.
     //
     // Seed a dedicated workflow with a unique slug to avoid colliding
     // with other tests' berlin-weather row in the shared test tenant.
@@ -331,19 +332,17 @@ describe("run_workflow tool", () => {
       }),
       { workflow: workflow_id, environment: "dev" /* no input */ },
     );
-    expect(result.ok).toBe(false);
-    const data = result.data as {
-      status: string;
-      error_code: string;
-      input_schema: Record<string, unknown>;
-      workflow_slug: string;
+    expect(result.ok).toBe(true);
+    expect(result.pause).toBeDefined();
+    expect(result.pause?.tool_name).toBe("ask_user_form");
+    const pauseInput = result.pause?.input as {
+      question: string;
+      fields: Array<{ name: string; type: string; required: boolean }>;
     };
-    expect(data.status).toBe("failed");
-    expect(data.error_code).toBe("input_required");
-    expect(data.workflow_slug).toBe("g1-input-required");
-    expect(data.input_schema).toMatchObject({
-      type: "object",
-      required: ["date"],
-    });
+    expect(pauseInput.question).toContain("g1-input-required");
+    expect(pauseInput.fields).toEqual([
+      expect.objectContaining({ name: "date", type: "text", required: true }),
+    ]);
+    expect((result.data as { status: string }).status).toBe("awaiting_input");
   });
 });

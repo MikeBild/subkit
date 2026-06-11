@@ -38,6 +38,10 @@ export {
   createConversation,
 } from "./service/create.ts";
 export {
+  ConversationNotFoundError,
+  ElicitationActorMismatchError,
+  ElicitationNotFoundError,
+  ElicitationValidationError,
   type RespondElicitationParams,
   respondElicitation,
 } from "./service/elicit.ts";

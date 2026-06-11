@@ -48,6 +48,15 @@ const wfSummary: WorkflowSummary = {
   name: "Daily Report",
   trigger: { kind: "schedule", cron: "0 9 * * *", tz: "UTC" },
   preview_execution_id: "exec-preview-1",
+  usage: {
+    inputs: [{ name: "date", type: "string", required: true }],
+    output: "raw result of the last step `report` (request)",
+    access: [
+      { via: "cli", label: "sk CLI", command: "sk workflows run daily-report date=<value>" },
+      { via: "mcp", label: "MCP tool", tool: "wf_daily-report" },
+    ],
+    follow_up: "Run it now?",
+  },
 };
 
 const connSummary: ConnectorSummary = {
@@ -56,6 +65,12 @@ const connSummary: ConnectorSummary = {
   slug: "stripe-prod",
   template_slug: "stripe-api",
   probe: { ok: true, status_code: 200, duration_ms: 88 },
+  usage: {
+    inputs: [],
+    output: null,
+    access: [{ via: "cli", label: "sk CLI", command: "sk connectors get con-xyz" }],
+    follow_up: "What should this connector do? I can start a workflow draft from a goal.",
+  },
 };
 
 const ksSummary: KnowledgeSourceSummary = {
@@ -65,6 +80,12 @@ const ksSummary: KnowledgeSourceSummary = {
   mime_type: "application/pdf",
   size_bytes: 1024 * 512,
   file_id: "fid-001",
+  usage: {
+    inputs: [],
+    output: "8 searchable chunks",
+    access: [{ via: "cli", label: "sk CLI", command: 'sk knowledge-sources search "<query>"' }],
+    follow_up: "Try a search against it?",
+  },
 };
 
 const phases: ReadonlyArray<PlanStep> = [
@@ -226,10 +247,12 @@ describe("renderSummary · non-TTY plain ASCII", () => {
     expect(stderrBuf).toContain("0 9 * * *");
     expect(stderrBuf).toContain("UTC");
     expect(stderrBuf).toContain("exec-preview-1");
-    // Next-action hints use 'sk' prefix
-    expect(stderrBuf).toContain("sk workflows run wf-abc");
-    expect(stderrBuf).toContain("sk workflows get wf-abc");
-    expect(stderrBuf).toContain("sk workflows history wf-abc");
+    // Usage block renders the engine-provided access entries verbatim
+    expect(stderrBuf).toContain("inputs: date (required)");
+    expect(stderrBuf).toContain("Use it via:");
+    expect(stderrBuf).toContain("sk workflows run daily-report");
+    expect(stderrBuf).toContain("wf_daily-report");
+    expect(stderrBuf).toContain("Run it now?");
   });
 
   test("connector summary emits every fixture field", async () => {
@@ -243,8 +266,9 @@ describe("renderSummary · non-TTY plain ASCII", () => {
     expect(stderrBuf).toContain("probe: ok");
     expect(stderrBuf).toContain("status=200");
     expect(stderrBuf).toContain("88ms");
+    expect(stderrBuf).toContain("Use it via:");
     expect(stderrBuf).toContain("sk connectors get con-xyz");
-    expect(stderrBuf).toContain("sk connectors probe con-xyz");
+    expect(stderrBuf).toContain("What should this connector do?");
   });
 
   test("knowledge source summary emits every fixture field", async () => {
@@ -257,8 +281,9 @@ describe("renderSummary · non-TTY plain ASCII", () => {
     expect(stderrBuf).toContain("application/pdf");
     expect(stderrBuf).toContain("512KB");
     expect(stderrBuf).toContain("file=fid-001");
-    expect(stderrBuf).toContain("sk knowledge-sources get ks-001");
+    expect(stderrBuf).toContain("output: 8 searchable chunks");
     expect(stderrBuf).toContain("sk knowledge-sources search");
+    expect(stderrBuf).toContain("Try a search against it?");
   });
 
   test("returns a resolved promise", async () => {

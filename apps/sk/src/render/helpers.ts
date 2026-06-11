@@ -11,6 +11,8 @@ import type {
   ConnectorSummary,
   KnowledgeSourceIntent,
   KnowledgeSourceSummary,
+  ResourceUsage,
+  UsageAccessEntry,
   WorkflowIntent,
   WorkflowSummary,
   WorkflowTrigger,
@@ -52,6 +54,51 @@ export function isKnowledgeSourceIntent(i: AnyIntent): i is KnowledgeSourceInten
 }
 export function isConnectorIntent(i: AnyIntent): i is ConnectorIntent {
   return i.kind === "connector";
+}
+
+/**
+ * Defensive parse of the engine's `data.usage` persist-envelope payload
+ * into the render shape. Returns null when the shape doesn't match — the
+ * summary card then renders without the usage block (degenerate envelope,
+ * not a compat path).
+ */
+export function parseResourceUsage(raw: unknown): ResourceUsage | null {
+  if (!raw || typeof raw !== "object") return null;
+  const u = raw as Record<string, unknown>;
+  if (typeof u.follow_up !== "string" || !Array.isArray(u.access)) return null;
+  const access: UsageAccessEntry[] = [];
+  for (const entry of u.access) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.via !== "string" || typeof e.label !== "string") continue;
+    access.push({
+      via: e.via,
+      label: e.label,
+      ...(typeof e.command === "string" ? { command: e.command } : {}),
+      ...(typeof e.url === "string" ? { url: e.url } : {}),
+      ...(typeof e.tool === "string" ? { tool: e.tool } : {}),
+      ...(typeof e.detail === "string" ? { detail: e.detail } : {}),
+    });
+  }
+  const inputs: ResourceUsage["inputs"] = [];
+  if (Array.isArray(u.inputs)) {
+    for (const entry of u.inputs) {
+      if (!entry || typeof entry !== "object") continue;
+      const i = entry as Record<string, unknown>;
+      if (typeof i.name !== "string") continue;
+      inputs.push({
+        name: i.name,
+        type: typeof i.type === "string" ? i.type : "string",
+        required: i.required === true,
+      });
+    }
+  }
+  return {
+    inputs,
+    output: typeof u.output === "string" ? u.output : null,
+    access,
+    follow_up: u.follow_up,
+  };
 }
 
 export function isWorkflowSummary(s: AnySummary): s is WorkflowSummary {

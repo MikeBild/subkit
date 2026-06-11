@@ -789,8 +789,6 @@ export const dryRunWorkflowTool: ConversationTool = {
           // step-by-step shape + status to author downstream
           // transforms or to debug a follow-up run.
           step_trace: stepTrace,
-          next_best_actions: ["run_workflow", "inspect_workflow"],
-          next_prompt: "Run the saved workflow to verify",
         },
         ...(typeof commitResult.committed_workflow_id === "string"
           ? { committed_workflow_id: commitResult.committed_workflow_id }

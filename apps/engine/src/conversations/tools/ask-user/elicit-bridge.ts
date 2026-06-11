@@ -60,6 +60,7 @@ export function mapAskUserToPrimitiveSchema(
         type: "string",
         description: question,
         ...(typeof obj.placeholder === "string" ? { title: obj.placeholder } : {}),
+        ...(typeof obj.default === "string" ? { default: obj.default } : {}),
       };
       return {
         degrade: false,
@@ -81,6 +82,9 @@ export function mapAskUserToPrimitiveSchema(
         description: question,
         enum: options.map((o) => o.value),
         enumNames: options.map((o) => o.label),
+        ...(typeof obj.default === "string" && options.some((o) => o.value === obj.default)
+          ? { default: obj.default }
+          : {}),
       };
       return {
         degrade: false,
@@ -168,14 +172,31 @@ export function mapAskUserToPrimitiveSchema(
 
 function mapFormFieldToPrimitive(field: FormFieldDefinition): SchemaProperty | null {
   const base = { title: field.label } as const;
+  // `default` is emitted only when its runtime type matches the
+  // property type. password/sensitive fields never carry one (the
+  // input schema rejects it) — the type checks keep that invariant
+  // even on hand-built inputs.
   switch (field.type) {
     case "text":
+      return {
+        type: "string",
+        ...base,
+        ...(typeof field.default === "string" ? { default: field.default } : {}),
+      };
     case "password":
       return { type: "string", ...base };
     case "number":
-      return { type: "number", ...base };
+      return {
+        type: "number",
+        ...base,
+        ...(typeof field.default === "number" ? { default: field.default } : {}),
+      };
     case "boolean":
-      return { type: "boolean", ...base };
+      return {
+        type: "boolean",
+        ...base,
+        ...(typeof field.default === "boolean" ? { default: field.default } : {}),
+      };
     case "select": {
       const options = readSelectOptions(field.options);
       if (!options || options.length < 1) return null;
@@ -184,6 +205,9 @@ function mapFormFieldToPrimitive(field: FormFieldDefinition): SchemaProperty | n
         ...base,
         enum: options.map((o) => o.value),
         enumNames: options.map((o) => o.label),
+        ...(typeof field.default === "string" && options.some((o) => o.value === field.default)
+          ? { default: field.default }
+          : {}),
       };
     }
     default:

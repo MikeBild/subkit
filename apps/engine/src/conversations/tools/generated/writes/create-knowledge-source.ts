@@ -24,6 +24,7 @@ import { KnowledgeBudgetExceededError } from "../../../../knowledge/budgets.ts";
 import { log } from "../../../../logging/logger.ts";
 import { can } from "../../../../rbac/evaluator.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../../index.ts";
+import { buildKnowledgeSourceUsage } from "../../usage-guidance.ts";
 
 // Output shape on success — exported so downstream consumers (sk REPL
 // authoring-cards extractor) can build structural-overlap fixtures and
@@ -346,6 +347,15 @@ export const createKnowledgeSourceTool: ConversationTool = {
         },
       });
 
+      const usage = buildKnowledgeSourceUsage({
+        id: view.id,
+        slug: view.slug,
+        name: view.name,
+        description: view.description,
+        scope: view.scope,
+        chunk_count: view.chunk_count,
+        workflow_id: args.workflow_id ?? null,
+      });
       return {
         ok: true,
         data: {
@@ -364,6 +374,9 @@ export const createKnowledgeSourceTool: ConversationTool = {
             ...(filename ? { filename } : {}),
           },
           audit_log_id,
+          usage,
+          next_best_actions: ["search_knowledge", "list_knowledge_sources"],
+          next_prompt: usage.follow_up,
         },
       };
     } catch (err) {

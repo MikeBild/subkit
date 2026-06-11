@@ -36,6 +36,7 @@ import {
   saveConnectorAtomic,
 } from "../persistence/save-connector.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { buildConnectorUsage } from "./usage-guidance.ts";
 
 const bearerCredentialInput = z.object({
   mode: z.literal("bearer"),
@@ -215,6 +216,13 @@ export const saveConnectorDraftTool: ConversationTool = {
             conversation_id: ctx.conversation_id,
             connector_id: existing.id,
           });
+          const usage = buildConnectorUsage({
+            id: existing.id,
+            slug: existing.slug,
+            display_name: existing.display_name,
+            environment: existing.environment,
+            driver: existing.driver,
+          });
           return {
             ok: true,
             data: {
@@ -227,7 +235,9 @@ export const saveConnectorDraftTool: ConversationTool = {
                 environment: existing.environment,
                 driver: existing.driver,
               },
+              usage,
               next_best_actions: ["inspect_connector", "list_connectors"],
+              next_prompt: usage.follow_up,
             },
           };
         }
@@ -431,21 +441,15 @@ export const saveConnectorDraftTool: ConversationTool = {
         `force_save: connector persisted with a failed probe (${connector?.latest_probe?.failure_code ?? "unknown"}). Audit reason: manual_re_issue, kind: probe_override.`,
       );
     }
-    // Post-save breadcrumb: the connector is persisted, so the natural
-    // next move is either kicking off a workflow that uses it or
-    // listing what already exists. Stays a hint (not a forced
-    // elicitation) so the LLM can pick the right verb based on the
-    // user's stated intent — but it always has something concrete to
-    // suggest. Pre-fix the success envelope ended the turn with no
-    // forward signal and the user had to guess.
+    // `data` from saveConnectorAtomic already carries the usage block
+    // plus next_best_actions / next_prompt — do not re-stamp them here
+    // or the usage.follow_up gets clobbered.
     return {
       ok: true,
       data: {
         ...data,
         re_issued: true,
         audit_reason: "manual_re_issue",
-        next_best_actions: ["start_workflow_from_goal", "list_workflows", "list_connectors"],
-        next_prompt: "What should this connector do? I can start a workflow draft from a goal.",
         ...(warnings.length > 0 ? { warnings } : {}),
       },
     };

@@ -80,10 +80,6 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the workflow id is unknown on this tenant — call find_workflow or list_workflows to discover the correct id",
   workflow_not_persisted:
     "no runnable workflow yet. If you are AUTHORING a new workflow (the user said build/create/make a workflow), call build_workflow (one-shot) or propose_step (incremental) — do NOT call run_workflow again. If a draft already exists, call dry_run_workflow (auto-commits on a clean preview) or save_workflow_draft. Never retry run_workflow with the same args.",
-  // G1: workflow declares input_schema but caller passed no input.
-  // Surface the required fields to the user before re-running.
-  input_required:
-    "the workflow declares input_schema but no input was supplied — call ask_user_form (or ask_user_text for a single field) using the input_schema in the result envelope, then re-issue run_workflow with the user's answers",
   connector_not_found:
     "the connector id is unknown — call find_connector or list_connectors to discover the correct id",
   connector_missing:

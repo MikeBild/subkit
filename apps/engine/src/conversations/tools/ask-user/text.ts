@@ -9,15 +9,19 @@ const inputSchema = z
     question: z.string().min(1),
     placeholder: z.string().optional(),
     multiline: z.boolean().optional(),
-    /** Optional regex the client validates against before submitting. */
+    /** Optional regex validated client-side before submit AND re-validated
+     *  server-side on respond (see ask-user/validate-answer.ts). */
     validation_regex: z.string().optional(),
+    /** Optional pre-filled value rendered as the initial buffer — the
+     *  user confirms or edits instead of retyping. */
+    default: z.string().optional(),
   })
   .openapi("AskUserTextInput");
 
 export const askUserTextTool: ConversationTool = {
   name: "ask_user_text",
   description:
-    "Ask the user to type a free-form answer. The client renders a text input (multiline optional); the submitted string resumes the loop.",
+    "Ask the user to type a free-form answer. The client renders a text input (multiline optional); the submitted string resumes the loop. Pre-fill a known or likely value via `default` so the user confirms instead of retyping.",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {

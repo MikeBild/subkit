@@ -30,6 +30,9 @@ export interface TextPromptProps {
   multiline?: boolean | undefined;
   /** Optional regex the submitted text must match. */
   validationRegex?: string | undefined;
+  /** Optional pre-filled value rendered as the initial buffer — the
+   *  user confirms with Enter or edits instead of retyping. */
+  defaultValue?: string | undefined;
   onResponse: (value: { text: string }) => void;
   onCancel?: (() => void) | undefined;
   inputDisabled?: boolean | undefined;
@@ -79,12 +82,13 @@ export const TextPrompt: React.FC<TextPromptProps> = ({
   question,
   placeholder,
   validationRegex,
+  defaultValue,
   onResponse,
   onCancel,
   inputDisabled,
 }) => {
   const theme = useTheme();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(defaultValue ?? "");
   const [error, setError] = useState<string | null>(null);
 
   useInput(

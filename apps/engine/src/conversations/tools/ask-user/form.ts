@@ -60,6 +60,14 @@ const fieldSchema = z
     /** When true, the client must mask the field value on keystroke echo. */
     sensitive: z.boolean().optional(),
     /**
+     * Optional pre-filled value the client renders as the initial input
+     * state — the user confirms or edits instead of retyping. Never
+     * allowed on password/sensitive fields (secrets are not pre-filled).
+     * `select` defaults must match an option value; `multi` defaults
+     * must be a subset of the declared options.
+     */
+    default: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]).optional(),
+    /**
      * Optional inline error pin shown by the renderer (e.g. "invalid
      * JSON: Unexpected token …"). The server populates this when it
      * re-prompts after a value-validation failure; the client may also
@@ -68,6 +76,42 @@ const fieldSchema = z
     error_message: z.string().optional(),
   })
   .superRefine((field, ctx) => {
+    if (field.default !== undefined) {
+      if (field.type === "password" || field.sensitive === true) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "password/sensitive fields must not carry a default — never pre-fill secrets",
+          path: ["default"],
+        });
+      }
+      if (field.type === "select") {
+        const values = Array.isArray(field.options)
+          ? field.options.map((o) => (typeof o === "object" && o !== null ? o.value : o))
+          : [];
+        if (typeof field.default !== "string" || !values.includes(field.default)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "select default must equal one of the declared option values",
+            path: ["default"],
+          });
+        }
+      }
+      if (field.type === "multi") {
+        const allowed = new Set(
+          Array.isArray(field.options)
+            ? field.options.filter((o): o is string => typeof o === "string")
+            : [],
+        );
+        const def = field.default;
+        if (!Array.isArray(def) || !def.every((v) => allowed.has(v))) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "multi default must be a string[] subset of the declared options",
+            path: ["default"],
+          });
+        }
+      }
+    }
     if (field.type === "multi") {
       if (!Array.isArray(field.options) || field.options.length === 0) {
         ctx.addIssue({
@@ -181,7 +225,7 @@ export function validateFormFieldValue(
 export const askUserFormTool: ConversationTool = {
   name: "ask_user_form",
   description:
-    'Ask the user to fill in a small form of typed fields. The client renders a stacked input; the submitted {name:value} map resumes the loop. If you pass `commit_intent`, the harness applies the intended write atomically when the operator submits — the form value (e.g. credential) flows directly into the commit. You DO NOT need to call save_connector_draft afterward; the next turn will already see a synthetic tool result describing the persistence with source="harness_auto_persist".',
+    'Ask the user to fill in a small form of typed fields. The client renders a stacked input; the submitted {name:value} map resumes the loop. Pre-fill every value you already know via the field `default` (never on password/sensitive fields) so the user confirms instead of retyping. If you pass `commit_intent`, the harness applies the intended write atomically when the operator submits — the form value (e.g. credential) flows directly into the commit. You DO NOT need to call save_connector_draft afterward; the next turn will already see a synthetic tool result describing the persistence with source="harness_auto_persist".',
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {

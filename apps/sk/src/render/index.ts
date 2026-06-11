@@ -14,7 +14,7 @@ import {
 } from "./helpers.ts";
 import type { AnyIntent } from "./intent-card.tsx";
 import type { AnySummary } from "./summary-card.tsx";
-import type { PlanStep } from "./types.ts";
+import type { PlanStep, ResourceUsage } from "./types.ts";
 
 export type { AnyIntent } from "./intent-card.tsx";
 export type { AnySummary } from "./summary-card.tsx";
@@ -62,6 +62,30 @@ function plainIntent(intent: AnyIntent): string {
   return `${out.join("\n")}\n`;
 }
 
+// Plain-text twin of the Ink `UsageBlock` — renders the engine-provided
+// `usage` payload. No hardcoded command fallback: when `usage` is absent
+// the summary ends after its core lines.
+function pushPlainUsage(out: string[], usage: ResourceUsage): void {
+  out.push("");
+  if (usage.inputs.length > 0) {
+    out.push(
+      `  ${pc.dim(
+        `inputs: ${usage.inputs
+          .map((i) => `${i.name}${i.required ? " (required)" : ""}`)
+          .join(", ")}`,
+      )}`,
+    );
+  }
+  if (usage.output) out.push(`  ${pc.dim(`output: ${usage.output}`)}`);
+  out.push(pc.dim("Use it via:"));
+  for (const entry of usage.access) {
+    const value = entry.command ?? entry.url ?? entry.tool ?? "";
+    out.push(`  ${pc.dim(`${entry.label}: ${value}${entry.detail ? ` — ${entry.detail}` : ""}`)}`);
+  }
+  out.push("");
+  out.push(`  ${pc.dim(usage.follow_up)}`);
+}
+
 function plainSummary(summary: AnySummary): string {
   const out: string[] = [];
   if (isWorkflowSummary(summary)) {
@@ -74,11 +98,7 @@ function plainSummary(summary: AnySummary): string {
     if (summary.preview_execution_id) {
       out.push(`  ${pc.dim(`preview execution: ${summary.preview_execution_id}`)}`);
     }
-    out.push("");
-    out.push(pc.dim("Next:"));
-    out.push(`  ${pc.dim(`sk workflows run ${summary.id}`)}`);
-    out.push(`  ${pc.dim(`sk workflows get ${summary.id}`)}`);
-    out.push(`  ${pc.dim(`sk workflows history ${summary.id}`)}`);
+    if (summary.usage) pushPlainUsage(out, summary.usage);
   } else if (isKnowledgeSourceSummary(summary)) {
     out.push(
       `${pc.green(pc.bold("✓"))} ${pc.bold(
@@ -101,10 +121,7 @@ function plainSummary(summary: AnySummary): string {
     if (summary.link_failed) {
       out.push(`  ${pc.yellow("warning: file link did not persist (best-effort)")}`);
     }
-    out.push("");
-    out.push(pc.dim("Next:"));
-    out.push(`  ${pc.dim(`sk knowledge-sources get ${summary.id}`)}`);
-    out.push(`  ${pc.dim(`sk knowledge-sources search <query>`)}`);
+    if (summary.usage) pushPlainUsage(out, summary.usage);
   } else if (isConnectorSummary(summary)) {
     out.push(
       `${pc.green(pc.bold("✓"))} ${pc.bold(
@@ -120,11 +137,7 @@ function plainSummary(summary: AnySummary): string {
         typeof summary.probe.duration_ms === "number" ? ` · ${summary.probe.duration_ms}ms` : "";
       out.push(`  ${pc.dim(`probe: ${summary.probe.ok ? "ok" : "FAILED"}${status}${dur}`)}`);
     }
-    out.push("");
-    out.push(pc.dim("Next:"));
-    out.push(`  ${pc.dim(`sk connectors get ${summary.id}`)}`);
-    out.push(`  ${pc.dim(`sk connectors probe ${summary.id}`)}`);
-    out.push(`  ${pc.dim(`sk connectors docs-ingest ${summary.id} --url <docs-url>`)}`);
+    if (summary.usage) pushPlainUsage(out, summary.usage);
   }
   return `${out.join("\n")}\n`;
 }

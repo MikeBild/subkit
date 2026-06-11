@@ -26,6 +26,7 @@ import {
   missingFreshCheckpoints,
 } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { buildWorkflowUsage } from "../tools/usage-guidance.ts";
 import { classifyPreviewFailure } from "./preview-failure-class.ts";
 import { findPriorSaveWorkflowApproval } from "./save-workflow-approval.ts";
 
@@ -610,6 +611,12 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       workflow_id: workflowId,
       version,
     });
+    const usage = await buildWorkflowUsage(ctx.db, ctx.tenant_id, {
+      id: workflowId,
+      slug: wf.slug,
+      name: wf.name,
+      definition: annotated,
+    });
     return {
       ok: true,
       data: {
@@ -619,7 +626,9 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
         version,
         slug: wf.slug,
         name: wf.name,
+        usage,
         next_best_actions: ["run_workflow", "inspect_workflow"],
+        next_prompt: usage.follow_up,
       },
       committed_workflow_id: workflowId,
     };
@@ -872,6 +881,16 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     "workflow_persisted",
   );
   await ctx.setDraft(nextDraft);
+  // Usage guidance rides on every commit envelope so the LLM (COMMIT
+  // SUMMARY rule) and the sk summary cards can show what was created
+  // and every real way to run it. next_prompt is centralised here —
+  // tool wrappers spread `...data` and must NOT re-stamp it.
+  const usage = await buildWorkflowUsage(ctx.db, ctx.tenant_id, {
+    id: workflow.id,
+    slug: workflow.slug,
+    name: workflow.name,
+    definition: def,
+  });
   return {
     ok: true,
     data: {
@@ -885,6 +904,9 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       version: workflow.current_version,
       slug: workflow.slug,
       name: workflow.name,
+      usage,
+      next_best_actions: ["run_workflow", "inspect_workflow"],
+      next_prompt: usage.follow_up,
     },
     committed_workflow_id: workflow.id,
   };

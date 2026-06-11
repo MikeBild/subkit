@@ -114,6 +114,59 @@ export class ElicitationNotFoundError extends Error {
   }
 }
 
+/** Raised when the answer violates the originating ask_user_* input
+ *  declaration (required field missing, regex mismatch, out-of-options
+ *  choice). The row stays `pending` — that IS the re-prompt: the HTTP
+ *  route maps this to a 422 with `field_errors`, chat re-posts the
+ *  form, and the client re-submits against the same elicitation_id.
+ *  `pending_elicitation` carries the original prompt with the field
+ *  errors merged in (`error_message` pins on form fields) so clients
+ *  re-render the dialog the same way `pending_elicitation_blocked`
+ *  re-arms it. */
+export class ElicitationValidationError extends Error {
+  readonly code = "ELICITATION_VALIDATION_FAILED";
+  constructor(
+    public readonly elicitation_id: string,
+    public readonly field_errors: Array<{ name: string; message: string }>,
+    public readonly pending_elicitation: {
+      id: string;
+      tool_name: string;
+      summary: string;
+      input: unknown;
+    },
+  ) {
+    super(
+      `elicitation answer failed validation: ${field_errors
+        .map((e) => `${e.name}: ${e.message}`)
+        .join("; ")}`,
+    );
+  }
+}
+
+/** Merge per-field validation errors back into the originating
+ *  ask_user_* input so the re-rendered prompt shows inline pins.
+ *  Only ask_user_form carries per-field `error_message`; other tools
+ *  surface the errors via the error message itself. */
+function mergeFieldErrorsIntoInput(
+  tool_name: string,
+  input: unknown,
+  field_errors: Array<{ name: string; message: string }>,
+): unknown {
+  if (tool_name !== "ask_user_form" || !input || typeof input !== "object") return input;
+  const obj = input as Record<string, unknown>;
+  if (!Array.isArray(obj.fields)) return input;
+  const byName = new Map(field_errors.map((e) => [e.name, e.message]));
+  return {
+    ...obj,
+    fields: obj.fields.map((f) => {
+      if (!f || typeof f !== "object") return f;
+      const field = f as Record<string, unknown>;
+      const message = typeof field.name === "string" ? byName.get(field.name) : undefined;
+      return message ? { ...field, error_message: message } : field;
+    }),
+  };
+}
+
 export async function respondElicitation(
   p: RespondElicitationParams,
   exec: Db,
@@ -132,7 +185,28 @@ export async function respondElicitation(
     }
   }
 
-  const { resolveElicitation } = await import("../elicitations.ts");
+  // Server-side answer validation BEFORE resolving. A failure leaves
+  // the row `pending` (the re-prompt) — resolveElicitation never runs,
+  // so no state transition and no resolve audit row. Declines pass
+  // through unvalidated (see validate-answer.ts).
+  const { getElicitation, resolveElicitation } = await import("../elicitations.ts");
+  const pendingRow = await getElicitation(p.tenant_id, p.elicitation_id, exec);
+  if (pendingRow && pendingRow.status === "pending") {
+    const { validateElicitationAnswer } = await import("../tools/ask-user/validate-answer.ts");
+    const verdict = validateElicitationAnswer(pendingRow.tool_name, pendingRow.input, p.output);
+    if (!verdict.ok) {
+      throw new ElicitationValidationError(p.elicitation_id, verdict.field_errors, {
+        id: pendingRow.id,
+        tool_name: pendingRow.tool_name,
+        summary: pendingRow.summary,
+        input: mergeFieldErrorsIntoInput(
+          pendingRow.tool_name,
+          pendingRow.input,
+          verdict.field_errors,
+        ),
+      });
+    }
+  }
   const resolveOutcome = await resolveElicitation(
     {
       tenant_id: p.tenant_id,

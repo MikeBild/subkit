@@ -16,13 +16,26 @@ const inputSchema = z
         }),
       )
       .min(2),
+    /** Optional pre-selected option value — the client renders the
+     *  cursor on it so the user confirms with one keypress. Must equal
+     *  one of the declared option values. */
+    default: z.string().optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.default !== undefined && !input.options.some((o) => o.value === input.default)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "default must equal one of the declared option values",
+        path: ["default"],
+      });
+    }
   })
   .openapi("AskUserChoiceInput");
 
 export const askUserChoiceTool: ConversationTool = {
   name: "ask_user_choice",
   description:
-    "Ask the user to pick exactly one option from a list of choices. The client renders a Select prompt; the user's selected value resumes the loop.",
+    "Ask the user to pick exactly one option from a list of choices (2-4 options; put the recommended option first and give each a one-line `description`). The client renders a Select prompt; the user's selected value resumes the loop. Pre-select the recommended value via `default`.",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {

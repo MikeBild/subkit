@@ -2,7 +2,33 @@ import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
 import { SummaryCard } from "./summary-card.tsx";
-import type { ConnectorSummary, KnowledgeSourceSummary, WorkflowSummary } from "./types.ts";
+import type {
+  ConnectorSummary,
+  KnowledgeSourceSummary,
+  ResourceUsage,
+  WorkflowSummary,
+} from "./types.ts";
+
+const workflowUsage: ResourceUsage = {
+  inputs: [
+    { name: "city", type: "string", required: true },
+    { name: "limit", type: "number", required: false },
+  ],
+  output: "shaped by the workflow's output transform",
+  access: [
+    { via: "cli", label: "sk CLI", command: "sk workflows run nightly-sync city=<value>" },
+    { via: "mcp", label: "MCP tool", tool: "wf_nightly-sync" },
+    { via: "chat", label: "Chat", command: "/subkit run nightly-sync" },
+    {
+      via: "rest",
+      label: "REST API",
+      command: "POST /v1/executions",
+      detail: 'body: {"source":"saved","workflow_id":"wf-001"}',
+    },
+    { via: "schedule", label: "Schedule (live)", detail: "0 0 * * * (UTC)" },
+  ],
+  follow_up: "Run it now?",
+};
 
 function snapshot(ui: ReturnType<typeof render>): string {
   return (ui.lastFrame() ?? "").replace(/\[[0-9;]*m/g, "");
@@ -72,13 +98,25 @@ describe("SummaryCard · workflow", () => {
     ui.unmount();
   });
 
-  test("Next: hints use 'sk' prefix — not 'subkit'", () => {
+  test("usage block renders inputs, output, access entries, and follow-up", () => {
+    const ui = renderSummary({ ...base, usage: workflowUsage });
+    const out = snapshot(ui);
+    expect(out).toContain("inputs: city (required), limit");
+    expect(out).toContain("output: shaped by the workflow's output transform");
+    expect(out).toContain("Use it via:");
+    expect(out).toContain("sk workflows run nightly-sync");
+    expect(out).toContain("wf_nightly-sync");
+    expect(out).toContain("/subkit run nightly-sync");
+    expect(out).toContain("POST /v1/executions");
+    expect(out).toContain("0 0 * * * (UTC)");
+    expect(out).toContain("Run it now?");
+    ui.unmount();
+  });
+
+  test("no usage block when usage is absent", () => {
     const ui = renderSummary(base);
     const out = snapshot(ui);
-    expect(out).toContain("sk workflows run wf-001");
-    expect(out).toContain("sk workflows get wf-001");
-    expect(out).toContain("sk workflows history wf-001");
-    expect(out).not.toContain("subkit workflows");
+    expect(out).not.toContain("Use it via:");
     ui.unmount();
   });
 });
@@ -143,12 +181,39 @@ describe("SummaryCard · connector", () => {
     ui.unmount();
   });
 
-  test("Next: hints use 'sk' prefix — not 'subkit'", () => {
+  test("usage block renders access entries and follow-up", () => {
+    const usage: ResourceUsage = {
+      inputs: [],
+      output: null,
+      access: [
+        {
+          via: "cli",
+          label: "sk CLI",
+          command: "sk connectors get con-001",
+          detail: "probe health with: sk connectors probe con-001",
+        },
+        {
+          via: "chat",
+          label: "Workflows",
+          detail: 'request steps reference it as connector: "stripe-prod"',
+        },
+      ],
+      follow_up: "What should this connector do? I can start a workflow draft from a goal.",
+    };
+    const ui = renderSummary({ ...base, usage });
+    const out = snapshot(ui);
+    expect(out).toContain("Use it via:");
+    expect(out).toContain("sk connectors get con-001");
+    expect(out).toContain('connector: "stripe-prod"');
+    expect(out).toContain("What should this connector do?");
+    expect(out).not.toContain("subkit connectors");
+    ui.unmount();
+  });
+
+  test("no usage block when usage is absent", () => {
     const ui = renderSummary(base);
     const out = snapshot(ui);
-    expect(out).toContain("sk connectors get con-001");
-    expect(out).toContain("sk connectors probe con-001");
-    expect(out).not.toContain("subkit connectors");
+    expect(out).not.toContain("Use it via:");
     ui.unmount();
   });
 });
@@ -209,12 +274,35 @@ describe("SummaryCard · knowledge source", () => {
     ui.unmount();
   });
 
-  test("Next: hints use 'sk' prefix — not 'subkit'", () => {
+  test("usage block renders access entries and follow-up", () => {
+    const usage: ResourceUsage = {
+      inputs: [],
+      output: "12 searchable chunks",
+      access: [
+        {
+          via: "chat",
+          label: "Chat / authoring",
+          command: 'search_knowledge("<query>")',
+          detail: "tenant-wide — available to every conversation and workflow authoring session",
+        },
+        { via: "cli", label: "sk CLI", command: 'sk knowledge-sources search "<query>"' },
+      ],
+      follow_up: "Try a search against it?",
+    };
+    const ui = renderSummary({ ...base, usage });
+    const out = snapshot(ui);
+    expect(out).toContain("output: 12 searchable chunks");
+    expect(out).toContain("Use it via:");
+    expect(out).toContain("sk knowledge-sources search");
+    expect(out).toContain("Try a search against it?");
+    expect(out).not.toContain("subkit knowledge");
+    ui.unmount();
+  });
+
+  test("no usage block when usage is absent", () => {
     const ui = renderSummary(base);
     const out = snapshot(ui);
-    expect(out).toContain("sk knowledge-sources get ks-001");
-    expect(out).toContain("sk knowledge-sources search");
-    expect(out).not.toContain("subkit knowledge");
+    expect(out).not.toContain("Use it via:");
     ui.unmount();
   });
 });

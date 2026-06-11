@@ -59,10 +59,12 @@ export const ElicitRouter: React.FC<ElicitRouterProps> = ({
   switch (elicitation.tool_name) {
     case "ask_user_choice": {
       const options = Array.isArray(input.options) ? (input.options as ChoiceOption[]) : [];
+      const defaultValue = typeof input.default === "string" ? input.default : undefined;
       return (
         <ChoicePrompt
           question={question}
           options={options}
+          defaultValue={defaultValue}
           onResponse={onResponse}
           inputDisabled={inputDisabled}
         />
@@ -88,12 +90,14 @@ export const ElicitRouter: React.FC<ElicitRouterProps> = ({
       const validationRegex =
         typeof input.validation_regex === "string" ? input.validation_regex : undefined;
       const multiline = typeof input.multiline === "boolean" ? input.multiline : undefined;
+      const defaultValue = typeof input.default === "string" ? input.default : undefined;
       return (
         <TextPrompt
           question={question}
           placeholder={placeholder}
           multiline={multiline}
           validationRegex={validationRegex}
+          defaultValue={defaultValue}
           onResponse={onResponse}
           inputDisabled={inputDisabled}
         />

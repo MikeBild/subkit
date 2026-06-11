@@ -36,6 +36,7 @@ import {
   mapAskUserToPrimitiveSchema,
   mapElicitResultToAskUserOutput,
 } from "./elicit-bridge.ts";
+import { validateElicitationAnswer } from "./validate-answer.ts";
 
 type AskUserToolName = NonNullable<ToolResult["pause"]>["tool_name"];
 
@@ -67,11 +68,11 @@ export async function pauseForUserInput(
         ctx.db,
       );
       try {
-        const result = await bridge.elicitForm({
+        let result = await bridge.elicitForm({
           message: mapped.message,
           requestedSchema: mapped.requestedSchema,
         });
-        const mappedOutput =
+        let mappedOutput =
           result.action === "accept"
             ? mapElicitResultToAskUserOutput(
                 p.tool_name as FormBridgeToolName,
@@ -79,6 +80,32 @@ export async function pauseForUserInput(
                 result.content,
               )
             : null;
+        // Server-side answer validation (same contract as the DB-pause
+        // respond path). On failure: ONE bridge retry with the field
+        // errors appended to the message; a second invalid answer
+        // collapses to the invalid-accept path below.
+        if (result.action === "accept" && mappedOutput !== null) {
+          const verdict = validateElicitationAnswer(p.tool_name, p.input, mappedOutput);
+          if (!verdict.ok) {
+            const errText = verdict.field_errors.map((e) => `${e.name}: ${e.message}`).join("; ");
+            result = await bridge.elicitForm({
+              message: `${mapped.message}\n\nThe previous answer was invalid — ${errText}. Please correct and resubmit.`,
+              requestedSchema: mapped.requestedSchema,
+            });
+            mappedOutput =
+              result.action === "accept"
+                ? mapElicitResultToAskUserOutput(
+                    p.tool_name as FormBridgeToolName,
+                    p.input,
+                    result.content,
+                  )
+                : null;
+            if (result.action === "accept" && mappedOutput !== null) {
+              const retryVerdict = validateElicitationAnswer(p.tool_name, p.input, mappedOutput);
+              if (!retryVerdict.ok) mappedOutput = null;
+            }
+          }
+        }
         // A protocol-violating `accept` — the client returned an
         // `accept` action but an answer that breaks the requested
         // schema (an out-of-enum `ask_user_choice`, a non-boolean

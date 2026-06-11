@@ -228,6 +228,39 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
       });
       return;
     }
+    // A validation rejection is NOT a turn failure: the elicitation row
+    // stays `pending` (the re-prompt) and the staged output is
+    // deterministically invalid — a pg-boss retry would re-read the same
+    // staged answer and fail identically 3× into the DLQ. Persist a
+    // result envelope carrying the field errors (the task store derives
+    // `input_required` from the still-pending row, so `tasks/get`
+    // re-surfaces the form) and complete the job without a failure audit.
+    if (err instanceof svc.ElicitationValidationError) {
+      await setMcpTaskResult(
+        data.tenant_id,
+        data.mcp_task_id,
+        {
+          conversation_id: data.conversation_id,
+          status: "awaiting_input",
+          events: [
+            {
+              type: "validation_error",
+              errors: err.field_errors.map((fe) => ({ path: fe.name, message: fe.message })),
+            },
+          ],
+          pending_elicitation_id: err.elicitation_id,
+        },
+        db,
+      );
+      log.queue.job.completed({
+        msg: "conversation.run-turn elicitation answer failed validation — row stays pending",
+        queue: CONVERSATION_RUN_TURN_QUEUE,
+        job_id: job.id,
+        tenant_id: data.tenant_id,
+        duration_ms: Date.now() - started,
+      });
+      return;
+    }
     const failureReason = err instanceof Error ? err.message : String(err);
     await setMcpTaskFailure(data.tenant_id, data.mcp_task_id, failureReason, db);
     await auditAwait(

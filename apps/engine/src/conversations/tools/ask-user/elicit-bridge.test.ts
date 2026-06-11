@@ -308,3 +308,115 @@ describe("mapElicitResultToAskUserOutput — ask_user_form", () => {
     });
   });
 });
+
+// ── default forwarding — D1 bridge tests ────────────────────────────────────
+
+describe("mapAskUserToPrimitiveSchema — default forwarding", () => {
+  test("ask_user_text emits default on the requestedSchema value property", () => {
+    const r = expectMapped("ask_user_text", {
+      question: "Enter name",
+      default: "Alice",
+    });
+    expect(r.requestedSchema.properties.value).toMatchObject({
+      type: "string",
+      default: "Alice",
+    });
+  });
+
+  test("ask_user_text without default has no default key on the property", () => {
+    const r = expectMapped("ask_user_text", { question: "Enter name" });
+    expect((r.requestedSchema.properties.value as Record<string, unknown>).default).toBeUndefined();
+  });
+
+  test("ask_user_choice emits default when it matches one of the option values", () => {
+    const r = expectMapped("ask_user_choice", {
+      question: "Pick env",
+      options: [
+        { value: "dev", label: "Development" },
+        { value: "prod", label: "Production" },
+      ],
+      default: "prod",
+    });
+    expect(r.requestedSchema.properties.value).toMatchObject({
+      type: "string",
+      default: "prod",
+    });
+  });
+
+  test("ask_user_choice does NOT emit default when default is not among options", () => {
+    const r = expectMapped("ask_user_choice", {
+      question: "Pick env",
+      options: [
+        { value: "dev", label: "Development" },
+        { value: "prod", label: "Production" },
+      ],
+      default: "staging",
+    });
+    expect((r.requestedSchema.properties.value as Record<string, unknown>).default).toBeUndefined();
+  });
+
+  test("ask_user_form text field emits string default on the property", () => {
+    const r = expectMapped("ask_user_form", {
+      question: "Config",
+      fields: [{ name: "region", label: "Region", type: "text", default: "us-east-1" }],
+    });
+    expect(r.requestedSchema.properties.region).toMatchObject({
+      type: "string",
+      default: "us-east-1",
+    });
+  });
+
+  test("ask_user_form number field emits numeric default on the property", () => {
+    const r = expectMapped("ask_user_form", {
+      question: "Config",
+      fields: [{ name: "count", label: "Count", type: "number", default: 5 }],
+    });
+    expect(r.requestedSchema.properties.count).toMatchObject({
+      type: "number",
+      default: 5,
+    });
+  });
+
+  test("ask_user_form boolean field emits boolean default on the property", () => {
+    const r = expectMapped("ask_user_form", {
+      question: "Config",
+      fields: [{ name: "enabled", label: "Enabled", type: "boolean", default: false }],
+    });
+    expect(r.requestedSchema.properties.enabled).toMatchObject({
+      type: "boolean",
+      default: false,
+    });
+  });
+
+  test("ask_user_form select field emits default on the property when matching an option", () => {
+    const r = expectMapped("ask_user_form", {
+      question: "Config",
+      fields: [
+        {
+          name: "env",
+          label: "Environment",
+          type: "select",
+          options: [
+            { value: "dev", label: "dev" },
+            { value: "prod", label: "prod" },
+          ],
+          default: "dev",
+        },
+      ],
+    });
+    expect(r.requestedSchema.properties.env).toMatchObject({
+      type: "string",
+      default: "dev",
+    });
+  });
+
+  test("ask_user_form password field NEVER carries a default on the property", () => {
+    // password/sensitive fields reject `default` at the Zod schema level;
+    // even if one slipped through to the bridge, the mapper must not emit it.
+    const r = expectMapped("ask_user_form", {
+      question: "Credentials",
+      fields: [{ name: "token", label: "Token", type: "password" }],
+    });
+    expect((r.requestedSchema.properties.token as Record<string, unknown>).default).toBeUndefined();
+  });
+});

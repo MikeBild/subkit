@@ -35,6 +35,26 @@ export interface KnowledgeSourceIntent {
   size_bytes: number;
 }
 
+// Render-shape mirror of the engine's `ResourceUsage` payload
+// (apps/engine/src/conversations/tools/usage-guidance.ts). sk is a thin
+// client — these are parsed defensively from `data.usage` on persist
+// envelopes, never imported from engine types.
+export interface UsageAccessEntry {
+  via: string;
+  label: string;
+  command?: string;
+  url?: string;
+  tool?: string;
+  detail?: string;
+}
+
+export interface ResourceUsage {
+  inputs: Array<{ name: string; type: string; required: boolean }>;
+  output: string | null;
+  access: UsageAccessEntry[];
+  follow_up: string;
+}
+
 export interface WorkflowSummary {
   kind: "workflow";
   id: string;
@@ -42,6 +62,7 @@ export interface WorkflowSummary {
   name: string;
   trigger: WorkflowTrigger;
   preview_execution_id?: string;
+  usage?: ResourceUsage;
 }
 
 export interface ConnectorSummary {
@@ -50,6 +71,7 @@ export interface ConnectorSummary {
   slug: string;
   template_slug: string;
   probe?: { ok: boolean; status_code?: number; duration_ms?: number };
+  usage?: ResourceUsage;
 }
 
 export interface KnowledgeSourceSummary {
@@ -64,4 +86,5 @@ export interface KnowledgeSourceSummary {
   tags?: string[];
   file_id?: string;
   link_failed?: boolean;
+  usage?: ResourceUsage;
 }

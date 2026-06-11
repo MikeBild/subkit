@@ -27,10 +27,12 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as svc from "../../conversations/service.ts";
+import { buildWorkflowUsage } from "../../conversations/tools/usage-guidance.ts";
 import type { Db } from "../../db/client.ts";
 import { enqueueConversationRunTurn } from "../../queue/handlers/conversation-run-turn.ts";
 import { getBoss } from "../../queue/index.ts";
 import { MCP_ELICITATION_BLURB } from "../../tools/policy.ts";
+import { getWorkflow } from "../../workflows/service.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { insertMcpTask, setMcpTaskFailure, setMcpTaskJobId } from "../tasks/store.ts";
 import {
@@ -362,10 +364,27 @@ export async function handleConversationTool(
       if (!detail.conversation.target_workflow_id) {
         return errorText("conversation has no committed workflow");
       }
+      // Attach the usage block so external MCP clients (claude.ai) can
+      // tell the user what was committed and every real way to run it.
+      const committedWorkflow = await getWorkflow(
+        principal.tenant_id,
+        detail.conversation.target_workflow_id,
+        db,
+      );
       return successText({
         conversation_id: detail.conversation.id,
         workflow_id: detail.conversation.target_workflow_id,
         status: detail.conversation.status,
+        ...(committedWorkflow
+          ? {
+              usage: await buildWorkflowUsage(db, principal.tenant_id, {
+                id: committedWorkflow.id,
+                slug: committedWorkflow.slug,
+                name: committedWorkflow.name,
+                definition: committedWorkflow.definition,
+              }),
+            }
+          : {}),
       });
     }
 

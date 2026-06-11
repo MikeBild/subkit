@@ -405,7 +405,25 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
   // rest of this turn's state) and large enough to merit its own
   // module under the audit-invariant size cap.
   if (ev.kind === "interaction" && ev.interaction) {
-    return await routeChatInteraction({ ev, tenant_id, user_id, db });
+    return await routeChatInteraction({
+      ev,
+      tenant_id,
+      user_id,
+      db,
+      // Lets elicit-routing surface a validation re-prompt in-channel
+      // (the elicitation row stays pending, so the user just answers
+      // again) without pulling the dispatcher's module graph into it.
+      notify: async (text) => {
+        await sendTracked(deps.adapter, ev.platform, {
+          tenant_id,
+          workspace_id: ev.workspace_id,
+          channel_id: ev.channel_id,
+          ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+          kind: "message",
+          text,
+        });
+      },
+    });
   }
 
   // Parse command for mention + slash events.

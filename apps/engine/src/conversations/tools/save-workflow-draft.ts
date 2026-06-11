@@ -201,13 +201,12 @@ export const saveWorkflowDraftTool: ConversationTool = {
     return {
       ok: true,
       data: {
+        // `data` from commitWorkflowAtomic already carries the usage
+        // block plus next_best_actions / next_prompt — do not re-stamp
+        // them here or the usage.follow_up gets clobbered.
         ...data,
         re_issued: true,
         audit_reason: "manual_re_issue",
-        // Post-commit breadcrumb: the workflow exists and is runnable.
-        // The natural next move is to run it once and observe.
-        next_best_actions: ["run_workflow", "inspect_workflow"],
-        next_prompt: "Run the workflow",
         ...(warnings.length > 0 ? { warnings } : {}),
       },
       ...(typeof result.committed_workflow_id === "string"

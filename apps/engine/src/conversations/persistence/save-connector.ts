@@ -39,6 +39,7 @@ import {
   missingFreshCheckpoints,
 } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { connectorPersistEnvelopeFields } from "../tools/usage-guidance.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 import { clearDraftCredential, getDraftCredential } from "./draft-credential-cache.ts";
 
@@ -332,13 +333,13 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
             resource_kind: "connector",
             resource_id: existing.id,
           }),
-          connector: {
+          ...connectorPersistEnvelopeFields({
             id: existing.id,
             slug: existing.slug,
             display_name: fieldPatch.name ?? existing.display_name,
             environment: existing.environment,
             driver: existing.driver,
-          },
+          }),
           idempotent: !fieldsChanged,
           ...(fieldsChanged ? { fields_updated: updatedFields } : {}),
           credential_persisted,
@@ -812,13 +813,13 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
         resource_kind: "connector",
         resource_id: saved.id,
       }),
-      connector: {
+      ...connectorPersistEnvelopeFields({
         id: saved.id,
         slug: saved.slug,
         display_name: saved.display_name,
         environment: saved.environment,
         driver: saved.driver,
-      },
+      }),
       ...(credential_persisted ? { credential_persisted: true } : {}),
       ...(analysis ? { document_analysis: analysis } : {}),
     },

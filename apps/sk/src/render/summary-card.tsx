@@ -7,27 +7,52 @@ import {
   isWorkflowSummary,
   triggerLine,
 } from "./helpers.ts";
-import type { ConnectorSummary, KnowledgeSourceSummary, WorkflowSummary } from "./types.ts";
+import type {
+  ConnectorSummary,
+  KnowledgeSourceSummary,
+  ResourceUsage,
+  WorkflowSummary,
+} from "./types.ts";
 
 export type AnySummary = WorkflowSummary | ConnectorSummary | KnowledgeSourceSummary;
 
-const NextBlock: React.FC<{ commands: string[] }> = ({ commands }) => (
+// Dynamic usage block — renders the engine-provided `usage` payload
+// (inputs, output, access mechanisms, follow-up) from the persist
+// envelope. When `usage` is absent (degenerate envelope) the card
+// renders without it; there is no hardcoded command fallback.
+const UsageBlock: React.FC<{ usage: ResourceUsage }> = ({ usage }) => (
   <Box flexDirection="column" marginTop={1}>
-    <Text dimColor>Next:</Text>
-    {commands.map((c, i) => (
-      <Box key={`next-${i}`} marginLeft={2}>
-        <Text dimColor>{c}</Text>
+    {usage.inputs.length > 0 ? (
+      <Box marginLeft={2}>
+        <Text dimColor>
+          inputs:{" "}
+          {usage.inputs.map((i) => `${i.name}${i.required ? " (required)" : ""}`).join(", ")}
+        </Text>
+      </Box>
+    ) : null}
+    {usage.output ? (
+      <Box marginLeft={2}>
+        <Text dimColor>output: {usage.output}</Text>
+      </Box>
+    ) : null}
+    <Text dimColor>Use it via:</Text>
+    {usage.access.map((entry, i) => (
+      <Box key={`use-${entry.via}-${i}`} marginLeft={2}>
+        <Text dimColor>
+          {entry.label}: {entry.command ?? entry.url ?? entry.tool ?? ""}
+          {entry.detail ? ` — ${entry.detail}` : ""}
+        </Text>
       </Box>
     ))}
+    <Box marginTop={1}>
+      <Text dimColor italic>
+        {usage.follow_up}
+      </Text>
+    </Box>
   </Box>
 );
 
 const WorkflowSummaryCard: React.FC<{ summary: WorkflowSummary }> = ({ summary }) => {
-  const nextCommands = [
-    `sk workflows run ${summary.id}`,
-    `sk workflows get ${summary.id}`,
-    `sk workflows history ${summary.id}`,
-  ];
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
@@ -46,7 +71,7 @@ const WorkflowSummaryCard: React.FC<{ summary: WorkflowSummary }> = ({ summary }
           <Text dimColor>preview execution: {summary.preview_execution_id}</Text>
         </Box>
       ) : null}
-      <NextBlock commands={nextCommands} />
+      {summary.usage ? <UsageBlock usage={summary.usage} /> : null}
     </Box>
   );
 };
@@ -59,11 +84,6 @@ const ConnectorSummaryCard: React.FC<{ summary: ConnectorSummary }> = ({ summary
           : ""
       }${typeof summary.probe.duration_ms === "number" ? ` · ${summary.probe.duration_ms}ms` : ""}`
     : null;
-  const nextCommands = [
-    `sk connectors get ${summary.id}`,
-    `sk connectors probe ${summary.id}`,
-    `sk connectors docs-ingest ${summary.id} --url <docs-url>`,
-  ];
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
@@ -79,16 +99,12 @@ const ConnectorSummaryCard: React.FC<{ summary: ConnectorSummary }> = ({ summary
           <Text dimColor>{probeLine}</Text>
         </Box>
       ) : null}
-      <NextBlock commands={nextCommands} />
+      {summary.usage ? <UsageBlock usage={summary.usage} /> : null}
     </Box>
   );
 };
 
 const KnowledgeSourceSummaryCard: React.FC<{ summary: KnowledgeSourceSummary }> = ({ summary }) => {
-  const nextCommands = [
-    `sk knowledge-sources get ${summary.id}`,
-    `sk knowledge-sources search <query>`,
-  ];
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
@@ -108,7 +124,7 @@ const KnowledgeSourceSummaryCard: React.FC<{ summary: KnowledgeSourceSummary }> 
           <Text color="yellow">warning: file link did not persist (best-effort)</Text>
         </Box>
       ) : null}
-      <NextBlock commands={nextCommands} />
+      {summary.usage ? <UsageBlock usage={summary.usage} /> : null}
     </Box>
   );
 };

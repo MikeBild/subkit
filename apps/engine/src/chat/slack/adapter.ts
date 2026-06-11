@@ -442,8 +442,17 @@ export class SlackAdapter implements ChatAdapter {
     if (typeof input.body === "string") elicitation.body = input.body;
     if (Array.isArray(input.options))
       elicitation.options = input.options as NonNullable<ChatElicitation["options"]>;
-    if (Array.isArray(input.fields))
-      elicitation.fields = input.fields as NonNullable<ChatElicitation["fields"]>;
+    if (Array.isArray(input.fields)) {
+      // ElicitationField.default is `string` (Block-Kit initial_value);
+      // engine form fields may carry number/boolean/string[] defaults —
+      // coerce to string at this boundary, drop array defaults (Slack
+      // multi pre-selection is not wired).
+      elicitation.fields = (input.fields as Array<Record<string, unknown>>).map((f) => {
+        const { default: def, ...rest } = f;
+        if (def === undefined || Array.isArray(def)) return rest;
+        return { ...rest, default: String(def) };
+      }) as unknown as NonNullable<ChatElicitation["fields"]>;
+    }
     const view = buildElicitationModal(elicitation);
 
     try {

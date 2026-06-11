@@ -41,6 +41,11 @@ const respondElicitationRoute = createRoute({
   responses: {
     200: { description: "OK", content: { "application/json": { schema: RunOutcomeSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    422: {
+      description:
+        "Answer failed validation against the originating ask_user_* input — the elicitation stays pending; fix the flagged fields (details.field_errors) and re-submit",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -65,6 +70,11 @@ const respondByToolCallRoute = createRoute({
     200: { description: "OK", content: { "application/json": { schema: RunOutcomeSchema } } },
     404: {
       description: "Not found — no elicitation links to that tool_call",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    422: {
+      description:
+        "Answer failed validation against the originating ask_user_* input — the elicitation stays pending; fix the flagged fields (details.field_errors) and re-submit",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -130,6 +140,21 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
+            if (error instanceof svc.ElicitationValidationError) {
+              // Row stays pending — the client re-renders the prompt with
+              // the field errors and re-submits against the same id.
+              await stream.writeSSE(
+                errorFrame({
+                  code: "elicitation_validation_failed",
+                  message: error.message,
+                  details: {
+                    field_errors: error.field_errors,
+                    pending_elicitation: error.pending_elicitation,
+                  },
+                }),
+              );
+              return;
+            }
             const err = error as Error;
             await stream.writeSSE(
               errorFrame({
@@ -156,6 +181,16 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
             previous_status: error.status,
             previous_output: error.previous_output,
             previous_decision_reason: error.previous_decision_reason,
+          });
+        }
+        if (error instanceof svc.ElicitationValidationError) {
+          // Row stays pending — 422 carries the per-field errors plus the
+          // original prompt (with error pins merged) so the client
+          // re-renders the same dialog and re-submits.
+          throw new HttpError(422, "elicitation_validation_failed", error.message, {
+            elicitation_id: error.elicitation_id,
+            field_errors: error.field_errors,
+            pending_elicitation: error.pending_elicitation,
           });
         }
         throw error;
@@ -224,6 +259,21 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
+            if (error instanceof svc.ElicitationValidationError) {
+              // Row stays pending — the client re-renders the prompt with
+              // the field errors and re-submits against the same id.
+              await stream.writeSSE(
+                errorFrame({
+                  code: "elicitation_validation_failed",
+                  message: error.message,
+                  details: {
+                    field_errors: error.field_errors,
+                    pending_elicitation: error.pending_elicitation,
+                  },
+                }),
+              );
+              return;
+            }
             const err = error as Error;
             await stream.writeSSE(
               errorFrame({
@@ -250,6 +300,16 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
             previous_status: error.status,
             previous_output: error.previous_output,
             previous_decision_reason: error.previous_decision_reason,
+          });
+        }
+        if (error instanceof svc.ElicitationValidationError) {
+          // Row stays pending — 422 carries the per-field errors plus the
+          // original prompt (with error pins merged) so the client
+          // re-renders the same dialog and re-submits.
+          throw new HttpError(422, "elicitation_validation_failed", error.message, {
+            elicitation_id: error.elicitation_id,
+            field_errors: error.field_errors,
+            pending_elicitation: error.pending_elicitation,
           });
         }
         throw error;

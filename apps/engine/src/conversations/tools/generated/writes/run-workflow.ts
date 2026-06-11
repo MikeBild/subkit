@@ -21,6 +21,7 @@ import {
   withLatestPreview,
   withWorkflowExecution,
 } from "../../../authoring-state.ts";
+import { pauseForUserInput } from "../../ask-user/common.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
 import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
@@ -213,9 +214,12 @@ export const runWorkflowTool: ConversationTool = {
     // output because the date was hardcoded in the request URL — no
     // input parameter existed but the model never told the user that.
     // Two arms:
-    //   (a) workflow declares input_schema but caller passed empty
-    //       input — refuse with `input_required` so the LLM prompts
-    //       the user before executing.
+    //   (a) workflow declares input_schema but the run is missing
+    //       inputs — pause with an auto-generated ask_user_form built
+    //       from the schema (already-supplied values pre-filled as
+    //       defaults), instead of an `input_required` error the LLM
+    //       had to hand-translate into a form. On resume the LLM
+    //       re-issues run_workflow with the submitted answers.
     //   (b) workflow declares NO input_schema but caller passed
     //       non-empty input — execute, but include `input_ignored:
     //       true` in the success envelope so the LLM knows to tell
@@ -242,20 +246,95 @@ export const runWorkflowTool: ConversationTool = {
         !Array.isArray(suppliedInput) &&
         Object.keys(suppliedInput as Record<string, unknown>).length === 0) ||
       (typeof suppliedInput === "string" && suppliedInput.trim().length === 0);
-    if (wfHasInputContract && suppliedInputIsEmpty) {
-      return {
-        ok: false,
-        data: withStatus(
-          {
-            error_code: "input_required",
-            message: `workflow "${wf.slug}" declares input_schema but the run was started with no input. Surface the required fields to the user via ask_user_form (or ask_user_text for a single field) and re-issue run_workflow with the answers.`,
-            input_schema: wfInputSchema,
-            workflow_slug: wf.slug,
-            next_best_actions: ["ask_user_form", "ask_user_text"],
+    if (wfHasInputContract) {
+      const properties =
+        wfInputSchema.properties && typeof wfInputSchema.properties === "object"
+          ? (wfInputSchema.properties as Record<string, unknown>)
+          : {};
+      const propertyNames = Object.keys(properties);
+      // When the schema declares no `required` array (synthesized
+      // schemas never do), treat every declared input as required —
+      // a placeholder substituting null/undefined at runtime is worse
+      // than one extra confirmation.
+      const requiredKeys =
+        Array.isArray(wfInputSchema.required) && wfInputSchema.required.length > 0
+          ? wfInputSchema.required.filter((k): k is string => typeof k === "string")
+          : propertyNames;
+      // Stringified-JSON input is normalized downstream by the runtime;
+      // mirror that here so a '{"date":"…"}' string counts as supplied.
+      let suppliedMap: Record<string, unknown> = {};
+      if (
+        typeof suppliedInput === "object" &&
+        suppliedInput !== null &&
+        !Array.isArray(suppliedInput)
+      ) {
+        suppliedMap = suppliedInput as Record<string, unknown>;
+      } else if (typeof suppliedInput === "string" && suppliedInput.trim().startsWith("{")) {
+        try {
+          const parsed = JSON.parse(suppliedInput) as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            suppliedMap = parsed as Record<string, unknown>;
+          }
+        } catch {
+          /* not JSON — treated as unsupplied */
+        }
+      }
+      const missingRequired = requiredKeys.filter((k) => {
+        const v = suppliedMap[k];
+        return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
+      });
+      if ((suppliedInputIsEmpty || missingRequired.length > 0) && propertyNames.length > 0) {
+        const requiredSet = new Set(requiredKeys);
+        const fields = propertyNames.map((name) => {
+          const prop =
+            properties[name] && typeof properties[name] === "object"
+              ? (properties[name] as Record<string, unknown>)
+              : {};
+          const type =
+            prop.type === "number" || prop.type === "integer"
+              ? ("number" as const)
+              : prop.type === "boolean"
+                ? ("boolean" as const)
+                : ("text" as const);
+          const supplied = suppliedMap[name];
+          const fallbackDefault = prop.default;
+          const defaultValue =
+            typeof supplied === "string" ||
+            typeof supplied === "number" ||
+            typeof supplied === "boolean"
+              ? supplied
+              : typeof fallbackDefault === "string" ||
+                  typeof fallbackDefault === "number" ||
+                  typeof fallbackDefault === "boolean"
+                ? fallbackDefault
+                : undefined;
+          return {
+            name,
+            label: name,
+            type,
+            required: requiredSet.has(name),
+            ...(typeof prop.description === "string" ? { placeholder: prop.description } : {}),
+            ...(defaultValue !== undefined ? { default: defaultValue } : {}),
+          };
+        });
+        logger.info({
+          module: "conversation_tool",
+          action: "run_workflow.input_form_elicited",
+          msg: "run_workflow paused with an auto-generated input form",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          workflow_slug: wf.slug,
+          missing_required: missingRequired,
+        });
+        return pauseForUserInput(ctx, {
+          tool_name: "ask_user_form",
+          summary: `Workflow "${wf.slug}" needs input before it can run`,
+          input: {
+            question: `Workflow "${wf.slug}" needs the following input${fields.length === 1 ? "" : "s"} to run:`,
+            fields,
           },
-          "failed",
-        ),
-      };
+        });
+      }
     }
     const inputIgnored =
       !wfHasInputContract &&

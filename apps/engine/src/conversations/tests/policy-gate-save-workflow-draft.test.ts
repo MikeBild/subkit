@@ -286,6 +286,9 @@ describe("save_workflow_draft — policy gate", () => {
     expect(result.ok).toBe(true);
     const data = result.data as Record<string, unknown>;
     expect(data.workflow_id).toBeDefined();
+    // Commit success envelope carries usage + next_prompt derived from usage.follow_up
+    expect(data.usage).toBeDefined();
+    expect(data.next_prompt).toBe((data.usage as { follow_up: string }).follow_up);
   });
 
   test('LLM-issued save_workflow_draft with __policy_confirmed: "true" (string) is coerced and skips the gate (G2)', async () => {

@@ -18,6 +18,7 @@ import {
   ConversationNotFoundError,
   ElicitationActorMismatchError,
   ElicitationNotFoundError,
+  ElicitationValidationError,
 } from "../conversations/service/elicit.ts";
 import { respondElicitation } from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
@@ -106,6 +107,10 @@ export interface RouteChatInteractionArgs {
   tenant_id: string;
   user_id: string;
   db: Db;
+  /** Posts a short text back to the originating channel/thread. Used
+   *  for the validation re-prompt — the elicitation stays pending, so
+   *  the user can answer the same prompt again. */
+  notify?: (text: string) => Promise<void>;
 }
 
 /**
@@ -131,7 +136,7 @@ export interface RouteChatInteractionArgs {
 export async function routeChatInteraction(
   args: RouteChatInteractionArgs,
 ): Promise<DispatchOutcome> {
-  const { ev, tenant_id, user_id, db } = args;
+  const { ev, tenant_id, user_id, db, notify } = args;
   if (ev.kind !== "interaction" || !ev.interaction) return { status: "ignored" };
 
   const action_id = ev.interaction.action_id;
@@ -326,6 +331,30 @@ export async function routeChatInteraction(
         },
         db,
       );
+      return { status: "ignored", conversation_id };
+    }
+    // Answer failed server-side validation — the row stays pending, so
+    // a re-submit against the same elicitation works. Tell the user
+    // what to fix (best-effort) and swallow the error: pg-boss retrying
+    // this job would just re-submit the same invalid answer.
+    if (err instanceof ElicitationValidationError) {
+      if (notify) {
+        const detail = err.field_errors.map((e) => `${e.name}: ${e.message}`).join("; ");
+        try {
+          await notify(`That answer didn't pass validation — ${detail}. Please submit again.`);
+        } catch {
+          /* best-effort: the structured log below still records it */
+        }
+      }
+      logger.warn({
+        module: "chat",
+        action: "interaction.elicitation_validation_failed",
+        msg: "elicitation answer failed validation — row stays pending, user re-prompted",
+        tenant_id,
+        elicitation_id,
+        conversation_id,
+        field_errors: err.field_errors,
+      });
       return { status: "ignored", conversation_id };
     }
     // Crafted click carrying a real UUID that belongs to another tenant

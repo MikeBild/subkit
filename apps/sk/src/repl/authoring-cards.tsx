@@ -8,6 +8,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
 import { debugLog } from "../debug.ts";
+import { parseResourceUsage } from "../render/helpers.ts";
 import { IntentCard } from "../render/intent-card.tsx";
 import { SummaryCard } from "../render/summary-card.tsx";
 import type {
@@ -1108,12 +1109,14 @@ export function extractWorkflowSummary(call: ToolCallState): WorkflowSummary | n
         : null;
   if (!name || version === null) return null;
   const definition = asRecord(workflow.definition) ?? asRecord(d.definition) ?? {};
+  const usage = parseResourceUsage(d.usage);
   return {
     kind: "workflow",
     id,
     version,
     name,
     trigger: extractTrigger(definition.trigger),
+    ...(usage ? { usage } : {}),
   };
 }
 
@@ -1126,7 +1129,8 @@ export function extractConnectorSummary(call: ToolCallState): ConnectorSummary |
   const slug = typeof connector.slug === "string" ? connector.slug : null;
   const templateSlug = typeof connector.template_slug === "string" ? connector.template_slug : null;
   if (!id || !slug || !templateSlug) return null;
-  return { kind: "connector", id, slug, template_slug: templateSlug };
+  const usage = parseResourceUsage(d.usage);
+  return { kind: "connector", id, slug, template_slug: templateSlug, ...(usage ? { usage } : {}) };
 }
 
 // create_knowledge_source returns
@@ -1165,6 +1169,7 @@ export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSou
     resMime ??
     argMimeNonEmpty ??
     (args.mode === "inline" ? "text/markdown" : "application/octet-stream");
+  const usage = parseResourceUsage(d.usage);
   return {
     kind: "knowledge_source",
     id,
@@ -1172,6 +1177,7 @@ export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSou
     mime_type,
     size_bytes: bytes_total,
     ...(argFileId ? { file_id: argFileId } : {}),
+    ...(usage ? { usage } : {}),
   };
 }
 

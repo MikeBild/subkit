@@ -17,6 +17,9 @@ export interface ChoiceOption {
 export interface ChoicePromptProps {
   question: string;
   options: ChoiceOption[];
+  /** Optional pre-selected option value — the cursor starts on it so
+   *  the user confirms with one keypress. */
+  defaultValue?: string | undefined;
   onResponse: (value: { value: string }) => void;
   inputDisabled?: boolean | undefined;
 }
@@ -24,11 +27,13 @@ export interface ChoicePromptProps {
 export const ChoicePrompt: React.FC<ChoicePromptProps> = ({
   question,
   options,
+  defaultValue,
   onResponse,
   inputDisabled,
 }) => {
   const theme = useTheme();
-  const [focused, setFocused] = useState(0);
+  const defaultIndex = defaultValue ? options.findIndex((o) => o.value === defaultValue) : -1;
+  const [focused, setFocused] = useState(defaultIndex >= 0 ? defaultIndex : 0);
 
   useInput(
     (input, key) => {
