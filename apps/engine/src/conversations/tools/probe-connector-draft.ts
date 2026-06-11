@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -9,12 +10,16 @@ import type { DecryptedCredential } from "../../credentials/types.ts";
 import { logger } from "../../logging/logger.ts";
 import { withConnectorProbe, withConnectorValidation } from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
+import { credentialModeMatchesAuthType } from "../persistence/credential-form-contract.ts";
 import {
+  clearDraftCredential,
   getDraftCredential,
   toDecryptedCredential,
   toDecryptedCredentialAsync,
 } from "../persistence/draft-credential-cache.ts";
+import type { AtomicCredentialInput } from "../persistence/save-connector.ts";
 import { saveConnectorAtomic } from "../persistence/save-connector.ts";
+import type { ConnectorDraftProbeSummary } from "../types.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { pickProbeRecoveryActions as pickFromShared, probeStatusHint } from "./probe-recovery.ts";
@@ -31,6 +36,80 @@ const inputSchema = z
     timeout_ms: z.number().int().min(100).max(60_000).default(15_000),
   })
   .openapi("ProbeConnectorDraftToolInput");
+
+/** Deterministic JSON encoding (sorted object keys) so the fingerprint
+ *  is stable across turns regardless of property insertion order. */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  const entries = keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`);
+  return `{${entries.join(",")}}`;
+}
+
+/**
+ * Identity of a probe attempt: everything that could change its outcome
+ * — the draft's connection shape, the probe arguments, and the cached
+ * credential (as a sha256, NEVER the raw secret). Two probes with the
+ * same fingerprint are guaranteed to hit the same endpoint the same way
+ * with the same auth material, so re-running one that just failed
+ * non-transiently is pure turn burn (session 97679846 re-probed an
+ * unchanged Jira GraphQL draft 3× into the same 403).
+ */
+export function computeProbeFingerprint(
+  draftView: {
+    driver: string;
+    base_url: string | null;
+    dsn: string | null;
+    auth_type: string;
+    environment: string;
+    config: Record<string, unknown>;
+  },
+  args: {
+    method: string;
+    path: string;
+    query?: Record<string, string | number | boolean> | undefined;
+    body?: unknown;
+    headers?: Record<string, string> | undefined;
+  },
+  credential: AtomicCredentialInput | null,
+): string {
+  const credentialSha256 = createHash("sha256")
+    .update(stableStringify(credential ?? null))
+    .digest("hex");
+  return createHash("sha256")
+    .update(
+      stableStringify({
+        driver: draftView.driver,
+        base_url: draftView.base_url,
+        dsn: draftView.dsn,
+        auth_type: draftView.auth_type,
+        environment: draftView.environment,
+        config: draftView.config,
+        probe: {
+          method: args.method,
+          path: args.path,
+          query: args.query ?? null,
+          body: args.body ?? null,
+          headers: args.headers ?? null,
+        },
+        credential_sha256: credentialSha256,
+      }),
+    )
+    .digest("hex");
+}
+
+/** A failed probe whose outcome could legitimately change on an
+ *  identical retry: rate limiting (429), upstream errors (5xx), or a
+ *  timeout. The `probe_unchanged` guard skips these. */
+function isTransientProbeFailure(probe: ConnectorDraftProbeSummary): boolean {
+  if (probe.failure_code === "probe_timeout") return true;
+  const status = probe.status_code;
+  return typeof status === "number" && (status === 429 || status >= 500);
+}
 
 function isTimeoutError(error: unknown): boolean {
   if (error instanceof DOMException) {
@@ -148,7 +227,16 @@ export const probeConnectorDraftTool: ConversationTool = {
         summary: res.ok
           ? `${connector.driver} probe succeeded in ${duration_ms}ms.`
           : `${connector.driver} probe failed: ${res.detail ?? "unknown error"}`,
-        ...(res.ok ? {} : { failure_code: "probe_failed" }),
+        ...(res.ok
+          ? {}
+          : {
+              failure_code: "probe_failed",
+              fingerprint: computeProbeFingerprint(
+                draftView,
+                args,
+                getDraftCredential(ctx.conversation_id),
+              ),
+            }),
         probed_at: new Date().toISOString(),
       };
       const nextDraft = withConnectorProbe(
@@ -198,7 +286,10 @@ export const probeConnectorDraftTool: ConversationTool = {
     // result:"error" so operators can see the denial in the audit
     // stream alongside successful probes.
     const buildProbeGateEnvelope = async (params: {
-      failure_code: "credential_required" | "authenticate_oauth_required";
+      failure_code:
+        | "credential_required"
+        | "authenticate_oauth_required"
+        | "credential_mode_mismatch";
       summary: string;
       error_message: string;
       recommended_next: string[];
@@ -282,6 +373,25 @@ export const probeConnectorDraftTool: ConversationTool = {
       });
     }
 
+    // Cache consistency: a cached credential collected for a
+    // DIFFERENT auth shape must never drive a probe. Pre-fix a bearer
+    // token cached before an auth_type switch to basic survived in the
+    // cache and the probe went out with `Authorization: Bearer …`
+    // against a basic-auth endpoint — a 401 indistinguishable from a
+    // wrong secret. Clear the stale entry and demand re-collection.
+    if (
+      draftCredential &&
+      !credentialModeMatchesAuthType(draftCredential.mode, draftView.auth_type)
+    ) {
+      clearDraftCredential(ctx.conversation_id);
+      return buildProbeGateEnvelope({
+        failure_code: "credential_mode_mismatch",
+        summary: `Probe blocked: cached credential mode "${draftCredential.mode}" does not match the draft's auth_type "${draftView.auth_type}". The stale credential was cleared.`,
+        error_message: `The cached draft credential (mode: ${draftCredential.mode}) was collected for a different auth shape than the draft now declares (auth_type: ${draftView.auth_type}). The stale credential has been cleared — re-collect a matching credential via ask_user_form(type: password, sensitive: true), then re-probe.`,
+        recommended_next: ["ask_user_form"],
+      });
+    }
+
     // OAuth2 seed credentials cannot drive a probe — they update
     // config.oauth only; the access token is minted later by
     // authenticate_oauth + the OAuth callback. Surface a structured
@@ -337,6 +447,53 @@ export const probeConnectorDraftTool: ConversationTool = {
         error_message: msg,
         recommended_next: ["update_connector_draft"],
       });
+    }
+
+    // Re-probe guard: an identical probe of an unchanged draft +
+    // credential cannot succeed where the last one failed — unless the
+    // failure was transient (429 / 5xx / timeout). Session 97679846
+    // re-probed an unchanged Jira GraphQL draft 3× into the same 403.
+    // Refuse WITHOUT firing the network call, return the cached failed
+    // probe, and audit the denial so the loop is visible to operators.
+    const probeFingerprint = computeProbeFingerprint(draftView, args, draftCredential);
+    const lastProbe = connector.latest_probe ?? null;
+    if (
+      lastProbe &&
+      lastProbe.ok === false &&
+      lastProbe.fingerprint === probeFingerprint &&
+      !isTransientProbeFailure(lastProbe)
+    ) {
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: ctx.actor_id ? "user" : "system",
+          actor_id: ctx.actor_id,
+          action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
+          resource_type: "conversation",
+          resource_id: ctx.conversation_id,
+          result: "denied",
+          metadata: {
+            connector_name: connector.name ?? null,
+            connector_slug: connector.slug ?? null,
+            environment: draftView.environment,
+            driver: connector.driver,
+            duration_ms: 0,
+            draft_only: true,
+            failure_code: "probe_unchanged",
+          },
+        },
+        ctx.db,
+      );
+      return {
+        ok: false,
+        data: buildLifecyclePayload(currentDraft, {
+          error_code: "probe_unchanged",
+          error:
+            "This exact probe already failed and nothing has changed since — the draft (driver, base_url, auth_type, config), the cached credential, and the probe arguments are identical to the last failed attempt. Do NOT re-probe. Read latest_probe.response_preview and response_headers for the upstream's own diagnosis, verify the endpoint via fetch_connector_docs / search_docs, or change the base_url / credential before probing again.",
+          latest_probe: lastProbe,
+          recommended_next: ["fetch_connector_docs", "search_docs", "update_connector_draft"],
+        }),
+      };
     }
 
     // Local helper: after a green probe, auto-persist the connector + credential
@@ -425,8 +582,22 @@ export const probeConnectorDraftTool: ConversationTool = {
         duration_ms,
         summary: res.ok
           ? `GraphQL introspection probe succeeded in ${duration_ms}ms.`
-          : `GraphQL probe failed: ${res.detail ?? `HTTP ${res.status ?? 0}`}`,
-        ...(res.ok ? {} : { failure_code: "probe_failed" }),
+          : `GraphQL probe failed: ${res.detail ?? `HTTP ${res.status ?? 0}`}.${probeStatusHint(res.status ?? 0)}`,
+        // On failure carry the upstream's own words — scrubbed body
+        // snippet + allowlisted diagnostic headers from the driver — so
+        // the LLM/operator can read the real cause instead of "HTTP 403".
+        ...(res.ok
+          ? {}
+          : {
+              failure_code: "probe_failed",
+              // Identity of this failed attempt — the re-probe guard
+              // refuses an identical retry until something changes.
+              fingerprint: probeFingerprint,
+              ...(res.body_snippet !== undefined ? { response_preview: res.body_snippet } : {}),
+              ...(res.response_headers !== undefined
+                ? { response_headers: res.response_headers }
+                : {}),
+            }),
         probed_at: new Date().toISOString(),
       };
       const nextDraft = withConnectorProbe(
@@ -458,6 +629,10 @@ export const probeConnectorDraftTool: ConversationTool = {
         ctx.db,
       );
       if (!res.ok) {
+        // Same structured recovery hint as the HTTP path. Pass the
+        // ProbeFailureSignal shape explicitly — the GraphQL latest_probe
+        // stores the status under `status_code`, so passing it verbatim
+        // would classify every failure as the catch-all bucket.
         return {
           ok: false,
           data: buildLifecyclePayload(nextDraft, {
@@ -467,6 +642,10 @@ export const probeConnectorDraftTool: ConversationTool = {
             },
             latest_probe,
             detail: res.detail ?? null,
+            next_best_actions: pickProbeRecoveryActions({
+              status: res.status ?? null,
+              failure_code: "probe_failed",
+            }),
           }),
         };
       }
@@ -514,6 +693,7 @@ export const probeConnectorDraftTool: ConversationTool = {
             ? `Probe timed out after ${args.timeout_ms}ms.`
             : `Probe failed: ${errorDetail}`,
           failure_code: isTimeoutError(errorDetail) ? "probe_timeout" : "probe_failed",
+          fingerprint: probeFingerprint,
           probed_at,
         }
       : {
@@ -528,6 +708,9 @@ export const probeConnectorDraftTool: ConversationTool = {
               ? `Probe succeeded with HTTP ${status}.`
               : `Probe reached the system but returned HTTP ${status}.${probeStatusHint(status)}`,
           response_preview: truncated.data,
+          // Only failed probes carry a fingerprint — the re-probe
+          // guard keys on it; green probes auto-persist and move on.
+          ...(status >= 200 && status < 400 ? {} : { fingerprint: probeFingerprint }),
           probed_at,
         };
     const nextDraft = withConnectorProbe(

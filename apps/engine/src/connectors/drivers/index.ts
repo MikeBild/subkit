@@ -48,6 +48,14 @@ export interface ProbeResult {
   detail?: string;
   /** Typed error class — present on every ok:false result. */
   error_code?: ProbeErrorCode;
+  /** Scrubbed, truncated (≤500 chars) upstream response body on ok:false. */
+  body_snippet?: string;
+  /**
+   * Allowlisted diagnostic response headers (www-authenticate,
+   * content-type, x-*auth/error/reason/login/deny/request-id*), values
+   * scrubbed. Present on ok:false when the upstream sent any.
+   */
+  response_headers?: Record<string, string>;
   /**
    * Optional deep link to the provider console page that resolves
    * the failure (e.g. Google Cloud "Enable API" page when
@@ -60,7 +68,7 @@ export interface ProbeResult {
 /** Shared return type for every per-driver probe function. */
 export type DriverProbeResult = Pick<
   ProbeResult,
-  "ok" | "latency_ms" | "status" | "detail" | "error_code"
+  "ok" | "latency_ms" | "status" | "detail" | "error_code" | "body_snippet" | "response_headers"
 >;
 
 export async function probeConnector(p: {

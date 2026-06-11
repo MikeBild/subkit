@@ -49,6 +49,7 @@ import { resolveThinking } from "../llm/core/thinking-policy.ts";
 import { type CriticArtifact, type CriticVerdict, runCritic } from "../llm/critic/index.ts";
 import { LlmContextTooLarge, LlmQuotaExhausted } from "../llm/errors.ts";
 import { runOutputGuard, runOutputGuardStream } from "../llm/output-guard/index.ts";
+import { createStreamScrubber } from "../llm/output-guard/stream-scrub.ts";
 import {
   classifyProviderError,
   isFallbackEligible,
@@ -1417,6 +1418,14 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       // tick alongside the streaming buffer above it). Paragraph
       // boundaries are blank-line separated runs, the same shape the
       // assistant naturally emits between tool-call narrations.
+      //
+      // text_delta secret scrub: the raw provider chunks are routed
+      // through a holdback scrubber so a secret-shaped token never
+      // reaches the event sink, even split across chunk seams. The
+      // batch guard in onStepFinish covers the PERSISTED message;
+      // this covers the live render path. Declared outside the try so
+      // the finally below can flush the held tail.
+      const deltaScrubber = createStreamScrubber();
       try {
         // Fixed-size tail-only paragraph detection. Pre-fix this used
         // an unbounded `proseBuffer += chunk` plus
@@ -1442,7 +1451,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           // takes over visibility. Stop the timer so we never publish
           // a stale "still composing" tick on top of live tokens.
           stopHeartbeat();
-          events.push({ type: "text_delta", text: chunk });
+          const safeDelta = deltaScrubber.push(chunk);
+          if (safeDelta) events.push({ type: "text_delta", text: safeDelta });
           const prevLen = proseTail.length;
           proseTail = (proseTail + chunk).slice(-PROSE_TAIL_WINDOW);
           // When the slice drops the head, rebase the scan cursor by
@@ -1484,6 +1494,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       } catch {
         // Drain errors surface via onError/capturedError below; ignore here.
       } finally {
+        const tailDelta = deltaScrubber.flush();
+        if (tailDelta) events.push({ type: "text_delta", text: tailDelta });
         stopHeartbeat();
       }
       await result.finishReason;

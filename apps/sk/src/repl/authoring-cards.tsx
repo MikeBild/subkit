@@ -311,6 +311,19 @@ const ConnectorProbeCard: React.FC<CardProps> = memo(({ call }) => {
   const duration = typeof probe?.duration_ms === "number" ? `${probe.duration_ms}ms` : null;
   const summary = typeof probe?.summary === "string" ? probe.summary : "";
   const request = [method, path].filter((x): x is string => !!x).join(" ");
+  // On failure surface the upstream's own words — the engine ships
+  // a scrubbed `response_preview` body snippet plus allowlisted
+  // diagnostic `response_headers` (www-authenticate, x-*-loginreason,
+  // …) on the probe summary. Pre-fix the card stopped at "HTTP 403".
+  const failed = probe?.ok === false;
+  const rawPreview = typeof probe?.response_preview === "string" ? probe.response_preview : "";
+  const preview = rawPreview.length > 200 ? `${rawPreview.slice(0, 200)}…` : rawPreview;
+  const headerBag = asRecord(probe?.response_headers);
+  const headerLine = headerBag
+    ? Object.entries(headerBag)
+        .map(([k, v]) => `${k}=${String(v)}`)
+        .join(" · ")
+    : "";
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
@@ -333,6 +346,16 @@ const ConnectorProbeCard: React.FC<CardProps> = memo(({ call }) => {
       {summary ? (
         <Box marginLeft={2}>
           <Text dimColor>{summary}</Text>
+        </Box>
+      ) : null}
+      {failed && preview ? (
+        <Box marginLeft={2}>
+          <Text dimColor>{preview}</Text>
+        </Box>
+      ) : null}
+      {failed && headerLine ? (
+        <Box marginLeft={2}>
+          <Text dimColor>{headerLine}</Text>
         </Box>
       ) : null}
     </Box>

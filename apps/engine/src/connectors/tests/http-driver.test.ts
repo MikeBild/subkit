@@ -14,6 +14,7 @@ import {
   executePlannedHttpRequest,
   HttpRequestInvalidError,
   parseResponseBody,
+  probeHttpConnector,
 } from "../drivers/http.ts";
 import { createConnector, getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
@@ -526,5 +527,55 @@ describe("executePlannedHttpRequest header contract", () => {
         signal: new AbortController().signal,
       }),
     ).rejects.toBeInstanceOf(HttpRequestInvalidError);
+  });
+});
+
+// A failed HTTP probe must carry the upstream's own words — a
+// scrubbed `body_snippet` plus the allowlisted diagnostic
+// `response_headers` (www-authenticate kept, set-cookie dropped) — so
+// the operator/LLM reads the real cause instead of a bare status code.
+describe("probeHttpConnector failure diagnostics", () => {
+  test("403 fallback probe carries body_snippet and allowlisted response_headers", async () => {
+    const failingMock = await createMockServer((_req: IncomingMessage, res: ServerResponse) => {
+      res.statusCode = 403;
+      res.setHeader("content-type", "application/json");
+      res.setHeader("www-authenticate", 'Basic realm="restricted"');
+      res.setHeader("set-cookie", "session=top-secret");
+      res.end(JSON.stringify({ message: "Basic auth with password is not allowed" }));
+    });
+    try {
+      const conn = await createConnector(
+        {
+          tenant_id: ctx.tenantId,
+          input: {
+            name: "probe-diag-403",
+            driver: "http",
+            environment: "dev",
+            base_url: failingMock.baseUrl,
+            auth_type: "none",
+            config: {},
+          },
+          actor_id: null,
+        },
+        ctx.testDb.db,
+      );
+      const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
+      const probe = await probeHttpConnector({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        connector: fresh!,
+      });
+
+      expect(probe.ok).toBe(false);
+      expect(probe.status).toBe(403);
+      // Fallback GET / 403 classifies as scope_insufficient (no
+      // body-aware upgrade for this generic JSON error body).
+      expect(probe.error_code).toBe("scope_insufficient");
+      expect(probe.body_snippet).toContain("Basic auth with password is not allowed");
+      expect(probe.response_headers?.["www-authenticate"]).toBe('Basic realm="restricted"');
+      expect(probe.response_headers?.["set-cookie"]).toBeUndefined();
+    } finally {
+      await failingMock.close();
+    }
   });
 });

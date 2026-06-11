@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, graphql]
-version: 4
+version: 5
 ---
 
 # GraphQL Connectors
@@ -184,7 +184,7 @@ Common GraphQL auth conventions, mapped to sk `auth_type`:
 | AppSync Cognito User-Pool      | `header`    | `Authorization: <id_token>` (raw JWT, no prefix) |
 | AppSync Lambda authorizer      | `header`    | `Authorization: <token>` (custom shape)          |
 | Auth0 Management GraphQL       | `oauth2`    | client-credentials grant; refreshed inline       |
-| Internal services              | `basic`     | base64-encoded `username:password`               |
+| Internal services / Atlassian  | `basic`     | `username` + `password` fields — the driver sends `Authorization: Basic` and does the encoding; never pre-encode |
 
 ### AppSync Cognito JWT — raw `Authorization` (no "Bearer ")
 
@@ -234,6 +234,15 @@ it. For now, stand up an API_KEY or Cognito user-pool path.
 - **Selecting fields the schema doesn't expose.** Results in `400 Bad Request`
   with a schema validation error. Use `probe_connector` with an introspection
   query first.
+- **Wrong GraphQL gateway endpoint.** GraphQL gateways often do NOT live at
+  `https://<host>/graphql`. Verify via `fetch_connector_docs` / `search_docs` /
+  `discover_connector_endpoints` before probing. Known non-obvious endpoints:
+  - Atlassian Cloud: `https://{domain}.atlassian.net/gateway/api/graphql`
+  - Xray Cloud: `https://xray.cloud.getxray.app/api/v2/graphql`
+
+  A 403 response with an HTML body or a terse one-liner usually means wrong
+  endpoint, not wrong credential — read `response_preview` before re-asking for
+  credentials.
 
 ## See also
 

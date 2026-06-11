@@ -2,11 +2,15 @@
 // that lets `probe_connector_draft` authenticate before the connector
 // row exists.
 
-import { listResolvedConnectorTemplates } from "../../../connectors/template-resolver.ts";
 import type { Db } from "../../../db/client.ts";
 import { logger } from "../../../logging/logger.ts";
+import { findSecretSpans } from "../../../logging/scrub-secrets.ts";
 import { loadDraft } from "../../draft.ts";
 import type { CommitIntent } from "../../tools/ask-user/commit-intent.ts";
+import {
+  resolveDraftCredentialSeedMode,
+  type SeedModeConnectorView,
+} from "../credential-form-contract.ts";
 import { setDraftCredential } from "../draft-credential-cache.ts";
 import type { AtomicCredentialInput } from "../save-connector.ts";
 
@@ -287,79 +291,16 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
   if (p.elicitation.tool_name !== "ask_user_form") return;
   try {
     const draft = await loadDraft(p.tenant_id, p.conversation_id, p.db);
-    const authType = draft.connector?.auth_type ?? null;
-    // Template-enrichment lands `config.oauth` / `config.aws_region`
-    // into the draft only at save time (saveConnectorAtomic), so during
-    // the credential-cache phase the draft's config block is usually
-    // empty for oauth2/aws_sigv4 templates. Fall back to the bound
-    // template's metadata. Without this fallback session a2292e7a hit
-    // the cache_skipped path with `oauth_grant_type:null` even though
-    // the appsync-cognito template declares `grant_type:
-    // cognito_user_password` — and the AppSync connector never
-    // persisted because the probe ran unauthenticated.
-    const draftCfg = (draft.connector?.config ?? {}) as {
-      aws_region?: unknown;
-      oauth?: { grant_type?: unknown; client_id?: unknown };
-    };
-    const draftOauthCfg = (draftCfg.oauth ?? {}) as {
-      grant_type?: unknown;
-      client_id?: unknown;
-    };
-    const templateSlug = draft.connector?.template_slug ?? null;
-    let templateOauth: { grant_type?: unknown; client_id?: unknown } | null = null;
-    let templateAwsRegion: unknown = null;
-    if (templateSlug && (authType === "oauth2" || authType === "aws_sigv4")) {
-      const templates = await listResolvedConnectorTemplates(p.db, p.tenant_id);
-      const tmpl = templates.find((t) => t.template.slug === templateSlug)?.template;
-      if (tmpl) {
-        templateOauth = (tmpl.oauth ?? null) as {
-          grant_type?: unknown;
-          client_id?: unknown;
-        } | null;
-        // aws_region lives under the auth_options.aws_sigv4 hint when
-        // the template is sigv4-shaped; keep this lookup defensive
-        // because not all sigv4 templates declare it.
-        const sigv4Opt = (tmpl.auth_options ?? []).find(
-          (o: { auth_type?: string }) => o?.auth_type === "aws_sigv4",
-        ) as { aws_region?: unknown } | undefined;
-        templateAwsRegion = sigv4Opt?.aws_region ?? null;
-      }
-    }
-    // Translate the connector's auth_type into the seed-mode the
-    // extractor expects. Pre-fix this gate only let
-    // `bearer/basic/header/query` through, silently dropping the
-    // form submission for `oauth2 / cognito_user_password` and
-    // `aws_sigv4` drafts — that's why the AppSync probe in session
-    // f244b896 went out unauthenticated even after the operator
-    // submitted the form three times.
-    let seedMode: string | null = null;
-    if (
-      authType === "bearer" ||
-      authType === "basic" ||
-      authType === "header" ||
-      authType === "query"
-    ) {
-      seedMode = authType;
-    } else if (authType === "oauth2") {
-      const grantType = draftOauthCfg.grant_type ?? templateOauth?.grant_type ?? null;
-      if (grantType === "cognito_user_password") seedMode = "cognito_user_password";
-      else if (grantType === "password")
-        seedMode = "basic"; // RFC 6749 §4.3 reuses basic shape
-      else if (grantType === "authorization_code" || grantType === "client_credentials") {
-        // BYO oauth2 — operator-supplied client_id + optional client_secret
-        // flow into config.oauth via saveConnectorAtomic.persistCredential.
-        // Cached for the LLM's credential-less re-save retry; the actual
-        // access_token/refresh_token row is written by the OAuth callback,
-        // never by extractCredentialFromFormOutput.
-        seedMode = "oauth2";
-      }
-      // Any other grantType (jwt-bearer, device_code, …) still hits the
-      // cache_skipped forensic log below so the next addition is
-      // debuggable from logs alone.
-    } else if (authType === "aws_sigv4") {
-      seedMode = "aws_sigv4";
-    }
-    if (!seedMode) {
+    // Seed-mode resolution (auth_type → extractor mode, incl. the
+    // template grant_type fallback for not-yet-enriched oauth2/aws_sigv4
+    // drafts — session a2292e7a) lives in credential-form-contract.ts so
+    // the form-creation gate and the chat-paste capture path share it.
+    const resolution = await resolveDraftCredentialSeedMode({
+      connector: draft.connector ?? null,
+      db: p.db,
+      tenant_id: p.tenant_id,
+    });
+    if (!resolution.seedMode) {
       // Forensic log so future regressions are debuggable from the
       // engine log alone — pre-fix the cache silently early-returned
       // and we had to read source to figure out why.
@@ -369,29 +310,16 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
         msg: "ask_user_form resolved but draft auth_type is unsupported by extractor",
         tenant_id: p.tenant_id,
         conversation_id: p.conversation_id,
-        auth_type: authType,
-        oauth_grant_type:
-          authType === "oauth2"
-            ? (draftOauthCfg.grant_type ?? templateOauth?.grant_type ?? null)
-            : null,
-        template_slug: templateSlug,
+        auth_type: resolution.authType,
+        oauth_grant_type: resolution.authType === "oauth2" ? resolution.oauthGrantType : null,
+        template_slug: resolution.templateSlug,
         connector_present: draft.connector != null,
       });
       return;
     }
-    // For oauth2/cognito the connector config carries region + client_id;
-    // pass them as seed overrides so the extractor doesn't have to
-    // re-parse them out of the form fields when they were already set.
-    // Template fallback covers drafts whose config has not yet been
-    // template-enriched (the common case at form-submit time).
-    const seedOverrides: Record<string, unknown> = {};
-    const region = draftCfg.aws_region ?? templateAwsRegion;
-    if (typeof region === "string") seedOverrides.aws_region = region;
-    const clientId = draftOauthCfg.client_id ?? templateOauth?.client_id;
-    if (typeof clientId === "string") seedOverrides.client_id = clientId;
     const credential = extractCredentialFromFormOutput(
-      seedMode,
-      seedOverrides,
+      resolution.seedMode,
+      resolution.seedOverrides,
       p.elicitation_output,
     );
     if (!credential) return;
@@ -413,5 +341,151 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
       conversation_id: p.conversation_id,
       error: err instanceof Error ? err.message : String(err),
     });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Chat-paste capture: a user who pastes
+// `email=…, api_token=ATATT…` straight into chat instead of the masked
+// form must not lose the credential — the persisted message is scrubbed
+// (the secret never reaches the model or the DB raw), but the secret is
+// captured into the draft-credential cache so the agent can probe
+// directly instead of re-collecting.
+// ---------------------------------------------------------------------------
+
+/** Identifier-ish key for a `key=value` / `key: value` chat pair. */
+const CHAT_KEY = "[A-Za-z][A-Za-z0-9_.-]*";
+const INLINE_PAIR_RE = new RegExp(`^(${CHAT_KEY})[:=](.{2,})$`);
+const DANGLING_KEY_RE = new RegExp(`^(${CHAT_KEY}):$`);
+
+/**
+ * Parse `key=value` / `key: value` pairs out of a chat message.
+ * Token-wise (split on whitespace/commas/semicolons) rather than one
+ * big regex so a prose colon ("here you go: email=…") never swallows
+ * the following real pair as its value: a dangling `key:` only consumes
+ * the next token when that token is not itself a pair. Surrounding
+ * quotes on values are stripped.
+ */
+function parseChatPairs(text: string): Record<string, string> {
+  const values: Record<string, string> = {};
+  const unquote = (v: string): string => v.replace(/^["']/, "").replace(/["']$/, "");
+  const tokens = text.split(/[\s,;]+/).filter((t) => t.length > 0);
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (!token) continue;
+    const inline = INLINE_PAIR_RE.exec(token);
+    if (inline?.[1] && inline[2]) {
+      values[inline[1]] = unquote(inline[2]);
+      continue;
+    }
+    const dangling = DANGLING_KEY_RE.exec(token);
+    if (dangling?.[1]) {
+      const next = tokens[i + 1];
+      if (next && !INLINE_PAIR_RE.test(next) && !DANGLING_KEY_RE.test(next)) {
+        values[dangling[1]] = unquote(next);
+        i += 1; // consume the value token
+      }
+    }
+  }
+  return values;
+}
+
+/** The single secret slot a bare pasted token maps onto per seed mode.
+ *  Modes that need more than one secret-bearing value (basic, cognito,
+ *  aws_sigv4, oauth2) have no unambiguous bare-secret mapping. */
+const SINGLE_SECRET_SLOT: Readonly<Record<string, string>> = {
+  bearer: "token",
+  header: "header_value",
+  query: "value",
+};
+
+/**
+ * Pure parse/capture decision for a chat-pasted credential. Parses
+ * `key=value` / `key: value` pairs out of `rawText`, falls back to
+ * treating a lone bare secret as the seed mode's single secret slot,
+ * and feeds the resulting `{name → value}` map through the tolerant
+ * `extractCredentialFromFormOutput` (aliases like `api_token` /
+ * `email` make this work for free-form chat). Returns null when no
+ * unambiguous mapping exists.
+ *
+ * Exported for unit tests — the async wrapper below adds the secret
+ * detection, draft gating, cache write, and marker text.
+ */
+export function extractChatPastedCredential(
+  seedMode: string,
+  seedOverrides: Record<string, unknown>,
+  rawText: string,
+  spans: ReadonlyArray<{ match: string }>,
+): AtomicCredentialInput | null {
+  const values = parseChatPairs(rawText);
+  // Lone bare secret (no key=value framing): map the single detected
+  // secret onto the mode's only secret slot, when one exists.
+  if (Object.keys(values).length === 0 && spans.length === 1) {
+    const slot = SINGLE_SECRET_SLOT[seedMode];
+    const match = spans[0]?.match;
+    if (slot && match) values[slot] = match;
+  }
+  if (Object.keys(values).length === 0) return null;
+  return extractCredentialFromFormOutput(seedMode, seedOverrides, values);
+}
+
+export interface ChatCredentialCaptureResult {
+  /** True when a credential was extracted and cached. */
+  captured: boolean;
+  /** The cached credential's mode, when captured. */
+  mode?: string;
+}
+
+/**
+ * Capture a secret pasted into chat into the draft-credential cache.
+ * Caller has already established that `findSecretSpans(rawText)` is
+ * non-empty and that the conversation's connector draft has a real
+ * auth_type — this helper resolves the seed mode (template fallback
+ * included), runs the pure extraction, and writes the cache. Failures
+ * are swallowed: the worst case is the scrub-only path where the agent
+ * re-collects via the password form.
+ */
+export async function captureDraftCredentialFromChatText(p: {
+  tenant_id: string;
+  conversation_id: string;
+  rawText: string;
+  connector: SeedModeConnectorView;
+  db: Db;
+}): Promise<ChatCredentialCaptureResult> {
+  try {
+    const resolution = await resolveDraftCredentialSeedMode({
+      connector: p.connector,
+      db: p.db,
+      tenant_id: p.tenant_id,
+    });
+    if (!resolution.seedMode) return { captured: false };
+    const spans = findSecretSpans(p.rawText);
+    const credential = extractChatPastedCredential(
+      resolution.seedMode,
+      resolution.seedOverrides,
+      p.rawText,
+      spans,
+    );
+    if (!credential) return { captured: false };
+    setDraftCredential(p.conversation_id, credential);
+    logger.info({
+      module: "auto-persist",
+      action: "draft_credential.cached_from_chat",
+      msg: "captured chat-pasted secret into the draft credential cache",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      mode: credential.mode,
+    });
+    return { captured: true, mode: credential.mode };
+  } catch (err) {
+    logger.warn({
+      module: "auto-persist",
+      action: "draft_credential.chat_capture_failed",
+      msg: "failed to capture chat-pasted credential — message is scrubbed, agent re-collects via form",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { captured: false };
   }
 }

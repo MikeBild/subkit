@@ -450,6 +450,67 @@ describe("graphql driver", () => {
     expect(probe.detail).toBe("credential_required");
     expect(serverHit).toBe(false);
   });
+
+  // A failed probe must carry the upstream's own words — the first
+  // GraphQL error message as `detail`, the scrubbed body snippet, and the
+  // allowlisted diagnostic headers. Pre-fix three consecutive 403 probes
+  // surfaced only "GraphQL probe failed: HTTP 403" while the response
+  // body/headers naming the real problem were dropped in scope.
+  test("failed probe carries detail, body_snippet, and allowlisted response_headers", async () => {
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    const stubFetch = async () =>
+      new Response(
+        JSON.stringify({
+          errors: [{ message: "Basic auth with password is not allowed on this instance" }],
+        }),
+        {
+          status: 403,
+          headers: {
+            "www-authenticate": 'OAuth realm="https://example.test"',
+            "content-type": "application/json",
+            "x-seraph-loginreason": "AUTHENTICATED_FAILED",
+            "set-cookie": "secret=1",
+          },
+        },
+      );
+
+    const probe = await probeGraphQLConnector({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      fetchImpl: stubFetch as unknown as typeof fetch,
+    });
+
+    expect(probe.ok).toBe(false);
+    expect(probe.status).toBe(403);
+    expect(probe.error_code).toBe("credential_invalid");
+    expect(probe.detail).toBe("Basic auth with password is not allowed on this instance");
+    expect(probe.body_snippet).toContain(
+      "Basic auth with password is not allowed on this instance",
+    );
+    expect(probe.response_headers?.["www-authenticate"]).toBe('OAuth realm="https://example.test"');
+    expect(probe.response_headers?.["x-seraph-loginreason"]).toBe("AUTHENTICATED_FAILED");
+    expect(probe.response_headers?.["set-cookie"]).toBeUndefined();
+  });
+
+  test("failed probe without GraphQL error messages falls back to HTTP-status detail", async () => {
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    const stubFetch = async () =>
+      new Response(JSON.stringify({ errors: [] }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      });
+
+    const probe = await probeGraphQLConnector({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      fetchImpl: stubFetch as unknown as typeof fetch,
+    });
+
+    expect(probe.ok).toBe(false);
+    expect(probe.detail).toBe("HTTP 403");
+  });
 });
 
 // Regression: the request step unwraps the GraphQL transport envelope so

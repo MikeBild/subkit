@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, connector, onboarding]
-version: 6
+version: 7
 ---
 
 # Connector Creation Guidance
@@ -257,8 +257,18 @@ call it as the normal commit step. Behaviour notes:
 
 - **API key in header** — credential `mode: "header"`, store under the header name.
 - **API key in query** — credential `mode: "query"`.
-- **Bearer token** — credential `mode: "bearer"`, raw token only (the driver adds the `Bearer ` prefix).
-- **Basic** — credential `mode: "basic"`, fields `username` + `password`.
+- **Bearer token** — credential `mode: "bearer"`, raw token only (the driver adds
+  the `Bearer ` prefix). Only use `bearer` when the vendor sends
+  `Authorization: Bearer <token>`.
+- **Basic** — credential `mode: "basic"`, fields `username` + `password`. The driver
+  composes `Authorization: Basic base64(username:password)` — never ask the operator
+  to pre-encode `email:token`. Collect TWO fields: `username` (often the account email)
+  and `password` (the API token). Atlassian API tokens (Jira, Confluence) are always
+  Basic — even though Atlassian calls them "API tokens" they are NOT bearer tokens.
+- **API token ≠ bearer** — many vendors advertise "API tokens" that travel as HTTP
+  Basic, not Bearer. Default to `basic` when the vendor docs show
+  `Authorization: Basic base64(email:token)`. Only choose `bearer` when the docs
+  explicitly show `Authorization: Bearer <token>`.
 - **OAuth2** — `load_skill("oauth-flow")`. Briefly: collect `client_id` +
   `client_secret` via masked form, save with `mode: "oauth2"`, then call
   `authenticate_oauth`. Access + refresh tokens never reach the agent.
@@ -272,6 +282,31 @@ call it as the normal commit step. Behaviour notes:
   `secret_access_key` for SigV4). Don't override `auth_type` to
   `"header"` because you recognise an `appsync-api.*.amazonaws.com`
   hostname — that path forces the operator to re-enter creds twice.
+
+### Offering auth options — use verbatim auth_type values
+
+When the template exposes `auth_options`, present them via `ask_user_choice`. Each
+choice `value` MUST be the option's `auth_type` string exactly as it appears in the
+template — e.g. `"basic"` or `"oauth2"`. Never invent values like `"bearer_token"`,
+`"api_token"`, or `"pat"`. The engine matches the choice value against `auth_type` and
+rejects anything that does not match.
+
+### Canonical credential field names per mode
+
+The engine enforces these names. Sending any other name returns
+`error_code: "credential_form_mismatch"`.
+
+| Mode | Required fields | Notes |
+|---|---|---|
+| `bearer` | `token` | Driver prepends `Bearer ` |
+| `basic` | `username`, `password` | Driver encodes as `Basic base64(u:p)` |
+| `header` | `header_name`, `header_value` | Emitted verbatim |
+| `query` | `param`, `value` | Appended to request URL |
+| `aws_sigv4` | `access_key_id`, `secret_access_key` (+ optional `session_token`) | |
+| `cognito_user_password` | `username`, `password` | |
+| `oauth2` | `client_id` (+ optional `client_secret`) | |
+
+Labels are free-form; only the `name` field is canonical and must match the table above.
 
 ## Connector config defaults
 
@@ -346,6 +381,29 @@ for ad-hoc HTTP against it. This is how you paginate, sample a response shape
 before drafting a workflow step, or verify a write endpoint without committing
 a step. `call_connector` reuses the saved credential automatically — never pass
 auth headers manually.
+
+## After a failed probe (401/403)
+
+A 401 or 403 from `probe_connector_draft` is almost never just a wrong credential —
+read the response before re-asking.
+
+1. **Read `latest_probe.response_preview` and `response_headers`.** The response body
+   usually names the real problem (expired token, wrong scope, missing plan, CORS
+   pre-flight). Only after reading it should you decide whether to collect a new
+   credential.
+
+2. **Verify the endpoint before re-asking for a credential.** A valid credential still
+   returns 401/403 against a wrong host or path. Run
+   `fetch_connector_docs` / `search_docs` / `discover_connector_endpoints` to confirm
+   the base URL and probe path are correct before presenting the masked form again.
+   Example: Atlassian Cloud's GraphQL gateway lives at
+   `https://{domain}.atlassian.net/gateway/api/graphql` — probing `/graphql` or the
+   REST base URL will return 404/403 regardless of the credential.
+
+3. **Never re-probe an unchanged draft.** If nothing changed — same `base_url`, same
+   credential, same probe path — the engine returns `error_code: "probe_unchanged"`.
+   You must change at least one of: `base_url`, the credential (via `ask_user_form`),
+   or the probe path before calling `probe_connector_draft` again.
 
 ## See also
 

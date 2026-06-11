@@ -13,8 +13,10 @@ import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
+import { findSecretSpans, scrubString } from "../../logging/scrub-secrets.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { appendMessage } from "../persist.ts";
+import { captureDraftCredentialFromChatText } from "../persistence/auto-persist/credential-cache.ts";
 import type { ConversationPermissionMode, ConversationRecord } from "../types.ts";
 import { getConversation } from "./get.ts";
 import {
@@ -140,13 +142,45 @@ export async function appendUserMessage(
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
   });
+
+  // Secret scrub + capture chokepoint (user decision): a pasted
+  // secret never persists raw and never reaches the model raw — but it
+  // is not lost either. When the conversation has an auth-required
+  // connector draft, the secret is captured into the in-memory draft
+  // credential cache (conversation-scoped) and the scrubbed text gets a
+  // marker telling the agent to probe instead of re-collecting. With no
+  // unambiguous mapping the text is scrubbed only — the agent routes to
+  // the password form per prompt rule. The returned in-flight `message`
+  // equals the persisted row; `persist.ts appendMessage` re-scrubs as
+  // idempotent defense-in-depth underneath.
+  let persistedText = rewrite.text;
+  if (findSecretSpans(persistedText).length > 0) {
+    const draftConnector = conv.draft?.connector ?? null;
+    const authType = draftConnector?.auth_type ?? null;
+    let capturedMode: string | null = null;
+    if (draftConnector && authType != null && authType !== "none") {
+      const capture = await captureDraftCredentialFromChatText({
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        rawText: persistedText,
+        connector: draftConnector,
+        db: exec,
+      });
+      if (capture.captured && capture.mode) capturedMode = capture.mode;
+    }
+    persistedText = scrubString(persistedText);
+    if (capturedMode) {
+      persistedText += ` [secret captured: cached as draft credential (mode=${capturedMode}) — do not re-collect; probe directly]`;
+    }
+  }
+
   const messageId = await appendMessage(exec, p.tenant_id, p.conversation_id, "user", {
-    text: rewrite.text,
+    text: persistedText,
   });
 
   return {
     conversation: conv.conversation,
-    message: rewrite.text,
+    message: persistedText,
     message_id: messageId,
     user_memory: effectiveMemory,
   };

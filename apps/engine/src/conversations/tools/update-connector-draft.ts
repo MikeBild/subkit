@@ -5,7 +5,7 @@ import { log } from "../../logging/logger.ts";
 import { SECRET_PATTERNS, SENSITIVE_KEY_PATTERN } from "../../logging/scrub-secrets.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
-import { getDraftCredential } from "../persistence/draft-credential-cache.ts";
+import { clearDraftCredential, getDraftCredential } from "../persistence/draft-credential-cache.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -246,6 +246,23 @@ export const updateConnectorDraftTool: ConversationTool = {
       }
     }
 
+    // Cache consistency: switching auth_type invalidates any cached
+    // draft credential — it was collected for the OLD auth shape. Pre-fix
+    // a bearer token cached before a bearer→basic switch survived and the
+    // next probe went out with `Authorization: Bearer …` against a
+    // basic-auth endpoint (session 97679846). The downgrade-to-"none"
+    // case is already blocked above; this covers mode-to-mode flips.
+    let credentialCacheCleared = false;
+    if (
+      args.auth_type !== undefined &&
+      current.auth_type !== undefined &&
+      current.auth_type !== null &&
+      args.auth_type !== current.auth_type
+    ) {
+      clearDraftCredential(ctx.conversation_id);
+      credentialCacheCleared = true;
+    }
+
     const patch = Object.fromEntries(
       Object.entries(args).filter(([, value]) => value !== undefined),
     ) as Partial<ConnectorDraftDocument>;
@@ -275,6 +292,7 @@ export const updateConnectorDraftTool: ConversationTool = {
         extra: {
           connector: { ...next, validation },
           validation,
+          ...(credentialCacheCleared ? { credential_cache_cleared: true } : {}),
         },
       }),
     };

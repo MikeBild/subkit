@@ -26,6 +26,7 @@ import {
 } from "./http.ts";
 import type { DriverProbeResult } from "./index.ts";
 import { classifyGraphqlProbe } from "./probe-classify.ts";
+import { buildProbeDiagnostics } from "./probe-diagnostics.ts";
 
 export interface GraphQLConnectorConfig {
   endpoint: string;
@@ -372,11 +373,17 @@ export async function probeGraphQLConnector(p: {
     });
     if (!ok) {
       const msgs = graphqlErrorMessages(res.body);
+      // Carry the upstream's own words — the first GraphQL error
+      // message as `detail`, plus the scrubbed body snippet and the
+      // allowlisted diagnostic headers. Pre-fix a 403 probe surfaced
+      // only "HTTP 403" while the response body named the real cause.
       return {
         ok,
         latency_ms,
         status: res.status,
+        detail: msgs?.[0] ?? `HTTP ${res.status}`,
         error_code: classifyGraphqlProbe(res.status, msgs),
+        ...buildProbeDiagnostics(res.headers, res.body),
       };
     }
     return { ok, latency_ms, status: res.status };

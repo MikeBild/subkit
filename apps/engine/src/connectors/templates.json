@@ -9756,7 +9756,7 @@
     "ingestion_source": "openapi",
     "ingestion_url": "https://dac-static.atlassian.com/cloud/jira/platform/swagger-v3.v3.json",
     "icon": "jira.svg",
-    "description": "Jira Cloud REST API",
+    "description": "Jira Cloud REST API. For GraphQL access use the Atlassian gateway endpoint https://{domain}.atlassian.net/gateway/api/graphql (graphql driver, Basic auth with email + API token).",
     "category": "project-management",
     "tags": ["rest", "jql", "webhooks", "atlassian"],
     "setup_instructions": "Choose: (1) API Token — create at id.atlassian.com/manage-profile/security/api-tokens, use Basic Auth. (2) OAuth 2.0 — register app at developer.atlassian.com.",
@@ -9764,7 +9764,7 @@
       {
         "auth_type": "basic",
         "label": "API Token (Basic Auth)",
-        "description": "Create an API token at id.atlassian.com/manage-profile/security/api-tokens. Use email as username, token as password. Base URL: https://{domain}.atlassian.net/rest/api/3",
+        "description": "Create an API token at id.atlassian.com/manage-profile/security/api-tokens. username = your Atlassian account email, password = the API token. The driver composes Authorization: Basic base64(email:token) — never pre-encode. Base URL: https://{domain}.atlassian.net/rest/api/3",
         "oauth": null
       },
       {
@@ -9820,6 +9820,10 @@
     "aws_service": null,
     "aws_region": null,
     "verified_at": null,
+    "operator_quirks": {
+      "auth": "Jira API tokens are Basic auth, not Bearer. username = Atlassian account email, password = API token from id.atlassian.com. The driver composes Authorization: Basic base64(email:token) — never pre-encode. For GraphQL access use the gateway endpoint https://{domain}.atlassian.net/gateway/api/graphql (graphql driver, Basic auth, same credentials).",
+      "schema": "REST base URL for Cloud is https://{domain}.atlassian.net/rest/api/3. The gateway endpoint for Atlassian's GraphQL API is /gateway/api/graphql (not /graphql). Use JQL via /search/jql for issue queries."
+    },
     "recipes": [
       {
         "slug": "list-open-issues",
@@ -19082,6 +19086,148 @@
         }
       }
     ],
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null
+  },
+  {
+    "version": 1,
+    "slug": "xray-cloud",
+    "name": "Xray Cloud (GraphQL)",
+    "driver": "graphql",
+    "base_url": "https://xray.cloud.getxray.app/api/v2/graphql",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": null,
+    "ingestion_source": "graphql",
+    "ingestion_url": null,
+    "icon": "",
+    "description": "Xray Cloud test-management GraphQL API. Authenticates with a short-lived JWT obtained by exchanging client_id + client_secret against https://xray.cloud.getxray.app/api/v2/authenticate. The response body IS the quoted JWT string (~1h validity); re-issue on 401.",
+    "category": "project-management",
+    "tags": ["graphql", "testing", "jira", "xray", "atlassian"],
+    "setup_instructions": "1. In Jira Cloud, navigate to Xray > Settings > API Keys and create an API Key pair (client_id + client_secret). 2. Exchange them out-of-band: POST {\"client_id\": \"<id>\", \"client_secret\": \"<secret>\"} to https://xray.cloud.getxray.app/api/v2/authenticate — the response body is the JWT (a quoted string). 3. Paste the JWT (without quotes) as the Bearer token. Note: the JWT is valid for ~1 hour; re-issue from the same endpoint on 401. Xray Cloud is separate from Xray Data Center — credentials are not interchangeable.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "JWT Bearer Token (exchanged from client credentials)",
+        "description": "POST {\"client_id\",\"client_secret\"} to https://xray.cloud.getxray.app/api/v2/authenticate; the response body is the JWT. Paste it as the Bearer token. Valid ~1h — re-issue on 401.",
+        "oauth": null
+      }
+    ],
+    "url_pattern": "^https://xray\\.cloud\\.getxray\\.app/",
+    "keywords": ["xray", "xray cloud", "test management", "jira xray"],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "Xray Cloud JWT Bearer Token",
+        "placeholder": "eyJ...",
+        "doc_url": "https://docs.getxray.app/display/XRAYCLOUD/Global+Settings%3A+API+Keys",
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "recipes": [
+      {
+        "slug": "introspect-schema",
+        "title": "Introspect Xray Cloud GraphQL schema",
+        "description": "Run a standard GraphQL introspection query to verify the credential and enumerate available types.",
+        "intent_keywords": [
+          "introspect xray",
+          "xray schema",
+          "verify xray token",
+          "xray graphql introspection"
+        ],
+        "derived_from_skill": null,
+        "category": "project-management",
+        "tags": ["xray", "graphql", "introspection"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "xray-cloud-introspect",
+          "description": "Introspect the Xray Cloud GraphQL schema to verify connectivity and enumerate types.",
+          "steps": [
+            {
+              "kind": "request",
+              "id": "introspect",
+              "method": "POST",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "graphql": {
+                "operation": "query",
+                "query": "query { __schema { queryType { name } types { name kind } } }"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "slug": "get-test-by-issue-id",
+        "title": "Get Xray test by Jira issue ID",
+        "description": "Fetch a single Xray test entity by its Jira issue ID.",
+        "intent_keywords": ["get xray test", "fetch test by id", "xray test issue", "xray getTest"],
+        "derived_from_skill": null,
+        "category": "project-management",
+        "tags": ["xray", "graphql", "test"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "xray-cloud-get-test",
+          "description": "Fetch a single Xray Cloud test by Jira issue ID.",
+          "input_schema": {
+            "type": "object",
+            "required": ["issueId"],
+            "properties": {
+              "issueId": {
+                "type": "string",
+                "description": "Jira issue ID of the Xray test (e.g. 12345)"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "get_test",
+              "method": "POST",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "graphql": {
+                "operation": "query",
+                "query": "query GetTest($issueId: String!) { getTest(issueId: $issueId) { issueId projectId testType { name kind } steps { id action data result } } }",
+                "variables": {
+                  "issueId": "${input.issueId}"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "operator_quirks": {
+      "auth": "Xray Cloud uses a two-step auth: exchange client_id + client_secret at https://xray.cloud.getxray.app/api/v2/authenticate to get a JWT, then use that JWT as the Bearer token. The JWT is valid ~1h; re-issue on 401. Xray Cloud credentials are NOT interchangeable with Xray Data Center credentials.",
+      "schema": "The GraphQL endpoint is https://xray.cloud.getxray.app/api/v2/graphql — not /graphql. Step output is the GraphQL data payload; read via $scope.<step>.data.<field>. GraphQL errors fail the step and surface on $scope.<step>.error."
+    },
     "aws_service": null,
     "aws_region": null,
     "verified_at": null

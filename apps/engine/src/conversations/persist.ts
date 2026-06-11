@@ -23,6 +23,7 @@ import { getStaticCapabilities } from "../llm/core/capabilities.ts";
 import { buildFileContentBlocks, type FileContentBlock } from "../llm/core/file-context.ts";
 import type { ProviderKind } from "../llm/core/model-init.ts";
 import { logger } from "../logging/logger.ts";
+import { scrubString } from "../logging/scrub-secrets.ts";
 import {
   recordFileLlmCapDowngrade,
   recordFileLlmInlineBytes,
@@ -235,6 +236,16 @@ export async function appendMessage(
   role: "user" | "assistant" | "tool" | "system",
   content: unknown,
 ): Promise<string> {
+  // Persistence safety net: a user-pasted secret must never land raw in
+  // `conversation_messages` (rows are replayed into every later model
+  // turn AND rendered in transcripts). Pattern-only scrub on the text
+  // leaf at the single insert chokepoint — covers `service/append.ts`,
+  // `service/create.ts`, and the loop's user-row inserts.
+  // Capture-to-credential-cache happens upstream in `service/append.ts`.
+  if (role === "user" && content && typeof content === "object") {
+    const c = content as Record<string, unknown>;
+    if (typeof c.text === "string") content = { ...c, text: scrubString(c.text) };
+  }
   const [row] = await db
     .insert(conversationMessages)
     .values({ tenant_id, conversation_id, role, content: content as Record<string, unknown> })

@@ -45,6 +45,7 @@ import {
 } from "../persistence/draft-credential-cache.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { probeConnectorDraftTool } from "../tools/probe-connector-draft.ts";
+import { updateConnectorDraftTool } from "../tools/update-connector-draft.ts";
 import type { DraftDocument } from "../types.ts";
 
 let ctx: TestDb;
@@ -1114,6 +1115,168 @@ describe("probe_connector_draft + draft credential", () => {
     } finally {
       await server.stop();
     }
+  });
+
+  // A credential cached for one auth shape must never drive a probe
+  // after the draft switched to another. The probe gate clears the
+  // stale entry and demands re-collection via ask_user_form.
+  test("cached bearer credential on a basic draft → credential_mode_mismatch, cache cleared, server never hit", async () => {
+    let serverHit = false;
+    const server = await startLocalTargetServer(() => {
+      serverHit = true;
+      return new Response("should not reach upstream", { status: 200 });
+    });
+    try {
+      const conversation_id = await seedConversation();
+      const basicDraft: DraftDocument = {
+        mode: "connector_authoring",
+        connector: {
+          name: "basic-after-flip",
+          slug: "basic-after-flip",
+          driver: "http",
+          environment: "dev",
+          auth_type: "basic",
+          base_url: server.url,
+        },
+        workflow: { name: "", steps: [] },
+      };
+      const validated = withConnectorValidation(
+        withConnectorInspection(basicDraft),
+        {
+          ...basicDraft.connector,
+          validation: validateConnectorDraft(basicDraft.connector ?? null),
+        },
+        true,
+        "validated",
+      );
+      const toolCtx = await buildToolCtx(conversation_id, validated);
+      // Stale bearer credential from before the auth_type switch.
+      setDraftCredential(conversation_id, { mode: "bearer", token: "stale-bearer-token" });
+
+      const result = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "GET",
+        path: "/v2/projects",
+        timeout_ms: 5_000,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(serverHit).toBe(false);
+      const data = result.data as { error_code?: string; recommended_next?: string[] };
+      expect(data.error_code).toBe("credential_mode_mismatch");
+      expect(data.recommended_next).toContain("ask_user_form");
+      // The stale credential is gone — the next probe gates on
+      // credential_required until the form re-collects.
+      expect(getDraftCredential(conversation_id)).toBeNull();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  // An identical probe of an unchanged failed draft is refused
+  // without a network call. The fingerprint covers draft shape + probe
+  // args + credential digest.
+  test("re-probing an unchanged failed draft returns probe_unchanged without hitting the network", async () => {
+    let hits = 0;
+    const server = await startLocalTargetServer(() => {
+      hits += 1;
+      return new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const conversation_id = await seedConversation();
+      const draft = buildBearerDraft(server.url);
+      const toolCtx = await buildToolCtx(conversation_id, draft);
+      setDraftCredential(conversation_id, { mode: "bearer", token: "same-token" });
+
+      const first = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "GET",
+        path: "/v2/projects",
+        timeout_ms: 5_000,
+      });
+      expect(first.ok).toBe(false);
+      expect(hits).toBe(1);
+
+      const second = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "GET",
+        path: "/v2/projects",
+        timeout_ms: 5_000,
+      });
+      expect(second.ok).toBe(false);
+      // No second network call — the guard returned the cached probe.
+      expect(hits).toBe(1);
+      const data = second.data as {
+        error_code?: string;
+        latest_probe?: { ok?: boolean; status_code?: number } | null;
+        recommended_next?: string[];
+      };
+      expect(data.error_code).toBe("probe_unchanged");
+      expect(data.latest_probe?.ok).toBe(false);
+      expect(data.latest_probe?.status_code).toBe(403);
+      expect(data.recommended_next).toContain("fetch_connector_docs");
+
+      // Changing the probe args changes the fingerprint — the network
+      // call fires again.
+      const third = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "GET",
+        path: "/v2/other",
+        timeout_ms: 5_000,
+      });
+      expect(third.ok).toBe(false);
+      expect(hits).toBe(2);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a transient 503 prior failure skips the probe_unchanged guard", async () => {
+    let hits = 0;
+    const server = await startLocalTargetServer(() => {
+      hits += 1;
+      return new Response("upstream hiccup", { status: 503 });
+    });
+    try {
+      const conversation_id = await seedConversation();
+      const draft = buildBearerDraft(server.url);
+      const toolCtx = await buildToolCtx(conversation_id, draft);
+      setDraftCredential(conversation_id, { mode: "bearer", token: "same-token" });
+
+      const first = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "GET",
+        path: "/v2/projects",
+        timeout_ms: 5_000,
+      });
+      expect(first.ok).toBe(false);
+      expect(hits).toBe(1);
+
+      // Identical retry IS allowed — a 503 can legitimately clear up.
+      const second = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "GET",
+        path: "/v2/projects",
+        timeout_ms: 5_000,
+      });
+      expect(second.ok).toBe(false);
+      expect(hits).toBe(2);
+      const data = second.data as { error_code?: string };
+      expect(data.error_code).not.toBe("probe_unchanged");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("auth_type flip via update_connector_draft clears the cached credential", async () => {
+    const conversation_id = await seedConversation();
+    const draft = buildBearerDraft("https://api.example.test");
+    const toolCtx = await buildToolCtx(conversation_id, draft);
+    setDraftCredential(conversation_id, { mode: "bearer", token: "soon-stale" });
+
+    const result = await updateConnectorDraftTool.execute(toolCtx, { auth_type: "basic" });
+
+    expect(result.ok).toBe(true);
+    expect(getDraftCredential(conversation_id)).toBeNull();
+    const data = result.data as { credential_cache_cleared?: boolean };
+    expect(data.credential_cache_cleared).toBe(true);
   });
 
   test("reuses the saved connector's stored credential when the draft is already persisted (empty cache)", async () => {

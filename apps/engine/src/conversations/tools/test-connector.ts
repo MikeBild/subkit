@@ -114,6 +114,14 @@ export const testConnectorTool: ConversationTool = {
         ...(result.provider_action_url !== undefined
           ? { provider_action_url: result.provider_action_url }
           : {}),
+        // Scrubbed upstream body snippet + allowlisted diagnostic
+        // headers from the driver probe, so a failed health check carries
+        // the upstream's own words (e.g. www-authenticate, the JSON error
+        // body) instead of a bare status code.
+        ...(result.body_snippet !== undefined ? { body_snippet: result.body_snippet } : {}),
+        ...(result.response_headers !== undefined
+          ? { response_headers: result.response_headers }
+          : {}),
         // G6 / H4: partial-grant surface. `partial_grant` may be
         // `true` (real partial grant), `false` (every requested scope
         // present), or `"unknown"` (credential predates G6 migration

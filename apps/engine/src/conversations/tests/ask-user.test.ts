@@ -290,6 +290,77 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
     }
   });
 
+  // Canonical credential field names are enforced at form CREATION.
+  // The gate fires before pauseForUserInput, so a stub ctx with no DB
+  // works for the classic auth modes (seed-mode resolution only touches
+  // the DB for templated oauth2/aws_sigv4 drafts — and tolerates failure).
+  test("basic draft + single `basic_auth` field → credential_form_mismatch (session 97679846 repro)", async () => {
+    const ctx = buildGatedCtx({
+      name: "jira",
+      slug: "jira",
+      driver: "graphql",
+      environment: "dev",
+      auth_type: "basic",
+    });
+    const result = await askUserFormTool.execute(ctx, {
+      question: "Enter your Jira credentials",
+      fields: [{ name: "basic_auth", label: "email:api_token", type: "password" }],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error_code).toBe("credential_form_mismatch");
+      expect(result.message).toContain("username, password");
+      expect(result.message).toContain("base64");
+      expect(result.next_best_actions).toContain("ask_user_form");
+    }
+  });
+
+  test("bearer draft + `api_key` field → credential_form_mismatch (canonical name is `token`)", async () => {
+    const ctx = buildGatedCtx({
+      name: "t",
+      slug: "t",
+      driver: "http",
+      environment: "dev",
+      auth_type: "bearer",
+    });
+    const result = await askUserFormTool.execute(ctx, {
+      question: "Enter your API key",
+      fields: [{ name: "api_key", label: "API key", type: "password" }],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error_code).toBe("credential_form_mismatch");
+    }
+  });
+
+  test("header draft + header_name seeded in commit_intent → header_value-only form passes the gate", async () => {
+    const ctx = buildGatedCtx({
+      name: "t",
+      slug: "t",
+      driver: "http",
+      environment: "dev",
+      auth_type: "header",
+    });
+    // Gate passes → the tool reaches pauseForUserInput which throws on
+    // the absent DB. Same pattern as the non-sensitive gate test below.
+    try {
+      const result = await askUserFormTool.execute(ctx, {
+        question: "Enter your API key",
+        fields: [{ name: "header_value", label: "API key", type: "password" }],
+        commit_intent: {
+          kind: "save_connector_draft",
+          payload: { credential: { mode: "header", header_name: "X-API-Key" } },
+          description: "Save the connector with the header credential.",
+        },
+      });
+      if (!result.ok) {
+        expect(result.error_code).not.toBe("credential_form_mismatch");
+      }
+    } catch {
+      // Reached pauseForUserInput (past the gate) — expected with no DB.
+    }
+  });
+
   // Non-sensitive form fields (no password, no sensitive:true) must not trigger
   // the gate even when auth_type is unset.
   test("text field without sensitive:true + auth_type unset → gate not triggered", async () => {

@@ -17,7 +17,7 @@ describe("connector-template catalog — structural", () => {
     expect(templates.length).toBeGreaterThanOrEqual(10);
   });
 
-  test("ships 104 templates", () => {
+  test("ships 105 templates", () => {
     // Bump this counter when adding/removing built-in templates. The
     // canonical drift guard is `loadBuiltinTemplates()` at startup —
     // every entry must pass `ConnectorTemplateSchema`. This test pins
@@ -25,8 +25,8 @@ describe("connector-template catalog — structural", () => {
     //
     // History: 95 → 101 (six AWS/oauth2 entries in F6) → 102
     // (web-scraper from #144) → 103 (generic-multipart-upload) → 104
-    // (linkedin oauth2 + create-post recipe).
-    expect(templates.length).toBe(104);
+    // (linkedin oauth2 + create-post recipe) → 105 (xray-cloud graphql).
+    expect(templates.length).toBe(105);
   });
 
   test("every slug matches the lowercase-kebab regex", () => {

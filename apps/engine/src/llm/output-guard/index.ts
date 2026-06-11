@@ -9,10 +9,16 @@
 //             violation list. Used in CI / scenario tests.
 //   - `off`:  bypass entirely.
 //
+// A secret pre-pass runs BEFORE any mode handling (including `off`):
+// secret-shaped spans (`findSecretSpans`) are always redacted in-place
+// and never throw — redaction is a security invariant, not a guard-mode
+// concern. Telemetry records only the secret kind, never the token.
+//
 // The hook point is `apps/engine/src/conversations/loop.ts`'s
 // `onStepFinish` (where the assistant text is captured per step).
 
 import { getConfig } from "../../config/loader.ts";
+import { findSecretSpans } from "../../logging/scrub-secrets.ts";
 import {
   recordLlmOutputGuardDuration,
   recordLlmOutputViolation,
@@ -143,14 +149,32 @@ export function runOutputGuard(
   const mode = effectiveMode(opts.mode);
   const scanners = opts.scanners ?? DEFAULT_SCANNERS;
   const startedAt = Date.now();
+
+  // Secret pre-pass — NOT a scanner. A secret-shaped span is always
+  // redacted and the turn continues, in every mode (including `off`
+  // and `hard`); routing it through the scanner roster would
+  // hard-throw in CI and abort the turn. Telemetry carries only the
+  // kind, never the matched token. Spans are spliced descending by
+  // start so indexes never shift, and they are NOT pushed into
+  // `violations` — scanners then scan the already-redacted text, so
+  // their spans stay aligned with the text we return.
+  let scanText = text;
+  const secretSpans = findSecretSpans(scanText);
+  for (const s of [...secretSpans].sort((a, b) => b.start - a.start)) {
+    scanText = `${scanText.slice(0, s.start)}***REDACTED:${s.kind}***${scanText.slice(s.end)}`;
+  }
+  for (const s of secretSpans) {
+    recordLlmOutputViolation({ kind: `secret.${s.kind}`, mode });
+  }
+
   if (mode === "off") {
-    return { text, violations: [], mode, duration_ms: 0 };
+    return { text: scanText, violations: [], mode, duration_ms: 0 };
   }
 
   const violations: Violation[] = [];
   for (const s of scanners) {
     try {
-      violations.push(...s.scan(text, ctx));
+      violations.push(...s.scan(scanText, ctx));
     } catch {
       // A faulty scanner must never crash the LLM loop — record and continue.
       recordLlmOutputViolation({ kind: `scanner.${s.id}.threw`, mode });
@@ -164,7 +188,7 @@ export function runOutputGuard(
   }
 
   if (violations.length === 0) {
-    return { text, violations, mode, duration_ms };
+    return { text: scanText, violations, mode, duration_ms };
   }
 
   if (mode === "hard") {
@@ -174,7 +198,7 @@ export function runOutputGuard(
   // soft: rewrite the offending spans with a marker so the user sees
   // *something* explaining the gap, and the model sees on the next
   // turn that the placeholder did not survive.
-  const rewritten = rewriteSoft(text, violations);
+  const rewritten = rewriteSoft(scanText, violations);
   return { text: rewritten, violations, mode, duration_ms };
 }
 

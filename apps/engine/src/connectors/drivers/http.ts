@@ -24,6 +24,7 @@ import { assertEgressAllowed, assertRobotsAllowed } from "../egress-guard.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import type { ConnectorView } from "../types.ts";
 import { signSigV4Request } from "./aws-sigv4.ts";
+import { buildProbeDiagnostics } from "./probe-diagnostics.ts";
 
 // Re-export so callers that already import from this driver can catch
 // the SSRF-block error without taking a direct dependency on the guard.
@@ -918,6 +919,14 @@ export interface HttpProbeResult {
     | "unknown_upstream_error";
   /** Optional provider-console deep link the operator can click. */
   provider_action_url?: string;
+  /** Scrubbed, truncated (≤500 chars) upstream response body on ok:false. */
+  body_snippet?: string;
+  /**
+   * Allowlisted diagnostic response headers (www-authenticate,
+   * content-type, x-*auth/error/reason/login/deny/request-id*), values
+   * scrubbed. Present on ok:false when the upstream sent any.
+   */
+  response_headers?: Record<string, string>;
 }
 
 /**
@@ -1137,6 +1146,10 @@ export async function probeHttpConnector(p: {
       if (classification.provider_action_url) {
         result.provider_action_url = classification.provider_action_url;
       }
+      // Stamp the upstream's own words (scrubbed body snippet +
+      // allowlisted diagnostic headers) so a failed probe is
+      // diagnosable without re-issuing the request.
+      Object.assign(result, buildProbeDiagnostics(res.headers, res.body));
     }
     log.connector.probe.completed({
       connector_id: p.connector.id,

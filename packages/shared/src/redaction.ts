@@ -1,4 +1,4 @@
-export type SecretKind = "pat" | "bearer" | "jwt" | "aws_key" | "key_value";
+export type SecretKind = "pat" | "bearer" | "jwt" | "aws_key" | "key_value" | "generic";
 
 export interface SecretPattern {
   readonly kind: SecretKind;
@@ -57,15 +57,34 @@ export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
   { kind: "pat", regex: /\bghs_[A-Za-z0-9]{30,}/g },
   { kind: "pat", regex: /\bglpat-[A-Za-z0-9_-]{20,}/g },
   { kind: "pat", regex: /\bsk-ant-[A-Za-z0-9_-]{20,}/g },
+  { kind: "pat", regex: /\bATATT[A-Za-z0-9_\-+/=]{20,}/g },
+  { kind: "pat", regex: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}/g },
   { kind: "pat", regex: /\bsk-[A-Za-z0-9]{20,}/g },
   { kind: "pat", regex: /\bxoxb-[A-Za-z0-9-]{20,}/g },
   { kind: "pat", regex: /\bxoxp-[A-Za-z0-9-]{20,}/g },
+  { kind: "pat", regex: /\bnpm_[A-Za-z0-9]{30,}/g },
   { kind: "aws_key", regex: /\bAKIA[0-9A-Z]{16}\b/g },
   {
     kind: "jwt",
     regex: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
   },
   { kind: "bearer", regex: /Bearer\s+[A-Za-z0-9._-]+/gi },
+  // Generic high-entropy token: a contiguous 32+ char run over the
+  // token charset that mixes lower case, upper case, and at least two
+  // digits. The lookaheads are confined to the token charset itself,
+  // so they can never cross whitespace — the assertions hold *within*
+  // the contiguous run. Deliberately excluded by construction:
+  //   - hex SHAs / lowercase UUIDs (no uppercase),
+  //   - uppercase UUIDs / ULIDs / SCREAMING_SNAKE constants (no lowercase),
+  //   - camelCase identifiers (no digits / too short),
+  //   - Mustache placeholders like `{{token}}` (`{`/`}` not in charset).
+  // MUST stay last: a vendor-prefixed pattern above should own the span
+  // (and its kind) when both match.
+  {
+    kind: "generic",
+    regex:
+      /\b(?=[A-Za-z0-9+/=_-]*[a-z])(?=[A-Za-z0-9+/=_-]*[A-Z])(?=[A-Za-z0-9+/=_-]*\d[A-Za-z0-9+/=_-]*\d)[A-Za-z0-9+/=_-]{32,}/g,
+  },
 ];
 
 /**
@@ -120,6 +139,60 @@ export function scrubString(value: string): string {
   return out;
 }
 
+export interface SecretSpan {
+  start: number;
+  end: number;
+  kind: SecretKind;
+  match: string;
+}
+
+/** Kinded redaction markers produced by `scrubString` — spans that
+ *  overlap one are already handled and must not be re-reported. */
+const REDACTED_MARKER_RE = /\*\*\*REDACTED:[a-z_]+\*\*\*/g;
+
+function overlapsAny(
+  start: number,
+  end: number,
+  ranges: ReadonlyArray<{ start: number; end: number }>,
+): boolean {
+  return ranges.some((r) => start < r.end && r.start < end);
+}
+
+/**
+ * Locate every secret-shaped span in `text` WITHOUT rewriting it.
+ * Pattern order is authoritative: when two patterns match overlapping
+ * ranges, the earlier pattern in `SECRET_PATTERNS` owns the span (same
+ * winner `scrubString`'s sequential replace would produce). Spans that
+ * overlap an existing `***REDACTED:<kind>***` marker are skipped — the
+ * text already went through a scrub pass. Result is sorted by `start`.
+ */
+export function findSecretSpans(text: string): SecretSpan[] {
+  const markers: Array<{ start: number; end: number }> = [];
+  REDACTED_MARKER_RE.lastIndex = 0;
+  let marker: RegExpExecArray | null = REDACTED_MARKER_RE.exec(text);
+  while (marker !== null) {
+    markers.push({ start: marker.index, end: marker.index + marker[0].length });
+    marker = REDACTED_MARKER_RE.exec(text);
+  }
+  REDACTED_MARKER_RE.lastIndex = 0;
+
+  const spans: SecretSpan[] = [];
+  for (const { kind, regex } of SECRET_PATTERNS) {
+    regex.lastIndex = 0;
+    let m: RegExpExecArray | null = regex.exec(text);
+    while (m !== null) {
+      const start = m.index;
+      const end = m.index + m[0].length;
+      if (!overlapsAny(start, end, markers) && !overlapsAny(start, end, spans)) {
+        spans.push({ start, end, kind, match: m[0] });
+      }
+      m = regex.exec(text);
+    }
+    regex.lastIndex = 0;
+  }
+  return spans.sort((a, b) => a.start - b.start);
+}
+
 function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY_PATTERN.test(key);
 }
@@ -155,6 +228,40 @@ function scrubSecretValue(input: unknown, depth: number, seen: WeakSet<object>):
 
 export function scrubSecrets(payload: unknown): unknown {
   return scrubSecretValue(payload, 0, new WeakSet<object>());
+}
+
+function scrubStringsDeepValue(input: unknown, depth: number, seen: WeakSet<object>): unknown {
+  if (input === null || input === undefined) return input;
+  if (typeof input === "string") return scrubString(input);
+  if (typeof input !== "object") return input;
+  if (depth >= SCRUB_SECRETS_MAX_DEPTH) return "[depth-exceeded]";
+
+  const obj = input as object;
+  if (seen.has(obj)) return "[circular]";
+  seen.add(obj);
+
+  if (Array.isArray(input)) {
+    return input.map((item) => scrubStringsDeepValue(item, depth + 1, seen));
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    out[key] = scrubStringsDeepValue(value, depth + 1, seen);
+  }
+  return out;
+}
+
+/**
+ * Pattern-only deep scrub: walks the value like `scrubSecrets` but
+ * WITHOUT the sensitive-key branch — string leaves go through
+ * `scrubString` only. A field legitimately *named* `token` or
+ * `credential` (e.g. a form field definition or a Mustache reference
+ * like `Bearer {{token}}`) passes untouched; only values that LOOK
+ * like secrets are rewritten. Use for user-facing payloads where key
+ * names are structure, not secrets.
+ */
+export function scrubStringsDeep(value: unknown): unknown {
+  return scrubStringsDeepValue(value, 0, new WeakSet<object>());
 }
 
 function scrubLogString(value: string): string {

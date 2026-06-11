@@ -273,7 +273,15 @@ export interface ConnectorDraftProbeSummary {
   duration_ms?: number;
   summary: string;
   response_preview?: unknown;
+  /** Allowlisted diagnostic response headers from a failed probe (values scrubbed). */
+  response_headers?: Record<string, string>;
   failure_code?: string;
+  /** sha256 identity of a FAILED probe attempt (draft connection shape +
+   *  probe args + credential digest — never the raw secret). The
+   *  re-probe guard in `probe_connector_draft` refuses an identical
+   *  retry (`probe_unchanged`) until the fingerprint changes, unless
+   *  the prior failure was transient (429 / 5xx / timeout). */
+  fingerprint?: string;
   /** ISO-8601 timestamp the probe completed at. Used by the
    *  `force_save` cooldown guard in `saveConnectorAtomic`: a probe
    *  that just failed must not be force-saved without first

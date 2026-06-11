@@ -1,6 +1,10 @@
 // ask_user_form — ask the user to fill in a structured form.
 
 import { z } from "@hono/zod-openapi";
+import {
+  resolveDraftCredentialSeedMode,
+  validateCredentialFormFields,
+} from "../../persistence/credential-form-contract.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { commitIntentSchema } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
@@ -251,6 +255,55 @@ export const askUserFormTool: ConversationTool = {
           next_best_actions: ["start_connector_from_description", "update_connector_draft"],
           data: { error_code: "connector_auth_unset" },
         };
+      }
+      // Gate: enforce the canonical credential field names at form
+      // CREATION time. Pre-fix the mismatch only surfaced at submit
+      // time — a form field named `basic_auth` matched no extractor
+      // alias, auto-persist failed with `credential_required`, and the
+      // operator had already typed the secret (session 97679846). See
+      // `persistence/credential-form-contract.ts` for the table.
+      if (draftConnector != null && draftConnector.auth_type !== "none") {
+        const resolution = await resolveDraftCredentialSeedMode({
+          connector: draftConnector,
+          db: ctx.db,
+          tenant_id: ctx.tenant_id,
+        });
+        if (resolution.seedMode) {
+          // Slots already supplied outside the form: real (non-mustache)
+          // string values in commit_intent.payload.credential (e.g. the
+          // LLM pre-supplies `header_name`) plus config/template-derived
+          // seed overrides (aws_region, client_id).
+          const intentCredential = (args.commit_intent?.payload?.credential ?? {}) as Record<
+            string,
+            unknown
+          >;
+          const seededSlots = [
+            ...Object.entries(intentCredential)
+              .filter(
+                ([key, value]) =>
+                  key !== "mode" &&
+                  typeof value === "string" &&
+                  value.length > 0 &&
+                  !/\{\{[^}]+\}\}/.test(value),
+              )
+              .map(([key]) => key),
+            ...Object.keys(resolution.seedOverrides),
+          ];
+          const verdict = validateCredentialFormFields({
+            seedMode: resolution.seedMode,
+            fieldNames: args.fields.map((f) => f.name),
+            seededSlots,
+          });
+          if (!verdict.ok) {
+            return {
+              ok: false,
+              error_code: "credential_form_mismatch",
+              message: verdict.message,
+              next_best_actions: ["ask_user_form"],
+              data: { error_code: "credential_form_mismatch", missing: verdict.missing },
+            };
+          }
+        }
       }
     }
     return pauseForUserInput(ctx, {
