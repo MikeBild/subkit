@@ -56,6 +56,21 @@ describe("extractChatPastedCredential — pure parse/capture decision", () => {
     expect(out).toEqual({ mode: "bearer", token: FAKE_GITHUB_TOKEN });
   });
 
+  it("junk pair framing must not defeat the span overlay (live repro: 'my token again: <secret>')", () => {
+    // v6.15.1, conversation 2f1f1463: "here is my token again: <secret>"
+    // parsed into a junk `again` key, which suppressed the lone-bare-
+    // secret fallback and fell through to scrub-only.
+    const text = `here is my token again: ${FAKE_ATLASSIAN_TOKEN}`;
+    const out = extractChatPastedCredential("bearer", {}, text, findSecretSpans(text));
+    expect(out).toEqual({ mode: "bearer", token: FAKE_ATLASSIAN_TOKEN });
+  });
+
+  it("a pair that already fills the secret slot wins over the span overlay", () => {
+    const text = `token: ${FAKE_GITHUB_TOKEN}`;
+    const out = extractChatPastedCredential("bearer", {}, text, findSecretSpans(text));
+    expect(out).toEqual({ mode: "bearer", token: FAKE_GITHUB_TOKEN });
+  });
+
   it("maps a lone bare secret onto header_value when the draft is header-auth (seeded name)", () => {
     const text = FAKE_GITHUB_TOKEN;
     const out = extractChatPastedCredential(

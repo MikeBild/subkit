@@ -418,12 +418,16 @@ export function extractChatPastedCredential(
   spans: ReadonlyArray<{ match: string }>,
 ): AtomicCredentialInput | null {
   const values = parseChatPairs(rawText);
-  // Lone bare secret (no key=value framing): map the single detected
-  // secret onto the mode's only secret slot, when one exists.
-  if (Object.keys(values).length === 0 && spans.length === 1) {
+  // The detected secret span is ground truth: when the mode has a
+  // single secret slot and the parsed pairs didn't already fill it,
+  // overlay the span onto that slot. Pair parsing alone is defeated by
+  // phrasing — "here is my token again: <secret>" parses into a junk
+  // `again` key and previously fell through to scrub-only (caught live
+  // on v6.15.1, conversation 2f1f1463).
+  if (spans.length === 1) {
     const slot = SINGLE_SECRET_SLOT[seedMode];
     const match = spans[0]?.match;
-    if (slot && match) values[slot] = match;
+    if (slot && match && values[slot] === undefined) values[slot] = match;
   }
   if (Object.keys(values).length === 0) return null;
   return extractCredentialFromFormOutput(seedMode, seedOverrides, values);
