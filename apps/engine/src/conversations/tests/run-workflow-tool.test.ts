@@ -345,4 +345,88 @@ describe("run_workflow tool", () => {
     ]);
     expect((result.data as { status: string }).status).toBe("awaiting_input");
   });
+
+  test("pauses with the auto-form when the input contract is SYNTHESIZED from placeholders (no declared input_schema)", async () => {
+    // The gate reads the same contract source the `wf_<slug>` tool
+    // schema and the usage block read: declared input_schema when
+    // present, else the schema synthesized from `${input.*}` /
+    // `$input.*` references. Pre-fix a placeholder-driven workflow
+    // without a declared schema skipped the gate entirely and failed at
+    // runtime with "$input: required field '<k>' is missing" (live
+    // get-jira-ticket-details run, 2026-06-11).
+    const [workflow] = await ctx.testDb.db
+      .insert(workflows)
+      .values({
+        tenant_id: ctx.tenant_id,
+        slug: "synth-input-gate",
+        name: "Synth Input Gate",
+        lifecycle: "active",
+      })
+      .returning();
+    if (!workflow) throw new Error("workflow insert failed");
+    const [version] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id: workflow.id,
+        version: 1,
+        dag: {
+          name: "Synth Input Gate",
+          slug: "synth-input-gate",
+          // NO input_schema — the contract comes from the $input ref.
+          steps: [
+            {
+              id: "shape",
+              kind: "transform",
+              expression: '{ "ticket": $input.ticket_key }',
+              language: "jsonata",
+            },
+          ],
+        },
+      })
+      .returning();
+    if (!version) throw new Error("version insert failed");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ current_version_id: version.id })
+      .where(eq(workflows.id, workflow.id));
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        draft: {
+          workflow: { name: "new-workflow", steps: [] },
+          state: {
+            mode: "execution",
+            stage: "workflow_executed",
+            connector_mutation_seq: 0,
+            workflow_mutation_seq: 0,
+            checkpoints: {},
+            persisted_resources: [],
+            latest_execution: null,
+            latest_diagnosis: null,
+          },
+        },
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft: conversation.draft as DraftDocument,
+        setDraft: async () => {},
+      }),
+      { workflow: workflow.id, environment: "dev" /* no input */ },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.pause?.tool_name).toBe("ask_user_form");
+    const pauseInput = result.pause?.input as {
+      fields: Array<{ name: string; type: string; required: boolean }>;
+    };
+    expect(pauseInput.fields).toEqual([
+      expect.objectContaining({ name: "ticket_key", type: "text", required: true }),
+    ]);
+  });
 });

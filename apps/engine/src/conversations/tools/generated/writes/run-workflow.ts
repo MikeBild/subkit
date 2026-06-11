@@ -12,9 +12,11 @@ import {
 import { runExecution } from "../../../../execution/engine.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
+import { synthesizeInputSchema } from "../../../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../../../../workflows/rbac.ts";
 import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
+import type { WorkflowDef } from "../../../../workflows/types.ts";
 import {
   bindPersistedWorkflow,
   getWorkflowDraft,
@@ -220,19 +222,31 @@ export const runWorkflowTool: ConversationTool = {
     //       defaults), instead of an `input_required` error the LLM
     //       had to hand-translate into a form. On resume the LLM
     //       re-issues run_workflow with the submitted answers.
-    //   (b) workflow declares NO input_schema but caller passed
+    //   (b) workflow has NO input contract at all but caller passed
     //       non-empty input — execute, but include `input_ignored:
     //       true` in the success envelope so the LLM knows to tell
     //       the user the value was discarded.
-    // Both arms read `wf.definition.input_schema` (a JSON Schema
-    // object) without additional DB round-trips.
-    const wfInputSchema =
+    // The contract is the DECLARED `input_schema` when present, else
+    // the schema SYNTHESIZED from `${input.*}` placeholders — the same
+    // source the `wf_<slug>` tool schema and the usage block read, so
+    // the gate can never disagree with the published input contract.
+    // (Pre-fix a placeholder-driven workflow without a declared schema
+    // skipped the gate and failed at runtime with
+    // "$input: required field '<k>' is missing".)
+    const declaredInputSchema =
       wf.definition && typeof wf.definition === "object" && "input_schema" in wf.definition
         ? ((wf.definition as { input_schema?: unknown }).input_schema as
             | Record<string, unknown>
             | null
             | undefined)
         : undefined;
+    const wfInputSchema =
+      declaredInputSchema && Object.keys(declaredInputSchema).length > 0
+        ? declaredInputSchema
+        : ((synthesizeInputSchema(wf.definition as WorkflowDef) as Record<
+            string,
+            unknown
+          > | null) ?? undefined);
     const wfHasInputContract =
       wfInputSchema !== undefined &&
       wfInputSchema !== null &&
