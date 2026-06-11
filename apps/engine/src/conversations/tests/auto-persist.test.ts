@@ -393,6 +393,159 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
   });
 });
 
+describe("auto-persist on confirmation — save_connector_draft basic-auth", () => {
+  test("ask_user_form with canonical username + password fields persists connector + basic credential atomically", async () => {
+    // Regression for session 97679846 (Jira Cloud GraphQL): the LLM
+    // authored a form with a single field named `basic_auth` for a
+    // basic-auth draft. That field matched no extractor alias → the
+    // submit-time extraction returned null → auto-persist failed with
+    // `credential_required` AFTER the operator had already typed the
+    // secret. The form-creation gate (WS3 / credential-form-contract.ts)
+    // now blocks mis-named fields at creation time. This test exercises
+    // the full resume path: canonical `username` + `password` form
+    // fields → elicitation resolved → credential cached with
+    // mode "basic" → saveConnectorAtomic persists connector row +
+    // credential row in the basic shape.
+    _resetDraftCredentialCacheForTests();
+
+    const slug = "ap-basic-jira";
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "awaiting_input" })
+      .returning();
+    const conversation_id = conv!.id;
+
+    const basicDraft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "Jira Cloud",
+        slug,
+        driver: "http",
+        environment: "dev",
+        auth_type: "basic",
+        base_url: "https://example.atlassian.net/rest/api/3",
+      },
+      workflow: { name: "", steps: [] },
+    };
+    const validated = withConnectorValidation(
+      withConnectorInspection(basicDraft),
+      {
+        ...basicDraft.connector,
+        validation: validateConnectorDraft(basicDraft.connector ?? null),
+      },
+      true,
+      "Connector draft validated.",
+    );
+    const draft = withConnectorProbe(
+      validated,
+      {
+        ...validated.connector,
+        latest_probe: {
+          ok: true,
+          method: "GET",
+          path: "/myself",
+          environment: "dev",
+          status_code: 200,
+          summary: "ok",
+        },
+      },
+      true,
+      "ok",
+    );
+    await appendSnapshot(tenant_id, conversation_id, draft, ctx.db);
+
+    const elicitation = await createCarrierElicitation({
+      conversation_id,
+      tool_name: "ask_user_form",
+      input: {
+        question: "Provide your Jira credentials (email + API token).",
+        fields: [
+          { name: "username", label: "Email address", type: "text", sensitive: false },
+          { name: "password", label: "API token", type: "password", sensitive: true },
+        ],
+        commit_intent: {
+          kind: "save_connector_draft",
+          payload: {
+            credential: { mode: "basic" },
+            environment: "dev",
+          },
+          description: "Save the Jira connector with basic-auth credentials",
+        },
+      },
+      output: { values: { username: "operator@example.com", password: "ATATT3xFfGF0-test-token" } },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      elicitation_output: {
+        values: { username: "operator@example.com", password: "ATATT3xFfGF0-test-token" },
+      },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.dispatched).toBe(true);
+    expect(dispatch.synthetic_result?.ok).toBe(true);
+    expect(dispatch.synthetic_result?.tool).toBe("save_connector_draft");
+    expect(dispatch.synthetic_result?.source).toBe("harness_auto_persist");
+
+    // Connector row exists.
+    const conn = await ctx.db
+      .select()
+      .from(connectors)
+      .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.slug, slug)));
+    expect(conn).toHaveLength(1);
+
+    // Credential row exists with mode "basic".
+    const cred = await ctx.db
+      .select()
+      .from(credentials)
+      .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, conn[0]!.id)));
+    expect(cred).toHaveLength(1);
+    expect(cred[0]!.mode).toBe("basic");
+
+    // Audit row tagged reason=auto_persist_on_confirmation with
+    // commit_intent_kind=save_connector_draft.
+    const audit = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, tenant_id));
+    const autoPersistRows = audit.filter((r) =>
+      (r.reason ?? "").includes("auto_persist_on_confirmation"),
+    );
+    expect(autoPersistRows.length).toBeGreaterThanOrEqual(1);
+    const harnessAudit = autoPersistRows.find(
+      (r) =>
+        typeof r.metadata === "object" &&
+        r.metadata !== null &&
+        (r.metadata as Record<string, unknown>).commit_intent_kind === "save_connector_draft",
+    );
+    expect(harnessAudit).toBeDefined();
+
+    // Synthetic tool-call row with source=harness_auto_persist.
+    const calls = await ctx.db
+      .select()
+      .from(conversationToolCalls)
+      .where(eq(conversationToolCalls.conversation_id, conversation_id));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.tool).toBe("save_connector_draft");
+    const callOutput = calls[0]!.output as Record<string, unknown>;
+    expect(callOutput.source).toBe("harness_auto_persist");
+    expect(callOutput.ok).toBe(true);
+    // credential_persisted flag lives inside data (from buildPersistencePayload).
+    const callData = callOutput.data as Record<string, unknown> | undefined;
+    expect(callData?.credential_persisted).toBe(true);
+
+    // Draft credential cache cleared after save.
+    expect(getDraftCredential(conversation_id)).toBeNull();
+
+    // connector_persisted checkpoint must be fresh after the save.
+    const liveDraft = await loadDraft(tenant_id, conversation_id, ctx.db);
+    const checkpoints = liveDraft.summary?.checkpoints ?? [];
+    const persistedCheckpoint = checkpoints.find((cp) => cp.key === "connector_persisted");
+    expect(persistedCheckpoint?.status).toBe("fresh");
+  });
+});
+
 describe("auto-persist on confirmation — oauth_completed credential gate", () => {
   test("confirming the OAuth prompt with NO minted credential returns authenticated:false (not a false success)", async () => {
     // Regression for the LinkedIn session (connector d462743a): the
