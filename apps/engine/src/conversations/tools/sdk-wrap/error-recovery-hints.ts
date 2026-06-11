@@ -80,6 +80,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the workflow id is unknown on this tenant — call find_workflow or list_workflows to discover the correct id",
   workflow_not_persisted:
     "no runnable workflow yet. If you are AUTHORING a new workflow (the user said build/create/make a workflow), call build_workflow (one-shot) or propose_step (incremental) — do NOT call run_workflow again. If a draft already exists, call dry_run_workflow (auto-commits on a clean preview) or save_workflow_draft. Never retry run_workflow with the same args.",
+  credential_form_mismatch:
+    "the credential form's field names don't match the canonical slots for this auth_type — re-issue ask_user_form using the canonical names (bearer→token; basic→username,password; header→header_name,header_value; query→param,value; aws_sigv4→access_key_id,secret_access_key; oauth2→client_id,client_secret); see the `missing` list in the result envelope",
+  probe_unchanged:
+    "this exact probe already failed and nothing changed since — do NOT re-probe with the same draft. Change the base_url / credential / config via update_connector_draft, or verify the endpoint via fetch_connector_docs / search_docs first",
   connector_not_found:
     "the connector id is unknown — call find_connector or list_connectors to discover the correct id",
   connector_missing:
