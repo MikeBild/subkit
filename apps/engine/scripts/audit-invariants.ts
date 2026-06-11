@@ -691,6 +691,50 @@ function checkEngineHomedirAbsence(): Result {
   };
 }
 
+function checkCompileBuildsKeepNodeEnvDynamic(): Result {
+  // Every `bun build --compile` invocation MUST carry the identity define
+  // `process.env.NODE_ENV=process.env.NODE_ENV`. Without it the bundler
+  // INLINES the build-machine's NODE_ENV ("development" on a bare dev box
+  // or CI runner) as a compile-time constant, silently freezing every
+  // runtime NODE_ENV gate in the shipped binary. Production impact when
+  // this regressed: the @ai-sdk/devtools middleware ran on the prod
+  // droplet (a 397MB .devtools/generations.json re-serialized on every
+  // LLM step — the ~700MB/step external-memory transient and the
+  // event-loop GC blips), the connector egress guard ran "permissive"
+  // instead of "strict", and OIDC cookies were missing `Secure`.
+  const IDENTITY_DEFINE = "process.env.NODE_ENV=process.env.NODE_ENV";
+  const SOURCES = ["package.json", ".github/workflows/release.yml"];
+  const violations: string[] = [];
+  for (const rel of SOURCES) {
+    const text = readFileSync(join(REPO, rel), "utf8");
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] ?? "";
+      if (!line.includes("--compile")) continue;
+      if (line.trimStart().startsWith("#") || line.trimStart().startsWith("//")) continue;
+      // The compile command may wrap across lines (YAML `\` continuations) —
+      // scan a small window from the `--compile` line for the define.
+      const window = lines.slice(i, i + 8).join("\n");
+      if (!window.includes(IDENTITY_DEFINE)) {
+        violations.push(`${rel}:${i + 1}`);
+      }
+    }
+  }
+  if (violations.length === 0) {
+    return {
+      id: "compile_node_env_dynamic",
+      status: "PASS",
+      message:
+        "every `bun build --compile` carries the NODE_ENV identity define (no build-time inlining)",
+    };
+  }
+  return {
+    id: "compile_node_env_dynamic",
+    status: "FAIL",
+    message: `\`bun build --compile\` without \`--define "${IDENTITY_DEFINE}"\` — the bundler would inline the build machine's NODE_ENV into the binary:\n  ${violations.join("\n  ")}`,
+  };
+}
+
 // ---------- driver ----------
 
 const CHECKS: Array<() => Result> = [
@@ -710,6 +754,7 @@ const CHECKS: Array<() => Result> = [
   checkSystemdUnitJitFriendly,
   checkTestSeamsGated,
   checkEngineHomedirAbsence,
+  checkCompileBuildsKeepNodeEnvDynamic,
 ];
 
 const results: Result[] = [];

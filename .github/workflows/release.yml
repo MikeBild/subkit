@@ -264,9 +264,15 @@ jobs:
           fi
           OUT="${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
           mkdir -p dist
+          # Identity-define NODE_ENV so the bundler does NOT inline its
+          # build-time value ("development" on a bare runner) into the
+          # binary — every runtime NODE_ENV gate (devtools wrap, egress
+          # guard strictness, OIDC Secure cookies) must stay runtime-
+          # resolved. See the same define in package.json build:* scripts.
           bun build "${{ matrix.entry }}" \
             --compile \
             $TARGET_FLAG \
+            --define "process.env.NODE_ENV=process.env.NODE_ENV" \
             --define "BUILD_VERSION=\"$VERSION\"" \
             --outfile "dist/$OUT"
 
