@@ -552,6 +552,22 @@ export function wrapOne(
         }
         signals.toolInvocationCount.set(inner.name, priorCount + 1);
 
+        // One-shot memory bracket at the FIRST tool invocation of the turn.
+        // Splits the opaque step-0 window: the local probes measured the
+        // execution lane at ~23MB external peak, so if external is already
+        // high HERE, the ~750MB transient belongs to the provider
+        // request/stream segment that ran before this tool call.
+        if (signals.step === 0) {
+          const m = process.memoryUsage();
+          logger.info({
+            module: "process",
+            action: "step.memory",
+            at: "first_tool_start",
+            tool: inner.name,
+            external_mb: Math.round(m.external / (1024 * 1024)),
+            rss_mb: Math.round(m.rss / (1024 * 1024)),
+          });
+        }
         const step = signals.step++;
         const startedAt = Date.now();
         const ensureAssistantMessageAnchor = async (): Promise<string> => {
