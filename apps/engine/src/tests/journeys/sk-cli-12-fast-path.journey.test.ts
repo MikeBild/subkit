@@ -68,8 +68,11 @@ beforeAll(async () => {
           kind: "request",
           id: "noop",
           method: "GET",
-          // Use a local URL that always responds — httpbin.org may be unreachable in CI
-          url: "https://httpstat.us/200",
+          // The journey engine's own health endpoint — fully local, always
+          // up. Both httpbin.org and httpstat.us have hung CI runners
+          // (180s timeouts on every attempt, 2026-06-11); this journey
+          // asserts fast-path dispatch, not outbound networking.
+          url: `${ctx.baseUrl}/v1/health`,
         },
       ],
     }),
