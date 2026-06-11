@@ -333,6 +333,58 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
     }
   });
 
+  // RC3(a) — the mismatch envelope must name the EXPECTED field set,
+  // not just what's missing, so the model corrects on the first retry
+  // instead of thrashing (conversation 68b5c87e: 4 rejected forms).
+  // `data` is what reaches the model as the tool-result payload, so the
+  // prose message must live there too.
+  test("credential_form_mismatch data carries expected_fields + message (bearer)", async () => {
+    const ctx = buildGatedCtx({
+      name: "t",
+      slug: "t",
+      driver: "http",
+      environment: "dev",
+      auth_type: "bearer",
+    });
+    const result = await askUserFormTool.execute(ctx, {
+      question: "Enter your API key",
+      fields: [{ name: "api_key", label: "API key", type: "password" }],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const data = result.data as {
+        error_code?: string;
+        missing?: string[];
+        expected_fields?: string[];
+        message?: string;
+      };
+      expect(data.expected_fields).toEqual(["token"]);
+      expect(data.missing).toEqual(["token"]);
+      expect(data.message ?? "").toContain("token");
+    }
+  });
+
+  test("credential_form_mismatch data carries the full expected field set (basic, partial form)", async () => {
+    const ctx = buildGatedCtx({
+      name: "t",
+      slug: "t",
+      driver: "http",
+      environment: "dev",
+      auth_type: "basic",
+    });
+    const result = await askUserFormTool.execute(ctx, {
+      question: "Enter your password",
+      fields: [{ name: "password", label: "Password", type: "password" }],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const data = result.data as { missing?: string[]; expected_fields?: string[] };
+      // Only `username` is missing, but the full expected set is named.
+      expect(data.missing).toEqual(["username"]);
+      expect(data.expected_fields).toEqual(["username", "password"]);
+    }
+  });
+
   test("header draft + header_name seeded in commit_intent → header_value-only form passes the gate", async () => {
     const ctx = buildGatedCtx({
       name: "t",

@@ -31,7 +31,11 @@ import { connectors, credentials } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { rotateOAuth2Tokens } from "../service.ts";
 import type { DecryptedCredential } from "../types.ts";
-import { runCognitoRefreshTokenGrant, runRefreshTokenGrant } from "./client.ts";
+import {
+  runClientCredentialsJsonGrant,
+  runCognitoRefreshTokenGrant,
+  runRefreshTokenGrant,
+} from "./client.ts";
 
 export const REFRESH_LEAD_MS = 60_000;
 
@@ -51,12 +55,17 @@ export async function refreshIfStale(
   credRow: typeof credentials.$inferSelect,
   decrypted: DecryptedCredential & { mode: "oauth2" },
 ): Promise<DecryptedCredential> {
-  if (!decrypted.refresh_token) return decrypted;
   // oauth2 access tokens refreshed here are always connector-owned. A
   // null connector_id means the row belongs to an external MCP server
   // (#171) whose refresh path lives in the MCP client subsystem — skip.
   const connectorId = credRow.connector_id;
   if (connectorId == null) return decrypted;
+  // For grant types that don't issue a refresh_token (client_credentials_json
+  // re-mints directly) we skip the early-return; for all others, a missing
+  // refresh_token means the credential cannot be refreshed.
+  //
+  // We need the connector config to determine the grant_type before
+  // deciding whether to short-circuit — so we defer this check below.
   const now = Date.now();
   const expiresMs = decrypted.expires_at ? decrypted.expires_at.getTime() : 0;
   // Need the connector config to build an oauth client.
@@ -75,17 +84,6 @@ export async function refreshIfStale(
     template_slug: connector.template_slug ?? null,
     template_snapshot: (connector.template_snapshot as Record<string, unknown> | null) ?? null,
   });
-  // Tenant-configurable refresh buffer — falls back to REFRESH_LEAD_MS
-  // (60s) when the connector's oauth config doesn't specify one. A
-  // tenant whose IdP issues 60-second tokens (rare; Atlassian test
-  // keys do this) can shrink it via the connector config.
-  const bufferMs =
-    typeof cfg?.refresh_buffer_ms === "number" && cfg.refresh_buffer_ms > 0
-      ? cfg.refresh_buffer_ms
-      : REFRESH_LEAD_MS;
-  if (expiresMs > 0 && expiresMs - now > bufferMs) {
-    return decrypted; // still fresh
-  }
   if (!cfg) {
     logger.warn({
       module: "oauth2",
@@ -95,6 +93,23 @@ export async function refreshIfStale(
     });
     return decrypted;
   }
+  // For grant types that issue no refresh_token the re-mint path handles
+  // staleness directly. For all other grants a missing refresh_token means
+  // we cannot refresh — return the (stale) credential unchanged so the
+  // next outgoing request gets a 401 and the connector is flagged.
+  const isRemintGrant = cfg.grant_type === "client_credentials_json";
+  if (!decrypted.refresh_token && !isRemintGrant) return decrypted;
+  // Tenant-configurable refresh buffer — falls back to REFRESH_LEAD_MS
+  // (60s) when the connector's oauth config doesn't specify one. A
+  // tenant whose IdP issues 60-second tokens (rare; Atlassian test
+  // keys do this) can shrink it via the connector config.
+  const bufferMs =
+    typeof cfg.refresh_buffer_ms === "number" && cfg.refresh_buffer_ms > 0
+      ? cfg.refresh_buffer_ms
+      : REFRESH_LEAD_MS;
+  if (expiresMs > 0 && expiresMs - now > bufferMs) {
+    return decrypted; // still fresh
+  }
   try {
     // Branch on grant_type. Cognito's `InitiateAuth` (`USER_PASSWORD_AUTH`
     // + `REFRESH_TOKEN_AUTH`) doesn't speak the OAuth2 spec — it has its
@@ -102,7 +117,29 @@ export async function refreshIfStale(
     // Username + region are required to compute SECRET_HASH on app
     // clients with a secret; pulled from connector config.
     let bundle: Awaited<ReturnType<typeof runRefreshTokenGrant>>;
-    if (cfg.grant_type === "cognito_user_password") {
+    if (cfg.grant_type === "client_credentials_json") {
+      // Re-mint by re-posting the stored credential fields to the token
+      // endpoint. No refresh token is used — client_id + client_secret
+      // live in the connector's config.oauth block.
+      const bodyMapping = cfg.token_request_body_mapping;
+      const tokenEndpoint = cfg.token_endpoint;
+      if (!bodyMapping || Object.keys(bodyMapping).length === 0 || !tokenEndpoint) {
+        logger.warn({
+          module: "oauth2",
+          action: "oauth2.refresh_skipped",
+          msg: "client_credentials_json connector missing token_endpoint or token_request_body_mapping; cannot re-mint",
+          connector_id: connector.id,
+        });
+        return decrypted;
+      }
+      bundle = await runClientCredentialsJsonGrant({
+        token_endpoint: tokenEndpoint,
+        body_mapping: bodyMapping,
+        response_format: cfg.token_response_format ?? "raw",
+        token_response_ttl_ms: cfg.token_response_ttl_ms ?? 86_400_000,
+        extra_token_headers: cfg.extra_token_headers,
+      });
+    } else if (cfg.grant_type === "cognito_user_password") {
       const cogConfig = (connector.config as Record<string, unknown>) ?? {};
       const cogOauth = (cogConfig.oauth as Record<string, unknown> | undefined) ?? {};
       // Accept aws_region from the canonical slot (`config.aws_region`,
@@ -149,10 +186,16 @@ export async function refreshIfStale(
         password: "",
         ...(cfg.client_secret ? { client_secret: cfg.client_secret } : {}),
         use_access_token: useAccessToken,
-        refresh_token: decrypted.refresh_token,
+        // refresh_token is guaranteed non-null here: cognito_user_password
+        // always issues a RefreshToken at initial mint; the !refresh_token
+        // guard above would have returned for any other grant type without
+        // a token.
+        refresh_token: decrypted.refresh_token ?? "",
       });
     } else {
-      bundle = await runRefreshTokenGrant(cfg, decrypted.refresh_token);
+      // Standard refresh_token grant. The !refresh_token && !isRemintGrant
+      // guard above ensures refresh_token is non-null when we reach here.
+      bundle = await runRefreshTokenGrant(cfg, decrypted.refresh_token ?? "");
     }
     await rotateOAuth2Tokens(
       {

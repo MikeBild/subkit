@@ -147,7 +147,26 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     //      template matched, driver is http, and base_url is present).
     //   6. "none" (fallback).
     const resolvedDescription = args.description ?? template?.description;
-    const resolvedBaseUrl = args.base_url ?? template?.base_url;
+    // Template base_url binding. A matched template's base_url is the
+    // CANONICAL API root — when the LLM's guess sits on the same host,
+    // the template wins (the guess is typically missing the version
+    // path: conversation 68b5c87e guessed `/graphql` where the template
+    // carried `/api/v2/graphql`, and the probe 404'd). When the hosts
+    // differ the operator's URL is ground truth — wildcard-host
+    // templates (self-hosted / tenant-subdomain instances) carry a
+    // placeholder host that must never clobber a real instance URL.
+    const suppliedBaseUrl = args.base_url ?? null;
+    const templateBaseUrl = template?.base_url ?? null;
+    const baseUrlDisagrees =
+      template !== null &&
+      templateBaseUrl !== null &&
+      suppliedBaseUrl !== null &&
+      normalizeUrl(suppliedBaseUrl) !== normalizeUrl(templateBaseUrl);
+    const baseUrlBoundFromTemplate =
+      baseUrlDisagrees && sameUrlHost(suppliedBaseUrl ?? "", templateBaseUrl ?? "");
+    const resolvedBaseUrl = baseUrlBoundFromTemplate
+      ? (templateBaseUrl ?? undefined)
+      : (args.base_url ?? template?.base_url);
     const chainedAuthType: string | null = urlPickedTemplate
       ? template.auth_type
       : (args.auth_type ??
@@ -297,10 +316,46 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
                     ? ("url" as const)
                     : ("text" as const),
                 required_fields: inferTemplateRequiredFields(template),
+                // The canonical setup steps + credential shape travel
+                // WITH the binding so the model never re-guesses them.
+                setup_instructions: template.setup_instructions,
+                credential_hints: template.credential_hints,
+                template_base_url: template.base_url,
               }
             : null,
+          ...(template && baseUrlDisagrees && suppliedBaseUrl && templateBaseUrl
+            ? {
+                base_url_conflict: {
+                  supplied_base_url: suppliedBaseUrl,
+                  template_base_url: templateBaseUrl,
+                  bound_base_url: resolvedBaseUrl ?? suppliedBaseUrl,
+                  overridden: baseUrlBoundFromTemplate,
+                  note: baseUrlBoundFromTemplate
+                    ? `Your base_url disagrees with template "${template.slug}" — the draft is bound to the template's canonical base_url (${templateBaseUrl}). If the supplied URL was intentional, set it back via update_connector_draft.`
+                    : `Your base_url is on a different host than template "${template.slug}" (${templateBaseUrl}) — keeping your URL, since self-hosted / tenant-specific instances legitimately differ. Double-check the path against the template's setup_instructions.`,
+                },
+              }
+            : {}),
         },
       }),
     };
   },
 };
+
+/** Strip trailing slashes so `…/api/` and `…/api` compare equal. */
+function normalizeUrl(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+function urlOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function sameUrlHost(a: string, b: string): boolean {
+  const originA = urlOrigin(a);
+  return originA !== null && originA === urlOrigin(b);
+}

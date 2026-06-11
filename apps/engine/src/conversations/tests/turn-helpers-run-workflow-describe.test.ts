@@ -49,14 +49,19 @@ describe("synthesizeFallbackMessage · run_workflow describe (bug E / 86de186b)"
     expect(msg).toContain("output: 0 rows");
   });
 
-  test("renders error_code when present and no status", () => {
+  test("error_code-only envelope renders as humanised prose, never the raw token", () => {
     const events: TurnEvent[] = [
       toolResultEvent("save_connector_draft", { error_code: "slug_already_in_use" }),
       toolResultEvent("save_connector_draft", { error_code: "slug_already_in_use" }),
       toolResultEvent("save_connector_draft", { error_code: "slug_already_in_use" }),
     ];
     const msg = synthesizeFallbackMessage({ events, loopWarnings: 1 });
-    expect(msg).toContain("slug_already_in_use");
+    // The fallback is operator-facing prose — the machine token must not
+    // leak (RC3 of conversation 68b5c87e), and three failures must not
+    // be summarised under an "all succeeded" header.
+    expect(msg).toContain("slug already in use");
+    expect(msg).not.toContain("error_code:");
+    expect(msg).not.toContain("all succeeded");
   });
 
   test("falls back to message string when no other shape matches", () => {

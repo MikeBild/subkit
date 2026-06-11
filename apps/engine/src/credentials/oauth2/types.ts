@@ -32,7 +32,8 @@ export type OAuth2GrantKind =
   | "authorization_code"
   | "client_credentials"
   | "password"
-  | "cognito_user_password";
+  | "cognito_user_password"
+  | "client_credentials_json";
 
 export interface OAuth2ClientConfig {
   issuer_url: string;
@@ -58,6 +59,26 @@ export interface OAuth2ClientConfig {
    *  test keys do this) can shrink it; one with 24h tokens can leave
    *  the default. */
   refresh_buffer_ms?: number | undefined;
+  // ── client_credentials_json extension ──────────────────────────────
+  // Used when `grant_type === "client_credentials_json"`: the token
+  // endpoint accepts a JSON body (not OAuth2 form-encoded) and the
+  // response is either a bare token string ("raw") or a standard JSON
+  // envelope ("json").
+  /** Flat mapping of JSON body field names to the stored credential
+   *  field values. E.g. `{ client_id: "<client_id>", client_secret:
+   *  "<client_secret>" }` — the right-hand values are the actual
+   *  secret strings to send, not path pointers. The refresh worker
+   *  populates this from the credential row at refresh time. */
+  token_request_body_mapping?: Record<string, string> | undefined;
+  /** How to parse the token from the response body.
+   *  - "raw": entire response body is the token (strip surrounding
+   *    quotes + whitespace, as e.g. Xray Cloud returns).
+   *  - "json": standard JSON envelope; read `access_token` key. */
+  token_response_format?: "raw" | "json" | undefined;
+  /** Fallback TTL in milliseconds when the response carries no
+   *  expiry information (no `expires_in` for "json", no header for
+   *  "raw"). Must be >0. E.g. 86_400_000 for 24 hours. */
+  token_response_ttl_ms?: number | undefined;
 }
 
 export interface OAuth2TokenBundle {

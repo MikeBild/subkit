@@ -121,6 +121,7 @@ export const OAuth2AuthConfigSchema = z
       "client_credentials",
       "password",
       "cognito_user_password",
+      "client_credentials_json",
     ]),
     token_auth_method: z.enum(["body", "basic_auth"]).default("body"),
     token_content_type: z.enum(["form", "json"]).default("form"),
@@ -178,7 +179,13 @@ const OAuthEnrichmentSchema = z
     token_endpoint: z.string().optional(),
     scope: z.string().optional(),
     grant_type: z
-      .enum(["authorization_code", "client_credentials", "password", "cognito_user_password"])
+      .enum([
+        "authorization_code",
+        "client_credentials",
+        "password",
+        "cognito_user_password",
+        "client_credentials_json",
+      ])
       .optional(),
     token_auth_method: z.enum(["body", "basic_auth"]).optional(),
     token_content_type: z.enum(["form", "json"]).optional(),
@@ -188,6 +195,14 @@ const OAuthEnrichmentSchema = z
     client_secret: z.string().optional(),
     audience: z.string().optional(),
     // redirect_uri removed: engine-synthesized — see OAuth2AuthConfigSchema above.
+    // client_credentials_json extension fields.
+    token_request_body_mapping: z.record(z.string(), z.string()).optional(),
+    token_response_format: z.enum(["raw", "json"]).optional(),
+    token_response_ttl_ms: z.number().positive().optional(),
+    // refresh_buffer_ms is readable by template-binding even though it
+    // lives on the OAuth2ClientConfig — allow it here so operators can
+    // override the staleness window per-connector via config.oauth.
+    refresh_buffer_ms: z.number().positive().optional(),
   })
   .strict();
 

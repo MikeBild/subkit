@@ -53,6 +53,7 @@ export const OAuth2GrantTypeEnum = z.enum([
   "client_credentials",
   "password",
   "cognito_user_password",
+  "client_credentials_json",
 ]);
 export type OAuth2GrantType = z.infer<typeof OAuth2GrantTypeEnum>;
 
@@ -149,6 +150,12 @@ export const TemplateOAuthSchema = z
     client_id: z.string().nullable(),
     extra_headers: z.record(z.string(), z.string()).default({}),
     dynamic_registration: z.boolean().default(false),
+    // client_credentials_json extension. Only meaningful when
+    // grant_type === "client_credentials_json".
+    /** How to extract the token from the response body. */
+    token_response_format: z.enum(["raw", "json"]).optional(),
+    /** Fallback TTL in milliseconds when the response carries no expiry. */
+    token_response_ttl_ms: z.number().positive().optional(),
   })
   .openapi("ConnectorTemplateOAuth");
 

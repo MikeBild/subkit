@@ -204,3 +204,95 @@ describe("synthesizeFallbackMessage", () => {
     expect(msg).not.toContain("1 entries");
   });
 });
+
+// RC3(b) — the synthesized empty-turn fallback is operator-facing prose.
+// Forensic root cause (conversation 68b5c87e): two turns ended with the
+// synthesized text "ask_user_form: error_code: credential_form_mismatch"
+// — a raw machine token shown to a human. Failed tool results must
+// render their hint/message prose plus the corrective detail
+// (missing / expected_fields / setup_instructions) and NEVER the bare
+// `error_code:` token.
+describe("synthesizeFallbackMessage — error envelopes render as prose", () => {
+  test("failed result with message + missing + expected_fields → prose with corrective detail", () => {
+    const events: TurnEvent[] = [
+      {
+        type: "tool_result",
+        call_id: "c1",
+        tool: "ask_user_form",
+        output: {
+          error_code: "credential_form_mismatch",
+          message:
+            "bearer credentials are collected with fields named exactly [token] — rename your fields (labels stay free-form).",
+          missing: ["token"],
+          expected_fields: ["token"],
+        },
+      },
+    ];
+    const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
+    expect(msg).not.toBeNull();
+    expect(msg ?? "").not.toContain("error_code:");
+    expect(msg ?? "").toContain("fields named exactly [token]");
+    expect(msg ?? "").toContain("missing: token");
+    expect(msg ?? "").toContain("expected fields: token");
+  });
+
+  test("failed result with only error_code → humanised prose, never the raw token", () => {
+    const events: TurnEvent[] = [
+      {
+        type: "tool_result",
+        call_id: "c1",
+        tool: "ask_user_form",
+        output: { error_code: "credential_form_mismatch", missing: ["token"] },
+      },
+    ];
+    const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
+    expect(msg).not.toBeNull();
+    expect(msg ?? "").not.toContain("error_code:");
+    expect(msg ?? "").not.toContain("credential_form_mismatch");
+    expect(msg ?? "").toContain("credential form mismatch");
+    expect(msg ?? "").toContain("missing: token");
+  });
+
+  test("setup_instructions hint from the failed result reaches the prose", () => {
+    const events: TurnEvent[] = [
+      {
+        type: "tool_result",
+        call_id: "c1",
+        tool: "ask_user_form",
+        output: {
+          error_code: "credential_form_mismatch",
+          message: "bearer credentials are collected with fields named exactly [token].",
+          expected_fields: ["token"],
+          setup_instructions: "Create an API key under Settings → API Keys.",
+        },
+      },
+    ];
+    const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
+    expect(msg ?? "").toContain("Settings → API Keys");
+    expect(msg ?? "").not.toContain("error_code:");
+  });
+
+  test("nested data envelope (error_code at top, detail under data) is also rendered as prose", () => {
+    const events: TurnEvent[] = [
+      {
+        type: "tool_result",
+        call_id: "c1",
+        tool: "ask_user_form",
+        output: {
+          ok: false,
+          error_code: "credential_form_mismatch",
+          data: {
+            error_code: "credential_form_mismatch",
+            message: "header credentials need header_name and header_value.",
+            missing: ["header_value"],
+            expected_fields: ["header_name", "header_value"],
+          },
+        },
+      },
+    ];
+    const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
+    expect(msg ?? "").not.toContain("error_code:");
+    expect(msg ?? "").toContain("header_name and header_value");
+    expect(msg ?? "").toContain("missing: header_value");
+  });
+});

@@ -11082,7 +11082,7 @@ export interface components {
             token_endpoint?: string;
             scopes?: string;
             /** @enum {string} */
-            grant_type: "authorization_code" | "client_credentials" | "password" | "cognito_user_password";
+            grant_type: "authorization_code" | "client_credentials" | "password" | "cognito_user_password" | "client_credentials_json";
             /** @enum {string} */
             token_auth_method: "body" | "basic_auth";
             /** @enum {string} */
@@ -11095,6 +11095,9 @@ export interface components {
             };
             /** @default false */
             dynamic_registration: boolean;
+            /** @enum {string} */
+            token_response_format?: "raw" | "json";
+            token_response_ttl_ms?: number;
         } | null;
         ConnectorTemplateAuthOption: {
             /** @enum {string} */

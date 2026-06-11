@@ -19096,22 +19096,44 @@
     "name": "Xray Cloud (GraphQL)",
     "driver": "graphql",
     "base_url": "https://xray.cloud.getxray.app/api/v2/graphql",
-    "auth_type": "bearer",
-    "oauth": null,
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://xray.cloud.getxray.app",
+      "token_endpoint": "https://xray.cloud.getxray.app/api/v2/authenticate",
+      "grant_type": "client_credentials_json",
+      "token_auth_method": "body",
+      "token_content_type": "json",
+      "use_pkce": false,
+      "client_id": null,
+      "token_response_format": "raw",
+      "token_response_ttl_ms": 86400000,
+      "extra_headers": {}
+    },
     "default_skill": null,
     "ingestion_source": "graphql",
     "ingestion_url": null,
     "icon": "",
-    "description": "Xray Cloud test-management GraphQL API. Authenticates with a short-lived JWT obtained by exchanging client_id + client_secret against https://xray.cloud.getxray.app/api/v2/authenticate. The response body IS the quoted JWT string (~1h validity); re-issue on 401.",
+    "description": "Xray Cloud test-management GraphQL API. Authenticates via client_id + client_secret exchanged at the Xray token endpoint (POST JSON body, response is a bare JWT string). The JWT is valid for 24 hours; the engine refreshes it automatically before expiry.",
     "category": "project-management",
     "tags": ["graphql", "testing", "jira", "xray", "atlassian"],
-    "setup_instructions": "1. In Jira Cloud, navigate to Xray > Settings > API Keys and create an API Key pair (client_id + client_secret). 2. Exchange them out-of-band: POST {\"client_id\": \"<id>\", \"client_secret\": \"<secret>\"} to https://xray.cloud.getxray.app/api/v2/authenticate — the response body is the JWT (a quoted string). 3. Paste the JWT (without quotes) as the Bearer token. Note: the JWT is valid for ~1 hour; re-issue from the same endpoint on 401. Xray Cloud is separate from Xray Data Center — credentials are not interchangeable.",
+    "setup_instructions": "1. In Jira Cloud, navigate to Xray Global Settings > API Keys and create an API Key pair — this gives you a client_id and a client_secret. 2. Create this connector using the xray-cloud template, then save it with your client_id and client_secret as credentials. The engine automatically exchanges them for a JWT and refreshes it before the 24-hour expiry — no manual token management required. 3. Xray Cloud credentials are NOT interchangeable with Xray Data Center credentials. Note: the Xray Cloud API enforces a rate limit of 300 requests per 5 minutes.",
     "auth_options": [
       {
-        "auth_type": "bearer",
-        "label": "JWT Bearer Token (exchanged from client credentials)",
-        "description": "POST {\"client_id\",\"client_secret\"} to https://xray.cloud.getxray.app/api/v2/authenticate; the response body is the JWT. Paste it as the Bearer token. Valid ~1h — re-issue on 401.",
-        "oauth": null
+        "auth_type": "oauth2",
+        "label": "API Key pair (client_id + client_secret) — engine-managed exchange",
+        "description": "Provide the client_id and client_secret from Xray Global Settings > API Keys. The engine exchanges them for a 24-hour JWT automatically and refreshes before expiry.",
+        "oauth": {
+          "issuer_url": "https://xray.cloud.getxray.app",
+          "token_endpoint": "https://xray.cloud.getxray.app/api/v2/authenticate",
+          "grant_type": "client_credentials_json",
+          "token_auth_method": "body",
+          "token_content_type": "json",
+          "use_pkce": false,
+          "client_id": null,
+          "token_response_format": "raw",
+          "token_response_ttl_ms": 86400000,
+          "extra_headers": {}
+        }
       }
     ],
     "url_pattern": "^https://xray\\.cloud\\.getxray\\.app/",
@@ -19120,9 +19142,16 @@
     "probe_endpoint": null,
     "credential_hints": [
       {
-        "field": "token",
-        "label": "Xray Cloud JWT Bearer Token",
-        "placeholder": "eyJ...",
+        "field": "client_id",
+        "label": "Xray Cloud Client ID",
+        "placeholder": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        "doc_url": "https://docs.getxray.app/display/XRAYCLOUD/Global+Settings%3A+API+Keys",
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "Xray Cloud Client Secret",
+        "placeholder": "",
         "doc_url": "https://docs.getxray.app/display/XRAYCLOUD/Global+Settings%3A+API+Keys",
         "secret": true
       }
@@ -19132,7 +19161,11 @@
     "capabilities": {
       "webhooks": false,
       "webhook_events": [],
-      "rate_limits": null
+      "rate_limits": {
+        "requests_per_second": 1,
+        "burst_size": 300,
+        "recommended_backoff_ms": 5000
+      }
     },
     "recipes": [
       {
@@ -19225,7 +19258,8 @@
       }
     ],
     "operator_quirks": {
-      "auth": "Xray Cloud uses a two-step auth: exchange client_id + client_secret at https://xray.cloud.getxray.app/api/v2/authenticate to get a JWT, then use that JWT as the Bearer token. The JWT is valid ~1h; re-issue on 401. Xray Cloud credentials are NOT interchangeable with Xray Data Center credentials.",
+      "auth": "Xray Cloud uses a two-step auth: client_id + client_secret are exchanged at https://xray.cloud.getxray.app/api/v2/authenticate (JSON POST, response body is a bare 24-hour JWT). The engine performs this exchange automatically and refreshes the token before expiry. Credentials from Xray Data Center are NOT interchangeable with Xray Cloud.",
+      "rate_limit": "Xray Cloud enforces a rate limit of 300 requests per 5 minutes. Spread bulk operations with delays between batches to avoid HTTP 429 responses.",
       "schema": "The GraphQL endpoint is https://xray.cloud.getxray.app/api/v2/graphql — not /graphql. Step output is the GraphQL data payload; read via $scope.<step>.data.<field>. GraphQL errors fail the step and surface on $scope.<step>.error."
     },
     "aws_service": null,

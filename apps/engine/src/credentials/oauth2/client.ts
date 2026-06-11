@@ -510,6 +510,99 @@ export async function dynamicallyRegisterClient(
   };
 }
 
+export interface ClientCredentialsJsonParams {
+  /** Full URL of the token endpoint. */
+  token_endpoint: string;
+  /** Flat key→value map sent as the JSON POST body. Values are the
+   *  actual secrets (already resolved from the credential row). */
+  body_mapping: Record<string, string>;
+  /** How to extract the token from the response body. */
+  response_format: "raw" | "json";
+  /** Fallback TTL in ms when the response carries no expiry. */
+  token_response_ttl_ms: number;
+  /** Optional extra headers added to the token POST request. */
+  extra_token_headers?: Record<string, string> | undefined;
+}
+
+/**
+ * JSON-body client-credentials exchange. Generalises token endpoints that
+ * accept `application/json` instead of the OAuth2 form-encoded format and
+ * whose response is either a bare quoted token string ("raw") or a standard
+ * `{ access_token, expires_in?, ... }` envelope ("json").
+ *
+ * No issuer discovery is performed — the caller must supply the full
+ * `token_endpoint` URL. Suitable for proprietary auth endpoints (e.g. Xray
+ * Cloud) that do not publish an OIDC discovery document.
+ */
+export async function runClientCredentialsJsonGrant(
+  p: ClientCredentialsJsonParams,
+): Promise<OAuth2TokenBundle> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    accept: "application/json, text/plain, */*",
+    ...(p.extra_token_headers ?? {}),
+  };
+
+  const res = await fetch(p.token_endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(p.body_mapping),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(
+      `client_credentials_json token endpoint returned ${res.status}: ${text.slice(0, 200)}`,
+    );
+  }
+
+  if (p.response_format === "raw") {
+    // Strip surrounding double-quotes and whitespace (e.g. `"eyJ…"\n` → `eyJ…`).
+    const token = text.trim().replace(/^"|"$/g, "");
+    if (!token) {
+      throw new Error("client_credentials_json raw response was empty after stripping quotes");
+    }
+    return {
+      access_token: token,
+      token_type: "Bearer",
+      expires_at: new Date(Date.now() + p.token_response_ttl_ms),
+      refresh_token: null,
+      scope: null,
+    };
+  }
+
+  // response_format === "json"
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `client_credentials_json JSON response is not valid JSON: ${text.slice(0, 200)}`,
+    );
+  }
+  const envelope = parsed as Record<string, unknown>;
+  const access_token = typeof envelope.access_token === "string" ? envelope.access_token : null;
+  if (!access_token) {
+    throw new Error(
+      `client_credentials_json JSON response missing access_token: ${text.slice(0, 200)}`,
+    );
+  }
+  const expires_in = typeof envelope.expires_in === "number" ? envelope.expires_in : null;
+  const expires_at =
+    expires_in !== null
+      ? new Date(Date.now() + Math.max(0, expires_in) * 1000)
+      : new Date(Date.now() + p.token_response_ttl_ms);
+  const token_type = typeof envelope.token_type === "string" ? envelope.token_type : "Bearer";
+  const scope = typeof envelope.scope === "string" ? envelope.scope : null;
+  return {
+    access_token,
+    token_type,
+    expires_at,
+    refresh_token: null,
+    scope,
+  };
+}
+
 export async function runRefreshTokenGrant(
   cfg: OAuth2ClientConfig,
   refresh_token: string,

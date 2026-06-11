@@ -187,7 +187,17 @@ export function validateCredentialFormFields(p: {
   seedMode: string;
   fieldNames: readonly string[];
   seededSlots?: readonly string[];
-}): { ok: true } | { ok: false; missing: string[]; message: string } {
+}):
+  | { ok: true }
+  | {
+      ok: false;
+      missing: string[];
+      /** The FULL required field set for the seed mode — not just what
+       *  is missing — so a mismatch is correctable in one retry. */
+      expected_fields: string[];
+      optional_fields: string[];
+      message: string;
+    } {
   const contract = CREDENTIAL_FORM_FIELDS[p.seedMode];
   if (!contract) return { ok: true };
   const present = new Set(p.fieldNames.map((n) => n.toLowerCase()));
@@ -197,6 +207,8 @@ export function validateCredentialFormFields(p: {
   return {
     ok: false,
     missing: [...missing],
+    expected_fields: [...contract.required],
+    optional_fields: [...contract.optional],
     message:
       `${p.seedMode} credentials are collected with fields named exactly ` +
       `[${contract.required.join(", ")}] — rename your fields (labels stay free-form). ` +

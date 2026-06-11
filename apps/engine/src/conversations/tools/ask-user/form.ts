@@ -1,6 +1,7 @@
 // ask_user_form — ask the user to fill in a structured form.
 
 import { z } from "@hono/zod-openapi";
+import { resolveConnectorTemplate } from "../../../connectors/template-resolver.ts";
 import {
   resolveDraftCredentialSeedMode,
   validateCredentialFormFields,
@@ -295,12 +296,40 @@ export const askUserFormTool: ConversationTool = {
             seededSlots,
           });
           if (!verdict.ok) {
+            // Template-bound drafts get the template's setup_instructions
+            // as a hint — the canonical "where do I get this credential"
+            // steps. Best-effort: a lookup failure (stub executor, db
+            // blip) only drops the hint, never blocks the gate.
+            let setupInstructions: string | null = null;
+            if (draftConnector.template_slug) {
+              try {
+                const resolved = await resolveConnectorTemplate({
+                  db: ctx.db,
+                  tenant_id: ctx.tenant_id,
+                  slug: draftConnector.template_slug,
+                });
+                setupInstructions = resolved?.template.setup_instructions ?? null;
+              } catch {
+                // hint only — fall through without it
+              }
+            }
+            // `data` is the payload that reaches the model as the tool
+            // result — the prose message and the EXPECTED field set must
+            // live there, or the model thrashes re-guessing field names
+            // (conversation 68b5c87e: 4 rejected forms in a row).
             return {
               ok: false,
               error_code: "credential_form_mismatch",
               message: verdict.message,
               next_best_actions: ["ask_user_form"],
-              data: { error_code: "credential_form_mismatch", missing: verdict.missing },
+              data: {
+                error_code: "credential_form_mismatch",
+                message: verdict.message,
+                missing: verdict.missing,
+                expected_fields: verdict.expected_fields,
+                optional_fields: verdict.optional_fields,
+                ...(setupInstructions ? { setup_instructions: setupInstructions } : {}),
+              },
             };
           }
         }

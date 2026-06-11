@@ -4765,7 +4765,8 @@
               "authorization_code",
               "client_credentials",
               "password",
-              "cognito_user_password"
+              "cognito_user_password",
+              "client_credentials_json"
             ]
           },
           "token_auth_method": {
@@ -4799,6 +4800,18 @@
           "dynamic_registration": {
             "type": "boolean",
             "default": false
+          },
+          "token_response_format": {
+            "type": "string",
+            "enum": [
+              "raw",
+              "json"
+            ]
+          },
+          "token_response_ttl_ms": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMinimum": true
           }
         },
         "required": [

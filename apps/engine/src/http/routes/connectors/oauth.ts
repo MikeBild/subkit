@@ -42,6 +42,7 @@ import {
   completeAuthorizationCode,
   DynamicRegistrationError,
   dynamicallyRegisterClient,
+  runClientCredentialsJsonGrant,
   startAuthorizationCode,
 } from "../../../credentials/index.ts";
 import { writeEvent } from "../../../db/events.ts";
@@ -190,6 +191,76 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     const cfg = await connectorOauthCfg(db, principal.tenant_id, connector);
+
+    // client_credentials_json: machine-to-machine exchange — no browser
+    // redirect. POST JSON body to the token endpoint, store the token
+    // as an oauth2 credential, and return a synthetic done envelope so
+    // the caller doesn't have to open a browser.
+    if (cfg.grant_type === "client_credentials_json") {
+      const bodyMapping = cfg.token_request_body_mapping;
+      if (!bodyMapping || Object.keys(bodyMapping).length === 0) {
+        throw new BadRequestError(
+          "client_credentials_json connector is missing token_request_body_mapping in config.oauth — " +
+            "set client_id and client_secret fields before calling oauth/start",
+        );
+      }
+      const tokenEndpoint = cfg.token_endpoint;
+      if (!tokenEndpoint) {
+        throw new BadRequestError(
+          "client_credentials_json connector is missing config.oauth.token_endpoint",
+        );
+      }
+      const bundle = await runClientCredentialsJsonGrant({
+        token_endpoint: tokenEndpoint,
+        body_mapping: bodyMapping,
+        response_format: cfg.token_response_format ?? "raw",
+        token_response_ttl_ms: cfg.token_response_ttl_ms ?? 86_400_000,
+        extra_token_headers: cfg.extra_token_headers,
+      });
+      await credsvc.upsertCredential(
+        {
+          tenant_id: principal.tenant_id,
+          connector_id: id,
+          environment: connector.environment,
+          mode: "oauth2",
+          value: {
+            mode: "oauth2",
+            access_token: bundle.access_token,
+            token_type: bundle.token_type,
+            ...(bundle.scope ? { scope: bundle.scope } : {}),
+          },
+          oauth2_refresh_token: null,
+          oauth2_expires_at: bundle.expires_at,
+          actor_id: principal.id,
+          source: "oauth_callback",
+        },
+        db,
+      );
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: "user",
+          actor_id: principal.id,
+          action: AuditAction.CREDENTIAL_OAUTH2_REFRESHED,
+          resource_type: "credential",
+          resource_id: id,
+          result: "success",
+          metadata: { grant_type: "client_credentials_json", connector_id: id },
+        },
+        db,
+      );
+      logger.info({
+        module: "oauth",
+        action: "oauth.client_credentials_json.minted",
+        msg: "client_credentials_json token minted and stored",
+        tenant_id: principal.tenant_id,
+        connector_id: id,
+      });
+      // Return a synthetic authorization_url so callers that check for the
+      // field don't break. An empty state signals "no browser flow needed".
+      return c.json({ authorization_url: "", state: "" }, 200);
+    }
+
     const cfgWithRedirect = { ...cfg, redirect_uri };
     const started = await startAuthorizationCode(cfgWithRedirect);
     await db.insert(connectorOauthStates).values({

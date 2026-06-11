@@ -237,11 +237,15 @@ export async function maybeAutoPersistFromElicitation(
         // this, the LLM had to bounce through a second `save_connector_draft`
         // tool call — the "approve twice" symptom on the connector path.
         const forceSave = intent.payload.force_save === true;
+        // This dispatcher only runs on a RESOLVED, non-declined
+        // elicitation (checkDecline returned above), so a force_save
+        // here carries an explicit operator approval — it bypasses the
+        // fresh-probe cooldown that gates the bare LLM tool path.
         result = await saveConnectorAtomic({
           ctx,
           environment,
           ...(credential ? { credential } : {}),
-          ...(forceSave ? { forceSave: true } : {}),
+          ...(forceSave ? { forceSave: true, forceSaveApproved: true } : {}),
           reason: "auto_persist_on_confirmation",
           emitAutoPersistAudit: true,
           commitIntentKind: intent.kind,

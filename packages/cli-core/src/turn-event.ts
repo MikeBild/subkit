@@ -253,6 +253,20 @@ export interface SkSessionState {
   usage: TurnUsage | null;
   /** Live streaming buffer — assistant text being built token-by-token. */
   streamingAssistantText: string;
+  /**
+   * Remainder of the persisted assistant text the stream has not
+   * delivered yet. The engine can emit the persisted `message` event
+   * MID-STREAM (observed in conversation 68b5c87e: text_delta*,
+   * message with identical full text — self-parented —, then more
+   * text_delta frames replaying the tail). The `message` handler
+   * records `persistedText.slice(buffer.length)` here; subsequent
+   * deltas that replay that tail are swallowed instead of
+   * re-accumulating into `streamingAssistantText`, which pre-fix
+   * rendered a dangling mid-sentence duplicate below the full message.
+   * A delta that diverges from the tail is a genuinely new stream and
+   * accumulates normally.
+   */
+  expectedStreamTail: string;
   /** Live per-tool-call log entries (cleared when the tool result arrives). */
   toolLogs: ToolLogEntry[];
   /** Latest activity ticker payload — see ActivityState. `null` while
@@ -301,6 +315,7 @@ export function initialSessionState(conversationId: string | null): SkSessionSta
     validationErrors: [],
     usage: null,
     streamingAssistantText: "",
+    expectedStreamTail: "",
     toolLogs: [],
     activity: null,
     sessionTotalTokens: 0,
@@ -484,6 +499,62 @@ function lastAssistantMessageId(state: SkSessionState): string | undefined {
 }
 
 /**
+ * Fold a persisted assistant `message` event into the session.
+ *
+ * Duplicate-output forensics (conversation 68b5c87e, elicitation-
+ * resolution turn): the engine delivered text_delta frames, then the
+ * persisted `message` with IDENTICAL text — SELF-parented
+ * (parent_message_id === id) — then MORE deltas replaying the tail of
+ * that same text. Three reconciliations keep that a single cell:
+ *
+ *   1. same-id replay → reconcile in place (longer text wins) instead
+ *      of appending a clone;
+ *   2. adjacent assistant message whose text equals (or is a
+ *      prefix-extension of) the previous one → replace the previous
+ *      cell, mirroring the user-echo dedupe precedent;
+ *   3. text not yet delivered by the stream is recorded as
+ *      `expectedStreamTail` so the `text_delta` handler swallows the
+ *      replayed tail instead of re-rendering it.
+ *
+ * Distinct assistant messages (different texts between tool calls)
+ * still append normally — multi-message turns keep every cell.
+ */
+function applyAssistantMessage(
+  state: SkSessionState,
+  next: MessageState,
+  text: string,
+): SkSessionState {
+  const buffer = state.streamingAssistantText;
+  // Tail of the persisted text the stream has not delivered yet. Only
+  // meaningful when the deltas so far are a prefix of the persisted
+  // text (i.e. the message materialized mid-stream).
+  const expectedStreamTail =
+    buffer.length > 0 && text.startsWith(buffer) ? text.slice(buffer.length) : "";
+
+  let messages = state.messages;
+  const sameIdIdx = next.id
+    ? messages.findIndex((m) => m.role === "assistant" && m.id === next.id)
+    : -1;
+  if (sameIdIdx >= 0) {
+    const existing = messages[sameIdIdx];
+    // Longer text wins — a replay carrying extended text reconciles to
+    // the fuller form; a truncated replay never shrinks the cell.
+    if (existing && existing.content.length <= text.length) {
+      messages = [...messages];
+      messages[sameIdIdx] = next;
+    }
+  } else {
+    const prior = messages[messages.length - 1];
+    const priorText = prior?.role === "assistant" ? prior.content.trim() : "";
+    const newText = text.trim();
+    const duplicatesPrior =
+      priorText.length > 0 && (newText === priorText || newText.startsWith(priorText));
+    messages = duplicatesPrior ? [...messages.slice(0, -1), next] : [...messages, next];
+  }
+  return { ...state, messages, streamingAssistantText: "", expectedStreamTail };
+}
+
+/**
  * Pure reducer that folds a TurnEvent into the existing SessionState.
  * Kept as a free function so tests can drive it synchronously.
  */
@@ -499,6 +570,9 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
         ...(parsed.parts.length > 0 ? { parts: parsed.parts } : {}),
         ...(ev.id ? { id: ev.id } : {}),
       };
+      if (ev.role === "assistant") {
+        return applyAssistantMessage(state, next, parsed.text);
+      }
       // Dedupe optimistic user echoes: when the CLI synthesised a
       // local `user` message before the engine round-trip (so the
       // operator sees their input immediately), the engine then
@@ -538,10 +612,40 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
       return {
         ...state,
         messages,
-        streamingAssistantText: ev.role === "assistant" ? "" : state.streamingAssistantText,
+        // A user message starts a new turn — any leftover tail
+        // expectation from the previous assistant message is stale.
+        ...(ev.role === "user" ? { expectedStreamTail: "" } : {}),
       };
     }
     case "text_delta": {
+      const tail = state.expectedStreamTail;
+      if (tail.length > 0) {
+        if (tail.startsWith(ev.text)) {
+          // Replay of text the persisted assistant message already
+          // materialized (engine emitted `message` mid-stream) —
+          // swallow the delta, advance the expectation. Pre-fix this
+          // re-accumulated into streamingAssistantText and rendered a
+          // mid-sentence duplicate below the full message.
+          return { ...state, expectedStreamTail: tail.slice(ev.text.length) };
+        }
+        if (ev.text.startsWith(tail)) {
+          // Delta covers the rest of the materialized text AND
+          // continues beyond it — swallow the covered part, stream
+          // only the genuinely new overflow.
+          return {
+            ...state,
+            expectedStreamTail: "",
+            streamingAssistantText: state.streamingAssistantText + ev.text.slice(tail.length),
+          };
+        }
+        // Divergent — a new assistant stream started; drop the stale
+        // expectation and accumulate normally.
+        return {
+          ...state,
+          expectedStreamTail: "",
+          streamingAssistantText: state.streamingAssistantText + ev.text,
+        };
+      }
       return {
         ...state,
         streamingAssistantText: state.streamingAssistantText + ev.text,

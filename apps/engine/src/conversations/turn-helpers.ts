@@ -111,9 +111,10 @@ export function synthesizeFallbackMessage(params: {
     latestPerTool.set(ev.tool, output as Record<string, unknown>);
     callsPerTool.set(ev.tool, (callsPerTool.get(ev.tool) ?? 0) + 1);
     totalCalls += 1;
-    const out = output as { error?: unknown; status?: unknown };
+    const out = output as { error?: unknown; status?: unknown; error_code?: unknown };
     const looksError =
       typeof out.error === "string" ||
+      typeof out.error_code === "string" ||
       out.status === "failed" ||
       (out as { ok?: unknown }).ok === false;
     if (!looksError) successCalls += 1;
@@ -203,6 +204,47 @@ function looksLikeLifecyclePayload(output: Record<string, unknown>): boolean {
     typeof output.stage === "string" &&
     "resource_kind" in output
   );
+}
+
+/**
+ * Render an `ok:false` envelope as operator-readable prose. The
+ * fallback text is shown to a HUMAN, so the raw `error_code:` token
+ * must never appear — the envelope's hint/message fields carry the
+ * explanation, and the structured `missing` / `expected_fields` /
+ * `setup_instructions` detail is appended so the corrective action is
+ * visible at a glance (conversation 68b5c87e: the operator saw
+ * "ask_user_form: error_code: credential_form_mismatch" four times).
+ * Detail fields are read from the top level first, then from a nested
+ * `data` object — both envelope shapes exist at this layer.
+ */
+function describeErrorEnvelope(output: Record<string, unknown>): string {
+  const data =
+    output.data && typeof output.data === "object" && !Array.isArray(output.data)
+      ? (output.data as Record<string, unknown>)
+      : null;
+  const readText = (key: string): string | null => {
+    const v = output[key] ?? data?.[key];
+    return typeof v === "string" && v.length > 0 ? v : null;
+  };
+  const readList = (key: string): string[] | null => {
+    const v = output[key] ?? data?.[key];
+    if (!Array.isArray(v)) return null;
+    const items = v.filter((x): x is string => typeof x === "string");
+    return items.length > 0 ? items : null;
+  };
+  const prose =
+    readText("hint") ??
+    readText("message") ??
+    readText("error") ??
+    `the call failed (${String(output.error_code).replace(/_/g, " ")})`;
+  const parts = [prose.slice(0, 300)];
+  const missing = readList("missing");
+  if (missing) parts.push(`missing: ${missing.join(", ")}`);
+  const expected = readList("expected_fields");
+  if (expected) parts.push(`expected fields: ${expected.join(", ")}`);
+  const setup = readText("setup_instructions");
+  if (setup) parts.push(`setup: ${setup.slice(0, 200)}`);
+  return parts.join(" · ");
 }
 
 function describeToolOutput(output: Record<string, unknown>): string {
@@ -329,8 +371,8 @@ function describeToolOutput(output: Record<string, unknown>): string {
   }
   if (output._truncated && typeof output._note === "string") return String(output._note);
   if (typeof output._truncation_note === "string") return String(output._truncation_note);
+  if (typeof output.error_code === "string") return describeErrorEnvelope(output);
   if (typeof output.error === "string") return `error: ${output.error.slice(0, 160)}`;
-  if (typeof output.error_code === "string") return `error_code: ${String(output.error_code)}`;
   if (typeof output.reason === "string") return `note: ${String(output.reason)}`;
   if (typeof output.message === "string") return String(output.message).slice(0, 160);
   // Last resort — enumerate domain keys but defensively strip any

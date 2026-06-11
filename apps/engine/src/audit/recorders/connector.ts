@@ -201,6 +201,14 @@ export interface RecordConnectorSavedOverrideParams extends RecorderBase {
    * paths apart.
    */
   kind?: string;
+  /** True when the save overrode a failed probe via force_save. */
+  forced?: boolean;
+  /**
+   * True when the fresh-probe force_save cooldown was bypassed by a
+   * resolved operator approval (commit-intent dispatch). A bare
+   * LLM-initiated force_save never sets this — the cooldown refuses it.
+   */
+  cooldown_bypassed?: boolean;
 }
 
 export async function recordConnectorSavedOverride(
@@ -225,6 +233,8 @@ export async function recordConnectorSavedOverride(
         latest_probe: p.latest_probe ?? null,
         ...(p.tool ? { tool: p.tool } : {}),
         ...(p.probe_failure_code !== undefined ? { probe_failure_code: p.probe_failure_code } : {}),
+        ...(p.forced !== undefined ? { forced: p.forced } : {}),
+        ...(p.cooldown_bypassed !== undefined ? { cooldown_bypassed: p.cooldown_bypassed } : {}),
       },
     },
     p.executor,

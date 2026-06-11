@@ -153,7 +153,8 @@ export async function resolveConnectorOAuthConfig(
     grant_type === "authorization_code" ||
     grant_type === "client_credentials" ||
     grant_type === "password" ||
-    grant_type === "cognito_user_password"
+    grant_type === "cognito_user_password" ||
+    grant_type === "client_credentials_json"
   ) {
     out.grant_type = grant_type;
   }
@@ -164,5 +165,47 @@ export async function resolveConnectorOAuthConfig(
   if (typeof rawBuffer === "number" && Number.isFinite(rawBuffer) && rawBuffer > 0) {
     out.refresh_buffer_ms = rawBuffer;
   }
+  // client_credentials_json extension: body field mapping, response
+  // format, and default TTL. Connector config wins over template defaults.
+  const oExt = o as {
+    token_request_body_mapping?: unknown;
+    token_response_format?: unknown;
+    token_response_ttl_ms?: unknown;
+  };
+  // token_request_body_mapping: explicit operator-supplied map wins, otherwise
+  // synthesise from the resolved client_id + client_secret. The template declares
+  // which body field names to use; the actual credential values come from config.oauth.
+  if (
+    oExt.token_request_body_mapping &&
+    typeof oExt.token_request_body_mapping === "object" &&
+    !Array.isArray(oExt.token_request_body_mapping)
+  ) {
+    out.token_request_body_mapping = oExt.token_request_body_mapping as Record<string, string>;
+  } else if (out.grant_type === "client_credentials_json" && out.client_id) {
+    // Auto-build the body mapping from the resolved client_id and client_secret.
+    // This is the default path for connectors that store credentials in config.oauth.
+    const mapping: Record<string, string> = { client_id: out.client_id };
+    if (out.client_secret) mapping.client_secret = out.client_secret;
+    out.token_request_body_mapping = mapping;
+  }
+  const resolvedResponseFormat =
+    oExt.token_response_format === "raw" || oExt.token_response_format === "json"
+      ? oExt.token_response_format
+      : templateOauth?.token_response_format === "raw" ||
+          templateOauth?.token_response_format === "json"
+        ? templateOauth.token_response_format
+        : undefined;
+  if (resolvedResponseFormat) out.token_response_format = resolvedResponseFormat;
+  const resolvedTtlMs =
+    typeof oExt.token_response_ttl_ms === "number" &&
+    Number.isFinite(oExt.token_response_ttl_ms) &&
+    oExt.token_response_ttl_ms > 0
+      ? oExt.token_response_ttl_ms
+      : typeof templateOauth?.token_response_ttl_ms === "number" &&
+          Number.isFinite(templateOauth.token_response_ttl_ms) &&
+          templateOauth.token_response_ttl_ms > 0
+        ? templateOauth.token_response_ttl_ms
+        : undefined;
+  if (resolvedTtlMs !== undefined) out.token_response_ttl_ms = resolvedTtlMs;
   return out;
 }

@@ -530,6 +530,13 @@ export async function getCredentialForConnector(
     value.refresh_token = refresh;
     value.expires_at = row.oauth2_expires_at ?? null;
   }
+  // Grants like client_credentials_json store no refresh token but DO persist
+  // expires_at so the staleness check works correctly. Read it here for any
+  // oauth2 credential that doesn't already have expires_at set (i.e. no
+  // refresh_token branch above ran).
+  if (value.mode === "oauth2" && value.expires_at === null && row.oauth2_expires_at) {
+    value.expires_at = row.oauth2_expires_at;
+  }
   return { row, value };
 }
 
@@ -597,6 +604,11 @@ export async function getCredentialForMcpServer(
     );
     value.refresh_token = refresh;
     value.expires_at = row.oauth2_expires_at ?? null;
+  }
+  // Grants like client_credentials_json store no refresh token but DO persist
+  // expires_at so the staleness check works correctly.
+  if (value.mode === "oauth2" && value.expires_at === null && row.oauth2_expires_at) {
+    value.expires_at = row.oauth2_expires_at;
   }
   return { row, value };
 }

@@ -76,6 +76,7 @@ describe("connector templates", () => {
       expect([
         "authorization_code",
         "client_credentials",
+        "client_credentials_json",
         "password",
         "cognito_user_password",
       ]).toContain(o.grant_type);
