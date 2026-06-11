@@ -77,6 +77,11 @@ import {
   type WrappedToolOutput,
 } from "./state.ts";
 
+// One heap snapshot per process (SUBKIT_HEAP_DIAG=1 only) — the spike
+// recurs every step, so the first capture is representative and repeat
+// snapshots would just hammer /tmp with ~hundreds-of-MB JSON files.
+let heapSnapshotWritten = false;
+
 // The `inputExamples` SDK channel was emitted from this helper
 // alongside the tool's `<example>` description block. AI SDK 6 /
 // Anthropic now strict-validates each example against the projected
@@ -559,13 +564,44 @@ export function wrapOne(
         // request/stream segment that ran before this tool call.
         if (signals.step === 0) {
           const m = process.memoryUsage();
+          const external_mb = Math.round(m.external / (1024 * 1024));
+          // SUBKIT_HEAP_DIAG=1 (set via a systemd drop-in, never on by
+          // default): name WHO holds the step-0 external transient. The
+          // knob-perfect standalone replica of the streamText invocation
+          // peaks at 9MB external on the same droplet, so the retainer is
+          // engine-resident — only an in-process heap snapshot at the
+          // spike moment can identify it. One snapshot per process; the
+          // ~1GB-heap JSON lands in /tmp for offline analysis.
+          let heapDiag: Record<string, unknown> = {};
+          if (process.env.SUBKIT_HEAP_DIAG === "1") {
+            try {
+              const { heapStats } = await import("bun:jsc");
+              const h = heapStats();
+              heapDiag = {
+                heap_size_mb: Math.round(h.heapSize / (1024 * 1024)),
+                extra_memory_mb: Math.round((h.extraMemorySize ?? 0) / (1024 * 1024)),
+                heap_top: Object.entries(h.objectTypeCounts)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 8),
+              };
+              if (external_mb > 512 && !heapSnapshotWritten) {
+                heapSnapshotWritten = true;
+                const snapshotPath = `/tmp/subkit-heap-first-tool-${Date.now()}.json`;
+                await Bun.write(snapshotPath, JSON.stringify(Bun.generateHeapSnapshot()));
+                heapDiag.heap_snapshot_path = snapshotPath;
+              }
+            } catch (err) {
+              heapDiag = { heap_diag_error: err instanceof Error ? err.message : String(err) };
+            }
+          }
           logger.info({
             module: "process",
             action: "step.memory",
             at: "first_tool_start",
             tool: inner.name,
-            external_mb: Math.round(m.external / (1024 * 1024)),
+            external_mb,
             rss_mb: Math.round(m.rss / (1024 * 1024)),
+            ...heapDiag,
           });
         }
         const step = signals.step++;
