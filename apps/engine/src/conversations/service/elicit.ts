@@ -323,6 +323,7 @@ export async function respondElicitation(
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
+    ...(p.principal !== undefined ? { principal: p.principal } : {}),
     output: p.output,
     elicitation: {
       id: resolved.id,

@@ -17,6 +17,7 @@
 // between the two paths is how the credential cache or the auto-persist
 // dispatch silently goes missing on one surface.
 
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import {
   type AutoPersistDispatch,
@@ -28,6 +29,9 @@ export interface ApplyElicitationOutcomeInput {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  /** Resolved principal of the answering actor — threaded into the
+   *  auto-persist dispatcher for RBAC-gated intents (run_workflow). */
+  principal?: ResolvedPrincipal | null;
   /** The resolved carrier elicitation row. */
   elicitation: {
     id: string;
@@ -62,6 +66,7 @@ export async function applyElicitationOutcome(
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
+    ...(p.principal !== undefined ? { principal: p.principal } : {}),
     elicitation_output: p.output,
     elicitation: {
       id: p.elicitation.id,

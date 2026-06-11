@@ -321,6 +321,21 @@ export const runWorkflowTool: ConversationTool = {
           input: {
             question: `Workflow "${wf.slug}" needs the following input${fields.length === 1 ? "" : "s"} to run:`,
             fields,
+            // The harness executes the run with the submitted values on
+            // form submit (see auto-persist's run_workflow case) — the
+            // LLM is NOT trusted to re-issue run_workflow with the
+            // answers; observed live it re-called with empty input and
+            // looped back into the same form.
+            commit_intent: {
+              kind: "run_workflow",
+              payload: {
+                workflow_id: workflowId,
+                workflow_slug: wf.slug,
+                environment: args.environment,
+                input_partial: suppliedMap,
+              },
+              description: `Run workflow "${wf.slug}" with the submitted input`,
+            },
           },
         });
       }

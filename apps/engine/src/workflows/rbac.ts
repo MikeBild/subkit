@@ -20,7 +20,7 @@ import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { can } from "../rbac/evaluator.ts";
 
-export type WorkflowRunRequestSource = "mcp" | "chat" | "fast_path";
+export type WorkflowRunRequestSource = "mcp" | "chat" | "fast_path" | "auto_persist";
 
 export interface GateWorkflowRunRbacParams {
   db: Db;

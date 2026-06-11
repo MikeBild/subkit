@@ -28,6 +28,13 @@ export const COMMIT_INTENT_KINDS = [
   // engine logged `auto_persist.skipped: elicitation resolved without
   // commit_intent` on every OAuth approval (session ed20f48d).
   "oauth_completed",
+  // run_workflow's missing-input auto-form carries this intent so the
+  // harness executes the run with the submitted values directly on
+  // form submit. Pre-fix the resume contract relied on the LLM
+  // re-issuing run_workflow with the answers — observed live (6.14.1,
+  // get-jira-ticket-details): the model re-called with empty input and
+  // looped back into the same form.
+  "run_workflow",
 ] as const;
 
 export type CommitIntentKind = (typeof COMMIT_INTENT_KINDS)[number];
@@ -45,9 +52,33 @@ export const commitIntentSchema = z
      * `{ token }` from a single-field bearer form becomes
      * `payload.credential = { mode: "bearer", token }`).
      *
+     * Credential-collecting forms MUST use the canonical field names
+     * (see `persistence/credential-form-contract.ts` — enforced at form
+     * creation via `credential_form_mismatch`):
+     *   bearer                → token
+     *   basic                 → username, password
+     *   header                → header_name, header_value
+     *   query                 → param, value
+     *   aws_sigv4             → access_key_id, secret_access_key
+     *                           (+ optional session_token)
+     *   cognito_user_password → username, password (+ optional
+     *                           aws_region, client_id, client_secret)
+     *   oauth2                → client_id (+ optional client_secret,
+     *                           token_endpoint, authorization_endpoint,
+     *                           scopes)
+     * Labels stay free-form; field NAMES are the contract. A slot the
+     * LLM already supplies in `payload.credential` (e.g. header_name)
+     * does not need a form field. For basic auth collect username +
+     * password as separate fields — never ask the user to compose or
+     * base64-encode "user:pass"; the driver does the encoding.
+     *
      * For `delete_connector` / `delete_workflow` — `{ id, hard?: boolean }`.
      *
      * For `save_workflow_draft` — `{ target_workflow_id?: string }`.
+     *
+     * For `run_workflow` — `{ workflow_id, workflow_slug?, environment?,
+     * input_partial? }`. The harness merges the submitted form values
+     * over `input_partial` and runs the execution directly.
      *
      * For `rollback_after_execute` — `{ execution_id }` (NOT
      * implemented yet; harness emits a no-op result).

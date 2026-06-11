@@ -20,6 +20,7 @@
 // existing approval pause, so the pause contract stays compatible.
 
 import { logger } from "../../../logging/logger.ts";
+import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import { ElicitationUnsupportedError } from "../../elicitation-bridge.ts";
 import {
   createElicitation,
@@ -40,10 +41,28 @@ import { validateElicitationAnswer } from "./validate-answer.ts";
 
 type AskUserToolName = NonNullable<ToolResult["pause"]>["tool_name"];
 
+/**
+ * Pattern-only secret scrub over an `ask_user_*` payload — the single
+ * chokepoint ahead of every downstream copy of the payload (native
+ * bridge message, DB-pause `pause` payloads, persisted elicitation
+ * rows). `scrubStringsDeep` walks string LEAVES only, so nested
+ * `fields[]` labels/placeholders/defaults and select option labels are
+ * covered while structural key names (`token`, `credential`) and
+ * Mustache values like `Bearer {{token}}` in `commit_intent.payload`
+ * survive untouched.
+ */
+export function scrubAskUserPayload<T extends { summary: string; input: unknown }>(p: T): T {
+  return { ...p, summary: scrubString(p.summary), input: scrubStringsDeep(p.input) };
+}
+
 export async function pauseForUserInput(
   ctx: ToolContext,
   p: { tool_name: AskUserToolName; summary: string; input: unknown },
 ): Promise<ToolResult> {
+  // The model occasionally echoes a user-pasted secret back into the
+  // question/summary it asks with — scrub the whole payload before any
+  // path (bridge, DB pause, elicitation row) can persist or render it.
+  p = scrubAskUserPayload(p);
   // ── MCP-native form elicitation ────────────────────────────────────
   // Take the in-process bridge when: the client advertised the
   // elicitation capability AND the tool input maps to flat primitives.
@@ -146,6 +165,7 @@ export async function pauseForUserInput(
             tenant_id: ctx.tenant_id,
             conversation_id: ctx.conversation_id,
             actor_id: ctx.actor_id,
+            ...(ctx.principal !== undefined ? { principal: ctx.principal } : {}),
             output,
             elicitation: { id: row.id, tool_name: p.tool_name, input: p.input },
             db: ctx.db,

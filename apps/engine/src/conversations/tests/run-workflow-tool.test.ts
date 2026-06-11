@@ -343,6 +343,14 @@ describe("run_workflow tool", () => {
     expect(pauseInput.fields).toEqual([
       expect.objectContaining({ name: "date", type: "text", required: true }),
     ]);
+    // The harness executes the run on submit (auto-persist run_workflow
+    // intent) — the LLM is not trusted to re-issue with the answers.
+    const intent = (result.pause?.input as { commit_intent?: Record<string, unknown> })
+      .commit_intent;
+    expect(intent).toMatchObject({
+      kind: "run_workflow",
+      payload: expect.objectContaining({ environment: "dev" }),
+    });
     expect((result.data as { status: string }).status).toBe("awaiting_input");
   });
 

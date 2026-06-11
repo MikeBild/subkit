@@ -52,12 +52,15 @@
 import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { runExecution } from "../../execution/engine.ts";
 import { logger } from "../../logging/logger.ts";
+import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { mergeFormIntoCredential } from "./auto-persist/credential-cache.ts";
@@ -96,6 +99,9 @@ export interface AutoPersistInput {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  /** Resolved principal of the actor who answered — required for the
+   *  `run_workflow` intent's RBAC gate. Absent on legacy callers. */
+  principal?: ResolvedPrincipal | null;
   /** The carrier elicitation's `output` after `resolveElicitation`. */
   elicitation_output: unknown;
   /** The persisted carrier — read from `conversation_elicitations`. */
@@ -125,6 +131,19 @@ export interface AutoPersistDispatch {
  * an empty form (we still inject a synthetic decline result so the
  * LLM's next turn carries the signal).
  */
+/** Read the submitted {name: value} map from an ask_user_form answer.
+ *  The portal sends `{ values: {...} }`; the MCP bridge resolves the
+ *  flat map. */
+function readFormValues(output: unknown): Record<string, unknown> {
+  if (!output || typeof output !== "object" || Array.isArray(output)) return {};
+  const obj = output as Record<string, unknown>;
+  const wrapped = obj.values;
+  if (wrapped && typeof wrapped === "object" && !Array.isArray(wrapped)) {
+    return wrapped as Record<string, unknown>;
+  }
+  return obj;
+}
+
 export async function maybeAutoPersistFromElicitation(
   p: AutoPersistInput,
 ): Promise<AutoPersistDispatch> {
@@ -263,6 +282,83 @@ export async function maybeAutoPersistFromElicitation(
       case "rollback_after_execute": {
         toolName = "rollback_after_execute";
         result = await dispatchRollbackSkipped(ctx, intent);
+        break;
+      }
+      case "run_workflow": {
+        // run_workflow's missing-input auto-form: merge the submitted
+        // values over input_partial and execute directly — the LLM is
+        // NOT trusted to re-issue the call with the answers (observed
+        // live on 6.14.1: it re-called with empty input and looped).
+        toolName = "run_workflow";
+        const workflowId = readString(intent.payload, "workflow_id");
+        const workflowSlug = readString(intent.payload, "workflow_slug") ?? workflowId ?? "";
+        if (!workflowId) {
+          result = {
+            ok: false,
+            error_code: "invalid_commit_intent",
+            message: "run_workflow commit_intent is missing payload.workflow_id",
+            data: {},
+          };
+          break;
+        }
+        if (!p.principal) {
+          result = {
+            ok: false,
+            error_code: "principal_required",
+            message:
+              "run_workflow auto-dispatch needs the answering actor's principal for RBAC — re-issue run_workflow in the conversation instead.",
+            data: { workflow_id: workflowId },
+          };
+          break;
+        }
+        const rbac = await gateWorkflowRunRbac({
+          db: p.db,
+          principal: p.principal,
+          workflow_id: workflowId,
+          workflow_slug: workflowSlug,
+          request_source: "auto_persist",
+          tool: "run_workflow",
+        });
+        if (!rbac.allow) {
+          result = {
+            ok: false,
+            error_code: "permission_denied",
+            message: rbac.error_message,
+            data: { workflow_id: workflowId },
+          };
+          break;
+        }
+        const partial =
+          intent.payload.input_partial && typeof intent.payload.input_partial === "object"
+            ? (intent.payload.input_partial as Record<string, unknown>)
+            : {};
+        const answers = readFormValues(p.elicitation_output);
+        const input = { ...partial, ...answers };
+        const environment = readEnvironment(intent);
+        const run = await runExecution({
+          db: p.db,
+          tenant_id: p.tenant_id,
+          source: { kind: "saved", workflow_id: workflowId },
+          input,
+          options: {
+            request_source: "chat",
+            trace_id: null,
+            principal: p.principal,
+            execution_mode: environment,
+          },
+        });
+        result = {
+          ok: run.status === "succeeded",
+          data: {
+            status: run.status,
+            execution_id: run.execution_id,
+            workflow_id: workflowId,
+            workflow_slug: workflowSlug,
+            input,
+            output: run.output,
+            ...(run.warnings && run.warnings.length > 0 ? { warnings: run.warnings } : {}),
+          },
+        };
         break;
       }
       case "oauth_completed": {
