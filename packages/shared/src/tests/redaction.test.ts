@@ -60,6 +60,16 @@ describe("scrubString — generic high-entropy pattern", () => {
     expect(scrubString(text)).toBe(text);
   });
 
+  test("file path with mixed-case segments is NOT matched (`/` not in charset)", () => {
+    // Regression: with `/` in the token charset, adjacent path segments
+    // fused into one ≥32-char span that satisfied the mixed-case +
+    // two-digit lookaheads, redacting whole temp paths in structured
+    // logs (config.loaded's config_path).
+    const text =
+      "wrote /var/folders/k8/z_zlllnn46l7vt1s8b209mv80000gn/T/sk-cfg-logs-AVTtuq/subkit.config.json ok";
+    expect(scrubString(text)).toBe(text);
+  });
+
   test("ULID is NOT matched (no lowercase)", () => {
     const text = "row 01ARZ3NDEKTSV4RRFFQ69G5FAV created";
     expect(scrubString(text)).toBe(text);

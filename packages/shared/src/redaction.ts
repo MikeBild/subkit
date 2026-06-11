@@ -77,13 +77,20 @@ export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
   //   - hex SHAs / lowercase UUIDs (no uppercase),
   //   - uppercase UUIDs / ULIDs / SCREAMING_SNAKE constants (no lowercase),
   //   - camelCase identifiers (no digits / too short),
-  //   - Mustache placeholders like `{{token}}` (`{`/`}` not in charset).
+  //   - Mustache placeholders like `{{token}}` (`{`/`}` not in charset),
+  //   - file paths: `/` is NOT in the charset — with it, adjacent path
+  //     segments fuse into one span and whole paths get redacted
+  //     (`/var/folders/k8/<rand>/T/sk-…` → `/***REDACTED:generic***`,
+  //     caught live via config.loaded's config_path). Each segment is
+  //     evaluated alone and almost never satisfies the envelope; a true
+  //     base64 secret containing `/` still has its ≥32-char segments
+  //     redacted individually.
   // MUST stay last: a vendor-prefixed pattern above should own the span
   // (and its kind) when both match.
   {
     kind: "generic",
     regex:
-      /\b(?=[A-Za-z0-9+/=_-]*[a-z])(?=[A-Za-z0-9+/=_-]*[A-Z])(?=[A-Za-z0-9+/=_-]*\d[A-Za-z0-9+/=_-]*\d)[A-Za-z0-9+/=_-]{32,}/g,
+      /\b(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*\d[A-Za-z0-9+=_-]*\d)[A-Za-z0-9+=_-]{32,}/g,
   },
 ];
 
