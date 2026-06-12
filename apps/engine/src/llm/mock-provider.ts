@@ -87,6 +87,8 @@ class MockProvider {
    *  at most once per process. Reset alongside the rest of the mock
    *  state in `reset()` so per-test isolation still works. */
   defaultCriticPassWarned = false;
+  /** Same one-shot guard for the preview-judge default pass. */
+  defaultJudgePassWarned = false;
 
   reset(): void {
     this.calls = [];
@@ -96,6 +98,7 @@ class MockProvider {
     this.converseCursors = new Map();
     this.cacheSeenKey = new Set();
     this.defaultCriticPassWarned = false;
+    this.defaultJudgePassWarned = false;
   }
 
   setConversePlan(conversation_id: string, plan: ConverseMockStep[]): void {
@@ -230,6 +233,27 @@ class MockProvider {
           passed: true,
           repairs: [],
           rationale: "mock_default_pass: no override installed",
+        };
+        return { text: JSON.stringify(obj), object: obj };
+      }
+      case "judge": {
+        // Default: passes. Tests that exercise judge behaviour install
+        // an override via `generateOverrides.judge`. Mirrors the
+        // critic_authoring default-pass pattern, including the one-time
+        // warn so a missed override surfaces in CI output instead of
+        // silently reading as a passing verdict.
+        if (!this.defaultJudgePassWarned) {
+          this.defaultJudgePassWarned = true;
+          logger.warn({
+            module: "llm",
+            action: "mock.judge.default_pass",
+            msg: "mock-provider judge default pass returned — tests that intend to assert judge behaviour must install generateOverrides.judge",
+          });
+        }
+        const obj = {
+          verdict: "passes" as const,
+          reason: "mock_default_pass: no override installed",
+          missing: [],
         };
         return { text: JSON.stringify(obj), object: obj };
       }

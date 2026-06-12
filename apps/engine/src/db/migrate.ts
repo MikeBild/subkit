@@ -31,6 +31,7 @@ import { z } from "zod";
 import { logger } from "../logging/logger.ts";
 import type { Db } from "./client.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
+import { runItemvarBackfill } from "./migrations/itemvar-backfill.ts";
 
 export interface MigrationReport {
   applied: number;
@@ -188,6 +189,21 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
       idx: m.idx,
       tag: m.tag,
       duration_ms: Date.now() - migStartedAt,
+    });
+  }
+
+  // Code backfills — run after the SQL set so their schema exists.
+  // Each is one-shot via a `data_migrations` marker row and never
+  // breaks boot: a failure logs + leaves the marker unset so the next
+  // boot retries.
+  try {
+    await runItemvarBackfill(db);
+  } catch (err) {
+    logger.error({
+      module: "db",
+      action: "migrate.code_backfill_failed",
+      msg: "item_var backfill failed (non-fatal; retried on next boot)",
+      error: err instanceof Error ? err.message : String(err),
     });
   }
 

@@ -36,7 +36,6 @@ describe("validateWorkflowDef · item-placeholder containment", () => {
           id: "iter",
           kind: "loop",
           over: "$scope.fetch.data",
-          item_var: "item",
           body: ["iter_body"],
         },
         {
@@ -73,7 +72,6 @@ describe("validateWorkflowDef · item-placeholder containment", () => {
           id: "iter",
           kind: "loop",
           over: "$scope.x.data",
-          item_var: "item",
           body: ["a"],
         },
         // a is in iter.body, even though iter.over references unknown `x` —

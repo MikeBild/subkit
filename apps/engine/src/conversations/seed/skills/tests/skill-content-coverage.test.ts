@@ -106,11 +106,13 @@ describe("workflow-authoring.md · field coverage", () => {
     // The recovery recipe: one dry-run refreshes evidence; unchanged steps keep theirs.
     expect(body).toMatch(/unchanged steps keep their evidence/i);
   });
-  test("documents the inside-a-loop-body addressing table", () => {
+  test("documents the inside-a-loop-body addressing table ($item-only)", () => {
     expect(body).toContain("Inside a loop body — addressing table");
-    // bare item_var in JSONata vs ${item.…} in request strings
+    // $item in JSONata vs ${item.…} in request strings — item_var is retired
     expect(body).toContain("${item.name}");
-    expect(body).toMatch(/bare `item_var`/);
+    expect(body).toContain("$item.name");
+    expect(body).toMatch(/`item_var` is retired/);
+    expect(body).not.toMatch(/"item_var":/);
     // $item and $loop_index always bound
     expect(body).toMatch(/\$item.*always bound|ALWAYS bound/is);
     expect(body).toContain("$loop_index");
@@ -120,6 +122,33 @@ describe("workflow-authoring.md · field coverage", () => {
     // the compact worked example: request + transform in one body
     expect(body).toContain("${item.full_name}");
     expect(body).toContain("$scope.fetch_languages.data");
+  });
+  test("documents author_workflow as the canonical one-shot authoring entry", () => {
+    expect(body).toContain("`author_workflow`");
+    expect(body).toMatch(/default to `author_workflow`/);
+    expect(body).toContain("authoring_stage_violation");
+    expect(body).toMatch(/REPAIR-STAGE tools/);
+  });
+  test("documents the verbatim JS-first transform contract", () => {
+    expect(body).toMatch(/Transforms — JavaScript first/);
+    expect(body).toContain("FUNCTION BODY");
+    expect(body).toContain("input.scope.<step_id>.data");
+    expect(body).toContain("input.input");
+    expect(body).toMatch(/must `return` its result/);
+    expect(body).toMatch(/QuickJS/);
+    // JSONata demoted to legacy/compat with $item-only addressing
+    expect(body).toMatch(/JSONata is legacy\/compat/);
+    expect(body).toMatch(/\*\*`\$item` ONLY\*\*/);
+  });
+  test("documents the bulk-endpoint design rule", () => {
+    expect(body).toMatch(/prefer one bulk list endpoint over a nested per-item loop/i);
+  });
+  test("documents that dry-runs hold writes (sends never fire in a preview)", () => {
+    expect(body).toMatch(/Dry-runs hold writes — sends never fire in a preview/);
+    expect(body).toMatch(/held request artifacts?/);
+    expect(body).toMatch(
+      /full-live preview.*explicit confirmation|explicit confirmation machinery/is,
+    );
   });
   test("documents that loop.body is an ARRAY of step ids", () => {
     expect(body).toMatch(/`body` is an ARRAY of step ids/);

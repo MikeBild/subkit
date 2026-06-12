@@ -1,0 +1,52 @@
+{
+  "name": "authoring-bare-itemvar-rejected",
+  "description": "item_var retirement: a generated/built definition that addresses the loop item by a bare name is rejected with a `$item` did_you_mean, and declaring `item_var` itself is rejected as a retired field.",
+  "flow": "converse",
+  "input": {
+    "bare_item_workflow": {
+      "steps": [
+        {
+          "id": "fetch",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://api.example.com/projects"
+        },
+        { "id": "each", "kind": "loop", "over": "$scope.fetch.data.projects", "body": ["shape"] },
+        {
+          "id": "shape",
+          "kind": "transform",
+          "language": "jsonata",
+          "expression": "{ \"name\": item.name }"
+        }
+      ]
+    },
+    "legacy_item_var_workflow": {
+      "steps": [
+        {
+          "id": "fetch",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://api.example.com/projects"
+        },
+        {
+          "id": "each",
+          "kind": "loop",
+          "over": "$scope.fetch.data.projects",
+          "item_var": "project",
+          "body": ["shape"]
+        },
+        {
+          "id": "shape",
+          "kind": "transform",
+          "language": "jsonata",
+          "expression": "{ \"name\": project.name }"
+        }
+      ]
+    },
+    "expect": {
+      "bare_error_code": "bare_iteration_identifier",
+      "retired_error_code": "item_var_retired",
+      "did_you_mean_contains": "$item"
+    }
+  }
+}

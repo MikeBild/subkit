@@ -66,6 +66,7 @@ import {
   formatKnowledgeChunk,
   formatLatestPreview,
   formatOperatorQuirks,
+  formatProbeShapeExamples,
   formatSkill,
   formatSkillIndex,
   formatUserMemory,
@@ -83,6 +84,7 @@ import {
   loadKnowledgeChunks,
   loadLatestPreview,
   loadPriorWorkflows,
+  loadProbeShapeExamples,
   loadProposedCandidates,
   loadTopRecipeBodies,
   logRecipeBodyFallbacks,
@@ -159,6 +161,12 @@ const BASE_SYSTEM_PROMPTS: Record<Exclude<LlmFlow, "converse" | "suggest_next">,
     "Compress the user's input into a short operator-facing summary.",
     "Keep the result factual, compact, and plain text.",
     "Do not add markdown headings, bullet lists, or JSON unless the user explicitly asks for them.",
+  ].join(" "),
+  judge: [
+    "You are the subkit workflow engine's preview judge — a strict, deterministic evaluator.",
+    "You are given the user's goal verbatim, a compact summary of the workflow definition, and the recorded step outputs from a green preview.",
+    "Decide whether the previewed OUTPUT satisfies the goal. Judge content, not style: minor format differences are fine, but an empty value where the goal requires data is never a pass.",
+    "Return exactly one JSON object: { verdict, reason, missing }.",
   ].join(" "),
   critic_authoring: [
     "You are the subkit workflow engine's authoring critic.",
@@ -371,6 +379,26 @@ export async function assembleEnhancedPrompt(
   let latestPreviewEntries: LatestPreviewEntry[] = [];
   if (p.flow === "converse" && p.conversation_id) {
     latestPreviewEntries = await loadLatestPreview(p.tenant_id, p.conversation_id, db);
+  }
+
+  // Recorded endpoint samples — payload-first generation context. The
+  // latest observed response shapes (`schema_versions`, recorded by
+  // probe_connector / call_connector / request-step executions) for the
+  // connectors bound to the conversation's draft. Rendered ONLY in
+  // workflow-authoring mode: that is the moment the model writes
+  // request paths and transforms, and the shapes must reach it BEFORE
+  // it authors — not as an after-the-fact validation finding.
+  let probeShapeExamplesBlock: string | null = null;
+  if (
+    p.flow === "converse" &&
+    p.authoring_hint?.mode === "workflow" &&
+    p.authoring_connector_ids &&
+    p.authoring_connector_ids.length > 0
+  ) {
+    const shapeExamples = await loadProbeShapeExamples(p.tenant_id, p.authoring_connector_ids, db);
+    if (shapeExamples.length > 0) {
+      probeShapeExamplesBlock = formatProbeShapeExamples(shapeExamples);
+    }
   }
 
   // Operator quirks for the in-scope connector. Loaded once per
@@ -602,6 +630,11 @@ export async function assembleEnhancedPrompt(
     for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
     if (userMemory) sections.push(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
+    // Recorded endpoint samples render right above the latest preview:
+    // the model reads "what the endpoints return" → "what the last
+    // dry-run actually produced" together, in the same `$scope.<id>.data…`
+    // addressing vocabulary.
+    if (probeShapeExamplesBlock) sections.push(probeShapeExamplesBlock);
     if (latestPreviewEntries.length > 0) {
       sections.push(formatLatestPreview(latestPreviewEntries));
     }
@@ -623,7 +656,8 @@ export async function assembleEnhancedPrompt(
   let total = systemTokens + messagesTokens;
 
   // Drop order (lowest priority dropped first):
-  //   failures → connector docs → knowledge chunks → user memory →
+  //   interaction log → failures → recorded endpoint samples →
+  //   connector docs → latest preview → knowledge chunks → user memory →
   //   authoring context → explicitly loaded skills → workflow skills →
   //   connector skills → global skills.
   const recount = () => {
@@ -667,6 +701,14 @@ export async function assembleEnhancedPrompt(
     } else if (failures.length > 0) {
       failures = [];
       trimmed.push("failures");
+    } else if (probeShapeExamplesBlock) {
+      // Recorded endpoint samples drop EARLY — well before any skill
+      // section. They are a grounding aid the model can re-derive on
+      // demand (call_connector / probe_connector re-record on the next
+      // call; suggest_jsonata_paths serves the same vocabulary), so
+      // they are the cheapest authoring section to shed under pressure.
+      probeShapeExamplesBlock = null;
+      trimmed.push("recorded_endpoint_samples");
     } else if (chunks.length > 0) {
       chunks.pop();
       trimmed.push("docs");

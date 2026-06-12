@@ -4,8 +4,11 @@
 // - data_selector must parse as a JSONPath-lite expression
 // - request urls must be syntactically valid
 // - jsonata expressions must parse
-// - loop bodies must reference the parent loop's item_var (otherwise
-//   the loop is N copies of the same call — typically a bug)
+// - loop bodies must reference the iteration item (`$item` in JSONata,
+//   `${item.…}` in strings) — otherwise the loop is N copies of the
+//   same call, typically a bug. Legacy stored versions that declare
+//   `item_var` validate under their declared contract; NEW definitions
+//   must not declare `item_var` at all (retired authoring field).
 //
 // Static JSONata identifier-scope checking lives at runtime in
 // `apps/engine/src/execution/steps/transform.ts` so the engine has the
@@ -262,31 +265,55 @@ export function validateWorkflowDef(
           }
         }
       }
-      // The body must reference the loop's item_var somewhere. A loop
+      // `item_var` is retired from the authored contract. Loop items
+      // are addressed as `$item` (JSONata) / `${item.…}` (strings).
+      // This is THE single enforcement point: every write surface
+      // (HTTP create/update, conversation authoring tools, draft
+      // executions) flows through validateWorkflowDef, while stored
+      // legacy versions are only Zod-parsed on read/execute and keep
+      // running under their declared contract (see
+      // `execution/loop-scope.ts`).
+      if (step.item_var !== undefined) {
+        errors.push({
+          path: `steps.${step.id}.item_var`,
+          message:
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message names the literal `${item.…}` placeholder grammar.
+            "`item_var` is retired — remove it. Address the loop item as `$item` in JSONata expressions and `${item.<field>}` in URL/header/query/body strings (`$loop_index` is the iteration counter).",
+        });
+      }
+      // The body must reference the iteration item somewhere. A loop
       // whose body never reads the iteration item is N copies of the
       // same call — almost always a bug. The transcript that triggered
       // this rule had `body: [get_resources]` where `get_resources`
       // hard-coded the URL with no `${project.id}` interpolation, so
       // the loop ran but never fanned out.
-      const itemVar = step.item_var ?? "item";
       const bodySteps = step.body
         .map((bid) => wf.steps.find((s) => s.id === bid))
         .filter((s): s is StepDef => s !== undefined);
       // A loop body satisfies the reference rule when it mentions either
-      //   - the canonical placeholder `${item.…}` (preferred for URLs /
-      //     headers / query / body strings), or
-      //   - the loop's `item_var` directly (for JSONata expressions).
+      //   - the canonical placeholder `${item.…}` (for URLs / headers /
+      //     query / body strings), or
+      //   - the canonical `$item` binding (for JSONata expressions).
+      // Legacy definitions that declare `item_var` (stored versions —
+      // they are rejected above for new writes, but this rule must not
+      // double-fire on them) still validate under their declared
+      // contract: the bare declared name counts as a reference.
       // Skip the check when ANY body id is still a forward reference —
       // the LLM hasn't authored that step yet, so we cannot tell whether
       // it will read the iteration item.
       const someBodyIsForwardRef = step.body.some((bid) => !ids.has(bid));
-      const referencesItemVar = bodySteps.some(
-        (bs) => stepReferencesIdentifier(bs, itemVar) || stepReferencesIdentifier(bs, "item"),
+      const declaredItemVar = step.item_var;
+      const referencesItem = bodySteps.some(
+        (bs) =>
+          stepReferencesCanonicalItem(bs) ||
+          (declaredItemVar !== undefined && stepReferencesIdentifier(bs, declaredItemVar)),
       );
-      if (bodySteps.length > 0 && !someBodyIsForwardRef && !referencesItemVar) {
+      if (bodySteps.length > 0 && !someBodyIsForwardRef && !referencesItem) {
         errors.push({
           path: `steps.${step.id}`,
-          message: `loop body never references the iteration item — use \`\${item.field}\` in URLs/strings or \`${itemVar}.field\` in JSONata. Without it the loop runs N copies of the same call.`,
+          message:
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message names the literal `${item.field}` placeholder grammar.
+            "loop body never references the iteration item — use `${item.field}` in URLs/strings or `$item.field` in JSONata. Without it the loop runs N copies of the same call.",
         });
       }
     }
@@ -367,6 +394,15 @@ export function validateWorkflowDef(
   return forwardRefs.length > 0
     ? { ok: true, workflow: wf, errors: [], forward_refs: forwardRefs }
     : { ok: true, workflow: wf, errors: [] };
+}
+
+/** Canonical iteration-item references: `${item.…}` in strings,
+ *  `$item` in JSONata. Conservative substring/regex check over the
+ *  serialized step — errs towards false-positives (lets the loop
+ *  validate) like `stepReferencesIdentifier`. */
+function stepReferencesCanonicalItem(step: StepDef): boolean {
+  const haystack = JSON.stringify(step);
+  return haystack.includes("${item") || /\$item\b/.test(haystack);
 }
 
 function stepReferencesIdentifier(step: StepDef, identifier: string): boolean {

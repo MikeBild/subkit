@@ -166,6 +166,17 @@ function walkForPlaceholder(value: unknown, depth: number, seen: WeakSet<object>
  * forgot to substitute and the request will hit the vendor with the
  * literal token in the URL / body.
  */
+/** Hold-writes escape hatch: a preview that EXECUTES write-classified
+ *  steps (`execute_writes: true`) publishes for real — it must carry
+ *  the same explicit confirmation as any external write. The default
+ *  hold-writes preview stays auto (resolves writes, dispatches none). */
+export function confirmIfExecutesWrites(input: unknown): ExecutionMode {
+  if (isPlainObject(input) && input.execute_writes === true) {
+    return "confirm_before_execution";
+  }
+  return confirmIfUnresolvedPlaceholders(input);
+}
+
 export function confirmIfUnresolvedPlaceholders(input: unknown): ExecutionMode {
   // Prefer the structured `bindings` field when present — that is the
   // canonical home of substitution variables — and fall through to a
@@ -316,9 +327,10 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   {
     name: "dry_run_workflow",
     defaultMode: "auto",
-    computeModeFromInput: confirmIfUnresolvedPlaceholders,
-    confirmationKind: "sensitive_input",
-    reason: "Confirms when bindings still contain unresolved placeholders",
+    computeModeFromInput: confirmIfExecutesWrites,
+    confirmationKind: "external_call",
+    reason:
+      "Confirms a full-live preview (execute_writes) or unresolved placeholders; hold-writes previews run auto",
   },
   {
     name: "dry_run_step",
@@ -409,6 +421,7 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   { name: "inspect_workflow_draft", defaultMode: "auto" },
   { name: "validate_connector_draft", defaultMode: "auto" },
   { name: "validate_draft", defaultMode: "auto" },
+  { name: "author_workflow", defaultMode: "auto" },
   { name: "build_workflow", defaultMode: "auto" },
   { name: "connect_steps", defaultMode: "auto" },
   { name: "propose_step", defaultMode: "auto" },

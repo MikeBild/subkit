@@ -1,17 +1,26 @@
-// `dry_run_transform` — evaluate a JSONata / JSONPath / template
-// expression against a supplied sample payload, without touching the
-// workflow executor or the draft.
+// `dry_run_transform` — evaluate a JSONata / JavaScript / JSONPath /
+// template expression against a supplied sample payload, without
+// touching the workflow executor or the draft.
 //
 // The LLM uses this to debug transform expressions on the fly. Without
 // it, the only way to validate an expression shape is to commit a
 // draft, trigger a run, and read the execution row — five extra round
 // trips per iteration. A direct probe is an order of magnitude cheaper.
 //
-// Three dialects are supported:
+// Four dialects are supported:
 //
-//   - `jsonata`   — real `jsonata` evaluator (matches transform steps).
-//   - `jsonpath`  — subkit's JSONPath-lite (matches data_selector).
-//   - `template`  — placeholder substitution via resolver (no DB
+//   - `jsonata`    — real `jsonata` evaluator (matches transform steps).
+//   - `javascript` — QuickJS sandbox, identical to transform steps with
+//                    `language: "javascript"`: the expression is a
+//                    FUNCTION BODY receiving exactly one value, the
+//                    `input` argument, shaped `{ scope, input }` —
+//                    upstream data at `input.scope.<step_id>.data…`,
+//                    workflow input at `input.input`; the body must
+//                    `return` its result. Failures classify exactly
+//                    like the recorded-eval JS pass: compile_error /
+//                    eval_error.
+//   - `jsonpath`   — subkit's JSONPath-lite (matches data_selector).
+//   - `template`   — placeholder substitution via resolver (no DB
 //                    lookups; only ${input.*}/${scope.*} are resolved
 //                    against the sample; ${cred.*}/${connector.*}
 //                    yield diagnostic errors).
@@ -35,6 +44,7 @@ import { applySelector } from "../../execution/selectors.ts";
 import { resolveStringPlaceholders } from "../../llm/substitution/resolver.ts";
 import { recordExecutionDryRun } from "../../observability/instrumentation.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
+import { evaluateJsBody, JS_EVAL_WALL_MS } from "../js-transform-eval.ts";
 import {
   repairTransformExpression,
   type TransformRepairFailureKind,
@@ -43,7 +53,7 @@ import {
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { getLastPreview } from "./last-preview-store.ts";
 
-const Dialect = z.enum(["jsonata", "jsonpath", "template"]);
+const Dialect = z.enum(["jsonata", "javascript", "jsonpath", "template"]);
 
 const DryRunInput = z
   .object({
@@ -53,11 +63,17 @@ const DryRunInput = z
     /**
      * Optional draft step id to emulate. When the step sits inside a
      * loop body, the evaluation reproduces the engine's per-iteration
-     * childScope: `$item`, `$loop_index`, and the loop's bare
-     * `item_var` are bound from the first item of the loop's `over`
-     * collection resolved against the recorded scope — identical
-     * surface to execution. Defaults `sample_data` to `$scope` (the
-     * cached dry-run preview) when omitted.
+     * childScope: `$item` and `$loop_index` are bound from the first
+     * item of the loop's `over` collection resolved against the
+     * recorded scope — identical surface to execution. The bare
+     * `item_var` name is additionally bound ONLY for legacy
+     * definitions that still declare `item_var` (retired field; new
+     * definitions address the item as `$item` exclusively). For
+     * `dialect: "javascript"` the same childScope rides `input.scope`,
+     * so the body reads `input.scope.$item` / `input.scope.$loop_index`
+     * exactly as execution builds them per iteration. Defaults
+     * `sample_data` to `$scope` (the cached dry-run preview) when
+     * omitted.
      */
     step_id: z.string().min(1).optional(),
     /** Optional timeout — capped at 2s to keep authoring UX snappy. */
@@ -73,6 +89,9 @@ interface EvalError {
   code:
     | "syntax_error"
     | "runtime_error"
+    /** JS-only — the recorded-eval sandbox vocabulary. */
+    | "compile_error"
+    | "eval_error"
     | "timeout"
     | "placeholder_unresolved"
     | "unsupported_dialect";
@@ -161,19 +180,20 @@ function evalJsonPath(
 export const dryRunTransformTool: ConversationTool = {
   name: "dry_run_transform",
   description:
-    "Evaluate a JSONata / JSONPath / template expression against a supplied sample payload, without touching the workflow executor.",
+    'Evaluate a transform expression — JSONata / JSONPath / template, or a `language: "javascript"` function body — against a supplied sample payload, without touching the workflow executor.',
   use_case:
     "Debug transform expressions in isolation: paste a probe_connector response as `sample_data`, tweak the expression, and see the result. Cuts authoring round-trips from five to one.",
   important_notes: [
     "Does NOT persist anything — no draft mutation, no execution row.",
     "JSONata evaluator is identical to the one used by `transform` steps; the JSONPath dialect mirrors `data_selector`.",
+    `\`dialect: "javascript"\` evaluates a transform FUNCTION BODY under the same QuickJS sandbox as \`language: "javascript"\` transform steps: exactly one value, the \`input\` argument, shaped \`{ scope, input }\` — upstream data at \`input.scope.<step_id>.data…\`, workflow input at \`input.input\`; the body must \`return\` its result (no \`function\` wrapper, no module syntax). No host globals — no fetch/process/require/network. Fixed ${JS_EVAL_WALL_MS}ms wall clock (\`timeout_ms\` does not extend it). Failures classify as \`compile_error\` (syntax) / \`eval_error\` (throw), identical to the recorded-eval JS pass.`,
     `Template dialect resolves \${input.*} and \${scope.*} only; \${cred.*}/\${connector.*} are not looked up and produce placeholder_unresolved.`,
     "Expression is timed out at 1s by default (max 2s) to keep authoring UX responsive.",
     "Audit metadata records only an expression hash + dialect — the raw expression may contain PII and is never written.",
-    "`sample_data` is normally a LITERAL JSON value (array, object, etc.). As a shortcut for transform-only iteration, you can also pass `$scope`, `$scope.<step_id>`, or `$input` — the tool resolves these from the latest cached dry_run_workflow preview for this conversation, so you can debug JSONata against real upstream data without rerunning the workflow.",
-    "JSONata bindings are execution-identical: `$input`, `$scope`, `$steps`, and every `$`-prefixed scope key resolve exactly as they do in a `transform` step at runtime.",
-    "Pass `step_id` to emulate a draft step's runtime context. For a step inside a loop body, the tool binds `$item`, `$loop_index`, and the loop's bare `item_var` from the first item of the loop's `over` collection resolved against the recorded scope — the same childScope the engine builds per iteration.",
-    "On a syntax error, runtime error, or an empty result over a real scope, the result carries a bounded `repair` proposal (verified repaired expression with before/after, ≤2 attempts). Nothing is auto-applied — use the proposed expression in your next edit, or override it.",
+    "`sample_data` is normally a LITERAL JSON value (array, object, etc.). As a shortcut for transform-only iteration, you can also pass `$scope`, `$scope.<step_id>`, or `$input` — the tool resolves these from the latest cached dry_run_workflow preview for this conversation, so you can debug a transform against real upstream data without rerunning the workflow.",
+    "JSONata bindings are execution-identical: `$input`, `$scope`, `$steps`, and every `$`-prefixed scope key resolve exactly as they do in a `transform` step at runtime. For `javascript`, the resolved scope record IS `input.scope` and the recorded workflow input IS `input.input` — the exact production context shape.",
+    "Pass `step_id` to emulate a draft step's runtime context. For a step inside a loop body, the tool binds `$item` and `$loop_index` from the first item of the loop's `over` collection resolved against the recorded scope — the same childScope the engine builds per iteration. Address the item as `$item.<path>` (JSONata) or `input.scope.$item.<path>` (javascript); the bare item name is bound ONLY for legacy definitions that still declare the retired `item_var` field.",
+    "On a compile/syntax error, runtime/eval error, or an empty result over a real scope (jsonata and javascript dialects), the result carries a bounded `repair` proposal in the same language (verified repaired expression with before/after, ≤2 attempts). Nothing is auto-applied — use the proposed expression in your next edit, or override it.",
   ],
   requires_skill: "data-handling",
   example_input: {
@@ -318,15 +338,20 @@ export const dryRunTransformTool: ConversationTool = {
     }
 
     // Loop-body emulation (Fix 6): when the target draft step lives in
-    // a loop body, execution binds `$item`, `$loop_index`, and the
-    // loop's bare `item_var` into a per-iteration childScope
-    // (engine.ts loop runner). Reproduce that surface here so the
-    // expression that works in this sandbox is byte-identical to the
-    // one that works at runtime — pre-fix the sandbox returned `{}`
-    // for those references and the model concluded "scope doesn't
-    // work in loops" (session 784c1b02).
-    let loopContext: { loop_id: string; item_var: string; loop_index: number } | null = null;
-    if (args.dialect === "jsonata" && args.step_id !== undefined) {
+    // a loop body, execution binds `$item` and `$loop_index` into a
+    // per-iteration childScope — plus the bare `item_var` name ONLY
+    // when the definition declares the retired field (legacy stored
+    // versions; see execution/loop-scope.ts for the contract).
+    // Reproduce that surface here so the expression that works in this
+    // sandbox is byte-identical to the one that works at runtime —
+    // pre-fix the sandbox returned `{}` for those references and the
+    // model concluded "scope doesn't work in loops" (session 784c1b02).
+    // The `javascript` dialect rides the same childScope: it becomes
+    // `input.scope`, so authored JS reads `input.scope.$item` /
+    // `input.scope.$loop_index` exactly as execution builds them.
+    let loopContext: { loop_id: string; item_var: string | null; loop_index: number } | null = null;
+    const parityDialect = args.dialect === "jsonata" || args.dialect === "javascript";
+    if (parityDialect && args.step_id !== undefined) {
       const draftSteps = getWorkflowDraft(ctx.getDraft()).steps;
       const targetExists = draftSteps.some((s) => s.id === args.step_id);
       if (!targetExists) {
@@ -349,10 +374,14 @@ export const dryRunTransformTool: ConversationTool = {
           (s.body as unknown[]).includes(args.step_id as string),
       );
       if (enclosingLoop && scopeRecord) {
+        // Legacy-only bare binding: bound when the stored definition
+        // declares `item_var`; new/migrated definitions omit it and
+        // get `$item` + `$loop_index` exclusively (execution parity
+        // with buildLoopChildScope).
         const itemVar =
           typeof enclosingLoop.item_var === "string" && enclosingLoop.item_var.length > 0
             ? (enclosingLoop.item_var as string)
-            : "item";
+            : null;
         const over = typeof enclosingLoop.over === "string" ? (enclosingLoop.over as string) : null;
         let items: unknown;
         if (over) {
@@ -378,10 +407,11 @@ export const dryRunTransformTool: ConversationTool = {
             },
           };
         }
-        // Identical shape to the engine's per-iteration childScope.
+        // Identical shape to the engine's per-iteration childScope
+        // (mirrors execution/loop-scope.ts buildLoopChildScope).
         const childScope: Record<string, unknown> = {
           ...scopeRecord,
-          [itemVar]: items[0],
+          ...(itemVar !== null ? { [itemVar]: items[0] } : {}),
           $item: items[0],
           $loop_index: 0,
         };
@@ -412,6 +442,23 @@ export const dryRunTransformTool: ConversationTool = {
         args.timeout_ms,
         evalBindings,
       );
+    } else if (args.dialect === "javascript") {
+      // Exact production contract (execution/steps/transform.ts via
+      // js-transform-eval.ts): QuickJS sandbox, one `input` value
+      // shaped `{ scope, input }`. The scope record is the same one
+      // the JSONata branch binds as `$scope` — including the loop
+      // childScope built above, so `input.scope.$item` resolves
+      // identically to execution. With no scope record (literal
+      // scalar/array sample, or a `$input` reference), the sample
+      // rides `input.input` and `input.scope` is empty.
+      const jsEval = await evaluateJsBody({
+        code: args.expression,
+        scope: scopeRecord ?? {},
+        input: scopeRecord ? inputValue : (resolvedSampleData ?? inputValue ?? null),
+      });
+      outcome = jsEval.ok
+        ? { ok: true, value: jsEval.value }
+        : { ok: false, error: { code: jsEval.kind, message: jsEval.message } };
     } else if (args.dialect === "jsonpath") {
       outcome = evalJsonPath(args.expression, resolvedSampleData);
     } else {
@@ -454,16 +501,16 @@ export const dryRunTransformTool: ConversationTool = {
     // excluded: a repair can't prove anything about a runaway
     // expression.
     let repair: TransformRepairOutcome | null = null;
-    if (args.dialect === "jsonata") {
+    if (args.dialect === "jsonata" || args.dialect === "javascript") {
       const isEmptyValue =
         outcome.ok &&
         (outcome.value === undefined ||
           outcome.value === null ||
           (Array.isArray(outcome.value) && outcome.value.length === 0));
       const failureKind: TransformRepairFailureKind | null = !outcome.ok
-        ? outcome.error.code === "syntax_error"
+        ? outcome.error.code === "syntax_error" || outcome.error.code === "compile_error"
           ? "compile_error"
-          : outcome.error.code === "runtime_error"
+          : outcome.error.code === "runtime_error" || outcome.error.code === "eval_error"
             ? "eval_error"
             : null
         : isEmptyValue && scopeRecord
@@ -472,6 +519,7 @@ export const dryRunTransformTool: ConversationTool = {
       if (failureKind) {
         repair = await repairTransformExpression({
           expression: args.expression,
+          language: args.dialect,
           finding: {
             kind: failureKind,
             message: !outcome.ok

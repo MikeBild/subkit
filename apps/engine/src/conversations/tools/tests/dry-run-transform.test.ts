@@ -1,10 +1,15 @@
 // dry_run_transform tool tests.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
+import { getConfig, loadConfig } from "../../../config/loader.ts";
 import { auditLog, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { getMockProvider, resetMockProvider } from "../../../llm/mock-provider.ts";
 import { dryRunTransformTool } from "../dry-run-transform.ts";
 import type { ToolContext } from "../index.ts";
 import { __resetLastPreviewStoreForTest, recordLastPreview } from "../last-preview-store.ts";
@@ -12,7 +17,29 @@ import { __resetLastPreviewStoreForTest, recordLastPreview } from "../last-previ
 let ctx: TestDb;
 let tenant_id: string;
 
+async function ensureConfigLoaded(): Promise<void> {
+  try {
+    getConfig();
+    return;
+  } catch {
+    /* fall through */
+  }
+  // Bootstrap config with `LLM_PROVIDER=mock` so the repair stage's
+  // `invoke()` goes through the in-process mock — the bootstrap env
+  // channel documented in env.ts, not a feature flag.
+  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-dry-run-transform-"));
+  await loadConfig({
+    env: {
+      DATABASE_URL: "postgres://placeholder/dry-run-transform",
+      NODE_ENV: "test",
+      LLM_PROVIDER: "mock",
+    },
+    configPathOverride: join(dir, "subkit.config.json"),
+  });
+}
+
 beforeAll(async () => {
+  await ensureConfigLoaded();
   ctx = await createTestDb("dry_run_transform");
   const [t] = await ctx.db.insert(tenants).values({ slug: "t-drt", display_name: "T" }).returning();
   tenant_id = t!.id;
@@ -289,7 +316,7 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
     });
   }
 
-  test("bare item_var, $item, $loop_index, and sibling $scope resolve exactly as execution would", async () => {
+  test("LEGACY declared item_var: bare name, $item, $loop_index, and sibling $scope resolve exactly as execution would", async () => {
     const toolCtx = makeCtxWithDraft(loopDraftSteps());
     recordEnvelopePreview(toolCtx);
     const result = await dryRunTransformTool.execute(toolCtx, {
@@ -313,6 +340,49 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
       since: "2026-01-01",
     });
     expect(data.metadata.loop_context).toEqual({ loop_id: "iter", item_var: "row", loop_index: 0 });
+  });
+
+  const canonicalLoopDraftSteps = (): Array<Record<string, unknown>> => [
+    { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
+    {
+      id: "iter",
+      kind: "loop",
+      over: "$scope.fetch.data.items",
+      body: ["shape"],
+    },
+    { id: "shape", kind: "transform", language: "jsonata", expression: "$item.name" },
+  ];
+
+  test("canonical contract (no item_var): $item resolves, loop_context.item_var is null", async () => {
+    const toolCtx = makeCtxWithDraft(canonicalLoopDraftSteps());
+    recordEnvelopePreview(toolCtx);
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression: "{ 'name': $item.name, 'idx': $loop_index }",
+      step_id: "shape",
+      dialect: "jsonata",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      value: { name: string; idx: number };
+      metadata: { loop_context?: { loop_id: string; item_var: string | null; loop_index: number } };
+    };
+    expect(data.value).toEqual({ name: "Ada", idx: 0 });
+    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", item_var: null, loop_index: 0 });
+  });
+
+  test("canonical contract (no item_var): a bare iteration name does NOT resolve (execution parity)", async () => {
+    const toolCtx = makeCtxWithDraft(canonicalLoopDraftSteps());
+    recordEnvelopePreview(toolCtx);
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      // `row` is unbound — the retired bare binding must not leak into
+      // the sandbox when the definition does not declare item_var.
+      expression: "row.name",
+      step_id: "shape",
+      dialect: "jsonata",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as { value: unknown };
+    expect(data.value === null || data.value === undefined).toBe(true);
   });
 
   test("step_id outside any loop body evaluates against plain recorded scope", async () => {
@@ -357,6 +427,187 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
     expect(result.ok).toBe(false);
     const err = (result.data as { error: { message: string } }).error;
     expect(err.message).toContain("no cached dry-run preview");
+  });
+});
+
+// `dialect: "javascript"` (P-F part 2) — the SAME parity contract as
+// execution: the authored FUNCTION BODY runs in the QuickJS sandbox
+// against the production context shape `{ scope, input }` (one `input`
+// value; data at `input.scope.<step_id>.data…`, workflow input at
+// `input.input`), including the loop-body childScope emulation, and
+// failures classify exactly like the recorded-eval JS pass
+// (compile_error / eval_error / empty) with the bounded repair riding
+// the result with `language: "javascript"`.
+describe("dry_run_transform — javascript dialect", () => {
+  beforeEach(() => {
+    resetMockProvider();
+  });
+
+  function makeCtxWithDraft(steps: Array<Record<string, unknown>>): ToolContext {
+    return {
+      ...makeCtx(),
+      getDraft: () => ({ workflow: { name: "wf", slug: "wf", steps } }),
+    };
+  }
+
+  function recordEnvelopePreview(toolCtx: ToolContext): void {
+    recordLastPreview({
+      tenant_id,
+      conversation_id: toolCtx.conversation_id,
+      scope: {
+        fetch: {
+          data: {
+            items: [
+              { name: "Ada", id: 1 },
+              { name: "Grace", id: 2 },
+            ],
+          },
+          status_code: 200,
+          duration_ms: 12,
+          error: null,
+        },
+      },
+      input: { since: "2026-01-01" },
+    });
+  }
+
+  test("happy path: function body evaluates against the recorded scope with the production { scope, input } context", async () => {
+    const toolCtx = makeCtx();
+    recordEnvelopePreview(toolCtx);
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression:
+        "const names = input.scope.fetch.data.items.map((i) => i.name);\nreturn { names, since: input.input.since };",
+      sample_data: "$scope",
+      dialect: "javascript",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      value: { names: string[]; since: string };
+      metadata: { dialect: string; resolved_from_preview?: string };
+    };
+    expect(data.value).toEqual({ names: ["Ada", "Grace"], since: "2026-01-01" });
+    expect(data.metadata.dialect).toBe("javascript");
+    expect(data.metadata.resolved_from_preview).toBe("$scope");
+  });
+
+  test("loop-body emulation: the body reads input.scope.$item / input.scope.$loop_index (+ legacy bare item_var)", async () => {
+    const toolCtx = makeCtxWithDraft([
+      { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
+      {
+        id: "iter",
+        kind: "loop",
+        over: "$scope.fetch.data.items",
+        item_var: "row",
+        body: ["shape"],
+      },
+      { id: "shape", kind: "transform", language: "javascript", expression: "return null;" },
+    ]);
+    recordEnvelopePreview(toolCtx);
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression:
+        "return { name: input.scope.$item.name, idx: input.scope.$loop_index, legacy: input.scope.row.name, total: input.scope.fetch.data.items.length, since: input.input.since };",
+      step_id: "shape",
+      dialect: "javascript",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      value: { name: string; idx: number; legacy: string; total: number; since: string };
+      metadata: { loop_context?: { loop_id: string; item_var: string | null; loop_index: number } };
+    };
+    // Identical to the engine childScope for iteration 0, carried as
+    // `input.scope`: { ...scope, row: items[0], $item: items[0], $loop_index: 0 }.
+    expect(data.value).toEqual({
+      name: "Ada",
+      idx: 0,
+      legacy: "Ada",
+      total: 2,
+      since: "2026-01-01",
+    });
+    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", item_var: "row", loop_index: 0 });
+  });
+
+  test("canonical loop (no item_var): $item resolves, the bare name does NOT leak into input.scope", async () => {
+    const toolCtx = makeCtxWithDraft([
+      { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
+      { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["shape"] },
+      { id: "shape", kind: "transform", language: "javascript", expression: "return null;" },
+    ]);
+    recordEnvelopePreview(toolCtx);
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression:
+        'return { name: input.scope.$item.name, hasBare: Object.prototype.hasOwnProperty.call(input.scope, "row") };',
+      step_id: "shape",
+      dialect: "javascript",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      value: { name: string; hasBare: boolean };
+      metadata: { loop_context?: { item_var: string | null } };
+    };
+    expect(data.value).toEqual({ name: "Ada", hasBare: false });
+    expect(data.metadata.loop_context?.item_var).toBeNull();
+  });
+
+  test("syntax error classifies as compile_error and carries a verified JS repair (language passthrough)", async () => {
+    const fixed = "const names = input.scope.fetch.data.items.map((i) => i.name);\nreturn names;";
+    const prompts: string[] = [];
+    getMockProvider().generateOverrides.repair = (last) => {
+      prompts.push(last);
+      return { expression: fixed, reasoning: "missing closing parenthesis" };
+    };
+    const bad = "const names = input.scope.fetch.data.items.map((i) => i.name;\nreturn names;";
+    const result = await dryRunTransformTool.execute(makeCtx(), {
+      expression: bad,
+      sample_data: { fetch: { data: { items: [{ name: "Ada" }] } } },
+      dialect: "javascript",
+    });
+    expect(result.ok).toBe(false);
+    const data = result.data as {
+      error: { code: string; message: string };
+      repair?: { repaired: boolean; before?: string; after?: string };
+      metadata: { dialect: string };
+    };
+    expect(data.error.code).toBe("compile_error");
+    expect(data.metadata.dialect).toBe("javascript");
+    // The accepted candidate is JS-only syntax (`const`, `=>`) — it can
+    // ONLY verify through the QuickJS parse check, so `repaired: true`
+    // proves `language: "javascript"` was passed through to the repair.
+    expect(data.repair?.repaired).toBe(true);
+    expect(data.repair?.before).toBe(bad);
+    expect(data.repair?.after).toBe(fixed);
+    // The repair prompt itself must be the JS prompt, not the JSONata one.
+    expect(prompts[0]).toContain("JavaScript transform");
+    expect(prompts[0]).toContain("FUNCTION BODY");
+  });
+
+  test("throwing body classifies as eval_error", async () => {
+    const result = await dryRunTransformTool.execute(makeCtx(), {
+      expression: "return input.scope.fetch.data.items.map((i) => i.name);",
+      sample_data: { fetch: { data: {} } },
+      dialect: "javascript",
+    });
+    expect(result.ok).toBe(false);
+    const err = (result.data as { error: { code: string } }).error;
+    expect(err.code).toBe("eval_error");
+  });
+
+  test("empty result over a real scope gets a verified JS repair proposal", async () => {
+    getMockProvider().generateOverrides.repair = () => ({
+      expression: "return input.scope.fetch.data.items;",
+    });
+    const result = await dryRunTransformTool.execute(makeCtx(), {
+      expression: "return input.scope.fetch.data.wrong_field;",
+      sample_data: { fetch: { data: { items: [{ name: "Ada" }] } } },
+      dialect: "javascript",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      value: unknown;
+      repair?: { repaired: boolean; after?: string };
+    };
+    expect(data.value === null || data.value === undefined).toBe(true);
+    expect(data.repair?.repaired).toBe(true);
+    expect(data.repair?.after).toBe("return input.scope.fetch.data.items;");
   });
 });
 

@@ -10,6 +10,7 @@ import {
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
+import { evaluateAuthoringStageGate } from "./authoring-stage-gate.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { describeLoopGateBlock, evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
@@ -69,10 +70,15 @@ function applyParamPath(
 export const updateParamTool: ConversationTool = {
   name: "update_param",
   description:
-    "Replace a single field on an existing step in the draft. Supports dotted paths like `graphql.query`.",
+    "REPAIR-STAGE tool — apply a specific finding by replacing a single field on an existing step in the draft (dotted paths like `graphql.query` supported); never use it for initial authoring (that is `author_workflow`). Refuses with `authoring_stage_violation` while the draft has no recorded preview and no recorded-eval/judge findings.",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
+    // Initial-stage gate (Fix A): micro-iteration is the repair flow,
+    // not the authoring flow. See authoring-stage-gate.ts for the
+    // predicate + deadlock-impossibility argument.
+    const stageRefusal = await evaluateAuthoringStageGate(ctx, "update_param");
+    if (stageRefusal) return stageRefusal;
     const args = inputSchema.parse(rawArgs);
     const currentDraft = ctx.getDraft();
     const workflowDraft = structuredClone(getWorkflowDraft(currentDraft));

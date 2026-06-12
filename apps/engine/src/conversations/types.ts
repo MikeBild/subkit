@@ -244,6 +244,23 @@ export interface LatestDiagnosisSummary {
   steps: DiagnosisStepSummary[];
 }
 
+/**
+ * Anti-churn guard for the instruction-grounded preview judge (Fix C).
+ * Lives next to the fingerprint-keyed preview evidence: the counter is
+ * valid for exactly one definition shape. A miscalibrated judge may
+ * BLOCK auto-commit at most `JUDGE_BREAKER_MAX_BLOCKS` times per
+ * fingerprint; after that its verdict degrades to advisory until the
+ * definition actually changes (new fingerprint ⇒ counter resets by
+ * key mismatch — no explicit clearing needed on mutation paths).
+ */
+export interface JudgeBreakerState {
+  /** Whole-definition fingerprint (sha256[:16] of the canonical JSON)
+   *  the counter is keyed on. */
+  fingerprint: string;
+  /** Times the judge blocked auto-commit for this exact definition. */
+  blocks: number;
+}
+
 export interface AuthoringState {
   mode: AuthoringSurfaceMode;
   stage: AuthoringStage;
@@ -253,6 +270,9 @@ export interface AuthoringState {
   persisted_resources: PersistedResourceRef[];
   latest_execution: LatestExecutionSummary | null;
   latest_diagnosis: LatestDiagnosisSummary | null;
+  /** Preview-judge circuit-breaker — see `JudgeBreakerState`. Absent /
+   *  null when the judge has never blocked this draft. */
+  judge_breaker?: JudgeBreakerState | null;
 }
 
 /**
@@ -264,6 +284,14 @@ export interface WorkflowDraftDocument {
   name: string;
   slug?: string;
   description?: string;
+  /**
+   * The user's goal VERBATIM — stashed by `start_workflow_from_goal`
+   * and `build_workflow({ goal })`. Draft-only metadata: it drives the
+   * post-preview judge (`preview-judge.ts`) and is intentionally NOT
+   * projected into the persisted WorkflowDef
+   * (`commit-workflow.ts#workflowDefFromDraft`).
+   */
+  goal?: string;
   steps: Array<Record<string, unknown>>;
   input_schema?: Record<string, unknown>;
   output_schema?: Record<string, unknown>;

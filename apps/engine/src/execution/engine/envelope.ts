@@ -4,7 +4,7 @@
 
 import { type OffloadRef, OffloadResolutionError, previewOf } from "../offload.ts";
 import type { RunStepOutcome } from "../step-runner.ts";
-import type { StepResult } from "../types.ts";
+import type { HeldRequest, StepResult } from "../types.ts";
 
 export function validateAgainstJsonSchema(
   value: unknown,
@@ -44,6 +44,12 @@ export interface ScopeEnvelope {
   headers?: Record<string, string>;
   duration_ms: number;
   error: { code: string; message: string; details?: unknown } | null;
+  /** Hold-writes preview (Fix G): the step's request was materialized
+   *  but NOT dispatched. `data` is null by contract; the artifact rides
+   *  `held_request`. Surfaces per-iteration inside loop accumulators so
+   *  the preview judge sees every would-be write. */
+  held?: true;
+  held_request?: HeldRequest;
 }
 
 export function wrapEnvelope(params: {
@@ -68,12 +74,17 @@ export function wrapEnvelope(params: {
 }
 
 export function envelopeFor(outcome: { result: StepResult; scope_value: unknown }): ScopeEnvelope {
-  return wrapEnvelope({
+  const env = wrapEnvelope({
     data: outcome.scope_value,
     duration_ms: outcome.result.duration_ms ?? 0,
     error: outcome.result.error ?? null,
     request_meta: outcome.result.request_meta ?? null,
   });
+  if (outcome.result.held) {
+    env.held = true;
+    if (outcome.result.held_request) env.held_request = outcome.result.held_request;
+  }
+  return env;
 }
 
 /**

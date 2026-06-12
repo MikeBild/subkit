@@ -19,6 +19,7 @@
 // { errors, warnings, infos } tuple.
 
 import { compile as compileJsonata } from "../execution/jsonata-engine.ts";
+import { validateBareIterationIdentifiers } from "../workflows/reference-validator.ts";
 
 export type VerifierSeverity = "error" | "warning" | "info";
 
@@ -248,7 +249,42 @@ export function verifyWorkflow(wf: InputWorkflow): VerifierReport {
 
     checkMethodSafety(step, path, report);
 
+    // `item_var` is retired from the authored contract. The canonical
+    // enforcement point is `validateWorkflowDef` (every write surface
+    // routes through it); this build-time duplicate exists because
+    // `build_workflow` runs the verifier BEFORE the draft is accepted,
+    // so the author gets the refusal one round-trip earlier — same
+    // defence-in-depth pattern as the reserved-auth-header check.
+    if (kind === "loop" && step.item_var !== undefined) {
+      addFinding(report, {
+        severity: "error",
+        code: "item_var_retired",
+        message:
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal `${item.…}` token names the canonical placeholder grammar.
+          "`item_var` is retired — remove it. Address the loop item as `$item` in JSONata and `${item.<field>}` in strings; `$loop_index` is the iteration counter.",
+        path: `${path}.item_var`,
+      });
+    }
+
     if (id) seenStepIds.add(id);
+  }
+
+  // Bare-iteration-identifier lint: loop-body JSONata must address the
+  // current item as `$item` — the bare `item` default and any legacy
+  // declared item_var name are not bound for new definitions. The
+  // helper returns a concrete `$item`-rewritten expression as
+  // did_you_mean when the AST rewriter can prove it.
+  for (const finding of validateBareIterationIdentifiers(steps)) {
+    addFinding(report, {
+      severity: "error",
+      code: "bare_iteration_identifier",
+      message:
+        `loop-body JSONata references the iteration item as bare \`${finding.bad_reference}\` — bind it as \`$item\`` +
+        (finding.did_you_mean[0] && finding.did_you_mean[0] !== "$item"
+          ? `; did you mean: \`${finding.did_you_mean[0]}\``
+          : ""),
+      path: `steps.${finding.step_id}.${finding.field}`,
+    });
   }
 
   // Workflow-level fields.

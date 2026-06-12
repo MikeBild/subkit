@@ -5,6 +5,7 @@
 // orchestrator and `loaders.ts`.
 
 import type { OperatorQuirkCategory, OperatorQuirks } from "../../../connectors/types.ts";
+import type { SchemaShape } from "../../../self-healing/types.ts";
 import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
 import type { Skill } from "../../../skills/types.ts";
 import type { PriorWorkflowRef } from "../../../workflows/prior-workflows.ts";
@@ -318,7 +319,13 @@ export function formatUserMemory(s: string): string {
 export function formatLatestPreview(entries: LatestPreviewEntry[]): string {
   if (entries.length === 0) return "";
   const lines = entries.map((e) => {
-    const parts: string[] = [`- ${e.step_id} (${e.kind}) → ${e.status}`];
+    // The addressing label uses the same vocabulary as the scope
+    // manifest and the "Recorded endpoint samples" section so the
+    // model reads ONE addressing form everywhere: a step's recorded
+    // output is reachable as `$scope.<step_id>.data…`.
+    const parts: string[] = [
+      `- ${e.step_id} (${e.kind}) → ${e.status} · addressable as \`$scope.${e.step_id}.data…\``,
+    ];
     if (e.shape_summary) parts.push(`shape=${e.shape_summary}`);
     if (e.primary_data_path) parts.push(`primary=\`${e.primary_data_path}\``);
     if (e.available_paths && e.available_paths.length > 0) {
@@ -335,6 +342,93 @@ export function formatLatestPreview(entries: LatestPreviewEntry[]): string {
     "",
     ...lines,
   ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Recorded endpoint samples — payload-first generation context
+// ---------------------------------------------------------------------------
+
+/** Endpoints rendered per connector in the samples section. */
+export const PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR = 4;
+/** Connectors rendered in the samples section. */
+export const PROBE_SHAPE_MAX_CONNECTORS = 5;
+/** Per-endpoint cap on the rendered shape summary. Together with the
+ *  connector/endpoint caps this bounds the whole section at
+ *  ~5 × 4 × 360 chars ≈ 7 KB worst case, well under the early-drop
+ *  ladder position the assembler gives it. */
+const PROBE_SHAPE_SUMMARY_MAX_CHARS = 360;
+const PROBE_SHAPE_MAX_OBJECT_KEYS = 8;
+const PROBE_SHAPE_MAX_DEPTH = 3;
+
+/** One recorded endpoint shape, ready to render. Loaded by
+ *  `loadProbeShapeExamples` from the `schema_versions` store. */
+export interface ProbeShapeExample {
+  connector_slug: string;
+  endpoint_key: string;
+  shape: SchemaShape;
+}
+
+/**
+ * Render a `SchemaShape` as a compact one-line type summary, e.g.
+ * `{ droplets: array<{ id: number, name: string }>, meta: object{…} }`.
+ * Depth- and key-capped so a deeply nested vendor payload can't blow
+ * the prompt budget; the model only needs the field vocabulary.
+ */
+export function summarizeShape(shape: SchemaShape, depth = 0): string {
+  if (shape.type === "array") {
+    return `array<${summarizeShape(shape.items, depth + 1)}>`;
+  }
+  if (shape.type === "object") {
+    const keys = Object.keys(shape.properties);
+    if (depth >= PROBE_SHAPE_MAX_DEPTH) return keys.length > 0 ? "object{…}" : "object";
+    const shown = keys.slice(0, PROBE_SHAPE_MAX_OBJECT_KEYS);
+    const more = keys.length > shown.length ? `, …+${keys.length - shown.length} more` : "";
+    if (shown.length === 0) return "object";
+    const body = shown
+      .map((k) => {
+        const child = shape.properties[k];
+        return `${k}: ${child ? summarizeShape(child, depth + 1) : "unknown"}`;
+      })
+      .join(", ");
+    return `{ ${body}${more} }`;
+  }
+  return shape.type;
+}
+
+/**
+ * Render the "Recorded endpoint samples" section — the latest observed
+ * response shapes (recorded by `probe_connector`, `call_connector`, and
+ * request-step executions) for the connectors bound to the active
+ * draft. Payload-first authoring: the model grounds request paths and
+ * transform field names in shapes it has actually seen BEFORE writing
+ * them, instead of validating after the fact.
+ */
+export function formatProbeShapeExamples(examples: ProbeShapeExample[]): string | null {
+  if (examples.length === 0) return null;
+  const byConnector = new Map<string, ProbeShapeExample[]>();
+  for (const example of examples) {
+    const bucket = byConnector.get(example.connector_slug);
+    if (bucket) bucket.push(example);
+    else byConnector.set(example.connector_slug, [example]);
+  }
+  const lines: string[] = [
+    "# Recorded endpoint samples",
+    "Latest response shapes recorded from real calls (probes, call_connector, request steps) against this conversation's connectors.",
+    "Ground request paths and transform field names in these shapes — use the field names verbatim, never invent fields.",
+    "Once a step runs in a preview, its recorded output is addressable as `$scope.<step_id>.data…`.",
+    "",
+  ];
+  for (const [slug, bucket] of [...byConnector.entries()].slice(0, PROBE_SHAPE_MAX_CONNECTORS)) {
+    lines.push(`## ${slug}`);
+    for (const example of bucket.slice(0, PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR)) {
+      let summary = summarizeShape(example.shape);
+      if (summary.length > PROBE_SHAPE_SUMMARY_MAX_CHARS) {
+        summary = `${summary.slice(0, PROBE_SHAPE_SUMMARY_MAX_CHARS)}…`;
+      }
+      lines.push(`- ${example.endpoint_key}: ${summary}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------

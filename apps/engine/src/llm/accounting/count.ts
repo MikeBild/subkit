@@ -214,6 +214,11 @@ export function completionBudgetFor(flow: LlmFlow): number {
       return 4_000;
     case "repair":
       return 1_200;
+    // The preview judge emits one small verdict object ({verdict,
+    // reason, missing}) — budgeted like "repair", the other bounded
+    // single-shot authoring-support flow.
+    case "judge":
+      return 1_200;
     case "converse":
       return 2_000;
     case "discover":

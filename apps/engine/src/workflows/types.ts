@@ -205,6 +205,17 @@ export const RequestStepSchema = z
       ])
       .optional()
       .default("GET"),
+    /**
+     * Side-effect classification override for hold-writes previews
+     * (Fix G). When unset the driver classifies at dispatch time:
+     * HTTP GET/HEAD/OPTIONS = read, other methods = write (RFC
+     * semantics, the same `isIdempotent` seam the retry policy uses);
+     * GraphQL `query` = read, `mutation`/`subscription` = write;
+     * SQL SELECT-only = read, anything else = write; S3 GET/HEAD/LIST
+     * = read. Set `"read"` for a POST that is semantically a search,
+     * or `"write"` to force-hold a GET that mutates server state.
+     */
+    side_effects: z.enum(["read", "write"]).optional(),
     url: z.string().optional(),
     path: z.string().optional(),
     connector_id: z.string().uuid().optional(),
@@ -834,7 +845,22 @@ export const LoopStepSchema = z
      */
     data_selector: z.string().optional(),
     body: z.array(z.string()),
-    item_var: z.string().default("item"),
+    /**
+     * RETIRED authoring field — legacy passthrough only, never authored
+     * anew. Loop items are addressed as `$item` (JSONata) / `${item.…}`
+     * (strings), with `$loop_index` for the iteration counter.
+     *
+     * Historical workflow versions declared `item_var` and their loop
+     * bodies reference the bare name; those stored versions keep
+     * executing unchanged (the engine binds the bare name ONLY when the
+     * stored definition declares it — see `execution/loop-scope.ts`).
+     * The field is optional with NO default so migrated/new definitions
+     * simply omit it; `validateWorkflowDef` rejects any definition that
+     * still declares it (the single enforcement point for every write
+     * surface). This is a versioned stored-data contract, not a
+     * compatibility flag.
+     */
+    item_var: z.string().optional(),
   })
   .refine((s) => Boolean(s.over) !== Boolean(s.data_selector), {
     message:

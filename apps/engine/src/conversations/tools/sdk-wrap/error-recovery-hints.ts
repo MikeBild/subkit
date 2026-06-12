@@ -40,6 +40,9 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   // surface (HTTP/MCP route, not a raw in-process invocation).
   principal_required:
     "this tool requires an authenticated principal on the ToolContext — re-issue the call from the HTTP / MCP / sk-cli surface so the auth resolution threads through, instead of invoking the tool directly in-process",
+  // Initial-stage gate (Fix A): micro-tools are repair-stage only.
+  authoring_stage_violation:
+    "propose_step / update_param are repair-stage tools — the draft has no recorded preview and no recorded-eval/judge findings yet. Author the complete workflow in ONE call via author_workflow (or build_workflow), then dry_run_workflow; either unlocks the micro-tools",
   // Authoring guardrails — evidence is fingerprint-keyed: edits to
   // OTHER steps keep their recorded previews; only the referenced
   // step's own definition change invalidates it.
@@ -64,9 +67,9 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   workflow_unresolved_step_reference:
     "a step referenced an id that doesn't exist — call inspect_workflow_draft to list step ids and connect_steps to wire missing edges",
   workflow_unsupported_placeholder:
-    "a placeholder used an unsupported binding — the resolver accepts only cred|connector|input|scope|item|state. Inside a loop body: use ${item.<path>} in request strings (path/url/headers/query/body) and the bare item_var (e.g. project.name) in JSONata expressions — ${project.id}, ${user.email}, and Mustache {{…}} are all rejected. Call suggest_jsonata_paths for valid forms, or update_param to replace it",
+    "a placeholder used an unsupported binding — the resolver accepts only cred|connector|input|scope|item|state. Inside a loop body: use ${item.<path>} in request strings (path/url/headers/query/body) and $item.<path> in JSONata expressions — bare item names (project.name), ${project.id}, ${user.email}, and Mustache {{…}} are all rejected. Call suggest_jsonata_paths for valid forms, or update_param to replace it",
   placeholder_unresolved:
-    "a ${…} placeholder did not resolve from scope at runtime — inside a loop body write ${item.<path>} in request strings and the bare item_var in JSONata expressions (never ${<item_var>.<path>}); for sibling body steps use ${scope.<body_step_id>.data.<field>}. Verify the path against the recorded preview via inspect_workflow_draft, then re-run dry_run_workflow",
+    "a ${…} placeholder did not resolve from scope at runtime — inside a loop body write ${item.<path>} in request strings and $item.<path> in JSONata expressions (never a bare item name); for sibling body steps use ${scope.<body_step_id>.data.<field>}. Verify the path against the recorded preview via inspect_workflow_draft, then re-run dry_run_workflow",
   workflow_cycle_detected:
     "the workflow has a step-dependency cycle — call inspect_workflow_draft to see the graph, then propose_step / connect_steps to remove the cycle",
   workflow_schema_invalid:

@@ -14,6 +14,7 @@ describe("conversation tools — registration", () => {
     "ask_user_multi",
     "ask_user_text",
     "authenticate_oauth",
+    "author_workflow",
     "build_workflow",
     "call_connector",
     "cannot_help",

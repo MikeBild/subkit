@@ -93,6 +93,7 @@ import {
   resolveRetryPolicy,
 } from "./retry.ts";
 import { checkRequired, deriveAuthMethodFromAuthType, extractModelHint } from "./shape.ts";
+import { classifyRequestStepSideEffects, heldStepResult } from "./side-effects.ts";
 
 export const REQUEST_TIMEOUT_DEFAULT_MS = 60 * 60_000; // 1h
 
@@ -561,6 +562,14 @@ export interface RunRequestStepParams {
 
 export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
   const start = Date.now();
+  // Hold-writes preview (Fix G): when the run was started with
+  // `hold_writes`, a write-classified step is fully RESOLVED (every
+  // driver branch holds AFTER placeholder substitution, credential /
+  // plan construction and policy hooks — i.e. immediately before its
+  // network call) and returned as a `held` outcome instead of being
+  // dispatched. Read-classified steps execute live, unchanged.
+  const holdThisStep =
+    p.ctx.hold_writes === true && classifyRequestStepSideEffects(p.step) === "write";
   const max_attempts = (p.step.max_retries ?? 4) + 1; // 1 initial + N retries
   const timeoutMs = p.step.timeout_ms ?? REQUEST_TIMEOUT_DEFAULT_MS;
   const timeoutCtrl = new AbortController();
@@ -812,6 +821,23 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             typeof cfg.endpoint === "string" && cfg.endpoint.length > 0
               ? cfg.endpoint
               : (connector.base_url ?? null);
+          // Hold-writes: a mutation is materialized (resolved document +
+          // typed variables) and recorded — the GraphQL driver is never
+          // invoked, so no token refresh and no wire call happen.
+          if (holdThisStep) {
+            return heldStepResult({
+              start,
+              method: "POST",
+              url: endpointUrl,
+              headers: resolvedStepHeaders,
+              body: {
+                query: queryRes.value,
+                ...(variablesRes !== null
+                  ? { variables: variablesRes.value as Record<string, unknown> }
+                  : {}),
+              },
+            });
+          }
           const res = await withEgressAudit(
             {
               tenant_id: p.ctx.tenant_id,
@@ -966,6 +992,17 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           if (s3Spec?.presign !== undefined) {
             params.presignExpiresIn = s3Spec.presign.expires_in_s;
           }
+          // Hold-writes: a PUT/DELETE is materialized (resolved key /
+          // path + body) and recorded — the S3 driver never runs.
+          if (holdThisStep) {
+            return heldStepResult({
+              start,
+              method,
+              url: reqPath,
+              headers: resolvedStepHeaders,
+              body: params.body ?? null,
+            });
+          }
           const res = await withEgressAudit(
             {
               tenant_id: p.ctx.tenant_id,
@@ -1111,6 +1148,29 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             (sqlBlock.also !== undefined && sqlBlock.also.length > 0);
           const cursor = sqlBlock.cursor;
           const useCursor = cursor !== undefined;
+
+          // Hold-writes: a non-SELECT statement (or transaction) is
+          // materialized — query text + resolved params — and recorded;
+          // no connection is opened, nothing executes.
+          if (holdThisStep) {
+            return heldStepResult({
+              start,
+              method: p.step.method ?? "SQL",
+              url: null,
+              body: {
+                query: sqlBlock.query,
+                params: resolvedSqlParams ?? [],
+                ...(sqlBlock.also && sqlBlock.also.length > 0
+                  ? {
+                      also: sqlBlock.also.map((s) => ({
+                        query: s.query,
+                        params: s.params ?? [],
+                      })),
+                    }
+                  : {}),
+              },
+            });
+          }
 
           const dispatch = async (): Promise<{
             output: unknown;
@@ -1501,6 +1561,26 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         method: p.step.method ?? "GET",
         digest,
       };
+  // Hold-writes: the request is fully materialized at this point —
+  // placeholders substituted, connector base URL composed, credential
+  // headers applied by buildRequestPlan, policy hooks evaluated. This
+  // is exactly what `doOnePage` would put on the wire; record it and
+  // return WITHOUT dispatching (covers the paginated path too — a held
+  // write never starts its page loop). `last_meta` (no `status`, it
+  // never ran) keeps the persisted request_meta diagnosable, with an
+  // explicit `extras.held` marker.
+  if (holdThisStep) {
+    clearTimeout(timer);
+    return heldStepResult({
+      start,
+      method: p.step.method ?? "GET",
+      url: baseUrl.toString(),
+      headers,
+      body: resolvedStepBody ?? null,
+      request_meta: { ...last_meta, extras: { ...(last_meta.extras ?? {}), held: true } },
+    });
+  }
+
   // Most recent in-flight pagination-checkpoint write. Hoisted so the
   // failure path can `await` it before reporting the result — guarantees
   // the row reflects the resume position by the time we return.

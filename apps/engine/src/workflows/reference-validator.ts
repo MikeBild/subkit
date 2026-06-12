@@ -21,6 +21,7 @@
 // and `output_transform` / `output_transform_function` validation.
 
 import { findUnsupportedPlaceholders } from "../llm/substitution/unsupported.ts";
+import { findBareItemRefs, rewriteBareItemRefs } from "./itemvar-rewrite.ts";
 import { levenshtein, suggestClosest } from "./levenshtein.ts";
 import type { WorkflowDef } from "./types.ts";
 
@@ -419,6 +420,89 @@ export function validateStepReferences(def: WorkflowDef): ReferenceValidationErr
     );
   }
 
+  return errors;
+}
+
+/**
+ * Bare-iteration-identifier lint (item_var retirement). Inside a loop
+ * body, JSONata must address the current item as `$item` — the bare
+ * `item` default and the legacy declared `item_var` name are no longer
+ * bound for new definitions (see `execution/loop-scope.ts`). This pass
+ * walks every loop's body steps' JSONata sites (`transform.expression`,
+ * `branch.when`, nested loop `over`) on the parsed AST and flags
+ * root-context bare references to:
+ *
+ *   - `item` (the retired schema default), and
+ *   - the enclosing loop's declared `item_var` (legacy form being
+ *     re-authored — `validateWorkflowDef` already rejects the
+ *     declaration itself; this lint adds the concrete rewrite).
+ *
+ * `did_you_mean` carries the full `$item`-rewritten expression when the
+ * AST rewriter can prove the rewrite, else the `$item` binding name —
+ * same plumbing the step-reference errors use, so the LLM can paste
+ * the suggestion directly.
+ *
+ * Steps are accepted structurally (Record<string, unknown>) so the
+ * conversations verifier can call this on a raw draft before the Zod
+ * parse.
+ */
+export function validateBareIterationIdentifiers(
+  steps: ReadonlyArray<Record<string, unknown>>,
+): ReferenceValidationError[] {
+  const errors: ReferenceValidationError[] = [];
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const s of steps) {
+    if (typeof s.id === "string") byId.set(s.id, s);
+  }
+  // step_id → innermost enclosing loop step.
+  const parentLoop = new Map<string, Record<string, unknown>>();
+  for (const s of steps) {
+    if (s.kind !== "loop" || !Array.isArray(s.body)) continue;
+    for (const bodyId of s.body) {
+      if (typeof bodyId === "string" && !parentLoop.has(bodyId)) parentLoop.set(bodyId, s);
+    }
+  }
+
+  const jsonataSite = (step: Record<string, unknown>): { field: string; text: string } | null => {
+    if (step.kind === "transform") {
+      const language = typeof step.language === "string" ? step.language : "jsonata";
+      if (language === "jsonata" && typeof step.expression === "string" && step.expression) {
+        return { field: "expression", text: step.expression };
+      }
+      return null;
+    }
+    if (step.kind === "branch" && typeof step.when === "string" && step.when) {
+      return { field: "when", text: step.when };
+    }
+    if (step.kind === "loop" && typeof step.over === "string" && step.over) {
+      return { field: "over", text: step.over };
+    }
+    return null;
+  };
+
+  for (const step of steps) {
+    const id = typeof step.id === "string" ? step.id : null;
+    if (!id) continue;
+    const loop = parentLoop.get(id);
+    if (!loop) continue;
+    const site = jsonataSite(step);
+    if (!site) continue;
+    const names = new Set<string>(["item"]);
+    if (typeof loop.item_var === "string" && loop.item_var.length > 0) names.add(loop.item_var);
+    const found = findBareItemRefs(site.text, names);
+    if (!found.ok) continue; // unparseable / shadowed — other validators own those
+    const referenced = [...new Set(found.refs.map((r) => r.name))];
+    for (const name of referenced) {
+      const rewrite = rewriteBareItemRefs(site.text, name);
+      errors.push({
+        step_id: id,
+        field: site.field,
+        bad_reference: name,
+        context: site.text,
+        did_you_mean: [rewrite.ok && rewrite.changed ? rewrite.rewritten : "$item"],
+      });
+    }
+  }
   return errors;
 }
 

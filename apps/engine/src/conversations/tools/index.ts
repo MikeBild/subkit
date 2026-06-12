@@ -19,6 +19,7 @@ import {
   askUserTextTool,
 } from "./ask-user/index.ts";
 import { authenticateOAuthTool } from "./authenticate-oauth.ts";
+import { authorWorkflowTool } from "./author-workflow.ts";
 import { buildWorkflowTool } from "./build-workflow.ts";
 import { callConnectorTool } from "./call-connector.ts";
 import { cannotHelpTool } from "./cannot-help.ts";
@@ -330,6 +331,7 @@ register(probeConnectorTool);
 register(probeConnectorDraftTool);
 register(testConnectorTool);
 register(callConnectorTool);
+register(authorWorkflowTool);
 register(buildWorkflowTool);
 register(proposeStepTool);
 register(proposeSkillTool);

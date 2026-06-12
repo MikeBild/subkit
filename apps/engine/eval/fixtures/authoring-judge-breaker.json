@@ -1,0 +1,15 @@
+{
+  "name": "authoring-judge-breaker",
+  "description": "Judge circuit-breaker: a miscalibrated judge may block the SAME definition fingerprint at most twice; the third identical preview degrades the verdict to advisory (auto-commit proceeds, verdict still attached, counter frozen).",
+  "flow": "judge",
+  "input": {
+    "goal": "Email me the DigitalOcean resources per project: include project names and droplet specs (CPU, memory, disk).",
+    "expression": "{ \"html\": \"<p>Project: ()</p>\", \"projects\": [{\"name\": \"\"}] }",
+    "failed_verdict": {
+      "verdict": "failed",
+      "reason": "Project names are empty and droplet specs are absent from the previewed email.",
+      "missing": ["project names are empty strings"]
+    },
+    "max_blocks": 2
+  }
+}

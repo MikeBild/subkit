@@ -50,7 +50,6 @@ const loopStep = () => ({
   id: "iter",
   kind: "loop",
   over: "$scope.fetch.data",
-  item_var: "x",
   body: ["body"],
 });
 
@@ -58,7 +57,7 @@ const bodyStep = () => ({
   id: "body",
   kind: "transform",
   language: "jsonata",
-  expression: "$x",
+  expression: "$item",
 });
 
 function draftWithoutEvidence(): DraftDocument {
@@ -156,7 +155,7 @@ describe("update_param · fingerprint-keyed evidence retention (Fix 5)", () => {
     const edit = await updateParamTool.execute(ctx, {
       step_id: "body",
       param: "expression",
-      value: "$x.id",
+      value: "$item.id",
     });
     expect(edit.ok).toBe(true);
     const traces = ctx._draft.value.latest_preview?.step_traces ?? [];

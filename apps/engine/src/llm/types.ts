@@ -20,7 +20,8 @@ export type LlmFlow =
   | "discover"
   | "summarize"
   | "suggest_next"
-  | "critic_authoring";
+  | "critic_authoring"
+  | "judge";
 
 export type LlmProviderKind = ProviderKind;
 
@@ -151,6 +152,15 @@ export interface AssembleContextParams {
    * mode/stage-specific converse focus block.
    */
   authoring_hint?: AuthoringPromptHint;
+  /**
+   * Connector ids bound to the active conversation/draft — the target
+   * connector, the persisted draft connector, and every connector a
+   * draft workflow step references. Drives the "Recorded endpoint
+   * samples" section in workflow-authoring mode: the latest recorded
+   * response shapes for exactly these connectors reach the model
+   * BEFORE it writes request paths and transforms.
+   */
+  authoring_connector_ids?: string[];
   /**
    * Conversation id, when the assembler is being driven from the
    * converse flow. When present, the assembler loads the last N

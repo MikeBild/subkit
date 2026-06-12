@@ -70,6 +70,17 @@ function makeCtx(): ToolContext & { _draft: { value: DraftDocument | null } } {
   };
 }
 
+/** Leave the initial authoring stage: `propose_step` is a repair-stage
+ *  tool now (Fix A stage gate) and refuses while the draft has no
+ *  recorded preview / findings. These tests exercise the recorded-eval
+ *  envelope on the repair flow, so seed minimal preview evidence. */
+function seedStageEvidence(toolCtx: ReturnType<typeof makeCtx>): void {
+  toolCtx._draft.value = {
+    ...createEmptyDraftDocument(),
+    latest_preview: { ok: false, step_id: null, summary: "stage evidence", step_traces: [] },
+  };
+}
+
 describe("build_workflow — recorded_eval envelope (Fix 9)", () => {
   test("loop without recorded evidence: draft ACCEPTED, gate verdict + missing evidence in envelope, zero egress", async () => {
     const toolCtx = makeCtx();
@@ -78,8 +89,8 @@ describe("build_workflow — recorded_eval envelope (Fix 9)", () => {
       slug: "loop-no-evidence",
       steps: [
         { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
-        { id: "iter", kind: "loop", over: "$scope.fetch.data", item_var: "x", body: ["b"] },
-        { id: "b", kind: "transform", language: "jsonata", expression: "$x" },
+        { id: "iter", kind: "loop", over: "$scope.fetch.data", body: ["b"] },
+        { id: "b", kind: "transform", language: "jsonata", expression: "$item" },
       ],
       environment: "dev",
     });
@@ -125,6 +136,7 @@ describe("build_workflow — recorded_eval envelope (Fix 9)", () => {
 describe("propose_step — recorded_eval envelope (Fix 9)", () => {
   test("branch with a bad JSONata `when` is accepted with a caret compile error in the envelope", async () => {
     const toolCtx = makeCtx();
+    seedStageEvidence(toolCtx);
     const first = await proposeStepTool.execute(toolCtx, {
       step: { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
     });
@@ -149,6 +161,7 @@ describe("propose_step — recorded_eval envelope (Fix 9)", () => {
 
   test("transform reading an un-previewed sibling is accepted with the transform gate verdict in the envelope", async () => {
     const toolCtx = makeCtx();
+    seedStageEvidence(toolCtx);
     await proposeStepTool.execute(toolCtx, {
       step: { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
     });

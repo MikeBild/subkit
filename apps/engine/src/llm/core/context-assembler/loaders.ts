@@ -4,11 +4,12 @@
 
 import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
-import { conversationElicitations, conversations } from "../../../db/schema/index.ts";
+import { connectors, conversationElicitations, conversations } from "../../../db/schema/index.ts";
 import { searchDocs } from "../../../docs-ingestion/service.ts";
 import { searchKnowledge } from "../../../knowledge/service.ts";
 import { logger } from "../../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
+import { listLatestShapes } from "../../../schema-versions/service.ts";
 import { listProposedForAuthoring } from "../../../skill-candidates/service.ts";
 import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
 import { findSimilarActive, type PriorWorkflowRef } from "../../../workflows/prior-workflows.ts";
@@ -22,6 +23,9 @@ import type {
 import {
   formatSkillCandidates,
   PRIOR_WORKFLOWS_TOP_K,
+  PROBE_SHAPE_MAX_CONNECTORS,
+  PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR,
+  type ProbeShapeExample,
   RECIPE_BODIES_SECTION_CAP,
   RECIPE_BODIES_TOP_K,
   RECIPE_BODY_HYBRID_SOFT_CAP,
@@ -198,6 +202,65 @@ export async function loadLatestPreview(
       msg: "latest-preview query failed; prompt assembled without it",
       tenant_id,
       conversation_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Load the latest recorded response shapes (`schema_versions` rows,
+ * written by probe_connector / call_connector / request-step
+ * executions) for the connectors bound to the active conversation
+ * draft. Feeds the "Recorded endpoint samples" section so observed
+ * payload shapes reach the model BEFORE it writes transforms.
+ *
+ * Tenant isolation lives in the queries themselves: both
+ * `listLatestShapes` and the slug lookup filter on `tenant_id`, so a
+ * connector id belonging to another tenant yields zero rows — it can
+ * never leak shapes across tenants. Non-UUID ids (recipe placeholders
+ * like `${stripe}` in draft steps) are filtered out before any query.
+ * Best-effort like every loader here: a DB blip returns [].
+ */
+export async function loadProbeShapeExamples(
+  tenant_id: string,
+  connector_ids: string[],
+  exec: Executor,
+): Promise<ProbeShapeExample[]> {
+  try {
+    const ids = [...new Set(connector_ids)]
+      .filter((id) => UUID_RE.test(id))
+      .slice(0, PROBE_SHAPE_MAX_CONNECTORS);
+    if (ids.length === 0) return [];
+    const out: ProbeShapeExample[] = [];
+    for (const connector_id of ids) {
+      const shapes = await listLatestShapes(
+        { tenant_id, connector_id, max_endpoints: PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR },
+        exec,
+      );
+      if (shapes.length === 0) continue;
+      const connectorRows = await exec
+        .select({ slug: connectors.slug })
+        .from(connectors)
+        .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.id, connector_id)))
+        .limit(1);
+      // Shapes exist but the connector row is gone (deleted mid-turn) —
+      // skip rather than render an unattributable shape list.
+      const slug = connectorRows[0]?.slug;
+      if (!slug) continue;
+      for (const s of shapes) {
+        out.push({ connector_slug: slug, endpoint_key: s.endpoint_key, shape: s.shape });
+      }
+    }
+    return out;
+  } catch (err) {
+    logger.warn({
+      module: "llm",
+      action: "llm.context.probe_shapes_skipped",
+      msg: "recorded endpoint shapes query failed; prompt assembled without them",
+      tenant_id,
       error: err instanceof Error ? err.message : String(err),
     });
     return [];

@@ -12,6 +12,7 @@ import { type ValidationError, validateWorkflowDef } from "../../workflows/valid
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { emitRecordedEvalSignals, runRecordedEval } from "../recorded-eval.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
+import { evaluateAuthoringStageGate } from "./authoring-stage-gate.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { getLastPreview } from "./last-preview-store.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
@@ -86,12 +87,12 @@ const EXAMPLE_PER_KIND: Record<ValidKind, Record<string, unknown>> = {
     kind: "loop",
     over: "$scope.fetch_orders.data",
     body: ["process_order"],
-    item_var: "order",
   },
 };
 
 const DESCRIPTION = [
-  "Append (or replace by id) one step in the draft workflow and validate.",
+  "REPAIR-STAGE tool — apply a specific finding by appending/replacing ONE step in an already-designed draft; never use it for initial authoring (that is `author_workflow`, one call for the complete evaluated draft).",
+  "Refuses with `authoring_stage_violation` while the draft has no recorded preview and no recorded-eval/judge findings.",
   "REQUIRED: each step has `id` (unique string) and `kind` (one of: request, transform, call, wait, branch, parallel, loop).",
   "Do NOT use `type`, `@type`, or invented kinds (`trigger.*`, `flow.*`, `util.*`). Those will fail.",
   "Placeholder grammar — only `${cred|connector|input|scope|item|...}`. Mustache `{{ ... }}` is rejected.",
@@ -99,7 +100,7 @@ const DESCRIPTION = [
   '- request: {"id":"fetch","kind":"request","method":"GET","url":"https://api.example.com/x"}',
   '- transform: {"id":"shape","kind":"transform","expression":"$scope.fetch.data.{ \\"name\\": name }","language":"jsonata"}',
   '- branch: {"id":"gate","kind":"branch","when":"$scope.fetch.data.x = true","then_steps":["a"],"else_steps":["b"]}',
-  '- loop: {"id":"each","kind":"loop","over":"$scope.fetch.data","body":["body_step"],"item_var":"row"}',
+  '- loop: {"id":"each","kind":"loop","over":"$scope.fetch.data","body":["body_step"]} — inside the body, address the current item as `$item` in JSONata and `${item.<path>}` in request strings (`item_var` is retired and rejected)',
   '- wait: {"id":"sleep","kind":"wait","duration_ms":5000}',
   "Returns ok=false with errors + valid_kinds + example_for_kind when the step is malformed; call propose_step again with the fixed shape.",
 ].join(" ");
@@ -163,6 +164,11 @@ export const proposeStepTool: ConversationTool = {
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
+    // Initial-stage gate (Fix A): micro-iteration is the repair flow,
+    // not the authoring flow. See authoring-stage-gate.ts for the
+    // predicate + deadlock-impossibility argument.
+    const stageRefusal = await evaluateAuthoringStageGate(ctx, "propose_step");
+    if (stageRefusal) return stageRefusal;
     const args = inputSchema.parse(rawArgs);
     const currentDraft = ctx.getDraft();
     const workflowDraft = structuredClone(getWorkflowDraft(currentDraft));

@@ -17,11 +17,12 @@
 //   - Large response bodies are truncated and surface a raw_ref.
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
 import * as pgDriver from "../../connectors/drivers/postgres.ts";
 import * as s3Driver from "../../connectors/drivers/s3.ts";
 import * as sftpDriver from "../../connectors/drivers/sftp.ts";
 import { upsertCredential } from "../../credentials/service.ts";
-import { connectors, roles, users } from "../../db/schema/index.ts";
+import { connectors, roles, schemaVersions, users } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import { callConnectorTool } from "./call-connector.ts";
@@ -431,6 +432,67 @@ describe("call_connector — error envelopes", () => {
     };
     expect(data.error.code).toBe("credential_required");
     expect(data.next_best_actions).toContain("save_connector_draft");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Schema shape recording (probe_connector parity)
+// ---------------------------------------------------------------------------
+
+describe("call_connector — schema shape recording", () => {
+  async function shapeRowsFor(connector_id: string) {
+    return ctx.testDb.db
+      .select({
+        endpoint_key: schemaVersions.endpoint_key,
+        schema: schemaVersions.schema,
+      })
+      .from(schemaVersions)
+      .where(
+        and(
+          eq(schemaVersions.tenant_id, ctx.tenant_id),
+          eq(schemaVersions.connector_id, connector_id),
+        ),
+      );
+  }
+
+  test("2xx response records the body shape keyed `<METHOD> <path>` (query stripped)", async () => {
+    const { connector_id } = await seedHttpConnector({ slug: "call_shape_2xx" });
+    const result = await callConnectorTool.execute(makeToolContext(), {
+      connector_id,
+      method: "GET",
+      path: "/v2/droplets?page=2",
+    });
+    expect(result.ok).toBe(true);
+    expect((result.data as { status: number }).status).toBe(200);
+
+    const rows = await shapeRowsFor(connector_id);
+    expect(rows.length).toBe(1);
+    // Query string must be stripped so pagination params don't fan one
+    // logical endpoint into many schema rows.
+    expect(rows[0]!.endpoint_key).toBe("GET /v2/droplets");
+    const shape = rows[0]!.schema as {
+      type: string;
+      properties: Record<string, { type: string }>;
+    };
+    expect(shape.type).toBe("object");
+    expect(shape.properties.droplets!.type).toBe("array");
+  });
+
+  test("4xx response does NOT record a shape", async () => {
+    const { connector_id } = await seedHttpConnector({ slug: "call_shape_4xx" });
+    const result = await callConnectorTool.execute(makeToolContext(), {
+      connector_id,
+      method: "GET",
+      path: "/v2/missing",
+    });
+    // 4xx still returns ok:true at the tool boundary — the LLM inspects
+    // the status — but the observed body is a failure payload, not the
+    // endpoint's shape, so nothing is recorded.
+    expect(result.ok).toBe(true);
+    expect((result.data as { status: number }).status).toBe(404);
+
+    const rows = await shapeRowsFor(connector_id);
+    expect(rows.length).toBe(0);
   });
 });
 

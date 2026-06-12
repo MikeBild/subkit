@@ -127,6 +127,7 @@ const CONNECTOR_OAUTH: ReadonlySet<string> = new Set(["authenticate_oauth"]);
 
 /** Workflow authoring tools — exposed once `workflow-authoring` is loaded. */
 const WORKFLOW_AUTHORING: ReadonlySet<string> = new Set([
+  "author_workflow",
   "build_workflow",
   "connect_steps",
   "edit_workflow_patch",

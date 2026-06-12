@@ -549,6 +549,25 @@ export function recordCriticRun(args: { result: string }): void {
   });
 }
 
+/** Allow-list for `verdict` on subkit_preview_judge_verdicts_total. */
+const PREVIEW_JUDGE_VERDICTS = new Set<string>(["passes", "partial", "failed", "skipped"]);
+
+/**
+ * Counter for instruction-grounded preview-judge verdicts (Fix C).
+ * `blocked` records whether the verdict actually stopped the
+ * auto-commit — false for `passes`, for skips (no goal / judge
+ * unavailable), and for advisory verdicts after the per-definition
+ * circuit-breaker tripped.
+ */
+export function recordPreviewJudgeVerdict(args: { verdict: string; blocked: boolean }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.PREVIEW_JUDGE_VERDICTS_TOTAL, {
+      verdict: PREVIEW_JUDGE_VERDICTS.has(args.verdict) ? args.verdict : "other",
+      blocked: args.blocked ? "true" : "false",
+    });
+  });
+}
+
 export function recordExecutionDryRun(args: { tenant_id: string; source_kind: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.EXECUTION_DRY_RUN_TOTAL, {

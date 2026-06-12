@@ -26,7 +26,7 @@ import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
-import { buildStepDag, topoSort } from "../workflows/dag.ts";
+import { buildStepDag, type StepDag, topoSort } from "../workflows/dag.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import {
   type BranchStep,
@@ -47,6 +47,7 @@ import {
   wrapEnvelope,
 } from "./engine/envelope.ts";
 import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
+import { buildLoopChildScope } from "./loop-scope.ts";
 import { isOffloadRef, maybeOffload, previewOf } from "./offload.ts";
 import { deepResolveOffloadRefs, previewOffloadRefs } from "./offload-rehydrate.ts";
 import { checkOutputContract, summarizeViolations } from "./output-contract.ts";
@@ -71,6 +72,29 @@ import type {
 
 export { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 export type { ScopeEnvelope } from "./engine/envelope.ts";
+
+/**
+ * Hold-writes (Fix G): find the first DAG dependency of `stepId` whose
+ * response data is missing because that dependency was held (a
+ * write-classified step that materialized but never dispatched) or was
+ * itself skipped for depending on one. Checks EVERY edge kind — a
+ * data-flow reference to a held step means its placeholders cannot
+ * resolve, and a containment edge to a skipped container (branch /
+ * parallel / loop) means the container never ran. Returns the
+ * dependency's id (for the skip label) or null.
+ */
+function findHeldDependency(
+  dag: StepDag,
+  stepId: string,
+  isMissing: (id: string) => boolean,
+): string | null {
+  for (const e of dag.edges) {
+    if (e.from !== stepId) continue;
+    if (e.to === stepId) continue;
+    if (isMissing(e.to)) return e.to;
+  }
+  return null;
+}
 
 export interface RunExecutionParams {
   db: Db;
@@ -191,6 +215,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // self-healing flow can act on it.
   let validationError: { code: string; message: string; details?: unknown } | null = null;
   const skippedStepIds = new Set<string>();
+  // Hold-writes bookkeeping: ids of steps whose response data is
+  // missing — either held (write materialized but never dispatched) or
+  // skipped because a DAG dependency was held. Steps depending on this
+  // set are skipped explicitly with the labeled
+  // `skipped_dependency_held` error instead of failing deep in the
+  // driver with `placeholder_unresolved`. Only consulted when
+  // `opts.hold_writes` is set; live runs never touch it.
+  const heldOrSkippedStepIds = new Set<string>();
   const warningsAccum: NonNullable<RunResult["warnings"]> = [];
 
   // Topologically sort the steps so a step that references
@@ -293,6 +325,29 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       });
       continue;
     }
+    // Hold-writes: a step that depends (data-flow ref or containment)
+    // on a held / held-skipped step cannot run — its scope key carries
+    // no data. Skip it explicitly and labeled, mirroring the branch
+    // control-flow skip shape, and propagate transitively.
+    if (opts.hold_writes) {
+      const heldDep = findHeldDependency(dag, step.id, (sid) => heldOrSkippedStepIds.has(sid));
+      if (heldDep) {
+        heldOrSkippedStepIds.add(step.id);
+        stepSummaries.push({
+          step_key: step.id,
+          step_index: i,
+          kind: step.kind,
+          status: "aborted",
+          duration_ms: 0,
+          retry_count: 0,
+          error: {
+            code: "skipped_dependency_held",
+            message: `skipped (depends on held step "${heldDep}")`,
+          },
+        });
+        continue;
+      }
+    }
     const step_row_id = await insertStepRow(db, {
       tenant_id,
       execution_id,
@@ -320,6 +375,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       step_index: i,
       step_row_id,
       llm_budget: llmBudget,
+      ...(opts.hold_writes ? { hold_writes: true } : {}),
     };
     let outcome: import("./step-runner.ts").RunStepOutcome;
     try {
@@ -363,6 +419,12 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     // `$scope.each.data.length` etc. uniformly.
     scope[step.id] = envelopeFor(outcome);
     lastOutput = outcome.scope_value;
+    // Hold-writes: a held step's response data does not exist — record
+    // it so downstream dependents skip explicitly (see the labeled
+    // skip above) instead of resolving placeholders against null.
+    if (outcome.result.held) {
+      heldOrSkippedStepIds.add(step.id);
+    }
     if (outcome.result.warnings?.length) {
       for (const w of outcome.result.warnings) {
         warningsAccum.push({ ...w, step_key: step.id });
@@ -389,16 +451,38 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         const iterationResults: unknown[] = [];
         for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
           const item = items[itemIdx];
-          const childScope: Record<string, unknown> = {
-            ...scope,
-            [loopStep.item_var]: item,
-            $item: item,
-            $loop_index: itemIdx,
-          };
+          const childScope = buildLoopChildScope(loopStep, scope, item, itemIdx);
           const bodyResults: Record<string, unknown> = {};
+          // Hold-writes: held body steps hold PER ITERATION — each
+          // iteration materializes its own held_request from its own
+          // `$item`. The set resets every iteration so a body step
+          // depending on a held sibling is skipped within THIS
+          // iteration only.
+          const iterationHeldIds = new Set<string>();
           for (const bodyStepId of loopStep.body) {
             const bodyStep = def.steps.find((s) => s.id === bodyStepId) as StepDef | undefined;
             if (!bodyStep) continue;
+            if (opts.hold_writes) {
+              const heldDep = findHeldDependency(
+                dag,
+                bodyStep.id,
+                (sid) => iterationHeldIds.has(sid) || heldOrSkippedStepIds.has(sid),
+              );
+              if (heldDep) {
+                iterationHeldIds.add(bodyStep.id);
+                const skippedEnv = wrapEnvelope({
+                  data: null,
+                  duration_ms: 0,
+                  error: {
+                    code: "skipped_dependency_held",
+                    message: `skipped (depends on held step "${heldDep}")`,
+                  },
+                });
+                childScope[bodyStep.id] = skippedEnv;
+                bodyResults[bodyStep.id] = skippedEnv;
+                continue;
+              }
+            }
             const bodyStepRowId = await insertStepRow(db, {
               tenant_id,
               execution_id,
@@ -426,6 +510,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               step_index: i,
               step_row_id: bodyStepRowId,
               llm_budget: llmBudget,
+              ...(opts.hold_writes ? { hold_writes: true } : {}),
             };
             const bodyOutcome = await instrument({
               module: "execution",
@@ -466,6 +551,13 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             // storage_uri (no second write), bounding loop memory.
             childScope[bodyStep.id] = envelopeFor(bodyOutcome);
             bodyResults[bodyStep.id] = bodyEnvelopeForLoopAccumulator(bodyOutcome);
+            // Hold-writes: per-iteration held tracking — siblings later
+            // in THIS iteration's body skip explicitly. The envelopes
+            // above already carry `held` + `held_request` (envelopeFor)
+            // so each iteration's artifact rides the loop accumulator.
+            if (bodyOutcome.result.held) {
+              iterationHeldIds.add(bodyStep.id);
+            }
           }
           iterationResults.push(bodyResults);
         }
@@ -498,7 +590,19 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             for (const value of Object.values(iter as Record<string, unknown>)) {
               const env = value as ScopeEnvelope | null | undefined;
               if (!env || typeof env !== "object") continue;
-              if (env.error) continue;
+              // Hold-writes preview: a held body step carries no data BY
+              // DESIGN (the artifact rides held_request), and a sibling
+              // skipped for depending on it is equally intentional —
+              // neither must trip the empty-loop heuristic during a
+              // hold preview of an all-writes loop body.
+              if (env.held) {
+                iterProductive = true;
+                continue;
+              }
+              if (env.error) {
+                if (env.error.code === "skipped_dependency_held") iterProductive = true;
+                continue;
+              }
               const data = env.data;
               if (data == null) continue;
               // An offloaded body payload appears as an `OffloadRef`.
@@ -566,11 +670,36 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             parallelStep.branches.map(async (branchStepIds) => {
               const branchScope: Record<string, unknown> = { ...scope };
               const branchOutput: Record<string, unknown> = {};
+              // Hold-writes: per-branch held tracking, same contract as
+              // the loop-body iteration set above. The global set is
+              // only read here (branches run concurrently).
+              const branchHeldIds = new Set<string>();
               for (const branchStepId of branchStepIds) {
                 const branchStepDef = def.steps.find((s) => s.id === branchStepId) as
                   | StepDef
                   | undefined;
                 if (!branchStepDef) continue;
+                if (opts.hold_writes) {
+                  const heldDep = findHeldDependency(
+                    dag,
+                    branchStepDef.id,
+                    (sid) => branchHeldIds.has(sid) || heldOrSkippedStepIds.has(sid),
+                  );
+                  if (heldDep) {
+                    branchHeldIds.add(branchStepDef.id);
+                    const skippedEnv = wrapEnvelope({
+                      data: null,
+                      duration_ms: 0,
+                      error: {
+                        code: "skipped_dependency_held",
+                        message: `skipped (depends on held step "${heldDep}")`,
+                      },
+                    });
+                    branchScope[branchStepId] = skippedEnv;
+                    branchOutput[branchStepId] = skippedEnv;
+                    continue;
+                  }
+                }
                 const branchStepRowId = await insertStepRow(db, {
                   tenant_id,
                   execution_id,
@@ -598,6 +727,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                   step_index: i,
                   step_row_id: branchStepRowId,
                   llm_budget: llmBudget,
+                  ...(opts.hold_writes ? { hold_writes: true } : {}),
                 };
                 const branchOutcome = await instrument({
                   module: "execution",
@@ -616,6 +746,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                 });
                 branchScope[branchStepId] = envelopeFor(branchOutcome);
                 branchOutput[branchStepId] = envelopeFor(branchOutcome);
+                if (branchOutcome.result.held) {
+                  branchHeldIds.add(branchStepId);
+                }
               }
               return branchOutput;
             }),
@@ -662,6 +795,12 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       retry_count: outcome.result.retry_count ?? 0,
       error: outcome.result.error ?? null,
       request_meta: outcome.result.request_meta ?? null,
+      ...(outcome.result.held
+        ? {
+            held: true as const,
+            ...(outcome.result.held_request ? { held_request: outcome.result.held_request } : {}),
+          }
+        : {}),
       ...(outputPreview !== undefined ? { output_preview: outputPreview } : {}),
       ...(outcome.raw_output !== undefined ? { raw_preview: outcome.raw_output } : {}),
     });
@@ -1152,6 +1291,9 @@ async function runCallStep(db: Db, ctx: StepRunContext, step: CallStep): Promise
         signal: ctx.signal,
         trace_id: ctx.trace_id ?? null,
         execution_mode: ctx.execution_mode,
+        // Hold-writes propagates into tool-chained child runs — a
+        // preview must not leak a write through a `call` step.
+        ...(ctx.hold_writes ? { hold_writes: true } : {}),
         ...(ctx.principal ? { principal: ctx.principal } : {}),
       },
     });

@@ -398,6 +398,11 @@ export const METRIC_NAMES = {
   // to estimate signal quality, and (passed+rejected):fail_open to
   // spot provider instability.
   CRITIC_RUNS_TOTAL: "subkit_critic_runs_total",
+  // Instruction-grounded preview-judge verdicts (Fix C). `verdict` is
+  // passes / partial / failed / skipped; `blocked` says whether the
+  // verdict actually blocked the auto-commit (false for advisory
+  // verdicts after the circuit-breaker tripped, and for skips).
+  PREVIEW_JUDGE_VERDICTS_TOTAL: "subkit_preview_judge_verdicts_total",
   // Best-effort `workflows.last_executed_at` write failures from the
   // saved-execution finaliser. The catalog LRU degrades silently when
   // this drifts; a non-zero rate is operational signal.
@@ -832,6 +837,11 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.CRITIC_RUNS_TOTAL,
     help: "Authoring-critic invocations. `result` is `passed` (critic approved), `rejected` (critic returned passed:false; tool emits critic_rejected), or `fail_open` (LLM error / no structured output; treated as passed).",
     labels: ["result"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.PREVIEW_JUDGE_VERDICTS_TOTAL,
+    help: "Preview-judge verdicts after a green dry-run. `verdict` is passes / partial / failed / skipped; `blocked=true` means the verdict blocked the auto-commit (false for breaker-degraded advisory verdicts and skips). A high skipped rate means goals are not reaching drafts; a high blocked rate flags either a miscalibrated judge or systematically goal-missing previews.",
+    labels: ["verdict", "blocked"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.LLM_CACHE_HIT_TOTAL,

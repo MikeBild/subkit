@@ -14,6 +14,7 @@ import {
   recordAuthoringGateBlock,
   recordExecutionDryRun,
   recordExecutionWarningsEmitted,
+  recordPreviewJudgeVerdict,
 } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
 import {
@@ -23,10 +24,14 @@ import {
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
-import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
+import { getWorkflowDraft, withJudgeBreaker, withLatestPreview } from "../authoring-state.ts";
 import { proposeDryRunRepairs } from "../dry-run-repair.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
+import type { PreviewJudgeOutcome } from "../preview-judge.ts";
+import { runPreviewJudgeGate } from "../preview-judge-gate.ts";
+import { computeScopeDriftWarnings } from "../scope-drift.ts";
 import { stampStepTraceFingerprints } from "../step-fingerprint.ts";
+import type { JudgeBreakerState } from "../types.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import {
   buildDryRunCacheKey,
@@ -46,13 +51,19 @@ const inputSchema = z
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).optional(),
     budget_ms_per_step: z.number().int().min(500).max(60_000).optional(),
+    execute_writes: z
+      .boolean()
+      .optional()
+      .describe(
+        `Execute write-classified steps for real instead of holding them. Default false: previews resolve writes (URL/headers/body materialized for inspection and the judge) but never dispatch them. Set true ONLY when the user explicitly confirmed a live preview.`,
+      ),
   })
   .openapi("DryRunWorkflowToolInput");
 
 export const dryRunWorkflowTool: ConversationTool = {
   name: "dry_run_workflow",
   description:
-    "Run the entire draft workflow via runExecution (source=draft). Produces an executions row with source_kind=draft, no workflow_id / workflow_version_id persisted. Steps execute FOR REAL (an email step sends a real email) — inputs that are external destinations (recipients, channels, webhook URLs) must come from the user, never fabricated placeholders.",
+    "Run the entire draft workflow via runExecution (source=draft). Produces an executions row with source_kind=draft, no workflow_id / workflow_version_id persisted. Read steps execute for real; WRITE steps (sends, publishes, mutations) are HELD by default — fully resolved (URL/headers/body materialized as the step artifact) but never dispatched, so previews cannot publish. Pass execute_writes: true only after the user explicitly confirmed a live preview. External destinations (recipients, channels, webhook URLs) must come from the user, never fabricated placeholders.",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
@@ -363,6 +374,12 @@ export const dryRunWorkflowTool: ConversationTool = {
           options: {
             request_source: "chat",
             execution_mode: args.environment ?? "dev",
+            // Previews are side-effect-safe by default: write-classified
+            // steps are fully resolved (the judge reads the would-be
+            // payload) but never dispatched. `execute_writes: true` is
+            // the explicit full-live escape for shapes that genuinely
+            // need the write's response recorded.
+            hold_writes: !args.execute_writes,
             ...(signal ? { signal } : {}),
             ...(prefixReplayCount > 0 ? { step_output_fixtures: stepOutputFixtures } : {}),
           },
@@ -524,62 +541,34 @@ export const dryRunWorkflowTool: ConversationTool = {
     );
     const dryRunRequiresRepair = repairWarnings.length > 0;
 
-    // authoring_scope_changed — compare each step's available_paths
-    // against the previous dry-run's recorded scope_at_step. When
-    // paths disappear (e.g. an upstream API silently drops a field
-    // between v1 and v2), surface a non-fatal warning so the LLM
-    // notices BEFORE patching downstream transforms against the new
-    // shape. Pre-fix the LLM patched a transform against shape v1,
-    // re-ran, the API returned v2, the transform silently dropped
-    // fields, and the spiral was indistinguishable from a typo.
-    //
-    // mutation_seq guard: only compare against previous traces when
-    // the workflow draft hasn't been structurally rewritten in the
-    // interim. The previewed-checkpoint records the seq at preview
-    // time; if the workflow_mutation_seq has advanced past that, the
-    // step ids may have moved meaning and the comparison is
-    // misleading. We require: previous preview's stored seq matches
-    // current workflow_mutation_seq.
-    const draftNow = ctx.getDraft();
-    const previousTraces = draftNow.latest_preview?.step_traces ?? [];
-    const previewCheckpoint = draftNow.state?.checkpoints?.workflow_previewed;
-    const draftSeq = draftNow.state?.workflow_mutation_seq ?? 0;
-    const previewSeq = previewCheckpoint?.mutation_seq ?? -1;
-    const sameDraftAsPreview = previewSeq === draftSeq && previousTraces.length > 0;
-    const previousByStep = new Map<string, { available_paths: string[] }>();
-    if (sameDraftAsPreview) {
-      for (const t of previousTraces) {
-        if (t.scope_at_step?.available_paths) {
-          previousByStep.set(t.step_id, { available_paths: t.scope_at_step.available_paths });
-        }
-      }
+    // authoring_scope_changed — see scope-drift.ts (paths disappearing
+    // between previews get a non-fatal warning before the LLM patches
+    // downstream transforms against the new shape).
+    runWarnings.push(...computeScopeDriftWarnings(ctx.getDraft(), run.steps));
+
+    // Instruction-grounded preview judge (Fix C) — see preview-judge-gate.ts
+    // for the gate + circuit-breaker semantics.
+    const dryRunGreen = run.status === "succeeded" && !dryRunRequiresRepair;
+    let judgeOutcome: PreviewJudgeOutcome | null = null;
+    let judgeBlocked = false;
+    /** undefined = leave the stored breaker untouched. */
+    let nextJudgeBreaker: JudgeBreakerState | undefined;
+    if (dryRunGreen) {
+      const gate = await runPreviewJudgeGate({
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        db: ctx.db,
+        goal: typeof draft.goal === "string" && draft.goal.trim().length > 0 ? draft.goal : null,
+        definition,
+        steps: steps as unknown as Array<Record<string, unknown>>,
+        run_steps: run.steps,
+        prior_breaker: ctx.getDraft().state?.judge_breaker ?? null,
+      });
+      judgeOutcome = gate.judgeOutcome;
+      judgeBlocked = gate.judgeBlocked;
+      nextJudgeBreaker = gate.nextJudgeBreaker;
+      if (gate.warning) runWarnings.push(gate.warning);
     }
-    const scopeChangedWarnings: Array<{
-      step_key: string;
-      code: string;
-      message: string;
-    }> = [];
-    for (const s of run.steps) {
-      const prev = previousByStep.get(s.step_key);
-      if (!prev) continue;
-      if (s.output_preview === undefined || s.output_preview === null) continue;
-      const cur = buildScopeAtStep(s.output_preview).available_paths;
-      const curSet = new Set(cur);
-      const removed = prev.available_paths.filter((p) => !curSet.has(p));
-      if (removed.length > 0) {
-        scopeChangedWarnings.push({
-          step_key: s.step_key,
-          code: "authoring_scope_changed",
-          message: `step "${s.step_key}" no longer surfaces ${removed.length} previously-recorded path(s): ${removed
-            .slice(0, 5)
-            .map((p) => `\`${p}\``)
-            .join(
-              ", ",
-            )}${removed.length > 5 ? `, +${removed.length - 5} more` : ""}. Downstream transforms / loops authored against the prior shape may silently drop fields.`,
-        });
-      }
-    }
-    runWarnings.push(...scopeChangedWarnings);
 
     // Build the persisted per-step trace. The conversation context-
     // assembler reads this off `latest_preview.step_traces` on every
@@ -632,6 +621,12 @@ export const dryRunWorkflowTool: ConversationTool = {
         ...(persistedRawPreview !== undefined ? { raw_preview: persistedRawPreview } : {}),
         ...(scope ? { scope_at_step: scope } : {}),
         ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
+        // Hold-writes preview: the materialized-but-never-dispatched
+        // request IS the step's reviewable artifact — the model (and
+        // the user) inspect the would-be send without anything firing.
+        ...(s.held
+          ? { held: true, held_request: truncateStepPreviewForLlm(s.held_request).data }
+          : {}),
       };
     });
     const persistedStepTraces = stampStepTraceFingerprints(
@@ -639,15 +634,25 @@ export const dryRunWorkflowTool: ConversationTool = {
       steps as unknown as Array<Record<string, unknown>>,
     );
 
+    // A judge block writes the breaker counter into the draft state in
+    // the same persist as the preview itself — one setDraft, no torn
+    // state between the verdict and its anti-churn bookkeeping.
+    const draftForPreview =
+      nextJudgeBreaker !== undefined
+        ? withJudgeBreaker(ctx.getDraft(), nextJudgeBreaker)
+        : ctx.getDraft();
     const nextDraft = withLatestPreview(
-      ctx.getDraft(),
+      draftForPreview,
       {
         ok: run.status === "succeeded",
         step_id: stoppedForDraft,
         summary: lastStep?.summary ?? `Run completed with status ${run.status}.`,
         preview: lastStep?.output_preview ?? null,
         ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
-        ...(dryRunRequiresRepair ? { requires_repair: true } : {}),
+        // A judge block joins the requires_repair path so its blocking
+        // semantics (no auto-commit; explicit save / force_commit stays
+        // available) match the structural repair warnings exactly.
+        ...(dryRunRequiresRepair || judgeBlocked ? { requires_repair: true } : {}),
         step_traces: persistedStepTraces,
         input: args.input ?? null,
       },
@@ -755,17 +760,21 @@ export const dryRunWorkflowTool: ConversationTool = {
     // hint stays on the envelope so the chat renderer's lifecycle line
     // and the never-silent guard in loop.ts both have something to
     // anchor on.
-    const cleanPreview = run.status === "succeeded" && !dryRunRequiresRepair;
+    const cleanPreview = dryRunGreen && !judgeBlocked;
     const previewNextActions = cleanPreview
       ? ["save_workflow_draft"]
-      : dryRunRequiresRepair
-        ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
-        : ["inspect_workflow_draft", "edit_workflow_patch"];
+      : judgeBlocked
+        ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
+        : dryRunRequiresRepair
+          ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
+          : ["inspect_workflow_draft", "edit_workflow_patch"];
     const previewNextPrompt = cleanPreview
       ? "Committing the workflow"
-      : dryRunRequiresRepair
-        ? "Open diagnosis to see why the preview needs repair"
-        : `Re-run preview after fixing step \`${stoppedForDraft}\``;
+      : judgeBlocked
+        ? "Revise the workflow so the preview satisfies the goal (edit_workflow_patch), then re-run dry_run_workflow"
+        : dryRunRequiresRepair
+          ? "Open diagnosis to see why the preview needs repair"
+          : `Re-run preview after fixing step \`${stoppedForDraft}\``;
     const warningSummary = runWarnings.length > 0 ? (warningsBanner?.summary ?? null) : null;
 
     // Auto-commit on green dry-run. A clean preview means the draft
@@ -785,6 +794,17 @@ export const dryRunWorkflowTool: ConversationTool = {
         reason: "auto_persist_on_green_dry_run",
         emitAutoPersistAudit: true,
         commitIntentKind: "save_workflow_draft",
+        // Governance: the immutable record of WHY this auto-commit was
+        // permitted carries the semantic gate's verdict alongside the
+        // structural green.
+        ...(judgeOutcome
+          ? {
+              extraAuditMetadata: {
+                judge_verdict: judgeOutcome.verdict,
+                judge_reason: judgeOutcome.reason,
+              },
+            }
+          : {}),
       });
       if (!commitResult.ok) {
         logger.warn({
@@ -824,6 +844,10 @@ export const dryRunWorkflowTool: ConversationTool = {
           ...committed,
           auto_committed: true,
           auto_commit_reason: "auto_persist_on_green_dry_run",
+          // The judge outcome rides the commit envelope: `passes`
+          // verdicts, skips (no_goal / judge_unavailable), and
+          // breaker-degraded advisory verdicts are all visible here.
+          ...(judgeOutcome ? { judge: judgeOutcome } : {}),
           dry_run_summary: {
             steps_ran: run.steps.length,
             duration_ms: totalDryRunMs,
@@ -870,17 +894,23 @@ export const dryRunWorkflowTool: ConversationTool = {
         {
           steps_ran: run.steps.length,
           duration_ms: run.steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0),
-          classification: dryRunRequiresRepair
-            ? "needs_repair"
-            : (lastStep?.classification ?? (run.status === "succeeded" ? "ok" : "driver_error")),
+          classification:
+            dryRunRequiresRepair || judgeBlocked
+              ? "needs_repair"
+              : (lastStep?.classification ?? (run.status === "succeeded" ? "ok" : "driver_error")),
           stopped_at_step_id: stoppedId,
           summary:
             run.status !== "succeeded"
               ? `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`
-              : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`,
+              : judgeBlocked && judgeOutcome && judgeOutcome.verdict !== "skipped"
+                ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but the preview does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} Fix via edit_workflow_patch and re-run dry_run_workflow — or, after the user explicitly confirms, commit anyway via save_workflow_draft.`
+                : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`,
           execution_id: run.execution_id,
           next_best_actions: previewNextActions,
           next_prompt: previewNextPrompt,
+          // Judge verdict on the blocked envelope — the model reads
+          // `judge.missing` to target the repair.
+          ...(judgeOutcome ? { judge: judgeOutcome } : {}),
           ...(warningSummary ? { warning_summary: warningSummary } : {}),
           // Top-level banner so the LLM can't miss warnings on first
           // read. `warnings` (legacy field) stays for back-compat

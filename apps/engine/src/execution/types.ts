@@ -53,6 +53,10 @@ export interface ExecutionContext {
    * the call returns successfully.
    */
   llm_budget: RunLlmBudget;
+  /** Hold-writes preview mode — threaded from `RunOptions.hold_writes`
+   *  so the request driver can hold write-classified dispatches. Only
+   *  set (to `true`) when the run was started with `hold_writes`. */
+  hold_writes?: boolean;
 }
 
 export interface StepRunContext extends ExecutionContext {
@@ -301,8 +305,49 @@ export interface StepErrorDetail {
   next_best_actions?: string[];
 }
 
+/**
+ * Materialized-but-not-dispatched request artifact produced by
+ * hold-writes mode (`RunOptions.hold_writes`). The request is fully
+ * RESOLVED — placeholders substituted against the live upstream scope,
+ * connector base URL + credential headers applied, body shaped exactly
+ * as dispatch would have sent it — and recorded here INSTEAD of
+ * crossing the wire.
+ *
+ * Representation contract (the dry-run preview / judge consume this):
+ *  - the holding step reports `status: "succeeded"` with `held: true`
+ *    on its StepResult / RunResult step summary — NOT a new status
+ *    value. The StepStatus union and the persisted
+ *    `execution_steps.status` stay unchanged, `on_error` semantics
+ *    never fire for a held step, and the preview layer narrows on the
+ *    explicit `held` flag instead of a status string.
+ *  - `body` is NOT redacted — it is the artifact the judge must read
+ *    (the would-be email HTML, the post payload).
+ *  - `headers_redacted` keeps every header NAME; secret-bearing values
+ *    (authorization / cookie / x-api-key / … — the same denylist the
+ *    error-detail header scrub uses) are masked, and the remaining
+ *    values pass through the shared secret scrubber.
+ */
+export interface HeldRequest {
+  method: string;
+  /** Fully resolved URL for the http driver, the object path for the
+   *  s3 driver, `null` for postgres. */
+  url: string | null;
+  headers_redacted: Record<string, string>;
+  /** Driver-shaped resolved payload: HTTP → the resolved JSON body;
+   *  graphql → `{ query, variables? }`; postgres →
+   *  `{ query, params, also? }`; s3 → the resolved object body.
+   *  `null` when the request carries none. */
+  body: unknown;
+}
+
 export interface StepResult {
   status: "succeeded" | "failed" | "aborted" | "timed_out";
+  /** Hold-writes mode: true when this write-classified step was fully
+   *  resolved but NOT dispatched. Always paired with `held_request`
+   *  and `status: "succeeded"`. `output` is null — the engine skips
+   *  dependents explicitly instead of feeding them artifact data. */
+  held?: true;
+  held_request?: HeldRequest;
   output?: unknown;
   error?: StepErrorDetail | null;
   retry_count: number;
@@ -344,6 +389,21 @@ export interface RunOptions {
    * drift detection.
    */
   self_healing?: { enabled: boolean };
+  /**
+   * Side-effect-safe preview mode (Fix G). When true, request-class
+   * steps classified as writes (explicit `side_effects` override wins;
+   * else driver rule: HTTP non-GET/HEAD/OPTIONS, GraphQL mutation,
+   * SQL non-SELECT, S3 PUT/DELETE) are fully resolved — URL, headers,
+   * body materialized from real upstream data — and recorded as
+   * `held` on the step result; the network call never fires. Steps
+   * whose scope references depend on a held step's response are
+   * skipped with the labeled `skipped_dependency_held` error instead
+   * of failing on unresolved placeholders. Read steps execute live,
+   * exactly as without the flag. Propagates into `call`-step child
+   * executions so a child workflow cannot leak a write. Default
+   * (unset/false): behavior unchanged.
+   */
+  hold_writes?: boolean;
   /**
    * Per-step output fixtures. When set, the engine skips executing any
    * step whose id appears in this map and uses the cached envelope
@@ -409,6 +469,13 @@ export interface RunResult {
     retry_count: number;
     error: unknown;
     request_meta?: RequestMeta | null;
+    /** Hold-writes preview: the step was write-classified and its
+     *  request was materialized but NOT dispatched. The step status is
+     *  `"succeeded"` — narrow on this flag. See `HeldRequest`. */
+    held?: true;
+    /** The materialized request artifact for a held step — the payload
+     *  the judge evaluates BEFORE anything is sent. */
+    held_request?: HeldRequest;
     /**
      * Truncated preview of the step's output. Populated by the
      * execution engine for every step (the same value persisted to

@@ -7,6 +7,7 @@
 // The mock-provider plan-seeding branch handles canned tests; in
 // production it is a no-op because LLM_PROVIDER isn't `mock`.
 
+import { eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
@@ -148,9 +149,17 @@ export async function createConversation(
   // provider to `mock` in setup.
   if (p.initial_message) {
     const msg = p.initial_message;
+    // The propose_step-based canned plans model the legacy incremental
+    // (repair-stage) flow. Since the Fix-A initial-stage gate made
+    // propose_step / update_param repair-stage-only, those fixtures
+    // additionally seed minimal preview evidence on the draft so the
+    // gate sees a repair-stage session — production is untouched (this
+    // whole branch is mock-provider-only).
+    let seedRepairStageEvidence = false;
     if (/open.?meteo|berlin.*weather|tomorrow.*forecast/i.test(msg)) {
       const { cannedOpenMeteoBerlinPlan } = await import("../../llm/mock-provider.ts");
       getMockProvider().setConversePlan(row.id, cannedOpenMeteoBerlinPlan());
+      seedRepairStageEvidence = true;
     } else if (
       /subkit engine onboarding|guided connector workflow|connect the subkit engine/i.test(msg)
     ) {
@@ -161,12 +170,30 @@ export async function createConversation(
     } else if (/list.*users/i.test(msg)) {
       const { cannedListUsersPlan } = await import("../../llm/mock-provider.ts");
       getMockProvider().setConversePlan(row.id, cannedListUsersPlan(p.connector_id ?? undefined));
+      seedRepairStageEvidence = true;
     } else if (/workflow.*(github|git\s*hub).*(private|priv)?.*repos?/i.test(msg)) {
       const { cannedListPrivateGithubReposPlan } = await import("../../llm/mock-provider.ts");
       getMockProvider().setConversePlan(
         row.id,
         cannedListPrivateGithubReposPlan(p.connector_id ?? undefined),
       );
+      seedRepairStageEvidence = true;
+    }
+    if (seedRepairStageEvidence && getMockProvider().conversePlans.has(row.id)) {
+      await exec
+        .update(conversations)
+        .set({
+          draft: {
+            ...initialDraft,
+            latest_preview: {
+              ok: false,
+              step_id: null,
+              summary: "stage evidence (canned repair-stage fixture)",
+              step_traces: [],
+            },
+          },
+        })
+        .where(eq(conversations.id, row.id));
     }
   }
 

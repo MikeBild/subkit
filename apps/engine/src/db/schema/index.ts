@@ -12,6 +12,7 @@ export * from "./connectors.ts";
 export * from "./conversation_elicitations.ts";
 export * from "./conversations.ts";
 export * from "./conversations-extras.ts";
+export * from "./data_migrations.ts";
 export * from "./discovery.ts";
 export * from "./events.ts";
 export * from "./executions.ts";

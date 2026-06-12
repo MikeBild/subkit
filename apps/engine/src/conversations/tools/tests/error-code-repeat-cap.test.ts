@@ -66,7 +66,9 @@ function makeToolCtx(): ToolContext {
   // Draft with a transform step referencing an unrun upstream step.
   // update_param("format", "expression", ...) will predictably return
   // error_code: "transform_authoring_requires_inspect" because no
-  // dry-run has recorded a preview for "fetch".
+  // dry-run has recorded a preview for "fetch". The `latest_preview`
+  // slot (no traces) is stage evidence so the Fix-A initial-stage gate
+  // doesn't short-circuit the repair flow under test.
   const draft = {
     workflow: {
       name: "test-wf",
@@ -75,6 +77,7 @@ function makeToolCtx(): ToolContext {
         { id: "format", kind: "transform", expression: "$scope.fetch.data.items" },
       ],
     },
+    latest_preview: { ok: false, step_id: null, summary: "stage evidence", step_traces: [] },
   };
   return {
     db: ctx.testDb.db as unknown as Db,

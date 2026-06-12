@@ -21,7 +21,7 @@ import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+export type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /**
  * Emit a `workflow.lifecycle` outbox event after Zod-validating the
@@ -29,9 +29,10 @@ type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
  * file flows through this helper so the channel can't drift into
  * untyped object literals over time. The schema lives in
  * `pubsub/types.ts` so subscribers (today: the MCP forwarder) can
- * share a single source of truth.
+ * share a single source of truth. Exported for the definition-only
+ * rotate in `version-rotate.ts`.
  */
-async function emitWorkflowLifecycle(
+export async function emitWorkflowLifecycle(
   tx: Executor,
   args: {
     tenant_id: string;

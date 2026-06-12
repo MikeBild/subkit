@@ -59,6 +59,11 @@ const BuildWorkflowInput = z
       .max(64)
       .regex(/^[a-z][a-z0-9_-]{0,63}$/u, "slug must match /^[a-z][a-z0-9_-]{0,63}$/"),
     description: z.string().max(2000).optional(),
+    /** The user's goal verbatim — drives the post-preview judge: after
+     *  a green dry-run the engine asks "does this preview satisfy the
+     *  goal?" and blocks the auto-commit on a partial/failed verdict.
+     *  Always pass it when the user stated what the workflow is for. */
+    goal: z.string().min(1).max(4000).optional(),
     steps: z.array(StepShape).min(1).max(200),
     input_schema: z.record(z.string(), z.unknown()).optional(),
     /** Sample input payload; the tool infers `input_schema` from it if
@@ -471,6 +476,23 @@ export const buildWorkflowTool: ConversationTool = {
       steps: args.steps,
     };
     if (args.description) workflowDraft.description = args.description;
+    // Stash the goal verbatim as draft-only metadata — same stash shape
+    // as start_workflow_from_goal. Read by the post-preview judge in
+    // dry_run_workflow; never projected into the persisted WorkflowDef.
+    // A whole-definition repair/replace of the SAME artifact (same
+    // slug) without an explicit goal keeps the previously-stashed goal
+    // — otherwise every build_workflow repair pass would silently
+    // disarm the judge. A slug pivot drops it (different artifact,
+    // different goal).
+    if (args.goal) {
+      workflowDraft.goal = args.goal;
+    } else if (
+      typeof currentDraft.workflow?.goal === "string" &&
+      currentDraft.workflow.goal.length > 0 &&
+      currentDraft.workflow.slug === args.slug
+    ) {
+      workflowDraft.goal = currentDraft.workflow.goal;
+    }
     if (input_schema) workflowDraft.input_schema = input_schema;
     if (args.output_schema) workflowDraft.output_schema = args.output_schema;
     if (args.output_transform) workflowDraft.output_transform = args.output_transform;

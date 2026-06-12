@@ -50,6 +50,7 @@ import type {
   AuthoringSummary,
   ConnectorDraftDocument,
   DraftDocument,
+  JudgeBreakerState,
   LatestDiagnosisSummary,
   LatestExecutionSummary,
   PersistedResourceRef,
@@ -100,6 +101,7 @@ function cloneState(state: AuthoringState): AuthoringState {
           steps: state.latest_diagnosis.steps.map((step) => ({ ...step })),
         }
       : null,
+    judge_breaker: state.judge_breaker ? { ...state.judge_breaker } : null,
   };
 }
 
@@ -348,6 +350,14 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
                         ...(entry.request_meta !== undefined
                           ? { request_meta: entry.request_meta }
                           : {}),
+                        // Hold-writes preview artifacts: the materialized
+                        // never-dispatched request is the step's reviewable
+                        // payload — it must survive normalization so the
+                        // NEXT turn's context still shows the would-be send.
+                        ...(entry.held === true ? { held: true } : {}),
+                        ...(entry.held === true && entry.held_request !== undefined
+                          ? { held_request: entry.held_request }
+                          : {}),
                         ...(typeof entry.error_code === "string"
                           ? { error_code: entry.error_code }
                           : {}),
@@ -434,6 +444,25 @@ export function withConnectorDraft(
   last_action: string | null = draft.summary?.last_action ?? null,
 ): DraftDocument {
   return applyConnectorMutation(draft, connector, last_action);
+}
+
+/**
+ * Record the preview-judge circuit-breaker state (Fix C). Pure draft
+ * mutation like every other `with*` helper — callers pass the next
+ * breaker value (or null to clear) and the state survives the
+ * normalize/serialize round-trip alongside the fingerprint evidence.
+ */
+export function withJudgeBreaker(
+  draft: DraftDocument,
+  judge_breaker: JudgeBreakerState | null,
+): DraftDocument {
+  const normalized = normalizeDraftDocument(draft);
+  const state = cloneState(normalized.state ?? createEmptyState("workflow"));
+  state.judge_breaker = judge_breaker ? { ...judge_breaker } : null;
+  return refreshDraftSummary({
+    ...normalized,
+    state,
+  });
 }
 
 export function withLatestPreview(

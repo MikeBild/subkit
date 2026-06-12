@@ -150,6 +150,117 @@ describe("runRecordedEval — evaluation against recorded evidence", () => {
   });
 });
 
+describe("runRecordedEval — bare-iteration-identifier lint (item_var retirement)", () => {
+  test("bare `item` in loop-body JSONata yields an eval_error finding with the $item rewrite", async () => {
+    const fetch = fetchStep();
+    const report = await runRecordedEval(
+      {
+        steps: [
+          fetch,
+          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["shape"] },
+          { id: "shape", kind: "transform", language: "jsonata", expression: "item.name" },
+        ],
+      },
+      { latest_preview: evidenceFor(fetch, { items: [{ name: "Ada" }] }) },
+    );
+    const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
+    expect(finding?.status).toBe("eval_error");
+    expect(finding?.message).toContain("`item`");
+    expect(finding?.message).toContain("$item");
+    // The proven AST rewrite rides the finding as a copy-paste fix.
+    expect(finding?.message).toContain("$item.name");
+    expect(finding?.path_candidates).toEqual(["$item.name"]);
+    expect(report.ok).toBe(false);
+    expect(report.next_actions).toContain("update_param");
+    expect(report.next_actions).toContain("edit_workflow_patch");
+  });
+
+  test("legacy declared item_var name in loop-body JSONata is linted with the rewrite", async () => {
+    const fetch = fetchStep();
+    const report = await runRecordedEval(
+      {
+        steps: [
+          fetch,
+          {
+            id: "iter",
+            kind: "loop",
+            over: "$scope.fetch.data.items",
+            item_var: "project",
+            body: ["shape"],
+          },
+          {
+            id: "shape",
+            kind: "transform",
+            language: "jsonata",
+            expression: "project.name & ' x'",
+          },
+        ],
+      },
+      { latest_preview: evidenceFor(fetch, { items: [{ name: "Ada" }] }) },
+    );
+    const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
+    expect(finding?.status).toBe("eval_error");
+    expect(finding?.message).toContain("`project`");
+    expect(finding?.path_candidates).toEqual(["$item.name & ' x'"]);
+    expect(report.ok).toBe(false);
+  });
+
+  test("canonical $item loop-body JSONata yields no lint finding (stays compile-only)", async () => {
+    const fetch = fetchStep();
+    const report = await runRecordedEval(
+      {
+        steps: [
+          fetch,
+          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["shape"] },
+          { id: "shape", kind: "transform", language: "jsonata", expression: "$item.name" },
+        ],
+      },
+      { latest_preview: evidenceFor(fetch, { items: [{ name: "Ada" }] }) },
+    );
+    const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
+    expect(finding?.status).toBe("not_evaluated");
+    expect(report.ok).toBe(true);
+  });
+
+  test("bare `item` OUTSIDE any loop body is not linted (top-level transform)", async () => {
+    const fetch = fetchStep();
+    const report = await runRecordedEval(
+      {
+        steps: [
+          fetch,
+          // `item` here is a legitimate path into the step's own input
+          // context — the lint only owns loop-body sites.
+          { id: "shape", kind: "transform", language: "jsonata", expression: "item.name" },
+        ],
+      },
+      { latest_preview: evidenceFor(fetch, { items: [{ name: "Ada" }] }) },
+    );
+    const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
+    expect(finding?.status).not.toBe("eval_error");
+  });
+
+  test("JavaScript loop-body sites are unaffected by the JSONata lint", async () => {
+    const fetch = fetchStep();
+    const report = await runRecordedEval(
+      {
+        steps: [
+          fetch,
+          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["shape"] },
+          {
+            id: "shape",
+            kind: "transform",
+            language: "javascript",
+            expression: "const item = input.item; return item;",
+          },
+        ],
+      },
+      { latest_preview: evidenceFor(fetch, { items: [{ name: "Ada" }] }) },
+    );
+    const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
+    expect(finding?.status).toBe("not_evaluated");
+  });
+});
+
 describe("runRecordedEval — gate verdicts as outcomes", () => {
   test("loop referencing un-previewed step yields gate blocks + missing_evidence + dry_run next action", async () => {
     const report = await runRecordedEval(

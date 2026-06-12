@@ -4,7 +4,7 @@
 //
 // Acceptance criteria:
 //   - AC1: The loop body runs once per item in the collection.
-//   - AC2: The `item_var` binding is accessible inside the body step scope.
+//   - AC2: The `$item` binding is accessible inside the body step scope.
 //   - AC3: `$loop_index` is injected and increments correctly.
 //   - AC4: Body steps are skipped in the linear walk (not double-executed).
 //   - AC5: Workflow status is "succeeded" when all iterations complete.
@@ -34,8 +34,8 @@ afterAll(async () => {
   await ctx.cleanup();
 }, JOURNEY_HOOK_TIMEOUT);
 
-describe("47: Loop step — iterates items, injects item_var and $loop_index", () => {
-  test("AC1+AC2+AC5: body runs once per item, item_var accessible, status succeeded", async () => {
+describe("47: Loop step — iterates items, injects $item and $loop_index", () => {
+  test("AC1+AC2+AC5: body runs once per item, $item accessible, status succeeded", async () => {
     const createRes = await journeyFetch(ctx, "/v1/workflows", {
       method: "POST",
       body: JSON.stringify({
@@ -53,14 +53,13 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
             kind: "loop",
             id: "process_numbers",
             over: "get_numbers.data",
-            item_var: "num",
             body: ["double_num"],
           },
-          // Body step: doubles the current item.
+          // Body step: doubles the current item via the canonical $item binding.
           {
             kind: "transform",
             id: "double_num",
-            expression: "num * 2",
+            expression: "$item * 2",
           },
         ],
       }),
@@ -106,14 +105,13 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
             kind: "loop",
             id: "tag_items",
             over: "get_items.data",
-            item_var: "letter",
             body: ["build_tag"],
           },
           {
             kind: "transform",
             id: "build_tag",
             // Produces { index: 0|1|2, letter: "a"|"b"|"c" }
-            expression: "{ 'index': $loop_index, 'letter': letter }",
+            expression: "{ 'index': $loop_index, 'letter': $item }",
           },
         ],
       }),
@@ -147,10 +145,9 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
             kind: "loop",
             id: "process_items",
             over: "get_items.data",
-            item_var: "val",
             body: ["halve"],
           },
-          { kind: "transform", id: "halve", expression: "val / 2" },
+          { kind: "transform", id: "halve", expression: "$item / 2" },
         ],
       }),
     });
@@ -193,20 +190,21 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
             {
               kind: "transform",
               id: "get_ids",
-              expression: "[1, 2]",
+              expression: "[{ 'id': 1 }, { 'id': 2 }]",
             },
             {
               kind: "loop",
               id: "fetch_large",
               over: "get_ids.data",
-              item_var: "id",
               body: ["get_blob"],
             },
             {
               kind: "request",
               id: "get_blob",
               method: "GET",
-              url: `${mockBase}/blob`,
+              // The loop body must reference the iteration item — the
+              // mock server replies with the blob for any path.
+              url: `${mockBase}/blob/\${item.id}`,
             },
           ],
         }),

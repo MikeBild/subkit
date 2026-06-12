@@ -383,7 +383,9 @@ function renderWorkflowLines(draft: DraftDocument): string[] {
   const manifest = renderScopeManifestLines(workflow.steps, stepTraces);
   if (manifest.length > 0) {
     lines.push("");
-    lines.push("### Scope manifest (paths the LLM may cite in JSONata)");
+    lines.push(
+      "### Scope manifest (paths the LLM may cite in JSONata — each step's recorded output is addressable as `$scope.<id>.data…`)",
+    );
     lines.push(...manifest);
   }
   return lines;

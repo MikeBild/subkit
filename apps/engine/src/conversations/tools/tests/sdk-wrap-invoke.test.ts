@@ -90,10 +90,11 @@ describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes (Fix 8)", (
     expect(hint).toMatch(/ARRAY of step ids/i);
   });
 
-  it("workflow_unsupported_placeholder teaches loop-body addressing (${item.…} vs bare item_var)", () => {
+  it("workflow_unsupported_placeholder teaches loop-body addressing (${item.…} / $item)", () => {
     const hint = ERROR_CODE_ALTERNATIVES.workflow_unsupported_placeholder;
     expect(hint).toContain("${item.<path>}");
-    expect(hint).toContain("item_var");
+    expect(hint).toContain("$item.<path>");
+    expect(hint).not.toContain("item_var");
     expect(hint).toMatch(/JSONata/);
   });
 

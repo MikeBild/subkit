@@ -11,11 +11,35 @@
 //  - Workflow-scope contract: with workflow_id unset, workflow-scoped candidates are ABSENT
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors, skillCandidates, tenants, workflows } from "../../../db/schema/index.ts";
+import {
+  connectors,
+  schemaVersions,
+  skillCandidates,
+  tenants,
+  workflows,
+} from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { logger } from "../../../logging/logger.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
+import type { AuthoringPromptHint } from "../../types.ts";
 import { assembleEnhancedPrompt } from "../context-assembler.ts";
+
+/** Minimal valid authoring hint for the given surface mode — only the
+ *  `mode` field gates the "Recorded endpoint samples" section. */
+function authoringHintFor(mode: "connector" | "workflow"): AuthoringPromptHint {
+  return {
+    mode,
+    stage: mode === "workflow" ? "workflow_draft_started" : "connector_draft_started",
+    lifecycle_state: "draft_only",
+    active_target: { kind: mode, lifecycle_state: "draft_only" },
+    blocked_by: [],
+    next_required_action: null,
+    next_suggested_tool: null,
+    checkpoints: [],
+    latest_execution: null,
+    latest_diagnosis: null,
+  };
+}
 
 // Section name constants — mirrors the strings the assembler pushes to `trimmed`.
 const SECTION_SKILL_CANDIDATES = "skill_candidates";
@@ -280,6 +304,124 @@ describe.skipIf(skip)(
 );
 
 // ---------------------------------------------------------------------------
+// Recorded endpoint samples — workflow-authoring mode gate
+// ---------------------------------------------------------------------------
+
+describe.skipIf(skip)("recorded endpoint samples — workflow-authoring mode gate", () => {
+  const SAMPLES_HEADING = "# Recorded endpoint samples";
+  // These tests assert the MODE GATE, not the budget ladder (that lives
+  // in the heavy-seed describe below). A claude-family model id buys a
+  // 180k cap so the workflow-authoring persona + recipe sections never
+  // push the prompt over budget here — `contextCapFor("mock")` is only
+  // 12k, which the persona-bearing prompt slightly exceeds, and the
+  // samples section would (correctly) be the first thing shed.
+  const ROOMY_MODEL = "claude-sonnet-4-5";
+
+  beforeAll(async () => {
+    if (skip) return;
+    // A recorded shape for the main connector — what probe_connector /
+    // call_connector write on a successful 2xx.
+    await ctx.db.insert(schemaVersions).values({
+      tenant_id,
+      connector_id,
+      endpoint_key: "GET /v1/charges",
+      schema: {
+        type: "object",
+        properties: {
+          data: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { id: { type: "string" }, amount: { type: "number" } },
+            },
+          },
+          has_more: { type: "boolean" },
+        },
+      },
+    });
+  });
+
+  test("renders the section in workflow-authoring mode for bound connectors", async () => {
+    const prompt = await assembleEnhancedPrompt(
+      {
+        tenant_id,
+        flow: "converse",
+        connector_id,
+        user_turns: [{ role: "user", content: "build a workflow listing charges" }],
+        max_tokens: 50_000,
+        model: ROOMY_MODEL,
+        authoring_hint: authoringHintFor("workflow"),
+        authoring_connector_ids: [connector_id],
+      },
+      ctx.db,
+    );
+    expect(prompt.system).toContain(SAMPLES_HEADING);
+    expect(prompt.system).toContain("GET /v1/charges");
+    expect(prompt.system).toContain("has_more: boolean");
+  });
+
+  test("section is ABSENT outside workflow-authoring mode (connector mode / no hint)", async () => {
+    const connectorMode = await assembleEnhancedPrompt(
+      {
+        tenant_id,
+        flow: "converse",
+        connector_id,
+        user_turns: [{ role: "user", content: "set up the stripe connector" }],
+        max_tokens: 50_000,
+        model: ROOMY_MODEL,
+        authoring_hint: authoringHintFor("connector"),
+        authoring_connector_ids: [connector_id],
+      },
+      ctx.db,
+    );
+    expect(connectorMode.system).not.toContain(SAMPLES_HEADING);
+
+    const noHint = await assembleEnhancedPrompt(
+      {
+        tenant_id,
+        flow: "converse",
+        connector_id,
+        user_turns: [{ role: "user", content: "stripe charges" }],
+        max_tokens: 50_000,
+        model: ROOMY_MODEL,
+        authoring_connector_ids: [connector_id],
+      },
+      ctx.db,
+    );
+    expect(noHint.system).not.toContain(SAMPLES_HEADING);
+  });
+
+  test("section is ABSENT when no shapes were recorded for the bound connectors", async () => {
+    const [bare] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id,
+        slug: "stripe-no-shapes",
+        display_name: "Stripe (no shapes)",
+        driver: "http",
+        environment: "dev",
+        auth_type: "none",
+        base_url: "https://api.stripe.com",
+        config: {},
+      })
+      .returning();
+    const prompt = await assembleEnhancedPrompt(
+      {
+        tenant_id,
+        flow: "converse",
+        user_turns: [{ role: "user", content: "build a workflow" }],
+        max_tokens: 50_000,
+        model: ROOMY_MODEL,
+        authoring_hint: authoringHintFor("workflow"),
+        authoring_connector_ids: [bare!.id],
+      },
+      ctx.db,
+    );
+    expect(prompt.system).not.toContain(SAMPLES_HEADING);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Drop ladder — deterministic overflow (heavy seed)
 // ---------------------------------------------------------------------------
 //
@@ -380,6 +522,23 @@ describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () 
       fingerprint: `fp-heavy-${i}`,
     }));
     await heavyCtx.db.insert(skillCandidates).values(rows);
+
+    // Recorded endpoint shapes for the heavy connector — substantial
+    // enough that the "Recorded endpoint samples" section carries real
+    // weight in the drop-order assertion below.
+    await heavyCtx.db.insert(schemaVersions).values(
+      Array.from({ length: 4 }, (_, i) => ({
+        tenant_id: heavyTenantId,
+        connector_id: heavyConnectorId,
+        endpoint_key: `GET /v1/heavy-${i}`,
+        schema: {
+          type: "object" as const,
+          properties: Object.fromEntries(
+            Array.from({ length: 10 }, (_, j) => [`field_${i}_${j}`, { type: "string" as const }]),
+          ),
+        },
+      })),
+    );
   }, 60_000);
 
   afterAll(async () => {
@@ -409,5 +568,42 @@ describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () 
     // Drop ORDER: skill_candidates (lower priority) appears first in the
     // dropped list, then connector_recipe_bodies.
     expect(skillCandIdx).toBeLessThan(recipeBodiesIdx);
+  });
+
+  test("recorded_endpoint_samples drops FIRST — before skill_candidates and connector_recipe_bodies", async () => {
+    // Cap note: `contextCapFor("mock")` clamps the budget to 12_000 —
+    // with the workflow-authoring persona the irreducible prompt is
+    // ~11.3k, so 12_000 keeps assembly viable while the heavy seed
+    // (recipes + 30 candidates + 4 recorded shapes) still overflows it
+    // deterministically and forces the ladder to run.
+    const prompt = await assembleEnhancedPrompt(
+      {
+        tenant_id: heavyTenantId,
+        flow: "converse",
+        connector_id: heavyConnectorId,
+        user_turns: [{ role: "user", content: "stripe charge heavy workflow" }],
+        max_tokens: 12_000,
+        model: "mock",
+        authoring_hint: authoringHintFor("workflow"),
+        authoring_connector_ids: [heavyConnectorId],
+      },
+      heavyCtx.db,
+    );
+
+    const dropped = prompt.dropped_sections;
+    const samplesIdx = dropped.indexOf("recorded_endpoint_samples");
+    const skillCandIdx = dropped.indexOf(SECTION_SKILL_CANDIDATES_HEAVY);
+    const recipeBodiesIdx = dropped.indexOf(SECTION_CONNECTOR_RECIPE_BODIES_HEAVY);
+
+    // No interaction_log / failures in this assembly, so the samples
+    // section is the VERY FIRST thing the trimmer sheds — before
+    // candidates, recipe bodies, and every skill section.
+    expect(samplesIdx).toBe(0);
+    expect(skillCandIdx).toBeGreaterThan(samplesIdx);
+    if (recipeBodiesIdx > -1) {
+      expect(recipeBodiesIdx).toBeGreaterThan(samplesIdx);
+    }
+    // And the section is genuinely gone from the rendered prompt.
+    expect(prompt.system).not.toContain("# Recorded endpoint samples");
   });
 });

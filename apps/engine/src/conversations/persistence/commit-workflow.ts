@@ -92,6 +92,10 @@ export interface CommitWorkflowAtomicParams {
   reason?: string;
   emitAutoPersistAudit?: boolean;
   commitIntentKind?: string;
+  /** Extra keys folded into the auto-persist audit metadata — the
+   *  governance record of WHY the commit happened (e.g. the preview
+   *  judge's verdict that permitted a green auto-commit). */
+  extraAuditMetadata?: Record<string, unknown>;
 }
 
 export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promise<ToolResult> {
@@ -838,6 +842,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
         source: "harness_auto_persist",
         kind: adoptedSameSlug ? "same_slug_adoption" : "auto_persist",
         ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
+        ...(p.extraAuditMetadata ?? {}),
         ...(forceClearsPreview && runtimeDataFailure
           ? {
               forced_over_runtime_data: true,
@@ -856,6 +861,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
         reason: p.reason ?? "auto_persist_on_confirmation",
         source: "harness_auto_persist",
         ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
+        ...(p.extraAuditMetadata ?? {}),
         ...(forceClearsPreview && runtimeDataFailure
           ? {
               forced_over_runtime_data: true,

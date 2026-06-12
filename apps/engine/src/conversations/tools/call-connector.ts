@@ -65,6 +65,7 @@ import { getCredentialForConnector } from "../../credentials/service.ts";
 import { roles, systemAccounts, users } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
+import { recordSuccessShape } from "../../schema-versions/service.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
 
@@ -173,6 +174,25 @@ function hostOf(rawUrl: string): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * Normalize a call path into the path half of the `<METHOD> <path>`
+ * endpoint key `schema_versions` rows are keyed by. Full URLs reduce to
+ * their pathname and query strings are stripped (well-formed calls carry
+ * them in `args.query` anyway) so pagination params don't fan one
+ * logical endpoint into many schema rows.
+ */
+function endpointKeyPath(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      return new URL(path).pathname;
+    } catch {
+      // fall through to the relative-path handling below
+    }
+  }
+  const queryStart = path.indexOf("?");
+  return queryStart === -1 ? path : path.slice(0, queryStart);
 }
 
 type PermissionResult = { allow: true } | { allow: false; reason: string };
@@ -700,6 +720,41 @@ export const callConnectorTool: ConversationTool = {
       return structuredError("call_failed", errorDetail, {
         latency_ms,
       });
+    }
+
+    // Successful calls record the observed top-level shape against
+    // `schema_versions` — same-layer parity with `probe_connector`
+    // (probe-connector.ts): both surfaces are the LLM's primary "what
+    // does this endpoint actually return" evidence, and the authoring
+    // context's "Recorded endpoint samples" section + the drift
+    // detector read these rows back. Endpoint key is `<METHOD> <path>`
+    // so repeat calls against the same endpoint reuse a row.
+    // postgres/sftp inputs reject `method` at validation time, so this
+    // branch only fires for the method+path drivers (http/graphql/s3).
+    if (status >= 200 && status < 300 && responseBody !== null && args.method && args.path) {
+      try {
+        await recordSuccessShape(
+          {
+            tenant_id: ctx.tenant_id,
+            connector_id: connector.id,
+            endpoint_key: `${args.method} ${endpointKeyPath(args.path)}`,
+            value: responseBody,
+          },
+          ctx.db,
+        );
+      } catch (err) {
+        // Never let shape recording fail the call — the LLM still
+        // needs the response. Log and move on (probe_connector
+        // contract).
+        logger.warn({
+          module: "conversation_tool",
+          action: "call_connector.shape_record_failed",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          connector_id: connector.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     const body_byte_count = approximateByteLength(responseBody);

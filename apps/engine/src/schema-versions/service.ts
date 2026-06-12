@@ -108,6 +108,59 @@ export interface GetLatestShapeParams {
   endpoint_key: string;
 }
 
+export interface LatestEndpointShape {
+  endpoint_key: string;
+  shape: SchemaShape;
+  seen_at: Date;
+}
+
+/**
+ * List the most recent recorded shape for each endpoint of a connector,
+ * newest first. The multi-endpoint sibling of `getLatestShape` — the
+ * authoring context's "Recorded endpoint samples" section reads this to
+ * put observed payload shapes in front of the model BEFORE it writes
+ * request paths and transforms.
+ *
+ * `recordSuccessShape` dedups inserts per shape *change*, so the row
+ * volume per connector stays small — a newest-first scan + in-memory
+ * endpoint dedupe is sufficient (no DISTINCT ON needed at this volume).
+ */
+export async function listLatestShapes(
+  p: { tenant_id: string; connector_id: string; max_endpoints?: number },
+  exec?: Executor,
+): Promise<LatestEndpointShape[]> {
+  const db: Executor = exec ?? getDb();
+  const maxEndpoints = p.max_endpoints ?? 4;
+  const rows = await db
+    .select({
+      endpoint_key: schemaVersions.endpoint_key,
+      schema: schemaVersions.schema,
+      seen_at: schemaVersions.seen_at,
+    })
+    .from(schemaVersions)
+    .where(
+      and(
+        eq(schemaVersions.tenant_id, p.tenant_id),
+        eq(schemaVersions.connector_id, p.connector_id),
+      ),
+    )
+    .orderBy(desc(schemaVersions.seen_at))
+    .limit(100);
+  const out: LatestEndpointShape[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (seen.has(row.endpoint_key)) continue;
+    seen.add(row.endpoint_key);
+    out.push({
+      endpoint_key: row.endpoint_key,
+      shape: row.schema as unknown as SchemaShape,
+      seen_at: row.seen_at,
+    });
+    if (out.length >= maxEndpoints) break;
+  }
+  return out;
+}
+
 export async function getLatestShape(
   p: GetLatestShapeParams,
   exec?: Executor,

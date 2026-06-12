@@ -1,16 +1,19 @@
-// Bounded JSONata auto-repair (Fix 10, sessions 2026-06-11/12
-// post-mortem).
+// Bounded transform auto-repair (Fix 10, sessions 2026-06-11/12
+// post-mortem). Covers both authored transform languages: JSONata
+// expressions and `language: "javascript"` function bodies.
 //
 // When an authored transform expression fails to compile, throws
 // against recorded evidence, or evaluates to an empty result while the
 // upstream data is non-empty, the engine runs a bounded repair: ≤2
-// focused LLM calls, each fed the caret-pointed engine error, a
-// bounded sample of the recorded scope, the `enumerateScopePaths`
-// candidates, and the failed expression. Every candidate is verified
-// MECHANICALLY before it is accepted — compile via the engine's
-// jsonata compiler, and (for the empty-result failure class) a real
-// evaluation against the recorded scope that must produce a non-empty
-// value.
+// focused LLM calls, each fed the engine's error (caret-pointed for
+// JSONata, the sandbox message for JS), a bounded sample of the
+// recorded scope, path candidates in the language's own addressing
+// (`$scope.<id>.data` / `input.scope.<id>.data`), and the failed
+// expression. Every candidate is verified MECHANICALLY before it is
+// accepted — compile via the engine's jsonata compiler or a parse-only
+// QuickJS check, and (for failure classes with recorded evidence) a
+// real evaluation against the recorded scope that must produce a
+// non-empty value for the empty-result class.
 //
 // PROPOSE, don't apply — the self-healing discipline. The repair
 // outcome rides the tool result (`repair: { repaired, expression,
@@ -34,6 +37,7 @@ import {
 } from "../execution/jsonata-engine.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
+import { checkJsBodySyntax, evaluateJsBody } from "./js-transform-eval.ts";
 import { truncateForLlm } from "./tools/truncate.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -48,17 +52,25 @@ const VERIFY_EVAL_TIMEOUT_MS = 500;
 
 export type TransformRepairFailureKind = "compile_error" | "eval_error" | "empty_result";
 
+export type TransformRepairLanguage = "jsonata" | "javascript";
+
 export interface TransformRepairFinding {
   kind: TransformRepairFailureKind;
-  /** Caret-pointed engine error (compile/eval) or the empty-result
-   *  hint produced by the recorded-eval pass. */
+  /** Caret-pointed engine error (JSONata compile/eval), the QuickJS
+   *  sandbox message (JS), or the empty-result hint produced by the
+   *  recorded-eval pass. */
   message: string;
   position?: number;
 }
 
 export interface RepairTransformParams {
-  /** The failed expression, verbatim. */
+  /** The failed expression, verbatim. For `language: "javascript"`
+   *  this is a function body (production `runJs` contract: one global
+   *  `input`; data at `input.scope.<step_id>.data…`, workflow input at
+   *  `input.input`; explicit `return`). */
   expression: string;
+  /** Authored language of the failed expression. Default: jsonata. */
+  language?: TransformRepairLanguage;
   finding: TransformRepairFinding;
   /** Envelope-shaped recorded scope (`$scope.<id>.data` addressing)
    *  the candidate is verified against. Required for the empty-result
@@ -67,8 +79,10 @@ export interface RepairTransformParams {
   scopeSample?: Record<string, unknown> | null;
   /** Workflow input recorded with the preview — bound as `$input`. */
   input?: unknown;
-  /** Copy-paste `$scope.<id>.data.<path>` candidates from
-   *  `enumerateScopePaths` over the recorded evidence. */
+  /** Copy-paste path candidates from `enumerateScopePaths` over the
+   *  recorded evidence, in the language's own addressing —
+   *  `$scope.<id>.data.<path>` (JSONata) or
+   *  `input.scope.<id>.data.<path>` (JS). */
   pathCandidates?: ReadonlyArray<string>;
   /** Dotted site for logging (`steps.shape.expression`, …). */
   site?: string;
@@ -81,7 +95,8 @@ export type TransformRepairOutcome =
   | { repaired: false; attempts: number; last_error: string };
 
 const RepairProposalSchema = z.object({
-  /** The corrected JSONata expression — nothing else. */
+  /** The corrected expression (JSONata) or function body (JS) —
+   *  nothing else. */
   expression: z.string().min(1).max(10_000),
   reasoning: z.string().max(600).optional(),
 });
@@ -100,21 +115,42 @@ function renderScopeSample(scope: Record<string, unknown>): string {
 }
 
 function buildRepairPrompt(params: RepairTransformParams, lastError: string): string {
-  const lines: string[] = [
-    "A JSONata expression in a workflow draft failed. Propose a corrected JSONata expression that preserves the author's intent.",
-    "",
-    "Failed expression:",
-    "```",
-    params.expression,
-    "```",
-    "",
-    `Failure (${params.finding.kind}):`,
-    lastError,
-  ];
+  const javascript = params.language === "javascript";
+  const lines: string[] = javascript
+    ? [
+        "A JavaScript transform in a workflow draft failed. Propose a corrected function body that preserves the author's intent.",
+        "",
+        "Execution contract (QuickJS sandbox, no host globals — no fetch, no process, no require, no network):",
+        "- The code is a FUNCTION BODY (not a module, not an arrow function). It must `return` its result; a trailing expression also works.",
+        "- It receives exactly one value, `input`:",
+        "  - `input.scope.<step_id>.data` — recorded output of each upstream step",
+        "  - `input.input` — the workflow input",
+        "",
+        "Failed function body:",
+        "```js",
+        params.expression,
+        "```",
+        "",
+        `Failure (${params.finding.kind}):`,
+        lastError,
+      ]
+    : [
+        "A JSONata expression in a workflow draft failed. Propose a corrected JSONata expression that preserves the author's intent.",
+        "",
+        "Failed expression:",
+        "```",
+        params.expression,
+        "```",
+        "",
+        `Failure (${params.finding.kind}):`,
+        lastError,
+      ];
   if (params.scopeSample && Object.keys(params.scopeSample).length > 0) {
     lines.push(
       "",
-      "Recorded upstream scope the expression evaluates against (root object; addressing: `$scope.<step_id>.data` — bare `<step_id>.data` also resolves):",
+      javascript
+        ? "Recorded upstream scope the body runs against (this object is `input.scope`; addressing: `input.scope.<step_id>.data`):"
+        : "Recorded upstream scope the expression evaluates against (root object; addressing: `$scope.<step_id>.data` — bare `<step_id>.data` also resolves):",
       "```json",
       renderScopeSample(params.scopeSample),
       "```",
@@ -130,10 +166,20 @@ function buildRepairPrompt(params: RepairTransformParams, lastError: string): st
   lines.push(
     "",
     "Rules:",
-    "- Return ONLY the corrected expression in the `expression` field.",
-    "- Fix the path/syntax problem; do not change what the expression is trying to produce.",
-    "- JSONata variables are `$`-prefixed; variable binding is `$name := value` inside a `( … )` block.",
-    "- The corrected expression must compile" +
+    javascript
+      ? "- Return ONLY the corrected function body in the `expression` field — no `function` wrapper, no markdown fences."
+      : "- Return ONLY the corrected expression in the `expression` field.",
+    javascript
+      ? "- Fix the path/logic/syntax problem; do not change what the code is trying to produce."
+      : "- Fix the path/syntax problem; do not change what the expression is trying to produce.",
+    ...(javascript
+      ? []
+      : [
+          "- JSONata variables are `$`-prefixed; variable binding is `$name := value` inside a `( … )` block.",
+        ]),
+    (javascript
+      ? "- The corrected body must parse and run without throwing"
+      : "- The corrected expression must compile") +
       (params.finding.kind === "empty_result"
         ? " AND produce a non-empty result against the recorded scope above."
         : "."),
@@ -144,13 +190,33 @@ function buildRepairPrompt(params: RepairTransformParams, lastError: string): st
 /** Mechanical verification of a repair candidate. Compile always; for
  *  failure classes with recorded evidence, evaluate for real — an
  *  `empty_result` repair must produce a non-empty value, an
- *  `eval_error` repair must not throw. */
+ *  `eval_error` repair must not throw. JS candidates go through the
+ *  same QuickJS sandbox the execution layer uses (parse-only check
+ *  when there is nothing to evaluate against). */
 async function verifyCandidate(
   candidate: string,
+  language: TransformRepairLanguage,
   finding: TransformRepairFinding,
   scope: Record<string, unknown> | null | undefined,
   input: unknown,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (language === "javascript") {
+    if (!scope || finding.kind === "compile_error") {
+      const syntax = await checkJsBodySyntax(candidate);
+      return syntax.ok ? { ok: true } : { ok: false, error: syntax.message };
+    }
+    const outcome = await evaluateJsBody({ code: candidate, scope, input: input ?? null });
+    if (!outcome.ok) {
+      return { ok: false, error: `candidate failed against recorded scope: ${outcome.message}` };
+    }
+    if (finding.kind === "empty_result" && isEmptyEvalResult(outcome.value)) {
+      return {
+        ok: false,
+        error: "candidate ran but still returned an empty result against recorded scope",
+      };
+    }
+    return { ok: true };
+  }
   let compiled: ReturnType<typeof compileJsonata>;
   try {
     compiled = compileJsonata(candidate);
@@ -226,6 +292,7 @@ export async function repairTransformExpression(
     tried.add(candidate);
     const verdict = await verifyCandidate(
       candidate,
+      params.language ?? "jsonata",
       params.finding,
       params.scopeSample,
       params.input,
@@ -234,9 +301,10 @@ export async function repairTransformExpression(
       logger.info({
         module: "conversations",
         action: "transform_repair.repaired",
-        msg: "bounded JSONata repair produced a verified candidate",
+        msg: "bounded transform repair produced a verified candidate",
         tenant_id: params.tenant_id,
         site: params.site ?? null,
+        language: params.language ?? "jsonata",
         failure_kind: params.finding.kind,
         attempts: attempt,
       });
@@ -253,9 +321,10 @@ export async function repairTransformExpression(
   logger.info({
     module: "conversations",
     action: "transform_repair.gave_up",
-    msg: "bounded JSONata repair exhausted its attempts",
+    msg: "bounded transform repair exhausted its attempts",
     tenant_id: params.tenant_id,
     site: params.site ?? null,
+    language: params.language ?? "jsonata",
     failure_kind: params.finding.kind,
     attempts: MAX_REPAIR_ATTEMPTS,
     last_error: lastError,

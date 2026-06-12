@@ -18,7 +18,10 @@
 
 import type { RequestMeta, StepErrorDetail } from "../types.ts";
 
-const SAFE_HEADER_DENYLIST = new Set([
+/** Auth-bearing header names (lowercase) that must never surface with
+ *  their values on any diagnostic / preview surface. Shared with the
+ *  hold-writes `held_request.headers_redacted` scrub. */
+export const SAFE_HEADER_DENYLIST = new Set([
   "authorization",
   "cookie",
   "set-cookie",

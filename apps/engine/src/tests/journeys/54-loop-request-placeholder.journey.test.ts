@@ -115,7 +115,6 @@ describe("54: Loop body + request step + ${item.id} placeholder", () => {
             id: "fetch_resources",
             kind: "loop",
             over: "fetch_projects.data.projects",
-            item_var: "project",
             body: ["get_project_resources"],
           },
           {
@@ -173,7 +172,6 @@ describe("54: Loop body + request step + ${item.id} placeholder", () => {
             id: "loop_step",
             kind: "loop",
             over: "fetch_projects.data.projects",
-            item_var: "project",
             body: ["bad_inner"],
           },
           {

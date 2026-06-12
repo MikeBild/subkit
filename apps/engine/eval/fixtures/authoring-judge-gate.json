@@ -1,0 +1,21 @@
+{
+  "name": "authoring-judge-gate",
+  "description": "Preview judge gates the green-preview auto-commit on the user's GOAL: the 'Project: ()' wrong-content fixture (empty project names) is blocked with the missing items listed; the correct fixture (names + droplet specs present) passes and auto-commits.",
+  "flow": "judge",
+  "input": {
+    "goal": "Email me the DigitalOcean resources per project: include project names and droplet specs (CPU, memory, disk).",
+    "wrong_expression": "{ \"html\": \"<p>Project: ()</p>\", \"projects\": [{\"name\": \"\"}] }",
+    "correct_expression": "{ \"html\": \"<p>Project: alpha — 2 vCPU / 4GB RAM / 80GB disk</p>\", \"projects\": [{\"name\": \"alpha\", \"specs\": {\"cpu\": 2, \"memory_gb\": 4, \"disk_gb\": 80}}] }",
+    "empty_name_marker": "\"name\": \"\"",
+    "failed_verdict": {
+      "verdict": "failed",
+      "reason": "Project names are empty and droplet specs are absent from the previewed email.",
+      "missing": ["project names are empty strings", "droplet specs (CPU/memory/disk) absent"]
+    },
+    "passing_verdict": {
+      "verdict": "passes",
+      "reason": "Output contains project names and droplet specs.",
+      "missing": []
+    }
+  }
+}

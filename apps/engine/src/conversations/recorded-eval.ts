@@ -12,8 +12,11 @@
 // What the pass does — all of it against RECORDED evidence, never a
 // live call (`dry_run_workflow` stays the only explicit live step):
 //
-//   1. JSONata compile for every authored expression, with the engine's
-//      caret-pointed errors (`jsonata-engine.ts#formatError`).
+//   1. Compile every authored expression: JSONata with the engine's
+//      caret-pointed errors (`jsonata-engine.ts#formatError`);
+//      `language: "javascript"` bodies via a parse-only QuickJS check
+//      (`js-transform-eval.ts` — same sandbox, zero egress, zero host
+//      globals).
 //   2. Scope-reference resolution against fingerprint-valid recorded
 //      previews (Fix 5): every `$scope.<X>` cite is classified
 //      recorded / stale / missing.
@@ -39,7 +42,16 @@ import {
 import { logger } from "../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
 import { extractStepIdReferences } from "../workflows/levenshtein.ts";
+import {
+  type ReferenceValidationError,
+  validateBareIterationIdentifiers,
+} from "../workflows/reference-validator.ts";
 import { enumerateScopePaths, summarizeScopeShape } from "../workflows/scope-shape.ts";
+import {
+  checkJsBodySyntax,
+  evaluateJsBody,
+  extractJsScopeReferences,
+} from "./js-transform-eval.ts";
 import { fingerprintsById } from "./step-fingerprint.ts";
 import {
   describeLoopGateBlock,
@@ -150,9 +162,13 @@ interface WorkflowLike {
   output_transform?: string;
 }
 
-interface ExpressionSite {
+export interface ExpressionSite {
   site: string;
   step_id: string | null;
+  /** Authored expression language at this site. `when` / `over` /
+   *  `output_transform` are always JSONata; transform steps carry
+   *  whichever the author chose. */
+  language: "jsonata" | "javascript";
   expression: string;
   /** Whether the recorded-eval pass may EVALUATE (not just compile)
    *  this site against recorded scope. */
@@ -190,10 +206,15 @@ function collectExpressionSites(workflow: WorkflowLike): ExpressionSite[] {
     const inControlFlowBody = controlFlowChildren.has(id);
     if (kind === "transform") {
       const language = typeof step.language === "string" ? step.language : "jsonata";
-      if (language === "jsonata" && typeof step.expression === "string" && step.expression) {
+      if (
+        (language === "jsonata" || language === "javascript") &&
+        typeof step.expression === "string" &&
+        step.expression
+      ) {
         sites.push({
           site: `steps.${id}.expression`,
           step_id: id,
+          language,
           expression: step.expression,
           evaluable: !inControlFlowBody,
         });
@@ -203,6 +224,7 @@ function collectExpressionSites(workflow: WorkflowLike): ExpressionSite[] {
       sites.push({
         site: `steps.${id}.when`,
         step_id: id,
+        language: "jsonata",
         expression: step.when,
         evaluable: false,
       });
@@ -211,6 +233,7 @@ function collectExpressionSites(workflow: WorkflowLike): ExpressionSite[] {
       sites.push({
         site: `steps.${id}.over`,
         step_id: id,
+        language: "jsonata",
         expression: step.over,
         evaluable: !inControlFlowBody,
       });
@@ -220,6 +243,7 @@ function collectExpressionSites(workflow: WorkflowLike): ExpressionSite[] {
     sites.push({
       site: "output_transform",
       step_id: null,
+      language: "jsonata",
       expression: workflow.output_transform,
       evaluable: true,
     });
@@ -300,6 +324,9 @@ function previewValue(value: unknown): unknown {
 function pathCandidatesFor(
   refs: ReadonlyArray<string>,
   recordedScope: Record<string, unknown>,
+  /** Addressing root in the site's language: `$scope` (JSONata) or
+   *  `input.scope` (JS function body). */
+  prefix: "$scope" | "input.scope" = "$scope",
 ): string[] {
   const out: string[] = [];
   for (const ref of refs) {
@@ -311,10 +338,189 @@ function pathCandidatesFor(
     );
     rels.sort((a, b) => a.length - b.length);
     for (const rel of rels.slice(0, PATH_CANDIDATES_PER_REF)) {
-      out.push(rel ? `$scope.${ref}.data.${rel}` : `$scope.${ref}.data`);
+      out.push(rel ? `${prefix}.${ref}.data.${rel}` : `${prefix}.${ref}.data`);
     }
   }
   return out.slice(0, PATH_CANDIDATES_MAX);
+}
+
+/** Step ids a site references, in the site's own language. */
+function referencedStepIds(site: ExpressionSite, stepIds: ReadonlySet<string>): string[] {
+  const raw =
+    site.language === "javascript"
+      ? extractJsScopeReferences(site.expression)
+      : extractStepIdReferences(site.expression);
+  return raw.filter((ref) => stepIds.has(ref) && ref !== site.step_id);
+}
+
+/**
+ * JSONata site evaluation — compile with caret errors, then (when
+ * evaluable) evaluate against the recorded scope with the execution
+ * bindings. Exported so the JSONata-specific authoring checks stay one
+ * cohesive, testable branch.
+ */
+export async function evaluateJsonataSite(
+  site: ExpressionSite,
+  refs: ReadonlyArray<string>,
+  evaluable: boolean,
+  recordedScope: Record<string, unknown>,
+  input: unknown,
+  bareIterationLint: ReadonlyArray<ReferenceValidationError> = [],
+): Promise<RecordedEvalExpressionFinding> {
+  // (1) compile with caret errors.
+  try {
+    compileJsonata(site.expression);
+  } catch (err) {
+    const e = formatJsonataError(err, site.expression);
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: "compile_error",
+      message: e.message,
+      ...(e.position !== undefined ? { position: e.position } : {}),
+    };
+  }
+
+  // (1b) bare-iteration-identifier lint (item_var retirement). The
+  // expression COMPILES — bare `item` is a valid JSONata path — but
+  // the runtime binds the current loop item as `$item` only, so the
+  // reference resolves to nothing at execution time. Reported with the
+  // same status the genuine runtime failure would surface as
+  // (`eval_error`: ok=false, next_actions → update_param /
+  // edit_workflow_patch, no LLM repair pass — the proven `$item`
+  // rewrite from the AST rewriter IS the fix, carried in the message
+  // and as a copy-paste `path_candidates` entry). The lint hits are
+  // resolved by the caller against the full steps array (the enclosing
+  // loop's declared/undeclared item_var state lives there); loop-body
+  // sites only.
+  if (bareIterationLint.length > 0) {
+    const names = [...new Set(bareIterationLint.map((l) => l.bad_reference))]
+      .map((n) => `\`${n}\``)
+      .join(", ");
+    const rewrites = [
+      ...new Set(
+        bareIterationLint
+          .map((l) => l.did_you_mean[0])
+          .filter((r): r is string => typeof r === "string" && r.length > 0 && r !== "$item"),
+      ),
+    ];
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: "eval_error",
+      message:
+        `loop-body JSONata references the iteration item as bare ${names} — the runtime binds the current item as \`$item\` only` +
+        (rewrites[0] !== undefined ? `; did you mean: \`${rewrites[0]}\`` : ""),
+      ...(rewrites.length > 0 ? { path_candidates: rewrites } : {}),
+    };
+  }
+
+  // (3) evaluation against recorded scope — only when every sibling
+  // reference has recorded (fingerprint-valid) evidence. Sites with
+  // no sibling refs (pure `$input` shapes) and sites inside loop
+  // bodies are compile-only.
+  if (!evaluable) {
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: "not_evaluated",
+      message:
+        refs.length === 0
+          ? "no sibling $scope references — compile check only"
+          : "referenced step(s) have no fingerprint-valid recorded preview — run dry_run_workflow to record evidence",
+    };
+  }
+  const bindings = buildJsonataBindings(recordedScope, input);
+  const outcome = await evaluateWithTimeout(site.expression, recordedScope, bindings);
+  if (!outcome.ok) {
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: "eval_error",
+      message: outcome.message,
+      ...(outcome.position !== undefined ? { position: outcome.position } : {}),
+    };
+  }
+  if (isEmptyEvalResult(outcome.value)) {
+    const candidates = pathCandidatesFor(refs, recordedScope);
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: "empty_result",
+      message:
+        "expression evaluated to an empty result against the recorded scope — either the JSONata path is wrong, or a filter matched no rows",
+      ...(candidates.length > 0 ? { path_candidates: candidates } : {}),
+    };
+  }
+  return {
+    site: site.site,
+    step_id: site.step_id,
+    status: "ok",
+    value_preview: previewValue(outcome.value),
+  };
+}
+
+/**
+ * JS site evaluation — same finding contract, QuickJS sandbox instead
+ * of the JSONata engine. Non-evaluable sites get a parse-only syntax
+ * check (the body is never executed); evaluable sites run for real
+ * against the production context shape `{ scope, input }` under a
+ * tight wall clock. Zero egress either way — QuickJS has no host
+ * globals.
+ */
+async function evaluateJavascriptSite(
+  site: ExpressionSite,
+  refs: ReadonlyArray<string>,
+  evaluable: boolean,
+  recordedScope: Record<string, unknown>,
+  input: unknown,
+): Promise<RecordedEvalExpressionFinding> {
+  if (!evaluable) {
+    const syntax = await checkJsBodySyntax(site.expression);
+    if (!syntax.ok) {
+      return {
+        site: site.site,
+        step_id: site.step_id,
+        status: "compile_error",
+        message: syntax.message,
+      };
+    }
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: "not_evaluated",
+      message:
+        refs.length === 0
+          ? "no input.scope references — syntax check only"
+          : "referenced step(s) have no fingerprint-valid recorded preview — run dry_run_workflow to record evidence",
+    };
+  }
+  const outcome = await evaluateJsBody({ code: site.expression, scope: recordedScope, input });
+  if (!outcome.ok) {
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: outcome.kind,
+      message: outcome.message,
+    };
+  }
+  if (isEmptyEvalResult(outcome.value)) {
+    const candidates = pathCandidatesFor(refs, recordedScope, "input.scope");
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: "empty_result",
+      message:
+        "function body returned an empty result against the recorded scope — either the input.scope.<step_id>.data path is wrong, or a filter matched no rows",
+      ...(candidates.length > 0 ? { path_candidates: candidates } : {}),
+    };
+  }
+  return {
+    site: site.site,
+    step_id: site.step_id,
+    status: "ok",
+    value_preview: previewValue(outcome.value),
+  };
 }
 
 function isEmptyEvalResult(value: unknown): boolean {
@@ -324,9 +530,11 @@ function isEmptyEvalResult(value: unknown): boolean {
 /**
  * Run the recorded-evaluation pass over a candidate workflow draft.
  *
- * JSONata compile + evaluation against recorded evidence only. No live
- * HTTP, ever — side-effect safety is the whole point
- * (`dry_run_workflow` stays the explicit live step). Without
+ * Compile + evaluation against recorded evidence only — JSONata via
+ * the engine's compiler, `language: "javascript"` bodies via the
+ * QuickJS sandbox (no host globals). No live HTTP, ever — side-effect
+ * safety is the whole point (`dry_run_workflow` stays the explicit
+ * live step). Without
  * `options.repair` the pass is pure compute; with it, findings of
  * status `compile_error` / `empty_result` additionally get a bounded
  * (≤2 attempts) LLM repair whose outcome rides the finding as
@@ -365,13 +573,27 @@ export async function runRecordedEval(
   const expressions: RecordedEvalExpressionFinding[] = [];
   const scope_refs: RecordedEvalScopeRef[] = [];
 
+  // Bare-iteration-identifier lint (item_var retirement), resolved
+  // once against the full steps array — the lint needs each site's
+  // enclosing loop (declared/undeclared item_var) which a single
+  // ExpressionSite cannot carry. Same pass the workflow validator and
+  // the conversations verifier run; keyed by the site naming this
+  // report already uses (`steps.<id>.<field>`). Loop-body JSONata
+  // sites only by construction.
+  const bareIterationBySite = new Map<string, ReferenceValidationError[]>();
+  for (const lint of validateBareIterationIdentifiers(steps)) {
+    const key = `steps.${lint.step_id}.${lint.field}`;
+    const list = bareIterationBySite.get(key);
+    if (list) list.push(lint);
+    else bareIterationBySite.set(key, [lint]);
+  }
+
   for (const site of sites) {
     // (2) scope-reference resolution against fingerprint-valid
     // recorded previews — reported per cite regardless of whether the
-    // expression compiles.
-    const refs = extractStepIdReferences(site.expression).filter(
-      (ref) => stepIds.has(ref) && ref !== site.step_id,
-    );
+    // expression compiles. References are extracted in the site's own
+    // language (`$scope.<id>` vs `input.scope.<id>`).
+    const refs = referencedStepIds(site, stepIds);
     for (const ref of refs) {
       scope_refs.push({
         site: site.site,
@@ -381,69 +603,26 @@ export async function runRecordedEval(
       });
     }
 
-    // (1) compile with caret errors.
-    try {
-      compileJsonata(site.expression);
-    } catch (err) {
-      const e = formatJsonataError(err, site.expression);
-      expressions.push({
-        site: site.site,
-        step_id: site.step_id,
-        status: "compile_error",
-        message: e.message,
-        ...(e.position !== undefined ? { position: e.position } : {}),
-      });
-      continue;
-    }
-
-    // (3) evaluation against recorded scope — only when every sibling
-    // reference has recorded (fingerprint-valid) evidence. Sites with
-    // no sibling refs (pure `$input` shapes) and sites inside loop
-    // bodies are compile-only.
+    // (1)+(3) compile, then evaluate against recorded scope — only
+    // when every sibling reference has recorded (fingerprint-valid)
+    // evidence. Sites with no sibling refs (pure `$input` shapes) and
+    // sites inside loop bodies are compile-only. The language switch:
+    // each branch owns its engine, its error formatting, and its
+    // addressing vocabulary; the finding contract is shared.
     const evaluable =
       site.evaluable && refs.length > 0 && refs.every((ref) => ref in recordedScope);
-    if (!evaluable) {
-      expressions.push({
-        site: site.site,
-        step_id: site.step_id,
-        status: "not_evaluated",
-        message:
-          refs.length === 0
-            ? "no sibling $scope references — compile check only"
-            : "referenced step(s) have no fingerprint-valid recorded preview — run dry_run_workflow to record evidence",
-      });
-      continue;
-    }
-    const bindings = buildJsonataBindings(recordedScope, evidence.input ?? null);
-    const outcome = await evaluateWithTimeout(site.expression, recordedScope, bindings);
-    if (!outcome.ok) {
-      expressions.push({
-        site: site.site,
-        step_id: site.step_id,
-        status: "eval_error",
-        message: outcome.message,
-        ...(outcome.position !== undefined ? { position: outcome.position } : {}),
-      });
-      continue;
-    }
-    if (isEmptyEvalResult(outcome.value)) {
-      const candidates = pathCandidatesFor(refs, recordedScope);
-      expressions.push({
-        site: site.site,
-        step_id: site.step_id,
-        status: "empty_result",
-        message:
-          "expression evaluated to an empty result against the recorded scope — either the JSONata path is wrong, or a filter matched no rows",
-        ...(candidates.length > 0 ? { path_candidates: candidates } : {}),
-      });
-      continue;
-    }
-    expressions.push({
-      site: site.site,
-      step_id: site.step_id,
-      status: "ok",
-      value_preview: previewValue(outcome.value),
-    });
+    expressions.push(
+      site.language === "javascript"
+        ? await evaluateJavascriptSite(site, refs, evaluable, recordedScope, evidence.input ?? null)
+        : await evaluateJsonataSite(
+            site,
+            refs,
+            evaluable,
+            recordedScope,
+            evidence.input ?? null,
+            bareIterationBySite.get(site.site) ?? [],
+          ),
+    );
   }
 
   // Bounded auto-repair (Fix 10). For compile errors and empty results
@@ -453,21 +632,20 @@ export async function runRecordedEval(
   // normal edit. Repairs run sequentially: a draft rarely carries more
   // than a couple of broken expressions, and each repair is itself
   // budget-accounted through `invoke()`.
+  const siteByName = new Map(sites.map((s) => [s.site, s] as const));
   if (options.repair) {
-    const siteByName = new Map(sites.map((s) => [s.site, s] as const));
     for (const finding of expressions) {
       if (finding.status !== "compile_error" && finding.status !== "empty_result") continue;
       const site = siteByName.get(finding.site);
       if (!site) continue;
-      const refs = extractStepIdReferences(site.expression).filter(
-        (ref) => stepIds.has(ref) && ref !== site.step_id,
-      );
+      const refs = referencedStepIds(site, stepIds);
       // `empty_result` findings only exist for sites that were
       // evaluated, so their refs are recorded by construction;
       // compile-error sites get the scope when it happens to exist.
       const hasRecordedScope = refs.length > 0 && refs.every((ref) => ref in recordedScope);
       finding.repair = await repairTransformExpression({
         expression: site.expression,
+        language: site.language,
         finding: {
           kind: finding.status,
           message: finding.message ?? "",
@@ -514,9 +692,14 @@ export async function runRecordedEval(
   }
   const missing_evidence = [...missingByStep.values()];
 
+  const languageOf = (f: RecordedEvalExpressionFinding): "jsonata" | "javascript" =>
+    siteByName.get(f.site)?.language ?? "jsonata";
   const hasCompileErrors = expressions.some((f) => f.status === "compile_error");
   const hasEvalErrors = expressions.some((f) => f.status === "eval_error");
   const hasEmptyResults = expressions.some((f) => f.status === "empty_result");
+  const hasJsonataEmptyResults = expressions.some(
+    (f) => f.status === "empty_result" && languageOf(f) === "jsonata",
+  );
   const gatesOk = loopGate.ok && transformGate.ok;
 
   const repairedCount = expressions.filter((f) => f.repair?.repaired === true).length;
@@ -531,7 +714,10 @@ export async function runRecordedEval(
     next_actions.push("update_param", "edit_workflow_patch");
   }
   if (hasEmptyResults) {
-    next_actions.push("suggest_jsonata_paths", "dry_run_transform");
+    // `suggest_jsonata_paths` is a JSONata-path tool — JS empty results
+    // already carry `input.scope.<id>.data` candidates on the finding.
+    if (hasJsonataEmptyResults) next_actions.push("suggest_jsonata_paths");
+    next_actions.push("dry_run_transform");
   }
   if (!gatesOk || missing_evidence.length > 0) {
     next_actions.push("dry_run_workflow");
@@ -539,7 +725,18 @@ export async function runRecordedEval(
 
   const ok = !hasCompileErrors && !hasEvalErrors && !hasEmptyResults && gatesOk;
   const problems: string[] = [];
-  if (hasCompileErrors) problems.push("JSONata compile error(s)");
+  if (hasCompileErrors) {
+    const langs = new Set(
+      expressions.filter((f) => f.status === "compile_error").map((f) => languageOf(f)),
+    );
+    problems.push(
+      langs.size === 1 && langs.has("javascript")
+        ? "JavaScript compile error(s)"
+        : langs.size === 1
+          ? "JSONata compile error(s)"
+          : "expression compile error(s)",
+    );
+  }
   if (hasEvalErrors) problems.push("evaluation error(s) against recorded scope");
   if (hasEmptyResults) problems.push("empty result(s) over recorded evidence");
   if (!gatesOk) {

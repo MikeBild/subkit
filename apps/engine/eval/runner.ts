@@ -24,10 +24,19 @@ export interface FixtureRecord {
   description?: string;
   /**
    * Category label. Includes the LLM flow names (`generate`, `extract`,
-   * `repair`, `converse`, `discover`, `summarize`) and `infra` for
-   * non-LLM integration tests (execution-engine behavior, cascade, etc.).
+   * `repair`, `converse`, `discover`, `summarize`, `judge`) and `infra`
+   * for non-LLM integration tests (execution-engine behavior, cascade,
+   * etc.).
    */
-  flow: "generate" | "extract" | "repair" | "converse" | "discover" | "summarize" | "infra";
+  flow:
+    | "generate"
+    | "extract"
+    | "repair"
+    | "converse"
+    | "discover"
+    | "summarize"
+    | "judge"
+    | "infra";
   /** Arbitrary input payload handed to the validator. */
   input: unknown;
   /** Optional expected output payload the validator may assert against. */

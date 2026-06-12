@@ -513,6 +513,26 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     user_message: currentUserText,
     document_analysis: documentAnalysisSummary,
   });
+  // Connectors bound to this conversation's draft — the assembler's
+  // "Recorded endpoint samples" section loads the latest recorded
+  // response shapes for exactly these ids (payload-first authoring
+  // context). Collected from the active/target connector, the persisted
+  // draft connector, and every connector a draft workflow step
+  // references; non-UUID placeholders are filtered at the loader.
+  const authoringConnectorIds = [
+    ...new Set(
+      [
+        activeConnectorId,
+        typeof draft.connector?.saved_connector_id === "string"
+          ? draft.connector.saved_connector_id
+          : null,
+        ...draft.workflow.steps.map((step) => {
+          const cid = step.connector_id;
+          return typeof cid === "string" ? cid : null;
+        }),
+      ].filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
   // Run-verb bias: a message like "run emobxp-jira-test-plans" or
   // "starte foo" tilts the prompt's authoring_hint.mode to `execution`
   // even when no draft summary exists yet, so EXECUTION_PERSONA fires
@@ -628,6 +648,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         ...(p.surface ? { surface: p.surface } : {}),
         ...(authoringContext ? { authoring_context: authoringContext } : {}),
         ...(authoringHint ? { authoring_hint: authoringHint } : {}),
+        ...(authoringConnectorIds.length > 0
+          ? { authoring_connector_ids: authoringConnectorIds }
+          : {}),
         ...(combinedPriorFailures.length > 0 ? { prior_failures: combinedPriorFailures } : {}),
         conversation_id: p.conversation_id,
         ...(p.runtime_context

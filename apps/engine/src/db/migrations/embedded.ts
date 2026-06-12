@@ -66,6 +66,7 @@ import sql0045ConnectorHealthState from "./0045_connector_health_state.sql" with
 import sql0046KnowledgeSourceLastError from "./0046_knowledge_source_last_error.sql" with { type: "text" };
 import sql0047ExecutionsInput from "./0047_executions_input.sql" with { type: "text" };
 import sql0048ConnectorOauthStartGrants from "./0048_connector_oauth_start_grants.sql" with { type: "text" };
+import sql0049DataMigrations from "./0049_data_migrations.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -139,6 +140,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0046_knowledge_source_last_error": sql0046KnowledgeSourceLastError,
   "0047_executions_input": sql0047ExecutionsInput,
   "0048_connector_oauth_start_grants": sql0048ConnectorOauthStartGrants,
+  "0049_data_migrations": sql0049DataMigrations,
 };
 
 const journal = journalMeta as unknown as Journal;

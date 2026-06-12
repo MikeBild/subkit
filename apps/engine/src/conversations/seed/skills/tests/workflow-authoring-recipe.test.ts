@@ -14,13 +14,13 @@ const errorRecovery = readFileSync(join(ROOT, "error-recovery.md"), "utf-8");
 const dataHandling = readFileSync(join(ROOT, "data-handling.md"), "utf-8");
 
 describe("workflow-authoring.md · Build Recipe (mandatory preflight)", () => {
-  test("declares the recipe is mandatory before build_workflow / propose_step", () => {
+  test("declares the recipe is mandatory before author_workflow / build_workflow / propose_step", () => {
     expect(workflowAuthoring).toMatch(
-      /Authoring recipe \(mandatory order before `build_workflow` \/ `propose_step`\)/i,
+      /Authoring recipe \(mandatory order before `author_workflow` \/ `build_workflow` \/ `propose_step`\)/i,
     );
   });
 
-  test("orders steps as: load_skill → list/probe → search → call_connector → build", () => {
+  test("orders steps as: load_skill → list/probe → search → call_connector → author", () => {
     // The exact same six-step preflight the reference impl uses for
     // `build_tool`, adapted to subkit's tool names. We anchor on
     // canonical numbered-step markers ("1. **Load skills.**" etc.) so
@@ -35,7 +35,7 @@ describe("workflow-authoring.md · Build Recipe (mandatory preflight)", () => {
       "3. **`probe_connector`.**",
       "4. **`search_docs`",
       "5. **`call_connector`.**",
-      "6. **Only then** call `build_workflow`",
+      "6. **Only then** call `author_workflow`",
     ];
     let lastIdx = -1;
     for (const anchor of expectedAnchors) {

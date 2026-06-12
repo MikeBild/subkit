@@ -59,6 +59,7 @@ export function createEmptyState(mode: AuthoringSurfaceMode): AuthoringState {
     persisted_resources: [],
     latest_execution: null,
     latest_diagnosis: null,
+    judge_breaker: null,
   };
 }
 
@@ -114,12 +115,18 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
   const name = pickString("name") ?? fallback.name;
   const slug = pickString("slug");
   const description = pickString("description");
+  // The user's goal verbatim — stashed by start_workflow_from_goal /
+  // build_workflow({goal}) and read by the post-preview judge. Must
+  // survive the normalize round-trip or the stash silently evaporates
+  // on the very next draft mutation.
+  const goal = pickString("goal");
   const outputTransform = pickString("output_transform");
   const derivedFromSkillId = pickString("derived_from_skill_id");
   return {
     name,
     ...(slug ? { slug } : {}),
     ...(description ? { description } : {}),
+    ...(goal ? { goal } : {}),
     ...(derivedFromSkillId ? { derived_from_skill_id: derivedFromSkillId } : {}),
     steps: Array.isArray(base.steps)
       ? base.steps.filter((step): step is Record<string, unknown> => isRecord(step))
@@ -396,6 +403,19 @@ export function normalizeState(
       : [],
     latest_execution: normalizeLatestExecution(state.latest_execution),
     latest_diagnosis: normalizeLatestDiagnosis(state.latest_diagnosis),
+    // Preview-judge circuit-breaker — keyed on the definition
+    // fingerprint, so a stale entry is harmless (key mismatch reads
+    // as blocks=0) but a valid one must survive the round-trip or the
+    // breaker never trips across turns.
+    judge_breaker:
+      isRecord(state.judge_breaker) &&
+      typeof state.judge_breaker.fingerprint === "string" &&
+      typeof state.judge_breaker.blocks === "number"
+        ? {
+            fingerprint: state.judge_breaker.fingerprint,
+            blocks: state.judge_breaker.blocks,
+          }
+        : null,
   };
   if (isRecord(state.checkpoints)) {
     for (const key of CHECKPOINT_KEYS) {
