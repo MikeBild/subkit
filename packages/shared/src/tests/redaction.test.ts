@@ -180,3 +180,37 @@ describe("redactWithMaxDepth — logger boundary inherits the new patterns", () 
     expect(serialized).toContain("***REDACTED:pat***");
   });
 });
+
+describe("presentable tokens — OAuth start grants stay visible", () => {
+  // Single-use connector re-auth grants (skog_…) exist to be SHOWN to
+  // the user; redacting one bricks the sign-in link on every surface.
+  // Caught live in 6.18.1: the reauth_url reached the model as
+  // `?grant=***REDACTED:generic***`.
+  const GRANT = "skog_Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z";
+  const GRANT_URL = `https://engine.example.com/v1/connectors/0a1b2c3d-4e5f-6789-abcd-ef0123456789/oauth/start?grant=${GRANT}`;
+
+  test("scrubString leaves a skog_ grant (and its URL) intact", () => {
+    expect(scrubString(GRANT_URL)).toBe(GRANT_URL);
+    expect(scrubString(GRANT)).toBe(GRANT);
+  });
+
+  test("findSecretSpans reports no span for a skog_ grant", () => {
+    expect(findSecretSpans(GRANT_URL)).toHaveLength(0);
+  });
+
+  test("a real secret NEXT TO a grant is still redacted", () => {
+    const mixed = `${GRANT_URL} and token ATATT3xFfGF0aBcDeFgHiJkLmNoPqRsTuVwXyZ123456`;
+    const out = scrubString(mixed);
+    expect(out).toContain(GRANT);
+    expect(out).toContain("***REDACTED:pat***");
+  });
+
+  test("a skog-PREFIXED but non-conforming run is still scanned (prefix is not a blank check)", () => {
+    // Trailing '!' splits the run: 'skog_x' alone is too short for the
+    // generic envelope, and the remainder must still be caught when it
+    // is itself secret-shaped.
+    const sneaky = "skog_x Bearer abc.def-123456";
+    const out = scrubString(sneaky);
+    expect(out).toContain("***REDACTED:bearer***");
+  });
+});

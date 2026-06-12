@@ -138,6 +138,27 @@ function scrubPresignUrls(value: string): string {
   });
 }
 
+/**
+ * Deliberately presentable token forms the scrubber must NOT redact.
+ *
+ * `skog_…` — single-use OAuth start grants (connector re-auth). Their
+ * entire purpose is to be shown to a human who opens the URL in a
+ * browser; redacting one bricks the re-auth flow on every surface
+ * (caught live: `?grant=***REDACTED:generic***` in the first 6.18.x
+ * deploy made the sign-in link unusable). The exposure is bounded by
+ * design — 10-min TTL, atomic single-use claim, sha256-at-rest, and an
+ * issued/consumed audit pair — which is exactly why the prefix exists:
+ * it marks the token as a user-facing capability, not a credential.
+ */
+// The generic charset includes `=`, so inside a URL the matched run is
+// `grant=skog_…` — allow exactly one optional `<param>=` prefix ahead
+// of the grant, nothing else.
+const PRESENTABLE_TOKEN_RE = /^(?:[A-Za-z]+=)?skog_[A-Za-z0-9_-]{20,}$/;
+
+function isPresentableToken(match: string): boolean {
+  return PRESENTABLE_TOKEN_RE.test(match);
+}
+
 export function scrubString(value: string): string {
   // Strip presign URL query strings BEFORE the per-pattern token loop
   // so the in-query secrets (X-Amz-Signature, X-Goog-Signature, JWT-
@@ -151,7 +172,7 @@ export function scrubString(value: string): string {
       continue;
     }
     regex.lastIndex = 0;
-    out = out.replace(regex, REDACTED(kind));
+    out = out.replace(regex, (match) => (isPresentableToken(match) ? match : REDACTED(kind)));
   }
   return out;
 }
@@ -200,7 +221,11 @@ export function findSecretSpans(text: string): SecretSpan[] {
     while (m !== null) {
       const start = m.index;
       const end = m.index + m[0].length;
-      if (!overlapsAny(start, end, markers) && !overlapsAny(start, end, spans)) {
+      if (
+        !isPresentableToken(m[0]) &&
+        !overlapsAny(start, end, markers) &&
+        !overlapsAny(start, end, spans)
+      ) {
         spans.push({ start, end, kind, match: m[0] });
       }
       m = regex.exec(text);
