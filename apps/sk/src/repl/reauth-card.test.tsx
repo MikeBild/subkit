@@ -10,7 +10,7 @@ import { resetHyperlinkSupportCacheForTests } from "@chat-ui/index.ts";
 import type { ToolCallState } from "@cli-core/index.ts";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
-import { flush } from "../../../engine/src/test-helpers/determinism/wait.ts";
+import { flush, waitFor } from "../../../engine/src/test-helpers/determinism/wait.ts";
 import {
   extractReauthOutcome,
   ReauthCard,
@@ -56,6 +56,14 @@ function strip(frame: string | undefined): string {
 
 const tick = (): Promise<void> => flush();
 
+/** The async chain behind a frame assertion (promise settle → React
+ *  state update → ink re-render) needs more than one microtask on slow
+ *  CI runners — poll deterministically instead of single-flushing. */
+const waitForFrame = (ui: { lastFrame: () => string | undefined }, text: string): Promise<true> =>
+  waitFor(() => strip(ui.lastFrame()).includes(text) || undefined, {
+    label: `frame contains ${JSON.stringify(text)}`,
+  }) as Promise<true>;
+
 beforeEach(() => {
   process.env.SK_FORCE_HYPERLINKS = "1";
   resetHyperlinkSupportCacheForTests();
@@ -88,7 +96,7 @@ describe("ReauthCard — oauth2 authorization-code link", () => {
     // reports the launch.
     expect(openBrowser).toHaveBeenCalledTimes(1);
     expect(openBrowser.mock.calls[0]?.[0]).toBe(GRANT_URL);
-    expect(strip(ui.lastFrame())).toContain("browser opened — finish the sign-in there");
+    await waitForFrame(ui, "browser opened — finish the sign-in there");
     ui.unmount();
   });
 
@@ -127,8 +135,7 @@ describe("ReauthCard — oauth2 authorization-code link", () => {
       throw new Error("no display");
     });
     const ui = render(<ReauthCard call={call} outcome={outcome} openBrowser={openBrowser} />);
-    await tick();
-    expect(strip(ui.lastFrame())).toContain("browser launch failed — open the URL above manually");
+    await waitForFrame(ui, "browser launch failed — open the URL above manually");
     ui.unmount();
   });
 });
