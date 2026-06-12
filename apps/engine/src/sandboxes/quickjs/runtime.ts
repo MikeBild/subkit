@@ -17,7 +17,19 @@
 // The runtime returns `SandboxRunResult<T>` on success and throws a
 // `SandboxError` subclass on every failure mode.
 
-import { getQuickJS, type QuickJSHandle, type QuickJSWASMModule } from "quickjs-emscripten";
+// Single-file variant: the WASM is inlined as base64 inside the JS, so
+// it survives `bun build --compile` into the production binary. The
+// default `getQuickJS()` loads the .wasm as a SEPARATE file, which is
+// NOT embedded by --compile — the deployed binary then throws ENOENT on
+// `emscripten-module.wasm` and every JS transform fails at runtime
+// (invisible in `bun test`, which runs against node_modules; surfaced
+// in prod once JS became the default authored transform language).
+import variant from "@jitl/quickjs-singlefile-cjs-release-sync";
+import {
+  newQuickJSWASMModuleFromVariant,
+  type QuickJSHandle,
+  type QuickJSWASMModule,
+} from "quickjs-emscripten-core";
 import { STDLIB_SOURCE } from "./stdlib/index.ts";
 import {
   DEFAULT_LIMITS,
@@ -70,7 +82,9 @@ export function setQuickJsModuleProviderForTesting(
  */
 async function loadModule(): Promise<QuickJSWASMModule> {
   if (_mod) return _mod;
-  _mod = _moduleProviderForTesting ? await _moduleProviderForTesting() : await getQuickJS();
+  _mod = _moduleProviderForTesting
+    ? await _moduleProviderForTesting()
+    : await newQuickJSWASMModuleFromVariant(variant);
   return _mod;
 }
 

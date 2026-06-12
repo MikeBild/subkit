@@ -78,6 +78,40 @@ async function runSmoke(): Promise<void> {
 
   logger.info({
     module: "engine",
+    action: "redaction.test.done",
+    msg: "redaction smoke line emitted",
+  });
+
+  // QuickJS WASM embed check — the load-bearing guard. JS transforms run
+  // in a QuickJS sandbox whose WASM must be INLINED into the compiled
+  // binary (single-file variant); the separate-.wasm variant silently
+  // survives `bun test` but throws ENOENT on the compiled binary,
+  // breaking every JS-authored workflow at runtime in prod. Exercising
+  // one JS transform here fails the release BEFORE deploy if the embed
+  // ever regresses.
+  const { runJs } = await import("./sandboxes/quickjs/runtime.ts");
+  const js = await runJs({
+    code: "return input.scope.v.data * 2;",
+    input: { scope: { v: { data: 21 } }, input: null },
+    limits: { wall_ms: 1000 },
+  });
+  if (js.output !== 42) {
+    logger.error({
+      module: "engine",
+      action: "smoke.quickjs_failed",
+      msg: "QuickJS JS-transform sandbox did not execute in the compiled binary — WASM embed regressed",
+      output: js.output,
+    });
+    process.exit(1);
+  }
+  logger.info({
+    module: "engine",
+    action: "smoke.quickjs_ok",
+    msg: "QuickJS JS-transform sandbox executed in the compiled binary",
+  });
+
+  logger.info({
+    module: "engine",
     action: "smoke.completed",
     msg: "smoke mode: exit 0",
   });
