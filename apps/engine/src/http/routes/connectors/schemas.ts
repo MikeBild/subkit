@@ -51,7 +51,11 @@ export const ConnectorSchema = z
   .openapi("Connector");
 
 export const ConnectorListResponse = z
-  .object({ items: z.array(ConnectorSchema) })
+  .object({
+    items: z.array(ConnectorSchema),
+    /** Exact tenant-scoped count under the same filters (ignores limit/offset). */
+    total: z.number().int().nonnegative(),
+  })
   .openapi("ConnectorListResponse");
 
 // H1: full probe envelope shape, matching the conversation-tool

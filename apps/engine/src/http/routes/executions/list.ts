@@ -5,9 +5,10 @@
 //   GET /v1/executions/{id}/steps
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { events, executionSteps, executions } from "../../../db/schema/index.ts";
+import { listExecutions } from "../../../execution/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -31,6 +32,7 @@ const listExecutionsRoute = createRoute({
     query: z
       .object({
         limit: z.coerce.number().int().positive().max(200).optional(),
+        offset: z.coerce.number().int().min(0).optional(),
         workflow_id: z.string().uuid().optional(),
         status: z.string().optional(),
         request_source: z.string().optional(),
@@ -94,20 +96,23 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const tenantConds = [eq(executions.tenant_id, principal.tenant_id)];
-    if (q.workflow_id) tenantConds.push(eq(executions.workflow_id, q.workflow_id));
-    if (q.status)
-      tenantConds.push(eq(executions.status, q.status as typeof executions.$inferSelect.status));
-    if (q.request_source) tenantConds.push(eq(executions.request_source, q.request_source));
-    if (q.parent_execution_id)
-      tenantConds.push(eq(executions.parent_execution_id, q.parent_execution_id));
-    const rows = await db
-      .select()
-      .from(executions)
-      .where(and(...tenantConds))
-      .orderBy(desc(executions.created_at))
-      .limit(q.limit ?? 50);
-    return c.json({ items: rows.map(serializeExec) }, 200);
+    // Canonical list service: same filter surface as the conversation
+    // tool + in-process EngineClient, exact `total` in the same query.
+    const { rows, total } = await listExecutions(
+      principal.tenant_id,
+      {
+        ...(q.limit !== undefined ? { limit: q.limit } : {}),
+        ...(q.offset !== undefined ? { offset: q.offset } : {}),
+        ...(q.workflow_id !== undefined ? { workflow_id: q.workflow_id } : {}),
+        ...(q.status !== undefined ? { status: q.status } : {}),
+        ...(q.request_source !== undefined ? { request_source: q.request_source } : {}),
+        ...(q.parent_execution_id !== undefined
+          ? { parent_execution_id: q.parent_execution_id }
+          : {}),
+      },
+      db,
+    );
+    return c.json({ items: rows.map(serializeExec), total }, 200);
   });
 
   app.openapi(getExecutionRoute, async (c) => {

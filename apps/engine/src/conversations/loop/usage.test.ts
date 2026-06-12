@@ -3,7 +3,7 @@
 // providerMetadata.anthropic.usage fallback.
 
 import { describe, expect, test } from "bun:test";
-import { isAbortError, readStepUsage } from "./usage.ts";
+import { isAbortError, readStepUsage, stepPromptTokens, stepTotalTokens } from "./usage.ts";
 
 describe("readStepUsage", () => {
   test("zeros out missing usage fields", () => {
@@ -73,6 +73,69 @@ describe("readStepUsage", () => {
       cacheReadTokens: 80,
       cacheCreationTokens: 10,
     });
+  });
+});
+
+describe("stepPromptTokens / stepTotalTokens", () => {
+  // Honest cost telemetry (Fix 7): the `completed` envelope carries
+  // `prompt_tokens_last_call` (last step's prompt size — comparable to
+  // the context cap) and `turn_tokens_total` (sum across all steps).
+  // These helpers are the per-step terms; the loop overwrites the
+  // last-call slot and accumulates the total.
+
+  test("prompt size counts uncached input PLUS cache reads and writes", () => {
+    // Anthropic's inputTokens EXCLUDES cached prompt tokens — a cache
+    // hit must not make the ctx gauge claim a near-empty prompt.
+    expect(
+      stepPromptTokens({
+        inputTokens: 1000,
+        outputTokens: 50,
+        cacheReadTokens: 170_000,
+        cacheCreationTokens: 2000,
+      }),
+    ).toBe(173_000);
+  });
+
+  test("total adds completion tokens on top of the prompt", () => {
+    expect(
+      stepPromptTokens({
+        inputTokens: 100,
+        outputTokens: 40,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      }),
+    ).toBe(100);
+    expect(
+      stepTotalTokens({
+        inputTokens: 100,
+        outputTokens: 40,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      }),
+    ).toBe(140);
+  });
+
+  test("sum vs last-call: accumulating steps the way the loop does", () => {
+    // Three-step turn with a growing prompt. The loop sets
+    // prompt_tokens_last_call to the FINAL step's prompt and
+    // turn_tokens_total to the running sum — the two figures the sk
+    // footer renders as `ctx <last>/<cap>` and `turn <total>`.
+    const steps = [
+      { inputTokens: 10_000, outputTokens: 500, cacheReadTokens: 0, cacheCreationTokens: 8000 },
+      { inputTokens: 2000, outputTokens: 700, cacheReadTokens: 18_000, cacheCreationTokens: 0 },
+      { inputTokens: 3000, outputTokens: 900, cacheReadTokens: 20_000, cacheCreationTokens: 0 },
+    ];
+    let promptTokensLastCall: number | null = null;
+    let turnTokensTotal = 0;
+    for (const u of steps) {
+      promptTokensLastCall = stepPromptTokens(u);
+      turnTokensTotal += stepTotalTokens(u);
+    }
+    expect(promptTokensLastCall).toBe(23_000);
+    expect(turnTokensTotal).toBe(18_500 + 20_700 + 23_900);
+    // The cumulative figure exceeds the last call's prompt — exactly
+    // the apples-over-oranges confusion the split envelope resolves.
+    expect(turnTokensTotal).toBeGreaterThan(promptTokensLastCall ?? 0);
   });
 });
 

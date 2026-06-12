@@ -101,6 +101,83 @@ describe("Footer mode and view", () => {
   });
 });
 
+describe("Footer budget line — honest cost telemetry (Fix 7)", () => {
+  // Pre-fix the ctx gauge divided the turn-CUMULATIVE tokens by the
+  // per-prompt cap and showed `ctx 464k/180k (100%)`. Post-fix the
+  // gauge numerator is `prompt_tokens_last_call` (the final LLM call's
+  // prompt — comparable to the cap) and the cumulative spend renders
+  // as a separate `turn <N>` figure.
+  function renderBudgetFooter(props: Partial<React.ComponentProps<typeof Footer>> = {}) {
+    return render(
+      <Footer
+        user="alice@example.com"
+        tenant="acme"
+        engineUrl="https://subkit-api.example.dev"
+        sessionId={null}
+        mode="ask"
+        transcriptMode="chat"
+        sessionTokens={5_000_000}
+        columns={120}
+        {...props}
+      />,
+    );
+  }
+
+  test("renders ctx from the last call's prompt and turn from the cumulative total", () => {
+    const instance = renderBudgetFooter({
+      promptTokensLastCall: 90_000,
+      turnTokensTotal: 3_900_000,
+      contextCapTokens: 180_000,
+    });
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain("ctx 90k/180k");
+    expect(frame).toContain("turn 3.9M");
+    // 50% — below the 80% warning line, so no percentage chip.
+    expect(frame).not.toContain("(50%)");
+    instance.unmount();
+    cleanup();
+  });
+
+  test("ctx percentage chip appears at the warning threshold", () => {
+    const instance = renderBudgetFooter({
+      promptTokensLastCall: 171_000,
+      turnTokensTotal: 200_000,
+      contextCapTokens: 180_000,
+    });
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain("ctx 171k/180k");
+    expect(frame).toContain("(95%)");
+    instance.unmount();
+    cleanup();
+  });
+
+  test("ctx gauge hides when the last-call prompt size is unknown; turn figure stands alone", () => {
+    const instance = renderBudgetFooter({
+      promptTokensLastCall: null,
+      turnTokensTotal: 12_500,
+      contextCapTokens: 180_000,
+    });
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).not.toContain("ctx ");
+    expect(frame).toContain("turn 13k");
+    instance.unmount();
+    cleanup();
+  });
+
+  test("turn figure hides when the total is absent", () => {
+    const instance = renderBudgetFooter({
+      promptTokensLastCall: 10_000,
+      turnTokensTotal: null,
+      contextCapTokens: 180_000,
+    });
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain("ctx 10k/180k");
+    expect(frame).not.toContain("turn ");
+    instance.unmount();
+    cleanup();
+  });
+});
+
 describe("Footer connection chip layout", () => {
   // Repro of session f00b8d1c at 101 cols: full identity (60 chars) +
   // " · ⟳ reconnecting · Unable to connect…<37 char reason>" (58 chars)

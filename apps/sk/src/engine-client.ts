@@ -82,6 +82,41 @@ function synthesizeRecoveredOutcome(detail: ConversationDetail): ConversationRun
   };
 }
 
+/**
+ * Honest cost telemetry on the SSE `completed` frame. The engine emits
+ * two distinct figures alongside the legacy `turn_tokens`:
+ *
+ *   - `prompt_tokens_last_call` — the FINAL LLM call's prompt size
+ *     (incl. cache reads/writes), the only number comparable to
+ *     `context_cap_tokens`. Pre-fix the footer divided the
+ *     turn-CUMULATIVE tokens by the per-prompt cap and showed
+ *     `ctx 464k/180k (100%)` for prompts nowhere near the cap.
+ *   - `turn_tokens_total` — cumulative tokens across every LLM call of
+ *     the turn.
+ *
+ * The canonical `TurnUsage` type lives in `@cli-core/turn-event.ts`,
+ * which is owned by a parallel in-flight change — the new fields ride
+ * through the cli-core reducer untyped (it stores `ev.usage` wholesale
+ * into `session.usage`), and this reader narrows them where the REPL
+ * renders them.
+ */
+export interface ExtendedTurnUsage {
+  prompt_tokens_last_call: number | null;
+  turn_tokens_total: number | null;
+}
+
+export function readExtendedTurnUsage(usage: unknown): ExtendedTurnUsage {
+  if (typeof usage !== "object" || usage === null) {
+    return { prompt_tokens_last_call: null, turn_tokens_total: null };
+  }
+  const u = usage as { prompt_tokens_last_call?: unknown; turn_tokens_total?: unknown };
+  return {
+    prompt_tokens_last_call:
+      typeof u.prompt_tokens_last_call === "number" ? u.prompt_tokens_last_call : null,
+    turn_tokens_total: typeof u.turn_tokens_total === "number" ? u.turn_tokens_total : null,
+  };
+}
+
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 // ---------- Files wire types ----------
@@ -813,6 +848,8 @@ export class EngineClient {
       paused: boolean;
       created_at: string;
     }>;
+    /** Exact tenant-scoped count under the same filters. */
+    total: number;
   }> {
     const qs = query.workflow_id ? `?workflow_id=${encodeURIComponent(query.workflow_id)}` : "";
     return this.request("GET", `/v1/schedules${qs}`);
@@ -1784,7 +1821,7 @@ export class EngineClient {
   // -------------------- Workflows --------------------
   listWorkflows(
     query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
+  ): Promise<{ items: Record<string, unknown>[]; total: number }> {
     return this.request("GET", "/v1/workflows", undefined, query);
   }
   getWorkflow(id: string): Promise<Record<string, unknown>> {
@@ -1819,7 +1856,7 @@ export class EngineClient {
   // -------------------- Connectors --------------------
   listConnectors(
     query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
+  ): Promise<{ items: Record<string, unknown>[]; total: number }> {
     return this.request("GET", "/v1/connectors", undefined, query);
   }
   getConnector(id: string): Promise<Record<string, unknown>> {
@@ -2026,7 +2063,7 @@ export class EngineClient {
   // -------------------- Executions --------------------
   listExecutions(
     query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
+  ): Promise<{ items: Record<string, unknown>[]; total: number }> {
     return this.request("GET", "/v1/executions", undefined, query);
   }
   getExecution(id: string): Promise<Record<string, unknown>> {

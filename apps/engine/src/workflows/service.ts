@@ -9,6 +9,7 @@ import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
+import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { skills as skillsTable, workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { type WorkflowLifecyclePayload, WorkflowLifecyclePayloadSchema } from "../pubsub/types.ts";
@@ -646,27 +647,49 @@ function buildWorkflowListConds(tenant_id: string, opts: ListWorkflowsOptions) {
   return conds;
 }
 
+/**
+ * Workflows are a bounded business catalog (O(10²)), not telemetry — the
+ * default page is the safety bound itself so enumeration surfaces (fast
+ * path, conversation tools, MCP resources) see the complete set unless a
+ * caller explicitly pages.
+ */
+export const WORKFLOW_LIST_MAX_LIMIT = 1000;
+
+async function countWorkflows(
+  db: Executor,
+  tenant_id: string,
+  opts: ListWorkflowsOptions,
+): Promise<number> {
+  const [row] = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(workflows)
+    .where(and(...buildWorkflowListConds(tenant_id, opts)));
+  return Number(row?.c ?? 0);
+}
+
 export async function listWorkflows(
   tenant_id: string,
   opts: ListWorkflowsOptions = {},
   exec?: Executor,
-): Promise<WorkflowView[]> {
+): Promise<ListResult<WorkflowView>> {
   const db = exec ?? getDb();
-  const limit = Math.min(opts.limit ?? 50, 200);
+  const limit = Math.min(opts.limit ?? WORKFLOW_LIST_MAX_LIMIT, WORKFLOW_LIST_MAX_LIMIT);
+  const offset = opts.offset ?? 0;
   const tenantConds = buildWorkflowListConds(tenant_id, opts);
   const rows = await db
-    .select()
+    .select({ row: workflows, total: totalOverWindow() })
     .from(workflows)
     .where(and(...tenantConds))
     .orderBy(desc(workflows.created_at))
     .limit(limit)
-    .offset(opts.offset ?? 0);
+    .offset(offset);
+  const total = await resolveWindowTotal(rows, offset, () => countWorkflows(db, tenant_id, opts));
   const out: WorkflowView[] = [];
-  for (const wf of rows) {
-    const v = await loadWorkflowView(tenant_id, wf.id, db);
+  for (const r of rows) {
+    const v = await loadWorkflowView(tenant_id, r.row.id, db);
     if (v) out.push(v);
   }
-  return out;
+  return { rows: out, total };
 }
 
 export interface WorkflowSummary {
@@ -691,9 +714,10 @@ export async function listWorkflowSummaries(
   tenant_id: string,
   opts: ListWorkflowsOptions = {},
   exec?: Executor,
-): Promise<WorkflowSummary[]> {
+): Promise<ListResult<WorkflowSummary>> {
   const db = exec ?? getDb();
-  const limit = Math.min(opts.limit ?? 50, 200);
+  const limit = Math.min(opts.limit ?? WORKFLOW_LIST_MAX_LIMIT, WORKFLOW_LIST_MAX_LIMIT);
+  const offset = opts.offset ?? 0;
   const tenantConds = buildWorkflowListConds(tenant_id, opts);
   const rows = await db
     .select({
@@ -703,21 +727,26 @@ export async function listWorkflowSummaries(
       lifecycle: workflows.lifecycle,
       current_version: workflowVersions.version,
       step_count: sql<number>`coalesce(jsonb_array_length(${workflowVersions.dag} -> 'steps'), 0)::int`,
+      total: totalOverWindow(),
     })
     .from(workflows)
     .leftJoin(workflowVersions, eq(workflowVersions.id, workflows.current_version_id))
     .where(and(...tenantConds))
     .orderBy(desc(workflows.created_at))
     .limit(limit)
-    .offset(opts.offset ?? 0);
-  return rows.map((r) => ({
-    id: r.id,
-    slug: r.slug,
-    name: r.name,
-    lifecycle: r.lifecycle as "draft" | "active" | "archived",
-    current_version: r.current_version,
-    step_count: Number(r.step_count ?? 0),
-  }));
+    .offset(offset);
+  const total = await resolveWindowTotal(rows, offset, () => countWorkflows(db, tenant_id, opts));
+  return {
+    rows: rows.map((r) => ({
+      id: r.id,
+      slug: r.slug,
+      name: r.name,
+      lifecycle: r.lifecycle as "draft" | "active" | "archived",
+      current_version: r.current_version,
+      step_count: Number(r.step_count ?? 0),
+    })),
+    total,
+  };
 }
 
 export async function getWorkflow(

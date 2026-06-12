@@ -97,7 +97,9 @@ export const findWorkflowTool: ConversationTool = {
       }
       return { ok: true, data: { matches: [summarize(wf)], total: 1 } };
     }
-    const list = await ctx.engineClient.workflows.list({ limit: 200 });
+    // Complete catalog (service default = safety bound) so a match can
+    // never be missed because it sat beyond an arbitrary page size.
+    const { rows: list } = await ctx.engineClient.workflows.list();
     const summaries = list.map(summarize);
     const ranked = keywordSearch(args.query ?? "*", summaries, searchableText);
     const limited = ranked.slice(0, args.limit);

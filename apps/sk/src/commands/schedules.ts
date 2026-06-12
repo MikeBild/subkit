@@ -21,7 +21,7 @@ const listCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      const { schedules } = await client.listSchedules(
+      const { schedules, total } = await client.listSchedules(
         args.workflow ? { workflow_id: args.workflow } : {},
       );
       emitList(
@@ -29,6 +29,10 @@ const listCommand = defineCommand({
         ["workflow_slug", "cron", "timezone", "paused", "id"],
         schedules as unknown as Record<string, unknown>[],
       );
+      // Schedules are a bounded catalog — the list IS complete; say so.
+      if (!args.json) {
+        process.stdout.write(`${total} schedule${total === 1 ? "" : "s"} total\n`);
+      }
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }

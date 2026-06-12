@@ -956,6 +956,17 @@ const _baseWorkflowDefSchema = z.object({
    */
   derived_from_skill_id: z.string().nullable().optional(),
   input_schema: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Optional JSON-Schema contract for the workflow's FINAL output
+   * (post `output_transform` / `response_filters`). The convergence
+   * signal of the authoring loop: `dry_run_workflow` validates the
+   * preview output against it and a violation blocks the green-preview
+   * auto-commit with field-level `$output/...` paths; live runs
+   * validate too but only attach a NON-blocking
+   * `output_contract_violation` warning to the run result. Lives in
+   * the versioned definition JSON (no separate storage). The workflow
+   * validator refuses a schema Ajv cannot compile.
+   */
   output_schema: z.record(z.string(), z.unknown()).optional(),
   /**
    * Optional JSONata predicate evaluated against the final workflow

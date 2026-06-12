@@ -73,13 +73,17 @@ describe("connectors/service", () => {
     expect(prod.environment).toBe("prod");
 
     const devList = await listConnectors(tenant_id, { environment: "dev" }, ctx.db);
-    expect(devList.map((c) => c.environment)).toEqual(["dev"]);
+    expect(devList.rows.map((c) => c.environment)).toEqual(["dev"]);
+    // `total` respects the same filters as the page (ground truth).
+    expect(devList.total).toBe(1);
 
     const prodList = await listConnectors(tenant_id, { environment: "prod" }, ctx.db);
-    expect(prodList.map((c) => c.environment)).toEqual(["prod"]);
+    expect(prodList.rows.map((c) => c.environment)).toEqual(["prod"]);
+    expect(prodList.total).toBe(1);
 
     const all = await listConnectors(tenant_id, {}, ctx.db);
-    expect(all).toHaveLength(2);
+    expect(all.rows).toHaveLength(2);
+    expect(all.total).toBe(2);
 
     const patched = await updateConnector(
       tenant_id,

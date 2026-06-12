@@ -23,6 +23,7 @@ import {
   withLatestPreview,
   withWorkflowExecution,
 } from "../../../authoring-state.ts";
+import { stampStepTraceFingerprints } from "../../../step-fingerprint.ts";
 import { pauseForUserInput } from "../../ask-user/common.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
@@ -660,7 +661,7 @@ export const runWorkflowTool: ConversationTool = {
       // dry_run_workflow does — the LLM reads from a single canonical
       // location regardless of whether the last walk was a dry-run
       // or a full run.
-      const persistedStepTraces = result.steps.map((s) => {
+      const persistedStepTracesUnstamped = result.steps.map((s) => {
         const errorCode =
           s.error && typeof s.error === "object" && s.error !== null
             ? (s.error as { code?: unknown }).code
@@ -684,6 +685,15 @@ export const runWorkflowTool: ConversationTool = {
           ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
         };
       });
+      // Fingerprint stamping (Fix 5): bind each trace to the step
+      // definition it was recorded against so draft mutations drop
+      // evidence per changed step, not wholesale.
+      const persistedStepTraces = stampStepTraceFingerprints(
+        persistedStepTracesUnstamped,
+        (((wf.definition as WorkflowDef | null)?.steps ?? []) as unknown[]).filter(
+          (s): s is Record<string, unknown> => typeof s === "object" && s !== null,
+        ),
+      );
       const previewedDraft = withLatestPreview(
         currentDraft,
         {

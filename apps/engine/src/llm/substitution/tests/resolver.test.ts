@@ -8,9 +8,10 @@
 //   - resolvePlaceholders walks nested objects / arrays.
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { upsertCredential } from "../../../credentials/service.ts";
-import { connectors, tenants } from "../../../db/schema/index.ts";
+import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { logger } from "../../../logging/logger.ts";
 import {
@@ -676,5 +677,88 @@ describe("resolvePlaceholdersTypePreserving — preserves native JSON types", ()
     );
     expect(r.value).toEqual({ x: "7-suffix" });
     expect(typeof (r.value as { x: unknown }).x).toBe("string");
+  });
+});
+
+describe("resolver — soft-delete filtering (regression: /v2/v2 double prefix)", () => {
+  // Prod 2026-06-11: three soft-deleted `linkedin` rows coexisted with the
+  // live one (the partial unique index only governs live rows). One dead row
+  // had base_url ending in `/v2`; fetchConnector lacked `deleted_at IS NULL`
+  // and an ORDER BY, so `${connector.linkedin.base_url}/v2/userinfo` resolved
+  // the dead row → `/v2/v2/userinfo` → 404.
+
+  test("soft-deleted same-slug connector is never resolved — live row wins", async () => {
+    const { tenant_id } = await seed({
+      slug: "linkedin",
+      mode: "none",
+      baseUrl: "https://api.linkedin.test",
+    });
+    // Insert a NEWER soft-deleted duplicate with the poison base_url. If the
+    // resolver forgot the deleted_at filter, ORDER BY created_at DESC would
+    // deterministically pick this row — the test would fail loudly instead of
+    // depending on physical row order.
+    await ctx.db.insert(connectors).values({
+      tenant_id,
+      slug: "linkedin",
+      display_name: "linkedin (deleted)",
+      driver: "http",
+      environment: "dev",
+      auth_type: "none",
+      base_url: "https://api.linkedin.test/v2",
+      config: {},
+      deleted_at: new Date(), // allow-wall-clock: deleted_at marker, value irrelevant
+      created_at: new Date(Date.now() + 60_000), // allow-wall-clock: newer than the live row on purpose
+    });
+
+    const r = await resolveStringPlaceholders(`\${connector.linkedin.base_url}/v2/userinfo`, {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+    });
+    expect(r.unresolved).toEqual([]);
+    expect(r.value).toBe("https://api.linkedin.test/v2/userinfo");
+  });
+
+  test("connector whose only row is soft-deleted → slug_not_found", async () => {
+    const { tenant_id, connector_id } = await seed({
+      slug: "gone",
+      mode: "none",
+      baseUrl: "https://api.gone.test",
+    });
+    await ctx.db
+      .update(connectors)
+      .set({ deleted_at: new Date() }) // allow-wall-clock: deleted_at marker, value irrelevant
+      .where(eq(connectors.id, connector_id));
+
+    const r = await resolveStringPlaceholders(`\${connector.gone.base_url}`, {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+    });
+    expect(r.unresolved).toHaveLength(1);
+    expect(r.unresolved[0]!.code).toBe("slug_not_found");
+  });
+
+  test("soft-deleted credential row is not resolved", async () => {
+    const { tenant_id, connector_id } = await seed({
+      slug: "deadcred",
+      mode: "bearer",
+      tokenValue: "should-not-resolve",
+    });
+    // Soft-delete the credential without freeing the unique slot — exactly
+    // what a soft-delete writer would leave behind (see oauth2/tests/wait.test.ts).
+    await ctx.db
+      .update(credentials)
+      .set({ deleted_at: new Date() }) // allow-wall-clock: deleted_at marker, value irrelevant
+      .where(eq(credentials.connector_id, connector_id));
+
+    const r = await resolveStringPlaceholders(`\${cred.deadcred.token}`, {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+    });
+    expect(r.unresolved).toHaveLength(1);
+    expect(r.unresolved[0]!.code).toBe("key_not_found");
+    expect(r.value).not.toContain("should-not-resolve");
   });
 });

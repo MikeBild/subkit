@@ -7,7 +7,7 @@
 // services (most services already tenant-filter); write tools should
 // additionally call into `rbac/` helpers before dispatching.
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
 import {
   deleteConnector,
@@ -27,6 +27,7 @@ import {
   patchCandidates as patchCandidatesTable,
   workflows as workflowsTable,
 } from "../db/schema/index.ts";
+import { listExecutions } from "../execution/list.ts";
 import * as identitySvc from "../identity/service.ts";
 import * as knowledgeSvc from "../knowledge/service.ts";
 import type { CreateKnowledgeSourceInput, UpdateKnowledgeSourceInput } from "../knowledge/types.ts";
@@ -109,10 +110,15 @@ export class EngineClient {
         this.db,
       ),
     count: async () => {
+      // Live rows only — a soft-deleted workflow must not inflate the
+      // tenant summary (same ground-truth-cardinality contract as the
+      // list services).
       const [row] = await this.db
         .select({ c: sql<number>`count(*)::int` })
         .from(workflowsTable)
-        .where(eq(workflowsTable.tenant_id, this.tenant_id));
+        .where(
+          and(eq(workflowsTable.tenant_id, this.tenant_id), isNull(workflowsTable.deleted_at)),
+        );
       return Number(row?.c ?? 0);
     },
   };
@@ -125,10 +131,13 @@ export class EngineClient {
     update: (id: string, patch: UpdateConnectorInput) =>
       updateConnector(this.tenant_id, id, patch, this.actor_id, this.db),
     count: async () => {
+      // Live rows only — mirrors workflows.count.
       const [row] = await this.db
         .select({ c: sql<number>`count(*)::int` })
         .from(connectorsTable)
-        .where(eq(connectorsTable.tenant_id, this.tenant_id));
+        .where(
+          and(eq(connectorsTable.tenant_id, this.tenant_id), isNull(connectorsTable.deleted_at)),
+        );
       return Number(row?.c ?? 0);
     },
     // Describe the placeholder tokens a workflow author (the LLM, usually)
@@ -143,17 +152,8 @@ export class EngineClient {
   };
 
   executions = {
-    list: async (opts?: { limit?: number; workflow_id?: string }) => {
-      const limit = Math.min(opts?.limit ?? 50, 200);
-      const tenantConds = [eq(executionsTable.tenant_id, this.tenant_id)];
-      if (opts?.workflow_id) tenantConds.push(eq(executionsTable.workflow_id, opts.workflow_id));
-      return await this.db
-        .select()
-        .from(executionsTable)
-        .where(and(...tenantConds))
-        .orderBy(desc(executionsTable.created_at))
-        .limit(limit);
-    },
+    list: (opts?: { limit?: number; offset?: number; workflow_id?: string }) =>
+      listExecutions(this.tenant_id, opts ?? {}, this.db),
     get: async (id: string) => {
       const rows = await this.db
         .select()

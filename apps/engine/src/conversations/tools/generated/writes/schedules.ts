@@ -109,8 +109,23 @@ export const listSchedulesTool: ConversationTool = {
   category: "tenant_read",
   async execute(ctx, rawArgs) {
     const args = ListInput.parse(rawArgs);
-    const rows = await listSchedules(ctx.db, ctx.tenant_id, args.workflow_id ?? undefined);
-    return { ok: true, data: { items: rows.map(scheduleView) } };
+    // Schedules are a bounded catalog — the result is the COMPLETE set
+    // and the envelope says so explicitly (self-describing cardinality).
+    const { rows, total } = await listSchedules(
+      ctx.db,
+      ctx.tenant_id,
+      args.workflow_id ?? undefined,
+    );
+    return {
+      ok: true,
+      data: {
+        items: rows.map(scheduleView),
+        total,
+        returned: rows.length,
+        offset: 0,
+        has_more: false,
+      },
+    };
   },
 };
 

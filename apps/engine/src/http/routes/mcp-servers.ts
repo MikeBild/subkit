@@ -6,12 +6,13 @@
 // `requireAuth(c).tenant_id` — the registry repeats the tenant predicate at
 // every query, and these routes never pass an `id` without the tenant id.
 //
-// SECRET DISCIPLINE: the write-only `token` / `refresh_token` secret a
-// caller supplies on create/patch is encrypted into the `credentials`
-// table keyed by `mcp_server_id` — it NEVER lands in `auth_config`, the
-// response, a log, or an audit row. `auth_config` carries only the
-// non-secret shape (`kind` + oauth2 issuer/client_id/scope) and is
-// redacted to `{ kind, has_credential }` on every read path.
+// SECRET DISCIPLINE: the write-only `token` / `username` / `refresh_token`
+// credential fields a caller supplies on create/patch are encrypted into
+// the `credentials` table keyed by `mcp_server_id` — they NEVER land in
+// `auth_config`, the response, a log, or an audit row. `auth_config`
+// carries only the non-secret shape (`kind` + oauth2
+// issuer/client_id/scope) and is redacted to `{ kind, has_credential }`
+// on every read path.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam, mcpNamespaceSchema } from "../../api/common-schemas.ts";
@@ -50,7 +51,7 @@ const NamespaceSchema = mcpNamespaceSchema;
 // field and stored encrypted in `credentials`, never on the row.
 const AuthConfigInput = z
   .object({
-    kind: z.enum(["none", "bearer", "oauth2"]),
+    kind: z.enum(["none", "bearer", "basic", "oauth2"]),
     issuer: z.string().url().optional(),
     client_id: z.string().optional(),
     scope: z.string().optional(),
@@ -60,9 +61,11 @@ const AuthConfigInput = z
 
 // Write-only secret fields. NEVER echoed back; encrypted into the
 // `credentials` table keyed by `mcp_server_id`. For `bearer`, supply
-// `token`; for `oauth2`, supply `refresh_token` (the access token is
-// minted on first handshake via the refresh-token grant using the
-// non-secret issuer/client_id/scope from `auth_config`).
+// `token`; for `basic`, supply `username` + `token` (sent as an RFC 7617
+// `Authorization: Basic base64(username:token)` header at handshake); for
+// `oauth2`, either supply `refresh_token` up front or omit it and run the
+// interactive `POST /{id}/authorize` consent flow, which mints and
+// persists the token pair itself.
 const CreateMcpServerBody = z
   .object({
     name: z.string().min(1),
@@ -71,9 +74,12 @@ const CreateMcpServerBody = z
     transport: z.enum(["http", "sse"]),
     url: z.string().url(),
     auth_config: AuthConfigInput.nullable().optional(),
-    /** Write-only bearer secret. Required when auth_config.kind = bearer. */
+    /** Write-only secret. Required when auth_config.kind = bearer or basic. */
     token: z.string().min(1).optional(),
-    /** Write-only oauth2 refresh token. Required when auth_config.kind = oauth2. */
+    /** Write-only basic-auth username; stored encrypted with the token. */
+    username: z.string().min(1).optional(),
+    /** Write-only oauth2 refresh token. Optional: absent means the
+     *  interactive authorize flow supplies the credential. */
     refresh_token: z.string().min(1).optional(),
   })
   .openapi("CreateMcpServerBody");
@@ -85,8 +91,10 @@ const PatchMcpServerBody = z
     transport: z.enum(["http", "sse"]).optional(),
     url: z.string().url().optional(),
     auth_config: AuthConfigInput.nullable().optional(),
-    /** Write-only bearer secret rotation. */
+    /** Write-only bearer/basic secret rotation. */
     token: z.string().min(1).optional(),
+    /** Write-only basic-auth username rotation (paired with token). */
+    username: z.string().min(1).optional(),
     /** Write-only oauth2 refresh-token rotation. */
     refresh_token: z.string().min(1).optional(),
   })
@@ -97,7 +105,7 @@ const PatchMcpServerBody = z
 // auth credential (i.e. kind !== "none").
 const RedactedAuthConfigSchema = z
   .object({
-    kind: z.enum(["none", "bearer", "oauth2"]),
+    kind: z.enum(["none", "bearer", "basic", "oauth2"]),
     has_credential: z.boolean(),
   })
   .openapi("McpServerRedactedAuthConfig");
@@ -174,6 +182,8 @@ function normalizeAuthConfig(input: z.infer<typeof AuthConfigInput>): McpServerA
  * needs one (validated in the handler before this is called).
  *
  *   - bearer : `token` → mode "bearer", stored as the bearer value.
+ *   - basic  : `username` + `token` → mode "basic"; the pool renders them
+ *     as an RFC 7617 `Authorization: Basic` header at handshake.
  *   - oauth2 : `refresh_token` → mode "oauth2" with an empty access token
  *     and an already-expired expiry, so the pool runs the refresh-token
  *     grant (using auth_config.issuer/client_id/scope) on first handshake.
@@ -184,8 +194,9 @@ async function writeMcpServerCredential(
     tenant_id: string;
     mcp_server_id: string;
     actor_id: string | null;
-    kind: "bearer" | "oauth2";
+    kind: "bearer" | "basic" | "oauth2";
     token?: string | undefined;
+    username?: string | undefined;
     refresh_token?: string | undefined;
     scope?: string | undefined;
   },
@@ -198,6 +209,21 @@ async function writeMcpServerCredential(
         environment: MCP_CREDENTIAL_ENVIRONMENT,
         mode: "bearer",
         value: { mode: "bearer", token: args.token! },
+        actor_id: args.actor_id,
+        source: "http_route",
+      },
+      db,
+    );
+    return;
+  }
+  if (args.kind === "basic") {
+    await upsertCredential(
+      {
+        tenant_id: args.tenant_id,
+        mcp_server_id: args.mcp_server_id,
+        environment: MCP_CREDENTIAL_ENVIRONMENT,
+        mode: "basic",
+        value: { mode: "basic", username: args.username!, password: args.token! },
         actor_id: args.actor_id,
         source: "http_route",
       },
@@ -265,44 +291,75 @@ function auditCtx(
   };
 }
 
-/** `none`: no secret field of either kind may be present. */
-function assertNoneSecretShape(token: string | undefined, refresh_token: string | undefined): void {
-  if (token !== undefined || refresh_token !== undefined) {
+/** The write-only credential fields a create/patch may carry. */
+interface SecretFields {
+  token?: string | undefined;
+  username?: string | undefined;
+  refresh_token?: string | undefined;
+}
+
+/** `none`: no secret field of any kind may be present. */
+function assertNoneSecretShape(s: SecretFields): void {
+  if (s.token !== undefined || s.refresh_token !== undefined || s.username !== undefined) {
     throw new UnprocessableEntityError("auth_config.kind 'none' must not carry a secret");
   }
 }
 
-/** `bearer`: the secret is `token`; `refresh_token` is the wrong field.
- *  When `requireSecret`, a `token` must be supplied. */
-function assertBearerSecretShape(
-  token: string | undefined,
-  refresh_token: string | undefined,
-  requireSecret: boolean,
-): void {
-  if (refresh_token !== undefined) {
+/** `bearer`: the secret is `token`; `refresh_token` / `username` are the
+ *  wrong fields. When `requireSecret`, a `token` must be supplied. */
+function assertBearerSecretShape(s: SecretFields, requireSecret: boolean): void {
+  if (s.refresh_token !== undefined) {
     throw new UnprocessableEntityError(
       "auth_config.kind 'bearer' uses the 'token' field, not 'refresh_token'",
     );
   }
-  if (requireSecret && token === undefined) {
+  if (s.username !== undefined) {
+    throw new UnprocessableEntityError(
+      "auth_config.kind 'bearer' does not use 'username' — that field belongs to kind 'basic'",
+    );
+  }
+  if (requireSecret && s.token === undefined) {
     throw new UnprocessableEntityError("auth_config.kind 'bearer' requires a 'token'");
   }
 }
 
-/** `oauth2`: the secret is `refresh_token`; `token` is the wrong field.
- *  When `requireSecret`, a `refresh_token` must be supplied. */
-function assertOAuth2SecretShape(
-  token: string | undefined,
-  refresh_token: string | undefined,
-  requireSecret: boolean,
-): void {
-  if (token !== undefined) {
+/** `basic`: the credential is the `username` + `token` pair, rotated
+ *  atomically — one without the other is always a 422 (a half-rotated
+ *  basic credential is unusable). When `requireSecret`, both must be
+ *  supplied. */
+function assertBasicSecretShape(s: SecretFields, requireSecret: boolean): void {
+  if (s.refresh_token !== undefined) {
+    throw new UnprocessableEntityError(
+      "auth_config.kind 'basic' uses 'username' + 'token', not 'refresh_token'",
+    );
+  }
+  if ((s.username === undefined) !== (s.token === undefined)) {
+    throw new UnprocessableEntityError(
+      "auth_config.kind 'basic' requires 'username' and 'token' together",
+    );
+  }
+  if (requireSecret && s.token === undefined) {
+    throw new UnprocessableEntityError(
+      "auth_config.kind 'basic' requires a 'username' and a 'token'",
+    );
+  }
+}
+
+/** `oauth2`: the secret is `refresh_token`; `token` / `username` are the
+ *  wrong fields. The refresh token is OPTIONAL even on create — absent
+ *  means the interactive `POST /{id}/authorize` consent flow mints and
+ *  persists the token pair (the server parks in error+backoff until then,
+ *  the same degradation as any unauthorized handshake). */
+function assertOAuth2SecretShape(s: SecretFields): void {
+  if (s.token !== undefined) {
     throw new UnprocessableEntityError(
       "auth_config.kind 'oauth2' uses the 'refresh_token' field, not 'token'",
     );
   }
-  if (requireSecret && refresh_token === undefined) {
-    throw new UnprocessableEntityError("auth_config.kind 'oauth2' requires a 'refresh_token'");
+  if (s.username !== undefined) {
+    throw new UnprocessableEntityError(
+      "auth_config.kind 'oauth2' does not use 'username' — that field belongs to kind 'basic'",
+    );
   }
 }
 
@@ -313,21 +370,23 @@ function assertOAuth2SecretShape(
  *  (create path); the patch path passes false when no rotation was
  *  requested so an unchanged-secret kind is allowed. */
 function assertSecretMatchesKind(
-  kind: "none" | "bearer" | "oauth2",
-  token: string | undefined,
-  refresh_token: string | undefined,
+  kind: "none" | "bearer" | "basic" | "oauth2",
+  secrets: SecretFields,
   opts?: { requireSecret?: boolean },
 ): void {
   const requireSecret = opts?.requireSecret ?? true;
   switch (kind) {
     case "none":
-      assertNoneSecretShape(token, refresh_token);
+      assertNoneSecretShape(secrets);
       return;
     case "bearer":
-      assertBearerSecretShape(token, refresh_token, requireSecret);
+      assertBearerSecretShape(secrets, requireSecret);
+      return;
+    case "basic":
+      assertBasicSecretShape(secrets, requireSecret);
       return;
     case "oauth2":
-      assertOAuth2SecretShape(token, refresh_token, requireSecret);
+      assertOAuth2SecretShape(secrets);
       return;
   }
 }
@@ -505,11 +564,19 @@ export function registerMcpServerRoutes(app: OpenAPIHono<AppEnv>): void {
     // Validate the write-only secret against the kind BEFORE any write, so
     // a misconfigured auth kind is a 422 with no half-created row. The
     // secret never appears in the error detail.
-    assertSecretMatchesKind(kind, body.token, body.refresh_token);
+    assertSecretMatchesKind(kind, {
+      token: body.token,
+      username: body.username,
+      refresh_token: body.refresh_token,
+    });
 
     // Atomic create + credential write: the row and its owned credential
     // land in one transaction so a credential-write failure rolls back the
-    // server row (no orphaned bearer/oauth2 server with no secret).
+    // server row (no orphaned bearer/basic server with no secret). An
+    // oauth2 create without a refresh_token deliberately writes NO
+    // credential — the interactive authorize flow supplies it.
+    const hasSecret =
+      body.token !== undefined || body.username !== undefined || body.refresh_token !== undefined;
     const row = await db.transaction(async (tx) => {
       const created = await createMcpServer(
         tx,
@@ -523,13 +590,14 @@ export function registerMcpServerRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         auditCtx(c, principal.id, tx),
       );
-      if (kind === "bearer" || kind === "oauth2") {
+      if (kind !== "none" && hasSecret) {
         await writeMcpServerCredential(tx, {
           tenant_id: principal.tenant_id,
           mcp_server_id: created.id,
           actor_id: principal.id,
           kind,
           token: body.token,
+          username: body.username,
           refresh_token: body.refresh_token,
           scope: body.auth_config?.scope,
         });
@@ -556,20 +624,25 @@ export function registerMcpServerRoutes(app: OpenAPIHono<AppEnv>): void {
 
     // A secret may only be (re)written when this PATCH also declares the
     // matching `auth_config.kind`, so the credential mode and the row's
-    // auth shape can never diverge. A token/refresh_token without an
-    // auth_config is a 422 — there is no kind to bind the secret to.
-    const hasSecret = body.token !== undefined || body.refresh_token !== undefined;
+    // auth shape can never diverge. A secret field without an auth_config
+    // is a 422 — there is no kind to bind the secret to.
+    const hasSecret =
+      body.token !== undefined || body.username !== undefined || body.refresh_token !== undefined;
     if (hasSecret && body.auth_config == null) {
       throw new UnprocessableEntityError(
-        "a token / refresh_token rotation requires auth_config with the matching kind",
+        "a token / username / refresh_token rotation requires auth_config with the matching kind",
       );
     }
     if (body.auth_config) {
-      assertSecretMatchesKind(body.auth_config.kind, body.token, body.refresh_token, {
-        // On patch the secret is OPTIONAL when the kind is unchanged-secret
-        // (the existing credential stays). Require it only when one was sent.
-        requireSecret: hasSecret,
-      });
+      assertSecretMatchesKind(
+        body.auth_config.kind,
+        { token: body.token, username: body.username, refresh_token: body.refresh_token },
+        {
+          // On patch the secret is OPTIONAL when the kind is unchanged-secret
+          // (the existing credential stays). Require it only when one was sent.
+          requireSecret: hasSecret,
+        },
+      );
     }
 
     const row = await db.transaction(async (tx) => {
@@ -593,18 +666,15 @@ export function registerMcpServerRoutes(app: OpenAPIHono<AppEnv>): void {
       );
       if (!updated) return null;
       // Rotate the owned credential when a new secret was supplied for a
-      // bearer/oauth2 kind.
-      if (
-        hasSecret &&
-        body.auth_config &&
-        (body.auth_config.kind === "bearer" || body.auth_config.kind === "oauth2")
-      ) {
+      // secret-bearing kind.
+      if (hasSecret && body.auth_config && body.auth_config.kind !== "none") {
         await writeMcpServerCredential(tx, {
           tenant_id: principal.tenant_id,
           mcp_server_id: id,
           actor_id: principal.id,
           kind: body.auth_config.kind,
           token: body.token,
+          username: body.username,
           refresh_token: body.refresh_token,
           scope: body.auth_config.scope,
         });

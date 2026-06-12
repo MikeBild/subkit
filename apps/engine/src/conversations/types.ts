@@ -41,6 +41,23 @@ export interface TurnUsage {
   /** Tokens consumed by this turn (delta on the llm_usage ledger). */
   turn_tokens: number;
   /**
+   * Prompt size of the FINAL LLM call of this turn (uncached input +
+   * cache reads + cache writes) — the only per-turn figure that is
+   * comparable to `context_cap_tokens`. The CLI's `ctx N/M` gauge MUST
+   * use this as numerator: dividing the turn-cumulative token count by
+   * the per-prompt cap (the pre-fix behaviour) showed `ctx 464k/180k
+   * (100%)` for a turn whose actual prompts were nowhere near the cap.
+   * Absent when the turn made no LLM call.
+   */
+  prompt_tokens_last_call?: number;
+  /**
+   * Cumulative tokens across every LLM call of this turn (prompt incl.
+   * cache + completion, summed per step). Distinct from `turn_tokens`,
+   * which is the delta on the llm_usage ledger and may include
+   * ancillary flows (critic, suggestions).
+   */
+  turn_tokens_total?: number;
+  /**
    * Remaining token budget for the tenant's current month, or null
    * when the tenant is unlimited.
    */
@@ -332,6 +349,16 @@ export interface WorkflowDraftStepPreview {
   step_id: string;
   kind: string;
   status: string;
+  /**
+   * Step-shape identity at recording time — `<id>#<hash>` from
+   * `step-fingerprint.ts#stepFingerprint`. Evidence keyed by this
+   * fingerprint survives draft mutations exactly as long as the step's
+   * definition is unchanged; any change to the step drops only that
+   * step's trace (`pruneTracesForMutation`). The loop/transform
+   * authoring gates treat a fingerprint mismatch as missing evidence.
+   * Optional only for traces synthesized outside the dry-run path.
+   */
+  fingerprint?: string;
   duration_ms?: number | null;
   /** Truncated post-selector preview (≤4KB by the offload layer). */
   output_preview?: unknown;
@@ -381,9 +408,12 @@ export interface WorkflowDraftPreviewSummary {
    */
   requires_repair?: boolean;
   /**
-   * Per-step compact preview entries. Indexed by step id. Reset on
-   * every fresh dry_run / run so it always reflects the most recent
-   * walk of the draft.
+   * Per-step compact preview entries. Indexed by step id. Merged
+   * fingerprint-wise on every fresh dry_run / run: steps the new walk
+   * touched get their trace replaced; traces for untouched steps
+   * survive as long as their `fingerprint` still matches the current
+   * draft (`step-fingerprint.ts`). Evidence is therefore dropped per
+   * step on definition change, never wholesale.
    */
   step_traces?: WorkflowDraftStepPreview[];
   /**

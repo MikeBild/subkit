@@ -2,11 +2,12 @@
 // place that touches the `connectors` table — routes call through it so
 // audit rows and slug normalization land consistently.
 
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
+import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { connectors } from "../db/schema/index.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
@@ -255,22 +256,38 @@ export async function createConnector(
   });
 }
 
+/**
+ * Connectors are a bounded business catalog — the default page IS the
+ * safety bound so enumeration surfaces see the complete set unless a
+ * caller explicitly pages. `total` is the exact tenant-scoped count
+ * under the same filters (window count, no second round trip).
+ */
+export const CONNECTOR_LIST_MAX_LIMIT = 1000;
+
 export async function listConnectors(
   tenant_id: string,
   opts: { environment?: Environment; limit?: number; offset?: number } = {},
   exec?: Executor,
-): Promise<ConnectorView[]> {
+): Promise<ListResult<ConnectorView>> {
   const db = exec ?? getDb();
   const tenantConds = [eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)];
   if (opts.environment) tenantConds.push(eq(connectors.environment, opts.environment));
+  const offset = opts.offset ?? 0;
   const rows = await db
-    .select()
+    .select({ row: connectors, total: totalOverWindow() })
     .from(connectors)
     .where(and(...tenantConds))
     .orderBy(desc(connectors.created_at))
-    .limit(Math.min(opts.limit ?? 100, 500))
-    .offset(opts.offset ?? 0);
-  return rows.map(toView);
+    .limit(Math.min(opts.limit ?? CONNECTOR_LIST_MAX_LIMIT, CONNECTOR_LIST_MAX_LIMIT))
+    .offset(offset);
+  const total = await resolveWindowTotal(rows, offset, async () => {
+    const [row] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(connectors)
+      .where(and(...tenantConds));
+    return Number(row?.c ?? 0);
+  });
+  return { rows: rows.map((r) => toView(r.row)), total };
 }
 
 export async function getConnector(

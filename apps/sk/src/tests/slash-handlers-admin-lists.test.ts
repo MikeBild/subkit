@@ -20,7 +20,7 @@ describe("dispatchAdminListSlash", () => {
 
   test("/connectors empty list returns the canonical banner", async () => {
     const ctx = buildCtx({
-      listConnectors: () => Promise.resolve({ items: [] }),
+      listConnectors: () => Promise.resolve({ items: [], total: 0 }),
     });
     const result = await dispatchAdminListSlash("connectors", ctx);
     expect(result).toBe("no connectors");
@@ -52,6 +52,7 @@ describe("dispatchAdminListSlash", () => {
               updated_at: "2025-01-01",
             },
           ],
+          total: 1,
         }),
     });
     const result = await dispatchAdminListSlash("connectors", ctx);
@@ -59,11 +60,13 @@ describe("dispatchAdminListSlash", () => {
     expect(result).toContain("c1abcd12");
     expect(result).toContain("Stripe Production");
     expect(result).toContain("stripe-prod");
+    // Ground-truth cardinality: the footer names the exact total.
+    expect(result).toContain("1 total");
   });
 
   test("/workflows empty list returns the canonical banner", async () => {
     const ctx = buildCtx({
-      listWorkflows: () => Promise.resolve({ items: [] }),
+      listWorkflows: () => Promise.resolve({ items: [], total: 0 }),
     });
     const result = await dispatchAdminListSlash("workflows", ctx);
     expect(result).toBe("no workflows");
@@ -71,7 +74,7 @@ describe("dispatchAdminListSlash", () => {
 
   test("/executions and /runs both reach the same handler branch", async () => {
     const ctx = buildCtx({
-      listExecutions: () => Promise.resolve({ items: [] }),
+      listExecutions: () => Promise.resolve({ items: [], total: 0 }),
     });
     expect(await dispatchAdminListSlash("executions", ctx)).toBe("no executions");
     expect(await dispatchAdminListSlash("runs", ctx)).toBe("no executions");

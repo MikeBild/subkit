@@ -206,10 +206,16 @@ export function buildReauthUrl(connector: Pick<ConnectorView, "id" | "slug" | "a
   }
   const origin = redirect_uri.slice(0, -OAUTH_CALLBACK_PATH.length);
   if (method === "oauth2") {
+    // The static /oauth/start endpoint requires bearer auth — it cannot be
+    // opened directly in a browser. The correct affordance for an operator
+    // notification is to tell them to ask the assistant, which will mint a
+    // fresh single-use grant URL via request_connector_reauth. We still
+    // expose the POST endpoint URL as reauth_url so API-key callers can hit
+    // it programmatically; the instructions tell the human path.
     return {
       method,
       reauth_url: `${origin}/v1/connectors/${connector.id}/oauth/start`,
-      instructions: `Reconnect '${connector.slug}' via its OAuth re-authorization endpoint (POST it, or use the connector page in the app) to refresh the provider authorization.`,
+      instructions: `Ask the assistant to run request_connector_reauth for '${connector.slug}' to get a one-time sign-in link, or POST this endpoint with an API key.`,
     };
   }
   return {

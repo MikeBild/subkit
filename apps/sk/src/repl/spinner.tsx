@@ -69,12 +69,16 @@ export interface SpinnerProps {
   /**
    * Number of tool calls that COMPLETED this turn but no tool is
    * currently in flight. When non-zero and `currentTool` is null,
-   * the spinner switches from a generic verb to "summarising N
+   * the spinner switches from a generic verb to "processing N
    * tool result(s)…" so the user sees concrete progress during the
    * LLM's pure-compose phase rather than a random rotating verb.
    * Pre-fix session dcdcf246: spinner showed "considering… 12s",
    * "composing… 8s", "reviewing… 18s" with no signal that the
-   * engine had already finished its tool work.
+   * engine had already finished its tool work. The label
+   * deliberately says "processing", NOT "summarising" — no
+   * summarization call exists; the model is simply composing over
+   * the accumulated results (session 784c1b02 read the old label
+   * as a real compaction step that never happened).
    */
   completedToolsThisTurn?: number;
   /**
@@ -82,7 +86,7 @@ export interface SpinnerProps {
    * the spinner head when ≥2, alongside the last failure's
    * structured `error_code` if known. Lets the user see "5 tools
    * failed (slug_already_in_use) · 3m09s" instead of an opaque
-   * "summarising 5 tool results…" — exactly the symptom in
+   * "processing 5 tool results…" — exactly the symptom in
    * session 975a64b0 where the LLM spent 3m09s burning tokens on a
    * recovery flow that started with a 23505 surfaced as a raw SQL
    * error string.
@@ -173,14 +177,16 @@ const SpinnerImpl: React.FC<SpinnerProps> = ({
   const tokens = typeof turnTokens === "number" && turnTokens > 0 ? ` · ${turnTokens}t` : "";
   // Concrete progress line when a tool is in flight: "running
   // dry_run_workflow…  1m16s · 204879t". When no tool is in flight
-  // BUT tools have completed this turn, switch to "summarising N
+  // BUT tools have completed this turn, switch to "processing N
   // tool result(s)…" so the user sees concrete pipeline progress
   // during the LLM's compose phase. Verb rotation is the last-
   // resort fallback (pure thinking, no tools yet).
+  // "processing", NOT "summarising": no summarization call exists in
+  // the engine — the old label invented a step that never ran.
   // Failure-aware head: when ≥2 tools have failed in this turn, the
   // spinner surfaces the failure count + last error code so the user
   // sees a concrete "5 tools failed (slug_already_in_use)" instead
-  // of a misleading "summarising 5 tool results" — which suggests
+  // of a misleading "processing 5 tool results" — which suggests
   // the LLM is wrapping up when it's actually still recovering.
   const failureHead =
     failedToolsThisTurn >= 2
@@ -190,7 +196,7 @@ const SpinnerImpl: React.FC<SpinnerProps> = ({
     ? `running ${currentTool}${currentToolKind ? ` (${currentToolKind})` : ""}`
     : (failureHead ??
       (completedToolsThisTurn > 0
-        ? `summarising ${completedToolsThisTurn} tool result${completedToolsThisTurn === 1 ? "" : "s"}`
+        ? `processing ${completedToolsThisTurn} tool result${completedToolsThisTurn === 1 ? "" : "s"}`
         : verb));
   const headColor = failureHead && !currentTool ? "red" : "yellow";
 

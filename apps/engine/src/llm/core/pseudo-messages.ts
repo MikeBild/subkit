@@ -14,7 +14,7 @@
 //   [DISCOVERY]       — recent discovery runs and how many artifacts
 //   [LOADED SKILLS]   — skills already pulled via load_skill this conv
 
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import {
   connectors,
@@ -34,14 +34,17 @@ interface TenantStateOpts {
 }
 
 export async function buildTenantStateMessage(opts: TenantStateOpts): Promise<string | null> {
+  // Soft-deleted rows must not count: a tenant whose only connector was
+  // deleted is an *empty* tenant (onboarding hint should fire) and the
+  // TENANT STATE numbers must match what list_* enumerates.
   const [wfCount] = await opts.db
     .select({ c: sql<number>`count(*)::int` })
     .from(workflows)
-    .where(eq(workflows.tenant_id, opts.tenant_id));
+    .where(and(eq(workflows.tenant_id, opts.tenant_id), isNull(workflows.deleted_at)));
   const [connCount] = await opts.db
     .select({ c: sql<number>`count(*)::int` })
     .from(connectors)
-    .where(eq(connectors.tenant_id, opts.tenant_id));
+    .where(and(eq(connectors.tenant_id, opts.tenant_id), isNull(connectors.deleted_at)));
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const [runCount] = await opts.db
     .select({ c: sql<number>`count(*)::int` })
@@ -194,14 +197,16 @@ interface OnboardingOpts {
  *  never run a workflow. Returns null for an experienced tenant so the
  *  prompt stays lean. */
 export async function buildOnboardingHint(opts: OnboardingOpts): Promise<string | null> {
+  // Live rows only — a connector the operator deleted must not make the
+  // tenant look "experienced" and suppress the onboarding hint.
   const [connCount] = await opts.db
     .select({ c: sql<number>`count(*)::int` })
     .from(connectors)
-    .where(eq(connectors.tenant_id, opts.tenant_id));
+    .where(and(eq(connectors.tenant_id, opts.tenant_id), isNull(connectors.deleted_at)));
   const [wfCount] = await opts.db
     .select({ c: sql<number>`count(*)::int` })
     .from(workflows)
-    .where(eq(workflows.tenant_id, opts.tenant_id));
+    .where(and(eq(workflows.tenant_id, opts.tenant_id), isNull(workflows.deleted_at)));
   const [runCount] = await opts.db
     .select({ c: sql<number>`count(*)::int` })
     .from(executions)

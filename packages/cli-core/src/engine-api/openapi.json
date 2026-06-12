@@ -2208,6 +2208,7 @@
             "enum": [
               "none",
               "bearer",
+              "basic",
               "oauth2"
             ]
           },
@@ -2249,6 +2250,10 @@
             "type": "string",
             "minLength": 1
           },
+          "username": {
+            "type": "string",
+            "minLength": 1
+          },
           "refresh_token": {
             "type": "string",
             "minLength": 1
@@ -2270,6 +2275,7 @@
             "enum": [
               "none",
               "bearer",
+              "basic",
               "oauth2"
             ]
           },
@@ -2315,6 +2321,10 @@
             "$ref": "#/components/schemas/McpServerAuthConfigInput"
           },
           "token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "username": {
             "type": "string",
             "minLength": 1
           },
@@ -2759,10 +2769,15 @@
             "items": {
               "$ref": "#/components/schemas/Workflow"
             }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
-          "items"
+          "items",
+          "total"
         ]
       },
       "Workflow": {
@@ -2988,10 +3003,15 @@
             "items": {
               "$ref": "#/components/schemas/ScheduleEntry"
             }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
-          "schedules"
+          "schedules",
+          "total"
         ]
       },
       "ScheduleEntry": {
@@ -4041,13 +4061,18 @@
               "$ref": "#/components/schemas/Execution"
             }
           },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
           "next_cursor": {
             "type": "string",
             "nullable": true
           }
         },
         "required": [
-          "items"
+          "items",
+          "total"
         ]
       },
       "Execution": {
@@ -5932,10 +5957,15 @@
             "items": {
               "$ref": "#/components/schemas/Connector"
             }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
-          "items"
+          "items",
+          "total"
         ]
       },
       "Connector": {
@@ -16044,6 +16074,16 @@
           },
           {
             "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string",
               "format": "uuid"
             },
@@ -17309,6 +17349,47 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Browser-openable OAuth2 start (single-use grant token)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 20
+            },
+            "required": true,
+            "name": "grant",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to provider authorization URL"
+          },
+          "400": {
+            "description": "Grant invalid/expired (HTML error page)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }

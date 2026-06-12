@@ -31,39 +31,61 @@ function makeClient() {
 // Validated shape of the `--auth-kind` flag family. Mirrors the engine's
 // per-kind secret rules so a mismatched flag combination fails locally with
 // a friendly message instead of an engine 422:
-//   none   → no secret of either kind
-//   bearer → the secret is --token; --refresh-token is the wrong flag
-//            (--token itself is optional: set-credential may rotate only
-//            the non-secret shape; the engine enforces required-at-create)
-//   oauth2 → the secret is --refresh-token; --token is the wrong flag
+//   none   → no secret of any kind
+//   bearer → the secret is --token; --refresh-token / --username are the
+//            wrong flags (--token itself is optional: set-credential may
+//            rotate only the non-secret shape; the engine enforces
+//            required-at-create)
+//   basic  → the credential is --username plus --token, always together
+//   oauth2 → the secret is --refresh-token (optional: the interactive
+//            `authorize` flow can mint it); --token / --username are the
+//            wrong flags
 const AuthFlagsSchema = z
   .object({
-    kind: z.enum(["none", "bearer", "oauth2"], {
-      message: "--auth-kind must be one of: none, bearer, oauth2",
+    kind: z.enum(["none", "bearer", "basic", "oauth2"], {
+      message: "--auth-kind must be one of: none, bearer, basic, oauth2",
     }),
     token: z.string().min(1, "--token must not be empty").optional(),
+    username: z.string().min(1, "--username must not be empty").optional(),
     refresh_token: z.string().min(1, "--refresh-token must not be empty").optional(),
     issuer: z.string().optional(),
     client_id: z.string().optional(),
     scope: z.string().optional(),
   })
   .superRefine((v, issues) => {
-    if (v.kind === "none" && (v.token !== undefined || v.refresh_token !== undefined)) {
+    if (
+      v.kind === "none" &&
+      (v.token !== undefined || v.refresh_token !== undefined || v.username !== undefined)
+    ) {
       issues.addIssue({
         code: "custom",
-        message: "--auth-kind none must not carry --token or --refresh-token",
+        message: "--auth-kind none must not carry --token, --username, or --refresh-token",
       });
     }
-    if (v.kind === "bearer" && v.refresh_token !== undefined) {
+    if (v.kind === "bearer" && (v.refresh_token !== undefined || v.username !== undefined)) {
       issues.addIssue({
         code: "custom",
-        message: "--auth-kind bearer uses --token, not --refresh-token",
+        message: "--auth-kind bearer uses --token, not --refresh-token or --username",
       });
     }
-    if (v.kind === "oauth2" && v.token !== undefined) {
+    if (v.kind === "basic") {
+      if (v.refresh_token !== undefined) {
+        issues.addIssue({
+          code: "custom",
+          message: "--auth-kind basic uses --username plus --token, not --refresh-token",
+        });
+      }
+      if ((v.username === undefined) !== (v.token === undefined)) {
+        issues.addIssue({
+          code: "custom",
+          message: "--auth-kind basic requires --username and --token together",
+        });
+      }
+    }
+    if (v.kind === "oauth2" && (v.token !== undefined || v.username !== undefined)) {
       issues.addIssue({
         code: "custom",
-        message: "--auth-kind oauth2 uses --refresh-token, not --token",
+        message: "--auth-kind oauth2 uses --refresh-token, not --token or --username",
       });
     }
   });
@@ -80,14 +102,17 @@ function buildAuthBody(args: Record<string, unknown>): Record<string, unknown> {
   if (!authKind) {
     // A secret with no --auth-kind has no kind to bind to — reject locally
     // with the actionable message (the engine would 422 anyway).
-    if (args.token || args["refresh-token"]) {
-      throw new Error("--token / --refresh-token requires --auth-kind (bearer or oauth2)");
+    if (args.token || args.username || args["refresh-token"]) {
+      throw new Error(
+        "--token / --username / --refresh-token requires --auth-kind (bearer, basic, or oauth2)",
+      );
     }
     return body;
   }
   const parsed = AuthFlagsSchema.safeParse({
     kind: authKind,
     token: args.token === undefined ? undefined : String(args.token),
+    username: args.username === undefined ? undefined : String(args.username),
     refresh_token: args["refresh-token"] === undefined ? undefined : String(args["refresh-token"]),
     issuer: args.issuer === undefined ? undefined : String(args.issuer),
     client_id: args["client-id"] === undefined ? undefined : String(args["client-id"]),
@@ -104,13 +129,24 @@ function buildAuthBody(args: Record<string, unknown>): Record<string, unknown> {
   if (flags.scope) auth_config.scope = flags.scope;
   body.auth_config = auth_config;
   if (flags.token) body.token = flags.token;
+  if (flags.username) body.username = flags.username;
   if (flags.refresh_token) body.refresh_token = flags.refresh_token;
   return body;
 }
 
 const AUTH_ARGS = {
-  "auth-kind": { type: "string" as const, description: "Auth kind: none | bearer | oauth2" },
-  token: { type: "string" as const, description: "Bearer secret (write-only; bearer kind)" },
+  "auth-kind": {
+    type: "string" as const,
+    description: "Auth kind: none | bearer | basic | oauth2",
+  },
+  token: {
+    type: "string" as const,
+    description: "Secret (write-only; bearer token or basic password/API token)",
+  },
+  username: {
+    type: "string" as const,
+    description: "Basic-auth username (basic kind; paired with --token)",
+  },
   "refresh-token": {
     type: "string" as const,
     description: "OAuth2 refresh token (write-only; oauth2 kind)",
@@ -319,20 +355,21 @@ const authorizeCommand = defineCommand({
       }
 
       process.stdout.write("\nWaiting for authorization to complete (up to 120s)...\n");
+      // Poll by FORCING a handshake (inspect), not by reading the row's
+      // status: a never-handshaken server already sits at the default
+      // `active`, so `GET /{id}` would report success before the user even
+      // opened the consent URL. Inspect only returns `active` after a real
+      // handshake succeeded with the freshly minted token; until then it
+      // returns `error` ("authorization required"), which just means "keep
+      // waiting" here.
       for (let attempt = 0; attempt < AUTHORIZE_POLL_ATTEMPTS; attempt++) {
         await sleep(AUTHORIZE_POLL_INTERVAL_MS);
-        const server = (await client.getMcpServer(String(args.id))) as {
+        const inspected = (await client.inspectMcpServer(String(args.id))) as {
           status?: string;
           last_error?: string | null;
         };
-        if (server.status === "active") {
+        if (inspected.status === "active") {
           process.stdout.write("authorized — server is active\n");
-          return;
-        }
-        if (server.status === "error") {
-          process.stdout.write(
-            `authorization failed${server.last_error ? `: ${server.last_error}` : ""}\n`,
-          );
           return;
         }
       }

@@ -33,6 +33,8 @@ import { and, lt, notExists, sql } from "drizzle-orm";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
 import {
+  connectorOauthStartGrants,
+  connectorOauthStates,
   mcpOauthAccessTokens,
   mcpOauthAuthorizationCodes,
   mcpOauthClients,
@@ -68,6 +70,8 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
   let codes_deleted = 0;
   let clients_deleted = 0;
   let states_deleted = 0;
+  let connector_oauth_start_grants_deleted = 0;
+  let connector_oauth_states_deleted = 0;
 
   // ── Sweep 1: access tokens ─────────────────────────────────────────────────
   // tenant-filter:exempt — cross-tenant retention sweep
@@ -190,6 +194,48 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
+  // ── Sweep 6: expired connector OAuth start grants ─────────────────────────
+  // tenant-filter:exempt — cross-tenant retention sweep.
+  // Short-lived (10-min TTL); an expired row is unclaimable (the atomic
+  // DELETE WHERE expires_at > now() guard would never match), so sweep
+  // immediately past expiry without extra grace.
+  try {
+    const deleted = await db
+      .delete(connectorOauthStartGrants)
+      .where(lt(connectorOauthStartGrants.expires_at, sql`now()`))
+      .returning({ id: connectorOauthStartGrants.id });
+    connector_oauth_start_grants_deleted = deleted.length;
+  } catch (err) {
+    logger.error({
+      module: "scheduler",
+      action: "mcp_oauth_cleanup.connector_oauth_start_grants_failed",
+      msg: "connector OAuth start-grant sweep failed",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
+  // ── Sweep 7: expired connector OAuth states ────────────────────────────────
+  // tenant-filter:exempt — cross-tenant retention sweep.
+  // The callback route atomically claims (DELETE) live rows; expired rows
+  // are dead-flows that the callback will never claim. Sweep immediately
+  // past expiry (same rationale as Sweep 6 above).
+  try {
+    const deleted = await db
+      .delete(connectorOauthStates)
+      .where(lt(connectorOauthStates.expires_at, sql`now()`))
+      .returning({ id: connectorOauthStates.id });
+    connector_oauth_states_deleted = deleted.length;
+  } catch (err) {
+    logger.error({
+      module: "scheduler",
+      action: "mcp_oauth_cleanup.connector_oauth_states_failed",
+      msg: "connector OAuth states sweep failed",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
   // ── Summary audit row ──────────────────────────────────────────────────────
   // The counts (incl. states_deleted) intentionally aggregate across ALL
   // tenants under SYSTEM_TENANT_ID — SIEM authors should not expect
@@ -210,6 +256,8 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
           refresh_tokens_deleted,
           clients_deleted,
           states_deleted,
+          connector_oauth_start_grants_deleted,
+          connector_oauth_states_deleted,
         },
       },
       db,
@@ -235,6 +283,8 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     refresh_tokens_deleted,
     clients_deleted,
     states_deleted,
+    connector_oauth_start_grants_deleted,
+    connector_oauth_states_deleted,
     duration_ms,
   });
 }

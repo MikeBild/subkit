@@ -62,8 +62,14 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
     return requirePermission("connector:read", () => ({ type: "connector", id }))(c, next);
   });
   app.use("/v1/connectors/:id/oauth/start", async (c, next) => {
-    const id = c.req.param("id");
-    return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
+    // POST: authenticated bearer-token path — requires connector:oauth permission.
+    // GET:  grant-token path — unauthenticated (single-use skog_… token in query);
+    //       authentication is enforced inside the route handler by consumeStartGrant.
+    if (c.req.method === "POST") {
+      const id = c.req.param("id");
+      return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
+    }
+    return next();
   });
   // GET /v1/oauth/callback is deliberately NOT gated by requirePermission:
   // the OAuth provider redirects the user's browser here with no API

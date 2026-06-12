@@ -7,6 +7,12 @@
 //                                             never sees a per-connector
 //                                             callback path.
 //
+//   GET  /v1/connectors/{id}/oauth/start    — UNAUTHENTICATED (grant-token
+//                                             auth). Consumes a single-use
+//                                             skog_… grant token, then
+//                                             begins the OAuth dance and
+//                                             302-redirects to the provider.
+//
 //   GET  /v1/oauth/callback                 — UNAUTHENTICATED. The OAuth
 //                                             provider redirects here with
 //                                             `?code=…&state=…` (success)
@@ -28,25 +34,18 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import {
-  AuditAction,
-  auditAwait,
-  recordOAuthClientRegistered,
-  recordOAuthClientRegistrationFailed,
-} from "../../../audit/index.ts";
+import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
-import { getConnectorTemplateSnapshot } from "../../../connectors/index.ts";
-import * as credsvc from "../../../credentials/index.ts";
 import {
-  buildOAuthRedirectUri,
-  completeAuthorizationCode,
-  DynamicRegistrationError,
-  dynamicallyRegisterClient,
-  runClientCredentialsJsonGrant,
-  startAuthorizationCode,
-} from "../../../credentials/index.ts";
+  beginConnectorOAuthDance,
+  buildCallbackPageHtml,
+  consumeStartGrant,
+  escapeHtml,
+} from "../../../connectors/index.ts";
+import * as credsvc from "../../../credentials/index.ts";
+import { buildOAuthRedirectUri, completeAuthorizationCode } from "../../../credentials/index.ts";
 import { writeEvent } from "../../../db/events.ts";
-import { connectorOauthStates, connectors } from "../../../db/schema/index.ts";
+import { connectorOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import {
   ConnectorOauthCallbackFailedPayloadSchema,
@@ -57,7 +56,7 @@ import { now } from "../../../utils/clock.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { connectorOauthCfg, OAuthCallbackQuery, OAuthStartResponse } from "./schemas.ts";
+import { OAuthCallbackQuery, OAuthStartResponse } from "./schemas.ts";
 
 const oauthStartRoute = createRoute({
   method: "post",
@@ -70,6 +69,36 @@ const oauthStartRoute = createRoute({
     200: { description: "OK", content: { "application/json": { schema: OAuthStartResponse } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+// Single-use grant token query parameter. Min-20 guards against random short
+// strings but no semantic validation — the consumeStartGrant service enforces
+// the sha256 match and expiry check atomically.
+const OAuthStartGrantQuery = z
+  .object({ grant: z.string().min(20) })
+  .openapi("OAuthStartGrantQuery");
+
+const oauthGrantStartRoute = createRoute({
+  method: "get",
+  path: "/v1/connectors/{id}/oauth/start",
+  tags: ["connectors"],
+  summary: "Browser-openable OAuth2 start (single-use grant token)",
+  // Unauthenticated: the LLM hands this URL to the operator to open in a
+  // browser. Authentication is by way of the single-use opaque `grant`
+  // query parameter (skog_… token), which the engine generated and stored
+  // in connector_oauth_start_grants as a sha256 hash. Same comment
+  // discipline as the unauthenticated /v1/oauth/callback route below.
+  request: {
+    params: IdParam,
+    query: OAuthStartGrantQuery,
+  },
+  responses: {
+    302: { description: "Redirect to provider authorization URL" },
+    400: {
+      description: "Grant invalid/expired (HTML error page)",
+      content: { "text/html": { schema: z.string() } },
+    },
   },
 });
 
@@ -90,12 +119,12 @@ const oauthCallbackRoute = createRoute({
 });
 
 export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
+  // ── POST /v1/connectors/{id}/oauth/start ─────────────────────────────────
+  // Authenticated bearer-token path. Thin wrapper around beginConnectorOAuthDance.
   app.openapi(oauthStartRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    let connector = await connectorSvc.getConnector(principal.tenant_id, id, db);
-    if (!connector) throw new NotFoundError("connector");
 
     const redirect_uri = buildOAuthRedirectUri({ req: c.req.raw });
     if (!redirect_uri) {
@@ -104,185 +133,119 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    const snapshot = getConnectorTemplateSnapshot(connector);
-    const templateOauth = snapshot?.oauth ?? null;
-    const oauthBlock = (connector.config?.oauth ?? {}) as Record<string, unknown>;
-    const needsDynamicReg =
-      templateOauth?.dynamic_registration === true &&
-      (oauthBlock.client_id === null || oauthBlock.client_id === undefined);
+    const result = await beginConnectorOAuthDance({
+      db,
+      tenant_id: principal.tenant_id,
+      connector_id: id,
+      actor_id: principal.id,
+      redirect_uri,
+    });
 
-    if (needsDynamicReg) {
-      const connectorForReg = connector;
-      const issuerUrl =
-        (oauthBlock.issuer_url as string | undefined) ?? templateOauth?.issuer_url ?? "";
-      const issuerHost = issuerUrl ? new URL(issuerUrl).host : "";
-      let registrationEndpointHost: string | null = null;
-      try {
-        const result = await dynamicallyRegisterClient({
-          issuerUrl,
-          clientMetadata: { redirect_uris: [redirect_uri] },
-          allowInsecureRequests: new URL(issuerUrl).protocol === "http:",
-        });
-        const resolvedRegistrationHost = new URL(result.registrationEndpoint).host;
-        registrationEndpointHost = resolvedRegistrationHost;
-
-        // Single transaction: credential insert + connector config update +
-        // audit row must all land or all roll back. A crash between the
-        // credential write and the connector patch would otherwise leave a
-        // confidential client_secret encrypted-at-rest with no client_id
-        // in config to reference it; between the patch and the audit row,
-        // an unaudited secret persisted under an operator's tenant.
-        const updatedOauthBlock = { ...oauthBlock, client_id: result.clientId };
-        const updatedConfig = { ...connectorForReg.config, oauth: updatedOauthBlock };
-        await db.transaction(async (tx) => {
-          await credsvc.upsertCredential(
-            {
-              tenant_id: principal.tenant_id,
-              connector_id: id,
-              environment: connectorForReg.environment,
-              mode: "oauth2_client",
-              value: {
-                mode: "oauth2_client",
-                client_id: result.clientId,
-                ...(result.clientSecret ? { client_secret: result.clientSecret } : {}),
-              },
-              actor_id: principal.id,
-              source: "http_route",
-            },
-            tx,
-          );
-          await tx
-            .update(connectors)
-            .set({ config: updatedConfig, updated_at: new Date() })
-            .where(and(eq(connectors.tenant_id, principal.tenant_id), eq(connectors.id, id)));
-          await recordOAuthClientRegistered({
-            tenant_id: principal.tenant_id,
-            actor_id: principal.id,
-            connector_id: id,
-            issuer_url_host: issuerHost,
-            registration_endpoint_host: resolvedRegistrationHost,
-            executor: tx,
-          });
-        });
-        connector = { ...connectorForReg, config: updatedConfig };
-
-        logger.info({
-          module: "oauth",
-          action: "oauth.dynamic_registration.completed",
-          msg: "dynamic client registered and credential persisted",
-          tenant_id: principal.tenant_id,
-          connector_id: id,
-          issuer_url_host: issuerHost,
-          registration_endpoint_host: registrationEndpointHost,
-        });
-      } catch (err) {
-        const errorCode = err instanceof DynamicRegistrationError ? err.error_code : "unknown";
-        await recordOAuthClientRegistrationFailed({
-          tenant_id: principal.tenant_id,
-          actor_id: principal.id,
-          connector_id: id,
-          issuer_url_host: issuerHost,
-          registration_endpoint_host: registrationEndpointHost,
-          error_code: errorCode,
-          executor: db,
-        });
-        throw err;
-      }
-    }
-
-    const cfg = await connectorOauthCfg(db, principal.tenant_id, connector);
-
-    // client_credentials_json: machine-to-machine exchange — no browser
-    // redirect. POST JSON body to the token endpoint, store the token
-    // as an oauth2 credential, and return a synthetic done envelope so
-    // the caller doesn't have to open a browser.
-    if (cfg.grant_type === "client_credentials_json") {
-      const bodyMapping = cfg.token_request_body_mapping;
-      if (!bodyMapping || Object.keys(bodyMapping).length === 0) {
-        throw new BadRequestError(
-          "client_credentials_json connector is missing token_request_body_mapping in config.oauth — " +
-            "set client_id and client_secret fields before calling oauth/start",
-        );
-      }
-      const tokenEndpoint = cfg.token_endpoint;
-      if (!tokenEndpoint) {
-        throw new BadRequestError(
-          "client_credentials_json connector is missing config.oauth.token_endpoint",
-        );
-      }
-      const bundle = await runClientCredentialsJsonGrant({
-        token_endpoint: tokenEndpoint,
-        body_mapping: bodyMapping,
-        response_format: cfg.token_response_format ?? "raw",
-        token_response_ttl_ms: cfg.token_response_ttl_ms ?? 86_400_000,
-        extra_token_headers: cfg.extra_token_headers,
-      });
-      await credsvc.upsertCredential(
-        {
-          tenant_id: principal.tenant_id,
-          connector_id: id,
-          environment: connector.environment,
-          mode: "oauth2",
-          value: {
-            mode: "oauth2",
-            access_token: bundle.access_token,
-            token_type: bundle.token_type,
-            ...(bundle.scope ? { scope: bundle.scope } : {}),
-          },
-          oauth2_refresh_token: null,
-          oauth2_expires_at: bundle.expires_at,
-          actor_id: principal.id,
-          source: "oauth_callback",
-        },
-        db,
-      );
-      await auditAwait(
-        {
-          tenant_id: principal.tenant_id,
-          actor_type: "user",
-          actor_id: principal.id,
-          action: AuditAction.CREDENTIAL_OAUTH2_REFRESHED,
-          resource_type: "credential",
-          resource_id: id,
-          result: "success",
-          metadata: { grant_type: "client_credentials_json", connector_id: id },
-        },
-        db,
-      );
-      logger.info({
-        module: "oauth",
-        action: "oauth.client_credentials_json.minted",
-        msg: "client_credentials_json token minted and stored",
-        tenant_id: principal.tenant_id,
-        connector_id: id,
-      });
+    if (result.kind === "done") {
       // Return a synthetic authorization_url so callers that check for the
       // field don't break. An empty state signals "no browser flow needed".
       return c.json({ authorization_url: "", state: "" }, 200);
     }
-
-    const cfgWithRedirect = { ...cfg, redirect_uri };
-    const started = await startAuthorizationCode(cfgWithRedirect);
-    await db.insert(connectorOauthStates).values({
-      tenant_id: principal.tenant_id,
-      connector_id: id,
-      state: started.state,
-      code_verifier: started.code_verifier,
-      redirect_uri,
-      expires_at: new Date(Date.now() + 10 * 60_000),
-    });
-    logger.info({
-      module: "oauth",
-      action: "oauth.start",
-      msg: "issued authorization URL",
-      tenant_id: principal.tenant_id,
-      connector_id: id,
-      state_prefix: started.state.slice(0, 8),
-      redirect_uri,
-    });
-    return c.json({ authorization_url: started.authorization_url, state: started.state }, 200);
+    return c.json({ authorization_url: result.authorization_url, state: result.state }, 200);
   });
 
+  // ── GET /v1/connectors/{id}/oauth/start?grant=skog_… ─────────────────────
+  // Unauthenticated browser-grant path. Atomically consumes the single-use
+  // grant token, then begins the dance and 302-redirects to the provider.
+  app.openapi(oauthGrantStartRoute, async (c) => {
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const { grant } = c.req.valid("query");
+
+    // Atomic claim: wrong connector_id does NOT burn the grant.
+    const claimed = await consumeStartGrant(db, { token: grant, connector_id: id });
+    if (!claimed) {
+      // Do not echo the grant token in HTML or logs.
+      logger.warn({
+        module: "oauth",
+        action: "oauth.grant_start.invalid",
+        msg: "start grant not found, expired, or wrong connector — browser opened an invalid link",
+        connector_id: id,
+      });
+      return renderHtmlResponse(c, {
+        kind: "error",
+        title: "Sign-in link expired",
+        message:
+          "This sign-in link was already used or has expired — ask the assistant for a fresh link.",
+      });
+    }
+
+    // Tenant is derived ONLY from the claimed row — never from the request.
+    const { tenant_id, connector_id, created_by_actor_id } = claimed;
+
+    // The consumer is an unauthenticated browser — the grant token IS the
+    // auth. Attribution to the minting principal lives in metadata (and on
+    // the paired GRANT_ISSUED row); recording it as the acting principal
+    // here would claim a user performed a request they never made.
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.CONNECTOR_OAUTH_GRANT_CONSUMED,
+        resource_type: "connector",
+        resource_id: connector_id,
+        result: "success",
+        metadata: { connector_id, created_by_actor_id },
+      },
+      db,
+    );
+
+    const redirect_uri = buildOAuthRedirectUri({ req: c.req.raw });
+    if (!redirect_uri) {
+      return renderHtmlResponse(c, {
+        kind: "error",
+        title: "Engine misconfigured",
+        message:
+          "The engine has no resolvable public origin. Ask your administrator to set server.public_base_url.",
+      });
+    }
+
+    try {
+      const result = await beginConnectorOAuthDance({
+        db,
+        tenant_id,
+        connector_id,
+        actor_id: null,
+        redirect_uri,
+      });
+
+      if (result.kind === "done") {
+        return renderHtmlResponse(c, {
+          kind: "success",
+          title: "Authorized",
+          message:
+            "Connector credentials refreshed. You can close this tab and return to the assistant.",
+        });
+      }
+
+      // 302 to provider authorization URL.
+      return c.redirect(result.authorization_url, 302);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn({
+        module: "oauth",
+        action: "oauth.grant_start.dance_failed",
+        msg: "OAuth dance failed after grant consumed",
+        tenant_id,
+        connector_id,
+        error: message,
+      });
+      return renderHtmlResponse(c, {
+        kind: "error",
+        title: "Authorization failed",
+        message:
+          "Something went wrong starting the authorization. This link has been used up — ask the assistant for a fresh link.",
+      });
+    }
+  });
+
+  // ── GET /v1/oauth/callback ────────────────────────────────────────────────
   app.openapi(oauthCallbackRoute, async (c) => {
     const db = c.get("db");
     const q = c.req.valid("query");
@@ -323,7 +286,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       // no tenant_id/connector_id to scope the event to. A waiter is
       // keyed to a real state token, so a bogus/expired callback simply
       // lets that waiter time out — which is the correct outcome.
-      return renderCallbackPage(c, {
+      return renderHtmlResponse(c, {
         kind: "error",
         title: "OAuth state not found",
         message:
@@ -354,7 +317,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id: stateRow.connector_id,
         reason: "provider_error",
       });
-      return renderCallbackPage(c, {
+      return renderHtmlResponse(c, {
         kind: "error",
         title: "OAuth provider returned an error",
         message:
@@ -377,7 +340,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id: stateRow.connector_id,
         reason: "missing_code",
       });
-      return renderCallbackPage(c, {
+      return renderHtmlResponse(c, {
         kind: "error",
         title: "OAuth callback missing code",
         message:
@@ -392,7 +355,8 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         db,
       );
       if (!connector) throw new NotFoundError("connector");
-      const cfg = await connectorOauthCfg(db, stateRow.tenant_id, connector);
+      const cfg = await connectorSvc.resolveConnectorOAuthConfig(db, stateRow.tenant_id, connector);
+      if (!cfg) throw new BadRequestError("connector is missing oauth2 config");
       const cfgWithRedirect = { ...cfg, redirect_uri: stateRow.redirect_uri };
       const current = new URL(stateRow.redirect_uri);
       current.searchParams.set("code", q.code);
@@ -405,12 +369,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       });
       // G6 (runtime-logs review plan): compute the requested-vs-granted
       // scope diff so the credential row carries an authoritative
-      // record of what the IdP actually approved. Pre-fix the engine
-      // only knew the GRANTED scope (`bundle.scope`) and discarded it;
-      // a partial-grant flow (user clicks consent but only ticks some
-      // boxes; IdP returns a narrower scope than requested) silently
-      // wrote a "looks healthy" credential row that later 401'd from
-      // every API call against the un-granted resources.
+      // record of what the IdP actually approved.
       const requestedScopes = stateRow.requested_scopes
         ? stateRow.requested_scopes
             .split(/\s+/)
@@ -482,11 +441,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       // Publish a `connector.oauth.callback_succeeded` event so any
       // active sk-cli conversation tailing `/v1/events/stream?channel=
       // connector.oauth&type=connector.oauth.callback_succeeded` can
-      // auto-resume without the operator typing "done". Tenant-scoped
-      // by writeEvent's `tenant_id` parameter, which the events stream
-      // filters on at read time — no cross-tenant leak. Best-effort:
-      // the credential is already persisted; a publish failure must
-      // not derail the operator's success path.
+      // auto-resume without the operator typing "done". Best-effort.
       try {
         const payload = ConnectorOauthCallbackPayloadSchema.parse({
           connector_id: stateRow.connector_id,
@@ -510,7 +465,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
           error: publishErr instanceof Error ? publishErr.message : String(publishErr),
         });
       }
-      return renderCallbackPage(c, {
+      return renderHtmlResponse(c, {
         kind: "success",
         title: "Authentication complete",
         message: `Connector "${connector.display_name ?? connector.slug}" is now authorized. You can close this tab and return to the CLI.`,
@@ -535,19 +490,13 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id: stateRow.connector_id,
         reason: "token_exchange_failed",
       });
-      return renderCallbackPage(c, {
+      return renderHtmlResponse(c, {
         kind: "error",
         title: "Token exchange failed",
         message: `${message}\n\nClose this tab and run authenticate_oauth again to retry.`,
       });
     }
   });
-}
-
-interface CallbackPage {
-  kind: "success" | "error";
-  title: string;
-  message: string;
 }
 
 /**
@@ -558,14 +507,10 @@ interface CallbackPage {
  * the request — a state change. AGENTS.md requires every state change to
  * write an `audit_log` entry, so the durable, append-only audit row is
  * written FIRST (awaited — it must not be lost), then the best-effort
- * pubsub event is published for live waiters. A publish failure is
- * logged and swallowed so it can never derail the error-page render. The
- * waiter (`waitForOAuthCredential`) resolves `failed` ONLY from the
- * explicit event — the absence of a state row no longer implies failure,
- * because the row is deleted at the START of a seconds-long exchange.
+ * pubsub event is published for live waiters.
  *
  * The state-not-found branch does NOT call this: with no claimed row
- * there is no tenant to scope either the audit row or the event to.
+ * there is no tenant_id/connector_id to scope the audit row to.
  */
 async function publishCallbackFailed(
   db: import("../../../db/client.ts").Db,
@@ -593,10 +538,6 @@ async function publishCallbackFailed(
     db,
   );
   try {
-    // The failed event carries `connector_slug` for symmetry with the
-    // success event — a webhook consumer correlating success/failure pairs
-    // keys on the slug. One lookup at the failure path; the connector row
-    // is guaranteed to exist (the claimed state row referenced it).
     const connector = await connectorSvc.getConnector(p.tenant_id, p.connector_id, db);
     if (!connector) throw new NotFoundError("connector");
     const payload = ConnectorOauthCallbackFailedPayloadSchema.parse({
@@ -622,47 +563,15 @@ async function publishCallbackFailed(
   }
 }
 
-// Minimal HTML page rendered to the user's browser tab at the end of
-// the OAuth dance. No JavaScript, no styling beyond inline CSS — the
-// CLI doesn't depend on `window.opener.postMessage` callbacks (the
-// engine writes the credential synchronously and the CLI's
-// OAuthWaitView polls the credential row).
-function renderCallbackPage(
+// Render a browser-facing OAuth page using the shared html builder.
+function renderHtmlResponse(
   c: Parameters<Parameters<OpenAPIHono<AppEnv>["openapi"]>[1]>[0],
-  page: CallbackPage,
+  page: { kind: "success" | "error"; title: string; message: string },
 ): Response {
-  const status = page.kind === "success" ? 200 : 400;
-  const colour = page.kind === "success" ? "#16a34a" : "#dc2626";
-  const safeTitle = escapeHtml(page.title);
-  const safeMessage = escapeHtml(page.message);
-  const body = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${safeTitle}</title>
-  <style>
-    body { font-family: system-ui, sans-serif; background: #fafafa; color: #111; }
-    main { max-width: 560px; margin: 96px auto; padding: 32px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-    h1 { color: ${colour}; margin: 0 0 16px; font-size: 22px; }
-    p { white-space: pre-wrap; line-height: 1.5; margin: 0; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>${safeTitle}</h1>
-    <p>${safeMessage}</p>
-  </main>
-</body>
-</html>`;
-  return c.body(body, status, { "content-type": "text/html; charset=utf-8" });
+  const { html, status } = buildCallbackPageHtml(page);
+  return c.body(html, status, { "content-type": "text/html; charset=utf-8" });
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+// Re-exported so external tests can verify the escaping behaviour without
+// importing the full route module.
+export { escapeHtml };

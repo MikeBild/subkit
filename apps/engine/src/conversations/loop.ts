@@ -88,7 +88,7 @@ import {
 import { committedStopCondition, pausedStopCondition } from "./loop/stop-conditions.ts";
 import { buildNextSuggestionFrame } from "./loop/suggest-next-emitter.ts";
 import { detectToolHallucinatedAbsence } from "./loop/tool-not-available-guard.ts";
-import { readStepUsage } from "./loop/usage.ts";
+import { readStepUsage, stepPromptTokens, stepTotalTokens } from "./loop/usage.ts";
 import {
   appendMessage,
   buildModelMessages,
@@ -97,6 +97,7 @@ import {
   updateMessageContent,
 } from "./persist.ts";
 import { nextSuggestion } from "./streaming.ts";
+import { elideWithinTurnToolOutputs } from "./tool-output-elision.ts";
 import { listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import { classifyFallbackSynthesis, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
@@ -232,6 +233,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   });
 
   const usageBefore = await monthlyUsage(p.tenant_id, p.db).catch(() => 0);
+
+  // Honest per-turn cost accounting, accumulated step-by-step in
+  // onStepFinish (fallback attempts included). Two distinct numbers:
+  //   - promptTokensLastCall: the FINAL LLM call's prompt size
+  //     (input + cache read + cache creation) — the only figure that is
+  //     comparable to `context_cap_tokens`. Pre-fix sk divided the
+  //     turn-CUMULATIVE tokens by the per-prompt cap and showed
+  //     `ctx 464k/180k (100%)` — apples over oranges.
+  //   - turnTokensTotal: sum of every token (prompt + completion +
+  //     cache) across all LLM calls of this turn.
+  let promptTokensLastCall: number | null = null;
+  let turnTokensTotal = 0;
 
   // Rewrite `@attachment:<slug>` chat-text tokens to the canonical
   // `[file:fid_...]` sentinel before persistence so every downstream
@@ -1102,6 +1115,32 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               rss_mb: Math.round(m.rss / (1024 * 1024)),
             });
           }
+          // Within-turn output elision — bound the live turn's prompt
+          // growth at the source. Everything before `attemptMessages.length`
+          // is replayed history that persist.buildModelMessages already
+          // bounded; tool results produced by THIS turn's agentic loop
+          // are stubbed once they are bulky (>4KB serialized) and more
+          // than WITHIN_TURN_VERBATIM_ITERATIONS iterations old. The
+          // stub carries a `_raw_ref` the model can recover via
+          // `get_raw_result` — same contract as the cross-turn path.
+          // Pre-fix a 40+-iteration turn re-sent the full tool-output
+          // history on every LLM call (session 784c1b02, 3.9M tokens).
+          const elision = elideWithinTurnToolOutputs(stepMessages, {
+            baseline_index: attemptMessages.length,
+          });
+          if (elision) {
+            logger.info({
+              module: "conversation",
+              action: "loop.within_turn_elision",
+              msg: "stubbed bulky tool outputs from older agentic iterations",
+              conversation_id: p.conversation_id,
+              tenant_id: p.tenant_id,
+              step_number: stepNumber,
+              elided_count: elision.elided_count,
+              elided_chars: elision.elided_chars,
+            });
+          }
+          const routedMessages = elision ? elision.messages : stepMessages;
           const liveStage = draft.summary?.stage;
           if (liveStage !== undefined) stepRouterSignals.stage = liveStage;
           // Live persisted-workflow gate — recomputed every step so a
@@ -1119,7 +1158,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           const decision = routerPrepareStep({
             stepNumber,
             steps,
-            messages: stepMessages,
+            messages: routedMessages,
             model: stepModel,
             tenantDefaultModelId: modelId,
             provider: route.provider,
@@ -1131,8 +1170,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             // against every step's `activeTools` set.
             forcedTool: preferredTool,
           });
-          if (!decision) return {};
-          const result: Record<string, unknown> = {};
+          if (!decision) return elision ? { messages: elision.messages } : {};
+          const result: Record<string, unknown> = elision ? { messages: elision.messages } : {};
           if (decision.modelId && decision.modelId !== modelId) {
             try {
               result.model = await resolveLanguageModel(route.provider, decision.modelId);
@@ -1273,6 +1312,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             });
           }
           const u = readStepUsage(step);
+          // Per-turn cost telemetry for the `completed` envelope:
+          // last-call prompt size (vs. the context cap) + running total.
+          promptTokensLastCall = stepPromptTokens(u);
+          turnTokensTotal += stepTotalTokens(u);
           const stepEndedAt = now();
           const latency_ms = Math.max(0, stepEndedAt - lastStepEnd);
           lastStepEnd = stepEndedAt;
@@ -1947,6 +1990,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     status: completedStatus,
     usage: {
       turn_tokens: turnTokens,
+      // Honest cost split (see the accumulator comment near turn
+      // start): `prompt_tokens_last_call` is the only figure that is
+      // comparable to `context_cap_tokens`; `turn_tokens_total` is the
+      // cumulative spend across every LLM call of this turn.
+      ...(promptTokensLastCall != null ? { prompt_tokens_last_call: promptTokensLastCall } : {}),
+      turn_tokens_total: turnTokensTotal,
       remaining_monthly_budget_tokens: remaining,
       context_cap_tokens: contextCap,
       ...(breakdown ? { breakdown } : {}),

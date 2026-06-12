@@ -132,7 +132,7 @@ export const findConnectorTool: ConversationTool = {
       }
       return { ok: true, data: { matches: [summarize(c)], total: 1 } };
     }
-    const list = await ctx.engineClient.connectors.list();
+    const { rows: list } = await ctx.engineClient.connectors.list();
     const filtered = args.environment
       ? list.filter((c) => c.environment === args.environment)
       : list;

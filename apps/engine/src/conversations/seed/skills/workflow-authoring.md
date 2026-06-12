@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 6
+version: 7
 ---
 
 # Authoring Workflows In A Conversation
@@ -209,27 +209,43 @@ item under two scope keys: `$item` (canonical, used by `${item.…}`) and the
 loop's `item_var` (used by JSONata transforms). The item is NOT
 envelope-wrapped.
 
-**Mandatory: dry-run before authoring a loop.** `propose_step`,
-`build_workflow`, `edit_workflow_patch`, and `update_param` all
-refuse a loop step that reads `$scope.<X>` (or the equivalent bare
-form `<X>.data`) until a dry-run has recorded X's actual output
-shape (error code `loop_authoring_requires_inspect`). The fix: call
-`dry_run_workflow` first so the engine publishes `scope_at_step` for
-every prior step. Then call `suggest_jsonata_paths` (returns ranked
-path candidates against the recorded preview, with fallback to the
-last committed version's `scope_index` and the most recent execution
-when no fresh draft preview exists) or `inspect_workflow_draft`
-(returns each step's preview side-by-side with config). Authoring a
-loop's `over` against the LLM's mental model of the API instead of
-the recorded preview is how 4–9× retry spirals start; the gate
-exists to break that loop deterministically.
+**Evidence-gated loop authoring.** A loop step that reads `$scope.<X>`
+(or the equivalent bare form `<X>.data`) needs recorded preview
+evidence for X. The evidence is **fingerprint-keyed**: it survives
+edits to OTHER steps and goes stale only when X's own definition
+changed since the last dry-run (gate reason
+`preview_stale_for_referenced_step`). Enforcement differs by tool:
+
+- `build_workflow`, `propose_step`, and `edit_workflow_patch` ACCEPT
+  the mutation and return a `recorded_eval` findings block in the same
+  result: per-expression compile/eval status (caret-pointed JSONata
+  errors), scope-reference evidence states (recorded / stale /
+  missing), the loop/transform gate verdicts, `missing_evidence`, and
+  ordered `next_actions`. Read it — acceptance is not proof the
+  expressions resolve.
+- `update_param` still REFUSES with error code
+  `loop_authoring_requires_inspect` when the edited param is the
+  loop's `over` / `data_selector` and the referenced step's evidence
+  is missing or stale.
+
+Recovery is one round-trip, never a rebuild: call `dry_run_workflow`
+once so the engine records `scope_at_step` for the changed step, then
+retry the SAME edit — unchanged steps keep their evidence, so one
+dry-run per genuinely-new shape suffices. Then call
+`suggest_jsonata_paths` (returns ranked path candidates against the
+recorded preview, with fallback to the last committed version's
+`scope_index` and the most recent execution when no fresh draft
+preview exists) or `inspect_workflow_draft` (returns each step's
+preview side-by-side with config). Authoring a loop's `over` against
+the LLM's mental model of the API instead of the recorded preview is
+how 4–9× retry spirals start.
 
 **Same rule for `transform` steps.** A transform whose `expression`
-cites `$scope.<X>` for an un-previewed sibling X is rejected with
-error code `transform_authoring_requires_inspect`. Same four tools
-enforce it (`propose_step`, `build_workflow`, `edit_workflow_patch`,
-`update_param`). Same fix: `dry_run_workflow` once, then author the
-transform against the recorded `output_preview` (visible via
+cites `$scope.<X>` for a sibling X with missing or stale evidence is
+surfaced the same way: `update_param` refuses with error code
+`transform_authoring_requires_inspect`; the other three tools report
+it in `recorded_eval`. Same fix: `dry_run_workflow` once, then author
+the transform against the recorded `output_preview` (visible via
 `inspect_workflow_draft` or surfaced inline in the authoring context
 as `$item.{ id, name, ... } (sampled from preview)` when the
 transform's source is the body of a loop). Hard-coding placeholder
@@ -373,6 +389,70 @@ Body step referencing the item via the placeholder resolver:
 ```
 
 `$loop_index` (zero-based) is also available inside the loop body.
+
+### Inside a loop body — addressing table
+
+Loop-body scope addressing is the single most common source of
+authoring churn. There are exactly two surfaces and each accepts
+exactly one form — mixing them surfaces as `placeholder_unresolved`
+or `unresolved_identifier`:
+
+| You need | JSONata expressions (`transform.expression`, `data_selector`, `branch.when`) | Request placeholder strings (`path` / `url` / `headers` / `query` / `body`) |
+|---|---|---|
+| Current item field | bare `item_var`, e.g. `project.name` | `${item.name}` |
+| Current item (canonical binding) | `$item.name` | `${item.name}` |
+| Iteration index (zero-based) | `$loop_index` | not available — derive it in a prior transform if needed |
+| Sibling body step's result (same iteration) | `$scope.<body_step_id>.data.<field>` | `${scope.<body_step_id>.data.<field>}` |
+| Loop output downstream (AFTER the loop) | `$scope.<loop_id>.data.<body_step_id>.data.<field>` | prefer a transform step instead |
+
+`$item` and the loop's `item_var` are ALWAYS bound inside the body —
+the runtime builds the child scope as
+`{ ...scope, <item_var>: item, $item: item, $loop_index: i }` — and
+each finished body step's envelope joins the same child scope so later
+siblings in the SAME iteration can read it. `${project.id}` /
+`${user.email}` are NEVER valid placeholders: `item_var` names exist
+only on the JSONata surface, and the placeholder resolver accepts only
+the kinds `cred | connector | input | scope | item | state`.
+
+Compact worked example — a request + a transform inside one body:
+
+```json
+[
+  {
+    "id": "iterate_repos",
+    "kind": "loop",
+    "over": "$scope.list_repos.data.repositories",
+    "item_var": "repo",
+    "body": ["fetch_languages", "shape_repo"]
+  },
+  {
+    "id": "fetch_languages",
+    "kind": "request",
+    "method": "GET",
+    "connector_id": "<github_connector_id>",
+    "path": "/repos/${item.full_name}/languages"
+  },
+  {
+    "id": "shape_repo",
+    "kind": "transform",
+    "language": "jsonata",
+    "expression": "{ \"name\": repo.name, \"index\": $loop_index, \"languages\": $scope.fetch_languages.data }"
+  }
+]
+```
+
+`fetch_languages` (request) addresses the item via `${item.full_name}`;
+`shape_repo` (transform) reads the bare `item_var` (`repo.name`), the
+always-bound `$loop_index`, and its sibling's result via
+`$scope.fetch_languages.data`. After the loop, a downstream transform
+reads `$scope.iterate_repos.data.shape_repo.data.name`.
+
+**`body` is an ARRAY of step ids.** Write
+`body: ["fetch_languages", "shape_repo"]` — never a string
+(`body: "fetch_languages"` fails validation with
+`steps.N.body — expected array, received string`) and never inline
+step objects. The body steps themselves live as siblings in the
+top-level `steps` array.
 
 ### Loop output shape
 
@@ -535,6 +615,43 @@ at 50 per request) and embeds each fetched body under `_resolved` next
 to the original entry. Use the manual two-loop pattern when you need
 control (rate limits, conditional expansion); use `expand_links` when
 the shape is consistent.
+
+### JSONata flavour rules (variable blocks, dynamic keys, concatenation)
+
+Three syntax rules real sessions repeatedly got wrong. Each produces a
+compile error (`expression_invalid` with a caret position, also
+surfaced as a `compile_error` finding in `recorded_eval`) — do not
+burn dry-runs rediscovering them:
+
+1. **`$x := …` variable binding lives in a parenthesized block.**
+   `( $x := expr; result )` IS valid JSONata — at the top level of an
+   expression or inside any parentheses (including a parenthesized
+   object-constructor value). A bare `:=` directly inside an object
+   constructor value is NOT.
+
+   ```text
+   WRONG: { "total": $t := $sum(items.price), "count": $count(items) }
+   RIGHT: ( $t := $sum(items.price); { "total": $t, "count": $count(items) } )
+   ```
+
+2. **No dynamic object keys via a plain constructor over an array.**
+   Mapping an array through an object constructor yields an ARRAY of
+   single-key objects, not one merged object. To build a single object
+   keyed by data, `$merge` the mapped singles (or fold with `$reduce`):
+
+   ```text
+   WRONG: $scope.repos.data.{ $string(id): name }   /* array of {k:v} singles */
+   RIGHT: $merge($map($scope.repos.data, function($v) { { $string($v.id): $v.name } }))
+   ```
+
+3. **`&` is BINARY string concatenation — never unary.** There is no
+   prefix `&`; both operands are required, and non-string operands must
+   be cast with `$string()`.
+
+   ```text
+   WRONG: & name & " (" & id & ")"
+   RIGHT: name & " (" & $string(id) & ")"
+   ```
 
 ### Unresolved-identifier warnings are never false positives
 

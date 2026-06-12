@@ -18,12 +18,13 @@ import {
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { applyDiffsToConfig, type ToolDiff } from "../json-patch-apply.ts";
+import { emitRecordedEvalSignals, runRecordedEval } from "../recorded-eval.ts";
+import { stepFingerprint } from "../step-fingerprint.ts";
 import { canonicalJson } from "../text-line-diff.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
-import { evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
+import { getLastPreview } from "./last-preview-store.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
-import { evaluateTransformAuthoringGate } from "./transform-authoring-gate.ts";
 
 const PatchOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("add"), path: z.string(), value: z.unknown() }),
@@ -183,27 +184,15 @@ export const editWorkflowPatchTool: ConversationTool = {
       }
     }
 
-    // Transform- and loop-authoring inspection gates on the patched
-    // draft, evaluated under delta semantics: a patch only fails when
-    // it INTRODUCES new gate blocks that weren't already present
-    // pre-patch. Pre-existing unsafe state is the operator's problem,
-    // not the patch's — gating on it would refuse legitimate refactors
-    // (rename `fetch` → `load` + retarget) just because the original
-    // workflow happened to be in an un-previewed state.
-    //
-    // The post-patch preview is synthesized from the pre-patch preview
-    // by following any `replace /steps/N/id` rename in the patch: the
-    // underlying recorded shape is the same step, only its address
-    // changed. Without this remap, an atomic rename + retarget would
-    // be incorrectly flagged as introducing a new un-previewed scope
-    // reference.
-    //
-    // Pre-fix v4.8.1 the gate ran unconditionally on the post-patch
-    // state, which broke `edit-workflow-patch.test.ts` and
-    // `cycle-rejected-at-build.test.ts` fixtures and would have broken
-    // every real-world coordinated rename. The fix is principled —
-    // gates enforce "did THIS change make things worse?", not "is the
-    // workflow currently unsafe?".
+    // Rename-aware evidence carry-over. A `replace /steps/N/id` rename
+    // does not change the step's recorded shape — only its address.
+    // Remap the trace's `step_id` AND recompute its fingerprint against
+    // the renamed definition so the fingerprint-keyed pruning in
+    // `withWorkflowDraft` (Fix 5) keeps the evidence: an atomic
+    // rename + retarget must not cost a redundant dry-run. If the patch
+    // also changed other fields of the renamed step, the recomputed
+    // fingerprint won't match the patched step and the evidence drops —
+    // exactly the retention contract.
     const renamedStepIds = new Map<string, string>();
     for (let i = 0; i < args.patches.length; i++) {
       const op = args.patches[i]!;
@@ -218,118 +207,35 @@ export const editWorkflowPatchTool: ConversationTool = {
         renamedStepIds.set(preId, nextId);
       }
     }
-    const postPreview: typeof currentDraft.latest_preview =
+    const preStepById = new Map<string, Record<string, unknown>>();
+    for (const step of workflowDraft.steps) {
+      if (typeof step.id === "string") preStepById.set(step.id, step);
+    }
+    const remappedPreview: typeof currentDraft.latest_preview =
       currentDraft.latest_preview && renamedStepIds.size > 0
         ? {
             ...currentDraft.latest_preview,
-            step_traces: (currentDraft.latest_preview.step_traces ?? []).map((t) => ({
-              ...t,
-              step_id: renamedStepIds.get(t.step_id) ?? t.step_id,
-            })),
+            step_traces: (currentDraft.latest_preview.step_traces ?? []).map((t) => {
+              const nextId = renamedStepIds.get(t.step_id);
+              if (!nextId) return t;
+              const preStep = preStepById.get(t.step_id);
+              return {
+                ...t,
+                step_id: nextId,
+                ...(preStep && typeof t.fingerprint === "string"
+                  ? { fingerprint: stepFingerprint({ ...preStep, id: nextId }) }
+                  : {}),
+              };
+            }),
           }
         : (currentDraft.latest_preview ?? null);
 
-    const probedConnectorSlugs = await collectProbedConnectorSlugs(
-      ctx,
-      patched.steps as ReadonlyArray<Record<string, unknown>>,
-    );
-    const preTransformGate = evaluateTransformAuthoringGate(
-      workflowDraft,
-      currentDraft.latest_preview ?? null,
-      { probedConnectorSlugs },
-    );
-    const preTransformBlockedIds = new Set(preTransformGate.blocks.map((b) => b.transform_step_id));
-    const preLoopGate = evaluateLoopAuthoringGate(
-      workflowDraft,
-      currentDraft.latest_preview ?? null,
-      { probedConnectorSlugs },
-    );
-    const preLoopBlockedIds = new Set(preLoopGate.blocks.map((b) => b.loop_step_id));
-
-    {
-      const post = evaluateTransformAuthoringGate(patched, postPreview, {
-        probedConnectorSlugs,
-      });
-      const newBlocks = post.blocks.filter((b) => !preTransformBlockedIds.has(b.transform_step_id));
-      if (newBlocks.length > 0) {
-        const summary = newBlocks
-          .map(
-            (b) =>
-              `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
-                b.reason === "no_dry_run_yet"
-                  ? "no dry-run has been recorded yet"
-                  : `\`${b.referenced_step_id}\` has no recent preview`
-              }`,
-          )
-          .join("; ");
-        recordAuthoringGateBlock({
-          code: "transform_authoring_requires_inspect",
-          tool: "edit_workflow_patch",
-        });
-        return {
-          ok: false,
-          data: buildGateError(currentDraft, {
-            error_code: "transform_authoring_requires_inspect",
-            message: `patch would introduce a transform step depending on data the upstream preview never recorded. ${summary}. Dry-run once so the scope is published, then re-apply the patch.`,
-            recommended_mode: "workflow",
-            next_best_actions: [
-              "dry_run_workflow",
-              "inspect_workflow_draft",
-              "suggest_jsonata_paths",
-            ],
-            extra: {
-              gate_blocks: newBlocks,
-              patch_count: args.patches.length,
-            },
-          }),
-        };
-      }
-    }
-
-    {
-      const post = evaluateLoopAuthoringGate(patched, postPreview, {
-        probedConnectorSlugs,
-      });
-      const newBlocks = post.blocks.filter((b) => !preLoopBlockedIds.has(b.loop_step_id));
-      if (newBlocks.length > 0) {
-        const summary = newBlocks
-          .map(
-            (b) =>
-              `loop \`${b.loop_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
-                b.reason === "no_dry_run_yet"
-                  ? "no dry-run has been recorded yet"
-                  : b.reason === "no_preview_for_referenced_step"
-                    ? `\`${b.referenced_step_id}\` has no recent preview`
-                    : `the recorded preview for \`${b.referenced_step_id}\` doesn't include a scope summary`
-              }`,
-          )
-          .join("; ");
-        recordAuthoringGateBlock({
-          code: "loop_authoring_requires_inspect",
-          tool: "edit_workflow_patch",
-        });
-        return {
-          ok: false,
-          data: buildGateError(currentDraft, {
-            error_code: "loop_authoring_requires_inspect",
-            message: `patch would introduce a loop step depending on data the upstream preview never recorded. ${summary}. Dry-run once so the scope is published, then re-apply the patch.`,
-            recommended_mode: "workflow",
-            next_best_actions: [
-              "dry_run_workflow",
-              "inspect_workflow_draft",
-              "suggest_jsonata_paths",
-            ],
-            extra: {
-              gate_blocks: newBlocks,
-              patch_count: args.patches.length,
-            },
-          }),
-        };
-      }
-    }
-
     const beforeJson = canonicalJson(workflowDraft);
-    const nextDraft = withWorkflowDraft(currentDraft, patched, "workflow_step_updated");
+    const draftForMutation =
+      remappedPreview !== (currentDraft.latest_preview ?? null)
+        ? { ...currentDraft, latest_preview: remappedPreview }
+        : currentDraft;
+    const nextDraft = withWorkflowDraft(draftForMutation, patched, "workflow_step_updated");
     await ctx.setDraft(nextDraft);
     if (ctx.emitDiff) {
       ctx.emitDiff({
@@ -339,6 +245,33 @@ export const editWorkflowPatchTool: ConversationTool = {
         after: canonicalJson(patched),
       });
     }
+
+    // Recorded-evaluation pass (Fix 9). The loop/transform authoring
+    // gates used to refuse a patch that INTRODUCED an un-previewed
+    // scope reference; the patch is accepted now and the same gate
+    // verdicts — plus compile caret errors and evaluation against
+    // fingerprint-valid recorded evidence — return as findings so the
+    // model repairs in the next call instead of thrashing through a
+    // dry-run detour. No live HTTP fires here.
+    const probedConnectorSlugs = await collectProbedConnectorSlugs(
+      ctx,
+      patched.steps as ReadonlyArray<Record<string, unknown>>,
+    );
+    const lastPreview = getLastPreview({
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+    });
+    const recordedEval = await runRecordedEval(patched, {
+      latest_preview: nextDraft.latest_preview ?? null,
+      scope: lastPreview?.scope ?? null,
+      input: lastPreview?.input ?? nextDraft.latest_preview?.input ?? null,
+      probedConnectorSlugs,
+    });
+    emitRecordedEvalSignals({
+      tool: "edit_workflow_patch",
+      conversation_id: ctx.conversation_id,
+      report: recordedEval,
+    });
     return {
       ok: true,
       data: buildDraftMutationPayload(nextDraft, {
@@ -347,6 +280,7 @@ export const editWorkflowPatchTool: ConversationTool = {
           patch_count: args.patches.length,
           steps: patched.steps.length,
           last_step_id: patched.steps[patched.steps.length - 1]?.id ?? null,
+          recorded_eval: recordedEval,
         },
       }),
     };

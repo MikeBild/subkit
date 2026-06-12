@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
+import type { ListResult } from "../db/list-result.ts";
 import { workflows, workflowsSchedules } from "../db/schema/index.ts";
 import type { ScheduleTrigger } from "../workflows/types.ts";
 import { parseCronExpression } from "./cron.ts";
@@ -79,18 +80,23 @@ export async function createSchedule(db: Db, input: CreateScheduleInput): Promis
   return rows[0] as ScheduleRow;
 }
 
+/**
+ * Schedules are a bounded catalog and the query carries no limit/offset,
+ * so the page IS the universe — `total` equals `rows.length` by
+ * construction and stays exact under the same tenant/workflow filters.
+ */
 export async function listSchedules(
   db: Db,
   tenant_id: string,
   workflow_id?: string,
-): Promise<ScheduleRow[]> {
+): Promise<ListResult<ScheduleRow>> {
   const tenantConds = [eq(workflowsSchedules.tenant_id, tenant_id)];
   if (workflow_id) tenantConds.push(eq(workflowsSchedules.workflow_id, workflow_id));
-  const rows = await db
+  const rows = (await db
     .select()
     .from(workflowsSchedules)
-    .where(and(...tenantConds));
-  return rows as ScheduleRow[];
+    .where(and(...tenantConds))) as ScheduleRow[];
+  return { rows, total: rows.length };
 }
 
 export async function getSchedule(

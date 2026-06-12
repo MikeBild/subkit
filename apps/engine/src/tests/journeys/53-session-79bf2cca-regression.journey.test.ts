@@ -441,6 +441,8 @@ describe("journey 53: session-79bf2cca regression set", () => {
           status: string;
           usage?: {
             turn_tokens: number;
+            turn_tokens_total?: number;
+            prompt_tokens_last_call?: number;
             remaining_monthly_budget_tokens: number | null;
             breakdown?: {
               system: number;
@@ -457,6 +459,11 @@ describe("journey 53: session-79bf2cca regression set", () => {
     expect(completed).toBeDefined();
     const usage = completed?.usage;
     expect(typeof usage?.turn_tokens).toBe("number");
+    // Honest cost split (Fix 7): cumulative turn total is always
+    // emitted; the last-call prompt size rides along when the turn made
+    // at least one LLM call (this one did — it produced a reply).
+    expect(typeof usage?.turn_tokens_total).toBe("number");
+    expect(typeof usage?.prompt_tokens_last_call).toBe("number");
     expect(usage?.breakdown).toBeDefined();
     const b = usage?.breakdown;
     expect(b).toBeDefined();

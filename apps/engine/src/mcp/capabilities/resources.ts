@@ -294,7 +294,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const items = await connectorSvc.listConnectors(principal.tenant_id, {}, db);
+    const { rows: items } = await connectorSvc.listConnectors(principal.tenant_id, {}, db);
     const resources: Resource[] = items
       .filter((cn) => {
         if (principal.allowed_connectors && principal.allowed_connectors !== "all") {
@@ -349,7 +349,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     // a single Postgres-side projection — no `dag` parse per workflow
     // (#178 W-2). The MCP list view only needs name / slug / version /
     // step_count anyway.
-    const workflowList = await workflowSvc.listWorkflowSummaries(
+    const { rows: workflowList } = await workflowSvc.listWorkflowSummaries(
       principal.tenant_id,
       { status: "active" },
       db,

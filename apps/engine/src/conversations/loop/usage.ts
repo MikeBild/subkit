@@ -23,6 +23,21 @@ interface RawStep {
   providerMetadata?: Record<string, unknown> | undefined;
 }
 
+/**
+ * The prompt size of one LLM call, in the unit comparable to the
+ * model's context cap: uncached input + cache reads + cache writes
+ * (Anthropic's `inputTokens` EXCLUDES cached prompt tokens, so the
+ * raw field alone understates context pressure on cache hits).
+ */
+export function stepPromptTokens(u: StepUsage): number {
+  return u.inputTokens + u.cacheReadTokens + u.cacheCreationTokens;
+}
+
+/** Every token the step consumed — prompt (incl. cache) + completion. */
+export function stepTotalTokens(u: StepUsage): number {
+  return stepPromptTokens(u) + u.outputTokens;
+}
+
 export function readStepUsage(step: RawStep): StepUsage {
   const inputTokens = step.usage.inputTokens ?? 0;
   const outputTokens = step.usage.outputTokens ?? 0;

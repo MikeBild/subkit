@@ -1,4 +1,4 @@
-import { Code, Table } from "@chat-ui/index.ts";
+import { Code, renderTextWithLinks, Table } from "@chat-ui/index.ts";
 import { parseRenderableMessageContent, type RenderableMessagePart } from "@cli-core/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
@@ -32,6 +32,20 @@ function normalizeInlineMarkdown(text: string): string {
     .replace(/\n{3,}/g, "\n\n");
 }
 
+// Plain text parts (and the no-parts fallback) pipe through the shared
+// OSC 8 helper so every URL the assistant prints is clickable in
+// supporting terminals (plain copyable text otherwise — detection
+// lives in @chat-ui/hyperlink.ts). Applied AFTER normalizeInlineMarkdown
+// so markdown stripping can never corrupt the escape sequence. Ink's
+// wrap-ansi understands OSC 8: when a long URL wraps, each visual line
+// re-opens the full link target, so every segment stays clickable to
+// the complete URL (verified by message-content-links.test.tsx).
+// Code blocks and tables are NOT linkified — code must stay byte-exact
+// for copy-paste, and the Table renderer owns its own cell layout.
+function linkifyProse(text: string): string {
+  return renderTextWithLinks(normalizeInlineMarkdown(text));
+}
+
 const MessageContentImpl: React.FC<MessageContentProps> = ({ content, parts, width }) => {
   const resolved = useMemo(() => {
     if (parts && parts.length > 0) return parts;
@@ -49,7 +63,7 @@ const MessageContentImpl: React.FC<MessageContentProps> = ({ content, parts, wid
   if (resolved.length === 0) {
     return (
       <Box width={boxWidth}>
-        <Text wrap="wrap">{normalizeInlineMarkdown(content)}</Text>
+        <Text wrap="wrap">{linkifyProse(content)}</Text>
       </Box>
     );
   }
@@ -78,7 +92,7 @@ const MessageContentImpl: React.FC<MessageContentProps> = ({ content, parts, wid
         }
         return (
           <Text key={`part-${index}`} wrap="wrap">
-            {normalizeInlineMarkdown(part.text)}
+            {linkifyProse(part.text)}
           </Text>
         );
       })}

@@ -80,18 +80,17 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
     // template match's expected shape. The LLM gets reuse candidates in
     // the same response and proposes reuse BEFORE drafting a duplicate.
     //
-    // Pass `limit: 500` explicitly — `listConnectors`'s default is 100
-    // (`connectors/service.ts:263` evaluates `Math.min(opts.limit ?? 100, 500)`),
-    // and a tenant with >100 connectors would otherwise silently miss
-    // the existing-connector match this feature exists to surface. We
-    // surface `tenant_connectors_truncated` so the LLM knows the scan
-    // hit the cap and can ask the user to narrow the search.
-    const TENANT_CONNECTORS_CAP = 500;
+    // `listConnectors` returns the complete catalog by default (safety
+    // bound 1000) plus the exact `total`, so the truncation signal is
+    // ground truth — `total > rows.length` — instead of a "did we hit
+    // the cap?" heuristic. `tenant_connectors_truncated` tells the LLM
+    // the scan missed rows and it can ask the user to narrow the search.
     const urlHost = baseUrlHost(args.url);
-    const tenantConnectors = urlHost
-      ? await listConnectors(ctx.tenant_id, { limit: TENANT_CONNECTORS_CAP }, ctx.db)
-      : [];
-    const tenant_connectors_truncated = tenantConnectors.length >= TENANT_CONNECTORS_CAP;
+    const tenantConnectorList = urlHost
+      ? await listConnectors(ctx.tenant_id, {}, ctx.db)
+      : { rows: [], total: 0 };
+    const tenantConnectors = tenantConnectorList.rows;
+    const tenant_connectors_truncated = tenantConnectorList.total > tenantConnectors.length;
     // For each template match, run the overlap scorer against the
     // tenant's connectors and attach the top reuse candidate(s). The
     // template's driver + auth_type drives the proposed shape; the URL

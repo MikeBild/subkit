@@ -99,6 +99,41 @@ describe("workflow-authoring.md · field coverage", () => {
   test("documents persisted scope_index survival", () => {
     expect(body).toContain("scope_index");
   });
+  test("documents fingerprint-keyed gate evidence and the recorded_eval findings block", () => {
+    expect(body).toContain("preview_stale_for_referenced_step");
+    expect(body).toContain("recorded_eval");
+    expect(body).toMatch(/fingerprint-keyed/i);
+    // The recovery recipe: one dry-run refreshes evidence; unchanged steps keep theirs.
+    expect(body).toMatch(/unchanged steps keep their evidence/i);
+  });
+  test("documents the inside-a-loop-body addressing table", () => {
+    expect(body).toContain("Inside a loop body — addressing table");
+    // bare item_var in JSONata vs ${item.…} in request strings
+    expect(body).toContain("${item.name}");
+    expect(body).toMatch(/bare `item_var`/);
+    // $item and $loop_index always bound
+    expect(body).toMatch(/\$item.*always bound|ALWAYS bound/is);
+    expect(body).toContain("$loop_index");
+    // sibling body step results + downstream loop output addressing
+    expect(body).toContain("$scope.<body_step_id>.data");
+    expect(body).toContain("$scope.<loop_id>.data.<body_step_id>.data");
+    // the compact worked example: request + transform in one body
+    expect(body).toContain("${item.full_name}");
+    expect(body).toContain("$scope.fetch_languages.data");
+  });
+  test("documents that loop.body is an ARRAY of step ids", () => {
+    expect(body).toMatch(/`body` is an ARRAY of step ids/);
+    expect(body).toContain("expected array, received string");
+  });
+  test("documents the JSONata flavour rules (:= blocks, dynamic keys, & concatenation)", () => {
+    expect(body).toContain("JSONata flavour rules");
+    // := binding needs a parenthesized block, not a bare object-constructor value
+    expect(body).toContain("( $t := $sum(items.price);");
+    // dynamic-key recipe via $merge($map(...))
+    expect(body).toContain("$merge($map(");
+    // & is binary string concatenation, never unary
+    expect(body).toMatch(/`&` is BINARY string concatenation/);
+  });
 });
 
 describe("postgres-connectors.md · cursor caveat", () => {

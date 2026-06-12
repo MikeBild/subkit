@@ -197,6 +197,142 @@ describe("POST /v1/mcp-servers", () => {
     expect(res.status).toBe(422);
   });
 
+  test("basic create with username+token writes a basic credential and never echoes either", async () => {
+    const SECRET = "atl-api-token-do-not-leak-9c1d";
+    const USERNAME = "user@basic.test";
+    const res = await fetch(`${ctx.baseUrl}/v1/mcp-servers`, {
+      method: "POST",
+      headers: { ...adminAuth(), "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Basic MCP",
+        namespace: "basiccreate",
+        transport: "http",
+        url: "https://basic.mcp.test",
+        auth_config: { kind: "basic" },
+        username: USERNAME,
+        token: SECRET,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    const auth = body.auth_config as { kind: string; has_credential: boolean };
+    expect(auth.kind).toBe("basic");
+    expect(auth.has_credential).toBe(true);
+    // Neither half of the pair appears anywhere in the response.
+    expect(JSON.stringify(body)).not.toContain(SECRET);
+    expect(JSON.stringify(body)).not.toContain(USERNAME);
+
+    // A basic-mode credential row was written, keyed by mcp_server_id.
+    const rows = await ctx.db
+      .select()
+      .from(credentials)
+      .where(
+        and(
+          eq(credentials.tenant_id, ctx.tenantId),
+          eq(credentials.mcp_server_id, body.id as string),
+        ),
+      );
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.mode).toBe("basic");
+    expect(Buffer.from(rows[0]!.ciphertext).toString("utf8")).not.toContain(SECRET);
+
+    // The persisted auth_config carries ONLY the kind — no username, no token.
+    const stored = JSON.stringify((await fetchServerRow(body.id as string)).auth_config);
+    expect(stored).not.toContain(USERNAME);
+    expect(stored).not.toContain("token");
+  });
+
+  test("basic create with token but WITHOUT username is rejected (422)", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/mcp-servers`, {
+      method: "POST",
+      headers: { ...adminAuth(), "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Half Basic MCP",
+        namespace: "halfbasicmcp",
+        transport: "http",
+        url: "https://halfbasic.mcp.test",
+        auth_config: { kind: "basic" },
+        token: "lonely-token",
+      }),
+    });
+    expect(res.status).toBe(422);
+  });
+
+  test("basic create with a refresh_token is rejected (422 — wrong field for the kind)", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/mcp-servers`, {
+      method: "POST",
+      headers: { ...adminAuth(), "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Wrong Field MCP",
+        namespace: "wrongfieldmcp",
+        transport: "http",
+        url: "https://wrongfield.mcp.test",
+        auth_config: { kind: "basic" },
+        username: "u@x.test",
+        token: "t",
+        refresh_token: "rt",
+      }),
+    });
+    expect(res.status).toBe(422);
+  });
+
+  test("oauth2 create WITHOUT a refresh_token succeeds (interactive authorize supplies it later)", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/mcp-servers`, {
+      method: "POST",
+      headers: { ...adminAuth(), "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Interactive OAuth MCP",
+        namespace: "interactiveoauth",
+        transport: "http",
+        url: "https://interactive.mcp.test",
+        auth_config: { kind: "oauth2" },
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    // No credential row yet — the authorize consent flow mints it.
+    const rows = await ctx.db
+      .select()
+      .from(credentials)
+      .where(
+        and(
+          eq(credentials.tenant_id, ctx.tenantId),
+          eq(credentials.mcp_server_id, body.id as string),
+        ),
+      );
+    expect(rows.length).toBe(0);
+  });
+
+  test("oauth2 create WITH a refresh_token writes the oauth2 credential", async () => {
+    const REFRESH = "oauth2-refresh-do-not-leak-4b2e";
+    const res = await fetch(`${ctx.baseUrl}/v1/mcp-servers`, {
+      method: "POST",
+      headers: { ...adminAuth(), "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Seeded OAuth MCP",
+        namespace: "seededoauth",
+        transport: "http",
+        url: "https://seeded.mcp.test",
+        auth_config: { kind: "oauth2" },
+        refresh_token: REFRESH,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(JSON.stringify(body)).not.toContain(REFRESH);
+    const rows = await ctx.db
+      .select()
+      .from(credentials)
+      .where(
+        and(
+          eq(credentials.tenant_id, ctx.tenantId),
+          eq(credentials.mcp_server_id, body.id as string),
+        ),
+      );
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.mode).toBe("oauth2");
+  });
+
   test("rejects namespace with __ (400 — Hono/zod-openapi returns 400 for body validation failures)", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/mcp-servers`, {
       method: "POST",

@@ -9,7 +9,7 @@
 // include credentials or other secret-bearing fields.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { paginatedResponse } from "../../api/common-schemas.ts";
 import { connectors, skills } from "../../db/schema/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -154,7 +154,9 @@ export function registerMcpCatalogRoutes(app: OpenAPIHono<AppEnv>): void {
         driver: connectors.driver,
       })
       .from(connectors)
-      .where(eq(connectors.tenant_id, principal.tenant_id))
+      // Live rows only — a soft-deleted connector must not be advertised
+      // as an MCP resource (same class as the substitution-resolver bug).
+      .where(and(eq(connectors.tenant_id, principal.tenant_id), isNull(connectors.deleted_at)))
       .orderBy(desc(connectors.created_at));
     return c.json(
       {

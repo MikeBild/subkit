@@ -21,20 +21,12 @@
 //     slug" exemption. The list-side renderers gate on the same
 //     `*:read` permissions the HTTP routes enforce.
 
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
-import {
-  connectors,
-  conversationToolCalls,
-  executionSteps,
-  executions,
-  knowledgeSources,
-  workflows,
-  workflowsSchedules,
-} from "../db/schema/index.ts";
+import { conversationToolCalls, executionSteps, executions } from "../db/schema/index.ts";
 import { runExecution } from "../execution/engine.ts";
 import { logger } from "../logging/logger.ts";
 import { gateTenantToolCall } from "../mcp/capabilities/policy-gate.ts";
@@ -44,6 +36,14 @@ import { resolveWorkflowInputContract } from "../workflows/input-schema-synth.ts
 import { resolveWorkflowByIdOrSlug } from "../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
 import { getWorkflow } from "../workflows/service.ts";
+import {
+  type RenderPayload,
+  renderConnectorsList,
+  renderExecutionsList,
+  renderKnowledgeSourcesList,
+  renderSchedulesList,
+  renderWorkflowsList,
+} from "./fast-path-lists.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "./persist.ts";
 import type { ConversationStatus, TurnEvent } from "./types.ts";
 
@@ -112,8 +112,6 @@ const LIST_RES = {
   ],
 } as const;
 
-const LIST_LIMIT = 10;
-
 function matchListIntent(text: string): keyof typeof LIST_RES | null {
   for (const kind of Object.keys(LIST_RES) as Array<keyof typeof LIST_RES>) {
     if (LIST_RES[kind].some((re) => re.test(text))) return kind;
@@ -137,139 +135,6 @@ const READ_PERMISSION_BY_LIST: Record<keyof typeof LIST_RES, string> = {
   schedules: "schedule:read",
   knowledge_sources: "knowledge:read",
 };
-
-interface RenderPayload {
-  ok: boolean;
-  reply: string;
-  data: Record<string, unknown>;
-}
-
-async function renderWorkflowsList(p: FastPathParams): Promise<RenderPayload> {
-  const rows = await p.db
-    .select({
-      id: workflows.id,
-      slug: workflows.slug,
-      name: workflows.name,
-      lifecycle: workflows.lifecycle,
-    })
-    .from(workflows)
-    .where(and(eq(workflows.tenant_id, p.tenant_id), isNull(workflows.deleted_at)))
-    .orderBy(desc(workflows.last_executed_at), asc(workflows.created_at))
-    .limit(LIST_LIMIT);
-  if (rows.length === 0) {
-    return {
-      ok: true,
-      reply: "No saved workflows yet.",
-      data: { items: [] },
-    };
-  }
-  const lines = rows.map((r) => `- ${r.slug} (${r.lifecycle}) — ${r.name}`);
-  return {
-    ok: true,
-    reply: `${rows.length} workflow${rows.length === 1 ? "" : "s"}:\n${lines.join("\n")}`,
-    data: { items: rows },
-  };
-}
-
-async function renderConnectorsList(p: FastPathParams): Promise<RenderPayload> {
-  const rows = await p.db
-    .select({
-      id: connectors.id,
-      slug: connectors.slug,
-      display_name: connectors.display_name,
-      driver: connectors.driver,
-      environment: connectors.environment,
-    })
-    .from(connectors)
-    .where(and(eq(connectors.tenant_id, p.tenant_id), isNull(connectors.deleted_at)))
-    .orderBy(asc(connectors.created_at))
-    .limit(LIST_LIMIT);
-  if (rows.length === 0) {
-    return { ok: true, reply: "No connectors yet.", data: { items: [] } };
-  }
-  const lines = rows.map((r) => `- ${r.slug} (${r.driver}/${r.environment}) — ${r.display_name}`);
-  return {
-    ok: true,
-    reply: `${rows.length} connector${rows.length === 1 ? "" : "s"}:\n${lines.join("\n")}`,
-    data: { items: rows },
-  };
-}
-
-async function renderExecutionsList(p: FastPathParams): Promise<RenderPayload> {
-  const rows = await p.db
-    .select({
-      id: executions.id,
-      workflow_id: executions.workflow_id,
-      status: executions.status,
-      started_at: executions.started_at,
-      source_kind: executions.source_kind,
-    })
-    .from(executions)
-    .where(eq(executions.tenant_id, p.tenant_id))
-    .orderBy(desc(executions.created_at))
-    .limit(LIST_LIMIT);
-  if (rows.length === 0) {
-    return { ok: true, reply: "No executions yet.", data: { items: [] } };
-  }
-  const lines = rows.map(
-    (r) =>
-      `- ${r.id.slice(0, 8)} ${r.status} (${r.source_kind})${r.started_at ? ` · ${r.started_at.toISOString()}` : ""}`,
-  );
-  return {
-    ok: true,
-    reply: `${rows.length} recent execution${rows.length === 1 ? "" : "s"}:\n${lines.join("\n")}`,
-    data: { items: rows },
-  };
-}
-
-async function renderSchedulesList(p: FastPathParams): Promise<RenderPayload> {
-  const rows = await p.db
-    .select({
-      id: workflowsSchedules.id,
-      workflow_id: workflowsSchedules.workflow_id,
-      cron: workflowsSchedules.cron,
-      timezone: workflowsSchedules.timezone,
-      paused: workflowsSchedules.paused,
-    })
-    .from(workflowsSchedules)
-    .where(eq(workflowsSchedules.tenant_id, p.tenant_id))
-    .orderBy(asc(workflowsSchedules.created_at))
-    .limit(LIST_LIMIT);
-  if (rows.length === 0) {
-    return { ok: true, reply: "No schedules yet.", data: { items: [] } };
-  }
-  const lines = rows.map(
-    (r) => `- ${r.id.slice(0, 8)} ${r.cron} ${r.timezone}${r.paused ? " (paused)" : ""}`,
-  );
-  return {
-    ok: true,
-    reply: `${rows.length} schedule${rows.length === 1 ? "" : "s"}:\n${lines.join("\n")}`,
-    data: { items: rows },
-  };
-}
-
-async function renderKnowledgeSourcesList(p: FastPathParams): Promise<RenderPayload> {
-  const rows = await p.db
-    .select({
-      id: knowledgeSources.id,
-      slug: knowledgeSources.slug,
-      name: knowledgeSources.name,
-      source_type: knowledgeSources.source_type,
-    })
-    .from(knowledgeSources)
-    .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), isNull(knowledgeSources.deleted_at)))
-    .orderBy(asc(knowledgeSources.created_at))
-    .limit(LIST_LIMIT);
-  if (rows.length === 0) {
-    return { ok: true, reply: "No knowledge sources yet.", data: { items: [] } };
-  }
-  const lines = rows.map((r) => `- ${r.slug} (${r.source_type}) — ${r.name}`);
-  return {
-    ok: true,
-    reply: `${rows.length} knowledge source${rows.length === 1 ? "" : "s"}:\n${lines.join("\n")}`,
-    data: { items: rows },
-  };
-}
 
 async function renderInspectExecution(
   p: FastPathParams,

@@ -101,7 +101,15 @@ export type StepWarningCode =
   // bodies (observed: 545KB pages → multi-GB RSS) and stall/kill the
   // engine; with it the step returns the bounded prefix plus this
   // warning naming how much was fetched and how to narrow the query.
-  | "pagination_truncated";
+  | "pagination_truncated"
+  // Emitted by the engine when the FINAL workflow output fails the
+  // definition's `output_schema` contract (Fix 11). NON-blocking on
+  // live runs — the run still succeeds and the warning (with the
+  // field-level `$output/...` paths in `details.violations`) rides the
+  // run result. `dry_run_workflow` treats the same code as a blocking
+  // repair warning so a contract-violating draft never auto-commits.
+  // `step_key` is the sentinel "$output" (workflow-level, no step).
+  | "output_contract_violation";
 
 export interface StepWarning {
   code: StepWarningCode;

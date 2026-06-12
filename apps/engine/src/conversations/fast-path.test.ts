@@ -9,10 +9,14 @@ import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import { tenants } from "../db/schema/identity.ts";
-import { conversations, workflows, workflowVersions } from "../db/schema/index.ts";
+import { conversations, executions, workflows, workflowVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { EngineClient } from "../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../llm/mock-provider.ts";
 import { type FastPathParams, tryFastPath } from "./fast-path.ts";
+import { listWorkflowsTool } from "./tools/generated/workflows.ts";
+import type { ToolContext } from "./tools/index.ts";
+import type { TurnEvent } from "./types.ts";
 
 let tdb: TestDb;
 let tenantId: string;
@@ -378,6 +382,121 @@ describe("tryFastPath — RBAC denial", () => {
         (row) => (row.metadata as Record<string, unknown>)?.permission === "workflow:read",
       ),
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ground-truth cardinality (Fix 3 regression — sessions 2026-06-11/12).
+// The fast path previously rendered "10 workflows:" (LIST_LIMIT = 10) as
+// if complete while the tenant had 20. Bounded catalogs must enumerate
+// COMPLETELY with the exact total in the headline; executions stay paged
+// but render from the true total.
+// ---------------------------------------------------------------------------
+
+function findToolResultOutput(events: TurnEvent[] | undefined): Record<string, unknown> {
+  const tr = events?.find((e) => e.type === "tool_result") as
+    | { output?: Record<string, unknown> }
+    | undefined;
+  return tr?.output ?? {};
+}
+
+describe("tryFastPath — ground-truth cardinality on list surfaces", () => {
+  test("25 workflows: fast path enumerates completely and names the exact total", async () => {
+    const slugs: string[] = [];
+    for (let i = 0; i < 25; i++) {
+      const slug = `bulk-wf-${String(i).padStart(2, "0")}`;
+      slugs.push(slug);
+      await seedMinimalWorkflow(slug);
+    }
+    const result = await tryFastPath(makeParams("list my workflows"));
+    expect(result).not.toBeNull();
+    expect(result?.fast_path_tool).toBe("list_workflows");
+    // Headline states the EXACT total — and only because all 25 are shown.
+    expect(result?.assistant_text?.startsWith("25 workflows:")).toBe(true);
+    for (const slug of slugs) {
+      expect(result?.assistant_text).toContain(slug);
+    }
+    // Self-describing tool result envelope.
+    const output = findToolResultOutput(result?.events);
+    expect(output.total).toBe(25);
+    expect(output.returned).toBe(25);
+    expect(output.has_more).toBe(false);
+    expect(Array.isArray(output.items)).toBe(true);
+    expect((output.items as unknown[]).length).toBe(25);
+    expect(getMockProvider().calls.length).toBe(0);
+  });
+
+  test("list_workflows conversation tool returns the complete set + exact total for 25 workflows", async () => {
+    for (let i = 0; i < 25; i++) {
+      await seedMinimalWorkflow(`tool-wf-${String(i).padStart(2, "0")}`);
+    }
+    const engineClient = new EngineClient({ tenant_id: tenantId, actor_id: null, db: tdb.db });
+    const ctx = { engineClient, db: tdb.db, tenant_id: tenantId } as unknown as ToolContext;
+    const result = await listWorkflowsTool.execute(ctx, {});
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      items: Array<{ slug: string }>;
+      total: number;
+      returned: number;
+      offset: number;
+      has_more: boolean;
+    };
+    expect(data.total).toBe(25);
+    expect(data.returned).toBe(25);
+    expect(data.offset).toBe(0);
+    expect(data.has_more).toBe(false);
+    expect(data.items).toHaveLength(25);
+
+    // An explicit page still reports the full total and flags has_more.
+    const page = await listWorkflowsTool.execute(ctx, { limit: 10 });
+    const pageData = page.data as { items: unknown[]; total: number; has_more: boolean };
+    expect(pageData.items).toHaveLength(10);
+    expect(pageData.total).toBe(25);
+    expect(pageData.has_more).toBe(true);
+  });
+
+  test("executions list pages but renders the true total ('Showing latest 10 of 12')", async () => {
+    await tdb.db.insert(executions).values(
+      Array.from({ length: 12 }, () => ({
+        tenant_id: tenantId,
+        status: "succeeded" as const,
+        request_source: "api",
+        execution_mode: "dev" as const,
+        source_kind: "saved",
+      })),
+    );
+    try {
+      const result = await tryFastPath(makeParams("list executions"));
+      expect(result).not.toBeNull();
+      expect(result?.assistant_text?.startsWith("Showing latest 10 of 12 executions")).toBe(true);
+      const output = findToolResultOutput(result?.events);
+      expect(output.total).toBe(12);
+      expect(output.returned).toBe(10);
+      expect(output.has_more).toBe(true);
+    } finally {
+      await tdb.db.delete(executions).where(eq(executions.tenant_id, tenantId));
+    }
+  });
+
+  test("fewer executions than the page size render the exact total without a paging hint", async () => {
+    await tdb.db.insert(executions).values([
+      {
+        tenant_id: tenantId,
+        status: "succeeded" as const,
+        request_source: "api",
+        execution_mode: "dev" as const,
+        source_kind: "saved",
+      },
+    ]);
+    try {
+      const result = await tryFastPath(makeParams("list executions"));
+      expect(result?.assistant_text?.startsWith("1 execution:")).toBe(true);
+      const output = findToolResultOutput(result?.events);
+      expect(output.total).toBe(1);
+      expect(output.has_more).toBe(false);
+    } finally {
+      await tdb.db.delete(executions).where(eq(executions.tenant_id, tenantId));
+    }
   });
 });
 

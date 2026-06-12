@@ -219,7 +219,7 @@ export async function findSimilarActive(
   exec?: Executor,
 ): Promise<PriorWorkflowRef[]> {
   const opts: ListWorkflowsOptions = { status: "active", limit: PRIOR_WORKFLOWS_CANDIDATE_POOL };
-  const candidates = await listWorkflows(tenant_id, opts, exec);
+  const { rows: candidates } = await listWorkflows(tenant_id, opts, exec);
   if (candidates.length === 0) return [];
 
   const queryTokens = new Set(tokenisePriorWorkflowText(intent.query));

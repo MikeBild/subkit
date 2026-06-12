@@ -26,7 +26,6 @@ import {
   conversationToolCalls,
 } from "../../db/schema/index.ts";
 import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/substitution/index.ts";
-import { logger } from "../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
 import { detectReservedAuthHeaders } from "../../workflows/header-policy.ts";
@@ -40,14 +39,14 @@ import { runCriticAgent } from "../authoring-critic/critic-agent.ts";
 import { shouldRunCritic } from "../authoring-critic/gating.ts";
 import type { AuthoringCriticVerdict, CriticRejectedDetails } from "../authoring-critic/types.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
+import { emitRecordedEvalSignals, runRecordedEval } from "../recorded-eval.ts";
 import { canonicalJson } from "../text-line-diff.ts";
 import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { verifyWorkflow } from "../verifier.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
-import { evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
+import { getLastPreview } from "./last-preview-store.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
-import { evaluateTransformAuthoringGate } from "./transform-authoring-gate.ts";
 
 const StepShape = z.record(z.string(), z.unknown());
 
@@ -65,6 +64,14 @@ const BuildWorkflowInput = z
     /** Sample input payload; the tool infers `input_schema` from it if
      *  `input_schema` is not provided. */
     input_schema_sample: z.unknown().optional(),
+    /** JSON-Schema contract for the workflow's FINAL output. Derive it
+     *  from the user's goal whenever the goal implies a concrete output
+     *  shape ("a list of repos with name and stars", "an email with
+     *  CPU/memory/disk specs") — dry-runs then validate the real output
+     *  against it and refuse a green preview on a mismatch, giving the
+     *  authoring loop a mechanical done-signal. Keep it minimal:
+     *  `type`/`properties`/`required` for the fields the user asked
+     *  for. */
     output_schema: z.record(z.string(), z.unknown()).optional(),
     output_transform: z.string().optional(),
     environment: z.enum(["dev", "prod"]).default("dev"),
@@ -174,6 +181,8 @@ export const buildWorkflowTool: ConversationTool = {
     String.raw`Every \${cred.<slug>.<field>} and \${connector.<slug>.*} must reference an existing connector + field in the target environment; mismatches yield placeholder_connector_missing / placeholder_cred_missing with exact token names.`,
     "If you pass `input_schema_sample` (a concrete payload) and omit `input_schema`, the tool infers a minimal JSON schema — accept the result or override explicitly.",
     "Replaces any in-progress draft on the conversation (idempotent): subsequent `build_workflow` calls overwrite the draft cleanly.",
+    "When the user's goal implies a concrete output shape, declare a minimal `output_schema` (JSON Schema: type/properties/required). dry_run_workflow validates the final output against it — a violation blocks the green-preview auto-commit with field-level `$output/...` paths, and live runs surface it as a non-blocking warning.",
+    "The result's `recorded_eval.expressions[]` may carry `repair` proposals (verified repaired JSONata with before/after). The draft is NOT auto-modified — apply an accepted repair via `update_param` / `edit_workflow_patch`.",
   ],
   requires_skill: "workflow-authoring",
   example_input: {
@@ -565,144 +574,13 @@ export const buildWorkflowTool: ConversationTool = {
       }
     }
 
-    // Loop-authoring inspection gate. Every loop step that reads
-    // `$scope.<X>` must have a recorded preview for X with a
-    // populated scope_at_step. Refuse when missing — the LLM should
-    // dry-run first to learn the actual shape.
-    //
-    // Probe-evidence exemption: when X is a `request` step routed
-    // through a connector the operator has already successfully
-    // probed in this conversation, the probe counts as shape
-    // evidence and the gate skips it. This matches the reference
+    // Probe-evidence set for the recorded-eval pass below. When a step
+    // is routed through a connector the operator already successfully
+    // probed in this conversation, the probe counts as shape evidence
+    // for the loop/transform gate verdicts (matches the reference
     // impl's call_system → build_tool flow where probes ARE the
-    // shape-discovery signal. Without this, the LLM had to add an
-    // EXTRA dry_run_workflow round-trip after a successful probe
-    // (session 0a01c5f3 16:18:26 wasted a turn on this).
+    // shape-discovery signal).
     const probedConnectorSlugs = await collectProbedConnectorSlugs(ctx, workflowDraft.steps);
-    {
-      const gate = evaluateLoopAuthoringGate(workflowDraft, currentDraft.latest_preview ?? null, {
-        probedConnectorSlugs,
-      });
-      if (!gate.ok) {
-        const summary = gate.blocks
-          .map(
-            (b) =>
-              `loop \`${b.loop_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
-                b.reason === "no_dry_run_yet"
-                  ? "no dry-run has been recorded yet"
-                  : b.reason === "no_preview_for_referenced_step"
-                    ? `\`${b.referenced_step_id}\` has no recent preview`
-                    : `the recorded preview for \`${b.referenced_step_id}\` doesn't include a scope summary`
-              }`,
-          )
-          .join("; ");
-        recordAuthoringGateBlock({
-          code: "loop_authoring_requires_inspect",
-          tool: "build_workflow",
-        });
-        // Forensic runtime log: an operator triaging "why did build_workflow
-        // refuse?" can read the exact blocking refs from engine logs
-        // instead of reconstructing them from the LLM-facing envelope.
-        logger.warn({
-          module: "conversation_tool",
-          action: "authoring_gate.blocked",
-          msg: "build_workflow refused: loop step references a step with no recorded preview",
-          conversation_id: ctx.conversation_id,
-          tool: "build_workflow",
-          error_code: "loop_authoring_requires_inspect",
-          block_count: gate.blocks.length,
-          blocks: gate.blocks.map((b) => ({
-            loop_step_id: b.loop_step_id,
-            referenced_step_id: b.referenced_step_id,
-            reason: b.reason,
-          })),
-        });
-        return {
-          ok: false,
-          data: buildGateError(currentDraft, {
-            error_code: "loop_authoring_requires_inspect",
-            message: `before committing a workflow with a loop step, dry-run once so the upstream step's actual output shape is recorded. ${summary}.`,
-            recommended_mode: "workflow",
-            next_best_actions: [
-              "dry_run_workflow",
-              "inspect_workflow_draft",
-              "suggest_jsonata_paths",
-            ],
-            extra: {
-              gate_blocks: gate.blocks,
-            },
-          }),
-        };
-      }
-    }
-
-    // Transform-authoring inspection gate — symmetric to the loop
-    // variant. Refuses a `build_workflow` payload whose transform steps
-    // cite `$scope.<X>...` for steps that have no recorded
-    // `output_preview` yet. Pre-fix v4.8.0 this was wired only into
-    // `propose_step` and `edit_workflow_patch`, so a one-shot
-    // `build_workflow` could bypass the gate entirely. Passes
-    // `probedConnectorSlugs` so transforms reading from already-
-    // probed request steps are exempted (the probe IS the shape
-    // evidence — same exemption the loop gate uses).
-    {
-      const gate = evaluateTransformAuthoringGate(
-        workflowDraft,
-        currentDraft.latest_preview ?? null,
-        { probedConnectorSlugs },
-      );
-      if (!gate.ok) {
-        const summary = gate.blocks
-          .map(
-            (b) =>
-              `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
-                b.reason === "no_dry_run_yet"
-                  ? "no dry-run has been recorded yet"
-                  : `\`${b.referenced_step_id}\` has no recent preview`
-              }`,
-          )
-          .join("; ");
-        recordAuthoringGateBlock({
-          code: "transform_authoring_requires_inspect",
-          tool: "build_workflow",
-        });
-        // Forensic runtime log — see the loop-gate block above. Surfaces
-        // the transform→referenced-step pairs so the gate's refusals are
-        // diagnosable from engine logs (the publish-ready-essays incident
-        // had no log line here; the cause was reconstructed from the
-        // LLM-facing gate_blocks alone).
-        logger.warn({
-          module: "conversation_tool",
-          action: "authoring_gate.blocked",
-          msg: "build_workflow refused: transform reads a step with no recorded preview",
-          conversation_id: ctx.conversation_id,
-          tool: "build_workflow",
-          error_code: "transform_authoring_requires_inspect",
-          block_count: gate.blocks.length,
-          blocks: gate.blocks.map((b) => ({
-            transform_step_id: b.transform_step_id,
-            referenced_step_id: b.referenced_step_id,
-            reason: b.reason,
-          })),
-        });
-        return {
-          ok: false,
-          data: buildGateError(currentDraft, {
-            error_code: "transform_authoring_requires_inspect",
-            message: `before committing a workflow with a transform that reads upstream scope, dry-run once so the referenced step's actual output shape is recorded. ${summary}. Without a recorded shape the JSONata expression is a guess.`,
-            recommended_mode: "workflow",
-            next_best_actions: [
-              "dry_run_workflow",
-              "inspect_workflow_draft",
-              "suggest_jsonata_paths",
-            ],
-            extra: {
-              gate_blocks: gate.blocks,
-            },
-          }),
-        };
-      }
-    }
 
     // Second-stage LLM critic. Gated by `llm.critic.*` config
     // (`enabled`, `min_steps`, `max_consecutive_rejections`).
@@ -840,16 +718,56 @@ export const buildWorkflowTool: ConversationTool = {
       ...verdict.warnings.map((warning) => `${warning.code}:${warning.path}`),
     ];
 
+    // Recorded-evaluation pass (Fix 9) — the loop/transform gates are
+    // OUTCOMES on the accepted draft, not preconditions. The model gets
+    // generate → evaluate → repair in one round trip: compile errors
+    // with caret pointers, scope-ref resolution against the
+    // fingerprint-valid evidence that survived the mutation (Fix 5),
+    // transform evaluation against recorded scope, and the gate
+    // verdicts — all without a single live HTTP call.
+    const lastPreview = getLastPreview({
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+    });
+    // The repair context (Fix 10) arms the bounded auto-repair stage:
+    // compile errors / empty results over recorded evidence get ≤2
+    // verified LLM repair attempts whose outcome rides the finding —
+    // propose-only, the accepted draft below is never touched by it.
+    const recordedEval = await runRecordedEval(
+      workflowDraft,
+      {
+        latest_preview: nextDraft.latest_preview ?? null,
+        scope: lastPreview?.scope ?? null,
+        input: lastPreview?.input ?? nextDraft.latest_preview?.input ?? null,
+        probedConnectorSlugs,
+      },
+      { repair: { tenant_id: ctx.tenant_id, db: ctx.db } },
+    );
+    emitRecordedEvalSignals({
+      tool: "build_workflow",
+      conversation_id: ctx.conversation_id,
+      report: recordedEval,
+    });
+
     return {
       ok: true,
-      data: buildWorkflowSuccessPayload(nextDraft, {
-        name: args.name,
-        slug: args.slug,
-        steps: args.steps,
-        input_schema_inferred: input_schema !== undefined && args.input_schema === undefined,
-        warnings: warningCodes,
-        infos,
-      }),
+      data: {
+        ...buildWorkflowSuccessPayload(nextDraft, {
+          name: args.name,
+          slug: args.slug,
+          steps: args.steps,
+          input_schema_inferred: input_schema !== undefined && args.input_schema === undefined,
+          warnings: warningCodes,
+          infos,
+        }),
+        recorded_eval: recordedEval,
+        // A draft whose recorded evaluation found missing evidence or
+        // broken expressions must be previewed (and likely repaired)
+        // before it can persist — steer the model accordingly.
+        next_step: recordedEval.ok
+          ? ("save_workflow_draft" as const)
+          : ("dry_run_workflow" as const),
+      },
     };
   },
 };

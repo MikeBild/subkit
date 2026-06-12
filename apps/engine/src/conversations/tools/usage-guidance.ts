@@ -193,13 +193,13 @@ export async function buildWorkflowUsage(
   tenant_id: string,
   workflow: { id: string; slug: string; name: string; definition: WorkflowDefinitionLike },
 ): Promise<ResourceUsage> {
-  const [schedules, hooks] = await Promise.all([
+  const [scheduleList, hooks] = await Promise.all([
     listSchedules(db, tenant_id, workflow.id),
     listInbound(tenant_id, db),
   ]);
   return buildWorkflowUsageFromParts({
     workflow,
-    schedules: schedules.map((s) => ({
+    schedules: scheduleList.rows.map((s) => ({
       cron: s.cron,
       timezone: s.timezone,
       paused: s.paused,

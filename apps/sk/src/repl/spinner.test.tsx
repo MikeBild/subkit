@@ -63,14 +63,17 @@ describe("Spinner · live tool-call progress", () => {
   // every tool had returned but the LLM was still composing the
   // human-readable answer, the spinner cycled through verbs
   // ("considering" / "composing" / "reviewing") with no signal that
-  // tool work had finished. Switching to "summarising N tool
-  // result(s)…" gives the operator a concrete progress label.
-  test("renders 'summarising N tool result(s)' when currentTool is null but tools have completed", () => {
+  // tool work had finished. The label says "processing N tool
+  // result(s)…" — NOT "summarising": no summarization call exists in
+  // the engine, the old wording invented a step that never ran
+  // (session 784c1b02).
+  test("renders 'processing N tool result(s)' when currentTool is null but tools have completed", () => {
     const r = render(
       <Spinner active={true} verbs={["thinking"]} currentTool={null} completedToolsThisTurn={3} />,
     );
     const frame = snapshot(r);
-    expect(frame).toContain("summarising 3 tool results…");
+    expect(frame).toContain("processing 3 tool results…");
+    expect(frame).not.toContain("summarising");
     expect(frame).not.toContain("thinking…");
     r.unmount();
   });
@@ -80,7 +83,7 @@ describe("Spinner · live tool-call progress", () => {
       <Spinner active={true} verbs={["thinking"]} currentTool={null} completedToolsThisTurn={1} />,
     );
     const frame = snapshot(r);
-    expect(frame).toContain("summarising 1 tool result…");
+    expect(frame).toContain("processing 1 tool result…");
     r.unmount();
   });
 
@@ -98,7 +101,7 @@ describe("Spinner · live tool-call progress", () => {
     );
     const frame = snapshot(r);
     expect(frame).toContain("running run_workflow…");
-    expect(frame).not.toContain("summarising");
+    expect(frame).not.toContain("processing");
     r.unmount();
   });
 });

@@ -2887,6 +2887,7 @@ export interface paths {
             parameters: {
                 query?: {
                     limit?: number;
+                    offset?: number | null;
                     workflow_id?: string;
                     status?: string;
                     request_source?: string;
@@ -4092,7 +4093,38 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Browser-openable OAuth2 start (single-use grant token) */
+        get: {
+            parameters: {
+                query: {
+                    grant: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Redirect to provider authorization URL */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Grant invalid/expired (HTML error page) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
         put?: never;
         /** Begin an OAuth2 authorization-code flow */
         post: {
@@ -10401,7 +10433,7 @@ export interface components {
         };
         McpServerRedactedAuthConfig: {
             /** @enum {string} */
-            kind: "none" | "bearer" | "oauth2";
+            kind: "none" | "bearer" | "basic" | "oauth2";
             has_credential: boolean;
         };
         CreateMcpServerBody: {
@@ -10413,11 +10445,12 @@ export interface components {
             url: string;
             auth_config?: components["schemas"]["McpServerAuthConfigInput"];
             token?: string;
+            username?: string;
             refresh_token?: string;
         };
         McpServerAuthConfigInput: {
             /** @enum {string} */
-            kind: "none" | "bearer" | "oauth2";
+            kind: "none" | "bearer" | "basic" | "oauth2";
             /** Format: uri */
             issuer?: string;
             client_id?: string;
@@ -10432,6 +10465,7 @@ export interface components {
             url?: string;
             auth_config?: components["schemas"]["McpServerAuthConfigInput"];
             token?: string;
+            username?: string;
             refresh_token?: string;
         };
         InspectMcpServerResponse: {
@@ -10548,6 +10582,7 @@ export interface components {
         };
         WorkflowListResponse: {
             items: components["schemas"]["Workflow"][];
+            total: number;
         };
         Workflow: {
             id: string;
@@ -10600,6 +10635,7 @@ export interface components {
         };
         ScheduleListResponse: {
             schedules: components["schemas"]["ScheduleEntry"][];
+            total: number;
         };
         ScheduleEntry: {
             id: string;
@@ -10899,6 +10935,7 @@ export interface components {
         };
         ExecutionListResponse: {
             items: components["schemas"]["Execution"][];
+            total: number;
             next_cursor?: string | null;
         };
         Execution: {
@@ -11383,6 +11420,7 @@ export interface components {
         };
         ConnectorListResponse: {
             items: components["schemas"]["Connector"][];
+            total: number;
         };
         Connector: {
             id: string;

@@ -56,6 +56,55 @@ describe("buildCapAlternatives", () => {
   });
 });
 
+describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes (Fix 8)", () => {
+  // The gates are fingerprint-keyed now: evidence survives edits to
+  // OTHER steps and blocks only when the referenced step's own
+  // definition changed since the last dry-run. The hints must teach
+  // the one-round-trip recovery (dry_run_workflow once, retry), not
+  // the old build → blocked → inspect → rebuild dance.
+  it("loop_authoring_requires_inspect names dry_run_workflow and the evidence-survival rule", () => {
+    const hint = ERROR_CODE_ALTERNATIVES.loop_authoring_requires_inspect;
+    expect(hint).toContain("dry_run_workflow");
+    expect(hint).toMatch(/unchanged steps keep their evidence/i);
+    expect(hint).toMatch(/definition changed since the last preview/i);
+  });
+
+  it("transform_authoring_requires_inspect names dry_run_workflow and the evidence-survival rule", () => {
+    const hint = ERROR_CODE_ALTERNATIVES.transform_authoring_requires_inspect;
+    expect(hint).toContain("dry_run_workflow");
+    expect(hint).toMatch(/unchanged steps keep their evidence/i);
+    // Existing recovery path stays reachable.
+    expect(hint).toContain("inspect_execution_step");
+  });
+
+  it("preview_stale_for_referenced_step has a hint: refresh via one dry-run, other-step edits don't invalidate", () => {
+    const hint = ERROR_CODE_ALTERNATIVES.preview_stale_for_referenced_step;
+    expect(hint).toBeDefined();
+    expect(hint).toContain("dry_run_workflow");
+    expect(hint).toMatch(/edits to other steps do NOT invalidate/i);
+  });
+
+  it("step_update_invalid teaches the loop-body array form", () => {
+    const hint = ERROR_CODE_ALTERNATIVES.step_update_invalid;
+    expect(hint).toContain('body: ["step_id"]');
+    expect(hint).toMatch(/ARRAY of step ids/i);
+  });
+
+  it("workflow_unsupported_placeholder teaches loop-body addressing (${item.…} vs bare item_var)", () => {
+    const hint = ERROR_CODE_ALTERNATIVES.workflow_unsupported_placeholder;
+    expect(hint).toContain("${item.<path>}");
+    expect(hint).toContain("item_var");
+    expect(hint).toMatch(/JSONata/);
+  });
+
+  it("placeholder_unresolved teaches loop-body addressing and sibling scope refs", () => {
+    const hint = ERROR_CODE_ALTERNATIVES.placeholder_unresolved;
+    expect(hint).toBeDefined();
+    expect(hint).toContain("${item.<path>}");
+    expect(hint).toContain("${scope.<body_step_id>.data.<field>}");
+  });
+});
+
 describe("ERROR_CODE_ALTERNATIVES catalogue completeness", () => {
   // S3 (round-2 review): the previous hand-maintained list was a
   // documentation drift hazard — adding a new `error_code` to any

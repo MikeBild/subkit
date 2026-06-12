@@ -46,6 +46,7 @@ import { uploadPath } from "./commands/files.ts";
 import { debugLog, serializeDebugError } from "./debug.ts";
 import { looksLikeAssistantConfirmRequest } from "./elicitation-intent.ts";
 import type { EngineClient, SetupValidationResponse, StatusSummary } from "./engine-client.ts";
+import { readExtendedTurnUsage } from "./engine-client.ts";
 import { renderSuspiciousCodepoints, sanitizePathInput } from "./lib/path-input.ts";
 import { autoUploadLocalPaths } from "./lib/path-preprocessor.ts";
 import {
@@ -4366,7 +4367,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           (c) => c.status === "running" || c.status === "pending",
         );
         // Count tools that COMPLETED this turn (status done/failed)
-        // so we can show "summarising N tool result(s)…" instead of
+        // so we can show "processing N tool result(s)…" instead of
         // the rotating verb when the LLM is composing without an
         // active tool call.
         const completedThisTurn = session.toolCalls.filter(
@@ -4377,7 +4378,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         // Best-effort: pull `error_code` from the last failed tool's
         // result envelope. Surface it in the spinner so a long
         // recovery flow reads "5 tools failed (slug_already_in_use)"
-        // instead of an opaque "summarising 5 tool results" — the
+        // instead of an opaque "processing 5 tool results" — the
         // exact symptom of session 975a64b0 (3m09s of opaque
         // summarisation while the LLM tried to recover from a
         // 23505 unique-violation).
@@ -4452,7 +4453,12 @@ export const InkApp: React.FC<InkAppProps> = ({
         tokensToday={statusSnapshot?.tokens_today ?? null}
         tokensMonth={statusSnapshot?.tokens_month ?? null}
         monthlyBudget={statusSnapshot?.monthly_budget_tokens ?? null}
-        lastTurnPromptTokens={session.usage?.turn_tokens ?? null}
+        promptTokensLastCall={readExtendedTurnUsage(session.usage).prompt_tokens_last_call}
+        turnTokensTotal={
+          readExtendedTurnUsage(session.usage).turn_tokens_total ??
+          session.usage?.turn_tokens ??
+          null
+        }
         contextCapTokens={session.usage?.context_cap_tokens ?? null}
         columns={columns}
       />

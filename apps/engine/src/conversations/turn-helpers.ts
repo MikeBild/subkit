@@ -286,7 +286,13 @@ function describeToolOutput(output: Record<string, unknown>): string {
   ];
   for (const key of candidateKeys) {
     const value = output[key];
-    if (Array.isArray(value)) return `${value.length} entries`;
+    if (Array.isArray(value)) {
+      // Self-describing list envelopes carry the exact filtered total —
+      // surface it so a page is never summarized as the universe.
+      const total = typeof output.total === "number" ? output.total : null;
+      if (total !== null && total !== value.length) return `${value.length} of ${total} entries`;
+      return `${value.length} entries`;
+    }
   }
   // run_workflow / dry_run_workflow lifecycle payload — surface the
   // actual outcome instead of falling through to the generic

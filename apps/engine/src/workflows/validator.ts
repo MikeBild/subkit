@@ -14,6 +14,7 @@
 // `run-workflow.ts` that refuses the commit.
 
 import { compile as compileJsonata } from "../execution/jsonata-engine.ts";
+import { compileOutputContractSchema } from "../execution/output-contract.ts";
 import { compileSelector } from "../execution/selectors.ts";
 import { detectReservedAuthHeaders } from "./header-policy.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
@@ -335,6 +336,22 @@ export function validateWorkflowDef(
   // mutation paths (`update_param`, `edit_workflow_patch`, raw API).
   // Skipped for connector_ids whose `auth_type === "none"` — see the
   // `auth-flows.md` skill's multi-step token-mint pattern.
+  // Output contract sanity (Fix 11). `output_schema` is the workflow's
+  // public output contract: dry-run previews block on a violation and
+  // live runs attach a non-blocking `output_contract_violation`
+  // warning. A schema Ajv cannot compile would silently disable both
+  // surfaces, so refuse it here — at the same gate that already
+  // refuses unparseable JSONata.
+  if (wf.output_schema) {
+    const compiled = compileOutputContractSchema(wf.output_schema);
+    if (!compiled.ok) {
+      errors.push({
+        path: "output_schema",
+        message: `output_schema is not a valid JSON Schema: ${compiled.error}`,
+      });
+    }
+  }
+
   for (const v of detectReservedAuthHeaders(
     wf.steps,
     options.noneAuthConnectorIds ? { noneAuthConnectorIds: options.noneAuthConnectorIds } : {},

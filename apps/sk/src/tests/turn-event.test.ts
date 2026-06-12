@@ -8,6 +8,7 @@ import {
   lastAssistantText,
   type TurnEvent,
 } from "@cli-core/index.ts";
+import { readExtendedTurnUsage } from "../engine-client.ts";
 
 describe("sk turn-event reducer", () => {
   test("folds a message event into the history", () => {
@@ -77,6 +78,38 @@ describe("sk turn-event reducer", () => {
     expect(s.committedWorkflowId).toBe("wf-1");
     expect(s.status).toBe("completed");
     expect(s.usage?.turn_tokens).toBe(42);
+  });
+
+  test("extended usage fields ride through the completed frame to REPL state", () => {
+    // Fix 7 — honest cost telemetry. The reducer stores `ev.usage`
+    // wholesale, so the engine's `prompt_tokens_last_call` /
+    // `turn_tokens_total` survive even though the cli-core TurnUsage
+    // type doesn't declare them; `readExtendedTurnUsage` narrows them
+    // where the footer renders `ctx <last>/<cap>` and `turn <total>`.
+    let s = initialSessionState("c1");
+    s = applyTurnEvent(s, {
+      type: "completed",
+      status: "active",
+      usage: {
+        turn_tokens: 50_000,
+        prompt_tokens_last_call: 92_000,
+        turn_tokens_total: 3_900_000,
+        remaining_monthly_budget_tokens: null,
+        context_cap_tokens: 180_000,
+      } as never,
+    });
+    const ext = readExtendedTurnUsage(s.usage);
+    expect(ext.prompt_tokens_last_call).toBe(92_000);
+    expect(ext.turn_tokens_total).toBe(3_900_000);
+    // Absent / malformed fields narrow to null, never NaN or undefined.
+    expect(readExtendedTurnUsage({ turn_tokens: 1 })).toEqual({
+      prompt_tokens_last_call: null,
+      turn_tokens_total: null,
+    });
+    expect(readExtendedTurnUsage(null)).toEqual({
+      prompt_tokens_last_call: null,
+      turn_tokens_total: null,
+    });
   });
 
   test("validation_error surfaces the errors list and flips status", () => {

@@ -8,14 +8,13 @@
 // self-correct on the next iteration instead of guessing shapes.
 
 import { z } from "@hono/zod-openapi";
-import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { type ValidationError, validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
+import { emitRecordedEvalSignals, runRecordedEval } from "../recorded-eval.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
-import { evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
+import { getLastPreview } from "./last-preview-store.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
-import { evaluateTransformAuthoringGate } from "./transform-authoring-gate.ts";
 
 const inputSchema = z
   .object({
@@ -195,108 +194,35 @@ export const proposeStepTool: ConversationTool = {
       };
     }
 
-    // Loop-authoring inspection gate. When the proposed step is a
-    // `loop` whose `over` / `data_selector` reads `$scope.<X>...` for
-    // a sibling step X, the LLM must have actually seen X's output
-    // shape (latest_preview.step_traces[X].scope_at_step). Otherwise
-    // refuse with the typed `loop_authoring_requires_inspect` error.
-    // Saves the 4–9× retry spiral observed in sessions ebd66982 and
-    // 86de186b.
-    if (typeof args.step.kind === "string" && args.step.kind === "loop") {
-      const probedConnectorSlugs = await collectProbedConnectorSlugs(ctx, workflowDraft.steps);
-      const gate = evaluateLoopAuthoringGate(workflowDraft, currentDraft.latest_preview ?? null, {
-        probedConnectorSlugs,
-      });
-      if (!gate.ok) {
-        const summary = gate.blocks
-          .map(
-            (b) =>
-              `loop \`${b.loop_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
-                b.reason === "no_dry_run_yet"
-                  ? "no dry-run has been recorded yet"
-                  : b.reason === "no_preview_for_referenced_step"
-                    ? `\`${b.referenced_step_id}\` has no recent preview`
-                    : `the recorded preview for \`${b.referenced_step_id}\` doesn't include a scope summary`
-              }`,
-          )
-          .join("; ");
-        recordAuthoringGateBlock({
-          code: "loop_authoring_requires_inspect",
-          tool: "propose_step",
-        });
-        return {
-          ok: false,
-          data: buildGateError(currentDraft, {
-            error_code: "loop_authoring_requires_inspect",
-            message: `before authoring this loop, dry-run the workflow once so the upstream step's actual output shape is recorded. ${summary}.`,
-            recommended_mode: "workflow",
-            next_best_actions: [
-              "dry_run_workflow",
-              "inspect_workflow_draft",
-              "suggest_jsonata_paths",
-            ],
-            extra: {
-              gate_blocks: gate.blocks,
-            },
-          }),
-        };
-      }
-    }
-
-    // Transform-authoring inspection gate. When the proposed step is a
-    // `transform` whose `expression` reads `$scope.<X>...` for a
-    // sibling step X, the LLM must have actually seen X's output
-    // shape (latest_preview.step_traces[X].output_preview). Otherwise
-    // the model fabricates field paths and the run "succeeds" with
-    // garbage output (transcript `get-last-3-gmail-messages with human
-    // output` — 3 retries to converge on the right fields).
-    if (typeof args.step.kind === "string" && args.step.kind === "transform") {
-      // Probe-evidence exemption: a transform reading from a request
-      // routed through a probed connector — directly or through a
-      // chain of transforms — is exempt because the probe IS the
-      // shape evidence. Same contract as the loop-gate exemption.
-      const probedConnectorSlugs = await collectProbedConnectorSlugs(ctx, workflowDraft.steps);
-      const gate = evaluateTransformAuthoringGate(
-        workflowDraft,
-        currentDraft.latest_preview ?? null,
-        { probedConnectorSlugs },
-      );
-      if (!gate.ok) {
-        const summary = gate.blocks
-          .map(
-            (b) =>
-              `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
-                b.reason === "no_dry_run_yet"
-                  ? "no dry-run has been recorded yet"
-                  : `\`${b.referenced_step_id}\` has no recent preview`
-              }`,
-          )
-          .join("; ");
-        recordAuthoringGateBlock({
-          code: "transform_authoring_requires_inspect",
-          tool: "propose_step",
-        });
-        return {
-          ok: false,
-          data: buildGateError(currentDraft, {
-            error_code: "transform_authoring_requires_inspect",
-            message: `before authoring this transform, dry-run the workflow once so the referenced step's actual output shape is recorded. ${summary}. Without a recorded shape the JSONata expression is a guess — likely to silently drop fields or return literal placeholders.`,
-            recommended_mode: "workflow",
-            next_best_actions: [
-              "dry_run_workflow",
-              "inspect_workflow_draft",
-              "suggest_jsonata_paths",
-            ],
-            extra: {
-              gate_blocks: gate.blocks,
-            },
-          }),
-        };
-      }
-    }
-
     const nextDraft = withWorkflowDraft(currentDraft, workflowDraft, "workflow_step_updated");
     await ctx.setDraft(nextDraft);
+
+    // Recorded-evaluation pass (Fix 9). The loop/transform authoring
+    // gates used to REFUSE a loop/transform step whose upstream shape
+    // was never recorded — that bounced the mutation and drove the
+    // build → blocked → dry-run → rebuild thrash (sessions ebd66982 /
+    // 86de186b / 784c1b02). The step is accepted now; the same gate
+    // verdicts — plus JSONata compile caret errors and evaluation
+    // against fingerprint-valid recorded evidence — come back as
+    // findings in this result so the model repairs in the next call.
+    // No live HTTP fires here; `dry_run_workflow` stays the explicit
+    // live step.
+    const probedConnectorSlugs = await collectProbedConnectorSlugs(ctx, workflowDraft.steps);
+    const lastPreview = getLastPreview({
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+    });
+    const recordedEval = await runRecordedEval(workflowDraft, {
+      latest_preview: nextDraft.latest_preview ?? null,
+      scope: lastPreview?.scope ?? null,
+      input: lastPreview?.input ?? nextDraft.latest_preview?.input ?? null,
+      probedConnectorSlugs,
+    });
+    emitRecordedEvalSignals({
+      tool: "propose_step",
+      conversation_id: ctx.conversation_id,
+      report: recordedEval,
+    });
     // Surface any pending forward references as an `info` hint so the
     // LLM knows which body steps it still has to add before the next
     // dry_run / commit. Pre-fix this was a hard error which made the
@@ -313,6 +239,7 @@ export const proposeStepTool: ConversationTool = {
           step_type: typeof args.step.kind === "string" ? args.step.kind : null,
           replaced: stepId !== undefined && existing >= 0,
           last_step_id: workflowDraft.steps[workflowDraft.steps.length - 1]?.id ?? null,
+          recorded_eval: recordedEval,
           ...(forwardRefs.length > 0
             ? {
                 pending_forward_refs: forwardRefs,

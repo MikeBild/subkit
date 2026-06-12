@@ -23,7 +23,7 @@
 // placeholders_used }` so the caller can decide whether to abort (executor) or
 // keep going with partially-resolved text (audit / log-only contexts).
 
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { CredentialMode, DecryptedCredential } from "../../credentials/types.ts";
 import { decryptSecret } from "../../crypto/aes-gcm.ts";
@@ -526,6 +526,13 @@ function resolveJsonPath(root: unknown, path: string[], diagnosticRoot: string):
 // ---- DB helpers ----------------------------------------------------------
 
 async function fetchConnector(ctx: ResolverContext, slug: string) {
+  // `deleted_at IS NULL` is load-bearing: the DB keeps soft-deleted rows
+  // under the same (tenant_id, slug, environment) key (the unique index is
+  // partial on live rows). Without the predicate the resolver picked a dead
+  // `linkedin` row whose base_url already ended in `/v2`, producing
+  // `/v2/v2/userinfo` (session 2026-06-11). The ORDER BY makes resolution
+  // deterministic — newest live row wins — even if duplicates ever coexist
+  // transiently.
   const rows = await ctx.db
     .select()
     .from(connectors)
@@ -534,8 +541,10 @@ async function fetchConnector(ctx: ResolverContext, slug: string) {
         eq(connectors.tenant_id, ctx.tenant_id),
         eq(connectors.slug, slug),
         eq(connectors.environment, ctx.environment),
+        isNull(connectors.deleted_at),
       ),
     )
+    .orderBy(desc(connectors.created_at))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -554,6 +563,7 @@ async function fetchCredential(ctx: ResolverContext, connectorId: string) {
         eq(credentials.tenant_id, ctx.tenant_id),
         eq(credentials.connector_id, connectorId),
         eq(credentials.environment, ctx.environment),
+        isNull(credentials.deleted_at),
       ),
     )
     .limit(1);

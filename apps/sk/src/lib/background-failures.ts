@@ -34,6 +34,11 @@ export async function backgroundFailureBanner(client: EngineClient): Promise<str
       request_source: "scheduler",
       limit: 25,
     });
+    // `total` is the exact all-time count of failed scheduler runs under
+    // these filters — when it exceeds the scanned page, the banner says
+    // so instead of presenting the page as the universe.
+    const scanned = (execResp.items ?? []).length;
+    const scanTruncated = execResp.total > scanned;
     const failures: FailedExec[] = [];
     for (const raw of execResp.items ?? []) {
       const id = asString(raw.id);
@@ -77,7 +82,11 @@ export async function backgroundFailureBanner(client: EngineClient): Promise<str
       }
     }
 
-    const lines: string[] = ["⚠  Background failures detected:"];
+    const lines: string[] = [
+      scanTruncated
+        ? `⚠  Background failures detected (scanned latest ${scanned} of ${execResp.total} failed scheduler runs):`
+        : "⚠  Background failures detected:",
+    ];
     for (const [wfId, { count, latest }] of byWorkflow) {
       const label = names.get(wfId) ?? wfId;
       let reason = "";

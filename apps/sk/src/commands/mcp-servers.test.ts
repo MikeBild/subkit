@@ -48,12 +48,12 @@ const STUB_SERVER_DISABLED = { ...STUB_SERVER, status: "disabled" };
 let lastCreateBody: Record<string, unknown> | null = null;
 let lastPatchBody: Record<string, unknown> | null = null;
 
-// Drives the authorize poll loop: each getMcpServer call advances a status
-// script so a test can make the loop terminate deterministically (active /
-// error / still-pending) without real wall-clock dependence.
+// Drives the authorize poll loop: each inspectMcpServer call advances a
+// status script so a test can make the loop terminate deterministically
+// (active / still-pending) without real wall-clock dependence.
 let authorizeUrlReturned: { authorization_url: string; state: string } | null = null;
-let getMcpServerScript: Array<Record<string, unknown>> = [];
-let getMcpServerCalls = 0;
+let inspectMcpServerScript: Array<Record<string, unknown>> = [];
+let inspectMcpServerCalls = 0;
 
 mock.module("../engine-client.ts", () => ({
   ...ORIGINAL_ENGINE_CLIENT,
@@ -70,11 +70,6 @@ mock.module("../engine-client.ts", () => ({
       return { items: [STUB_SERVER] };
     }
     async getMcpServer(_id: string) {
-      if (getMcpServerScript.length > 0) {
-        const idx = Math.min(getMcpServerCalls, getMcpServerScript.length - 1);
-        getMcpServerCalls++;
-        return getMcpServerScript[idx]!;
-      }
       return STUB_SERVER;
     }
     async authorizeMcpServer(_id: string) {
@@ -92,6 +87,11 @@ mock.module("../engine-client.ts", () => ({
       return undefined;
     }
     async inspectMcpServer(_id: string) {
+      if (inspectMcpServerScript.length > 0) {
+        const idx = Math.min(inspectMcpServerCalls, inspectMcpServerScript.length - 1);
+        inspectMcpServerCalls++;
+        return inspectMcpServerScript[idx]!;
+      }
       return {
         tools: [],
         status: "active",
@@ -232,6 +232,84 @@ describe("sk mcp-servers add · --json contract", () => {
 });
 
 describe("sk mcp-servers add · auth flag validation", () => {
+  test("--auth-kind basic forwards --username + --token as write-only fields", async () => {
+    const SECRET = "sk-cli-basic-secret-2468";
+    const USERNAME = "user@basic.test";
+    const add = getSub("add");
+    await add.run!({
+      args: {
+        name: "Basic MCP",
+        namespace: "basicmcp",
+        transport: "http",
+        url: "https://basic.mcp.test",
+        "auth-kind": "basic",
+        username: USERNAME,
+        token: SECRET,
+        json: true,
+      },
+    });
+    // Both halves of the pair travel as top-level write-only fields…
+    expect(lastCreateBody?.token).toBe(SECRET);
+    expect(lastCreateBody?.username).toBe(USERNAME);
+    // …auth_config carries only the kind…
+    expect(JSON.stringify(lastCreateBody?.auth_config)).not.toContain(SECRET);
+    expect(JSON.stringify(lastCreateBody?.auth_config)).not.toContain(USERNAME);
+    // …and the secret is never printed.
+    expect(stdoutBuf).not.toContain(SECRET);
+  });
+
+  test("rejects --auth-kind basic with --token but no --username before any request leaves the CLI", async () => {
+    lastCreateBody = null;
+    const add = getSub("add");
+    let threw = false;
+    try {
+      await add.run!({
+        args: {
+          name: "Half Basic MCP",
+          namespace: "halfbasicmcp",
+          transport: "http",
+          url: "https://halfbasic.mcp.test",
+          "auth-kind": "basic",
+          token: "lonely-token",
+          json: true,
+        },
+      });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+    expect(lastCreateBody).toBeNull();
+    const out = JSON.parse(stdoutBuf.trim()) as { error?: string };
+    expect(out.error).toContain("--auth-kind basic requires --username and --token together");
+  });
+
+  test("rejects --refresh-token with --auth-kind basic before any request leaves the CLI", async () => {
+    lastCreateBody = null;
+    const add = getSub("add");
+    let threw = false;
+    try {
+      await add.run!({
+        args: {
+          name: "Wrong Field Basic MCP",
+          namespace: "wrongbasicmcp",
+          transport: "http",
+          url: "https://wrongbasic.mcp.test",
+          "auth-kind": "basic",
+          username: "u@x.test",
+          token: "t",
+          "refresh-token": "rt",
+          json: true,
+        },
+      });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+    expect(lastCreateBody).toBeNull();
+    const out = JSON.parse(stdoutBuf.trim()) as { error?: string };
+    expect(out.error).toContain("--auth-kind basic uses --username plus --token");
+  });
+
   test("rejects --token with --auth-kind oauth2 before any request leaves the CLI", async () => {
     lastCreateBody = null;
     const SECRET = "sk-wrong-field-secret-9999";
@@ -381,8 +459,8 @@ describe("sk mcp-servers remove · --yes flag", () => {
 describe("sk mcp-servers authorize · OAuth consent flow", () => {
   beforeEach(() => {
     authorizeUrlReturned = null;
-    getMcpServerScript = [];
-    getMcpServerCalls = 0;
+    inspectMcpServerScript = [];
+    inspectMcpServerCalls = 0;
   });
 
   test("--json emits { authorization_url, state }, no polling, stderr empty", async () => {
@@ -394,7 +472,7 @@ describe("sk mcp-servers authorize · OAuth consent flow", () => {
     expect(parsed.state).toBe("state-abc");
     expect(stderrBuf).toBe("");
     // No poll in --json mode.
-    expect(getMcpServerCalls).toBe(0);
+    expect(inspectMcpServerCalls).toBe(0);
   });
 
   test("prints the authorization URL and calls authorizeMcpServer", async () => {
@@ -407,24 +485,31 @@ describe("sk mcp-servers authorize · OAuth consent flow", () => {
     expect(stdoutBuf).toContain("https://idp.test/authorize?x=1");
     expect(stdoutBuf).toContain("Open this URL");
     // --no-wait skips polling entirely.
-    expect(getMcpServerCalls).toBe(0);
+    expect(inspectMcpServerCalls).toBe(0);
   });
 
-  test("polling stops with success when status flips to active", async () => {
-    getMcpServerScript = [{ status: "active" }];
+  test("polling succeeds when a forced handshake (inspect) reports active", async () => {
+    inspectMcpServerScript = [{ status: "active", last_error: null }];
     const authorize = getSub("authorize");
     await authorize.run!({ args: { id: STUB_SERVER.id, "no-open": true } });
-    expect(getMcpServerCalls).toBe(1);
-    expect(stdoutBuf).toContain("active");
+    expect(inspectMcpServerCalls).toBe(1);
+    expect(stdoutBuf).toContain("authorized — server is active");
   });
 
-  test("polling stops and surfaces last_error when status is error", async () => {
-    getMcpServerScript = [{ status: "error", last_error: "consent denied" }];
+  test("an error inspect (consent not yet granted) means keep waiting, not failure", async () => {
+    // First handshake still 401s (the user has not finished the browser
+    // step); the second succeeds. The pre-fix poll read the row status and
+    // either false-positived on the default `active` or terminated on the
+    // parked `error` — both wrong.
+    inspectMcpServerScript = [
+      { status: "error", last_error: "authorization required" },
+      { status: "active", last_error: null },
+    ];
     const authorize = getSub("authorize");
     await authorize.run!({ args: { id: STUB_SERVER.id, "no-open": true } });
-    expect(getMcpServerCalls).toBe(1);
-    expect(stdoutBuf).toContain("consent denied");
-  });
+    expect(inspectMcpServerCalls).toBe(2);
+    expect(stdoutBuf).toContain("authorized — server is active");
+  }, 15_000);
 });
 
 // ── error discipline ──────────────────────────────────────────────────────────

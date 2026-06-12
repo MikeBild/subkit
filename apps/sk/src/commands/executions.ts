@@ -80,12 +80,21 @@ const listCommand = defineCommand({
       const query: Record<string, string | number | undefined> = { limit: Number(args.limit) };
       if (args.status) query.status = args.status;
       if (args.parent) query.parent_execution_id = String(args.parent);
-      const { items } = await client.listExecutions(query);
+      const { items, total } = await client.listExecutions(query);
       emitList(
         !!args.json,
         ["id", "workflow_id", "status", "started_at"],
         items as Record<string, unknown>[],
       );
+      // Executions are an unbounded history — always say how big the
+      // filtered set really is and how to page deeper.
+      if (!args.json) {
+        process.stdout.write(
+          items.length < total
+            ? `${pc.dim(`showing latest ${items.length} of ${total} executions — raise --limit to page deeper`)}\n`
+            : `${pc.dim(`${total} execution${total === 1 ? "" : "s"} total`)}\n`,
+        );
+      }
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }

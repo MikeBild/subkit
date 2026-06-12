@@ -550,6 +550,15 @@ export const AuditAction = {
   // branch emits nothing: there is no claimed row and so no tenant to
   // scope the audit entry to.
   CONNECTOR_OAUTH_CALLBACK_FAILED: "connector.oauth.callback_failed",
+  // Single-use browser-openable grant issued by mintOAuthStartGrantUrl.
+  // Audited at mint time with the connector_id as resource. The grant
+  // is stored as a sha256 hash only; the plaintext is never logged.
+  CONNECTOR_OAUTH_GRANT_ISSUED: "connector.oauth.grant_issued",
+  // Grant consumed (atomically claimed) by the unauthenticated GET
+  // /v1/connectors/{id}/oauth/start?grant=… route. Written BEFORE
+  // beginConnectorOAuthDance runs; a failure after this row means the
+  // grant is burned but the dance did not start (HTML error page shown).
+  CONNECTOR_OAUTH_GRANT_CONSUMED: "connector.oauth.grant_consumed",
 
   // ── MCP OAuth 2.1 authorization server ────────────────────────────────────
   MCP_OAUTH_CLIENT_REGISTERED: "mcp_oauth.client_registered",

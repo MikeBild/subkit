@@ -16,13 +16,15 @@
 //   1. `truncateNode` clips top-level arrays to `MAX_ARRAY_LEN` and
 //      nested arrays (depth ≥ 2) to `MAX_NESTED_ARRAY_LEN`.
 //   2. If the result is still over `MAX_JSON_CHARS`, the heaviest
-//      string/object branches are replaced with `null` and a
+//      string/object branches are replaced with a labeled primitive
+//      stub (`[omitted: <n> chars — get_raw_result(ref="…")]`) and a
 //      sibling-tracked omission count is rolled up into a single
 //      top-level `_truncation_note` string — never `__omitted_chars`
-//      or `__raw_ref` keys, which previously leaked all the way to the
-//      end-user output. The full payload is still recoverable via the
-//      `raw_ref` returned alongside the truncated data and the
-//      `get_raw_result` tool.
+//      or `__raw_ref` keys (leaked to end-user output once) and never
+//      bare `null` (read as "the step produced nothing" — the
+//      `array[4]<null>` loop-preview incident). The full payload is
+//      still recoverable via the `raw_ref` returned alongside the
+//      truncated data and the `get_raw_result` tool.
 //
 // The previous implementation only used pass 1; deeply nested payloads
 // (workflow steps carrying snapshots) blew past the cap by 50–100×
@@ -203,7 +205,7 @@ interface ShrinkResult {
   charsOmitted: number;
 }
 
-function shrinkToCap(data: unknown, cap: number): ShrinkResult {
+function shrinkToCap(data: unknown, cap: number, rawRef: string): ShrinkResult {
   let current = approxJsonLength(data);
   if (current <= cap) return { data, branchesOmitted: 0, charsOmitted: 0 };
   const handles = collectHeaviestBranches(data);
@@ -212,14 +214,27 @@ function shrinkToCap(data: unknown, cap: number): ShrinkResult {
   for (const handle of handles) {
     if (current <= cap) break;
     if (handle.size < 64) continue; // skip tiny branches; not worth it
-    // Replace the heavy branch with `null` rather than an inline marker
-    // object. Pre-fix the marker shape `{__omitted_chars, __raw_ref}`
-    // leaked into the LLM context and the fallback renderer alike, so
-    // the user saw raw envelope keys in their workflow output (session
-    // 0ac7593c). Branch-level provenance is rolled up into a single
-    // top-level `_truncation_note` and the full payload remains
-    // recoverable via the outer `raw_ref` returned by truncateForLlm.
-    handle.replace(null);
+    // Replace the heavy branch with a LABELED primitive stub, never a
+    // bare `null` and never an inline marker OBJECT.
+    //
+    //   - The first-generation marker `{__omitted_chars, __raw_ref}`
+    //     leaked raw envelope keys into user-visible output (session
+    //     0ac7593c) — objects are out.
+    //   - The second-generation `null` was indistinguishable from "the
+    //     step produced nothing": a loop preview whose fat iteration
+    //     objects were nulled rendered as `array[4]<null>` and the
+    //     model restructured a working workflow believing the loop
+    //     collapsed its body output (session 784c1b02). Bare null is
+    //     out too.
+    //
+    // The stub mirrors the `previewOffloadRefs` convention (a labeled
+    // primitive string): honest about WHY the value is absent and how
+    // to recover it, safe through every renderer.
+    const stub = `[omitted: ${handle.size} chars — get_raw_result(ref="${rawRef}")]`;
+    // Replacing a branch with a stub LONGER than the branch would grow
+    // the payload — skip those; they're too small to matter anyway.
+    if (handle.size <= stub.length + 16) continue;
+    handle.replace(stub);
     branchesOmitted += 1;
     charsOmitted += handle.size;
     current = approxJsonLength(data);
@@ -245,7 +260,7 @@ export function truncateForLlm(output: unknown, cap: number = MAX_JSON_CHARS): T
   const refId = `raw_${crypto.randomUUID().slice(0, 8)}`;
   storeRaw(refId, output);
   const pass1 = truncateNode(output);
-  const { data: shortened, branchesOmitted, charsOmitted } = shrinkToCap(pass1, cap);
+  const { data: shortened, branchesOmitted, charsOmitted } = shrinkToCap(pass1, cap, refId);
   const shortenedLen = approxJsonLength(shortened);
   // Roll the per-branch omission accounting into a single top-level
   // `_truncation_note` on the visible payload when the result is an

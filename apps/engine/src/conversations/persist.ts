@@ -28,19 +28,12 @@ import {
   recordFileLlmCapDowngrade,
   recordFileLlmInlineBytes,
 } from "../observability/instrumentation.ts";
+import {
+  approxValueSize,
+  buildElidedToolOutputStub,
+  TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS,
+} from "./tool-output-elision.ts";
 import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
-
-function approxValueSize(value: unknown): number {
-  try {
-    return JSON.stringify(value).length;
-  } catch {
-    return 0;
-  }
-}
-
-function rememberRawForElision(value: unknown): string {
-  return rememberRaw(value);
-}
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 const MAX_REPLAY_MESSAGES = 24;
@@ -59,7 +52,9 @@ const REPLAY_TAIL_MESSAGES = 16;
 // Once the model has summarized a tool result into prose, the raw payload
 // contributes nothing to the next turn — but we kept it forever.
 const TOOL_OUTPUT_VERBATIM_TURNS = 3;
-const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
+// Elide threshold + stub shape are shared with the within-turn path
+// (loop.ts prepareStep) via ./tool-output-elision.ts — both replay
+// paths emit the identical `_elided` stub convention.
 
 // SQL-side projection marker. The summary-window query (outputs older
 // than the verbatim cutoff) replaces any tool output whose serialized
@@ -811,13 +806,13 @@ export async function buildModelMessages(
         if (rawOutput[ELIDED_SQL_MARKER] === true) {
           const existingRef = typeof rawOutput._raw_ref === "string" ? rawOutput._raw_ref : null;
           const origBytes = typeof rawOutput._orig_bytes === "number" ? rawOutput._orig_bytes : 0;
-          const ref = existingRef ?? rememberRawForElision(undefined);
-          resultValue = {
-            _elided: true,
-            _tool: call.tool,
-            _raw_ref: ref,
-            _note: `<elided: tool=${call.tool}, ref=${ref}, original=${origBytes} bytes; call get_raw_result(ref="${ref}") for the full payload>`,
-          };
+          const ref = existingRef ?? rememberRaw(undefined);
+          resultValue = buildElidedToolOutputStub({
+            tool: call.tool,
+            ref,
+            original_size: origBytes,
+            size_unit: "bytes",
+          });
           out.push({
             role: "tool",
             content: [
@@ -849,13 +844,13 @@ export async function buildModelMessages(
           // raw but pushed over threshold once confirmation_state /
           // interaction_log are spliced in).
           const existingRef = typeof rawOutput._raw_ref === "string" ? rawOutput._raw_ref : null;
-          const ref = existingRef ?? rememberRawForElision(augmented);
-          resultValue = {
-            _elided: true,
-            _tool: call.tool,
-            _raw_ref: ref,
-            _note: `<elided: tool=${call.tool}, ref=${ref}, original=${augmentedSize} chars; call get_raw_result(ref="${ref}") for the full payload>`,
-          };
+          const ref = existingRef ?? rememberRaw(augmented);
+          resultValue = buildElidedToolOutputStub({
+            tool: call.tool,
+            ref,
+            original_size: augmentedSize,
+            size_unit: "chars",
+          });
         } else {
           const truncated = truncateForLlm(augmented);
           resultValue = truncated.truncated

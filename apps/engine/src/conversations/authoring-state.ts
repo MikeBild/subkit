@@ -41,6 +41,7 @@ import {
   computeWorkflowMissingFields,
   emptySummary,
 } from "./authoring-state/summary.ts";
+import { pruneTracesForMutation, retainFingerprintValidTraces } from "./step-fingerprint.ts";
 import type {
   AuthoringCheckpointKey,
   AuthoringCheckpointRecord,
@@ -177,10 +178,30 @@ function applyWorkflowMutation(
   state.workflow_mutation_seq += 1;
   state.latest_execution = null;
   state.latest_diagnosis = null;
+  // Fingerprint-keyed evidence retention (Fix 5, session 784c1b02).
+  // A mutation drops preview evidence ONLY for steps whose definition
+  // changed (or which were removed); unchanged steps keep their
+  // recorded `scope_at_step` / `output_preview`, so the loop/transform
+  // authoring gates stay satisfied without a redundant dry-run.
+  // Pre-fix every mutation left the traces untouched (stale evidence
+  // could satisfy a gate against a rewritten step) while other paths
+  // wiped them wholesale — both wrong; the fingerprint is the single
+  // retention rule now.
+  const latest_preview = normalized.latest_preview
+    ? {
+        ...normalized.latest_preview,
+        step_traces: pruneTracesForMutation(
+          normalized.latest_preview.step_traces ?? [],
+          normalized.workflow?.steps ?? [],
+          workflow.steps,
+        ),
+      }
+    : normalized.latest_preview;
   return refreshDraftSummary({
     ...normalized,
     mode: "workflow_authoring",
     workflow,
+    ...(latest_preview !== undefined ? { latest_preview } : {}),
     state,
     summary: {
       ...(normalized.summary ?? emptySummary()),
@@ -311,6 +332,9 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
                         step_id: typeof entry.step_id === "string" ? entry.step_id : "(unknown)",
                         kind: typeof entry.kind === "string" ? entry.kind : "unknown",
                         status: typeof entry.status === "string" ? entry.status : "unknown",
+                        ...(typeof entry.fingerprint === "string"
+                          ? { fingerprint: entry.fingerprint }
+                          : {}),
                         ...(typeof entry.duration_ms === "number"
                           ? { duration_ms: entry.duration_ms }
                           : {}),
@@ -419,6 +443,28 @@ export function withLatestPreview(
   last_action: string | null = "workflow_previewed",
 ): DraftDocument {
   const normalized = normalizeDraftDocument(draft);
+  // Fingerprint-keyed evidence merge (Fix 5). The incoming preview only
+  // carries traces for the steps the new walk actually touched — a
+  // single-step `dry_run_step`, or a refused dry-run ("Preview blocked
+  // until the workflow draft validates cleanly") that carries NO traces
+  // at all. Pre-fix the new preview REPLACED `step_traces` wholesale,
+  // so one blocked dry-run destroyed every recorded `scope_at_step`
+  // and the loop/transform gates deadlocked the next mutation
+  // (session 784c1b02: 16× `loop_authoring_requires_inspect`).
+  // Merge instead: incoming traces win for their step ids; existing
+  // traces survive iff their fingerprint still matches the current
+  // draft step.
+  const mergedPreview = ((): DraftDocument["latest_preview"] => {
+    if (!preview) return preview ?? null;
+    const incoming = preview.step_traces ?? [];
+    const incomingIds = new Set(incoming.map((t) => t.step_id));
+    const retained = retainFingerprintValidTraces(
+      normalized.latest_preview?.step_traces ?? [],
+      normalized.workflow?.steps ?? [],
+    ).filter((t) => !incomingIds.has(t.step_id));
+    const merged = [...retained, ...incoming];
+    return merged.length > 0 ? { ...preview, step_traces: merged } : preview;
+  })();
   let state = cloneState(normalized.state ?? createEmptyState("workflow"));
   state.mode = "workflow";
   state = recordCheckpoint(
@@ -451,7 +497,7 @@ export function withLatestPreview(
   return refreshDraftSummary({
     ...normalized,
     mode: "workflow_authoring",
-    latest_preview: preview ?? null,
+    latest_preview: mergedPreview ?? null,
     state,
     summary: {
       ...(normalized.summary ?? emptySummary()),

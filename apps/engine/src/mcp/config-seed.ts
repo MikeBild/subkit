@@ -84,7 +84,7 @@ function mapAuth(auth: McpServerDecl["auth"]): McpServerAuthConfig | undefined {
  *  no-secret shape, and a canonical `{kind, ...oauth2}` object otherwise.
  *  Only the config-owned non-secret fields participate (no token_ref). */
 function normalizeAuth(auth: McpServerAuthConfig | null | undefined): {
-  kind: "bearer" | "oauth2";
+  kind: "bearer" | "basic" | "oauth2";
   issuer: string | null;
   client_id: string | null;
   scope: string | null;
@@ -131,7 +131,7 @@ async function warnWhenCredentialMissing(
   db: Db,
   tenant_id: string,
   row: McpServerRow,
-  kind: "bearer" | "oauth2",
+  kind: "bearer" | "basic" | "oauth2",
 ): Promise<void> {
   try {
     const cred = await getCredentialForMcpServer(tenant_id, row.id, MCP_CREDENTIAL_ENVIRONMENT, db);
@@ -142,7 +142,7 @@ async function warnWhenCredentialMissing(
       msg:
         kind === "oauth2"
           ? "config-declared MCP server has no oauth2 credential; run `sk mcp-servers authorize <id>` (or `sk mcp-servers set-credential <id>`) before its first handshake"
-          : "config-declared MCP server has no bearer credential; run `sk mcp-servers set-credential <id>` before its first handshake",
+          : `config-declared MCP server has no ${kind} credential; run \`sk mcp-servers set-credential <id>\` before its first handshake`,
       tenant_id,
       mcp_server_id: row.id,
       namespace: row.namespace,

@@ -23,6 +23,7 @@
 // in one round-trip instead of guessing.
 
 import { extractStepIdReferences } from "../../workflows/levenshtein.ts";
+import { stepFingerprint } from "../step-fingerprint.ts";
 import type { DraftDocument, WorkflowDraftStepPreview } from "../types.ts";
 
 export interface LoopGateBlock {
@@ -33,7 +34,26 @@ export interface LoopGateBlock {
   /** Source expression text (truncated) so the LLM sees what it wrote. */
   source: string;
   /** Why the gate refused — one of the enumerated reasons. */
-  reason: "no_preview_for_referenced_step" | "preview_missing_scope" | "no_dry_run_yet";
+  reason:
+    | "no_preview_for_referenced_step"
+    | "preview_missing_scope"
+    | "no_dry_run_yet"
+    | "preview_stale_for_referenced_step";
+}
+
+/** One-line human rendering of a block — single source for every tool
+ *  that surfaces a loop-gate verdict (update_param's refusal message,
+ *  the recorded-eval report on build/propose/patch). */
+export function describeLoopGateBlock(b: LoopGateBlock): string {
+  const why =
+    b.reason === "no_dry_run_yet"
+      ? "no dry-run has been recorded yet"
+      : b.reason === "no_preview_for_referenced_step"
+        ? `\`${b.referenced_step_id}\` has no recent preview`
+        : b.reason === "preview_stale_for_referenced_step"
+          ? `\`${b.referenced_step_id}\` changed since its preview was recorded (stale evidence)`
+          : `the recorded preview for \`${b.referenced_step_id}\` doesn't include a scope summary`;
+  return `loop \`${b.loop_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${why}`;
 }
 
 export interface LoopGateResult {
@@ -182,6 +202,26 @@ export function evaluateLoopAuthoringGate(
           referenced_step_id: ref,
           source: source.length > 200 ? `${source.slice(0, 200)}…` : source,
           reason: traces.length === 0 ? "no_dry_run_yet" : "no_preview_for_referenced_step",
+        });
+        continue;
+      }
+      // Fingerprint-keyed evidence (Fix 5): a trace recorded against a
+      // DIFFERENT definition of the referenced step is not evidence —
+      // the upstream shape may have changed with it. Traces without a
+      // fingerprint (fixtures, pre-fingerprint drafts) keep the legacy
+      // trust; the mutation-time pruning in `applyWorkflowMutation`
+      // is what keeps those honest.
+      const referencedStep = stepById.get(ref);
+      if (
+        typeof trace.fingerprint === "string" &&
+        referencedStep &&
+        trace.fingerprint !== stepFingerprint(referencedStep)
+      ) {
+        blocks.push({
+          loop_step_id: step.id,
+          referenced_step_id: ref,
+          source: source.length > 200 ? `${source.slice(0, 200)}…` : source,
+          reason: "preview_stale_for_referenced_step",
         });
         continue;
       }

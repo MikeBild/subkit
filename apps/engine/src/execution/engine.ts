@@ -49,6 +49,7 @@ import {
 import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
 import { isOffloadRef, maybeOffload, previewOf } from "./offload.ts";
 import { deepResolveOffloadRefs, previewOffloadRefs } from "./offload-rehydrate.ts";
+import { checkOutputContract, summarizeViolations } from "./output-contract.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
 import {
@@ -828,10 +829,39 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     }
   }
 
-  if (def.output_schema && lastOutput !== undefined) {
-    const check = validateAgainstJsonSchema(lastOutput, def.output_schema, "$output");
-    if (!check.valid) {
-      logger.warn({ msg: "output schema violation", errors: check.errors });
+  // Workflow output contract (Fix 11). Validate the FINAL output (post
+  // output_transform / response_filters) against the definition's
+  // declared `output_schema` via the shared Ajv validator. NON-blocking
+  // on live runs: the run stays succeeded and the violation rides
+  // `RunResult.warnings` with field-level `$output/...` paths — the
+  // dry-run preview is where the same code blocks (auto-commit refusal
+  // in dry_run_workflow). A schema that fails to compile is an
+  // authoring bug the workflow validator gate should have refused;
+  // log-only here.
+  if (def.output_schema && lastOutput !== undefined && finalStatus === "succeeded") {
+    const contract = checkOutputContract(lastOutput, def.output_schema);
+    if (!contract.ok) {
+      logger.warn({
+        module: "execution",
+        action: "execution.output_schema_invalid",
+        msg: "output_schema did not compile; contract check skipped",
+        execution_id,
+        error: contract.schema_error,
+      });
+    } else if (!contract.valid) {
+      logger.warn({
+        module: "execution",
+        action: "execution.output_contract_violation",
+        msg: "final output does not satisfy output_schema",
+        execution_id,
+        violations: contract.violations,
+      });
+      warningsAccum.push({
+        code: "output_contract_violation",
+        message: `final output does not satisfy the workflow's output_schema (${contract.violations.length} violation(s)): ${summarizeViolations(contract.violations)}`,
+        step_key: "$output",
+        details: { violations: contract.violations },
+      });
     }
   }
 

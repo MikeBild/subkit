@@ -60,14 +60,20 @@ export async function dispatchAdminListSlash(
       const lines = items.map(
         (c) => `${c.id.slice(0, 8)}  ${c.display_name.padEnd(20)}  ${c.slug}`,
       );
-      return panify(ctx, "connectors", lines, `${items.length} found`);
+      // Ground-truth cardinality: the engine returns the exact filtered
+      // total, so the footer never presents a page as the universe.
+      const footer =
+        items.length < r.total ? `showing ${items.length} of ${r.total}` : `${r.total} total`;
+      return panify(ctx, "connectors", lines, footer);
     }
     case "workflows": {
       const r = await ctx.client.listWorkflows({ limit: 20 });
       const items = asWorkflows(r.items);
       if (items.length === 0) return "no workflows";
       const lines = items.map((w) => `${w.id.slice(0, 8)}  ${w.name.padEnd(20)}  ${w.lifecycle}`);
-      return panify(ctx, "workflows", lines, `${items.length} found`);
+      const footer =
+        items.length < r.total ? `showing ${items.length} of ${r.total}` : `${r.total} total`;
+      return panify(ctx, "workflows", lines, footer);
     }
     case "executions":
     case "runs": {
@@ -79,7 +85,7 @@ export async function dispatchAdminListSlash(
         const startedAt = String(e.started_at ?? "");
         return `${e.id.slice(0, 8)}  wf:${wfId}  ${e.status.padEnd(12)}  ${startedAt}`;
       });
-      return panify(ctx, "executions", lines, `latest ${items.length}`);
+      return panify(ctx, "executions", lines, `latest ${items.length} of ${r.total}`);
     }
     case "patch-candidates": {
       const r = await ctx.client.listPatchCandidates({ limit: 10 });

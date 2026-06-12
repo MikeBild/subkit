@@ -20,6 +20,7 @@
 
 import { extractStepIdReferences } from "../../workflows/levenshtein.ts";
 import { traceFailedWithRuntimeDataError } from "../persistence/preview-failure-class.ts";
+import { stepFingerprint } from "../step-fingerprint.ts";
 import type { DraftDocument, WorkflowDraftStepPreview } from "../types.ts";
 
 export interface TransformGateBlock {
@@ -30,7 +31,20 @@ export interface TransformGateBlock {
   /** Source expression text (truncated) so the LLM sees what it wrote. */
   expression: string;
   /** Why the gate refused — one of the enumerated reasons. */
-  reason: "no_preview_for_referenced_step" | "no_dry_run_yet";
+  reason: "no_preview_for_referenced_step" | "no_dry_run_yet" | "preview_stale_for_referenced_step";
+}
+
+/** One-line human rendering of a block — single source for every tool
+ *  that surfaces a transform-gate verdict (update_param's refusal
+ *  message, the recorded-eval report on build/propose/patch). */
+export function describeTransformGateBlock(b: TransformGateBlock): string {
+  const why =
+    b.reason === "no_dry_run_yet"
+      ? "no dry-run has been recorded yet"
+      : b.reason === "preview_stale_for_referenced_step"
+        ? `\`${b.referenced_step_id}\` changed since its preview was recorded (stale evidence)`
+        : `\`${b.referenced_step_id}\` has no recent preview`;
+  return `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${why}`;
 }
 
 export interface TransformGateResult {
@@ -241,6 +255,24 @@ export function evaluateTransformAuthoringGate(
           referenced_step_id: ref,
           expression: expr.length > 200 ? `${expr.slice(0, 200)}…` : expr,
           reason: traces.length === 0 ? "no_dry_run_yet" : "no_preview_for_referenced_step",
+        });
+        continue;
+      }
+      // Fingerprint-keyed evidence (Fix 5): a trace recorded against a
+      // DIFFERENT definition of the referenced step is not evidence.
+      // Mirrors the loop gate; traces without a fingerprint keep the
+      // legacy trust (mutation-time pruning keeps those honest).
+      const referencedStep = stepById.get(ref);
+      if (
+        typeof trace.fingerprint === "string" &&
+        referencedStep &&
+        trace.fingerprint !== stepFingerprint(referencedStep)
+      ) {
+        blocks.push({
+          transform_step_id: step.id,
+          referenced_step_id: ref,
+          expression: expr.length > 200 ? `${expr.slice(0, 200)}…` : expr,
+          reason: "preview_stale_for_referenced_step",
         });
       }
     }

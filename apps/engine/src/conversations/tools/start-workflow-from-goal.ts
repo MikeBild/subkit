@@ -33,6 +33,12 @@ const inputSchema = z
       .default([])
       .describe("Connector ids that this workflow will call."),
     description: z.string().optional(),
+    output_schema: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        "JSON-Schema contract for the workflow's FINAL output, derived from the goal. Declare it whenever the goal implies a concrete output shape ('a list of repos with name and stars', 'an email with CPU/memory/disk specs') — keep it minimal (type/properties/required). dry_run_workflow validates the real output against it and refuses a green preview on a mismatch, so the authoring loop has a mechanical done-signal.",
+      ),
   })
   .openapi("StartWorkflowFromGoalToolInput");
 
@@ -53,6 +59,7 @@ export const startWorkflowFromGoalTool: ConversationTool = {
   important_notes: [
     "Does not emit any steps — use propose_step / connect_steps to grow the draft step by step.",
     "Writes to draft only; save_workflow_draft is still required to persist the workflow.",
+    "When the goal implies a concrete output shape, pass a minimal `output_schema` (JSON Schema) derived from the goal — previews then have a mechanical pass/fail signal instead of relying on the user to eyeball the output.",
   ],
   inputSchema,
   category: "draft_write" as const,
@@ -64,6 +71,9 @@ export const startWorkflowFromGoalTool: ConversationTool = {
       name: args.name,
       slug,
       ...(args.description ? { description: args.description } : {}),
+      // The goal-derived output contract (Fix 11) seeds the draft so
+      // every subsequent dry-run validates the final output against it.
+      ...(args.output_schema ? { output_schema: args.output_schema } : {}),
       steps: [],
     };
     // Stash the goal + connector ids as draft-only metadata so later

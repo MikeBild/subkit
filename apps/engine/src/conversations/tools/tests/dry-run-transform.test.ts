@@ -240,6 +240,126 @@ describe("dry_run_transform — scope reference resolution", () => {
   });
 });
 
+// Fix 6 (session 784c1b02): the sandbox must reproduce the EXACT
+// JSONata surface execution builds — `$scope`/`$steps` bindings via
+// buildJsonataBindings, and for a step inside a loop body the engine's
+// per-iteration childScope (`$item`, `$loop_index`, bare `item_var`).
+// Pre-fix those references returned `{}` here while working at runtime,
+// so the model "debugged" working expressions into broken ones.
+describe("dry_run_transform — execution-parity loop-body context", () => {
+  function makeCtxWithDraft(steps: Array<Record<string, unknown>>): ToolContext {
+    return {
+      ...makeCtx(),
+      getDraft: () => ({ workflow: { name: "wf", slug: "wf", steps } }),
+    };
+  }
+
+  const loopDraftSteps = (): Array<Record<string, unknown>> => [
+    { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
+    {
+      id: "iter",
+      kind: "loop",
+      over: "$scope.fetch.data.items",
+      item_var: "row",
+      body: ["shape"],
+    },
+    { id: "shape", kind: "transform", language: "jsonata", expression: "row.name" },
+  ];
+
+  function recordEnvelopePreview(toolCtx: ToolContext): void {
+    // Envelope-shaped scope — the exact shape dry_run_workflow records
+    // post-fix (`{ data, status_code, … }`, mirroring engine/envelope.ts).
+    recordLastPreview({
+      tenant_id,
+      conversation_id: toolCtx.conversation_id,
+      scope: {
+        fetch: {
+          data: {
+            items: [
+              { name: "Ada", id: 1 },
+              { name: "Grace", id: 2 },
+            ],
+          },
+          status_code: 200,
+          duration_ms: 12,
+          error: null,
+        },
+      },
+      input: { since: "2026-01-01" },
+    });
+  }
+
+  test("bare item_var, $item, $loop_index, and sibling $scope resolve exactly as execution would", async () => {
+    const toolCtx = makeCtxWithDraft(loopDraftSteps());
+    recordEnvelopePreview(toolCtx);
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression:
+        "{ 'name': row.name, 'same': $item.name, 'idx': $loop_index, 'total': $count($scope.fetch.data.items), 'since': $input.since }",
+      step_id: "shape",
+      dialect: "jsonata",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      value: { name: string; same: string; idx: number; total: number; since: string };
+      metadata: { loop_context?: { loop_id: string; item_var: string; loop_index: number } };
+    };
+    // Identical to the engine childScope for iteration 0:
+    //   childScope = { ...scope, row: items[0], $item: items[0], $loop_index: 0 }
+    expect(data.value).toEqual({
+      name: "Ada",
+      same: "Ada",
+      idx: 0,
+      total: 2,
+      since: "2026-01-01",
+    });
+    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", item_var: "row", loop_index: 0 });
+  });
+
+  test("step_id outside any loop body evaluates against plain recorded scope", async () => {
+    const steps = [
+      ...loopDraftSteps(),
+      { id: "summary", kind: "transform", language: "jsonata", expression: "" },
+    ];
+    const toolCtx = makeCtxWithDraft(steps);
+    recordEnvelopePreview(toolCtx);
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression: "$scope.fetch.data.items.name",
+      step_id: "summary",
+      dialect: "jsonata",
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as { value: unknown; metadata: { loop_context?: unknown } };
+    expect(data.value).toEqual(["Ada", "Grace"]);
+    expect(data.metadata.loop_context).toBeUndefined();
+  });
+
+  test("unknown step_id returns an actionable error", async () => {
+    const toolCtx = makeCtxWithDraft(loopDraftSteps());
+    recordEnvelopePreview(toolCtx);
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression: "row.name",
+      step_id: "nope",
+      dialect: "jsonata",
+    });
+    expect(result.ok).toBe(false);
+    const err = (result.data as { error: { message: string } }).error;
+    expect(err.message).toContain("not in the current workflow draft");
+  });
+
+  test("loop body step with no recorded preview returns the dry-run hint", async () => {
+    __resetLastPreviewStoreForTest();
+    const toolCtx = makeCtxWithDraft(loopDraftSteps());
+    const result = await dryRunTransformTool.execute(toolCtx, {
+      expression: "row.name",
+      step_id: "shape",
+      dialect: "jsonata",
+    });
+    expect(result.ok).toBe(false);
+    const err = (result.data as { error: { message: string } }).error;
+    expect(err.message).toContain("no cached dry-run preview");
+  });
+});
+
 describe("dry_run_transform — audit hygiene", () => {
   test("audit metadata stores expression_hash, not raw expression", async () => {
     const expression = "items.{ 'id': id }"; // benign

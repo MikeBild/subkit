@@ -92,8 +92,8 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const q = c.req.valid("query");
     const opts: Parameters<typeof connectorSvc.listConnectors>[1] = {};
     if (q.environment) opts.environment = q.environment;
-    const items = await connectorSvc.listConnectors(principal.tenant_id, opts, db);
-    return c.json({ items: items.map(serialize) }, 200);
+    const { rows, total } = await connectorSvc.listConnectors(principal.tenant_id, opts, db);
+    return c.json({ items: rows.map(serialize), total }, 200);
   });
 
   app.openapi(createRouteSpec, async (c) => {

@@ -20,11 +20,14 @@ export const listConnectorsTool: ConversationTool = {
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx) {
-    const rows = await ctx.engineClient.connectors.list();
+    // Connectors are a bounded catalog: the call returns the COMPLETE
+    // tenant set, and the envelope is self-describing so the model can
+    // never mistake a page for the universe.
+    const { rows, total } = await ctx.engineClient.connectors.list();
     return {
       ok: true,
       data: {
-        connectors: rows.map((c) => ({
+        items: rows.map((c) => ({
           id: c.id,
           display_name: c.display_name,
           slug: c.slug,
@@ -35,6 +38,10 @@ export const listConnectorsTool: ConversationTool = {
           needs_reauth: c.needs_reauth,
           auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
         })),
+        total,
+        returned: rows.length,
+        offset: 0,
+        has_more: rows.length < total,
       },
     };
   },

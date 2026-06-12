@@ -28,7 +28,17 @@ export const ExecSchema = z
   })
   .openapi("Execution");
 
-export const ExecListResponse = paginatedResponse(ExecSchema, "ExecutionListResponse");
+// The execution list carries the exact filtered `total` alongside the
+// page so consumers render "showing latest N of T" instead of
+// presenting a page as the universe (ground-truth cardinality).
+export const ExecListResponse = z
+  .object({
+    items: z.array(ExecSchema),
+    /** Exact tenant-scoped count under the same filters (ignores limit/offset). */
+    total: z.number().int().nonnegative(),
+    next_cursor: z.string().nullable().optional(),
+  })
+  .openapi("ExecutionListResponse");
 
 export const StepRowSchema = z
   .object({

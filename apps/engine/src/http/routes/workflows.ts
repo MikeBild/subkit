@@ -45,7 +45,11 @@ const WorkflowSchema = z
   .openapi("Workflow");
 
 const WorkflowListResponse = z
-  .object({ items: z.array(WorkflowSchema) })
+  .object({
+    items: z.array(WorkflowSchema),
+    /** Exact tenant-scoped count under the same filters (ignores limit/offset). */
+    total: z.number().int().nonnegative(),
+  })
   .openapi("WorkflowListResponse");
 
 const VersionSchema = z
@@ -242,7 +246,11 @@ const ScheduleEntry = z
   })
   .openapi("ScheduleEntry");
 const ScheduleListResponse = z
-  .object({ schedules: z.array(ScheduleEntry) })
+  .object({
+    schedules: z.array(ScheduleEntry),
+    /** Exact tenant-scoped count under the same filters. */
+    total: z.number().int().nonnegative(),
+  })
   .openapi("ScheduleListResponse");
 
 const listSchedulesRoute = createRoute({
@@ -380,15 +388,15 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.offset !== undefined) opts.offset = q.offset;
     if (q.status !== undefined) opts.status = q.status;
     if (q.name_contains !== undefined) opts.name_contains = q.name_contains;
-    const items = await svc.listWorkflows(principal.tenant_id, opts, db);
-    return c.json({ items: items.map(serializeWorkflow) }, 200);
+    const { rows, total } = await svc.listWorkflows(principal.tenant_id, opts, db);
+    return c.json({ items: rows.map(serializeWorkflow), total }, 200);
   });
 
   app.openapi(listSchedulesRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const rows = await listSchedules(db, principal.tenant_id, q.workflow_id);
+    const { rows, total } = await listSchedules(db, principal.tenant_id, q.workflow_id);
     // Resolve workflow slugs/names in one pass so `sk schedules` can show
     // WHAT fires, not just an opaque workflow_id.
     const ids = [...new Set(rows.map((r) => r.workflow_id))];
@@ -410,6 +418,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
           paused: r.paused,
           created_at: r.created_at.toISOString(),
         })),
+        total,
       },
       200,
     );

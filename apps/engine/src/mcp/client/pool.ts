@@ -245,9 +245,9 @@ function backoffWindow(failures: number): number {
 /**
  * Resolve the static `Authorization` header (if any) for a server's
  * auth_config, reading the secret by reference from the AES-256-GCM
- * credentials table. Handles ONLY the static-header kinds — `none` (empty)
- * and `bearer`. The `oauth2` kind is NOT resolved here: it is driven end
- * to end by the SDK transport's `authProvider` (see
+ * credentials table. Handles ONLY the static-header kinds — `none` (empty),
+ * `bearer`, and `basic`. The `oauth2` kind is NOT resolved here: it is
+ * driven end to end by the SDK transport's `authProvider` (see
  * `McpDbOAuthClientProvider`), which owns token replay, pre-expiry
  * refresh, and persistence. Returns the header map to mount on the
  * transport's `requestInit`, or `{}` for none.
@@ -271,11 +271,24 @@ async function resolveAuthHeaders(
   }
   const { value } = resolved;
 
-  // bearer
-  if (value.mode !== "bearer") {
-    throw new Error(`expected bearer credential for server, got mode '${value.mode}'`);
+  switch (auth.kind) {
+    case "bearer": {
+      if (value.mode !== "bearer") {
+        throw new Error(`expected bearer credential for server, got mode '${value.mode}'`);
+      }
+      return { Authorization: `Bearer ${value.token}` };
+    }
+    case "basic": {
+      if (value.mode !== "basic") {
+        throw new Error(`expected basic credential for server, got mode '${value.mode}'`);
+      }
+      // RFC 7617 — the userid:password pair, base64. Used by remote MCP
+      // servers that accept non-interactive personal API tokens (e.g.
+      // Atlassian Rovo: base64(email:api_token)).
+      const pair = Buffer.from(`${value.username}:${value.password}`, "utf8").toString("base64");
+      return { Authorization: `Basic ${pair}` };
+    }
   }
-  return { Authorization: `Bearer ${value.token}` };
 }
 
 /**
@@ -421,7 +434,7 @@ async function connectClient(
     // an un-authorized server must NEVER open a browser or persist an
     // authorization URL — the provider's redirectToAuthorization no-ops
     // and the transport raises UnauthorizedError on connect, which the
-    // catch below parks in backoff. bearer/none keep the static header.
+    // catch below parks in backoff. bearer/basic/none keep the static header.
     const authProvider =
       auth.kind === "oauth2"
         ? new McpDbOAuthClientProvider({

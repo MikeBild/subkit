@@ -3,10 +3,15 @@
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool } from "../index.ts";
 
+// Workflows are a bounded catalog: no server-side default cap — an
+// unqualified call returns the COMPLETE set (the 1000 max is a safety
+// bound, not a page size). The result is self-describing
+// (`total`/`returned`/`offset`/`has_more`) so the model can never
+// mistake a page for the universe.
 const ListInput = z
   .object({
     status: z.enum(["draft", "active", "archived"]).optional(),
-    limit: z.number().int().min(1).max(200).optional(),
+    limit: z.number().int().min(1).max(1000).optional(),
     offset: z.number().int().min(0).optional(),
   })
   .openapi("ListWorkflowsToolInput");
@@ -21,12 +26,14 @@ const GetInput = z
 
 export const listWorkflowsTool: ConversationTool = {
   name: "list_workflows",
-  description: "List the tenant's workflows. Optional filter by lifecycle status and pagination.",
+  description:
+    "List the tenant's workflows — returns the COMPLETE set by default (workflows are a bounded catalog). `total` is the exact tenant count under the given filters; `has_more` is true only when an explicit limit/offset page was requested.",
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx, rawArgs) {
     const args = ListInput.parse(rawArgs);
-    const rows = await ctx.engineClient.workflows.list({
+    const offset = args.offset ?? 0;
+    const { rows, total } = await ctx.engineClient.workflows.list({
       ...(args.status !== undefined ? { status: args.status } : {}),
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
       ...(args.offset !== undefined ? { offset: args.offset } : {}),
@@ -34,7 +41,7 @@ export const listWorkflowsTool: ConversationTool = {
     return {
       ok: true,
       data: {
-        workflows: rows.map((w) => ({
+        items: rows.map((w) => ({
           id: w.id,
           name: w.name,
           slug: w.slug,
@@ -42,6 +49,10 @@ export const listWorkflowsTool: ConversationTool = {
           created_at: w.created_at,
           updated_at: w.updated_at,
         })),
+        total,
+        returned: rows.length,
+        offset,
+        has_more: offset + rows.length < total,
       },
     };
   },

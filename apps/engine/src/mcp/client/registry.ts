@@ -62,7 +62,7 @@ export type McpServerRow = typeof mcpServers.$inferSelect;
  * CHECK rejects it.
  */
 export interface McpServerAuthConfig {
-  kind: "none" | "bearer" | "oauth2";
+  kind: "none" | "bearer" | "basic" | "oauth2";
   /** OAuth2 issuer base URL (oauth2 only). */
   issuer?: string;
   /** OAuth2 client id (oauth2 only; absent → dynamic registration path). */
@@ -118,7 +118,7 @@ const namespaceSchema = mcpNamespaceSchema;
 // boundary so a bad writer fails Zod validation, not the DB CHECK.
 const authConfigSchema = z
   .object({
-    kind: z.enum(["none", "bearer", "oauth2"]),
+    kind: z.enum(["none", "bearer", "basic", "oauth2"]),
     issuer: z.string().url().optional(),
     client_id: z.string().optional(),
     scope: z.string().optional(),

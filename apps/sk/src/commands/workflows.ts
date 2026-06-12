@@ -242,12 +242,20 @@ const listCommand = defineCommand({
   async run({ args }) {
     const client = makeClient();
     try {
-      const { items } = await client.listWorkflows({ limit: Number(args.limit) });
+      const { items, total } = await client.listWorkflows({ limit: Number(args.limit) });
       emitList(
         !!args.json,
         ["id", "name", "status", "updated_at"],
         items as Record<string, unknown>[],
       );
+      // Ground-truth cardinality: never present a page as the universe.
+      if (!args.json) {
+        process.stdout.write(
+          items.length < total
+            ? `${pc.dim(`showing ${items.length} of ${total} workflows — raise --limit to see all`)}\n`
+            : `${pc.dim(`${total} workflow${total === 1 ? "" : "s"} total`)}\n`,
+        );
+      }
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }

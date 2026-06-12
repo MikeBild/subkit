@@ -11,9 +11,12 @@ import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
-import { evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
+import { describeLoopGateBlock, evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
-import { evaluateTransformAuthoringGate } from "./transform-authoring-gate.ts";
+import {
+  describeTransformGateBlock,
+  evaluateTransformAuthoringGate,
+} from "./transform-authoring-gate.ts";
 
 const inputSchema = z
   .object({
@@ -282,18 +285,7 @@ export const updateParamTool: ConversationTool = {
           })
         : { ok: true as const, blocks: [] };
       if (!gate.ok) {
-        const summary = gate.blocks
-          .map(
-            (b) =>
-              `loop \`${b.loop_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
-                b.reason === "no_dry_run_yet"
-                  ? "no dry-run has been recorded yet"
-                  : b.reason === "no_preview_for_referenced_step"
-                    ? `\`${b.referenced_step_id}\` has no recent preview`
-                    : `the recorded preview for \`${b.referenced_step_id}\` doesn't include a scope summary`
-              }`,
-          )
-          .join("; ");
+        const summary = gate.blocks.map(describeLoopGateBlock).join("; ");
         recordAuthoringGateBlock({
           code: "loop_authoring_requires_inspect",
           tool: "update_param",
@@ -347,16 +339,7 @@ export const updateParamTool: ConversationTool = {
           { probedConnectorSlugs: transformProbedSlugs },
         );
         if (!transformGate.ok) {
-          const summary = transformGate.blocks
-            .map(
-              (b) =>
-                `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
-                  b.reason === "no_dry_run_yet"
-                    ? "no dry-run has been recorded yet"
-                    : `\`${b.referenced_step_id}\` has no recent preview`
-                }`,
-            )
-            .join("; ");
+          const summary = transformGate.blocks.map(describeTransformGateBlock).join("; ");
           recordAuthoringGateBlock({
             code: "transform_authoring_requires_inspect",
             tool: "update_param",

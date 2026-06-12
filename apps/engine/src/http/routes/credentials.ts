@@ -20,7 +20,7 @@
 // RBAC: gated on `credential:rotate`.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as connectorSvc from "../../connectors/index.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/index.ts";
@@ -76,11 +76,19 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
 
     // Load the credential row first to figure out which rotation path
-    // applies + to resolve the parent connector.
+    // applies + to resolve the parent connector. Soft-deleted rows are
+    // excluded — rotating a deleted credential would resurrect a secret
+    // the operator already revoked.
     const rows = await db
       .select()
       .from(credentials)
-      .where(and(eq(credentials.tenant_id, principal.tenant_id), eq(credentials.id, id)))
+      .where(
+        and(
+          eq(credentials.tenant_id, principal.tenant_id),
+          eq(credentials.id, id),
+          isNull(credentials.deleted_at),
+        ),
+      )
       .limit(1);
     const row = rows[0];
     if (!row) throw new NotFoundError("credential");
@@ -146,7 +154,13 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
     const updatedRows = await db
       .select()
       .from(credentials)
-      .where(and(eq(credentials.tenant_id, principal.tenant_id), eq(credentials.id, id)))
+      .where(
+        and(
+          eq(credentials.tenant_id, principal.tenant_id),
+          eq(credentials.id, id),
+          isNull(credentials.deleted_at),
+        ),
+      )
       .limit(1);
     const updated = updatedRows[0];
     if (!updated) throw new NotFoundError("credential");

@@ -13,6 +13,7 @@
 
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
+import { totalOverWindow } from "../../db/list-result.ts";
 import { connectors, workflows } from "../../db/schema/index.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -32,6 +33,11 @@ export interface TenantSummary {
     driver: string;
     environment: string;
   }>;
+  /** Exact live row counts — the "… and N more" trim line renders from
+   *  these so the numbers always agree with `list_workflows` /
+   *  `list_connectors` totals (ground-truth cardinality contract). */
+  workflows_total: number;
+  connectors_total: number;
 }
 
 /** Hard cap — if a tenant has more rows than this, the block trims. */
@@ -47,10 +53,11 @@ export async function loadTenantSummary(tenant_id: string, exec: Executor): Prom
         name: workflows.name,
         lifecycle: workflows.lifecycle,
         is_tool: workflows.is_tool,
+        total: totalOverWindow(),
       })
       .from(workflows)
       .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)))
-      .limit(MAX_WORKFLOWS_IN_SUMMARY + 1),
+      .limit(MAX_WORKFLOWS_IN_SUMMARY),
     exec
       .select({
         id: connectors.id,
@@ -58,12 +65,18 @@ export async function loadTenantSummary(tenant_id: string, exec: Executor): Prom
         display_name: connectors.display_name,
         driver: connectors.driver,
         environment: connectors.environment,
+        total: totalOverWindow(),
       })
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)))
-      .limit(MAX_CONNECTORS_IN_SUMMARY + 1),
+      .limit(MAX_CONNECTORS_IN_SUMMARY),
   ]);
-  return { workflows: workflowRows, connectors: connectorRows };
+  return {
+    workflows: workflowRows.map(({ total: _t, ...row }) => row),
+    connectors: connectorRows.map(({ total: _t, ...row }) => row),
+    workflows_total: Number(workflowRows[0]?.total ?? 0),
+    connectors_total: Number(connectorRows[0]?.total ?? 0),
+  };
 }
 
 /**
@@ -76,31 +89,34 @@ export async function loadTenantSummary(tenant_id: string, exec: Executor): Prom
  */
 export function renderTenantSummaryBlock(summary: TenantSummary): string | null {
   const lines: string[] = [];
-  const workflowsTotal = summary.workflows.length;
+  // True tenant-wide counts. `workflows_total` comes from the same
+  // window-counted query as the rows, so the "… and N more" line and
+  // the list_workflows tool's `total` can never disagree.
+  const workflowsTotal = Math.max(summary.workflows_total, summary.workflows.length);
   const workflowsShown = summary.workflows.slice(0, MAX_WORKFLOWS_IN_SUMMARY);
   if (workflowsShown.length > 0) {
-    lines.push("Workflows:");
+    lines.push(`Workflows (${workflowsTotal} total):`);
     for (const w of workflowsShown) {
       const toolFlag = w.is_tool ? "" : " [authoring-only]";
       lines.push(`- ${w.slug} (${w.lifecycle})${toolFlag} — ${w.name} [id=${w.id}]`);
     }
-    if (workflowsTotal > MAX_WORKFLOWS_IN_SUMMARY) {
+    if (workflowsTotal > workflowsShown.length) {
       lines.push(
-        `- … and ${workflowsTotal - MAX_WORKFLOWS_IN_SUMMARY} more — call list_workflows to page.`,
+        `- … and ${workflowsTotal - workflowsShown.length} more — call list_workflows for the complete set.`,
       );
     }
   }
-  const connectorsTotal = summary.connectors.length;
+  const connectorsTotal = Math.max(summary.connectors_total, summary.connectors.length);
   const connectorsShown = summary.connectors.slice(0, MAX_CONNECTORS_IN_SUMMARY);
   if (connectorsShown.length > 0) {
     if (lines.length > 0) lines.push("");
-    lines.push("Connectors:");
+    lines.push(`Connectors (${connectorsTotal} total):`);
     for (const c of connectorsShown) {
       lines.push(`- ${c.slug} (${c.driver}/${c.environment}) — ${c.display_name} [id=${c.id}]`);
     }
-    if (connectorsTotal > MAX_CONNECTORS_IN_SUMMARY) {
+    if (connectorsTotal > connectorsShown.length) {
       lines.push(
-        `- … and ${connectorsTotal - MAX_CONNECTORS_IN_SUMMARY} more — call list_connectors to page.`,
+        `- … and ${connectorsTotal - connectorsShown.length} more — call list_connectors for the complete set.`,
       );
     }
   }

@@ -138,6 +138,32 @@ export const connectorOauthStates = pgTable(
   (t) => [uniqueIndex("connector_oauth_states_state_key").on(t.state)],
 );
 
+// ----- connector_oauth_start_grants -----------------------------------------
+// Single-use, 10-min-TTL grant tokens that allow an unauthenticated browser
+// to start an OAuth2 authorization-code dance via
+// GET /v1/connectors/{id}/oauth/start?grant=skog_<token>.
+// The token is stored as a sha256 hex digest only (portal-token discipline).
+
+export const connectorOauthStartGrants = pgTable(
+  "connector_oauth_start_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    connector_id: uuid("connector_id")
+      .notNull()
+      .references(() => connectors.id, { onDelete: "cascade" }),
+    // SHA-256 hex of the plaintext grant token. Only the hash is stored; the
+    // plaintext is returned once at mint time and never persisted.
+    token_sha256: text("token_sha256").notNull(),
+    // Null when minted by the machine path (beginConnectorOAuthDance); set to
+    // the operator's user/system-account id when minted via the tool surface.
+    created_by_actor_id: uuid("created_by_actor_id"),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("connector_oauth_start_grants_token_sha256_key").on(t.token_sha256)],
+);
+
 // ----- connector_environments ----------------------------------------------
 
 export const connectorEnvironments = pgTable(

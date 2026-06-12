@@ -41,7 +41,11 @@ export async function findReusableConnectorByUrl(p: {
   db: Db;
 }): Promise<ReusedConnectorEnvelope | null> {
   if (!p.base_url) return null;
-  const existing = await listConnectors(p.tenant_id, { environment: p.environment }, p.db);
+  const { rows: existing } = await listConnectors(
+    p.tenant_id,
+    { environment: p.environment },
+    p.db,
+  );
   const reuse = existing.find(
     (c) => c.base_url === p.base_url && (!p.driver || c.driver === p.driver),
   );

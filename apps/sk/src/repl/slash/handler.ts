@@ -331,7 +331,10 @@ export function panify(
     );
     return null;
   }
-  return [title, "", ...lines].join("\n");
+  // The subtitle carries the cardinality footer ("showing 20 of 45" /
+  // "12 total") — dropping it in the banner fallback would hide the
+  // ground-truth count from readline users, so render it inline.
+  return [subtitle !== undefined ? `${title} — ${subtitle}` : title, "", ...lines].join("\n");
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

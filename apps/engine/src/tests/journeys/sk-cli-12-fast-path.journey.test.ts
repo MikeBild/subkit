@@ -13,6 +13,12 @@
 //   AC3. `sk -p "run <slug>"` creates exactly one new execution row with
 //        source_kind = "saved" and exits 0.
 //   AC4. `sk -p "list my executions"` is also handled by the fast path.
+//   AC5. Ground-truth cardinality (Fix 3 regression): with 25 workflows
+//        in the tenant, "list my workflows" enumerates ALL of them and
+//        the self-describing tool result carries total=25 / returned=25 /
+//        has_more=false; the assistant headline names the exact total.
+//        (Previously LIST_LIMIT=10 rendered "10 workflows:" as if
+//        complete while the tenant had more.)
 //
 // Note: the tests use `runHeadless` (sk's in-process headless runner)
 // so they avoid spawning a child process while still testing the full
@@ -171,6 +177,79 @@ describe("journey: sk fast-path — list intent (T16)", () => {
     }
     expect(foundSkippedLlm).toBe(true);
   });
+});
+
+// ---------------------------------------------------------------------------
+// AC5: complete enumeration + exact total (ground-truth cardinality)
+// ---------------------------------------------------------------------------
+
+describe("journey: sk fast-path — list enumerates completely with exact total (Fix 3)", () => {
+  test("AC5: 25 workflows — all enumerated, total=25 in the tool result, exact headline", async () => {
+    // Seed 24 more workflows next to the one from beforeAll → 25 total.
+    for (let i = 0; i < 24; i++) {
+      const res = await journeyFetch(ctx, "/v1/workflows", {
+        method: "POST",
+        body: JSON.stringify({
+          name: `Bulk WF ${i}`,
+          slug: `bulk-wf-${String(i).padStart(2, "0")}`,
+          steps: [{ kind: "request", id: "noop", method: "GET", url: `${ctx.baseUrl}/v1/health` }],
+        }),
+      });
+      expect(res.status).toBe(201);
+    }
+
+    const stdout = makeBuffer();
+    const result = await runHeadless({
+      profile: profileFor(ctx.tenantId, ctx.apiKey),
+      prompt: "list my workflows",
+      output: "stream-json",
+      noMemory: true,
+      stdout,
+    });
+    expect(result.exitCode).toBe(0);
+
+    let listOutput: Record<string, unknown> | null = null;
+    let assistantText = "";
+    for (const line of stdout.lines()) {
+      try {
+        const obj = JSON.parse(line) as Record<string, unknown>;
+        if (obj.type === "tool_result") {
+          const output = obj.output as Record<string, unknown> | undefined;
+          if (output?.skipped_llm === true && Array.isArray(output.items)) {
+            listOutput = output;
+          }
+        }
+        if (obj.type === "message" && obj.role === "assistant") {
+          // Live events carry `content` as a string; the SSE replay path
+          // re-emits the persisted message content `{ text, fast_path }`.
+          const content = obj.content as string | { text?: unknown } | undefined;
+          const text =
+            typeof content === "string"
+              ? content
+              : typeof content?.text === "string"
+                ? content.text
+                : "";
+          if (text.length > 0) assistantText = text;
+        }
+      } catch {
+        // Skip unparseable lines
+      }
+    }
+
+    expect(listOutput).not.toBeNull();
+    // Self-describing envelope: the page IS the universe and says so.
+    expect(listOutput?.total).toBe(25);
+    expect(listOutput?.returned).toBe(25);
+    expect(listOutput?.has_more).toBe(false);
+    expect((listOutput?.items as unknown[]).length).toBe(25);
+    // Headline names the exact total — "25 workflows:" only when 25 shown.
+    expect(assistantText.startsWith("25 workflows:")).toBe(true);
+    // Complete enumeration — every seeded slug appears.
+    expect(assistantText).toContain(savedWorkflowSlug);
+    for (let i = 0; i < 24; i++) {
+      expect(assistantText).toContain(`bulk-wf-${String(i).padStart(2, "0")}`);
+    }
+  }, 180000);
 });
 
 // ---------------------------------------------------------------------------

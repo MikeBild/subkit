@@ -512,7 +512,7 @@ const McpServerDeclSchema = z
     url: z.string().url(),
     auth: z
       .object({
-        kind: z.enum(["none", "bearer", "oauth2"]),
+        kind: z.enum(["none", "bearer", "basic", "oauth2"]),
         // OAuth2 non-secret discovery fields (oauth2 only). The secret/token
         // is never declared here — it is resolved from `credentials` at
         // handshake time.

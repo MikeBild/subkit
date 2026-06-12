@@ -15,6 +15,7 @@ import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
+import { stepFingerprint } from "../step-fingerprint.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { pickProbeRecoveryActions } from "./probe-recovery.ts";
@@ -114,6 +115,10 @@ export const dryRunStepTool: ConversationTool = {
           step_id: runStep.step_key,
           kind: runStep.kind,
           status: runStep.status,
+          // Fingerprint stamping (Fix 5): bind this evidence to the
+          // exact step definition it was recorded against so later
+          // mutations drop it only when THIS step changes.
+          ...(runStep.step_key === args.step_id ? { fingerprint: stepFingerprint(rawStep) } : {}),
           ...(runStep.duration_ms != null ? { duration_ms: runStep.duration_ms } : {}),
           ...(runStep.output_preview !== undefined && runStep.output_preview !== null
             ? { output_preview: runStep.output_preview }

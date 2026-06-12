@@ -24,7 +24,9 @@ import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
+import { proposeDryRunRepairs } from "../dry-run-repair.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
+import { stampStepTraceFingerprints } from "../step-fingerprint.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import {
   buildDryRunCacheKey,
@@ -278,7 +280,21 @@ export const dryRunWorkflowTool: ConversationTool = {
       });
     }
 
-    const definition = { name: draft.name ?? "draft", steps };
+    // The draft's workflow-level output surface travels with the
+    // definition (Fix 11): `output_transform` shapes the final payload
+    // exactly like a live run would, and `output_schema` makes the
+    // engine validate that payload against the declared contract. The
+    // resulting `output_contract_violation` warning is BLOCKING here
+    // (see repairWarnings below) — a draft that does not produce the
+    // contracted shape never auto-commits.
+    const definition = {
+      name: draft.name ?? "draft",
+      steps,
+      ...(typeof draft.output_transform === "string" && draft.output_transform.length > 0
+        ? { output_transform: draft.output_transform }
+        : {}),
+      ...(draft.output_schema ? { output_schema: draft.output_schema } : {}),
+    };
     const signal = ctx.abortSignal;
     ctx.onLog?.(
       "info",
@@ -409,21 +425,37 @@ export const dryRunWorkflowTool: ConversationTool = {
     // without re-running the upstream. The store keeps only the
     // succeeded-step envelopes — failed steps would just confuse a
     // JSONata-only iteration loop.
-    if (run.status === "succeeded" || run.steps.some((s) => s.status === "succeeded")) {
-      const scope: Record<string, unknown> = {};
-      for (const s of run.steps) {
-        if (s.status === "succeeded" && s.output_preview !== undefined) {
-          scope[s.step_key] = s.output_preview;
-        }
+    //
+    // Execution parity (Fix 6): the runtime scope addresses every step
+    // through the documented envelope — `$scope.<id>.data` is the
+    // payload, `$scope.<id>.status_code` the diagnostics. Pre-fix the
+    // store kept the RAW `output_preview` (no `data` wrapper), so the
+    // exact expression that works in a transform step returned `{}`
+    // here and the model concluded "scope doesn't work" (session
+    // 784c1b02, ~10 wasted rewrite rounds). Wrap to the same envelope
+    // the engine writes into `scope` (`engine/envelope.ts`).
+    const previewScope: Record<string, unknown> = {};
+    for (const s of run.steps) {
+      if (s.status === "succeeded" && s.output_preview !== undefined) {
+        const rm = (s.request_meta ?? null) as { status?: unknown; headers?: unknown } | null;
+        previewScope[s.step_key] = {
+          data: s.output_preview,
+          duration_ms: s.duration_ms ?? 0,
+          error: null,
+          ...(rm && typeof rm.status === "number" ? { status_code: rm.status } : {}),
+          ...(rm?.headers && typeof rm.headers === "object"
+            ? { headers: rm.headers as Record<string, string> }
+            : {}),
+        };
       }
-      if (Object.keys(scope).length > 0) {
-        recordLastPreview({
-          tenant_id: ctx.tenant_id,
-          conversation_id: ctx.conversation_id,
-          scope,
-          input: args.input ?? null,
-        });
-      }
+    }
+    if (Object.keys(previewScope).length > 0) {
+      recordLastPreview({
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        scope: previewScope,
+        input: args.input ?? null,
+      });
     }
 
     // Per-step progress feed — same as run_workflow. Lets the user see
@@ -478,12 +510,17 @@ export const dryRunWorkflowTool: ConversationTool = {
     // (or kept) the repair flag. Only the warnings that ALWAYS
     // indicate a real bug contribute — `transform_dropped_fields`
     // alone is informational.
+    // `output_contract_violation` is non-blocking on LIVE runs but
+    // blocking on previews (Fix 11): a draft whose final output does
+    // not satisfy its declared `output_schema` has not converged, so
+    // the preview must not read green and must not auto-commit.
     const repairWarnings = runWarnings.filter(
       (w) =>
         w.code === "unresolved_identifier" ||
         w.code === "transform_empty_extraction" ||
         w.code === "loop_over_unresolved" ||
-        w.code === "loop_body_empty",
+        w.code === "loop_body_empty" ||
+        w.code === "output_contract_violation",
     );
     const dryRunRequiresRepair = repairWarnings.length > 0;
 
@@ -551,7 +588,11 @@ export const dryRunWorkflowTool: ConversationTool = {
     // compact view here (drop request_meta from the persisted
     // version — it's cheap to keep around in the response envelope
     // but not worth the token cost on every turn).
-    const persistedStepTraces = run.steps.map((s) => {
+    // Fingerprint stamping (Fix 5): each persisted trace carries the
+    // identity of the step definition it was recorded against, so
+    // mutations drop evidence per changed step instead of wholesale and
+    // the authoring gates can verify the evidence is still current.
+    const persistedStepTracesUnstamped = run.steps.map((s) => {
       const errorCode =
         s.error && typeof s.error === "object" && s.error !== null
           ? (s.error as { code?: unknown }).code
@@ -593,6 +634,10 @@ export const dryRunWorkflowTool: ConversationTool = {
         ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
       };
     });
+    const persistedStepTraces = stampStepTraceFingerprints(
+      persistedStepTracesUnstamped,
+      steps as unknown as Array<Record<string, unknown>>,
+    );
 
     const nextDraft = withLatestPreview(
       ctx.getDraft(),
@@ -805,6 +850,18 @@ export const dryRunWorkflowTool: ConversationTool = {
     // preview reported `ok:true`, `classification:"ok"`, and "Ran N
     // steps with no errors" — so the authoring agent iterated for a
     // dozen turns against a false green.
+    //
+    // Bounded auto-repair (Fix 10) — propose-only; see dry-run-repair.ts.
+    const repairProposals = await proposeDryRunRepairs({
+      steps,
+      runWarnings,
+      runError: run.error ?? null,
+      output_transform: draft.output_transform,
+      previewScope,
+      input: args.input ?? null,
+      tenant_id: ctx.tenant_id,
+      db: ctx.db,
+    });
     const repairCount = repairWarnings.length;
     return {
       ok: cleanPreview,
@@ -830,6 +887,12 @@ export const dryRunWorkflowTool: ConversationTool = {
           // consumers but the banner is the canonical surface.
           ...(warningsBanner ? { warnings_banner: warningsBanner } : {}),
           ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
+          // Propose-only repair outcomes (Fix 10). `repaired: true`
+          // entries carry a VERIFIED expression (compiles; non-empty
+          // against this run's recorded scope where applicable) —
+          // apply via update_param / edit_workflow_patch, then
+          // re-preview. The draft was not changed.
+          ...(repairProposals.length > 0 ? { repair_proposals: repairProposals } : {}),
           step_trace: stepTrace,
           ...(lastStep
             ? (() => {

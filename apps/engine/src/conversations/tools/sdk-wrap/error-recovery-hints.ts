@@ -40,13 +40,17 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   // surface (HTTP/MCP route, not a raw in-process invocation).
   principal_required:
     "this tool requires an authenticated principal on the ToolContext — re-issue the call from the HTTP / MCP / sk-cli surface so the auth resolution threads through, instead of invoking the tool directly in-process",
-  // Authoring guardrails — the model called the wrong tool first.
+  // Authoring guardrails — evidence is fingerprint-keyed: edits to
+  // OTHER steps keep their recorded previews; only the referenced
+  // step's own definition change invalidates it.
   transform_authoring_requires_inspect:
-    "call inspect_execution_step(execution_id, step_key, include_full_payload: true) to read the upstream step's actual shape before authoring the transform",
+    "the transform references a step with no fingerprint-valid recorded preview (its definition changed since the last preview, or it was never previewed) — call dry_run_workflow ONCE to refresh the evidence, then retry the same edit; unchanged steps keep their evidence, so one dry-run suffices. Read the recorded shape via inspect_workflow_draft or inspect_execution_step(execution_id, step_key, include_full_payload: true) before re-authoring",
   loop_authoring_requires_inspect:
-    "call inspect_execution_step against the loop step to see the body shape before authoring or modifying the loop",
+    "the loop's `over`/`data_selector` references a step with no fingerprint-valid recorded preview (its definition changed since the last preview, or it was never previewed) — call dry_run_workflow ONCE to refresh the evidence, then retry the same edit; unchanged steps keep their evidence, so one dry-run suffices. Read the recorded shape via suggest_jsonata_paths or inspect_workflow_draft before re-authoring",
+  preview_stale_for_referenced_step:
+    "the referenced step's OWN definition changed since its preview was recorded, so the evidence is stale — call dry_run_workflow once to refresh it, then retry the same edit; edits to other steps do NOT invalidate evidence, so this fires only when the step you reference actually changed",
   step_update_invalid:
-    "the current draft step is invalid — call inspect_workflow_draft to see the validation errors, then propose_step with the corrected fields",
+    'the current draft step is invalid — call inspect_workflow_draft to see the validation errors, then propose_step with the corrected fields. Common case: a loop\'s `body` must be an ARRAY of step ids (body: ["step_id"]), never a string and never inline step objects',
   step_invalid:
     "the step shape is wrong — call inspect_workflow_draft for the validation breakdown, then propose_step or update_param against the failing field",
   unknown_step:
@@ -60,7 +64,9 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   workflow_unresolved_step_reference:
     "a step referenced an id that doesn't exist — call inspect_workflow_draft to list step ids and connect_steps to wire missing edges",
   workflow_unsupported_placeholder:
-    "a placeholder used an unsupported binding — call suggest_jsonata_paths for valid placeholders, or update_param to replace it",
+    "a placeholder used an unsupported binding — the resolver accepts only cred|connector|input|scope|item|state. Inside a loop body: use ${item.<path>} in request strings (path/url/headers/query/body) and the bare item_var (e.g. project.name) in JSONata expressions — ${project.id}, ${user.email}, and Mustache {{…}} are all rejected. Call suggest_jsonata_paths for valid forms, or update_param to replace it",
+  placeholder_unresolved:
+    "a ${…} placeholder did not resolve from scope at runtime — inside a loop body write ${item.<path>} in request strings and the bare item_var in JSONata expressions (never ${<item_var>.<path>}); for sibling body steps use ${scope.<body_step_id>.data.<field>}. Verify the path against the recorded preview via inspect_workflow_draft, then re-run dry_run_workflow",
   workflow_cycle_detected:
     "the workflow has a step-dependency cycle — call inspect_workflow_draft to see the graph, then propose_step / connect_steps to remove the cycle",
   workflow_schema_invalid:

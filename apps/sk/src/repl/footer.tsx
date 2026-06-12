@@ -57,8 +57,16 @@ export interface FooterProps {
   tokensMonth?: number | null;
   /** Effective monthly budget; null = unlimited. */
   monthlyBudget?: number | null;
-  /** Last turn's prompt size in tokens. Drives the `ctx N/M` gauge. */
-  lastTurnPromptTokens?: number | null;
+  /** The last turn's FINAL LLM-call prompt size in tokens
+   *  (`usage.prompt_tokens_last_call`) — numerator of the `ctx N/M`
+   *  gauge. This is the only figure comparable to the per-prompt cap;
+   *  pre-fix the gauge divided the turn-CUMULATIVE tokens by the cap
+   *  and showed `ctx 464k/180k (100%)` for prompts nowhere near it. */
+  promptTokensLastCall?: number | null;
+  /** Cumulative tokens across every LLM call of the last turn
+   *  (`usage.turn_tokens_total`). Rendered as a separate `turn <N>`
+   *  figure so cost and context fullness are never conflated. */
+  turnTokensTotal?: number | null;
   /** Effective per-prompt context cap for the active model — denominator
    *  of the `ctx N/M` gauge. When null the gauge is hidden because we
    *  cannot tell the operator how close they are to the ceiling. */
@@ -113,7 +121,8 @@ const FooterImpl: React.FC<FooterProps> = ({
   tokensToday = null,
   tokensMonth = null,
   monthlyBudget = null,
-  lastTurnPromptTokens = null,
+  promptTokensLastCall = null,
+  turnTokensTotal = null,
   contextCapTokens = null,
   columns = 80,
   hintLine = null,
@@ -169,7 +178,8 @@ const FooterImpl: React.FC<FooterProps> = ({
           tokensToday={tokensToday}
           tokensMonth={tokensMonth}
           monthlyBudget={monthlyBudget}
-          lastTurnPromptTokens={lastTurnPromptTokens}
+          promptTokensLastCall={promptTokensLastCall}
+          turnTokensTotal={turnTokensTotal}
           contextCapTokens={contextCapTokens}
           theme={theme}
         />
@@ -183,7 +193,8 @@ interface BudgetLineProps {
   tokensToday: number | null;
   tokensMonth: number | null;
   monthlyBudget: number | null;
-  lastTurnPromptTokens: number | null;
+  promptTokensLastCall: number | null;
+  turnTokensTotal: number | null;
   contextCapTokens: number | null;
   theme: ReturnType<typeof useTheme>;
 }
@@ -193,7 +204,8 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
   tokensToday,
   tokensMonth,
   monthlyBudget,
-  lastTurnPromptTokens,
+  promptTokensLastCall,
+  turnTokensTotal,
   contextCapTokens,
   theme,
 }) => {
@@ -217,14 +229,15 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
           : theme.severity.dim;
 
   // Per-turn context-window gauge. Renders only when the engine sent
-  // both the last turn's prompt size and the active model's effective
-  // cap (so we can compute a meaningful ratio). Color follows the same
-  // green→yellow→red gradient as the monthly chip but at tighter
-  // thresholds — the model rejects at 100%, so 80% is the warning line
-  // and 95% is the alarm line.
+  // both the last LLM call's prompt size (`prompt_tokens_last_call` —
+  // the only number comparable to the per-prompt cap) and the active
+  // model's effective cap. Color follows the same green→yellow→red
+  // gradient as the monthly chip but at tighter thresholds — the model
+  // rejects at 100%, so 80% is the warning line and 95% is the alarm
+  // line.
   const ctxPct =
-    lastTurnPromptTokens != null && contextCapTokens != null && contextCapTokens > 0
-      ? Math.min(100, Math.round((lastTurnPromptTokens / contextCapTokens) * 100))
+    promptTokensLastCall != null && contextCapTokens != null && contextCapTokens > 0
+      ? Math.min(100, Math.round((promptTokensLastCall / contextCapTokens) * 100))
       : null;
   const ctxColor =
     ctxPct == null
@@ -234,7 +247,8 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
         : ctxPct >= 80
           ? theme.severity.warning
           : theme.severity.dim;
-  const showCtx = lastTurnPromptTokens != null && contextCapTokens != null;
+  const showCtx = promptTokensLastCall != null && contextCapTokens != null;
+  const showTurn = turnTokensTotal != null && turnTokensTotal > 0;
 
   return (
     <Box>
@@ -245,11 +259,17 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
       <Text color={theme.severity.dim}> · month </Text>
       <Text color={monthColor}>{monthDisplay}</Text>
       {pct != null ? <Text color={monthColor}> ({pct}%)</Text> : null}
+      {showTurn ? (
+        <>
+          <Text color={theme.severity.dim}> · turn </Text>
+          <Text color={theme.severity.dim}>{formatTokens(turnTokensTotal)}</Text>
+        </>
+      ) : null}
       {showCtx ? (
         <>
           <Text color={theme.severity.dim}> · ctx </Text>
           <Text color={ctxColor}>
-            {formatTokens(lastTurnPromptTokens)}/{formatTokens(contextCapTokens)}
+            {formatTokens(promptTokensLastCall)}/{formatTokens(contextCapTokens)}
           </Text>
           {ctxPct != null && ctxPct >= 80 ? <Text color={ctxColor}> ({ctxPct}%)</Text> : null}
         </>
