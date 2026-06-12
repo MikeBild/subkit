@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 7
+version: 8
 ---
 
 # Authoring Workflows In A Conversation
@@ -55,6 +55,18 @@ produces drafts that fail at runtime or in review.
    "commit", "push", "deploy", or "publish" after a green preview, do not
    invent an action — tell them it is already live as v<N> and offer a real
    next step (run it, bind a schedule or trigger, or keep editing).
+
+   **Dry-runs are LIVE — never fabricate external destinations.** A
+   `dry_run_workflow` executes every step for real: an email step sends a
+   real email, a webhook step fires a real webhook. For any input that is
+   an externally-visible destination (recipient address, channel, phone
+   number, webhook URL) you must use a value the user actually provided —
+   take it from their message or collect it via `ask_user_form`. NEVER
+   invent placeholders like `test@example.com` (caught live: a dry-run
+   mailed a fabricated address and the user received the bounce). When the
+   user has not supplied a destination and the workflow cannot run without
+   one, ask before previewing — or preview only the upstream steps with
+   `dry_run_step` and leave the send for the user-supplied run.
 
 For request steps, use the current flattened shape: `connector_id`, `method`,
 `path`, `query`, `headers`, `body`, and `graphql` live directly on the step.

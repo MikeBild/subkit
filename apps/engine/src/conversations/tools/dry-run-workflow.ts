@@ -52,7 +52,7 @@ const inputSchema = z
 export const dryRunWorkflowTool: ConversationTool = {
   name: "dry_run_workflow",
   description:
-    "Run the entire draft workflow via runExecution (source=draft). Produces an executions row with source_kind=draft, no workflow_id / workflow_version_id persisted.",
+    "Run the entire draft workflow via runExecution (source=draft). Produces an executions row with source_kind=draft, no workflow_id / workflow_version_id persisted. Steps execute FOR REAL (an email step sends a real email) — inputs that are external destinations (recipients, channels, webhook URLs) must come from the user, never fabricated placeholders.",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
