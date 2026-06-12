@@ -42,6 +42,7 @@ import {
   emptySummary,
 } from "./authoring-state/summary.ts";
 import { pruneTracesForMutation, retainFingerprintValidTraces } from "./step-fingerprint.ts";
+import { canonicalJson } from "./text-line-diff.ts";
 import type {
   AuthoringCheckpointKey,
   AuthoringCheckpointRecord,
@@ -180,6 +181,19 @@ function applyWorkflowMutation(
   state.workflow_mutation_seq += 1;
   state.latest_execution = null;
   state.latest_diagnosis = null;
+  // Judge breaker hygiene: the breaker is keyed to a whole-definition
+  // fingerprint, so any change to the steps invalidates it anyway — but
+  // leaving the stale object on the draft made `draftHasStageEvidence`
+  // read a replaced draft as past-initial-stage and left the commit
+  // guard's safety resting solely on the mutation_seq bump. Clear it
+  // whenever the step set actually changed (canonicalJson equality on
+  // the steps array is the same stability rule the fingerprints use).
+  if (
+    state.judge_breaker &&
+    canonicalJson(normalized.workflow?.steps ?? []) !== canonicalJson(workflow.steps)
+  ) {
+    state.judge_breaker = null;
+  }
   // Fingerprint-keyed evidence retention (Fix 5, session 784c1b02).
   // A mutation drops preview evidence ONLY for steps whose definition
   // changed (or which were removed); unchanged steps keep their

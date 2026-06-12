@@ -28,6 +28,7 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { setDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { MAX_GENERATION_PASSES, runAuthoringPipeline } from "../authoring-pipeline.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import type { RecordedEvalReport } from "../recorded-eval.ts";
@@ -59,7 +60,9 @@ async function ensureConfigLoaded(): Promise<void> {
 }
 
 // Egress tripwire: NO live HTTP may fire anywhere in the pipeline.
-const realFetch = globalThis.fetch;
+// Installed through the driver-fetch seam — drivers no longer read
+// globalThis.fetch, so a global stub would miss real egress AND leak
+// into concurrently-running sibling test files.
 let fetchCalls = 0;
 
 beforeAll(async () => {
@@ -73,21 +76,21 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  globalThis.fetch = realFetch;
+  setDriverFetchForTests(null);
   await ctx.cleanup();
 });
 
 beforeEach(() => {
   resetMockProvider();
   fetchCalls = 0;
-  globalThis.fetch = ((..._args: unknown[]) => {
+  setDriverFetchForTests(((..._args: unknown[]) => {
     fetchCalls += 1;
     throw new Error("live HTTP is forbidden inside the authoring pipeline");
-  }) as unknown as typeof fetch;
+  }) as unknown as typeof fetch);
 });
 
 afterEach(() => {
-  globalThis.fetch = realFetch;
+  setDriverFetchForTests(null);
 });
 
 function makeCtx(): ToolContext & { _draft: { value: DraftDocument | null } } {

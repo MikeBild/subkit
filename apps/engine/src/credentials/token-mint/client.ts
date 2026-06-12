@@ -15,6 +15,7 @@
 // `cognito_user_password` client is reused.
 
 import { createHmac } from "node:crypto";
+import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import type { TokenMintCredentialValue } from "../types.ts";
 
 export interface TokenMintBundle {
@@ -87,7 +88,7 @@ export async function runTokenMintGrant(cred: TokenMintCredentialValue): Promise
     });
   }
 
-  const res = await fetch(mint_endpoint, { method: "POST", headers, body });
+  const res = await getDriverFetch()(mint_endpoint, { method: "POST", headers, body });
   const text = await res.text();
   if (!res.ok) {
     throw new Error(`token_mint POST ${mint_endpoint} returned ${res.status}: ${text}`);

@@ -26,6 +26,7 @@ import { tenants } from "../../../src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../src/db/tests/setup.ts";
 import { EngineClient } from "../../../src/engine-client/index.ts";
 import { resetMockProvider } from "../../../src/llm/mock-provider.ts";
+import { setDriverFetchForTests } from "../../../src/test-helpers/driver-fetch.ts";
 
 /** Bootstrap the config loader once per eval-runner process with the
  *  mock LLM provider pinned. Idempotent — mirrors the conversation
@@ -118,17 +119,19 @@ export async function withAuthoringEvalEnv<T>(
 export async function withEgressTripwire<T>(
   fn: () => Promise<T>,
 ): Promise<{ result: T; fetch_calls: number }> {
-  const realFetch = globalThis.fetch;
+  // Installed through the driver-fetch seam: drivers capture the real
+  // fetch at module load, so a globalThis stub would miss real egress —
+  // and would leak into sibling test files under concurrent execution.
   let fetch_calls = 0;
-  globalThis.fetch = ((..._args: unknown[]) => {
+  setDriverFetchForTests(((..._args: unknown[]) => {
     fetch_calls += 1;
     throw new Error("live HTTP is forbidden inside CI-mode authoring eval scenarios");
-  }) as unknown as typeof fetch;
+  }) as unknown as typeof fetch);
   try {
     const result = await fn();
     return { result, fetch_calls };
   } finally {
-    globalThis.fetch = realFetch;
+    setDriverFetchForTests(null);
   }
 }
 

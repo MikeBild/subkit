@@ -3,21 +3,25 @@
 // endpoint, so we mock `globalThis.fetch` instead of standing up a
 // mock server.
 
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
+import { setDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runCognitoRefreshTokenGrant, runCognitoUserPasswordGrant } from "../client.ts";
 
 const TEST_NOW_MS = getTestNow();
 
 describe("Cognito User-Password (InitiateAuth)", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
 
   beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
+    // Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
+    // globalThis — install the endpoint mock through the seam.
+    fetchSpy = mock<typeof fetch>();
+    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
   });
 
   afterEach(() => {
-    fetchSpy.mockRestore();
+    setDriverFetchForTests(null);
   });
 
   test("posts USER_PASSWORD_AUTH body to cognito-idp endpoint", async () => {

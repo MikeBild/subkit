@@ -10,6 +10,7 @@ import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
+import { setDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import type { RecordedEvalReport } from "../../recorded-eval.ts";
 import type { DraftDocument } from "../../types.ts";
@@ -21,9 +22,10 @@ let ctx: TestDb;
 let tenant_id: string;
 const nextUuid = createDeterministicUuidFactory(784);
 
-// Egress tripwire: any fetch() during the tools under test is a live
-// HTTP call the recorded-eval contract forbids.
-const realFetch = globalThis.fetch;
+// Egress tripwire: any DRIVER egress during the tools under test is a
+// live HTTP call the recorded-eval contract forbids. Installed through
+// the driver-fetch seam (drivers no longer read globalThis.fetch, so a
+// globalThis stub would miss real egress AND leak into sibling files).
 let fetchCalls = 0;
 
 beforeAll(async () => {
@@ -36,20 +38,20 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  globalThis.fetch = realFetch;
+  setDriverFetchForTests(null);
   await ctx.cleanup();
 });
 
 beforeEach(() => {
   fetchCalls = 0;
-  globalThis.fetch = ((..._args: unknown[]) => {
+  setDriverFetchForTests(((..._args: unknown[]) => {
     fetchCalls += 1;
     throw new Error("live HTTP is forbidden during build_workflow / propose_step");
-  }) as unknown as typeof fetch;
+  }) as unknown as typeof fetch);
 });
 
 afterEach(() => {
-  globalThis.fetch = realFetch;
+  setDriverFetchForTests(null);
 });
 
 function makeCtx(): ToolContext & { _draft: { value: DraftDocument | null } } {

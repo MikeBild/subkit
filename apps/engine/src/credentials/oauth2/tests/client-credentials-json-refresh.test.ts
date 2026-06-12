@@ -11,19 +11,11 @@
 //
 // fetch is mocked so no real server is required.
 
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  spyOn,
-  test,
-} from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { setDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { getCredentialForConnector, upsertCredential } from "../../service.ts";
 import { refreshIfStale } from "../refresh-worker.ts";
 
@@ -32,7 +24,7 @@ let tenantId: string;
 let connectorId: string;
 
 // We mock fetch so no real server is required. Each test restores the mock.
-let fetchSpy: ReturnType<typeof spyOn>;
+let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
 
 const TOKEN_ENDPOINT = "https://example.test/api/v2/authenticate";
 const STALE_TOKEN = "old-jwt-token";
@@ -83,11 +75,12 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  fetchSpy = spyOn(globalThis, "fetch");
+  fetchSpy = mock<typeof fetch>();
+  setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
 });
 
 afterEach(() => {
-  fetchSpy.mockRestore();
+  setDriverFetchForTests(null);
 });
 
 describe("refreshIfStale — client_credentials_json grant", () => {

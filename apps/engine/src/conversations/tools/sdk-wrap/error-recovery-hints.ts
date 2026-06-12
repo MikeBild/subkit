@@ -43,6 +43,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   // Initial-stage gate (Fix A): micro-tools are repair-stage only.
   authoring_stage_violation:
     "propose_step / update_param are repair-stage tools — the draft has no recorded preview and no recorded-eval/judge findings yet. Author the complete workflow in ONE call via author_workflow (or build_workflow), then dry_run_workflow; either unlocks the micro-tools",
+  legacy_itemvar_migration_required:
+    "this workflow predates the $item contract and the automatic rewrite could not be proven equivalent — read the named step/field, rewrite its bare loop-variable references to $item yourself, include that change in the patch, and retry edit_workflow_patch",
   // Authoring guardrails — evidence is fingerprint-keyed: edits to
   // OTHER steps keep their recorded previews; only the referenced
   // step's own definition change invalidates it.

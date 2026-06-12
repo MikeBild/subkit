@@ -62,9 +62,12 @@ describe("applyFlowModelElevation", () => {
     const out = applyFlowModelElevation(BASE_ROUTE, "judge");
     expect(out.primary).toBe("claude-sonnet-4-6");
     expect(out.provider).toBe(BASE_ROUTE.fallback_provider);
-    // The fallback slot is untouched — a provider failure on the
-    // elevated primary still has a model to fall back to.
-    expect(out.fallback).toBe("claude-sonnet-4-6");
+    // The fallback becomes the ORIGINAL primary — an overloaded strong
+    // model degrades to the cheaper model instead of retrying itself
+    // (primary === fallback would fail harder than converse on the
+    // overload path).
+    expect(out.fallback).toBe("claude-haiku-4-5");
+    expect(out.fallback_provider).toBe(BASE_ROUTE.provider);
   });
 
   test("generate → primary elevated to the fallback model", () => {

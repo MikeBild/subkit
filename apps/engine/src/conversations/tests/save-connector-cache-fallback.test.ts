@@ -19,6 +19,7 @@ import { and, eq } from "drizzle-orm";
 import * as discoveryService from "../../connectors/discovery/service.ts";
 import { connectors, conversations, credentials, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { setDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -282,9 +283,7 @@ describe("saveConnectorAtomic — cognito_user_password cache fallback for oauth
   // when the credential mode is "cognito_user_password".
   test("cognito_user_password cache hit on oauth2 connector — connector + credential row persisted", async () => {
     // Cast to `typeof fetch` via the async closure — covers only url+init.
-    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (
-      input: RequestInfo | URL,
-    ) => {
+    const fetchImpl = (async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("cognito-idp")) {
         return new Response(
@@ -299,7 +298,8 @@ describe("saveConnectorAtomic — cognito_user_password cache fallback for oauth
       }
       // Non-Cognito calls are unexpected in this test — let them fail loudly.
       throw new Error(`unexpected fetch to ${url}`);
-    }) as typeof fetch);
+    }) as typeof fetch;
+    setDriverFetchForTests(fetchImpl);
 
     try {
       const { conversation_id, tool_ctx } = await seedGraphql("cognito-oauth2-graphql");
@@ -338,7 +338,7 @@ describe("saveConnectorAtomic — cognito_user_password cache fallback for oauth
       expect(cred).toHaveLength(1);
       expect(cred[0]!.mode).toBe("oauth2");
     } finally {
-      fetchSpy.mockRestore();
+      setDriverFetchForTests(null);
     }
   });
 

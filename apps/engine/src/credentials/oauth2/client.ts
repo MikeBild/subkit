@@ -10,6 +10,7 @@
 // `randomPKCECodeVerifier()`, `calculatePKCECodeChallenge()`.
 
 import * as oauth from "openid-client";
+import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { logger } from "../../logging/logger.ts";
 import {
   type OAuth2ClientConfig,
@@ -291,7 +292,7 @@ async function postCognito<T>(
   target: string,
   body: Record<string, unknown>,
 ): Promise<T> {
-  const res = await fetch(cognitoEndpoint(region), {
+  const res = await getDriverFetch()(cognitoEndpoint(region), {
     method: "POST",
     headers: {
       "content-type": "application/x-amz-json-1.1",
@@ -461,7 +462,7 @@ export async function dynamicallyRegisterClient(
 
   let res: Response;
   try {
-    res = await fetch(registrationEndpoint, fetchOpts);
+    res = await getDriverFetch()(registrationEndpoint, fetchOpts);
   } catch (err) {
     throw new DynamicRegistrationError(
       `Registration POST to ${registrationEndpoint} failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -543,7 +544,7 @@ export async function runClientCredentialsJsonGrant(
     ...(p.extra_token_headers ?? {}),
   };
 
-  const res = await fetch(p.token_endpoint, {
+  const res = await getDriverFetch()(p.token_endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify(p.body_mapping),

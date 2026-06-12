@@ -977,7 +977,30 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // in dry_run_workflow). A schema that fails to compile is an
   // authoring bug the workflow validator gate should have refused;
   // log-only here.
-  if (def.output_schema && lastOutput !== undefined && finalStatus === "succeeded") {
+  // Hold-writes interplay: the contract asserts the LIVE final output.
+  // When a hold-writes preview held (or hold-skipped) any step, the real
+  // final output cannot exist by design — `lastOutput` is null for a
+  // held terminal step, or a stale upstream value when the terminal step
+  // was skipped behind a hold. Validating that against the schema would
+  // make every preview of a send-terminated workflow permanently red.
+  // Skip with an explicit log; live runs and hold-free previews still
+  // validate.
+  const outputUnavailableDueToHolds = opts.hold_writes === true && heldOrSkippedStepIds.size > 0;
+  if (def.output_schema && outputUnavailableDueToHolds && finalStatus === "succeeded") {
+    logger.info({
+      module: "execution",
+      action: "execution.output_contract_skipped_held_preview",
+      msg: "output_schema check skipped — hold-writes preview held the output-producing chain",
+      execution_id,
+      held_or_skipped: heldOrSkippedStepIds.size,
+    });
+  }
+  if (
+    def.output_schema &&
+    lastOutput !== undefined &&
+    finalStatus === "succeeded" &&
+    !outputUnavailableDueToHolds
+  ) {
     const contract = checkOutputContract(lastOutput, def.output_schema);
     if (!contract.ok) {
       logger.warn({

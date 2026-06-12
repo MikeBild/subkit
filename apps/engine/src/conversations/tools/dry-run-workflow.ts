@@ -408,7 +408,17 @@ export const dryRunWorkflowTool: ConversationTool = {
         if (!step || typeof step.id !== "string") continue;
         if (!isStepKindCacheable(step.kind, step)) continue;
         const summary = run.steps.find((s) => s.step_key === step.id);
-        if (!summary || summary.status !== "succeeded" || summary.output_preview === undefined) {
+        // `held === true` guard: a write-classified GET/HEAD is held yet
+        // kind-cacheable — caching its {data: null} envelope would replay
+        // a null "response" as if real on the next preview. `== null`
+        // also rejects null previews generally (held output is null,
+        // not undefined).
+        if (
+          !summary ||
+          summary.status !== "succeeded" ||
+          summary.held === true ||
+          summary.output_preview == null
+        ) {
           continue;
         }
         const envelope: Record<string, unknown> = {

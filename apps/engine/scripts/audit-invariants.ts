@@ -602,6 +602,11 @@ function checkTestSeamsGated(): Result {
       productionModule: "observability/tracing",
       shimEnding: "test-helpers/tracing.ts",
     },
+    {
+      symbol: "_setDriverFetchForTests",
+      productionModule: "connectors/drivers/fetch-seam",
+      shimEnding: "test-helpers/driver-fetch.ts",
+    },
   ] as const;
 
   const offenders: string[] = [];

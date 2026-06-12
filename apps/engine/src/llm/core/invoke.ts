@@ -250,6 +250,13 @@ export function applyFlowModelElevation(route: ModelRoute, flow: LlmFlow): Model
     ...route,
     primary: route.fallback,
     provider: route.fallback_provider,
+    // The original primary becomes the FALLBACK: an overloaded strong
+    // model degrades to the cheaper model instead of retrying itself —
+    // without this swap, elevation collapsed primary === fallback and
+    // judge/generate failed harder than converse on exactly the
+    // overload path.
+    fallback: route.primary,
+    fallback_provider: route.provider,
     context_cap: contextCapFor(route.fallback),
   };
 }

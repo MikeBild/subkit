@@ -171,6 +171,47 @@ describe("hold-writes · HTTP", () => {
     expect(stepRows.find((r) => r.step_key === "send")?.status).toBe("succeeded");
   });
 
+  test("output_schema contract is SKIPPED when the output-producing chain was held (interplay regression)", async () => {
+    // A send-terminated workflow with an output_schema (e.g. the Gmail
+    // {id, threadId} contract) must not go permanently red under
+    // hold-writes: the held terminal step leaves no live final output,
+    // so validating it would block every preview of this shape.
+    hits.length = 0;
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "hold-output-contract",
+      output_schema: {
+        type: "object",
+        required: ["id", "threadId"],
+        properties: { id: { type: "string" }, threadId: { type: "string" } },
+      },
+      steps: [
+        { kind: "request", id: "fetch", method: "GET", url: `${mock.baseUrl}/data` },
+        {
+          kind: "request",
+          id: "send",
+          method: "POST",
+          url: `${mock.baseUrl}/send`,
+          body: { to: "${scope.fetch.data.email}" },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+      options: { hold_writes: true },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(hitsFor("/send")).toHaveLength(0);
+    const sendStep = result.steps.find((s) => s.step_key === "send");
+    expect(sendStep?.held).toBe(true);
+    // The interplay regression: NO output_contract_violation warning —
+    // the contract is a live-output assertion, skipped under holds.
+    const codes = (result.warnings ?? []).map((w) => (w as { code?: string }).code);
+    expect(codes).not.toContain("output_contract_violation");
+  });
+
   test("explicit side_effects override wins both directions at runtime", async () => {
     hits.length = 0;
     const { workflow_id } = await createWorkflowRow(ctx, {

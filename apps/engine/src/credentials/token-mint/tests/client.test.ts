@@ -2,17 +2,19 @@
 // the three shape envelopes can be asserted independently of any real
 // IdP.
 
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { setDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runTokenMintGrant } from "../client.ts";
 
 describe("runTokenMintGrant — shape: aws_initiate_auth (Cognito)", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
 
   beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
+    fetchSpy = mock<typeof fetch>();
+    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
   });
   afterEach(() => {
-    fetchSpy.mockRestore();
+    setDriverFetchForTests(null);
   });
 
   test("posts USER_PASSWORD_AUTH with x-amz-target and parses AuthenticationResult", async () => {
@@ -81,12 +83,13 @@ describe("runTokenMintGrant — shape: aws_initiate_auth (Cognito)", () => {
 });
 
 describe("runTokenMintGrant — shape: json (Firebase / generic)", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
   beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
+    fetchSpy = mock<typeof fetch>();
+    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
   });
   afterEach(() => {
-    fetchSpy.mockRestore();
+    setDriverFetchForTests(null);
   });
 
   test("posts JSON body with email/password and parses idToken (Firebase shape)", async () => {
@@ -116,12 +119,13 @@ describe("runTokenMintGrant — shape: json (Firebase / generic)", () => {
 });
 
 describe("runTokenMintGrant — shape: form (OAuth2 password / generic)", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
   beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
+    fetchSpy = mock<typeof fetch>();
+    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
   });
   afterEach(() => {
-    fetchSpy.mockRestore();
+    setDriverFetchForTests(null);
   });
 
   test("posts urlencoded body with username/password and parses access_token", async () => {
@@ -150,12 +154,13 @@ describe("runTokenMintGrant — shape: form (OAuth2 password / generic)", () => 
 });
 
 describe("runTokenMintGrant — error paths", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
   beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
+    fetchSpy = mock<typeof fetch>();
+    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
   });
   afterEach(() => {
-    fetchSpy.mockRestore();
+    setDriverFetchForTests(null);
   });
 
   test("non-2xx response throws with the upstream body in the message", async () => {

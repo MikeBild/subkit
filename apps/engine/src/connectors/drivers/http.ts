@@ -24,6 +24,7 @@ import { assertEgressAllowed, assertRobotsAllowed } from "../egress-guard.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import type { ConnectorView } from "../types.ts";
 import { signSigV4Request } from "./aws-sigv4.ts";
+import { getDriverFetch } from "./fetch-seam.ts";
 import { buildProbeDiagnostics } from "./probe-diagnostics.ts";
 
 // Re-export so callers that already import from this driver can catch
@@ -812,7 +813,7 @@ export async function executePlannedHttpRequest(params: {
     level: "debug",
     thresholdMs: 1000,
     fields: { method: params.method, url_host: params.url.host },
-    fn: () => fetch(params.url, init),
+    fn: () => getDriverFetch()(params.url, init),
   });
   const text = await res.text();
   const headerObj: Record<string, string> = {};

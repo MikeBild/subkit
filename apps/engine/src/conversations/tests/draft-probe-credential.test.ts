@@ -17,6 +17,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "b
 import { conversations as conversationsTable, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { setDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 
 const uuid = createDeterministicUuidFactory(0xd4af7_c4ed);
 
@@ -937,10 +938,7 @@ describe("probe_connector_draft + draft credential", () => {
     const originalFetch = globalThis.fetch;
     // Cast to `typeof fetch` via `unknown` — the mock signature covers only the
     // relevant subset (url + init) that Cognito + the graphql driver use.
-    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("cognito-idp")) {
         return new Response(
@@ -955,7 +953,8 @@ describe("probe_connector_draft + draft credential", () => {
       }
       // Real fetch for the graphql mock server.
       return originalFetch(url, init);
-    }) as typeof fetch);
+    }) as typeof fetch;
+    setDriverFetchForTests(fetchImpl);
 
     try {
       const conversation_id = await seedConversation();
@@ -1003,7 +1002,7 @@ describe("probe_connector_draft + draft credential", () => {
       // token_type is "none" for Cognito — the JWT is sent without a "Bearer" prefix.
       expect(capturedAuth.value).toBe("minted-id-token-jwt");
     } finally {
-      fetchSpy.mockRestore();
+      setDriverFetchForTests(null);
       await gqlServer.stop();
     }
   });

@@ -19,6 +19,7 @@ import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
+import { getDriverFetch } from "./fetch-seam.ts";
 import type { DriverProbeResult } from "./index.ts";
 import { classifyS3ProbeError } from "./probe-classify.ts";
 
@@ -238,7 +239,7 @@ async function executeS3Operation(ctx: {
       let res: Response;
       if (p.range) {
         const url = await client.getPresignedUrl("GET", key, { expirySeconds: 60 });
-        res = await fetch(url, { headers: { range: p.range } });
+        res = await getDriverFetch()(url, { headers: { range: p.range } });
       } else {
         res = await client.getObject(key);
       }

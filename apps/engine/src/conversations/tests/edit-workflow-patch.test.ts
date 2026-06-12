@@ -194,4 +194,66 @@ describe("edit_workflow_patch", () => {
     expect(wf.steps).toHaveLength(3);
     expect(wf.steps[2]!.id).toBe("tail");
   });
+
+  test("legacy item_var draft is auto-migrated to $item by a proven rewrite (Chat-First escape)", async () => {
+    const draftRef = {
+      current: {
+        mode: "workflow_authoring",
+        workflow: {
+          name: "Legacy Loop",
+          slug: "legacy-loop",
+          steps: [
+            {
+              id: "list",
+              kind: "transform",
+              language: "jsonata",
+              expression: "[1, 2, 3]",
+            },
+            {
+              id: "each",
+              kind: "loop",
+              over: "$scope.list.data",
+              item_var: "num",
+              body: ["double"],
+            },
+            {
+              id: "double",
+              kind: "transform",
+              language: "jsonata",
+              expression: "num * 2",
+            },
+          ],
+        },
+        latest_preview: {
+          ok: true,
+          summary: "seeded",
+          step_traces: [
+            { step_id: "list", kind: "transform", status: "succeeded", output_preview: [1, 2, 3] },
+          ],
+        },
+        // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+      } as any,
+    };
+    const result = await editWorkflowPatchTool.execute(
+      makeCtx(() => draftRef.current, draftRef),
+      {
+        patches: [{ op: "replace", path: "/name", value: "Legacy Loop Renamed" }],
+      },
+    );
+    expect(result.ok).toBe(true);
+    const extra = result.data as {
+      legacy_itemvar_migrated?: boolean;
+      itemvar_changes?: Array<{ step_id: string; before: string; after: string }>;
+    };
+    expect(extra.legacy_itemvar_migrated).toBe(true);
+    expect(extra.itemvar_changes?.[0]?.after).toContain("$item");
+    const wf = (
+      draftRef.current as unknown as {
+        workflow: { steps: Array<{ id: string; item_var?: string; expression?: string }> };
+      }
+    ).workflow;
+    // item_var dropped; the bare ref provably rewritten to $item.
+    expect(wf.steps[1]!.item_var).toBeUndefined();
+    expect(wf.steps[2]!.expression).toContain("$item");
+  });
 });

@@ -8,18 +8,22 @@
 //
 // These tests mock globalThis.fetch so no live server is required.
 
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { setDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runClientCredentialsJsonGrant } from "../client.ts";
 
 describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
 
   beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
+    // Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
+    // globalThis — install the endpoint mock through the seam.
+    fetchSpy = mock<typeof fetch>();
+    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
   });
 
   afterEach(() => {
-    fetchSpy.mockRestore();
+    setDriverFetchForTests(null);
   });
 
   test("POSTs JSON body with mapped credential fields", async () => {
@@ -118,14 +122,17 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
 });
 
 describe("runClientCredentialsJsonGrant — json response", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
 
   beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
+    // Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
+    // globalThis — install the endpoint mock through the seam.
+    fetchSpy = mock<typeof fetch>();
+    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
   });
 
   afterEach(() => {
-    fetchSpy.mockRestore();
+    setDriverFetchForTests(null);
   });
 
   test("extracts access_token from JSON envelope", async () => {
@@ -199,14 +206,17 @@ describe("runClientCredentialsJsonGrant — json response", () => {
 });
 
 describe("runClientCredentialsJsonGrant — extra_token_headers forwarded", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
 
   beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
+    // Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
+    // globalThis — install the endpoint mock through the seam.
+    fetchSpy = mock<typeof fetch>();
+    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
   });
 
   afterEach(() => {
-    fetchSpy.mockRestore();
+    setDriverFetchForTests(null);
   });
 
   test("forwards extra_token_headers onto the token POST", async () => {
