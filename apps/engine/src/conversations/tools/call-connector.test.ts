@@ -24,6 +24,7 @@ import * as sftpDriver from "../../connectors/drivers/sftp.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { connectors, roles, schemaVersions, users } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import { callConnectorTool } from "./call-connector.ts";
 import type { ToolContext } from "./index.ts";
@@ -455,13 +456,32 @@ describe("call_connector — schema shape recording", () => {
       );
   }
 
+  // Deterministic egress via the driver-fetch seam. The shape-recording
+  // assertions hinge on an EXACT upstream status (200 vs 404), and the
+  // file's shared Bun.serve mock bleeds across servers under the
+  // full-suite run (see the note on the HTTP describe) — a sibling's
+  // always-200 handler answered this file's 404 probe on CI. `execute`
+  // runs in THIS test's async context, so a seam override reaches the
+  // http driver and pins the status with zero live network.
+  const routedFetch = ((input: RequestInfo | URL): Promise<Response> => {
+    const url = typeof input === "string" ? input : input.toString();
+    if (url.includes("/v2/missing")) {
+      return Promise.resolve(new Response("not found", { status: 404 }));
+    }
+    return Promise.resolve(
+      Response.json({ droplets: [{ id: 1, name: "alpha" }] }, { status: 200 }),
+    );
+  }) as typeof fetch;
+
   test("2xx response records the body shape keyed `<METHOD> <path>` (query stripped)", async () => {
     const { connector_id } = await seedHttpConnector({ slug: "call_shape_2xx" });
-    const result = await callConnectorTool.execute(makeToolContext(), {
-      connector_id,
-      method: "GET",
-      path: "/v2/droplets?page=2",
-    });
+    const result = await withDriverFetchForTests(routedFetch, () =>
+      callConnectorTool.execute(makeToolContext(), {
+        connector_id,
+        method: "GET",
+        path: "/v2/droplets?page=2",
+      }),
+    );
     expect(result.ok).toBe(true);
     expect((result.data as { status: number }).status).toBe(200);
 
@@ -480,11 +500,13 @@ describe("call_connector — schema shape recording", () => {
 
   test("4xx response does NOT record a shape", async () => {
     const { connector_id } = await seedHttpConnector({ slug: "call_shape_4xx" });
-    const result = await callConnectorTool.execute(makeToolContext(), {
-      connector_id,
-      method: "GET",
-      path: "/v2/missing",
-    });
+    const result = await withDriverFetchForTests(routedFetch, () =>
+      callConnectorTool.execute(makeToolContext(), {
+        connector_id,
+        method: "GET",
+        path: "/v2/missing",
+      }),
+    );
     // 4xx still returns ok:true at the tool boundary — the LLM inspects
     // the status — but the observed body is a failure payload, not the
     // endpoint's shape, so nothing is recorded.
