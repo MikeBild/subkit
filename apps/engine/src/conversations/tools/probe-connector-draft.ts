@@ -14,6 +14,7 @@ import { credentialModeMatchesAuthType } from "../persistence/credential-form-co
 import {
   clearDraftCredential,
   getDraftCredential,
+  mintM2mDraftCredential,
   toDecryptedCredential,
   toDecryptedCredentialAsync,
 } from "../persistence/draft-credential-cache.ts";
@@ -299,7 +300,8 @@ export const probeConnectorDraftTool: ConversationTool = {
       failure_code:
         | "credential_required"
         | "authenticate_oauth_required"
-        | "credential_mode_mismatch";
+        | "credential_mode_mismatch"
+        | "token_exchange_failed";
       summary: string;
       error_message: string;
       recommended_next: string[];
@@ -402,17 +404,32 @@ export const probeConnectorDraftTool: ConversationTool = {
       });
     }
 
-    // OAuth2 seed credentials cannot drive a probe — they update
-    // config.oauth only; the access token is minted later by
-    // authenticate_oauth + the OAuth callback. Surface a structured
-    // envelope instead of letting toDecryptedCredential throw.
-    if (draftCredential?.mode === "oauth2") {
+    // Read the draft's oauth config once — the machine-to-machine grant
+    // check below and the cognito region/client_id resolution both need
+    // it. `aws_region` is accepted on either `config.aws_region` (the
+    // canonical slot the template seeds) OR `config.oauth.aws_region`
+    // (the LLM occasionally nests it there). Same for `client_id`.
+    const draftCfg = (draftView.config ?? {}) as {
+      aws_region?: unknown;
+      oauth?: Record<string, unknown>;
+    };
+    const oauthCfg = (draftCfg.oauth ?? {}) as Record<string, unknown>;
+    const oauthGrantType = typeof oauthCfg.grant_type === "string" ? oauthCfg.grant_type : null;
+
+    // OAuth2 seed credentials: BROWSER-based grants cannot drive a
+    // probe — the access token is minted later by authenticate_oauth +
+    // the OAuth callback. Machine-to-machine grants
+    // (client_credentials_json) are different: the engine mints the
+    // bearer inline from the cached client_id/client_secret (the
+    // cognito_user_password branch below is the precedent), so the
+    // probe verifies the credentials immediately — no save, no browser.
+    if (draftCredential?.mode === "oauth2" && oauthGrantType !== "client_credentials_json") {
       return buildProbeGateEnvelope({
         failure_code: "authenticate_oauth_required",
         summary:
-          "Probe blocked: OAuth2 draft has no access token yet. Save the draft, then run authenticate_oauth and complete the browser exchange before probing.",
+          "Probe blocked: this OAuth2 draft uses a browser-based grant and has no access token yet. Save the draft, then run authenticate_oauth and complete the browser exchange before probing. (Machine-to-machine grants like client_credentials_json probe directly — no browser needed.)",
         error_message:
-          "Cannot probe an OAuth2 draft before authenticate_oauth completes. Save the draft, run authenticate_oauth, finish the browser exchange, then probe.",
+          "Cannot probe a browser-grant OAuth2 draft before authenticate_oauth completes. Save the draft, run authenticate_oauth, finish the browser exchange, then probe.",
         recommended_next: ["save_connector_draft", "authenticate_oauth"],
       });
     }
@@ -429,34 +446,52 @@ export const probeConnectorDraftTool: ConversationTool = {
     // Wrap in its own try/catch so a missing region/client_id on a Cognito
     // draft returns a structured `credential_required` envelope rather than
     // crashing the HTTP path's try/catch and losing the typed error message.
-    const draftCfg = (draftView.config ?? {}) as {
-      aws_region?: unknown;
-      oauth?: { client_id?: unknown; aws_region?: unknown };
-    };
-    const oauthCfg = (draftCfg.oauth ?? {}) as { client_id?: unknown; aws_region?: unknown };
     const region =
       (typeof draftCfg.aws_region === "string" && draftCfg.aws_region) ||
       (typeof oauthCfg.aws_region === "string" && oauthCfg.aws_region) ||
       null;
     const clientId = typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null;
     let credentialOverride: DecryptedCredential | null = null;
-    try {
-      credentialOverride = draftCredential
-        ? draftCredential.mode === "cognito_user_password"
-          ? await toDecryptedCredentialAsync(draftCredential, {
-              aws_region: region,
-              client_id: clientId,
-            })
-          : toDecryptedCredential(draftCredential)
-        : null;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return buildProbeGateEnvelope({
-        failure_code: "credential_required",
-        summary: msg,
-        error_message: msg,
-        recommended_next: ["update_connector_draft"],
-      });
+    if (draftCredential?.mode === "oauth2") {
+      // Reachable only for client_credentials_json (the browser-grant
+      // gate above returned for everything else): mint the bearer
+      // inline so the probe carries real auth. A failed exchange is a
+      // REAL probe verdict — the credentials are wrong or the token
+      // endpoint is unreachable — so surface it as such instead of a
+      // generic credential prompt.
+      try {
+        credentialOverride = await mintM2mDraftCredential(draftCredential, oauthCfg);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const endpoint =
+          draftCredential.token_endpoint ??
+          (typeof oauthCfg.token_endpoint === "string" ? oauthCfg.token_endpoint : "(unset)");
+        return buildProbeGateEnvelope({
+          failure_code: "token_exchange_failed",
+          summary: `Token exchange against ${endpoint} failed: ${msg}`,
+          error_message: `client_credentials_json token exchange against ${endpoint} failed: ${msg}. Verify the client_id/client_secret pair (re-collect via ask_user_form) and the token endpoint, then re-probe.`,
+          recommended_next: ["ask_user_form", "update_connector_draft"],
+        });
+      }
+    } else {
+      try {
+        credentialOverride = draftCredential
+          ? draftCredential.mode === "cognito_user_password"
+            ? await toDecryptedCredentialAsync(draftCredential, {
+                aws_region: region,
+                client_id: clientId,
+              })
+            : toDecryptedCredential(draftCredential)
+          : null;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return buildProbeGateEnvelope({
+          failure_code: "credential_required",
+          summary: msg,
+          error_message: msg,
+          recommended_next: ["update_connector_draft"],
+        });
+      }
     }
 
     // Re-probe guard: an identical probe of an unchanged draft +

@@ -107,6 +107,7 @@ describe("Ink journey — text_delta streaming", () => {
     let frame = inst.lastFrame() ?? "";
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (!frame.includes("Hello, world!") && Date.now() < deadline) {
+      // allow-wall-clock: bounded render-settle poll against real timers (ink-testing-library)
       await tick(50);
       frame = inst.lastFrame() ?? "";
     }
@@ -164,6 +165,7 @@ describe("Ink journey — tool call lifecycle with tool_log + truncation", () =>
     let frame = inst.lastFrame() ?? "";
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (!frame.includes("list_workflows") && Date.now() < deadline) {
+      // allow-wall-clock: bounded render-settle poll against real timers (ink-testing-library)
       await tick(50);
       frame = inst.lastFrame() ?? "";
     }
@@ -217,6 +219,7 @@ describe("Ink journey — elicit_request flow (confirm_before_execution)", () =>
     let frame = inst.lastFrame() ?? "";
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (!frame.includes("Policy requires confirmation") && Date.now() < deadline) {
+      // allow-wall-clock: bounded render-settle poll against real timers (ink-testing-library)
       await tick(50);
       frame = inst.lastFrame() ?? "";
     }
@@ -226,5 +229,132 @@ describe("Ink journey — elicit_request flow (confirm_before_execution)", () =>
     expect(frame).toContain("run_workflow");
     expect(frame).toContain("environment");
     expect(frame).toContain("prod");
+  });
+});
+
+describe("Ink journey — assistant text + pending form panel (forensic 35a3b9ba)", () => {
+  // Live 6.17.0 session: ask_user_form paused the turn, the persisted
+  // assistant `message` landed BEFORE its text_delta replay, and the
+  // same assistant text rendered above the form panel (static message)
+  // AND below it (live-delta row fed by the replayed delta).
+  const MSG_ID = "5d469761-4bee-41a5-9299-8c0cf980bcd8";
+  // Short enough that the frame never wraps it, so occurrence counting
+  // is exact.
+  const ASSISTANT_TEXT = "Saving the Xray connector with OAuth2 next.";
+
+  function formEvents(text: string, msgId: string): TurnEvent[] {
+    return [
+      {
+        type: "tool_call_start",
+        call_id: "tc-form",
+        tool: "ask_user_form",
+        parent_message_id: msgId,
+      },
+      { type: "tool_call_end", call_id: "tc-form", input: {}, parent_message_id: msgId },
+      {
+        type: "tool_result",
+        call_id: "tc-form",
+        tool: "ask_user_form",
+        output: { status: "awaiting_input", elicitation_id: "elc-form" },
+        parent_message_id: msgId,
+      },
+      {
+        type: "elicit_request",
+        elicitation_id: "elc-form",
+        tool_call_id: "tc-form",
+        tool_name: "ask_user_form",
+        summary: "Confirm the OAuth2 credentials.",
+        input: {
+          question: "Confirm the OAuth2 credentials to attach.",
+          fields: [{ name: "client_id", label: "Client ID", type: "text", required: true }],
+        },
+        parent_message_id: msgId,
+      },
+      // Persisted message arrives AFTER the elicit_request and BEFORE
+      // its own delta replay — exactly the live event order.
+      {
+        type: "message",
+        role: "assistant",
+        content: { text },
+        id: msgId,
+        parent_message_id: msgId,
+      },
+      { type: "text_delta", text },
+      { type: "completed", status: "awaiting_input" },
+    ];
+  }
+
+  test("assistant text renders exactly once and the form panel once when the elicitation is pending", async () => {
+    const inst = render(
+      <InkApp
+        {...defaults({
+          onPrompt: async () => ({
+            events: iter(formEvents(ASSISTANT_TEXT, MSG_ID)),
+            conversationId: "c-form-dup",
+          }),
+        })}
+      />,
+    );
+    await typeText(inst, "save the connector");
+    await enter(inst);
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
+    const deadline = Date.now() + 2000;
+    let frame = inst.lastFrame() ?? "";
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
+    while (
+      !(
+        frame.includes("Confirm the OAuth2 credentials to attach") && frame.includes(ASSISTANT_TEXT)
+      ) &&
+      Date.now() < deadline // allow-wall-clock: bounded render-settle poll against real timers (ink-testing-library)
+    ) {
+      await tick(50);
+      frame = inst.lastFrame() ?? "";
+    }
+    const textOccurrences = frame.split(ASSISTANT_TEXT).length - 1;
+    expect(textOccurrences).toBe(1);
+    const panelOccurrences = frame.split("Confirm the OAuth2 credentials to attach").length - 1;
+    expect(panelOccurrences).toBe(1);
+  });
+
+  test("pending form with a DIFFERENT preceding assistant message renders both, each once", async () => {
+    const otherText = "First I checked the existing Jira connector.";
+    const events: TurnEvent[] = [
+      {
+        type: "message",
+        role: "assistant",
+        content: { text: otherText },
+        id: "msg-prior",
+        parent_message_id: "msg-prior",
+      },
+      { type: "text_delta", text: otherText },
+      ...formEvents(ASSISTANT_TEXT, MSG_ID),
+    ];
+    const inst = render(
+      <InkApp
+        {...defaults({
+          onPrompt: async () => ({ events: iter(events), conversationId: "c-form-two" }),
+        })}
+      />,
+    );
+    await typeText(inst, "save the connector");
+    await enter(inst);
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
+    const deadline = Date.now() + 2000;
+    let frame = inst.lastFrame() ?? "";
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
+    while (
+      !(
+        frame.includes("Confirm the OAuth2 credentials to attach") &&
+        frame.includes(ASSISTANT_TEXT) &&
+        frame.includes(otherText)
+      ) &&
+      Date.now() < deadline // allow-wall-clock: bounded render-settle poll against real timers (ink-testing-library)
+    ) {
+      await tick(50);
+      frame = inst.lastFrame() ?? "";
+    }
+    expect(frame.split(otherText).length - 1).toBe(1);
+    expect(frame.split(ASSISTANT_TEXT).length - 1).toBe(1);
+    expect(frame.split("Confirm the OAuth2 credentials to attach").length - 1).toBe(1);
   });
 });

@@ -194,6 +194,175 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
     expect(assistantMessages(state)).toHaveLength(1);
   });
 
+  // ── Forensics, conversation 35a3b9ba (sk 6.17.0, ~19:11:57) ────────
+  //
+  // The engine's delta stream is a CONTINUOUS lagging replay of the
+  // concatenated assistant texts: the persisted `message` event can land
+  // BEFORE any of its `text_delta` frames (seq 153 message, seq 154
+  // delta with the identical full text), and a single delta can span a
+  // message boundary (seq 135: tail of message ba3d4a8f + the full text
+  // of message 87abe312 in ONE frame). Pre-fix, `applyAssistantMessage`
+  // only armed `expectedStreamTail` when the stream buffer was a
+  // NON-EMPTY prefix of the persisted text — so a message arriving ahead
+  // of its deltas armed nothing, the full-text replay delta accumulated
+  // into `streamingAssistantText`, and the Ink view rendered the same
+  // assistant text above the pending ask_user_form panel (persisted
+  // message, static) AND below it (live-delta row, dynamic).
+
+  const XRAY_TEXT =
+    "The OAuth2 flow for Xray Cloud requires collecting the client credentials " +
+    "and then authenticating via browser. Since you provided client_id + " +
+    "client_secret in the form, let me save the connector with those credentials embedded:";
+  const XRAY_MSG_ID = "5d469761-4bee-41a5-9299-8c0cf980bcd8";
+
+  function replayXrayElicitTurn(state = initialSessionState("conv-35a3b9ba")) {
+    state = applyTurnEvent(state, {
+      type: "tool_call_start",
+      call_id: "5500300e",
+      tool: "ask_user_form",
+      input_partial: { question: "Confirm the OAuth2 credentials." },
+      parent_message_id: XRAY_MSG_ID,
+    });
+    state = applyTurnEvent(state, {
+      type: "tool_call_end",
+      call_id: "5500300e",
+      input: { question: "Confirm the OAuth2 credentials." },
+      parent_message_id: XRAY_MSG_ID,
+    });
+    state = applyTurnEvent(state, {
+      type: "tool_result",
+      call_id: "5500300e",
+      tool: "ask_user_form",
+      output: { status: "awaiting_input", elicitation_id: "10fc2aaa" },
+      parent_message_id: XRAY_MSG_ID,
+    });
+    state = applyTurnEvent(state, {
+      type: "elicit_request",
+      elicitation_id: "10fc2aaa",
+      tool_call_id: "5500300e",
+      tool_name: "ask_user_form",
+      summary: "Confirm the OAuth2 credentials.",
+      input: { question: "Confirm the OAuth2 credentials.", fields: [] },
+      parent_message_id: XRAY_MSG_ID,
+    });
+    // Persisted message lands BEFORE its delta replay (self-parented).
+    state = applyTurnEvent(state, {
+      type: "message",
+      role: "assistant",
+      content: { text: XRAY_TEXT },
+      id: XRAY_MSG_ID,
+      parent_message_id: XRAY_MSG_ID,
+    });
+    // The full-text replay delta — the second visual copy pre-fix.
+    state = applyTurnEvent(state, { type: "text_delta", text: XRAY_TEXT });
+    state = applyTurnEvent(state, { type: "completed", status: "awaiting_input" });
+    return state;
+  }
+
+  test("forensic replay 35a3b9ba — message AHEAD of its delta replay with a pending form yields ONE assistant cell and an empty stream buffer", () => {
+    const state = replayXrayElicitTurn();
+    expect(assistantMessages(state)).toHaveLength(1);
+    expect(assistantMessages(state)[0]?.content).toBe(XRAY_TEXT);
+    // The user-visible bug: the replayed delta re-populated the live
+    // buffer, rendering the same text again below the form panel.
+    expect(state.streamingAssistantText).toBe("");
+    expect(state.pendingElicitation?.id).toBe("10fc2aaa");
+    expect(state.status).toBe("awaiting_input");
+  });
+
+  test("forensic replay 35a3b9ba — a single delta spanning a message boundary (tail of prior + full next text) is swallowed", () => {
+    const T1 = "Perfect. Now I'll probe the connector to verify the credentials and endpoint work:";
+    const T2 =
+      "The probe detected that OAuth2 requires a different flow. For OAuth2, I need to " +
+      "save the connector first with the credentials, then authenticate via the browser. " +
+      "Let me save it with the client_id and client_secret:";
+    let state = initialSessionState("conv-35a3b9ba");
+    state = applyTurnEvent(state, {
+      type: "message",
+      role: "assistant",
+      content: { text: T1 },
+      id: "ba3d4a8f",
+      parent_message_id: "ba3d4a8f",
+    });
+    // Lagging replay of T1's head…
+    state = applyTurnEvent(state, { type: "text_delta", text: T1.slice(0, 40) });
+    state = applyTurnEvent(state, {
+      type: "elicit_request",
+      elicitation_id: "elc-x",
+      tool_name: "ask_user_form",
+      summary: "Save the connector?",
+      input: {},
+      parent_message_id: "87abe312",
+    });
+    state = applyTurnEvent(state, {
+      type: "message",
+      role: "assistant",
+      content: { text: T2 },
+      id: "87abe312",
+      parent_message_id: "87abe312",
+    });
+    // …then ONE delta carrying the rest of T1 AND all of T2 (seq 135).
+    state = applyTurnEvent(state, { type: "text_delta", text: T1.slice(40) + T2 });
+    state = applyTurnEvent(state, { type: "completed", status: "awaiting_input" });
+
+    expect(assistantMessages(state).map((m) => m.content)).toEqual([T1, T2]);
+    expect(state.streamingAssistantText).toBe("");
+  });
+
+  test("resolving the elicitation in the next turn keeps the message and renders the follow-up", () => {
+    let state = replayXrayElicitTurn();
+    // Next turn (elicitation resolved): a fresh stream with new text.
+    state = applyTurnEvent(state, {
+      type: "message",
+      role: "assistant",
+      content: { text: "Connector saved. Starting the browser OAuth2 flow." },
+      id: "msg-next",
+      parent_message_id: "msg-next",
+    });
+    state = applyTurnEvent(state, {
+      type: "text_delta",
+      text: "Connector saved. Starting the browser OAuth2 flow.",
+    });
+    state = applyTurnEvent(state, { type: "completed", status: "active" });
+
+    expect(assistantMessages(state).map((m) => m.content)).toEqual([
+      XRAY_TEXT,
+      "Connector saved. Starting the browser OAuth2 flow.",
+    ]);
+    expect(state.streamingAssistantText).toBe("");
+    expect(state.pendingElicitation).toBeNull();
+  });
+
+  test("an undelivered replay expectation does not leak across `completed` into the next turn's stream", () => {
+    let state = initialSessionState("conv-leak");
+    // Turn 1: message persisted, but the engine never replays its
+    // deltas before the stream closes.
+    state = applyTurnEvent(state, {
+      type: "message",
+      role: "assistant",
+      content: { text: "First turn text that never got a delta replay." },
+      id: "msg-t1",
+    });
+    state = applyTurnEvent(state, { type: "completed", status: "active" });
+    // Turn 2: a new SSE stream — replay expectations from the closed
+    // stream are void. The new turn's own ahead-of-delta replay must
+    // still be swallowed.
+    state = applyTurnEvent(state, {
+      type: "message",
+      role: "assistant",
+      content: { text: "Second turn text." },
+      id: "msg-t2",
+    });
+    state = applyTurnEvent(state, { type: "text_delta", text: "Second turn text." });
+    state = applyTurnEvent(state, { type: "completed", status: "active" });
+
+    expect(assistantMessages(state).map((m) => m.content)).toEqual([
+      "First turn text that never got a delta replay.",
+      "Second turn text.",
+    ]);
+    expect(state.streamingAssistantText).toBe("");
+  });
+
   test("user-echo dedupe still works alongside the assistant dedupe", () => {
     let state = initialSessionState("conv-8");
     state = { ...state, messages: [{ role: "user", content: "yes" }] };

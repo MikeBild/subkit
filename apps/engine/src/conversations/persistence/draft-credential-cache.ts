@@ -31,7 +31,10 @@
 // multi-instance, and the user explicitly chose this shape over a
 // schema migration.
 
-import { runCognitoUserPasswordGrant } from "../../credentials/oauth2/client.ts";
+import {
+  runClientCredentialsJsonGrant,
+  runCognitoUserPasswordGrant,
+} from "../../credentials/oauth2/client.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { AtomicCredentialInput } from "./save-connector.ts";
 
@@ -164,6 +167,49 @@ export async function toDecryptedCredentialAsync(
     mode: "oauth2",
     access_token: bundle.access_token,
     token_type: bundle.token_type, // "none" — applyAuthMaterial emits raw JWT
+    refresh_token: bundle.refresh_token,
+    expires_at: bundle.expires_at,
+    ...(bundle.scope ? { scope: bundle.scope } : {}),
+  };
+}
+
+/** Mint a bearer for a machine-to-machine OAuth2 draft (grant_type
+ *  `client_credentials_json`) from the cached client_id/client_secret
+ *  pair + the draft's `config.oauth` block. No browser dance — the
+ *  exchange POSTs JSON to the configured token endpoint (the Xray
+ *  Cloud pattern). Throws on a missing endpoint or a failed exchange;
+ *  the probe maps that to a structured `token_exchange_failed`
+ *  envelope. */
+export async function mintM2mDraftCredential(
+  input: Extract<AtomicCredentialInput, { mode: "oauth2" }>,
+  oauth: Record<string, unknown>,
+): Promise<DecryptedCredential> {
+  const token_endpoint =
+    input.token_endpoint ??
+    (typeof oauth.token_endpoint === "string" ? oauth.token_endpoint : null);
+  if (!token_endpoint) {
+    throw new Error(
+      "client_credentials_json draft is missing oauth.token_endpoint — set it via update_connector_draft({ config: { oauth: { token_endpoint: '<url>' } } })",
+    );
+  }
+  const bundle = await runClientCredentialsJsonGrant({
+    token_endpoint,
+    body_mapping: {
+      client_id: input.client_id,
+      ...(input.client_secret ? { client_secret: input.client_secret } : {}),
+    },
+    response_format: oauth.token_response_format === "json" ? "json" : "raw",
+    token_response_ttl_ms:
+      typeof oauth.token_response_ttl_ms === "number" ? oauth.token_response_ttl_ms : 86_400_000,
+    extra_token_headers:
+      oauth.extra_headers && typeof oauth.extra_headers === "object"
+        ? (oauth.extra_headers as Record<string, string>)
+        : undefined,
+  });
+  return {
+    mode: "oauth2",
+    access_token: bundle.access_token,
+    token_type: bundle.token_type,
     refresh_token: bundle.refresh_token,
     expires_at: bundle.expires_at,
     ...(bundle.scope ? { scope: bundle.scope } : {}),

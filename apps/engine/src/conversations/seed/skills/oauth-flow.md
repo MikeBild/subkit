@@ -9,12 +9,21 @@ side_effects: write
 idempotency: key_required
 maturity: stable
 tags: [auth, oauth]
-version: 2
+version: 3
 ---
 
 # OAuth2 Authorization Flow
 
-OAuth2 connectors authenticate in two phases:
+**Machine-to-machine grants need NO browser.** When the connector's
+`config.oauth.grant_type` is `client_credentials_json` (e.g. Xray Cloud),
+the engine exchanges the stored `client_id` + `client_secret` for a token
+automatically and refreshes it before expiry. The flow is simply:
+collect `client_id`/`client_secret` via `ask_user_form` → `probe_connector_draft`
+(the probe mints the token inline and verifies the credentials) → save.
+`authenticate_oauth` on such a connector mints immediately and returns
+success — never tell the user to open a browser for this grant.
+
+Browser-based OAuth2 connectors authenticate in two phases:
 
 1. **Save the connector** with `save_connector_draft`. The template's OAuth metadata (auth_url, token_url, scopes) is bound automatically.
 2. **Run the dance** with `authenticate_oauth`. The agent receives an `authorization_url` AND a `redirect_uri`. Surface BOTH to the user — they must add the `redirect_uri` to their OAuth provider's allowed-redirects allowlist (Google Cloud Console, GitHub OAuth app settings, Slack app config, etc.) BEFORE opening the authorization URL. After authorization the engine persists the access + refresh tokens via the global `/v1/oauth/callback` route.

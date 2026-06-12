@@ -502,19 +502,29 @@ function lastAssistantMessageId(state: SkSessionState): string | undefined {
  * Fold a persisted assistant `message` event into the session.
  *
  * Duplicate-output forensics (conversation 68b5c87e, elicitation-
- * resolution turn): the engine delivered text_delta frames, then the
- * persisted `message` with IDENTICAL text — SELF-parented
- * (parent_message_id === id) — then MORE deltas replaying the tail of
- * that same text. Three reconciliations keep that a single cell:
+ * resolution turn; conversation 35a3b9ba, pending ask_user_form turn):
+ * the engine's delta stream is a CONTINUOUS lagging replay of the
+ * concatenated assistant texts. The persisted `message` can land
+ * mid-stream (68b5c87e), or AHEAD of every one of its deltas
+ * (35a3b9ba: elicit_request → message → full-text delta), and a single
+ * delta can span a message boundary (tail of the previous message +
+ * the full next text in one frame). Three reconciliations keep each
+ * message a single cell:
  *
  *   1. same-id replay → reconcile in place (longer text wins) instead
  *      of appending a clone;
  *   2. adjacent assistant message whose text equals (or is a
  *      prefix-extension of) the previous one → replace the previous
  *      cell, mirroring the user-echo dedupe precedent;
- *   3. text not yet delivered by the stream is recorded as
- *      `expectedStreamTail` so the `text_delta` handler swallows the
- *      replayed tail instead of re-rendering it.
+ *   3. persisted text the delta stream has not delivered yet is
+ *      APPENDED to `expectedStreamTail` — a queue of
+ *      persisted-but-not-yet-replayed text — so the `text_delta`
+ *      handler swallows lagging replays (including ones that cross a
+ *      message boundary) instead of re-rendering them. Pre-fix the
+ *      tail was only armed when the buffer was a NON-EMPTY prefix, so
+ *      a message arriving ahead of its deltas armed nothing and the
+ *      replay rendered the same text again — visually duplicated
+ *      around the pending elicitation panel.
  *
  * Distinct assistant messages (different texts between tool calls)
  * still append normally — multi-message turns keep every cell.
@@ -525,11 +535,13 @@ function applyAssistantMessage(
   text: string,
 ): SkSessionState {
   const buffer = state.streamingAssistantText;
-  // Tail of the persisted text the stream has not delivered yet. Only
-  // meaningful when the deltas so far are a prefix of the persisted
-  // text (i.e. the message materialized mid-stream).
-  const expectedStreamTail =
-    buffer.length > 0 && text.startsWith(buffer) ? text.slice(buffer.length) : "";
+  // Portion of `text` already accounted for: delivered live by the
+  // delta stream (the buffer), or armed into the replay queue when an
+  // earlier copy of this message landed (same-id replay / adjacent
+  // duplicate). Only the remainder joins `expectedStreamTail`. `null`
+  // means the live buffer diverged from the persisted text — the
+  // stream position is unknown, so the queue resets conservatively.
+  let accountedPrefix: string | null = text.startsWith(buffer) ? buffer : null;
 
   let messages = state.messages;
   const sameIdIdx = next.id
@@ -537,6 +549,9 @@ function applyAssistantMessage(
     : -1;
   if (sameIdIdx >= 0) {
     const existing = messages[sameIdIdx];
+    // The first arrival already armed its full text — a replay must
+    // not double-arm, or the queue would expect the replay twice.
+    if (existing) accountedPrefix = text.startsWith(existing.content) ? existing.content : null;
     // Longer text wins — a replay carrying extended text reconciles to
     // the fuller form; a truncated replay never shrinks the cell.
     if (existing && existing.content.length <= text.length) {
@@ -549,8 +564,15 @@ function applyAssistantMessage(
     const newText = text.trim();
     const duplicatesPrior =
       priorText.length > 0 && (newText === priorText || newText.startsWith(priorText));
+    if (duplicatesPrior && prior) {
+      // The superseded cell's text was armed when it arrived — only
+      // the extension (if any) is new to the replay queue.
+      accountedPrefix = text.startsWith(prior.content) ? prior.content : null;
+    }
     messages = duplicatesPrior ? [...messages.slice(0, -1), next] : [...messages, next];
   }
+  const expectedStreamTail =
+    accountedPrefix !== null ? state.expectedStreamTail + text.slice(accountedPrefix.length) : "";
   return { ...state, messages, streamingAssistantText: "", expectedStreamTail };
 }
 
@@ -802,6 +824,11 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
         // ActivityLine component then unmounts cleanly. Without this
         // an `idle · last: <tool>` line would linger past the turn.
         activity: null,
+        // Each turn is its own SSE stream — a delta replay that hasn't
+        // arrived by `completed` never will. Dropping the expectation
+        // here keeps a stale queue from mis-swallowing (or diverging
+        // on) the NEXT turn's stream.
+        expectedStreamTail: "",
         sessionTotalTokens: state.sessionTotalTokens + turnTokens,
       };
     }
