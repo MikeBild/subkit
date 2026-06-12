@@ -19,6 +19,7 @@ import { stepFingerprint } from "../step-fingerprint.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { pickProbeRecoveryActions } from "./probe-recovery.ts";
+import { truncateStepPreviewForLlm } from "./truncate.ts";
 
 const inputSchema = z
   .object({
@@ -26,13 +27,19 @@ const inputSchema = z
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).optional(),
     budget_ms: z.number().int().min(500).max(60_000).optional(),
+    execute_writes: z
+      .boolean()
+      .optional()
+      .describe(
+        "Execute a write-classified step for real instead of holding it. Default false: the preview resolves the request (URL/headers/body materialized) but never dispatches. Set true ONLY when the user explicitly confirmed a live single-step run.",
+      ),
   })
   .openapi("DryRunStepToolInput");
 
 export const dryRunStepTool: ConversationTool = {
   name: "dry_run_step",
   description:
-    "Run a single draft step in isolation through the real driver pipeline. Produces an executions row (source_kind=step) so the run is auditable and traceable.",
+    "Run a single draft step in isolation through the real driver pipeline. Produces an executions row (source_kind=step) so the run is auditable and traceable. Read steps execute for real; a WRITE step (send/publish/mutation) is HELD by default — resolved but never dispatched — same cannot-publish contract as dry_run_workflow. Pass execute_writes: true only after explicit user confirmation.",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
@@ -82,6 +89,7 @@ export const dryRunStepTool: ConversationTool = {
       db: ctx.db,
       tenant_id: ctx.tenant_id,
       step,
+      hold_writes: !args.execute_writes,
       input: args.input ?? null,
       ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
       ...(args.environment ? { environment: args.environment } : {}),
@@ -133,6 +141,12 @@ export const dryRunStepTool: ConversationTool = {
             ? typeof (runStep.error as { code?: unknown }).code === "string"
               ? { error_code: (runStep.error as { code: string }).code }
               : {}
+            : {}),
+          // Hold-writes preview: the materialized-but-never-dispatched
+          // request IS the step's reviewable artifact — same trace shape
+          // as dry_run_workflow's step_trace entries.
+          ...(runStep.held
+            ? { held: true, held_request: truncateStepPreviewForLlm(runStep.held_request).data }
             : {}),
         }
       : null;
@@ -186,6 +200,12 @@ export const dryRunStepTool: ConversationTool = {
         classification: summary.classification,
         summary: summary.summary,
         execution_id: run.execution_id,
+        // Single-step surface: the held marker rides the top-level
+        // payload too — the LLM must see "resolved but NOT dispatched"
+        // without digging into step_traces.
+        ...(runStep?.held
+          ? { held: true, held_request: truncateStepPreviewForLlm(runStep.held_request).data }
+          : {}),
         ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
         ...(summary.output_preview !== undefined ? { output_preview: summary.output_preview } : {}),
         ...(stepTraceEntry?.scope_at_step ? { scope_at_step: stepTraceEntry.scope_at_step } : {}),

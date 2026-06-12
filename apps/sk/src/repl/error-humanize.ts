@@ -151,6 +151,22 @@ export function summarizeToolFailure(
     return { label: `${toolName} failed` };
   }
   const obj = data as Record<string, unknown>;
+  // Stage-gated authoring tools (propose_step / update_param) refuse
+  // with `authoring_stage_violation` while the draft has no preview or
+  // recorded-eval evidence yet. The engine's message is written for the
+  // LLM; the operator gets the one-line version of the same contract.
+  const errCode =
+    typeof obj.error_code === "string"
+      ? obj.error_code
+      : typeof obj.error === "string"
+        ? obj.error
+        : null;
+  if (errCode === "authoring_stage_violation") {
+    return {
+      label: "This tool is for repairing an existing draft.",
+      hint: "Start with author_workflow (one call builds the complete draft), then dry_run_workflow.",
+    };
+  }
   if (typeof obj.error === "string") return { label: obj.error };
   if (Array.isArray(obj.errors) && obj.errors.length > 0) {
     const first = obj.errors[0] as RawValidationError | undefined;

@@ -112,6 +112,28 @@ describe("summarizeToolFailure", () => {
     const r = summarizeToolFailure("foo", { ok: false });
     expect(r.label).toBe("foo failed");
   });
+
+  it("maps authoring_stage_violation to the repair-stage explanation", () => {
+    // Stage-gated micro-tools (propose_step / update_param) refuse with
+    // this code while the draft has no preview / recorded-eval evidence.
+    // The operator must read "use author_workflow first", not the raw code.
+    const r = summarizeToolFailure("propose_step", {
+      error: "authoring_stage_violation",
+      error_code: "authoring_stage_violation",
+      message: "`propose_step` is a repair-stage tool — …",
+      recoverable: true,
+    });
+    expect(r.label).toBe("This tool is for repairing an existing draft.");
+    expect(r.hint).toBe(
+      "Start with author_workflow (one call builds the complete draft), then dry_run_workflow.",
+    );
+  });
+
+  it("recognises authoring_stage_violation via the bare `error` key too", () => {
+    const r = summarizeToolFailure("update_param", { error: "authoring_stage_violation" });
+    expect(r.label).toContain("repairing an existing draft");
+    expect(r.hint).toContain("author_workflow");
+  });
 });
 
 describe("findErrorHint pattern table", () => {

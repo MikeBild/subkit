@@ -102,7 +102,7 @@ export const authorWorkflowTool: ConversationTool = {
 
     // Detach from any previously-saved workflow target when this call
     // replaces the draft with a different slug — same discipline as
-    // build_workflow / start_workflow_from_goal, so a later commit
+    // build_workflow / start_workflow_from_recipe, so a later commit
     // never keys its upsert on a stale workflow id.
     if (currentSlug !== result.definition.slug) {
       await ctx.db

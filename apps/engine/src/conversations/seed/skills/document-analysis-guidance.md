@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [discovery, openapi, attachments]
-version: 2
+version: 3
 ---
 
 # Document Analysis Guidance
@@ -52,7 +52,7 @@ Do NOT generate workflow steps until the user confirms:
 1. Which endpoints are in scope
 2. The overall goal (what should happen when the workflow runs)
 
-Only then call `build_workflow` or `propose_step`.
+Only then call `author_workflow` (one call, pass the goal verbatim plus the connector ids — the engine generates and evaluates the complete draft), or `build_workflow` when you already hold the exact definition.
 
 ## Example: extracted endpoint summary
 

@@ -383,7 +383,25 @@ const StepPreviewCard: React.FC<CardProps> = memo(({ call }) => {
   // to a generic output field. A successful preview that produced []
   // (e.g. a loop body that never iterated) renders the literal "[]" so
   // the operator can see it WITHOUT having to ask "display results".
-  const stepPreviews = Array.isArray(d?.steps) ? (d?.steps as unknown[]) : null;
+  // `step_trace` is the canonical per-step array on the dry_run_workflow
+  // envelope (both the blocked and the auto-committed shapes); `steps`
+  // is the older key some tools still emit. Read both.
+  const stepPreviews = Array.isArray(d?.steps)
+    ? (d?.steps as unknown[])
+    : Array.isArray(d?.step_trace)
+      ? (d?.step_trace as unknown[])
+      : null;
+  // Instruction-grounded preview judge (dry_run_workflow). `passes`
+  // renders one quiet line, `skipped` renders nothing, partial/failed
+  // render a prominent block — the verdict is WHY the preview did not
+  // auto-commit, so hiding it would leave the operator staring at an
+  // unexplained needs_repair.
+  const judge = asRecord(d?.judge);
+  const judgeVerdict = typeof judge?.verdict === "string" ? judge.verdict : null;
+  const judgeReason = typeof judge?.reason === "string" ? judge.reason : null;
+  const judgeMissing = Array.isArray(judge?.missing)
+    ? judge.missing.filter((m): m is string => typeof m === "string")
+    : [];
   // step_outputs[] is the per-step preview array dry_run_workflow
   // emits (#22). When present we surface the LAST step's preview as
   // the "what did the workflow produce" line — pre-fix the dry-run
@@ -433,12 +451,42 @@ const StepPreviewCard: React.FC<CardProps> = memo(({ call }) => {
             const id =
               typeof r?.step_key === "string"
                 ? r.step_key
-                : typeof r?.id === "string"
-                  ? r.id
-                  : `step_${i}`;
+                : typeof r?.step_id === "string"
+                  ? r.step_id
+                  : typeof r?.id === "string"
+                    ? r.id
+                    : `step_${i}`;
             const sStatus = typeof r?.status === "string" ? r.status : "?";
             const sKind = typeof r?.kind === "string" ? r.kind : "";
             const sDur = typeof r?.duration_ms === "number" ? `${r.duration_ms}ms` : "";
+            // Hold-writes preview: the step was resolved but NOT
+            // dispatched. It must never read as a normal green step —
+            // the materialized request (method, URL, body) is the
+            // operator's review artifact, so it gets its own block.
+            if (r?.held === true) {
+              const hr = asRecord(r?.held_request);
+              const hMethod = typeof hr?.method === "string" ? hr.method : "";
+              const hUrl = typeof hr?.url === "string" ? hr.url : "";
+              const hBody = previewLine(hr?.body, 200);
+              return (
+                <Box key={`pv-step-${call.id}-${i}`} flexDirection="column">
+                  <Text>
+                    {"  "}
+                    <Text color="yellow" bold>
+                      ⏸ HELD
+                    </Text>
+                    <Text color="yellow"> — resolved, not dispatched</Text>
+                    <Text
+                      dimColor
+                    >{` · ${id}${sKind ? ` (${sKind})` : ""}${sDur ? ` · ${sDur}` : ""}`}</Text>
+                  </Text>
+                  {hMethod || hUrl ? (
+                    <Text dimColor>{`    ${[hMethod, hUrl].filter(Boolean).join(" ")}`}</Text>
+                  ) : null}
+                  {hBody ? <Text dimColor>{`    body: ${hBody}`}</Text> : null}
+                </Box>
+              );
+            }
             const sOut = previewLine(r?.output_preview ?? r?.output, 80);
             return (
               <Text key={`pv-step-${call.id}-${i}`} dimColor>
@@ -446,6 +494,32 @@ const StepPreviewCard: React.FC<CardProps> = memo(({ call }) => {
               </Text>
             );
           })}
+        </Box>
+      ) : null}
+      {judgeVerdict === "passes" ? (
+        <Box marginLeft={2}>
+          <Text dimColor>judge: passes</Text>
+        </Box>
+      ) : null}
+      {judgeVerdict === "partial" || judgeVerdict === "failed" ? (
+        <Box marginLeft={2} flexDirection="column">
+          <Text color={judgeVerdict === "failed" ? "red" : "yellow"} bold>
+            ⚖ judge: {judgeVerdict} — preview does not satisfy the goal
+          </Text>
+          {judgeReason ? (
+            <Text color="yellow" wrap="wrap">
+              {judgeReason}
+            </Text>
+          ) : null}
+          {judgeMissing.map((m, i) => (
+            <Text key={`pv-judge-miss-${call.id}-${i}`} color="yellow">
+              {`  • ${m}`}
+            </Text>
+          ))}
+          <Text dimColor>
+            fix via edit_workflow_patch and re-run dry_run_workflow — or save explicitly
+            (save_workflow_draft) to commit anyway
+          </Text>
         </Box>
       ) : null}
       {hasOutput && (!stepPreviews || stepPreviews.length === 0) ? (
@@ -792,8 +866,8 @@ const ConnectorDraftCard: React.FC<CardProps> = memo(({ call }) => {
 });
 ConnectorDraftCard.displayName = "ConnectorDraftCard";
 
-// Workflow-draft card — fires on propose_step / start_workflow_from_goal
-// / build_workflow / connect_steps / update_param. One-line "N step(s),
+// Workflow-draft card — fires on propose_step / build_workflow /
+// connect_steps / update_param. One-line "N step(s),
 // last step: <id> (<kind>)" plus validation errors when present.
 const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
   const tone = statusTone(call);
@@ -852,6 +926,133 @@ const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
   );
 });
 WorkflowDraftCard.displayName = "WorkflowDraftCard";
+
+// author_workflow — the one-shot authoring pipeline. The envelope is a
+// draft-mutation payload carrying `{ workflow: { name, slug, goal,
+// step_count }, definition, validation, recorded_eval: { ok, summary,
+// expressions[], gates, missing_evidence, next_actions }, attempts,
+// next_step: "dry_run_workflow" }`. The card answers three operator
+// questions in one glance: what was built (name/slug/steps), did the
+// recorded evaluation pass (clean vs. findings), and what happens next
+// (always dry_run_workflow).
+const AuthorWorkflowCard: React.FC<CardProps> = memo(({ call }) => {
+  const tone = statusTone(call);
+  const d = unwrapData(call);
+  const workflow = asRecord(d?.workflow);
+  const name =
+    typeof workflow?.name === "string"
+      ? workflow.name
+      : typeof d?.name === "string"
+        ? (d.name as string)
+        : null;
+  const slug = typeof workflow?.slug === "string" ? workflow.slug : null;
+  // Step count + kinds summary from the full definition when present;
+  // the lighter workflow.step_count otherwise.
+  const definition = asRecord(d?.definition);
+  const defSteps = Array.isArray(definition?.steps) ? definition.steps : null;
+  const stepCount =
+    defSteps?.length ?? (typeof workflow?.step_count === "number" ? workflow.step_count : null);
+  const kindsSummary = (() => {
+    if (!defSteps) return "";
+    const counts = new Map<string, number>();
+    for (const s of defSteps) {
+      const kind = typeof asRecord(s)?.kind === "string" ? (asRecord(s)?.kind as string) : "step";
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    }
+    return [...counts.entries()].map(([k, n]) => (n > 1 ? `${k}×${n}` : k)).join(", ");
+  })();
+  const attempts = typeof d?.attempts === "number" ? d.attempts : null;
+  const nextStep = typeof d?.next_step === "string" ? d.next_step : "dry_run_workflow";
+
+  // Failure envelope (gate error / pipeline failure): error_code +
+  // message, no definition. Render the refusal plainly.
+  const errorCode = typeof d?.error_code === "string" ? d.error_code : null;
+  const message = typeof d?.message === "string" ? d.message : null;
+  if (tone === "fail" || (errorCode && !definition)) {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Box>
+          {badge("fail", "Workflow authoring failed")}
+          {errorCode ? <Text dimColor>{` · ${errorCode}`}</Text> : null}
+        </Box>
+        {message ? (
+          <Box marginLeft={2}>
+            <Text color="yellow" wrap="wrap">
+              {message}
+            </Text>
+          </Box>
+        ) : null}
+      </Box>
+    );
+  }
+
+  // Recorded-eval verdict line. Clean → one quiet line. Findings →
+  // count by status plus the first finding's site + message so the
+  // operator sees WHERE without opening inspect view.
+  const recordedEval = asRecord(d?.recorded_eval);
+  const evalOk = recordedEval?.ok === true;
+  const findings = (
+    Array.isArray(recordedEval?.expressions) ? recordedEval.expressions : []
+  ).flatMap((f) => {
+    const r = asRecord(f);
+    return r && typeof r.status === "string" && r.status !== "ok" ? [r] : [];
+  });
+  const findingsByStatus = (() => {
+    const counts = new Map<string, number>();
+    for (const f of findings)
+      counts.set(f.status as string, (counts.get(f.status as string) ?? 0) + 1);
+    return [...counts.entries()].map(([s, n]) => `${n} ${s}`).join(", ");
+  })();
+  const firstFinding = findings[0] ?? null;
+  const firstFindingLine = firstFinding
+    ? `${typeof firstFinding.site === "string" ? firstFinding.site : "(site)"}${
+        typeof firstFinding.message === "string"
+          ? ` — ${previewLine(firstFinding.message, 160)}`
+          : ""
+      }`
+    : null;
+
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>
+        {badge(
+          recordedEval && !evalOk ? "warn" : tone === "info" ? "ok" : tone,
+          "Workflow authored",
+        )}
+        <Text dimColor>
+          {name ? ` · ${name}` : ""}
+          {slug ? ` · ${slug}` : ""}
+          {stepCount !== null
+            ? ` · ${stepCount} step${stepCount === 1 ? "" : "s"}${kindsSummary ? ` (${kindsSummary})` : ""}`
+            : ""}
+          {attempts !== null ? ` · ${attempts} attempt${attempts === 1 ? "" : "s"}` : ""}
+        </Text>
+      </Box>
+      {recordedEval ? (
+        evalOk ? (
+          <Box marginLeft={2}>
+            <Text color="green">evaluated clean against recorded evidence</Text>
+          </Box>
+        ) : (
+          <Box marginLeft={2} flexDirection="column">
+            <Text color="yellow">
+              {`recorded eval: ${findings.length} finding${findings.length === 1 ? "" : "s"}${findingsByStatus ? ` (${findingsByStatus})` : ""}`}
+            </Text>
+            {firstFindingLine ? (
+              <Text dimColor wrap="wrap">
+                {firstFindingLine}
+              </Text>
+            ) : null}
+          </Box>
+        )
+      ) : null}
+      <Box marginLeft={2}>
+        <Text color="cyan">→ {nextStep}</Text>
+      </Box>
+    </Box>
+  );
+});
+AuthorWorkflowCard.displayName = "AuthorWorkflowCard";
 
 // Generic milestone fallback — used when a tool fires a milestone card
 // but its result shape didn't match the dedicated extractor. Renders
@@ -1100,7 +1301,7 @@ const CHAT_MILESTONE_TOOLS = new Set([
   "start_connector_from_description",
   "start_connector_from_template",
   "build_workflow",
-  "start_workflow_from_goal",
+  "author_workflow",
   "run_workflow",
   "diagnose_latest_execution",
   "create_knowledge_source",
@@ -1430,7 +1631,8 @@ export function renderAuthoringCard(
     case "validate_connector_draft":
     case "inspect_connector_draft":
       return <ConnectorDraftCard key={`acc-${call.id}`} call={call} />;
-    case "start_workflow_from_goal":
+    case "author_workflow":
+      return <AuthorWorkflowCard key={`acc-${call.id}`} call={call} />;
     case "build_workflow": {
       const intent = extractWorkflowIntent(call);
       if (intent) return <IntentCard key={`acc-${call.id}`} intent={intent} />;

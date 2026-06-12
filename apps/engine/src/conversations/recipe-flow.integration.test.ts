@@ -81,6 +81,35 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(wf?.slug).toBe("stripe-list-customers");
   });
 
+  test("clone stashes a recipe-derived goal so the post-preview judge is armed (not judge.no_goal)", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      { template_slug: "stripe", recipe_slug: "list-customers" },
+    );
+    expect(result.ok).toBe(true);
+    const goal = (draft.current.workflow as { goal?: string }).goal;
+    // Derived from the recipe's title + description — the closest
+    // available statement of intent when the user picked a recipe.
+    expect(typeof goal).toBe("string");
+    expect(goal?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  test("user-provided name override is folded into the stashed goal", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      {
+        template_slug: "stripe",
+        recipe_slug: "list-customers",
+        name: "Weekly VIP customer pull",
+      },
+    );
+    expect(result.ok).toBe(true);
+    const goal = (draft.current.workflow as { goal?: string }).goal;
+    expect(goal).toContain("Weekly VIP customer pull");
+  });
+
   test("unknown template returns connector_template_unknown", async () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
     const result = await startWorkflowFromRecipeTool.execute(

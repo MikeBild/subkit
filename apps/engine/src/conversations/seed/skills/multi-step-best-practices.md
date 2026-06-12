@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, orchestration]
-version: 2
+version: 3
 ---
 
 # Multi-Step Workflow Best Practices
@@ -16,7 +16,7 @@ version: 2
 ## Always include error branches for external API calls
 
 Every `request` step that calls an external API should have a corresponding `branch` step that checks the response:
-- Branch on a response field (e.g. `steps.api_call.status = 'Accepted'`), not just HTTP status code
+- Branch on a response field (e.g. `$scope.api_call.data.status = 'Accepted'`), not just HTTP status code
 - Include a fallback step: log, notify, or compensate
 - Set `expected_statuses` to include only the documented success codes
 
@@ -36,7 +36,7 @@ For transform steps, set `input_schema` to document what must be in scope and `o
 - Set `timeout_ms` per step inside the loop body (not on the loop step itself)
 - Use `data_selector` to reduce the scope size passed between steps
 - Set `max_retries: 0` for request steps inside loop bodies (fail fast per item, not retry per item)
-- The `item` variable (or custom `item_var`) holds the current iteration value; `$loop_index` holds the zero-based index
+- Inside the body, the current item is `$item` in JSONata expressions and `${item.…}` in request placeholder strings; `$loop_index` holds the zero-based index. `item_var` is retired — declaring it is rejected at authoring time.
 
 ## Parallel step guidelines
 
@@ -103,8 +103,8 @@ branches are arrays of arrays (each inner array is one parallel chain).
     {
       "id": "log_self_serve",
       "kind": "transform",
-      "language": "jsonata",
-      "expression": "{ 'logged': $scope.lookup.data.id }"
+      "language": "javascript",
+      "expression": "return { logged: input.scope.lookup.data.id };"
     }
   ]
 }

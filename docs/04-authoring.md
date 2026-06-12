@@ -6,7 +6,7 @@
 
 Traditional enterprise workflow tools put the burden of construction on the builder. You need to know the connector, understand the configuration syntax, and map it all onto a blank canvas. The result is a workflow that reflects what developers can build, not what the business actually needs.
 
-The reference implementation inverts that burden. The authoring layer is a conversational interface where a user describes a goal in natural language and the AI does the structural work: proposing steps, looking up connectors, validating the draft, and asking clarifying questions. The user's job is to review and approve — not to build.
+The reference implementation inverts that burden. The authoring layer is a conversational interface where a user describes a goal in natural language and the AI does the structural work: grounding the goal in connector evidence, generating the complete workflow in one `author_workflow` pass, previewing it with writes held, and repairing specific findings. The user's job is to review and approve — not to build.
 
 This is what separates this reference implementation from traditional workflow tools, and it is what this document explains: how Conversations produce governed, production-ready workflows, and why the human-in-the-loop model is the right architecture for enterprise AI.
 
@@ -18,7 +18,7 @@ A Conversation is the primary authoring interface in this reference implementati
 
 Conversations are persistent and resumable. They survive page reloads, reconnects, and multi-day authoring sessions. A user can start a Conversation on Monday, return on Wednesday, and pick up exactly where they left off. The AI recalls the context, the draft state, and the pending questions.
 
-Internally, the AI operates over a palette of structured authoring actions. It does not generate free-form code or make autonomous decisions. It performs actions like proposing a step, looking up a connector, validating the draft, and asking for clarification. This structure is what makes the authoring process reliable and auditable — the AI's reasoning is visible as a sequence of explicit authoring actions, not as opaque text generation.
+Internally, the AI operates over a palette of structured authoring actions. It does not generate free-form code or make autonomous decisions. The primary entry is `author_workflow` — one call that takes the user's goal verbatim, grounds generation in recorded endpoint samples and ingested docs, emits the complete evaluated draft, and returns structured `recorded_eval` findings. Around it sit grounding actions (probing a connector, searching docs), the hold-writes preview, and repair actions that apply one specific finding each. This structure is what makes the authoring process reliable and auditable — the AI's reasoning is visible as a sequence of explicit authoring actions, not as opaque text generation.
 
 For operators and scripted clients that already know the target definition, the same authoring model is also available through the direct workflow and execution surface. That path skips the conversational proposal loop and works directly with workflow definitions plus `POST /v1/executions` for preview and execution.
 
@@ -37,18 +37,22 @@ stateDiagram-v2
     ConnectorInspected --> ConnectorValidated: validate
     ConnectorValidated --> ConnectorProbed: probe
     ConnectorProbed --> ConnectorPersisted: green probe (auto)
-    ConnectorPersisted --> WorkflowDraft
-    WorkflowDraft --> WorkflowInspected: inspect
-    WorkflowInspected --> WorkflowValidated: validate
-    WorkflowValidated --> WorkflowPreviewed: preview / dry-run
-    WorkflowPreviewed --> WorkflowPersisted: green dry-run (auto)
+    ConnectorPersisted --> WorkflowDraft: author_workflow (one-shot generate + evaluate)
+    WorkflowDraft --> WorkflowPreviewed: dry_run_workflow (writes held)
+    WorkflowPreviewed --> WorkflowJudged: instruction-grounded judge reads artifacts incl. held payloads
+    WorkflowJudged --> WorkflowPersisted: green preview + judge pass (auto-commit)
+    WorkflowJudged --> WorkflowRepair: judge / recorded_eval findings
+    WorkflowPreviewed --> WorkflowRepair: preview failure
+    WorkflowRepair --> WorkflowPreviewed: edit_workflow_patch / update_param, then preview again
     WorkflowPersisted --> WorkflowExecuted: run
     WorkflowExecuted --> Diagnosis: warnings / failure
-    Diagnosis --> WorkflowValidated: repair draft
+    Diagnosis --> WorkflowRepair: repair draft
     WorkflowExecuted --> [*]: success
 ```
 
-*Probe persists the connector inline; dry-run commits the workflow inline. There is no separate "save" step on the happy path — verification is persistence. Any draft mutation invalidates downstream checkpoints automatically.*
+*Probe persists the connector inline; a green, judged dry-run commits the workflow inline. There is no separate "save" step on the happy path — verification is persistence. Dry-runs hold writes: read steps execute live, write steps are fully resolved (URL, headers, materialized body) but never dispatched, and the held request is recorded as the step artifact the judge evaluates. Any draft mutation invalidates downstream checkpoints automatically.*
+
+The workflow side of the machine carries a **stage gate**: `propose_step` and `update_param` are repair-stage tools. While the draft is in its initial stage — no recorded preview and no recorded-eval/judge findings — they refuse with `authoring_stage_violation`, and the refusal names the exact next valid actions (`author_workflow`, `build_workflow`, `dry_run_workflow`, `edit_workflow_patch`), none of which is ever gated. The moment a preview or findings exist, both unlock unconditionally. Initial authoring is ONE `author_workflow` call, not a micro-iterated step-by-step build.
 
 This state is persisted in the conversation draft summary and exposed as:
 
@@ -67,7 +71,7 @@ The same grounding rule applies to explanatory follow-up questions. When a user 
 
 A conversation can stay bound to a saved workflow after rename, commit, and execution so follow-up runs and repairs stay grounded. That binding is intentional, but it is not sticky against explicit new-workflow intent.
 
-When the user says they want to create a new workflow after inspecting or running an existing saved workflow, the engine clears the saved workflow binding before the next authoring move. The next `build_workflow` or `start_workflow_from_goal` call therefore targets a fresh draft, not an in-place update of the earlier saved workflow. Updating a saved workflow remains an explicit path: keep the bound target and commit back into it.
+When the user says they want to create a new workflow after inspecting or running an existing saved workflow, the engine clears the saved workflow binding before the next authoring move. The next `author_workflow` or `build_workflow` call therefore targets a fresh draft, not an in-place update of the earlier saved workflow. Updating a saved workflow remains an explicit path: keep the bound target and commit back into it.
 
 ---
 
@@ -87,7 +91,7 @@ The approval gate sits on top of additional hard quality gates:
 - A workflow cannot be committed from the guided conversation flow until inspection, validation, and preview checkpoints are fresh.
 - A workflow run always targets a persisted workflow version, never an ambiguous draft.
 - A green `probe_connector_draft` is the persistence trigger for a connector: the probe tool calls `saveConnectorAtomic` inline (audit reason `auto_persist_on_green_probe`) and returns the saved-connector envelope (`auto_saved: true`). The two-step "approve · Save the connector" prompt is gone for the happy path.
-- A clean `dry_run_workflow` is the persistence trigger for a workflow: the dry-run tool calls `commitWorkflowAtomic` inline (audit reason `auto_persist_on_green_dry_run`) and returns the committed-workflow envelope (`auto_committed: true`). The "yes — yes — commit this" loop is gone for the happy path.
+- A clean, judged `dry_run_workflow` is the persistence trigger for a workflow. The preview holds writes (write steps resolved but never dispatched, recorded as held request artifacts), the instruction-grounded judge evaluates the artifacts — held payloads included — against the stashed goal, and a green preview with a passing judge verdict calls `commitWorkflowAtomic` inline (audit reason `auto_persist_on_green_dry_run`) and returns the committed-workflow envelope (`auto_committed: true`). The "yes — yes — commit this" loop is gone for the happy path.
 - Force overrides remain available for both: `force_save: true` on `save_connector_draft` after a failed probe, `force_commit: true` on `save_workflow_draft` after a failed dry-run. Both go through the explicit `ask_user_confirm` carrier so the operator's deviation from the green path is auditable.
 
 This matters because the approval is not meant to compensate for missing technical checks. It is the final human sign-off after the state machine has already established that the draft is internally coherent.
@@ -107,13 +111,14 @@ For connectors, the canonical path is:
 
 For workflows, the canonical path is:
 
-1. Start or update the workflow draft
-2. Inspect the current draft
-3. Validate the graph and step schemas
-4. Preview with `dry_run_step`, `dry_run_transform`, or `dry_run_workflow` — a clean `dry_run_workflow` commits the workflow inline; the response envelope carries `auto_committed: true`
-5. Run the persisted workflow
+1. Ground — `list_connectors`, `probe_connector` for any connector that has never been called (a green probe records the real response shape that grounds generation), `search_docs` / `search_knowledge` when the endpoint surface is unclear
+2. `author_workflow` (one call) — the engine generates the COMPLETE definition (steps, transforms, input/output schema, trigger) grounded in recorded endpoint samples + docs, evaluates it against recorded evidence with bounded auto-repair, and stashes it as the draft; read the returned `recorded_eval` findings
+3. `dry_run_workflow` — hold-writes preview: read steps execute live; write steps are fully resolved (URL, headers, materialized body) but never dispatched, recorded as held request artifacts
+4. Judge — after a green preview the instruction-grounded judge evaluates the artifacts (held payloads included) against the stashed goal; green preview + judge pass auto-commits (`auto_committed: true`)
+5. Repair on findings — apply specific recorded-eval/judge findings via `edit_workflow_patch` (structural) or `update_param` (single field), iterate a transform against the recorded scope with `dry_run_transform`, then preview again
+6. Run the persisted workflow
 
-There is no separate "save" or "commit" step on the happy path; the verification step is the persistence step.
+There is no separate "save" or "commit" step on the happy path; the verification step is the persistence step. Executing write steps for real during a preview is the rare exception, available only behind explicit user confirmation (`execute_writes: true`) — externally visible destinations (recipient addresses, channels, webhook URLs) must always come from the user, never from fabricated placeholders.
 
 The engine tracks these as fresh or stale checkpoints. Any draft mutation invalidates later checkpoints automatically. For example, editing a workflow after a successful preview makes the preview checkpoint stale, so the workflow must be previewed again before it can be committed.
 

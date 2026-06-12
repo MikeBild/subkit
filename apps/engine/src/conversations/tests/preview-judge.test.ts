@@ -13,7 +13,7 @@
 //   - explicit save (`save_workflow_draft`, incl. force_commit) still
 //     works after a failed verdict — the judge only gates AUTO-commit,
 //   - the goal stash survives the draft normalize round-trip for both
-//     entry points (start_workflow_from_goal shape + build_workflow
+//     entry points (author_workflow pipeline-emit shape + build_workflow
 //     carry-over).
 //
 // LLM provider is the in-process mock (`LLM_PROVIDER=mock` via the
@@ -84,7 +84,7 @@ function makeCtx(initial: DraftDocument): ToolContext & { current: () => DraftDo
 
 /** A green-previewable draft: one pure transform step, empty project
  *  names — the "Project: ()" incident shape. `goal` rides the draft
- *  exactly as start_workflow_from_goal stashes it. */
+ *  exactly as the authoring pipeline's EMIT stage stashes it. */
 function wrongContentDraft(slug: string, goal: string | null): DraftDocument {
   return {
     workflow: {

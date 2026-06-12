@@ -2,13 +2,13 @@
 slug: data-handling
 scope: global
 title: Data Handling Between Steps
-description: The envelope, JSONata cheatsheet, data_selector vs transform vs outputTransform, and how to keep scope small.
+description: The envelope, JSONata cheatsheet, data_selector vs transform vs the workflow-level output transform, and how to keep scope small.
 activates_when: [{"kind":"tool_arg","tool":"propose_step","path":"step.kind","equals":"transform"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, transforms, jsonata]
-version: 5
+version: 6
 ---
 
 # Data Handling Between Steps
@@ -52,6 +52,11 @@ The three envelope fields you actually use downstream:
 (on `fail`, the run has already aborted).
 
 ## JSONata cheatsheet
+
+New `transform` steps default to `language: "javascript"` (see "Transform
+step" below) — JSONata is the legacy/compat transform surface. It remains
+the canonical language for `data_selector`, `loop.over`, `branch.when`,
+and the JSONata `output_transform`, so this cheatsheet still matters.
 
 ### Selection
 
@@ -260,26 +265,53 @@ original bloated response is gone from scope entirely.
 ## Transform step — reshape across steps
 
 A `transform` step has its own envelope and is the right place for
-multi-source reshaping:
+multi-source reshaping. **New transforms are JavaScript-first**
+(`language: "javascript"`). The authored code is a FUNCTION BODY with
+exactly ONE global, `input`, and an explicit `return`:
+
+- `input.scope.<step_id>.data` — each upstream step's output (every step
+  output is enveloped; always read through `.data`).
+- `input.input` — the workflow input.
 
 ```json
 {
   "id": "report_rows",
   "kind": "transform",
+  "language": "javascript",
+  "expression": "return input.scope.orders.data.map(o => { const c = input.scope.customers.data.find(c => c.id === o.customer_id); return { order_id: o.id, customer: c ? c.email : 'unknown', total: o.total }; });"
+}
+```
+
+The JSONata form (`language: "jsonata"`) remains supported as
+legacy/compat — existing workflows keep running unchanged:
+
+```json
+{
+  "id": "report_rows",
+  "kind": "transform",
+  "language": "jsonata",
   "expression": "$scope.orders.data.{ 'order_id': id, 'customer': $scope.customers.data[id = $$.customer_id].email, 'total': total }"
 }
 ```
 
 Downstream steps read `$scope.report_rows.data`. The `transform` step has
-`status_code: 200` if JSONata evaluated without error, `error` set otherwise.
+`status_code: 200` if the expression evaluated without error, `error` set
+otherwise — a wrong path in JS throws a real `TypeError` with the
+runtime's own message instead of silently returning `undefined`.
 
-## Workflow-level `outputTransform`
+## Workflow-level output transform
 
-Runs once, at the very end, to shape the caller's view:
+Runs once, at the very end, to shape the caller's view. Two forms — pick
+exactly one (the schema rejects setting both):
+
+- **`output_transform_function`** — JS function body, preferred for new
+  workflows. Same contract as JS transform steps: one `input` global
+  (`input.scope.<step_id>.data…`, `input.input`), explicit `return`.
+- **`output_transform`** — JSONata, legacy/compat.
 
 ```json
 {
-  "outputTransform": "{ 'rows': $scope.report_rows.data, 'generated_at': $now(), 'tenant': ${input.tenant_id} }"
+  "output_transform_function": "return { rows: input.scope.report_rows.data, row_count: input.scope.report_rows.data.length };"
 }
 ```
 
@@ -325,15 +357,17 @@ input at the gate.
     {
       "id": "joined",
       "kind": "transform",
+      "language": "jsonata",
       "expression": "$scope.fetch_orders.data.{ 'order_id': id, 'total': total, 'lifecycle': $scope.fetch_contacts.data[email = $$.email].lifecycle ? $scope.fetch_contacts.data[email = $$.email].lifecycle : 'unknown' }"
     },
     {
       "id": "totals_by_lifecycle",
       "kind": "transform",
+      "language": "jsonata",
       "expression": "$scope.joined.data{ lifecycle: $sum(total) }"
     }
   ],
-  "outputTransform": "{ 'report': $scope.totals_by_lifecycle.data, 'row_count': $count($scope.joined.data) }"
+  "output_transform": "{ 'report': $scope.totals_by_lifecycle.data, 'row_count': $count($scope.joined.data) }"
 }
 ```
 
@@ -342,14 +376,16 @@ Walk-through:
 1. `fetch_orders` and `fetch_contacts` each trim to 4 and 2 fields via `data_selector`. Scope stays small.
 2. `joined` correlates by email with a null-safe default of `'unknown'`.
 3. `totals_by_lifecycle` groups + sums in one JSONata expression.
-4. `outputTransform` builds the public payload with a row count sibling.
+4. `output_transform` builds the public payload with a row count sibling.
 
-## Loop iteration variables
+## Loop iteration variables — `$item` only
 
-A `loop` step exposes its current item as a **top-level scope key** named
-after `item_var` (or `item` if `item_var` is omitted). Inside the loop body,
-reference it WITHOUT the `$scope.` prefix and WITHOUT `.data` — the item is
-not envelope-wrapped.
+A `loop` step exposes its current item as **`$item`** in JSONata
+expressions and **`${item.…}`** in request placeholder strings.
+`item_var` is RETIRED: declaring it is rejected at authoring time, and a
+bare item name (`project.name`) is rejected with a
+`did_you_mean: "$item.name"` rewrite. The item is NOT envelope-wrapped —
+no `$scope.` prefix, no `.data`.
 
 Correct:
 
@@ -360,13 +396,12 @@ Correct:
     "id": "for_each_project",
     "kind": "loop",
     "over": "$scope.list_projects.data.projects",
-    "item_var": "project",
     "body": ["fetch_resources"]
   },
   {
     "id": "fetch_resources",
     "kind": "request",
-    "path": "/v2/projects/${project.id}/resources"
+    "path": "/v2/projects/${item.id}/resources"
   }
 ]
 ```
@@ -376,14 +411,18 @@ Correct:
 Wrong — the validator (or the engine at run time) will reject each of these:
 
 ```
-"/v2/projects/${scope.project.id}/resources"          # extra `scope.` prefix
+"/v2/projects/${scope.item.id}/resources"             # extra `scope.` prefix
 "/v2/projects/$scope.for_each_project.data.id/..."   # loop step has no envelope
-"/v2/projects/${project.data.id}/resources"           # item is not envelope-wrapped
-"/v2/projects/${item.id}/resources"                   # only valid when item_var was omitted
+"/v2/projects/${item.data.id}/resources"              # item is not envelope-wrapped
+"/v2/projects/${project.id}/resources"                # bare item names are rejected — `item` is the only item placeholder kind
 ```
 
-The same rules apply in JSONata expressions (`$item_var.field`, no `$scope.`)
-and in `data_selector` / `transform` configs inside loop bodies.
+In JSONata surfaces inside the loop body (`data_selector`, `branch.when`,
+legacy transforms) the only form is `$item.field` — no `$scope.` prefix,
+no `.data`. Sibling body-step results in the same iteration are read via
+`$scope.<body_step_id>.data.<field>` (JSONata) /
+`input.scope.<body_step_id>.data.<field>` (JS transforms) /
+`${scope.<body_step_id>.data.<field>}` (request strings).
 
 ## Common pitfalls
 
@@ -401,7 +440,7 @@ and in `data_selector` / `transform` configs inside loop bodies.
   another `emailAddress`. Normalize in `data_selector` at each step's boundary.
 - **Forgetting `${...}` resolves once at step-start.** Placeholders are not
   re-evaluated per iteration inside a `loop` unless the placeholder references
-  the loop's `item_var` binding (see "Loop iteration variables" above).
+  the current item via `${item.…}` (see "Loop iteration variables" above).
 - **Inventing JSONata array syntax.** No single-bracket range (`items[0..4]`),
   no implicit index variable (`items[$i < 5]`), no `.slice()`. To take the
   first N use the double-bracket range `items[[0..N-1]]` — see "Array slicing

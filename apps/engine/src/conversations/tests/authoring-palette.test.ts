@@ -36,7 +36,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
       ALL_AUTHORING_SKILLS,
     ).map((tool) => tool.name);
     expect(visible).toContain("start_connector_from_description");
-    expect(visible).toContain("start_workflow_from_goal");
+    expect(visible).toContain("author_workflow");
     expect(visible).toContain("save_connector_draft");
     expect(visible).toContain("save_workflow_draft");
     expect(visible).toContain("list_connectors");
@@ -143,7 +143,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
     const visible = filterByAuthoringPalette(listTools(), draft, ALL_AUTHORING_SKILLS).map(
       (tool) => tool.name,
     );
-    expect(visible).toContain("start_workflow_from_goal");
+    expect(visible).toContain("author_workflow");
     expect(visible).toContain("build_workflow");
     expect(visible).toContain("inspect_workflow_draft");
     expect(visible).toContain("authenticate_oauth");

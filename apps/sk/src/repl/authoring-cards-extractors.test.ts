@@ -75,7 +75,7 @@ describe("extractWorkflowIntent", () => {
   });
 
   test("webhook trigger is extracted correctly", () => {
-    const call = withResult("start_workflow_from_goal", {
+    const call = withResult("build_workflow", {
       workflow: {
         name: "PR Handler",
         definition: {

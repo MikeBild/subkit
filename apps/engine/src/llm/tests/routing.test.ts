@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { invoke } from "../core/invoke.ts";
 import { runGenerateFlow } from "../flows/generate.ts";
 import { getMockProvider } from "../mock-provider.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
@@ -25,7 +26,10 @@ afterAll(async () => {
 
 describe("llm/routing", () => {
   test("falls back exactly once on overloaded and logs the event", async () => {
-    // Queue a one-shot overloaded error on the primary model.
+    // Queue a one-shot overloaded error on the primary model. Uses a
+    // chat-frequency flow (`converse`) — `generate`/`judge` are
+    // code-elevated to the fallback model and never dispatch to the
+    // primary in the first place (see applyFlowModelElevation).
     getMockProvider().setFailure("mock-primary-1", "overloaded");
 
     const events: Array<Record<string, unknown>> = [];
@@ -38,10 +42,11 @@ describe("llm/routing", () => {
     };
 
     try {
-      const result = await runGenerateFlow(
+      const result = await invoke(
         {
+          flow: "converse",
           tenant_id: ctx.tenant_id,
-          description: "list the first two users",
+          user_turns: [{ role: "user", content: "list the first two users" }],
           connector_id: ctx.connector_id,
         },
         ctx.testDb.db,
@@ -81,5 +86,20 @@ describe("llm/routing", () => {
 
     const triggered = events.find((e) => e.action === "fallback.triggered");
     expect(triggered).toBeDefined();
+  });
+
+  test("generate flow is code-elevated to the tenant's fallback (stronger) model", async () => {
+    // No failure queued — the elevation alone routes the dispatch to
+    // the fallback model id; this is NOT the error-fallback path.
+    const result = await runGenerateFlow(
+      {
+        tenant_id: ctx.tenant_id,
+        description: "list the first two users",
+        connector_id: ctx.connector_id,
+      },
+      ctx.testDb.db,
+    );
+    expect(result.model_used).toBe("mock-fallback-1");
+    expect(result.fell_back).toBe(false);
   });
 });

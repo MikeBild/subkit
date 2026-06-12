@@ -2,7 +2,7 @@
 //
 //   - `author_workflow` emits a schema-valid COMPLETE definition with
 //     the recorded-eval report attached, the goal stashed on the draft
-//     (start_workflow_from_goal shape), and `next: dry_run_workflow`,
+//     (draft-only metadata for the judge), and `next: dry_run_workflow`,
 //   - JS transforms ride through as authored (JS-first contract),
 //   - grounding: the ONE generation prompt carries the goal verbatim,
 //     the resolved connectors, the recorded endpoint samples
@@ -165,7 +165,7 @@ describe("runAuthoringPipeline — one-shot contract", () => {
       result.recorded_eval.expressions.filter((f) => f.status === "compile_error"),
     ).toHaveLength(0);
 
-    // Goal + connector ids stashed on the draft, start_workflow_from_goal shape.
+    // Goal + connector ids stashed on the draft as draft-only metadata.
     const draft = toolCtx._draft.value;
     expect(draft).not.toBeNull();
     expect((draft?.workflow as { goal?: string }).goal).toBe(goal);

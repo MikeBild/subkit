@@ -415,7 +415,7 @@ export const callConnectorTool: ConversationTool = {
       return structuredError(
         "driver_not_supported_for_call_connector",
         `call_connector does not support ${driver} connectors yet; use a workflow step`,
-        { next_best_actions: ["start_workflow_from_goal"] },
+        { next_best_actions: ["author_workflow"] },
       );
     }
 

@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [foundations, concepts]
-version: 3
+version: 4
 ---
 
 # sk Core Concepts
@@ -57,11 +57,11 @@ Each **step** has at minimum:
 | Kind | Purpose | One-line config example |
 |---|---|---|
 | `request` | Call an external connector boundary via a connector (http / graphql / s3) | `{ "connector_id": "00000000-0000-0000-0000-000000000001", "method": "GET", "path": "/crm/v3/objects/contacts" }` |
-| `transform` | Reshape data with JSONata, no I/O | `{ "expression": "$scope.list_orders.data.results[amount > 100]" }` |
+| `transform` | Reshape data with sandboxed JavaScript (default for new transforms) or legacy JSONata, no I/O | `{ "language": "javascript", "expression": "return input.scope.list_orders.data.results.filter(r => r.amount > 100);" }` |
 | `wait` | Pause for a duration | `{ "duration_ms": 30000 }` |
 | `branch` | Conditional routing by step id | `{ "when": "$scope.classify.data.tier = 'gold'", "then_steps": ["notify_gold"], "else_steps": ["notify_standard"] }` |
 | `parallel` | Run child step ids concurrently | `{ "branches": [["write_pg"], ["write_s3"]] }` |
-| `loop` | Iterate over an array and run a child step body by id | `{ "over": "$scope.list_orders.data.results", "body": ["process_order"], "item_var": "order" }` |
+| `loop` | Iterate over an array and run a child step body by id; the current item is `$item` (JSONata) / `${item.…}` (strings) | `{ "over": "$scope.list_orders.data.results", "body": ["process_order"] }` |
 | `call` | Invoke another workflow as a subroutine | `{ "workflow_slug": "send_receipt", "input": { "order_id": "${scope.lookup.data.id}" } }` |
 | `tool` | Invoke a sandboxed container step | `{ "image": "ghcr.io/example/uuid:1.0", "cmd": ["generate"] }` |
 
@@ -112,7 +112,12 @@ transform.expression, branch.when).
 
 ## JSONata basics
 
-`data_selector` and the `transform` step both use JSONata. Common patterns:
+`data_selector`, `loop.over`, and `branch.when` use JSONata. New `transform`
+steps default to JavaScript instead: the expression is a function body with
+exactly one global, `input` (`input.scope.<step_id>.data…` for upstream
+steps, `input.input` for the workflow input), and an explicit `return`.
+JSONata transforms (`language: "jsonata"`) remain supported as legacy.
+Common JSONata patterns:
 
 - **Select a field:** `$scope.list_orders.data.results`
 - **Filter:** `$scope.list_orders.data.results[status = 'open']`

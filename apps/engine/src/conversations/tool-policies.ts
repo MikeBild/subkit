@@ -392,7 +392,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   },
   author_workflow: { defaultMode: "no_confirm" },
   build_workflow: { defaultMode: "no_confirm" },
-  start_workflow_from_goal: { defaultMode: "no_confirm" },
   save_connector_draft: {
     // Confirm by default. When the input also carries an inline
     // `credential` (the masked `ask_user_form` answer), keep

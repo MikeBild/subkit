@@ -24,8 +24,8 @@
 //                 recorded-eval's own bounded repair instead. Hard cap:
 //                 `MAX_GENERATION_PASSES` LLM generation passes total.
 //   4. EMIT     — stash the result as the conversation draft
-//                 (`withWorkflowDraft`, goal + connector ids stashed the
-//                 same way `start_workflow_from_goal` does) and return
+//                 (`withWorkflowDraft`, goal + connector ids stashed as
+//                 draft-only metadata for the post-preview judge) and return
 //                 `{ definition, recorded_eval, attempts, next:
 //                 "dry_run_workflow" }`. Even a findings-laden
 //                 definition is stashed — the model repairs from the
@@ -456,8 +456,8 @@ export async function runAuthoringPipeline(
 
   // ----------------------------------------------------------------- EMIT
   // Stash as the conversation draft. Goal + connector ids ride the
-  // draft as metadata exactly like `start_workflow_from_goal` stashes
-  // them (draft-only keys; the validator ignores them until commit
+  // draft as metadata (draft-only keys, same stash shape as
+  // `build_workflow({ goal })`; the validator ignores them until commit
   // strips the draft down to its WorkflowDef shape). The goal feeds the
   // post-preview judge.
   const workflowDraft: WorkflowDraftDocument = {

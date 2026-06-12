@@ -152,3 +152,206 @@ describe("dry_run_workflow card · output rendering (bug C / 86de186b)", () => {
     r.unmount();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Preview-judge verdict block — dry_run_workflow may carry
+// `judge: { verdict, reason, missing[] }`. A blocking verdict (partial /
+// failed) is WHY the preview did not auto-commit, so the card must say
+// so prominently; `passes` is one quiet line; `skipped` renders nothing.
+// ---------------------------------------------------------------------------
+
+describe("dry_run_workflow card · judge verdict block", () => {
+  test("a partial verdict renders the verdict, reason, missing bullets, and the repair hint", () => {
+    const call: ToolCallState = {
+      id: "tc-judge-partial",
+      name: "dry_run_workflow",
+      args: {},
+      status: "done",
+      result: {
+        ok: false,
+        data: {
+          ok: false,
+          classification: "needs_repair",
+          summary: "Ran 3 steps without errors, but the preview does not satisfy the user's goal.",
+          judge: {
+            verdict: "partial",
+            reason:
+              "The email body lists project names but omits the droplet specs the goal asks for.",
+            missing: ["droplet specs (CPU/memory/disk) absent", "project names are empty strings"],
+          },
+        },
+      },
+    };
+    const r = renderCard(call);
+    const frame = snapshot(r);
+    expect(frame).toContain("judge: partial");
+    expect(frame).toContain("omits the droplet specs");
+    expect(frame).toContain("• droplet specs (CPU/memory/disk) absent");
+    expect(frame).toContain("• project names are empty strings");
+    expect(frame).toContain("edit_workflow_patch");
+    expect(frame).toContain("save_workflow_draft");
+    // Judge block joins the needs_repair path — never a clean green.
+    expect(frame).toContain("Preview needs repair");
+    r.unmount();
+  });
+
+  test("a failed verdict renders the same block with the failed verdict", () => {
+    const call: ToolCallState = {
+      id: "tc-judge-failed",
+      name: "dry_run_workflow",
+      args: {},
+      status: "done",
+      result: {
+        ok: false,
+        data: {
+          ok: false,
+          classification: "needs_repair",
+          summary: "Preview output does not match the goal.",
+          judge: {
+            verdict: "failed",
+            reason: "The output is an empty array; the goal asks for a ranked list of repos.",
+            missing: ["ranked repo list"],
+          },
+        },
+      },
+    };
+    const r = renderCard(call);
+    const frame = snapshot(r);
+    expect(frame).toContain("judge: failed");
+    expect(frame).toContain("empty array");
+    expect(frame).toContain("• ranked repo list");
+    r.unmount();
+  });
+
+  test("a passes verdict renders a single quiet 'judge: passes' line, no repair hint", () => {
+    const call = makeCall("dry_run_workflow", {
+      ok: true,
+      summary: "Ran 3 steps with no errors.",
+      auto_committed: true,
+      judge: { verdict: "passes", reason: "Output matches the goal.", missing: [] },
+    });
+    const r = renderCard(call);
+    const frame = snapshot(r);
+    expect(frame).toContain("judge: passes");
+    expect(frame).not.toContain("edit_workflow_patch");
+    expect(frame).not.toContain("does not satisfy");
+    r.unmount();
+  });
+
+  test("a skipped verdict renders no judge line at all", () => {
+    const call = makeCall("dry_run_workflow", {
+      ok: true,
+      summary: "Ran 2 steps with no errors.",
+      judge: { verdict: "skipped", reason: "no_goal" },
+    });
+    const r = renderCard(call);
+    const frame = snapshot(r);
+    expect(frame).not.toContain("judge");
+    r.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Held write steps — hold-writes previews resolve a write step's request
+// (URL/headers/body materialized) but never dispatch it. The step rides
+// the trace as `held: true` + `held_request` and must NOT look like a
+// normal green step: the materialized body is the operator's review
+// artifact.
+// ---------------------------------------------------------------------------
+
+describe("dry_run_workflow card · held write steps", () => {
+  const heldEnvelope = {
+    ok: false,
+    classification: "needs_repair",
+    summary: "Ran 2 steps; the send step was held.",
+    step_trace: [
+      {
+        step_id: "fetch_projects",
+        kind: "request",
+        status: "succeeded",
+        duration_ms: 120,
+        output_preview: { projects: [{ name: "alpha" }] },
+      },
+      {
+        step_id: "send_email",
+        kind: "request",
+        status: "succeeded",
+        held: true,
+        held_request: {
+          method: "POST",
+          url: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+          headers_redacted: { authorization: "[redacted]" },
+          body: { raw: "To: ops@example.com\nSubject: Daily DO resources\n\nalpha: 2 droplets" },
+        },
+      },
+    ],
+  };
+
+  test("a held step renders the HELD label, never a bare success icon", () => {
+    const call = makeCall("dry_run_workflow", heldEnvelope);
+    const r = renderCard(call);
+    const frame = snapshot(r);
+    expect(frame).toContain("⏸ HELD");
+    expect(frame).toContain("resolved, not dispatched");
+    expect(frame).toContain("send_email");
+    // The held step must not render as a checked success line.
+    expect(frame).not.toContain("✓ send_email");
+    // The non-held sibling still renders normally.
+    expect(frame).toContain("✓ fetch_projects");
+    r.unmount();
+  });
+
+  test("a held step shows the materialized request: METHOD url + body excerpt", () => {
+    const call = makeCall("dry_run_workflow", heldEnvelope);
+    const r = renderCard(call);
+    const frame = snapshot(r);
+    expect(frame).toContain("POST https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
+    // The held email body is the review artifact — it must be visible.
+    expect(frame).toContain("body:");
+    expect(frame).toContain("Daily DO resources");
+    r.unmount();
+  });
+
+  test("held body longer than the excerpt budget is clipped, not dropped", () => {
+    const longBody = "x".repeat(500);
+    const call = makeCall("dry_run_workflow", {
+      ok: false,
+      classification: "needs_repair",
+      summary: "Held send.",
+      step_trace: [
+        {
+          step_id: "send",
+          kind: "request",
+          status: "succeeded",
+          held: true,
+          held_request: {
+            method: "POST",
+            url: "https://api.example.com/send",
+            headers_redacted: {},
+            body: longBody,
+          },
+        },
+      ],
+    });
+    const r = renderCard(call);
+    const frame = snapshot(r);
+    expect(frame).toContain("⏸ HELD");
+    expect(frame).toContain("body:");
+    expect(frame).toContain("…");
+    r.unmount();
+  });
+
+  test("step_trace without held steps renders the per-step lines (step_id key)", () => {
+    const call = makeCall("dry_run_workflow", {
+      ok: true,
+      summary: "Ran 1 step with no errors.",
+      step_trace: [
+        { step_id: "fetch", kind: "request", status: "succeeded", output_preview: { n: 1 } },
+      ],
+    });
+    const r = renderCard(call);
+    const frame = snapshot(r);
+    expect(frame).toContain("✓ fetch (request)");
+    r.unmount();
+  });
+});

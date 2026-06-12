@@ -285,8 +285,9 @@ export interface WorkflowDraftDocument {
   slug?: string;
   description?: string;
   /**
-   * The user's goal VERBATIM — stashed by `start_workflow_from_goal`
-   * and `build_workflow({ goal })`. Draft-only metadata: it drives the
+   * The user's goal VERBATIM — stashed by `author_workflow` (pipeline
+   * EMIT stage), `build_workflow({ goal })`, and (recipe-derived) by
+   * `start_workflow_from_recipe`. Draft-only metadata: it drives the
    * post-preview judge (`preview-judge.ts`) and is intentionally NOT
    * projected into the persisted WorkflowDef
    * (`commit-workflow.ts#workflowDefFromDraft`).

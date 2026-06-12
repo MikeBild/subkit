@@ -507,7 +507,7 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
       toolChoice = "required";
     }
     systemNudge =
-      "The user asked for both a connector AND a workflow in their most recent message. The connector is now saved. Continue with the workflow now — call the next authoring tool (start_workflow_from_goal or build_workflow). Do NOT end the turn with a `now let's …` closing sentence; the user already approved the multi-artifact intent.";
+      "The user asked for both a connector AND a workflow in their most recent message. The connector is now saved. Continue with the workflow now — call the next authoring tool (author_workflow or build_workflow). Do NOT end the turn with a `now let's …` closing sentence; the user already approved the multi-artifact intent.";
     reasonParts.push(
       thinking.suppressedByForcedTool
         ? "multi_artifact_continue_nudge_only"

@@ -10,11 +10,22 @@
 
 import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
+import { render } from "ink-testing-library";
+import type { ReactElement } from "react";
 import {
   extractKnowledgeSourceSummary,
   isPolicyGatePending,
   renderAuthoringCard,
 } from "./authoring-cards.tsx";
+
+function frameOf(call: ToolCallState, mode: "chat" | "inspect" = "chat"): string {
+  const node = renderAuthoringCard(call, mode);
+  expect(node).not.toBeNull();
+  const r = render(node as ReactElement);
+  const frame = (r.lastFrame() ?? "").replace(/\[[0-9;]*m/g, "");
+  r.unmount();
+  return frame;
+}
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -299,6 +310,175 @@ describe("renderAuthoringCard — meta-authoring tools suppressed in chat (Fix #
       status: "running",
     };
     expect(renderAuthoringCard(call, "chat")).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// author_workflow milestone card — the one-shot authoring pipeline result
+// must render in chat mode: name/slug, step count + kinds, recorded-eval
+// verdict, attempts, and the next action (dry_run_workflow).
+// ---------------------------------------------------------------------------
+
+function makeAuthorWorkflowCall(overrides: {
+  recordedEval?: Record<string, unknown>;
+  attempts?: number;
+}): ToolCallState {
+  const { recordedEval, attempts = 1 } = overrides;
+  return {
+    id: "call-author-wf",
+    name: "author_workflow",
+    args: { goal: "Email me the droplet specs of every DigitalOcean project" },
+    status: "done",
+    result: {
+      ok: true,
+      data: {
+        name: "DO Email",
+        workflow: {
+          name: "DO Email",
+          slug: "do-email",
+          goal: "Email me the droplet specs of every DigitalOcean project",
+          step_count: 4,
+        },
+        definition: {
+          name: "DO Email",
+          slug: "do-email",
+          steps: [
+            { id: "fetch_projects", kind: "request" },
+            { id: "fetch_resources", kind: "request" },
+            { id: "shape", kind: "transform" },
+            { id: "send_email", kind: "request" },
+          ],
+        },
+        validation: { ok: true, errors: [] },
+        recorded_eval: recordedEval ?? {
+          ok: true,
+          summary:
+            "recorded evaluation passed: expressions compile and resolve against recorded evidence",
+          expressions: [],
+          scope_refs: [],
+          gates: { loop: { ok: true, blocks: [] }, transform: { ok: true, blocks: [] } },
+          missing_evidence: [],
+          next_actions: [],
+        },
+        attempts,
+        persistence: "draft_only",
+        next_step: "dry_run_workflow",
+      },
+    },
+  };
+}
+
+describe("renderAuthoringCard — author_workflow milestone card", () => {
+  test("clean recorded eval: renders name, slug, step kinds, attempts, and next action", () => {
+    const frame = frameOf(makeAuthorWorkflowCall({}));
+    expect(frame).toContain("Workflow authored");
+    expect(frame).toContain("DO Email");
+    expect(frame).toContain("do-email");
+    expect(frame).toContain("4 steps (request×3, transform)");
+    expect(frame).toContain("1 attempt");
+    expect(frame).toContain("evaluated clean against recorded evidence");
+    expect(frame).toContain("→ dry_run_workflow");
+  });
+
+  test("findings: renders count by status plus the first finding's site + message", () => {
+    const frame = frameOf(
+      makeAuthorWorkflowCall({
+        attempts: 2,
+        recordedEval: {
+          ok: false,
+          summary: "2 findings",
+          expressions: [
+            { site: "steps.fetch_projects.expression", step_id: "fetch_projects", status: "ok" },
+            {
+              site: "steps.shape.expression",
+              step_id: "shape",
+              status: "eval_error",
+              message: "$scope.fetch_resources.data.items is not an array",
+            },
+            {
+              site: "output_transform",
+              step_id: null,
+              status: "empty_result",
+              message: "expression produced an empty result over non-empty evidence",
+            },
+          ],
+          scope_refs: [],
+          gates: { loop: { ok: true, blocks: [] }, transform: { ok: false, blocks: [] } },
+          missing_evidence: [],
+          next_actions: ["update_param", "edit_workflow_patch"],
+        },
+      }),
+    );
+    expect(frame).toContain("recorded eval: 2 findings (1 eval_error, 1 empty_result)");
+    expect(frame).toContain("steps.shape.expression");
+    expect(frame).toContain("is not an array");
+    expect(frame).toContain("2 attempts");
+    expect(frame).toContain("→ dry_run_workflow");
+    // ok-status expressions are not findings.
+    expect(frame).not.toContain("3 findings");
+  });
+
+  test("failure envelope renders the refusal, not a success card", () => {
+    const call: ToolCallState = {
+      id: "call-author-wf-fail",
+      name: "author_workflow",
+      args: {},
+      status: "done",
+      result: {
+        ok: false,
+        data: {
+          error: "authoring_connectors_unresolved",
+          error_code: "authoring_connectors_unresolved",
+          message: "connector slug `digtalocean` did not resolve for this tenant",
+        },
+      },
+    };
+    const frame = frameOf(call);
+    expect(frame).toContain("Workflow authoring failed");
+    expect(frame).toContain("authoring_connectors_unresolved");
+    expect(frame).toContain("did not resolve");
+    expect(frame).not.toContain("Workflow authored ·");
+  });
+
+  test("author_workflow is in-flight visible in chat mode", () => {
+    const call: ToolCallState = {
+      id: "call-author-wf-running",
+      name: "author_workflow",
+      args: { goal: "g" },
+      status: "running",
+    };
+    expect(renderAuthoringCard(call, "chat")).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// start_workflow_from_goal is deleted engine-side — sk must no longer
+// treat it as a milestone (no card in chat, no dedicated case).
+// ---------------------------------------------------------------------------
+
+describe("renderAuthoringCard — start_workflow_from_goal removed", () => {
+  const doneCall: ToolCallState = {
+    id: "call-swfg",
+    name: "start_workflow_from_goal",
+    args: {},
+    status: "done",
+    result: {
+      ok: true,
+      data: { workflow: { name: "Old Tool", definition: { steps: [] } } },
+    },
+  };
+
+  test("returns null in chat mode for a completed call", () => {
+    expect(renderAuthoringCard(doneCall, "chat")).toBeNull();
+  });
+
+  test("returns null in inspect mode (no dedicated case left)", () => {
+    expect(renderAuthoringCard(doneCall, "inspect")).toBeNull();
+  });
+
+  test("returns null in chat mode while running (not in-flight visible)", () => {
+    const running: ToolCallState = { ...doneCall, status: "running" };
+    expect(renderAuthoringCard(running, "chat")).toBeNull();
   });
 });
 

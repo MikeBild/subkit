@@ -46,7 +46,6 @@ describe("conversation tools — registration", () => {
     "search_knowledge",
     "start_connector_from_description",
     "start_connector_from_template",
-    "start_workflow_from_goal",
     "start_workflow_from_recipe",
     "suggest_connector_templates",
     "suggest_jsonata_paths",

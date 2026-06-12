@@ -120,7 +120,7 @@ one to make the model "easier to drive".
   tool — it does not instruct the user to run `sk` CLI commands, paste shell prompts, or
   open a separate UI. If the matching tool does not exist, the agent calls `cannot_help`
   with a chat-actionable `suggest_alternative`, never a CLI suggestion.
-- **Proof before proposal.** Before `propose_step` or `start_workflow_from_goal`, run
+- **Proof before proposal.** Before `author_workflow` (or a repair-stage `propose_step`), run
   `probe_connector` to verify the credential resolves and the base URL responds. Skipping
   the probe is the largest single source of authoring-time errors.
 - **Dry-run before first commit.** A brand-new workflow draft must pass

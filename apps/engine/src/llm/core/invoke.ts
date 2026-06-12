@@ -228,6 +228,32 @@ function flowEnvKey(flow: LlmFlow): string {
   return flow.toUpperCase();
 }
 
+// Code-level model elevation for quality-critical, LOW-frequency flows.
+//
+// `judge` (post-preview verdicts that gate auto-commit) and `generate`
+// (whole-workflow authoring) each fire roughly once per authoring cycle
+// but decide artifact quality outright, while the chat-frequency flows
+// (converse / extract / summarize / …) dominate token volume. By
+// convention the tenant route's FALLBACK model is the STRONGER one
+// (prod: primary Haiku 4.5, fallback Sonnet 4.6 — the primary is picked
+// for cost, the fallback for capability), so these two flows are routed
+// to the fallback model in code. No env vars: this is shipped behavior,
+// not a toggle. When the route carries no distinct fallback the primary
+// is kept unchanged. `applyFlowEnvOverrides` still applies ON TOP, so a
+// per-flow `{FLOW}_MODEL` operator override wins exactly as before.
+const ELEVATED_FLOWS: ReadonlySet<LlmFlow> = new Set(["judge", "generate"]);
+
+export function applyFlowModelElevation(route: ModelRoute, flow: LlmFlow): ModelRoute {
+  if (!ELEVATED_FLOWS.has(flow)) return route;
+  if (!route.fallback || route.fallback === route.primary) return route;
+  return {
+    ...route,
+    primary: route.fallback,
+    provider: route.fallback_provider,
+    context_cap: contextCapFor(route.fallback),
+  };
+}
+
 export function applyFlowEnvOverrides(route: ModelRoute, flow: LlmFlow): ModelRoute {
   const key = flowEnvKey(flow);
   const providerEnvVar = `${key}_LLM_PROVIDER`;
@@ -312,7 +338,13 @@ async function invokeInner<T = unknown>(
 ): Promise<InvokeResult<T>> {
   const db = exec ?? getDb();
   const base_route = params.route ?? (await resolveModelRoute(params.tenant_id, db));
-  const route = applyFlowEnvOverrides(base_route, params.flow);
+  // Order matters: code-level elevation first (judge/generate → the
+  // stronger fallback model), then env overrides so an operator's
+  // per-flow override still has the last word.
+  const route = applyFlowEnvOverrides(
+    applyFlowModelElevation(base_route, params.flow),
+    params.flow,
+  );
   invokeFields.model = route.primary;
   log.llm.route.resolved({
     model_id: route.primary,

@@ -115,7 +115,7 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
   const name = pickString("name") ?? fallback.name;
   const slug = pickString("slug");
   const description = pickString("description");
-  // The user's goal verbatim — stashed by start_workflow_from_goal /
+  // The user's goal verbatim — stashed by author_workflow /
   // build_workflow({goal}) and read by the post-preview judge. Must
   // survive the normalize round-trip or the stash silently evaporates
   // on the very next draft mutation.

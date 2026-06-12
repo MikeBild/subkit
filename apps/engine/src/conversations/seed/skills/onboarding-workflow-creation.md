@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [onboarding, authoring]
-version: 3
+version: 4
 ---
 
 # Workflow Creation Onboarding
@@ -44,11 +44,10 @@ Do NOT generate steps until these three questions are answered. One good questio
 ## After the three answers are clear
 
 1. Create the connector first: `start_connector_from_description` or `start_connector_from_template`
-2. Probe the connector to verify connectivity
-3. Save the connector
-4. Build the workflow: `build_workflow` or `propose_step`
-5. Preview with `dry_run_workflow`
-6. Confirm and commit
+2. Probe the connector to verify connectivity — a green probe persists it inline (`auto_saved: true`)
+3. Author the workflow: `author_workflow` (one call from the goal; `build_workflow` when you already hold the exact definition)
+4. Preview with `dry_run_workflow` — writes are held (resolved but never dispatched), and a green preview with a passing judge verdict auto-commits (`auto_committed: true`)
+5. Repair any recorded-eval/judge findings via `edit_workflow_patch` / `update_param`, then preview again
 
 Show progress at each phase so the user always knows where they are.
 

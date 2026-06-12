@@ -477,7 +477,8 @@ export const buildWorkflowTool: ConversationTool = {
     };
     if (args.description) workflowDraft.description = args.description;
     // Stash the goal verbatim as draft-only metadata — same stash shape
-    // as start_workflow_from_goal. Read by the post-preview judge in
+    // as the authoring pipeline's EMIT stage
+    // (authoring-pipeline.ts). Read by the post-preview judge in
     // dry_run_workflow; never projected into the persisted WorkflowDef.
     // A whole-definition repair/replace of the SAME artifact (same
     // slug) without an explicit goal keeps the previously-stashed goal

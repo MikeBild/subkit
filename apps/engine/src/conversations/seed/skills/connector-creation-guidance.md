@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, connector, onboarding]
-version: 7
+version: 8
 ---
 
 # Connector Creation Guidance
@@ -27,7 +27,7 @@ is cheap.
 find_connector  ──►  create_connector_draft  ──►  authenticate_connector
                                                               │
                                                               ▼
-save_workflow  ◄──  build_workflow  ◄──  test_connector  ◄────┘
+save_workflow  ◄──  author_workflow  ◄──  test_connector  ◄───┘
 ```
 
 | Phase | LLM tool | Checkpoint that flips fresh |
@@ -36,8 +36,8 @@ save_workflow  ◄──  build_workflow  ◄──  test_connector  ◄──�
 | 2. create_connector_draft | `start_connector_from_description` / `start_connector_from_template` / `import_connector_from_spec` | `connector_inspected`, then `connector_validated` |
 | 3. authenticate_connector | • `auth_type=bearer/header/query/basic/aws_sigv4`: `ask_user_form(type=password,sensitive=true)` — credential lands on the draft only, persistence happens at probe time<br>• `auth_type=oauth2`: `ask_user_form` carries `commit_intent: save_connector` so the harness saves the draft on submit, then `authenticate_oauth` runs against the persisted row | `connector_authenticated` |
 | 4. test_connector | `probe_connector_draft` | `connector_probed` AND (on green probe) `connector_persisted` — the probe tool calls `saveConnectorAtomic` inline; no separate save call |
-| 5. build_workflow | `build_workflow` / `propose_step` / `update_param` / `edit_workflow_patch` | `workflow_inspected` → `workflow_validated` → `workflow_previewed` |
-| 6. save_workflow | `dry_run_workflow` (auto-commits on a clean preview) | `workflow_previewed` AND (on green preview) `workflow_persisted` |
+| 5. author_workflow | `author_workflow` (one call generates + evaluates the complete draft; `build_workflow` when you already hold the exact definition). `propose_step` / `update_param` / `edit_workflow_patch` are repair tools for specific findings — the first two refuse with `authoring_stage_violation` until a preview or findings exist | `workflow_inspected` → `workflow_validated` → `workflow_previewed` |
+| 6. save_workflow | `dry_run_workflow` (holds writes; auto-commits on a clean preview with a passing judge verdict) | `workflow_previewed` AND (on green, judged preview) `workflow_persisted` |
 
 `config.oauth` is **never** written by hand on the draft — it is owned by the
 template snapshot and the OAuth2 client at mint time. `update_connector_draft`

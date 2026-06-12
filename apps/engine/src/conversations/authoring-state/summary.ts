@@ -501,7 +501,7 @@ export function computeNextSuggestedTool(
     active.lifecycle_state === "persisted" &&
     workflow.steps.length === 0
   ) {
-    return "start_workflow_from_goal";
+    return "author_workflow";
   }
   if (active.kind === "workflow" && active.lifecycle_state === "draft_only") {
     return "save_workflow_draft";

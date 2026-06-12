@@ -335,7 +335,10 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   {
     name: "dry_run_step",
     defaultMode: "auto",
-    computeModeFromInput: confirmIfUnresolvedPlaceholders,
+    computeModeFromInput: confirmIfExecutesWrites,
+    confirmationKind: "external_call",
+    reason:
+      "Confirms a full-live single-step run (execute_writes) or unresolved placeholders; hold-writes previews run auto",
   },
   { name: "dry_run_transform", defaultMode: "auto" },
   {
@@ -427,7 +430,6 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   { name: "propose_step", defaultMode: "auto" },
   { name: "propose_skill", defaultMode: "auto" },
   { name: "diagnose_latest_execution", defaultMode: "auto" },
-  { name: "start_workflow_from_goal", defaultMode: "auto" },
   { name: "start_connector_from_description", defaultMode: "auto" },
   { name: "start_connector_from_template", defaultMode: "auto" },
   { name: "import_connector_from_spec", defaultMode: "auto" },

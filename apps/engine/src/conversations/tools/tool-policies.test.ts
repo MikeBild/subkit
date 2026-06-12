@@ -300,6 +300,23 @@ describe("resolveExecutionMode — table coverage", () => {
     ).toBe("confirm_before_execution");
   });
 
+  it("dry_run_step with execute_writes: true → confirm_before (full-live single-step run)", () => {
+    expect(
+      resolveExecutionMode("dry_run_step", { step_id: "s", execute_writes: true }, CTX).mode,
+    ).toBe("confirm_before_execution");
+  });
+
+  it("dry_run_step default (hold-writes preview) → auto", () => {
+    expect(resolveExecutionMode("dry_run_step", { step_id: "s" }, CTX).mode).toBe("auto");
+  });
+
+  it("dry_run_workflow with execute_writes: true → confirm_before", () => {
+    expect(
+      resolveExecutionMode("dry_run_workflow", { workflow_id: "x", execute_writes: true }, CTX)
+        .mode,
+    ).toBe("confirm_before_execution");
+  });
+
   it("discovery / read tools default auto", () => {
     for (const t of [
       "discover_connector_endpoints",

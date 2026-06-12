@@ -133,7 +133,6 @@ const WORKFLOW_AUTHORING: ReadonlySet<string> = new Set([
   "edit_workflow_patch",
   "inspect_workflow_draft",
   "propose_step",
-  "start_workflow_from_goal",
   // Clone a builtin/tenant recipe into the draft. Pre-fix this was
   // omitted, so the conversation could never clone a recipe — the LLM
   // fell back to free-form build_workflow and hand-authored step bodies

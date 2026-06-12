@@ -599,7 +599,7 @@ export const probeConnectorDraftTool: ConversationTool = {
           auto_saved: true,
           auto_save_reason: "auto_persist_on_green_probe",
           latest_probe,
-          next_best_actions: ["start_workflow_from_goal", "list_workflows"],
+          next_best_actions: ["author_workflow", "list_workflows"],
           next_prompt: `${connectorLabel} saved. What workflow should it power?`,
         },
       };

@@ -194,7 +194,7 @@ export const runWorkflowTool: ConversationTool = {
         : "there is no workflow to run yet — author one first. If the user asked to BUILD or CREATE a workflow, call build_workflow (one-shot) or propose_step (incremental). run_workflow only executes a workflow that has already been authored and saved.";
       const next_best_actions = hasDraftSteps
         ? ["dry_run_workflow", "save_workflow_draft"]
-        : ["build_workflow", "propose_step", "start_workflow_from_goal"];
+        : ["author_workflow", "build_workflow", "propose_step"];
       return {
         ok: false,
         data: withStatus(

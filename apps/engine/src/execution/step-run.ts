@@ -39,6 +39,11 @@ export interface RunSingleStepParams {
    *  can tell which step-run corresponds to which authoring action. */
   workflow_slug?: string;
   trace_id?: string | null;
+  /** Hold-writes preview mode — write-classified steps are resolved but
+   *  never dispatched (see execution/steps/request/side-effects.ts).
+   *  Single-step previews carry the same cannot-publish contract as
+   *  whole-workflow previews. */
+  hold_writes?: boolean;
 }
 
 export async function runSingleStep(p: RunSingleStepParams): Promise<RunResult> {
@@ -61,6 +66,7 @@ export async function runSingleStep(p: RunSingleStepParams): Promise<RunResult> 
         request_source: p.request_source ?? "api",
         execution_mode: p.environment ?? "dev",
         signal,
+        ...(p.hold_writes !== undefined ? { hold_writes: p.hold_writes } : {}),
         trace_id: p.trace_id ?? null,
         ...(p.principal ? { principal: p.principal } : {}),
       },

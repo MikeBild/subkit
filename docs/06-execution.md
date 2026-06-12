@@ -32,16 +32,22 @@ A Workflow is composed of Steps. The reference implementation ships seven Step k
 
 | `kind` | Required fields | Behaviour |
 |---|---|---|
-| `request` | one of `url` / `connector_id` / `sql`; optional `method`, `headers`, `query`, `body`, `pagination`, `graphql`, `sql`, `s3`, `xml`, `expected_statuses`, `expected_row_count`, `idempotency_key`, `outputs` | Calls a connector endpoint. Routed through the connector's driver (HTTP, GraphQL, Postgres, S3, MSSQL, Redis, FTP/SFTP/SMB) with the tenant's credentials and the governance layer. Connector tests and request steps share the same request execution core, so authoring-time probes and runtime behaviour stay aligned. |
+| `request` | one of `url` / `connector_id` / `sql`; optional `method`, `headers`, `query`, `body`, `pagination`, `graphql`, `sql`, `s3`, `xml`, `expected_statuses`, `expected_row_count`, `idempotency_key`, `outputs`, `side_effects` | Calls a connector endpoint. Routed through the connector's driver (HTTP, GraphQL, Postgres, S3, MSSQL, Redis, FTP/SFTP/SMB) with the tenant's credentials and the governance layer. Connector tests and request steps share the same request execution core, so authoring-time probes and runtime behaviour stay aligned. |
 | `transform` | `expression`; optional `language` (`jsonata` \| `javascript`), `input_schema`, `output_schema`, `silence_warnings` | Reshapes data between steps using a sandboxed JSONata or JavaScript expression. No network access, bounded heap and wall-clock per `SANDBOX_MEMORY_LIMIT_BYTES` / `SANDBOX_WALL_MS_DEFAULT`. |
 | `branch` | `when`, `then_steps[]`; optional `else_steps[]` | Deterministic conditional routing. The engine evaluates `when` against scope and dispatches the matching branch — no inference, no fallthrough. |
-| `loop` | `body[]`, `item_var`; exactly one of `over` or `data_selector` | Iterates a collection, executing `body` per item. `data_selector` is the JS expression form (preferred for new loops, surfaces real exceptions); `over` is the legacy path/JSONata form. |
+| `loop` | `body[]`; exactly one of `over` or `data_selector` | Iterates a collection, executing `body` per item. Inside the body the current item is `$item` (JSONata expressions) / `${item.…}` (request placeholder strings), plus the zero-based `$loop_index`. `item_var` is retired: authoring it is rejected (`validateWorkflowDef`); historical stored versions that declared it keep executing unchanged. `data_selector` is the JS expression form (preferred for new loops, surfaces real exceptions); `over` is the legacy path/JSONata form. |
 | `parallel` | `branches[][]` | Executes multiple step sequences concurrently and merges their results. The engine fans out, awaits all branches, then continues. |
 | `wait` | `duration_ms` (≤ 6 h) | Deliberate delay for polling, rate-limit management, or human-paced flows. |
 | `wait_for_event` | `event_name`, `timeout_ms`; optional `match`, `on_timeout` | Signal-driven HITL pause. The runner inserts a `workflow_waits` checkpoint, polls `workflow_signals` at 1 s cadence, and resumes when a matching signal arrives or `timeout_ms` elapses. The runner does NOT implicitly skip downstream steps on timeout — the workflow author MUST follow the wait with an explicit `branch` step that gates the success vs timeout path on `$.steps.<wait_id>.timed_out`. |
 | `call` | one of `workflow_id` or `workflow_slug`; optional `input` | Invokes another workflow. Recursion is capped by `MAX_CALL_DEPTH` (5). |
 
 Every step also accepts the shared base fields `id`, `on_error` (`fail` \| `continue`), `data_selector`, and `timeout_ms`.
+
+### Read/write classification and hold-writes previews
+
+Request steps carry an optional `side_effects: "read" | "write"` field. When unset, the driver classifies at dispatch time: HTTP `GET`/`HEAD`/`OPTIONS` = read, other methods = write; GraphQL `query` = read, `mutation`/`subscription` = write; SQL SELECT-only = read, anything else = write; S3 GET/HEAD/LIST = read. Set `"read"` explicitly for a POST that is semantically a search, or `"write"` to force-hold a GET that mutates server state.
+
+The classification drives dry-run previews: a `dry_run_workflow` preview HOLDS WRITES by default. Read steps execute live against the real upstream; write steps (sends, posts, publishes) are fully resolved — URL, headers, the materialized body — but never dispatched; the held request is recorded as the step artifact. The instruction-grounded preview judge reads the held payloads, and a green preview with a passing judge verdict auto-commits the draft. Executing writes for real during a preview requires explicit user confirmation (`execute_writes: true`).
 
 ### Wait-for-event timeout pattern
 

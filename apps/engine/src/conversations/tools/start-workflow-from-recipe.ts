@@ -133,10 +133,10 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
         error_code: "connector_recipe_unknown",
         message:
           available.length === 0
-            ? `template \`${args.template_slug}\` ships no recipes — author from scratch with start_workflow_from_goal + propose_step.`
+            ? `template \`${args.template_slug}\` ships no recipes — author from scratch with author_workflow.`
             : `no recipe \`${args.recipe_slug}\` on template \`${args.template_slug}\`. Available: ${available.join(", ")}.`,
         next_best_actions:
-          available.length > 0 ? ["start_workflow_from_recipe"] : ["start_workflow_from_goal"],
+          available.length > 0 ? ["start_workflow_from_recipe"] : ["author_workflow"],
         data: { available_recipes: available },
       };
     }
@@ -188,6 +188,21 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
 
     const slug = args.slug ?? `${args.template_slug}-${args.recipe_slug}`;
     const name = args.name ?? recipe.title;
+    // Judge visibility: stash a goal derived from the recipe's intent
+    // (title/description, plus the user's name override when it adds
+    // information) as the same draft-only `goal` metadata the other
+    // authoring entry points write. Without it every recipe-cloned
+    // workflow previewed as `judge.no_goal` — the post-preview judge
+    // had nothing to grade the output against, so recipe clones were
+    // permanently exempt from the instruction-grounded verdict.
+    const goal = [
+      args.name && args.name !== recipe.title ? args.name : null,
+      recipe.title,
+      recipe.description,
+    ]
+      .filter((part): part is string => typeof part === "string" && part.length > 0)
+      .filter((part, index, all) => all.indexOf(part) === index)
+      .join(" — ");
     // Clone the recipe's workflow shape into a draft. We deep-clone via
     // JSON to detach from the immutable builtin template; subsequent
     // edits to the draft never touch the recipe in templates.json.
@@ -200,6 +215,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
       name,
       slug,
       description: cloned.description ?? recipe.description,
+      ...(goal.length > 0 ? { goal } : {}),
       ...(recipe.derived_from_skill ? { derived_from_skill_id: recipe.derived_from_skill } : {}),
     };
     const draft = ctx.getDraft();

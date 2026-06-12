@@ -103,9 +103,16 @@ hits, and pagination edges — the user does not have to quote them back.
 
 ## Conversation tool-use loop
 
-Conversations expose a fixed set of structured-intent tools
-(`list_skills`, `fetch_connector_docs`, `propose_step`, `validate_draft`, `save_workflow_draft`,
-etc.). When adding a tool:
+Conversations expose a fixed set of structured-intent tools. `author_workflow` is the
+primary authoring entry: one call generates and evaluates the complete draft from the
+user's goal, grounded in recorded endpoint samples + docs. `dry_run_workflow` previews
+the draft with writes HELD (write steps are fully resolved but never dispatched; the
+held request is the step artifact), and an instruction-grounded judge verdict gates the
+auto-commit — green preview + judge pass commits inline. Repair tools
+(`edit_workflow_patch`, `update_param`, `propose_step`) apply specific findings
+afterwards; they refuse with `authoring_stage_violation` before a preview or findings
+exist. Context/grounding tools (`list_skills`, `fetch_connector_docs`,
+`validate_draft`, etc.) round out the palette. When adding a tool:
 
 1. Define Zod schema for input and output.
 2. Register in the Conversation tool registry.

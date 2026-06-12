@@ -290,7 +290,7 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
       message: `call_connector is currently HTTP/GraphQL only; use a workflow step for ${driver} connectors`,
       driver,
       latency_ms: 0,
-      next_best_actions: ["start_workflow_from_goal"],
+      next_best_actions: ["author_workflow"],
     };
   }
 

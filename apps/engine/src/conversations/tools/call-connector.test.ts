@@ -374,7 +374,7 @@ describe("call_connector — error envelopes", () => {
       next_best_actions: string[];
     };
     expect(data.error.code).toBe("driver_not_supported_for_call_connector");
-    expect(data.next_best_actions).toContain("start_workflow_from_goal");
+    expect(data.next_best_actions).toContain("author_workflow");
   });
 
   test("driver mismatch: passing `op` to an HTTP connector → invalid_input", async () => {

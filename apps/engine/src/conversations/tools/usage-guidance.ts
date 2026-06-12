@@ -226,7 +226,7 @@ export function connectorPersistEnvelopeFields(connector: {
   return {
     connector,
     usage,
-    next_best_actions: ["start_workflow_from_goal", "list_workflows", "list_connectors"],
+    next_best_actions: ["author_workflow", "list_workflows", "list_connectors"],
     next_prompt: usage.follow_up,
   };
 }

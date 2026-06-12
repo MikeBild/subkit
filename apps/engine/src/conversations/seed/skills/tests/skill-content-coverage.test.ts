@@ -165,6 +165,44 @@ describe("workflow-authoring.md · field coverage", () => {
   });
 });
 
+describe("data-handling.md · $item-only loop contract + JS-first transforms", () => {
+  const body = read("data-handling.md");
+  test("documents the $item-only loop iteration contract (item_var retired)", () => {
+    expect(body).toMatch(/`item_var` is RETIRED/);
+    expect(body).not.toMatch(/"item_var":/);
+    expect(body).toContain("${item.id}");
+    expect(body).toContain("$item.name");
+    expect(body).toContain("$loop_index");
+  });
+  test("documents the JS transform addressing (one `input` global, explicit return)", () => {
+    expect(body).toContain("FUNCTION BODY");
+    expect(body).toContain("input.scope.");
+    expect(body).toContain("input.input");
+    expect(body).toMatch(/language.*javascript/i);
+  });
+  test("documents output_transform_function (JS, preferred) vs output_transform (JSONata, legacy)", () => {
+    expect(body).toContain("output_transform_function");
+    expect(body).toContain("output_transform");
+    expect(body).not.toContain("outputTransform");
+  });
+});
+
+describe("subkit-concepts.md / multi-step-best-practices.md · item_var retired", () => {
+  test("subkit-concepts loop example carries no item_var and names $item", () => {
+    const body = read("subkit-concepts.md");
+    expect(body).not.toMatch(/"item_var":/);
+    expect(body).toContain("$item");
+    expect(body).toContain("${item.");
+  });
+  test("multi-step-best-practices teaches $item / ${item.…} and rejects item_var", () => {
+    const body = read("multi-step-best-practices.md");
+    expect(body).not.toMatch(/"item_var":/);
+    expect(body).toContain("$item");
+    expect(body).toContain("$loop_index");
+    expect(body).toMatch(/`item_var` is retired/);
+  });
+});
+
 describe("postgres-connectors.md · cursor caveat", () => {
   const body = read("postgres-connectors.md");
   test("documents that cursor counts are fetch-count, not affected-count", () => {

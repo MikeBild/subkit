@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [self-healing, drift, repair]
-version: 3
+version: 4
 ---
 
 # Self-Healing And Patch Candidates
@@ -59,7 +59,7 @@ blast radius of the change:
 | Classification | Examples | Promotion path |
 |---|---|---|
 | `safe` | JSONata expression fix, field rename in `data_selector`, non-breaking schema widening, `onError` tuning | Auto-applied after a soak window of N successes with zero failures |
-| `unsafe` | Changing a step's `connector`, editing SQL that writes, removing a schema required field, altering `outputTransform` shape | Requires a user with `patch:approve` to explicitly approve |
+| `unsafe` | Changing a step's `connector`, editing SQL that writes, removing a schema required field, altering `output_transform` shape | Requires a user with `patch:approve` to explicitly approve |
 
 The boundary is sharp: if the patch could change a value an external caller
 depends on, it's unsafe. If it's a purely internal reshape that restores the
@@ -103,7 +103,7 @@ Some candidates should not be promoted even if they "work":
 - **Conflicting schema changes.** The patch widens a type, but a sibling
   workflow depends on the narrower shape. Rejecting forces a coordinated
   migration.
-- **Breaking existing callers.** The `outputTransform` patch would change the
+- **Breaking existing callers.** The `output_transform` patch would change the
   shape returned to a scheduled job. Even if the new shape is more correct,
   breaking a consumer silently is worse.
 - **Low-confidence reasoning.** The candidate's `reason` is vague
