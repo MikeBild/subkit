@@ -5,12 +5,12 @@
 // for the session-784c1b02 thrash (102 dry_run_workflow calls, 16×
 // `loop_authoring_requires_inspect`).
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
-import { setDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import type { RecordedEvalReport } from "../../recorded-eval.ts";
 import type { DraftDocument } from "../../types.ts";
@@ -26,7 +26,19 @@ const nextUuid = createDeterministicUuidFactory(784);
 // live HTTP call the recorded-eval contract forbids. Installed through
 // the driver-fetch seam (drivers no longer read globalThis.fetch, so a
 // globalThis stub would miss real egress AND leak into sibling files).
+// Each test body runs under the seam's explicit wrapper — an
+// enterWith-from-beforeEach binding did not propagate into test bodies
+// under bun.
 let fetchCalls = 0;
+
+const tripwire = ((..._args: unknown[]) => {
+  fetchCalls += 1;
+  throw new Error("live HTTP is forbidden during build_workflow / propose_step");
+}) as unknown as typeof fetch;
+
+function tw(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(tripwire, body));
+}
 
 beforeAll(async () => {
   ctx = await createTestDb("build_workflow_recorded_eval");
@@ -38,20 +50,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  setDriverFetchForTests(null);
   await ctx.cleanup();
 });
 
 beforeEach(() => {
   fetchCalls = 0;
-  setDriverFetchForTests(((..._args: unknown[]) => {
-    fetchCalls += 1;
-    throw new Error("live HTTP is forbidden during build_workflow / propose_step");
-  }) as unknown as typeof fetch);
-});
-
-afterEach(() => {
-  setDriverFetchForTests(null);
 });
 
 function makeCtx(): ToolContext & { _draft: { value: DraftDocument | null } } {
@@ -84,105 +87,117 @@ function seedStageEvidence(toolCtx: ReturnType<typeof makeCtx>): void {
 }
 
 describe("build_workflow — recorded_eval envelope (Fix 9)", () => {
-  test("loop without recorded evidence: draft ACCEPTED, gate verdict + missing evidence in envelope, zero egress", async () => {
-    const toolCtx = makeCtx();
-    const result = await buildWorkflowTool.execute(toolCtx, {
-      name: "Loop without evidence",
-      slug: "loop-no-evidence",
-      steps: [
-        { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
-        { id: "iter", kind: "loop", over: "$scope.fetch.data", body: ["b"] },
-        { id: "b", kind: "transform", language: "jsonata", expression: "$item" },
-      ],
-      environment: "dev",
-    });
+  tw(
+    "loop without recorded evidence: draft ACCEPTED, gate verdict + missing evidence in envelope, zero egress",
+    async () => {
+      const toolCtx = makeCtx();
+      const result = await buildWorkflowTool.execute(toolCtx, {
+        name: "Loop without evidence",
+        slug: "loop-no-evidence",
+        steps: [
+          { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
+          { id: "iter", kind: "loop", over: "$scope.fetch.data", body: ["b"] },
+          { id: "b", kind: "transform", language: "jsonata", expression: "$item" },
+        ],
+        environment: "dev",
+      });
 
-    // The old behavior bounced this call with
-    // `loop_authoring_requires_inspect`. Post-fix the draft lands…
-    expect(result.ok).toBe(true);
-    expect(toolCtx._draft.value?.workflow.slug).toBe("loop-no-evidence");
+      // The old behavior bounced this call with
+      // `loop_authoring_requires_inspect`. Post-fix the draft lands…
+      expect(result.ok).toBe(true);
+      expect(toolCtx._draft.value?.workflow.slug).toBe("loop-no-evidence");
 
-    // …and the gate verdict travels in the SAME envelope, with the
-    // exact missing evidence and the exact next action.
-    const data = result.data as {
-      recorded_eval: RecordedEvalReport;
-      next_step: string;
-    };
-    expect(data.recorded_eval.ok).toBe(false);
-    expect(data.recorded_eval.gates.loop.ok).toBe(false);
-    expect(data.recorded_eval.missing_evidence.map((m) => m.step_id)).toContain("fetch");
-    expect(data.recorded_eval.missing_evidence[0]?.next_action).toBe("dry_run_workflow");
-    expect(data.recorded_eval.next_actions).toContain("dry_run_workflow");
-    expect(data.next_step).toBe("dry_run_workflow");
+      // …and the gate verdict travels in the SAME envelope, with the
+      // exact missing evidence and the exact next action.
+      const data = result.data as {
+        recorded_eval: RecordedEvalReport;
+        next_step: string;
+      };
+      expect(data.recorded_eval.ok).toBe(false);
+      expect(data.recorded_eval.gates.loop.ok).toBe(false);
+      expect(data.recorded_eval.missing_evidence.map((m) => m.step_id)).toContain("fetch");
+      expect(data.recorded_eval.missing_evidence[0]?.next_action).toBe("dry_run_workflow");
+      expect(data.recorded_eval.next_actions).toContain("dry_run_workflow");
+      expect(data.next_step).toBe("dry_run_workflow");
 
-    // CRITICAL: no live HTTP fired implicitly.
-    expect(fetchCalls).toBe(0);
-  });
+      // CRITICAL: no live HTTP fired implicitly.
+      expect(fetchCalls).toBe(0);
+    },
+  );
 
-  test("clean build (no scope refs) reports recorded_eval.ok and keeps save as the next step", async () => {
-    const toolCtx = makeCtx();
-    const result = await buildWorkflowTool.execute(toolCtx, {
-      name: "Plain wait",
-      slug: "plain-wait",
-      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
-      environment: "dev",
-    });
-    expect(result.ok).toBe(true);
-    const data = result.data as { recorded_eval: RecordedEvalReport; next_step: string };
-    expect(data.recorded_eval.ok).toBe(true);
-    expect(data.next_step).toBe("save_workflow_draft");
-    expect(fetchCalls).toBe(0);
-  });
+  tw(
+    "clean build (no scope refs) reports recorded_eval.ok and keeps save as the next step",
+    async () => {
+      const toolCtx = makeCtx();
+      const result = await buildWorkflowTool.execute(toolCtx, {
+        name: "Plain wait",
+        slug: "plain-wait",
+        steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+        environment: "dev",
+      });
+      expect(result.ok).toBe(true);
+      const data = result.data as { recorded_eval: RecordedEvalReport; next_step: string };
+      expect(data.recorded_eval.ok).toBe(true);
+      expect(data.next_step).toBe("save_workflow_draft");
+      expect(fetchCalls).toBe(0);
+    },
+  );
 });
 
 describe("propose_step — recorded_eval envelope (Fix 9)", () => {
-  test("branch with a bad JSONata `when` is accepted with a caret compile error in the envelope", async () => {
-    const toolCtx = makeCtx();
-    seedStageEvidence(toolCtx);
-    const first = await proposeStepTool.execute(toolCtx, {
-      step: { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
-    });
-    expect(first.ok).toBe(true);
-    const result = await proposeStepTool.execute(toolCtx, {
-      step: {
-        id: "gate",
-        kind: "branch",
-        when: "items[",
-        then_steps: ["fetch"],
-      },
-    });
-    expect(result.ok).toBe(true);
-    const data = result.data as { recorded_eval: RecordedEvalReport };
-    const finding = data.recorded_eval.expressions.find((f) => f.site === "steps.gate.when");
-    expect(finding?.status).toBe("compile_error");
-    expect(finding?.message).toContain("█");
-    expect(data.recorded_eval.ok).toBe(false);
-    expect(data.recorded_eval.next_actions).toContain("update_param");
-    expect(fetchCalls).toBe(0);
-  });
+  tw(
+    "branch with a bad JSONata `when` is accepted with a caret compile error in the envelope",
+    async () => {
+      const toolCtx = makeCtx();
+      seedStageEvidence(toolCtx);
+      const first = await proposeStepTool.execute(toolCtx, {
+        step: { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
+      });
+      expect(first.ok).toBe(true);
+      const result = await proposeStepTool.execute(toolCtx, {
+        step: {
+          id: "gate",
+          kind: "branch",
+          when: "items[",
+          then_steps: ["fetch"],
+        },
+      });
+      expect(result.ok).toBe(true);
+      const data = result.data as { recorded_eval: RecordedEvalReport };
+      const finding = data.recorded_eval.expressions.find((f) => f.site === "steps.gate.when");
+      expect(finding?.status).toBe("compile_error");
+      expect(finding?.message).toContain("█");
+      expect(data.recorded_eval.ok).toBe(false);
+      expect(data.recorded_eval.next_actions).toContain("update_param");
+      expect(fetchCalls).toBe(0);
+    },
+  );
 
-  test("transform reading an un-previewed sibling is accepted with the transform gate verdict in the envelope", async () => {
-    const toolCtx = makeCtx();
-    seedStageEvidence(toolCtx);
-    await proposeStepTool.execute(toolCtx, {
-      step: { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
-    });
-    const result = await proposeStepTool.execute(toolCtx, {
-      step: {
-        id: "shape",
-        kind: "transform",
-        language: "jsonata",
-        expression: "$scope.fetch.data.items",
-      },
-    });
-    // Old behavior: bounced with `transform_authoring_requires_inspect`.
-    expect(result.ok).toBe(true);
-    const data = result.data as { recorded_eval: RecordedEvalReport };
-    expect(data.recorded_eval.gates.transform.ok).toBe(false);
-    expect(
-      data.recorded_eval.gates.transform.blocks.some((b) => b.referenced_step_id === "fetch"),
-    ).toBe(true);
-    expect(data.recorded_eval.missing_evidence.map((m) => m.step_id)).toContain("fetch");
-    expect(fetchCalls).toBe(0);
-  });
+  tw(
+    "transform reading an un-previewed sibling is accepted with the transform gate verdict in the envelope",
+    async () => {
+      const toolCtx = makeCtx();
+      seedStageEvidence(toolCtx);
+      await proposeStepTool.execute(toolCtx, {
+        step: { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
+      });
+      const result = await proposeStepTool.execute(toolCtx, {
+        step: {
+          id: "shape",
+          kind: "transform",
+          language: "jsonata",
+          expression: "$scope.fetch.data.items",
+        },
+      });
+      // Old behavior: bounced with `transform_authoring_requires_inspect`.
+      expect(result.ok).toBe(true);
+      const data = result.data as { recorded_eval: RecordedEvalReport };
+      expect(data.recorded_eval.gates.transform.ok).toBe(false);
+      expect(
+        data.recorded_eval.gates.transform.blocks.some((b) => b.referenced_step_id === "fetch"),
+      ).toBe(true);
+      expect(data.recorded_eval.missing_evidence.map((m) => m.step_id)).toContain("fetch");
+      expect(fetchCalls).toBe(0);
+    },
+  );
 });

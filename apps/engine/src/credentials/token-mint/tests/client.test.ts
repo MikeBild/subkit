@@ -2,63 +2,70 @@
 // the three shape envelopes can be asserted independently of any real
 // IdP.
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { setDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runTokenMintGrant } from "../client.ts";
 
+let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
+
+beforeEach(() => {
+  fetchSpy = mock<typeof fetch>();
+});
+
+// Driver-fetch seam: the token-mint client reads getDriverFetch(), not
+// globalThis — run each body under the seam's explicit wrapper (the
+// override must scope the body itself; an enterWith-from-beforeEach
+// binding did not propagate into test bodies under bun).
+function seamTest(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+}
+
 describe("runTokenMintGrant — shape: aws_initiate_auth (Cognito)", () => {
-  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
+  seamTest(
+    "posts USER_PASSWORD_AUTH with x-amz-target and parses AuthenticationResult",
+    async () => {
+      fetchSpy.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            AuthenticationResult: {
+              IdToken: "eyJ.id-token",
+              RefreshToken: "rt-1",
+              ExpiresIn: 3600,
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+      const bundle = await runTokenMintGrant({
+        shape: "aws_initiate_auth",
+        mint_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
+        credentials: { username: "user@example.com", password: "pw", client_id: "abc" },
+        token_path: "AuthenticationResult.IdToken",
+        refresh_token_path: "AuthenticationResult.RefreshToken",
+        expires_in_path: "AuthenticationResult.ExpiresIn",
+      });
+      const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+      const headers = init.headers as Record<string, string>;
+      expect(headers["x-amz-target"]).toBe("AWSCognitoIdentityProviderService.InitiateAuth");
+      expect(headers["content-type"]).toBe("application/x-amz-json-1.1");
+      const body = JSON.parse(String(init.body));
+      expect(body.AuthFlow).toBe("USER_PASSWORD_AUTH");
+      expect(body.ClientId).toBe("abc");
+      expect(body.AuthParameters.USERNAME).toBe("user@example.com");
+      expect(bundle.access_token).toBe("eyJ.id-token");
+      expect(bundle.refresh_token).toBe("rt-1");
+      expect(bundle.expires_at).toBeInstanceOf(Date);
+      // 3600s ExpiresIn: bundle.expires_at lands ~1h from the wall clock.
+      // We assert the gap against current wall time (the mint client uses
+      // wall time itself; mocking it would just shadow the same Date.now
+      // call). Tolerance: 100ms before / 3600.1s after.
+      const ageMs = bundle.expires_at!.getTime() - Date.now(); // allow-wall-clock: this assertion exists to verify wall-time math the client itself runs
+      expect(ageMs).toBeLessThanOrEqual(3_600_000);
+      expect(ageMs).toBeGreaterThan(3_590_000);
+    },
+  );
 
-  beforeEach(() => {
-    fetchSpy = mock<typeof fetch>();
-    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
-  });
-  afterEach(() => {
-    setDriverFetchForTests(null);
-  });
-
-  test("posts USER_PASSWORD_AUTH with x-amz-target and parses AuthenticationResult", async () => {
-    fetchSpy.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          AuthenticationResult: {
-            IdToken: "eyJ.id-token",
-            RefreshToken: "rt-1",
-            ExpiresIn: 3600,
-          },
-        }),
-        { status: 200 },
-      ),
-    );
-    const bundle = await runTokenMintGrant({
-      shape: "aws_initiate_auth",
-      mint_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
-      credentials: { username: "user@example.com", password: "pw", client_id: "abc" },
-      token_path: "AuthenticationResult.IdToken",
-      refresh_token_path: "AuthenticationResult.RefreshToken",
-      expires_in_path: "AuthenticationResult.ExpiresIn",
-    });
-    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
-    const headers = init.headers as Record<string, string>;
-    expect(headers["x-amz-target"]).toBe("AWSCognitoIdentityProviderService.InitiateAuth");
-    expect(headers["content-type"]).toBe("application/x-amz-json-1.1");
-    const body = JSON.parse(String(init.body));
-    expect(body.AuthFlow).toBe("USER_PASSWORD_AUTH");
-    expect(body.ClientId).toBe("abc");
-    expect(body.AuthParameters.USERNAME).toBe("user@example.com");
-    expect(bundle.access_token).toBe("eyJ.id-token");
-    expect(bundle.refresh_token).toBe("rt-1");
-    expect(bundle.expires_at).toBeInstanceOf(Date);
-    // 3600s ExpiresIn: bundle.expires_at lands ~1h from the wall clock.
-    // We assert the gap against current wall time (the mint client uses
-    // wall time itself; mocking it would just shadow the same Date.now
-    // call). Tolerance: 100ms before / 3600.1s after.
-    const ageMs = bundle.expires_at!.getTime() - Date.now(); // allow-wall-clock: this assertion exists to verify wall-time math the client itself runs
-    expect(ageMs).toBeLessThanOrEqual(3_600_000);
-    expect(ageMs).toBeGreaterThan(3_590_000);
-  });
-
-  test("computes SECRET_HASH when client_secret is provided", async () => {
+  seamTest("computes SECRET_HASH when client_secret is provided", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ AuthenticationResult: { IdToken: "x", ExpiresIn: 60 } }), {
         status: 200,
@@ -83,16 +90,7 @@ describe("runTokenMintGrant — shape: aws_initiate_auth (Cognito)", () => {
 });
 
 describe("runTokenMintGrant — shape: json (Firebase / generic)", () => {
-  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
-  beforeEach(() => {
-    fetchSpy = mock<typeof fetch>();
-    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
-  });
-  afterEach(() => {
-    setDriverFetchForTests(null);
-  });
-
-  test("posts JSON body with email/password and parses idToken (Firebase shape)", async () => {
+  seamTest("posts JSON body with email/password and parses idToken (Firebase shape)", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ idToken: "fb-id", refreshToken: "fb-rt", expiresIn: "3600" }), {
         status: 200,
@@ -119,16 +117,7 @@ describe("runTokenMintGrant — shape: json (Firebase / generic)", () => {
 });
 
 describe("runTokenMintGrant — shape: form (OAuth2 password / generic)", () => {
-  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
-  beforeEach(() => {
-    fetchSpy = mock<typeof fetch>();
-    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
-  });
-  afterEach(() => {
-    setDriverFetchForTests(null);
-  });
-
-  test("posts urlencoded body with username/password and parses access_token", async () => {
+  seamTest("posts urlencoded body with username/password and parses access_token", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ access_token: "oa-tok", expires_in: 3600 }), { status: 200 }),
     );
@@ -154,16 +143,7 @@ describe("runTokenMintGrant — shape: form (OAuth2 password / generic)", () => 
 });
 
 describe("runTokenMintGrant — error paths", () => {
-  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
-  beforeEach(() => {
-    fetchSpy = mock<typeof fetch>();
-    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
-  });
-  afterEach(() => {
-    setDriverFetchForTests(null);
-  });
-
-  test("non-2xx response throws with the upstream body in the message", async () => {
+  seamTest("non-2xx response throws with the upstream body in the message", async () => {
     fetchSpy.mockResolvedValue(new Response("invalid_grant", { status: 401 }));
     let caught: Error | null = null;
     try {
@@ -180,7 +160,7 @@ describe("runTokenMintGrant — error paths", () => {
     expect(caught?.message).toContain("invalid_grant");
   });
 
-  test("missing token at token_path throws", async () => {
+  seamTest("missing token at token_path throws", async () => {
     fetchSpy.mockResolvedValue(new Response(JSON.stringify({ unexpected: "x" }), { status: 200 }));
     let caught: Error | null = null;
     try {
@@ -196,7 +176,7 @@ describe("runTokenMintGrant — error paths", () => {
     expect(caught?.message).toContain("missing token at path 'id_token'");
   });
 
-  test("aws_initiate_auth without client_id throws synchronously (before fetch)", async () => {
+  seamTest("aws_initiate_auth without client_id throws synchronously (before fetch)", async () => {
     let caught: Error | null = null;
     try {
       await runTokenMintGrant({

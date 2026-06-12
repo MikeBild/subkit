@@ -8,6 +8,7 @@
 
 import { load as loadYaml } from "js-yaml";
 import { log } from "../../logging/logger.ts";
+import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import {
@@ -174,7 +175,11 @@ async function fetchSpec(
       accept: "application/json, application/yaml, text/yaml, */*",
       ...(opts.headers ?? {}),
     };
-    const res = await fetch(effectiveUrl, { method: "GET", headers, signal: controller.signal });
+    const res = await getDriverFetch()(effectiveUrl, {
+      method: "GET",
+      headers,
+      signal: controller.signal,
+    });
     if (!res.ok) {
       throw new DiscoveryError(`http_${res.status}`, `GET ${scrubUrl(url)} returned ${res.status}`);
     }

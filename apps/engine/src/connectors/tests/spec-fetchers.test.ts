@@ -1,5 +1,20 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { fetchGraphQLIntrospection, fetchOpenApiSpec, SpecFetchError } from "../spec-fetchers.ts";
+
+let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
+
+beforeEach(() => {
+  fetchSpy = mock<typeof fetch>();
+});
+
+// Driver-fetch seam: the code under test reads getDriverFetch(), not
+// globalThis — run each body under the seam's explicit wrapper (the
+// override must scope the body itself; an enterWith-from-beforeEach
+// binding did not propagate into test bodies under bun).
+function seamTest(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+}
 
 describe("fetchOpenApiSpec — SSRF guard", () => {
   test("rejects localhost", async () => {
@@ -46,17 +61,7 @@ describe("fetchOpenApiSpec — invalid URL", () => {
 });
 
 describe("fetchOpenApiSpec — size budget via mocked fetch", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
-
-  beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  test("rejects content larger than 8 MB", async () => {
+  seamTest("rejects content larger than 8 MB", async () => {
     const bigBuffer = new ArrayBuffer(9 * 1024 * 1024); // 9 MB
     fetchSpy.mockResolvedValue(
       new Response(bigBuffer, {
@@ -69,7 +74,7 @@ describe("fetchOpenApiSpec — size budget via mocked fetch", () => {
     );
   });
 
-  test("accepts content within the 8 MB budget", async () => {
+  seamTest("accepts content within the 8 MB budget", async () => {
     const smallContent = JSON.stringify({ openapi: "3.0.0", paths: {} });
     const encoder = new TextEncoder();
     fetchSpy.mockResolvedValue(
@@ -83,7 +88,7 @@ describe("fetchOpenApiSpec — size budget via mocked fetch", () => {
     expect(result.fetched_from).toBe("https://external.api.example.com/openapi.json");
   });
 
-  test("throws SpecFetchError on non-2xx response", async () => {
+  seamTest("throws SpecFetchError on non-2xx response", async () => {
     fetchSpy.mockResolvedValue(new Response(null, { status: 404 }));
     await expect(fetchOpenApiSpec("https://external.api.example.com/missing.json")).rejects.toThrow(
       SpecFetchError,
@@ -100,17 +105,7 @@ describe("fetchGraphQLIntrospection — SSRF guard", () => {
 });
 
 describe("fetchGraphQLIntrospection — mocked fetch", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
-
-  beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  test("throws when response has no data field", async () => {
+  seamTest("throws when response has no data field", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ errors: [{ message: "not found" }] }), {
         status: 200,
@@ -122,7 +117,7 @@ describe("fetchGraphQLIntrospection — mocked fetch", () => {
     ).rejects.toThrow(SpecFetchError);
   });
 
-  test("throws SpecFetchError on non-2xx status", async () => {
+  seamTest("throws SpecFetchError on non-2xx status", async () => {
     fetchSpy.mockResolvedValue(new Response(null, { status: 500 }));
     await expect(
       fetchGraphQLIntrospection("https://external.api.example.com/graphql"),

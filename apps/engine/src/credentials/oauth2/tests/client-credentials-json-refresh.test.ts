@@ -11,11 +11,11 @@
 //
 // fetch is mocked so no real server is required.
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
-import { setDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { getCredentialForConnector, upsertCredential } from "../../service.ts";
 import { refreshIfStale } from "../refresh-worker.ts";
 
@@ -76,15 +76,18 @@ afterAll(async () => {
 
 beforeEach(() => {
   fetchSpy = mock<typeof fetch>();
-  setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
 });
 
-afterEach(() => {
-  setDriverFetchForTests(null);
-});
+// Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
+// globalThis — run each body under the seam's explicit wrapper (the
+// override must scope the body itself; an enterWith-from-beforeEach
+// binding did not propagate into test bodies under bun).
+function seamTest(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+}
 
 describe("refreshIfStale — client_credentials_json grant", () => {
-  test("re-mints a stale token and rotates it in the db", async () => {
+  seamTest("re-mints a stale token and rotates it in the db", async () => {
     // Seed an expired credential (expires 1ms in the past).
     const expiredAt = new Date(Date.now() - 1); // allow-wall-clock: tolerance-window assertion against the production clock (oauth2/client.ts computes expiry via Date.now)
     await upsertCredential(
@@ -135,7 +138,7 @@ describe("refreshIfStale — client_credentials_json grant", () => {
     expect(typeof body.client_secret).toBe("string");
   });
 
-  test("returns credential unchanged when token is still fresh", async () => {
+  seamTest("returns credential unchanged when token is still fresh", async () => {
     // Ensure the connector config is in place.
     await ctx.db
       .update(connectors)

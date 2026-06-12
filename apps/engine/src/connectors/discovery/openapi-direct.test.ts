@@ -1,6 +1,21 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { normalizeKnownHosts, openApiDirectStrategy } from "./openapi-direct.ts";
 import { DiscoveryError } from "./types.ts";
+
+let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
+
+beforeEach(() => {
+  fetchSpy = mock<typeof fetch>();
+});
+
+// Driver-fetch seam: the code under test reads getDriverFetch(), not
+// globalThis — run each body under the seam's explicit wrapper (the
+// override must scope the body itself; an enterWith-from-beforeEach
+// binding did not propagate into test bodies under bun).
+function seamTest(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+}
 
 const STRIPE_LIKE_OPENAPI_3 = {
   openapi: "3.0.3",
@@ -109,17 +124,7 @@ const SWAGGER_2_FIXTURE = {
 };
 
 describe("openApiDirectStrategy — OpenAPI 3", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
-
-  beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  test("parses endpoints, auth schemes, scopes, pagination", async () => {
+  seamTest("parses endpoints, auth schemes, scopes, pagination", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify(STRIPE_LIKE_OPENAPI_3), {
         status: 200,
@@ -159,7 +164,7 @@ describe("openApiDirectStrategy — OpenAPI 3", () => {
     expect(oauth?.flows?.authorizationCode?.token_url).toBe("https://login.example.com/token");
   });
 
-  test("detects link_header pagination on a GET response", async () => {
+  seamTest("detects link_header pagination on a GET response", async () => {
     const SPEC = {
       openapi: "3.0.0",
       info: { title: "x", version: "1" },
@@ -190,7 +195,7 @@ describe("openApiDirectStrategy — OpenAPI 3", () => {
     expect(result.endpoints[0]?.pagination_hint?.kind).toBe("link_header");
   });
 
-  test("DigitalOcean-style links.pages response triggers cursor hint", async () => {
+  seamTest("DigitalOcean-style links.pages response triggers cursor hint", async () => {
     const SPEC = {
       openapi: "3.0.0",
       info: { title: "x", version: "1" },
@@ -233,14 +238,14 @@ describe("openApiDirectStrategy — OpenAPI 3", () => {
     expect(result.endpoints[0]?.pagination_hint?.kind).toBe("cursor");
   });
 
-  test("throws DiscoveryError on non-2xx", async () => {
+  seamTest("throws DiscoveryError on non-2xx", async () => {
     fetchSpy.mockResolvedValue(new Response(null, { status: 404 }));
     await expect(
       openApiDirectStrategy.fetch("https://api.example.com/openapi.json", {}),
     ).rejects.toBeInstanceOf(DiscoveryError);
   });
 
-  test("throws unknown_spec_version when spec lacks openapi/swagger fields", async () => {
+  seamTest("throws unknown_spec_version when spec lacks openapi/swagger fields", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ info: { title: "x" } }), {
         status: 200,
@@ -256,7 +261,7 @@ describe("openApiDirectStrategy — OpenAPI 3", () => {
     expect(caught?.code).toBe("unknown_spec_version");
   });
 
-  test("parses YAML by extension", async () => {
+  seamTest("parses YAML by extension", async () => {
     const yaml = `openapi: 3.0.0
 info:
   title: yaml-spec
@@ -327,17 +332,7 @@ describe("normalizeKnownHosts", () => {
 });
 
 describe("openApiDirectStrategy — host normalization", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
-
-  beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  test("fetches the rewritten URL when given a SwaggerHub UI host", async () => {
+  seamTest("fetches the rewritten URL when given a SwaggerHub UI host", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify(STRIPE_LIKE_OPENAPI_3), {
         status: 200,
@@ -352,17 +347,7 @@ describe("openApiDirectStrategy — host normalization", () => {
 });
 
 describe("openApiDirectStrategy — Swagger 2", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
-
-  beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  test("parses Swagger 2 spec into the same shape", async () => {
+  seamTest("parses Swagger 2 spec into the same shape", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify(SWAGGER_2_FIXTURE), {
         status: 200,

@@ -13,6 +13,7 @@
 import { z } from "@hono/zod-openapi";
 
 import { getConfig } from "../../config/loader.ts";
+import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import {
   assertEgressAllowed,
   assertRobotsAllowed,
@@ -156,7 +157,7 @@ export const analyzeScrapeTargetTool: ConversationTool = {
       }
     }
 
-    const sitemapCount = await countSitemapEntries(sitemapUrl, userAgent, globalThis.fetch);
+    const sitemapCount = await countSitemapEntries(sitemapUrl, userAgent, getDriverFetch());
     result.sitemap_entry_count = sitemapCount;
 
     if (sitemapCount > cfg.authoring.red_sitemap_threshold) {

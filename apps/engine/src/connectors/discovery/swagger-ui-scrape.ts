@@ -7,6 +7,7 @@
 // `openapi-direct` for the actual parse.
 
 import { log } from "../../logging/logger.ts";
+import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import { normalizeKnownHosts, openApiDirectStrategy } from "./openapi-direct.ts";
@@ -44,7 +45,7 @@ async function fetchHtml(url: string, opts: DiscoveryStrategyOptions): Promise<s
       ...(opts.headers ?? {}),
     };
     assertEgressAllowed(url, {});
-    const res = await fetch(url, { method: "GET", headers, signal: controller.signal });
+    const res = await getDriverFetch()(url, { method: "GET", headers, signal: controller.signal });
     if (!res.ok) {
       throw new DiscoveryError(`http_${res.status}`, `GET ${scrubUrl(url)} returned ${res.status}`);
     }

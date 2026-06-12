@@ -1,6 +1,26 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { extractEmbeddedSpecUrl, swaggerUiScrapeStrategy } from "./swagger-ui-scrape.ts";
 import { DiscoveryError } from "./types.ts";
+
+// Spy signature covers only the (input, init) subset the strategies use
+// — `typeof fetch` would force every mockImplementation to also carry
+// `preconnect`.
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+let fetchSpy: ReturnType<typeof mock<FetchLike>>;
+
+beforeEach(() => {
+  fetchSpy = mock<FetchLike>();
+});
+
+// Driver-fetch seam: the code under test reads getDriverFetch(), not
+// globalThis — run each body under the seam's explicit wrapper (the
+// override must scope the body itself; an enterWith-from-beforeEach
+// binding did not propagate into test bodies under bun).
+function seamTest(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+}
 
 const MINIMAL_SPEC = {
   openapi: "3.0.0",
@@ -34,17 +54,7 @@ describe("extractEmbeddedSpecUrl", () => {
 });
 
 describe("swaggerUiScrapeStrategy", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
-
-  beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  test("delegates to openapi-direct when spec URL is embedded", async () => {
+  seamTest("delegates to openapi-direct when spec URL is embedded", async () => {
     const HTML = `
       <!DOCTYPE html>
       <html><body>
@@ -79,7 +89,7 @@ describe("swaggerUiScrapeStrategy", () => {
     expect(result.endpoints[0]?.operation_id).toBe("health");
   });
 
-  test("throws spec_not_found when HTML has no embedded url", async () => {
+  seamTest("throws spec_not_found when HTML has no embedded url", async () => {
     fetchSpy.mockResolvedValue(
       new Response("<html><body>nothing here</body></html>", {
         status: 200,
@@ -95,7 +105,7 @@ describe("swaggerUiScrapeStrategy", () => {
     expect(caught?.code).toBe("spec_not_found");
   });
 
-  test("propagates http errors with code http_<status>", async () => {
+  seamTest("propagates http errors with code http_<status>", async () => {
     fetchSpy.mockResolvedValue(new Response(null, { status: 500 }));
     let caught: DiscoveryError | null = null;
     try {

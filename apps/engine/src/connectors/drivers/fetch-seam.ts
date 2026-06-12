@@ -8,27 +8,50 @@
 //      one process, and suites that stub `globalThis.fetch` (discovery
 //      tests use an always-200 mock) leak mid-flight into sibling
 //      suites — caught live as a 404 probe observing a 200 (CI run
-//      27425002067). Capturing the real fetch at module load makes
-//      driver egress immune to sibling stubs.
+//      27425002067). Drivers read the seam, never the global.
 //   2. Precise egress tripwires: tests that assert "this code path
-//      makes NO live HTTP" install through `_setDriverFetchForTests`
-//      (via the test-helpers shim) and intercept exactly driver
-//      egress — instead of stubbing the global and hoping the driver
-//      reads it at the right instant.
+//      makes NO live HTTP" install through the seam and intercept
+//      exactly driver egress.
 //
-// `_setDriverFetchForTests` is a gated test seam — production code must
+// The override is ASYNC-CONTEXT-SCOPED (AsyncLocalStorage), not a
+// module global: a first cut used a plain variable and merely MOVED
+// the cross-file race into the seam (CI run 27428076111 — an oauth
+// suite's 200-for-any-URL mock answered a sibling's 404 probe).
+//
+// The override is installed EXCLUSIVELY via the explicit wrapper
+// `_withDriverFetchForTests(fn, body)` (= `store.run`), never via
+// `enterWith`. A second cut exposed `_setDriverFetchForTests` backed by
+// `AsyncLocalStorage.enterWith` and called it from `beforeEach`; under
+// bun that binding did NOT reliably propagate from the hook's async
+// chain into the test bodies — the cognito oauth2 suite saw no override
+// at all, hit the real network, and timed out at 10s × 7 tests, while
+// an identically-structured sibling suite happened to pass. Propagation
+// is chain-structure-dependent and therefore unusable as a contract.
+// `store.run` scopes the override to the wrapped body deterministically:
+// everything awaited inside sees it, concurrently-running sibling test
+// files (different async roots) never do.
+//
+// `_withDriverFetchForTests` is a gated test seam — production code must
 // never import it (enforced by the `test_seams_gated` invariant; tests
 // go through `test-helpers/driver-fetch.ts`).
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 const LOAD_TIME_FETCH: typeof fetch = globalThis.fetch.bind(globalThis);
 
-let driverFetch: typeof fetch = LOAD_TIME_FETCH;
+const overrideStore = new AsyncLocalStorage<typeof fetch>();
 
 export function getDriverFetch(): typeof fetch {
-  return driverFetch;
+  return overrideStore.getStore() ?? LOAD_TIME_FETCH;
 }
 
-/** Test seam: override (or reset with `null`) the driver egress fetch. */
-export function _setDriverFetchForTests(fn: typeof fetch | null): void {
-  driverFetch = fn ?? LOAD_TIME_FETCH;
+/** Test seam: run `body` with the driver-egress fetch bound to `fn`
+ *  (`null` = the load-time-captured real fetch). The override is visible
+ *  to everything awaited inside `body` and to nothing else — never to
+ *  concurrently-running sibling test files. */
+export function _withDriverFetchForTests<T>(
+  fn: typeof fetch | null,
+  body: () => Promise<T>,
+): Promise<T> {
+  return overrideStore.run(fn ?? LOAD_TIME_FETCH, body);
 }

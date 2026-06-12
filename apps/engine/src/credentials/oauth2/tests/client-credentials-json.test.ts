@@ -6,27 +6,29 @@
 //   - when the server returns no expires_in the caller supplies a
 //     default TTL via token_response_ttl_ms
 //
-// These tests mock globalThis.fetch so no live server is required.
+// These tests mock the endpoint through the driver-fetch seam so no
+// live server is required.
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { setDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runClientCredentialsJsonGrant } from "../client.ts";
 
+let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
+
+beforeEach(() => {
+  fetchSpy = mock<typeof fetch>();
+});
+
+// Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
+// globalThis — run each body under the seam's explicit wrapper (the
+// override must scope the body itself; an enterWith-from-beforeEach
+// binding did not propagate into test bodies under bun).
+function seamTest(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+}
+
 describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
-  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
-
-  beforeEach(() => {
-    // Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
-    // globalThis — install the endpoint mock through the seam.
-    fetchSpy = mock<typeof fetch>();
-    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
-  });
-
-  afterEach(() => {
-    setDriverFetchForTests(null);
-  });
-
-  test("POSTs JSON body with mapped credential fields", async () => {
+  seamTest("POSTs JSON body with mapped credential fields", async () => {
     fetchSpy.mockResolvedValue(
       new Response('"eyJraWQiOiJ0ZXN0IiwidHlwIjoiSldUIn0.payload.sig"', {
         status: 200,
@@ -52,7 +54,7 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
     expect(body.client_secret).toBe("s3cr3t");
   });
 
-  test("strips surrounding quotes and whitespace from raw quoted-JWT response", async () => {
+  seamTest("strips surrounding quotes and whitespace from raw quoted-JWT response", async () => {
     // Xray's authenticate endpoint returns a response body that IS the JWT
     // wrapped in double-quotes, e.g. "eyJra…sig"  (with a possible trailing
     // newline). We must strip the quotes and whitespace.
@@ -76,7 +78,7 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
     expect(bundle.scope).toBeNull();
   });
 
-  test("applies token_response_ttl_ms as expires_at when response has no expiry", async () => {
+  seamTest("applies token_response_ttl_ms as expires_at when response has no expiry", async () => {
     fetchSpy.mockResolvedValue(
       new Response('"tok"', {
         status: 200,
@@ -97,7 +99,7 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
     expect(Math.abs(bundle.expires_at!.getTime() - expectedMs)).toBeLessThan(5_000);
   });
 
-  test("throws a typed error on non-2xx response", async () => {
+  seamTest("throws a typed error on non-2xx response", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -122,20 +124,7 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
 });
 
 describe("runClientCredentialsJsonGrant — json response", () => {
-  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
-
-  beforeEach(() => {
-    // Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
-    // globalThis — install the endpoint mock through the seam.
-    fetchSpy = mock<typeof fetch>();
-    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
-  });
-
-  afterEach(() => {
-    setDriverFetchForTests(null);
-  });
-
-  test("extracts access_token from JSON envelope", async () => {
+  seamTest("extracts access_token from JSON envelope", async () => {
     fetchSpy.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -162,7 +151,7 @@ describe("runClientCredentialsJsonGrant — json response", () => {
     expect(Math.abs(bundle.expires_at!.getTime() - expectedMs)).toBeLessThan(5_000);
   });
 
-  test("falls back to token_response_ttl_ms when JSON envelope has no expires_in", async () => {
+  seamTest("falls back to token_response_ttl_ms when JSON envelope has no expires_in", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ access_token: "tok-no-expiry" }), {
         status: 200,
@@ -182,7 +171,7 @@ describe("runClientCredentialsJsonGrant — json response", () => {
     expect(Math.abs(bundle.expires_at!.getTime() - expectedMs)).toBeLessThan(5_000);
   });
 
-  test("throws when JSON envelope is missing access_token", async () => {
+  seamTest("throws when JSON envelope is missing access_token", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ error: "unsupported_grant_type" }), {
         status: 200,
@@ -206,20 +195,7 @@ describe("runClientCredentialsJsonGrant — json response", () => {
 });
 
 describe("runClientCredentialsJsonGrant — extra_token_headers forwarded", () => {
-  let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
-
-  beforeEach(() => {
-    // Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
-    // globalThis — install the endpoint mock through the seam.
-    fetchSpy = mock<typeof fetch>();
-    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
-  });
-
-  afterEach(() => {
-    setDriverFetchForTests(null);
-  });
-
-  test("forwards extra_token_headers onto the token POST", async () => {
+  seamTest("forwards extra_token_headers onto the token POST", async () => {
     fetchSpy.mockResolvedValue(
       new Response('"tok"', { status: 200, headers: { "content-type": "text/plain" } }),
     );

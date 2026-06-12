@@ -9,6 +9,7 @@
 // Pure fetch + regex; no Playwright, no headless browser.
 
 import { log } from "../../logging/logger.ts";
+import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import { openApiDirectStrategy } from "./openapi-direct.ts";
@@ -62,7 +63,7 @@ async function fetchHtml(url: string, opts: DiscoveryStrategyOptions): Promise<s
       ...(opts.headers ?? {}),
     };
     assertEgressAllowed(url, {});
-    const res = await fetch(url, { method: "GET", headers, signal: controller.signal });
+    const res = await getDriverFetch()(url, { method: "GET", headers, signal: controller.signal });
     if (!res.ok) return null;
     const buf = await res.arrayBuffer();
     if (buf.byteLength > MAX_HTML_BYTES) {

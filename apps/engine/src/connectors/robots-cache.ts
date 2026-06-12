@@ -23,6 +23,7 @@ import robotsParser, { type Robot } from "robots-parser";
 
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
+import { getDriverFetch } from "./drivers/fetch-seam.ts";
 import { assertEgressAllowed, EgressBlockedError } from "./egress-guard.ts";
 
 /** Hard cap on `robots.txt` fetches so a slow-loris origin can't stall
@@ -125,7 +126,7 @@ export async function getRobots(params: {
     }
     throw e;
   }
-  const doFetch = params.fetchImpl ?? globalThis.fetch;
+  const doFetch = params.fetchImpl ?? getDriverFetch();
   let parsed: Robot | null = null;
   try {
     const res = await doFetch(robotsUrl, {

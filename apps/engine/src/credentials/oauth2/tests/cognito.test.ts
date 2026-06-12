@@ -1,11 +1,11 @@
 // Pure-function tests for the Cognito User-Password grant. The grant
 // hits a hardcoded `https://cognito-idp.<region>.amazonaws.com/`
-// endpoint, so we mock `globalThis.fetch` instead of standing up a
-// mock server.
+// endpoint, so we install an endpoint mock through the driver-fetch
+// seam instead of standing up a mock server.
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
-import { setDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runCognitoRefreshTokenGrant, runCognitoUserPasswordGrant } from "../client.ts";
 
 const TEST_NOW_MS = getTestNow();
@@ -14,17 +14,18 @@ describe("Cognito User-Password (InitiateAuth)", () => {
   let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
 
   beforeEach(() => {
-    // Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
-    // globalThis — install the endpoint mock through the seam.
     fetchSpy = mock<typeof fetch>();
-    setDriverFetchForTests(fetchSpy as unknown as typeof fetch);
   });
 
-  afterEach(() => {
-    setDriverFetchForTests(null);
-  });
+  // Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
+  // globalThis — run each body under the seam's explicit wrapper (the
+  // override must scope the body itself; an enterWith-from-beforeEach
+  // binding did not propagate into test bodies under bun).
+  function seamTest(name: string, body: () => Promise<void>) {
+    test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+  }
 
-  test("posts USER_PASSWORD_AUTH body to cognito-idp endpoint", async () => {
+  seamTest("posts USER_PASSWORD_AUTH body to cognito-idp endpoint", async () => {
     fetchSpy.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -72,7 +73,7 @@ describe("Cognito User-Password (InitiateAuth)", () => {
     expect(bundle.expires_at!.getTime()).toBeGreaterThan(TEST_NOW_MS);
   });
 
-  test("computes SECRET_HASH when client_secret is provided", async () => {
+  seamTest("computes SECRET_HASH when client_secret is provided", async () => {
     fetchSpy.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -100,7 +101,7 @@ describe("Cognito User-Password (InitiateAuth)", () => {
     expect(body.AuthParameters.SECRET_HASH.length).toBeGreaterThan(20);
   });
 
-  test("use_access_token=true persists AccessToken instead of IdToken", async () => {
+  seamTest("use_access_token=true persists AccessToken instead of IdToken", async () => {
     fetchSpy.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -124,7 +125,7 @@ describe("Cognito User-Password (InitiateAuth)", () => {
     expect(bundle.access_token).toBe("ac-tok");
   });
 
-  test("propagates AWS error responses", async () => {
+  seamTest("propagates AWS error responses", async () => {
     fetchSpy.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -150,7 +151,7 @@ describe("Cognito User-Password (InitiateAuth)", () => {
     expect(caught?.message).toContain("NotAuthorizedException");
   });
 
-  test("REFRESH_TOKEN_AUTH posts refresh token in AuthParameters", async () => {
+  seamTest("REFRESH_TOKEN_AUTH posts refresh token in AuthParameters", async () => {
     fetchSpy.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -183,7 +184,7 @@ describe("Cognito User-Password (InitiateAuth)", () => {
     expect(bundle.refresh_token).toBe("rt-existing");
   });
 
-  test("missing AuthenticationResult throws a clear error", async () => {
+  seamTest("missing AuthenticationResult throws a clear error", async () => {
     fetchSpy.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
 
     let caught: Error | null = null;
@@ -200,61 +201,64 @@ describe("Cognito User-Password (InitiateAuth)", () => {
     expect(caught?.message).toContain("no tokens");
   });
 
-  test("REFRESH_TOKEN_AUTH with client_secret computes SECRET_HASH from the persisted username (not empty)", async () => {
-    // Regression: Cognito clients with a client_secret require
-    // SECRET_HASH on every InitiateAuth call (including
-    // REFRESH_TOKEN_AUTH). The hash is HMAC(secret, username + client_id).
-    // If the refresh-worker doesn't have the original username (because
-    // initial-mint forgot to persist it to `connector.config`), it
-    // computes a hash with empty username and Cognito rejects with
-    // NotAuthorizedException — burning the refresh window. This test
-    // pins the contract: when username is provided, SECRET_HASH must be
-    // present in REFRESH_TOKEN_AUTH and must differ from the
-    // empty-username hash.
-    fetchSpy.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          AuthenticationResult: { IdToken: "fresh", ExpiresIn: 60 },
-        }),
-        { status: 200 },
-      ),
-    );
-    await runCognitoRefreshTokenGrant({
-      region: "eu-central-1",
-      client_id: "abc-secret",
-      client_secret: "shh",
-      username: "user@example.com",
-      password: "",
-      refresh_token: "rt",
-    });
-    const initWithUser = fetchSpy.mock.calls[0]?.[1] as RequestInit;
-    const bodyWithUser = JSON.parse(String(initWithUser.body));
-    expect(typeof bodyWithUser.AuthParameters.SECRET_HASH).toBe("string");
-    const hashWithUser = bodyWithUser.AuthParameters.SECRET_HASH as string;
+  seamTest(
+    "REFRESH_TOKEN_AUTH with client_secret computes SECRET_HASH from the persisted username (not empty)",
+    async () => {
+      // Regression: Cognito clients with a client_secret require
+      // SECRET_HASH on every InitiateAuth call (including
+      // REFRESH_TOKEN_AUTH). The hash is HMAC(secret, username + client_id).
+      // If the refresh-worker doesn't have the original username (because
+      // initial-mint forgot to persist it to `connector.config`), it
+      // computes a hash with empty username and Cognito rejects with
+      // NotAuthorizedException — burning the refresh window. This test
+      // pins the contract: when username is provided, SECRET_HASH must be
+      // present in REFRESH_TOKEN_AUTH and must differ from the
+      // empty-username hash.
+      fetchSpy.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            AuthenticationResult: { IdToken: "fresh", ExpiresIn: 60 },
+          }),
+          { status: 200 },
+        ),
+      );
+      await runCognitoRefreshTokenGrant({
+        region: "eu-central-1",
+        client_id: "abc-secret",
+        client_secret: "shh",
+        username: "user@example.com",
+        password: "",
+        refresh_token: "rt",
+      });
+      const initWithUser = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+      const bodyWithUser = JSON.parse(String(initWithUser.body));
+      expect(typeof bodyWithUser.AuthParameters.SECRET_HASH).toBe("string");
+      const hashWithUser = bodyWithUser.AuthParameters.SECRET_HASH as string;
 
-    fetchSpy.mockClear();
-    fetchSpy.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          AuthenticationResult: { IdToken: "fresh", ExpiresIn: 60 },
-        }),
-        { status: 200 },
-      ),
-    );
-    await runCognitoRefreshTokenGrant({
-      region: "eu-central-1",
-      client_id: "abc-secret",
-      client_secret: "shh",
-      username: "", // bug shape: refresh-worker prior to fix passed empty
-      password: "",
-      refresh_token: "rt",
-    });
-    const initEmpty = fetchSpy.mock.calls[0]?.[1] as RequestInit;
-    const bodyEmpty = JSON.parse(String(initEmpty.body));
-    const hashEmpty = bodyEmpty.AuthParameters.SECRET_HASH as string;
-    // Empty-username SECRET_HASH must NOT match the real-username hash.
-    // Cognito rejects the empty-username variant; the persistCredential
-    // fix in save-connector.ts ensures this never happens at runtime.
-    expect(hashEmpty).not.toBe(hashWithUser);
-  });
+      fetchSpy.mockClear();
+      fetchSpy.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            AuthenticationResult: { IdToken: "fresh", ExpiresIn: 60 },
+          }),
+          { status: 200 },
+        ),
+      );
+      await runCognitoRefreshTokenGrant({
+        region: "eu-central-1",
+        client_id: "abc-secret",
+        client_secret: "shh",
+        username: "", // bug shape: refresh-worker prior to fix passed empty
+        password: "",
+        refresh_token: "rt",
+      });
+      const initEmpty = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+      const bodyEmpty = JSON.parse(String(initEmpty.body));
+      const hashEmpty = bodyEmpty.AuthParameters.SECRET_HASH as string;
+      // Empty-username SECRET_HASH must NOT match the real-username hash.
+      // Cognito rejects the empty-username variant; the persistCredential
+      // fix in save-connector.ts ensures this never happens at runtime.
+      expect(hashEmpty).not.toBe(hashWithUser);
+    },
+  );
 });

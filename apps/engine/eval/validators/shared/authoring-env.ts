@@ -26,7 +26,7 @@ import { tenants } from "../../../src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../src/db/tests/setup.ts";
 import { EngineClient } from "../../../src/engine-client/index.ts";
 import { resetMockProvider } from "../../../src/llm/mock-provider.ts";
-import { setDriverFetchForTests } from "../../../src/test-helpers/driver-fetch.ts";
+import { withDriverFetchForTests } from "../../../src/test-helpers/driver-fetch.ts";
 
 /** Bootstrap the config loader once per eval-runner process with the
  *  mock LLM provider pinned. Idempotent — mirrors the conversation
@@ -122,17 +122,16 @@ export async function withEgressTripwire<T>(
   // Installed through the driver-fetch seam: drivers capture the real
   // fetch at module load, so a globalThis stub would miss real egress —
   // and would leak into sibling test files under concurrent execution.
+  // The seam is async-context-scoped, so the tripwire must wrap `fn`
+  // explicitly (store.run) — everything awaited inside sees it, nothing
+  // outside does.
   let fetch_calls = 0;
-  setDriverFetchForTests(((..._args: unknown[]) => {
+  const tripwire = ((..._args: unknown[]) => {
     fetch_calls += 1;
     throw new Error("live HTTP is forbidden inside CI-mode authoring eval scenarios");
-  }) as unknown as typeof fetch);
-  try {
-    const result = await fn();
-    return { result, fetch_calls };
-  } finally {
-    setDriverFetchForTests(null);
-  }
+  }) as unknown as typeof fetch;
+  const result = await withDriverFetchForTests(tripwire, fn);
+  return { result, fetch_calls };
 }
 
 /** First failed check wins — tiny assertion collector so validators

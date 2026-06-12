@@ -19,7 +19,7 @@
 //   - a NON-M2M oauth2 draft keeps the existing browser-flow gate
 //     (`authenticate_oauth_required`).
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createServer } from "node:http";
 import { eq } from "drizzle-orm";
 import { connectors, credentials } from "../../../db/schema/index.ts";
@@ -42,12 +42,11 @@ async function freshenCheckpoints(base: Parameters<typeof probeConnectorDraftToo
   await validateConnectorDraftTool.execute(base, {});
 }
 
-// Sibling suites in the same bun worker spy on `globalThis.fetch` and a
-// leaked / mid-restore spy would route our token mint to a stub
-// response ("Welcome to Bun!" became the bearer in one concurrent
-// run). Force-restore the real fetch before every test — same defense
-// as save-connector-draft-reissue.test.ts.
-const ORIGINAL_FETCH = globalThis.fetch;
+// All engine egress this suite exercises (token mint, secured-upstream
+// probe via the http driver) reads the driver-fetch seam, which falls
+// back to the fetch captured at module load — sibling suites stubbing
+// `globalThis.fetch` cannot reroute it, so no defensive global-fetch
+// pinning is needed here.
 
 let ctx: ConversationTestCtx;
 let server: ReturnType<typeof createServer>;
@@ -112,10 +111,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await ctx.cleanup();
-});
-
-beforeEach(() => {
-  globalThis.fetch = ORIGINAL_FETCH;
 });
 
 afterEach(async () => {

@@ -15,6 +15,7 @@
 // in check. Fan-out cap: max 10 sub-pages when llms.txt is an index.
 
 import { log } from "../../logging/logger.ts";
+import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import {
@@ -106,7 +107,7 @@ async function fetchText(
       ...(opts.headers ?? {}),
     };
     assertEgressAllowed(url, {});
-    const res = await fetch(url, { method: "GET", headers, signal: controller.signal });
+    const res = await getDriverFetch()(url, { method: "GET", headers, signal: controller.signal });
     if (!res.ok) return null;
     const buf = await res.arrayBuffer();
     if (buf.byteLength > maxBytes) {

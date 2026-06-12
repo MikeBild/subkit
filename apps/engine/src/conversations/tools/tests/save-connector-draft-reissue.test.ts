@@ -45,13 +45,13 @@ let ctx: ConversationTestCtx;
 let server: ReturnType<typeof Bun.serve>;
 let baseUrl: string;
 
-// Capture the real `fetch` at module load — sibling test files in the
-// same `bun test` process spy on `globalThis.fetch` (e.g. discovery
-// tests) and a leaked / mid-restore spy will route our probe of
-// `/broken` to a hardcoded `Response(..., {status:200})` instead of
-// our 500. We force-restore the real fetch in `beforeEach` so this
-// suite is not at the mercy of sibling cleanup ordering.
-const ORIGINAL_FETCH = globalThis.fetch;
+// Capture the real `fetch` at module load for the test-side health
+// pre-flight below. Engine production egress (the probe of `/broken`)
+// reads the driver-fetch seam and is immune to global-fetch stubs, but
+// a sibling suite elsewhere in the shared `bun test` process (e.g. an
+// sk CLI suite) may stub `globalThis.fetch` mid-flight — so the test's
+// own loopback call must not read the global at call time either.
+const ORIGINAL_FETCH = globalThis.fetch.bind(globalThis);
 
 // Unique fixture marker — makes probe responses observably ours and
 // catches cross-test port collisions if a sibling suite happens to
@@ -104,7 +104,7 @@ function startProbeServer(): { server: ReturnType<typeof Bun.serve>; baseUrl: st
 // makes collisions vanishingly unlikely, but the marker check is cheap
 // and gives a clear diagnostic if it ever happens.
 async function assertOwnServer(baseUrl: string): Promise<void> {
-  const res = await fetch(`${baseUrl}/health`);
+  const res = await ORIGINAL_FETCH(`${baseUrl}/health`);
   if (res.headers.get("x-fixture-marker") !== FIXTURE_MARKER) {
     throw new Error(
       `probe fixture port collision: ${baseUrl} is not the server this test started ` +
@@ -119,11 +119,6 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  // Defensive: pin globalThis.fetch back to the captured original.
-  // Sibling discovery tests spy on fetch with a mock that returns
-  // status:200 for any URL, and a leaked/un-restored spy makes our
-  // probe of `/broken` see 200 instead of our server's 500.
-  globalThis.fetch = ORIGINAL_FETCH;
   const started = startProbeServer();
   server = started.server;
   baseUrl = started.baseUrl;

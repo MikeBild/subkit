@@ -9,11 +9,12 @@
 //   - Tool stays in `tenant_read` category and reads tunables from
 //     getConfig(tenant_id).connectors.web_scraper.authoring.*
 
-import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import * as loader from "../../../config/loader.ts";
 import { type Config, ConfigSchema } from "../../../config/schema.ts";
 import { __resetRobotsCacheForTests } from "../../../connectors/robots-cache.test-helpers.ts";
+import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { analyzeScrapeTargetTool } from "../analyze-scrape-target.ts";
 import type { ToolContext } from "../index.ts";
 
@@ -26,7 +27,23 @@ const baseConfig: Config = ConfigSchema.parse({
 });
 
 let configSpy: ReturnType<typeof spyOn<typeof loader, "getConfig">>;
-let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
+let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
+
+/** Driver-fetch seam: the tool and robots-cache read getDriverFetch(),
+ *  not globalThis. The seam override must wrap the body explicitly
+ *  (store.run via `withDriverFetchForTests`), but each test picks its
+ *  fetch impl INSIDE the body — so `seamTest` binds a stable dispatcher
+ *  that forwards to whatever `fetchSpy` currently is. */
+function installFetch(impl?: typeof fetch): ReturnType<typeof mock<typeof fetch>> {
+  return impl ? mock<typeof fetch>(impl) : mock<typeof fetch>();
+}
+
+const dispatchFetch = ((...args: Parameters<typeof fetch>) =>
+  (fetchSpy as unknown as typeof fetch)(...args)) as typeof fetch;
+
+function seamTest(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(dispatchFetch, body));
+}
 
 function ctx(): ToolContext {
   return { tenant_id: "00000000-0000-0000-0000-000000000001" } as unknown as ToolContext;
@@ -53,12 +70,11 @@ beforeAll(() => {
 });
 afterAll(() => {
   configSpy.mockRestore();
-  if (fetchSpy) fetchSpy.mockRestore();
 });
 beforeEach(() => {
   __resetRobotsCacheForTests();
   configSpy.mockReturnValue(baseConfig);
-  if (fetchSpy) fetchSpy.mockRestore();
+  fetchSpy = mock<typeof fetch>();
 });
 
 describe("analyze_scrape_target / registration", () => {
@@ -67,7 +83,7 @@ describe("analyze_scrape_target / registration", () => {
     expect(analyzeScrapeTargetTool.category).toBe("tenant_read");
   });
 
-  test("rejects malformed target_url at schema level", async () => {
+  seamTest("rejects malformed target_url at schema level", async () => {
     await expect(
       analyzeScrapeTargetTool.execute(ctx(), { target_url: "not-a-url" }),
     ).rejects.toThrow();
@@ -75,8 +91,8 @@ describe("analyze_scrape_target / registration", () => {
 });
 
 describe("analyze_scrape_target / verdicts", () => {
-  test("green when robots allows and sitemap is small", async () => {
-    fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+  seamTest("green when robots allows and sitemap is small", async () => {
+    fetchSpy = installFetch(
       makeFetch({
         "https://example.com/robots.txt": { body: "User-agent: *\nAllow: /" },
         "https://example.com/sitemap.xml": { body: siteMapWith(10) },
@@ -90,8 +106,8 @@ describe("analyze_scrape_target / verdicts", () => {
     expect((out.data as { sitemap_entry_count: number }).sitemap_entry_count).toBe(10);
   });
 
-  test("yellow when sitemap count exceeds yellow_sitemap_threshold", async () => {
-    fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+  seamTest("yellow when sitemap count exceeds yellow_sitemap_threshold", async () => {
+    fetchSpy = installFetch(
       makeFetch({
         "https://example.com/robots.txt": { body: "User-agent: *\nAllow: /" },
         "https://example.com/sitemap.xml": { body: siteMapWith(15_000) },
@@ -104,7 +120,7 @@ describe("analyze_scrape_target / verdicts", () => {
     expect((out.data as { sitemap_entry_count: number }).sitemap_entry_count).toBe(15_000);
   });
 
-  test("red when sitemap count exceeds red_sitemap_threshold", async () => {
+  seamTest("red when sitemap count exceeds red_sitemap_threshold", async () => {
     // Building 100_001 url tags inline is wasteful — instead patch the
     // config so a 1000-entry sitemap trips the red gate.
     const tight: Config = {
@@ -122,7 +138,7 @@ describe("analyze_scrape_target / verdicts", () => {
       },
     };
     configSpy.mockReturnValue(tight);
-    fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+    fetchSpy = installFetch(
       makeFetch({
         "https://example.com/robots.txt": { body: "User-agent: *\nAllow: /" },
         "https://example.com/sitemap.xml": { body: siteMapWith(1_000) },
@@ -134,8 +150,8 @@ describe("analyze_scrape_target / verdicts", () => {
     expect((out.data as { verdict: string }).verdict).toBe("red");
   });
 
-  test("red when robots.txt disallows the target path", async () => {
-    fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+  seamTest("red when robots.txt disallows the target path", async () => {
+    fetchSpy = installFetch(
       makeFetch({
         "https://example.com/robots.txt": {
           body: "User-agent: *\nDisallow: /docs/",
@@ -151,8 +167,8 @@ describe("analyze_scrape_target / verdicts", () => {
 });
 
 describe("analyze_scrape_target / SSRF guard", () => {
-  test("refuses a target on the AWS metadata service", async () => {
-    fetchSpy = spyOn(globalThis, "fetch");
+  seamTest("refuses a target on the AWS metadata service", async () => {
+    fetchSpy = installFetch();
     const out = await analyzeScrapeTargetTool.execute(ctx(), {
       target_url: "http://169.254.169.254/latest/meta-data/",
     });
@@ -164,8 +180,8 @@ describe("analyze_scrape_target / SSRF guard", () => {
     expect(fetchSpy.mock.calls.length).toBe(0);
   });
 
-  test("refuses a target on localhost (production-strict default)", async () => {
-    fetchSpy = spyOn(globalThis, "fetch");
+  seamTest("refuses a target on localhost (production-strict default)", async () => {
+    fetchSpy = installFetch();
     const out = await analyzeScrapeTargetTool.execute(ctx(), {
       target_url: "http://localhost:5432/",
     });
@@ -173,8 +189,8 @@ describe("analyze_scrape_target / SSRF guard", () => {
     expect(fetchSpy.mock.calls.length).toBe(0);
   });
 
-  test("refuses an RFC 1918 sitemap URL even when target is public", async () => {
-    fetchSpy = spyOn(globalThis, "fetch");
+  seamTest("refuses an RFC 1918 sitemap URL even when target is public", async () => {
+    fetchSpy = installFetch();
     const out = await analyzeScrapeTargetTool.execute(ctx(), {
       target_url: "https://example.com/docs/",
       sitemap_url: "http://10.0.0.1/sitemap.xml",
@@ -185,8 +201,8 @@ describe("analyze_scrape_target / SSRF guard", () => {
 });
 
 describe("analyze_scrape_target / fetch tolerance", () => {
-  test("sitemap fetch error → count 0 → green", async () => {
-    fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (url: URL | string) => {
+  seamTest("sitemap fetch error → count 0 → green", async () => {
+    fetchSpy = installFetch((async (url: URL | string) => {
       const u = typeof url === "string" ? url : url.toString();
       if (u.endsWith("/robots.txt")) {
         return new Response("User-agent: *\nAllow: /", { status: 200 });

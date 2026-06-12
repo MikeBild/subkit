@@ -17,7 +17,7 @@
 // LLM provider is the in-process mock (LLM_PROVIDER=mock bootstrap +
 // `generateOverrides.generate`) — no network, deterministic.
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,7 +28,7 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { setDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { MAX_GENERATION_PASSES, runAuthoringPipeline } from "../authoring-pipeline.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import type { RecordedEvalReport } from "../recorded-eval.ts";
@@ -63,7 +63,19 @@ async function ensureConfigLoaded(): Promise<void> {
 // Installed through the driver-fetch seam — drivers no longer read
 // globalThis.fetch, so a global stub would miss real egress AND leak
 // into concurrently-running sibling test files.
+// Each test body runs under the seam's explicit wrapper — an
+// enterWith-from-beforeEach binding did not propagate into test bodies
+// under bun.
 let fetchCalls = 0;
+
+const tripwire = ((..._args: unknown[]) => {
+  fetchCalls += 1;
+  throw new Error("live HTTP is forbidden inside the authoring pipeline");
+}) as unknown as typeof fetch;
+
+function tw(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(tripwire, body));
+}
 
 beforeAll(async () => {
   await ensureConfigLoaded();
@@ -76,21 +88,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  setDriverFetchForTests(null);
   await ctx.cleanup();
 });
 
 beforeEach(() => {
   resetMockProvider();
   fetchCalls = 0;
-  setDriverFetchForTests(((..._args: unknown[]) => {
-    fetchCalls += 1;
-    throw new Error("live HTTP is forbidden inside the authoring pipeline");
-  }) as unknown as typeof fetch);
-});
-
-afterEach(() => {
-  setDriverFetchForTests(null);
 });
 
 function makeCtx(): ToolContext & { _draft: { value: DraftDocument | null } } {
@@ -147,173 +150,191 @@ const NEVER_VALID_DEF = {
 };
 
 describe("runAuthoringPipeline — one-shot contract", () => {
-  test("emits a schema-valid complete definition with recorded_eval attached, goal stashed, JS transform preserved, zero egress", async () => {
-    getMockProvider().generateOverrides.generate = () => VALID_DEF;
-    const toolCtx = makeCtx();
-    const goal = "Show me the top repos with their names";
-    const result = await runAuthoringPipeline({ ctx: toolCtx, goal });
+  tw(
+    "emits a schema-valid complete definition with recorded_eval attached, goal stashed, JS transform preserved, zero egress",
+    async () => {
+      getMockProvider().generateOverrides.generate = () => VALID_DEF;
+      const toolCtx = makeCtx();
+      const goal = "Show me the top repos with their names";
+      const result = await runAuthoringPipeline({ ctx: toolCtx, goal });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("unreachable");
-    expect(result.attempts).toBe(1);
-    expect(result.next).toBe("dry_run_workflow");
-    expect(result.validation.ok).toBe(true);
-    expect(result.definition.slug).toBe("top-repos-digest");
-    // JS-first: the authored transform stays `language: "javascript"`.
-    const transform = result.definition.steps.find((s) => s.kind === "transform");
-    expect(transform?.language).toBe("javascript");
-    // Recorded-eval report attached (compile checks ran — the JS body
-    // parses, so no compile_error findings).
-    expect(
-      result.recorded_eval.expressions.filter((f) => f.status === "compile_error"),
-    ).toHaveLength(0);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.attempts).toBe(1);
+      expect(result.next).toBe("dry_run_workflow");
+      expect(result.validation.ok).toBe(true);
+      expect(result.definition.slug).toBe("top-repos-digest");
+      // JS-first: the authored transform stays `language: "javascript"`.
+      const transform = result.definition.steps.find((s) => s.kind === "transform");
+      expect(transform?.language).toBe("javascript");
+      // Recorded-eval report attached (compile checks ran — the JS body
+      // parses, so no compile_error findings).
+      expect(
+        result.recorded_eval.expressions.filter((f) => f.status === "compile_error"),
+      ).toHaveLength(0);
 
-    // Goal + connector ids stashed on the draft as draft-only metadata.
-    const draft = toolCtx._draft.value;
-    expect(draft).not.toBeNull();
-    expect((draft?.workflow as { goal?: string }).goal).toBe(goal);
-    expect(draft?.workflow.slug).toBe("top-repos-digest");
-    expect(draft?.workflow.steps).toHaveLength(2);
+      // Goal + connector ids stashed on the draft as draft-only metadata.
+      const draft = toolCtx._draft.value;
+      expect(draft).not.toBeNull();
+      expect((draft?.workflow as { goal?: string }).goal).toBe(goal);
+      expect(draft?.workflow.slug).toBe("top-repos-digest");
+      expect(draft?.workflow.steps).toHaveLength(2);
 
-    expect(fetchCalls).toBe(0);
-  });
+      expect(fetchCalls).toBe(0);
+    },
+  );
 
-  test("regenerate path: one structural failure earns exactly ONE more pass with the findings appended", async () => {
-    let calls = 0;
-    getMockProvider().generateOverrides.generate = () => {
-      calls += 1;
-      return calls === 1 ? NEVER_VALID_DEF : VALID_DEF;
-    };
-    const toolCtx = makeCtx();
-    const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "digest the repos" });
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("unreachable");
-    expect(result.attempts).toBe(2);
-    expect(result.validation.ok).toBe(true);
-    expect(calls).toBe(2);
-    // The regenerate prompt carried the previous pass's findings.
-    const generateCalls = getMockProvider().calls.filter((c) => c.flow === "generate");
-    expect(generateCalls).toHaveLength(2);
-    expect(generateCalls[1]?.last_user).toContain("Findings from the previous attempt");
-    expect(generateCalls[1]?.last_user).toContain("missing_step");
-    expect(fetchCalls).toBe(0);
-  });
+  tw(
+    "regenerate path: one structural failure earns exactly ONE more pass with the findings appended",
+    async () => {
+      let calls = 0;
+      getMockProvider().generateOverrides.generate = () => {
+        calls += 1;
+        return calls === 1 ? NEVER_VALID_DEF : VALID_DEF;
+      };
+      const toolCtx = makeCtx();
+      const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "digest the repos" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.attempts).toBe(2);
+      expect(result.validation.ok).toBe(true);
+      expect(calls).toBe(2);
+      // The regenerate prompt carried the previous pass's findings.
+      const generateCalls = getMockProvider().calls.filter((c) => c.flow === "generate");
+      expect(generateCalls).toHaveLength(2);
+      expect(generateCalls[1]?.last_user).toContain("Findings from the previous attempt");
+      expect(generateCalls[1]?.last_user).toContain("missing_step");
+      expect(fetchCalls).toBe(0);
+    },
+  );
 
-  test("never-converging mock gives up after MAX_GENERATION_PASSES with findings attached and the draft STILL stashed", async () => {
-    let calls = 0;
-    getMockProvider().generateOverrides.generate = () => {
-      calls += 1;
-      return NEVER_VALID_DEF;
-    };
-    const toolCtx = makeCtx();
-    const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "loop the things" });
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("unreachable");
-    expect(calls).toBe(MAX_GENERATION_PASSES);
-    expect(result.attempts).toBe(MAX_GENERATION_PASSES);
-    expect(result.validation.ok).toBe(false);
-    expect(result.validation.errors.length).toBeGreaterThan(0);
-    // Even the findings-laden definition is stashed — the model repairs
-    // from the findings instead of starting over.
-    expect(toolCtx._draft.value?.workflow.slug).toBe("broken-loop");
-    expect((toolCtx._draft.value?.workflow as { goal?: string }).goal).toBe("loop the things");
-    expect(fetchCalls).toBe(0);
-  });
+  tw(
+    "never-converging mock gives up after MAX_GENERATION_PASSES with findings attached and the draft STILL stashed",
+    async () => {
+      let calls = 0;
+      getMockProvider().generateOverrides.generate = () => {
+        calls += 1;
+        return NEVER_VALID_DEF;
+      };
+      const toolCtx = makeCtx();
+      const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "loop the things" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(calls).toBe(MAX_GENERATION_PASSES);
+      expect(result.attempts).toBe(MAX_GENERATION_PASSES);
+      expect(result.validation.ok).toBe(false);
+      expect(result.validation.errors.length).toBeGreaterThan(0);
+      // Even the findings-laden definition is stashed — the model repairs
+      // from the findings instead of starting over.
+      expect(toolCtx._draft.value?.workflow.slug).toBe("broken-loop");
+      expect((toolCtx._draft.value?.workflow as { goal?: string }).goal).toBe("loop the things");
+      expect(fetchCalls).toBe(0);
+    },
+  );
 
-  test("schema-unparseable output on every pass yields authoring_generation_failed with nothing stashed", async () => {
-    getMockProvider().generateOverrides.generate = () => ({ nope: true });
-    const toolCtx = makeCtx();
-    const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "impossible" });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("unreachable");
-    expect(result.error_code).toBe("authoring_generation_failed");
-    expect(result.attempts).toBe(MAX_GENERATION_PASSES);
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect(toolCtx._draft.value).toBeNull();
-    expect(fetchCalls).toBe(0);
-  });
+  tw(
+    "schema-unparseable output on every pass yields authoring_generation_failed with nothing stashed",
+    async () => {
+      getMockProvider().generateOverrides.generate = () => ({ nope: true });
+      const toolCtx = makeCtx();
+      const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "impossible" });
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("unreachable");
+      expect(result.error_code).toBe("authoring_generation_failed");
+      expect(result.attempts).toBe(MAX_GENERATION_PASSES);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(toolCtx._draft.value).toBeNull();
+      expect(fetchCalls).toBe(0);
+    },
+  );
 });
 
 describe("runAuthoringPipeline — grounding", () => {
-  test("the ONE generation prompt carries the goal verbatim, the connector, its recorded endpoint samples, and the verbatim JS contract", async () => {
-    const [connector] = await ctx.db
-      .insert(connectors)
-      .values({
-        tenant_id,
-        slug: "examplehub",
-        display_name: "ExampleHub",
-        driver: "http",
-        base_url: "https://api.examplehub.test",
-        auth_type: "bearer",
-      })
-      .returning();
-    // Seed a recorded response shape — exactly what probe_connector /
-    // call_connector record on success.
-    await recordSuccessShape(
-      {
-        tenant_id,
-        connector_id: connector!.id,
-        endpoint_key: "GET /v1/widgets",
-        value: { widgets: [{ id: 1, name: "w" }] },
-      },
-      ctx.db,
-    );
+  tw(
+    "the ONE generation prompt carries the goal verbatim, the connector, its recorded endpoint samples, and the verbatim JS contract",
+    async () => {
+      const [connector] = await ctx.db
+        .insert(connectors)
+        .values({
+          tenant_id,
+          slug: "examplehub",
+          display_name: "ExampleHub",
+          driver: "http",
+          base_url: "https://api.examplehub.test",
+          auth_type: "bearer",
+        })
+        .returning();
+      // Seed a recorded response shape — exactly what probe_connector /
+      // call_connector record on success.
+      await recordSuccessShape(
+        {
+          tenant_id,
+          connector_id: connector!.id,
+          endpoint_key: "GET /v1/widgets",
+          value: { widgets: [{ id: 1, name: "w" }] },
+        },
+        ctx.db,
+      );
 
-    getMockProvider().generateOverrides.generate = () => VALID_DEF;
-    const toolCtx = makeCtx();
-    const goal = "List every widget from ExampleHub with its name";
-    const result = await runAuthoringPipeline({
-      ctx: toolCtx,
-      goal,
-      connector_ids: ["examplehub"],
-    });
-    expect(result.ok).toBe(true);
+      getMockProvider().generateOverrides.generate = () => VALID_DEF;
+      const toolCtx = makeCtx();
+      const goal = "List every widget from ExampleHub with its name";
+      const result = await runAuthoringPipeline({
+        ctx: toolCtx,
+        goal,
+        connector_ids: ["examplehub"],
+      });
+      expect(result.ok).toBe(true);
 
-    const generateCall = getMockProvider().calls.find((c) => c.flow === "generate");
-    expect(generateCall).toBeDefined();
-    const prompt = generateCall!.last_user;
-    // Goal verbatim.
-    expect(prompt).toContain(goal);
-    // Connector grounding: slug + id + auth posture.
-    expect(prompt).toContain("examplehub");
-    expect(prompt).toContain(connector!.id);
-    expect(prompt).toContain("auth bearer");
-    // Recorded endpoint samples reach the model BEFORE it writes paths.
-    expect(prompt).toContain("Recorded endpoint samples");
-    expect(prompt).toContain("GET /v1/widgets");
-    // The verbatim JS function-body contract.
-    expect(prompt).toContain("FUNCTION BODY");
-    expect(prompt).toContain("input.scope.<step_id>.data");
-    expect(prompt).toContain("input.input");
-    expect(prompt).toContain('language: "javascript"');
-    // The bulk-endpoint design rule.
-    expect(prompt).toContain("ONE bulk list endpoint over a nested per-item loop");
-    // $item-only loop contract.
-    expect(prompt).toContain("`item_var` is retired");
-    expect(fetchCalls).toBe(0);
-  });
+      const generateCall = getMockProvider().calls.find((c) => c.flow === "generate");
+      expect(generateCall).toBeDefined();
+      const prompt = generateCall!.last_user;
+      // Goal verbatim.
+      expect(prompt).toContain(goal);
+      // Connector grounding: slug + id + auth posture.
+      expect(prompt).toContain("examplehub");
+      expect(prompt).toContain(connector!.id);
+      expect(prompt).toContain("auth bearer");
+      // Recorded endpoint samples reach the model BEFORE it writes paths.
+      expect(prompt).toContain("Recorded endpoint samples");
+      expect(prompt).toContain("GET /v1/widgets");
+      // The verbatim JS function-body contract.
+      expect(prompt).toContain("FUNCTION BODY");
+      expect(prompt).toContain("input.scope.<step_id>.data");
+      expect(prompt).toContain("input.input");
+      expect(prompt).toContain('language: "javascript"');
+      // The bulk-endpoint design rule.
+      expect(prompt).toContain("ONE bulk list endpoint over a nested per-item loop");
+      // $item-only loop contract.
+      expect(prompt).toContain("`item_var` is retired");
+      expect(fetchCalls).toBe(0);
+    },
+  );
 
-  test("all named connectors unresolved → fail fast, no ungrounded generation, nothing stashed", async () => {
-    let generateCalls = 0;
-    getMockProvider().generateOverrides.generate = () => {
-      generateCalls += 1;
-      return VALID_DEF;
-    };
-    const toolCtx = makeCtx();
-    const result = await runAuthoringPipeline({
-      ctx: toolCtx,
-      goal: "anything",
-      connector_ids: ["no-such-connector"],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("unreachable");
-    expect(result.error_code).toBe("authoring_connectors_unresolved");
-    expect(result.unresolved_connectors).toEqual(["no-such-connector"]);
-    expect(generateCalls).toBe(0);
-    expect(toolCtx._draft.value).toBeNull();
-  });
+  tw(
+    "all named connectors unresolved → fail fast, no ungrounded generation, nothing stashed",
+    async () => {
+      let generateCalls = 0;
+      getMockProvider().generateOverrides.generate = () => {
+        generateCalls += 1;
+        return VALID_DEF;
+      };
+      const toolCtx = makeCtx();
+      const result = await runAuthoringPipeline({
+        ctx: toolCtx,
+        goal: "anything",
+        connector_ids: ["no-such-connector"],
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("unreachable");
+      expect(result.error_code).toBe("authoring_connectors_unresolved");
+      expect(result.unresolved_connectors).toEqual(["no-such-connector"]);
+      expect(generateCalls).toBe(0);
+      expect(toolCtx._draft.value).toBeNull();
+    },
+  );
 
-  test("partial connector resolution proceeds and reports the misses", async () => {
+  tw("partial connector resolution proceeds and reports the misses", async () => {
     getMockProvider().generateOverrides.generate = () => VALID_DEF;
     const toolCtx = makeCtx();
     const result = await runAuthoringPipeline({
@@ -329,32 +350,35 @@ describe("runAuthoringPipeline — grounding", () => {
 });
 
 describe("author_workflow — tool envelope", () => {
-  test("returns the evaluated draft payload with recorded_eval + next_step and stashes the goal", async () => {
-    getMockProvider().generateOverrides.generate = () => VALID_DEF;
-    const toolCtx = makeCtx();
-    const result = await authorWorkflowTool.execute(toolCtx, {
-      goal: "Show me the top repos with their names",
-    });
-    expect(result.ok).toBe(true);
-    const data = result.data as {
-      recorded_eval: RecordedEvalReport;
-      next_step: string;
-      attempts: number;
-      definition: { slug: string };
-      persistence: string;
-    };
-    expect(data.next_step).toBe("dry_run_workflow");
-    expect(data.attempts).toBe(1);
-    expect(data.definition.slug).toBe("top-repos-digest");
-    expect(data.persistence).toBe("draft_only");
-    expect(data.recorded_eval).toBeDefined();
-    expect((toolCtx._draft.value?.workflow as { goal?: string }).goal).toBe(
-      "Show me the top repos with their names",
-    );
-    expect(fetchCalls).toBe(0);
-  });
+  tw(
+    "returns the evaluated draft payload with recorded_eval + next_step and stashes the goal",
+    async () => {
+      getMockProvider().generateOverrides.generate = () => VALID_DEF;
+      const toolCtx = makeCtx();
+      const result = await authorWorkflowTool.execute(toolCtx, {
+        goal: "Show me the top repos with their names",
+      });
+      expect(result.ok).toBe(true);
+      const data = result.data as {
+        recorded_eval: RecordedEvalReport;
+        next_step: string;
+        attempts: number;
+        definition: { slug: string };
+        persistence: string;
+      };
+      expect(data.next_step).toBe("dry_run_workflow");
+      expect(data.attempts).toBe(1);
+      expect(data.definition.slug).toBe("top-repos-digest");
+      expect(data.persistence).toBe("draft_only");
+      expect(data.recorded_eval).toBeDefined();
+      expect((toolCtx._draft.value?.workflow as { goal?: string }).goal).toBe(
+        "Show me the top repos with their names",
+      );
+      expect(fetchCalls).toBe(0);
+    },
+  );
 
-  test("generation failure surfaces as a typed envelope, not a throw", async () => {
+  tw("generation failure surfaces as a typed envelope, not a throw", async () => {
     getMockProvider().generateOverrides.generate = () => ({ nope: true });
     const toolCtx = makeCtx();
     const result = await authorWorkflowTool.execute(toolCtx, { goal: "impossible" });

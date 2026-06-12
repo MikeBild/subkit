@@ -35,7 +35,12 @@ const SECRET = "whsec_stripe_charge_failed_aaaaaaaaaaaaaaaa";
 let ctx: InboundTestCtx;
 let inboundId: string;
 const slackPosts: Array<{ url: string; body: unknown; headers: Record<string, string> }> = [];
-const originalFetch = globalThis.fetch;
+// Real HTTP stub server (NOT a fetch mock): the workflow executes inside
+// the queue handler's async context, where a test-scoped fetch override
+// cannot reach — and a global fetch stub leaks into concurrently-running
+// sibling test files. A loopback server is context-free and leak-free.
+let slackServer: ReturnType<typeof Bun.serve>;
+let slackBaseUrl = "";
 
 function signStripe(secret: string, ts: number, body: string): string {
   const v1 = createHmac("sha256", secret).update(`${ts}.${body}`, "utf8").digest("hex");
@@ -65,6 +70,28 @@ function buildChargeFailedBody(eventId: string): string {
 }
 
 beforeAll(async () => {
+  slackServer = Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const headers: Record<string, string> = {};
+      req.headers.forEach((v, k) => {
+        headers[k.toLowerCase()] = v;
+      });
+      let body: unknown = null;
+      const text = await req.text();
+      if (text.length > 0) {
+        try {
+          body = JSON.parse(text);
+        } catch {
+          body = text;
+        }
+      }
+      slackPosts.push({ url: req.url, body, headers });
+      return Response.json({ ok: true, channel: "C0123ALERT", ts: "1709200001.000200" });
+    },
+  });
+  slackBaseUrl = `http://127.0.0.1:${slackServer.port}`;
+
   ctx = await createInboundCtx("stripe-trigger");
 
   // Replace the workflow's stub DAG with a Slack-post pipeline. The
@@ -102,7 +129,7 @@ beforeAll(async () => {
             id: "post",
             kind: "request",
             method: "POST",
-            url: "https://slack.test.invalid/api/chat.postMessage",
+            url: `${slackBaseUrl}/api/chat.postMessage`,
             headers: { "Content-Type": "application/json; charset=utf-8" },
             body: {
               channel: "C0123ALERT",
@@ -136,41 +163,11 @@ beforeAll(async () => {
   inboundId = bound.row.id;
   await rotateInboundSecret(ctx.tenantId, inboundId, SECRET, ctx.db);
 
-  // Stub Slack — the executor's request step will hit this URL; the
-  // stub records the call shape so the test can assert on it. Mock
-  // the connector layer (HTTP), not the DB.
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = typeof input === "string" ? input : input.toString();
-    if (url.includes("slack.test.invalid")) {
-      const headers: Record<string, string> = {};
-      if (init?.headers) {
-        const h = new Headers(init.headers);
-        h.forEach((v, k) => {
-          headers[k.toLowerCase()] = v;
-        });
-      }
-      let body: unknown = init?.body ?? null;
-      if (typeof body === "string") {
-        try {
-          body = JSON.parse(body);
-        } catch {
-          /* keep raw */
-        }
-      }
-      slackPosts.push({ url, body, headers });
-      return new Response(
-        JSON.stringify({ ok: true, channel: "C0123ALERT", ts: "1709200001.000200" }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }
-    return originalFetch(input as RequestInfo, init);
-  }) as typeof globalThis.fetch;
-
   await registerExecutionRunHandler({ boss: ctx.boss, db: ctx.db });
 });
 
 afterAll(async () => {
-  globalThis.fetch = originalFetch;
+  slackServer.stop(true);
   await ctx.cleanup();
 });
 

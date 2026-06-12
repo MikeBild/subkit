@@ -1,6 +1,21 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { graphqlIntrospectStrategy, looksLikeGraphQLUrl } from "./graphql-introspect.ts";
 import { DiscoveryError } from "./types.ts";
+
+let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
+
+beforeEach(() => {
+  fetchSpy = mock<typeof fetch>();
+});
+
+// Driver-fetch seam: the code under test reads getDriverFetch(), not
+// globalThis — run each body under the seam's explicit wrapper (the
+// override must scope the body itself; an enterWith-from-beforeEach
+// binding did not propagate into test bodies under bun).
+function seamTest(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+}
 
 // A small GitHub-shaped introspection result: 2 query fields + 1 mutation.
 // `interfaces: []` is required on OBJECT types for `buildClientSchema` to
@@ -166,17 +181,7 @@ describe("looksLikeGraphQLUrl", () => {
 });
 
 describe("graphqlIntrospectStrategy", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
-
-  beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  test("derives endpoints from query + mutation root fields", async () => {
+  seamTest("derives endpoints from query + mutation root fields", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify(SAMPLE_SCHEMA), {
         status: 200,
@@ -211,7 +216,7 @@ describe("graphqlIntrospectStrategy", () => {
     expect(createIssue?.response_schemas["200"]).toBeDefined();
   });
 
-  test("forwards caller-provided auth headers on the introspection POST", async () => {
+  seamTest("forwards caller-provided auth headers on the introspection POST", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify(SAMPLE_SCHEMA), {
         status: 200,
@@ -236,7 +241,7 @@ describe("graphqlIntrospectStrategy", () => {
     expect(parsedBody.query).toContain("__schema");
   });
 
-  test("throws introspection_disabled when the server rejects introspection", async () => {
+  seamTest("throws introspection_disabled when the server rejects introspection", async () => {
     fetchSpy.mockResolvedValue(
       new Response(
         JSON.stringify({ errors: [{ message: "GraphQL introspection is not allowed" }] }),
@@ -253,7 +258,7 @@ describe("graphqlIntrospectStrategy", () => {
     expect(caught?.code).toBe("introspection_disabled");
   });
 
-  test("throws http_404 on missing endpoint", async () => {
+  seamTest("throws http_404 on missing endpoint", async () => {
     fetchSpy.mockResolvedValue(new Response(null, { status: 404 }));
 
     let caught: DiscoveryError | null = null;
@@ -265,7 +270,7 @@ describe("graphqlIntrospectStrategy", () => {
     expect(caught?.code).toBe("http_404");
   });
 
-  test("emits SDL text_corpus alongside normalised endpoints", async () => {
+  seamTest("emits SDL text_corpus alongside normalised endpoints", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify(SAMPLE_SCHEMA), {
         status: 200,

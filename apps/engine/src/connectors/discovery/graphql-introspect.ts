@@ -22,6 +22,7 @@ import {
   printSchema,
 } from "graphql";
 import { log } from "../../logging/logger.ts";
+import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import {
@@ -290,7 +291,12 @@ async function postIntrospection(
       operationName: "IntrospectionQuery",
     });
     assertEgressAllowed(url, {});
-    const res = await fetch(url, { method: "POST", headers, body, signal: controller.signal });
+    const res = await getDriverFetch()(url, {
+      method: "POST",
+      headers,
+      body,
+      signal: controller.signal,
+    });
     if (!res.ok) {
       throw new DiscoveryError(
         `http_${res.status}`,

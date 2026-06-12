@@ -12,7 +12,7 @@
 // row content is irrelevant to the wait (it only checks existence), so
 // rows are inserted with placeholder ciphertext bytes.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { globalEmitter } from "../../../pubsub/emitter.ts";
@@ -20,6 +20,14 @@ import { startListener, stopListener } from "../../../pubsub/listener.ts";
 import type { EventEnvelope } from "../../../pubsub/types.ts";
 import { waitFor } from "../../../test-helpers/determinism/wait.ts";
 import { OAUTH_WAIT_MIN_FLOOR_MS, POLL_INTERVAL_MS, waitForOAuthCredential } from "../wait.ts";
+
+// Real-I/O suite (Postgres round-trips + pubsub waits): under full-suite
+// concurrency the scheduler can starve these tests past bun's 5s default
+// and the run flakes (verify-gate 120s observation, stress-run 5s
+// timeouts). Timeliness is asserted by the wait constants above — the
+// test-runner budget only needs to outlast load, so give it real
+// headroom (hooks included).
+setDefaultTimeout(30_000);
 
 // Test timeout budgets derived from `wait.ts`'s own constants so a
 // cadence/ceiling change cannot silently invalidate these tests.
@@ -174,7 +182,9 @@ async function awaitHandlerRegistered(beforeCount: number): Promise<void> {
   await waitFor(() => globalEmitter.listenerCount("connector.oauth") > beforeCount, {
     label: "oauth.wait handler registration",
     sleepMs: 5,
-    tries: 200,
+    // 4s ceiling — only consumed under load; the uncontended case
+    // resolves in a handful of ticks.
+    tries: 800,
   });
 }
 

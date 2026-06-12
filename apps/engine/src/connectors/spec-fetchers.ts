@@ -6,6 +6,7 @@
 
 import { getIntrospectionQuery } from "graphql";
 import { getConfig } from "../config/loader.ts";
+import { getDriverFetch } from "./drivers/fetch-seam.ts";
 import { validateOutboundHeaders } from "./drivers/http.ts";
 
 export interface FetchedSpec {
@@ -59,7 +60,7 @@ async function fetchWithBudget(url: string, init: RequestInit): Promise<Response
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
+    const res = await getDriverFetch()(url, { ...init, signal: controller.signal });
     return res;
   } finally {
     clearTimeout(timer);

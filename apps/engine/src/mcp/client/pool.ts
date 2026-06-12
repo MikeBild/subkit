@@ -23,6 +23,7 @@ import {
   recordMcpServerHandshakeOk,
 } from "../../audit/recorders/index.ts";
 import { getConfig } from "../../config/loader.ts";
+import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { assertEgressAllowed } from "../../connectors/egress-guard.ts";
 import { getCredentialForMcpServer } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
@@ -397,7 +398,7 @@ function buildTransport(
       return new SSEClientTransport(url, {
         requestInit,
         ...(authProvider ? { authProvider } : {}),
-        eventSourceInit: { fetch: (u, init) => fetch(u, { ...init, headers }) },
+        eventSourceInit: { fetch: (u, init) => getDriverFetch()(u, { ...init, headers }) },
       });
     case "stdio":
       // stdio spawns a local subprocess; not a v1 transport for a

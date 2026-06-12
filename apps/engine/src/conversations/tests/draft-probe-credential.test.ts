@@ -17,7 +17,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "b
 import { conversations as conversationsTable, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { setDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 
 const uuid = createDeterministicUuidFactory(0xd4af7_c4ed);
 
@@ -913,7 +913,7 @@ describe("probe_connector_draft + draft credential", () => {
 
   // RC-1: cognito_user_password cache hit — probe mints an IdToken via
   // Cognito and forwards it as a raw JWT (no "Bearer" prefix) to the graphql
-  // endpoint. runCognitoUserPasswordGrant is stubbed via globalThis.fetch spy.
+  // endpoint. runCognitoUserPasswordGrant is stubbed via the driver-fetch seam.
   test("graphql driver with cognito_user_password cache hit — minted JWT reaches endpoint as raw token", async () => {
     const capturedAuth: { value: string | null } = { value: null };
 
@@ -930,14 +930,15 @@ describe("probe_connector_draft + draft credential", () => {
       });
     });
 
-    // Stub `runCognitoUserPasswordGrant` by intercepting globalThis.fetch.
-    // The Cognito endpoint is cognito-idp.<region>.amazonaws.com so any
+    // Stub `runCognitoUserPasswordGrant` by intercepting the driver-fetch
+    // seam. The Cognito endpoint is cognito-idp.<region>.amazonaws.com so any
     // fetch to that host returns our fake AuthenticationResult.
-    // Save a reference to the original fetch BEFORE installing the spy
-    // so the pass-through branch can call it without recursing into the spy.
-    const originalFetch = globalThis.fetch;
-    // Cast to `typeof fetch` via `unknown` — the mock signature covers only the
-    // relevant subset (url + init) that Cognito + the graphql driver use.
+    // Save a reference to the real fetch so the pass-through branch can
+    // reach the loopback graphql server.
+    const realFetch = globalThis.fetch.bind(globalThis);
+    // Cast to `typeof fetch` via the async closure — the mock signature
+    // covers only the relevant subset (url + init) that Cognito + the
+    // graphql driver use.
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("cognito-idp")) {
@@ -952,57 +953,57 @@ describe("probe_connector_draft + draft credential", () => {
         );
       }
       // Real fetch for the graphql mock server.
-      return originalFetch(url, init);
+      return realFetch(url, init);
     }) as typeof fetch;
-    setDriverFetchForTests(fetchImpl);
 
     try {
-      const conversation_id = await seedConversation();
-      const cognitoDraft: DraftDocument = {
-        mode: "connector_authoring",
-        connector: {
-          name: "appsync-cognito",
-          slug: "appsync-cognito",
-          driver: "graphql",
-          environment: "dev",
-          auth_type: "oauth2",
-          base_url: gqlServer.url,
-          config: {
-            aws_region: "eu-central-1",
-            oauth: { client_id: "client-abc", grant_type: "cognito_user_password" },
+      await withDriverFetchForTests(fetchImpl, async () => {
+        const conversation_id = await seedConversation();
+        const cognitoDraft: DraftDocument = {
+          mode: "connector_authoring",
+          connector: {
+            name: "appsync-cognito",
+            slug: "appsync-cognito",
+            driver: "graphql",
+            environment: "dev",
+            auth_type: "oauth2",
+            base_url: gqlServer.url,
+            config: {
+              aws_region: "eu-central-1",
+              oauth: { client_id: "client-abc", grant_type: "cognito_user_password" },
+            },
           },
-        },
-        workflow: { name: "", steps: [] },
-      };
-      const validated = withConnectorValidation(
-        withConnectorInspection(cognitoDraft),
-        {
-          ...cognitoDraft.connector,
-          validation: validateConnectorDraft(cognitoDraft.connector ?? null),
-        },
-        true,
-        "validated",
-      );
-      const toolCtx = await buildToolCtx(conversation_id, validated);
-      setDraftCredential(conversation_id, {
-        mode: "cognito_user_password",
-        username: "user@example.com",
-        password: "hunter2",
-        aws_region: "eu-central-1",
-        client_id: "client-abc",
-      });
+          workflow: { name: "", steps: [] },
+        };
+        const validated = withConnectorValidation(
+          withConnectorInspection(cognitoDraft),
+          {
+            ...cognitoDraft.connector,
+            validation: validateConnectorDraft(cognitoDraft.connector ?? null),
+          },
+          true,
+          "validated",
+        );
+        const toolCtx = await buildToolCtx(conversation_id, validated);
+        setDraftCredential(conversation_id, {
+          mode: "cognito_user_password",
+          username: "user@example.com",
+          password: "hunter2",
+          aws_region: "eu-central-1",
+          client_id: "client-abc",
+        });
 
-      const result = await probeConnectorDraftTool.execute(toolCtx, {
-        method: "POST",
-        path: "/graphql",
-        timeout_ms: 5_000,
-      });
+        const result = await probeConnectorDraftTool.execute(toolCtx, {
+          method: "POST",
+          path: "/graphql",
+          timeout_ms: 5_000,
+        });
 
-      expect(result.ok).toBe(true);
-      // token_type is "none" for Cognito — the JWT is sent without a "Bearer" prefix.
-      expect(capturedAuth.value).toBe("minted-id-token-jwt");
+        expect(result.ok).toBe(true);
+        // token_type is "none" for Cognito — the JWT is sent without a "Bearer" prefix.
+        expect(capturedAuth.value).toBe("minted-id-token-jwt");
+      });
     } finally {
-      setDriverFetchForTests(null);
       await gqlServer.stop();
     }
   });

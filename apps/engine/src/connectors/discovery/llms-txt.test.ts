@@ -1,6 +1,26 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { llmsTxtStrategy } from "./llms-txt.ts";
 import { DiscoveryError } from "./types.ts";
+
+// Spy signature covers only the (input, init) subset the strategies use
+// — `typeof fetch` would force every mockImplementation to also carry
+// `preconnect`.
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+let fetchSpy: ReturnType<typeof mock<FetchLike>>;
+
+beforeEach(() => {
+  fetchSpy = mock<FetchLike>();
+});
+
+// Driver-fetch seam: the code under test reads getDriverFetch(), not
+// globalThis — run each body under the seam's explicit wrapper (the
+// override must scope the body itself; an enterWith-from-beforeEach
+// binding did not propagate into test bodies under bun).
+function seamTest(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+}
 
 const FULL_MARKDOWN = `# ACME API
 
@@ -27,17 +47,7 @@ const INDEX_MARKDOWN = `# ACME docs index
 `;
 
 describe("llmsTxtStrategy", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
-
-  beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  test("uses /.well-known/llms-full.txt when present", async () => {
+  seamTest("uses /.well-known/llms-full.txt when present", async () => {
     fetchSpy.mockImplementation((input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.endsWith("/.well-known/llms-full.txt")) {
@@ -61,7 +71,7 @@ describe("llmsTxtStrategy", () => {
     expect(result.source_url).toBe("https://docs.acme.example.com/.well-known/llms-full.txt");
   });
 
-  test("falls back to llms.txt and fetches index entries in parallel", async () => {
+  seamTest("falls back to llms.txt and fetches index entries in parallel", async () => {
     const calls: string[] = [];
     fetchSpy.mockImplementation((input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -111,7 +121,7 @@ describe("llmsTxtStrategy", () => {
     expect(calls).toContain("https://docs.acme.example.com/gadgets.md");
   });
 
-  test("throws spec_not_found when both well-known paths 404", async () => {
+  seamTest("throws spec_not_found when both well-known paths 404", async () => {
     fetchSpy.mockResolvedValue(new Response(null, { status: 404 }));
 
     let caught: DiscoveryError | null = null;

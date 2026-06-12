@@ -603,7 +603,7 @@ function checkTestSeamsGated(): Result {
       shimEnding: "test-helpers/tracing.ts",
     },
     {
-      symbol: "_setDriverFetchForTests",
+      symbol: "_withDriverFetchForTests",
       productionModule: "connectors/drivers/fetch-seam",
       shimEnding: "test-helpers/driver-fetch.ts",
     },
@@ -696,6 +696,58 @@ function checkEngineHomedirAbsence(): Result {
   };
 }
 
+function checkNoGlobalFetchStubInTests(): Result {
+  // Engine tests MUST NOT stub `globalThis.fetch` — `bun test` runs files
+  // concurrently in one process, so a global stub leaks mid-flight into
+  // sibling suites (caught live: CI run 27425002067, a 404 probe observing
+  // a sibling's always-200 mock). Tests intercept driver/credential egress
+  // via the AsyncLocalStorage seam (`test-helpers/driver-fetch.ts`
+  // `withDriverFetchForTests`), or spin up a real `Bun.serve` loopback
+  // when the code under test runs in another async root (server context).
+  //
+  // Allow-list a use via `// global-fetch-allowed: <reason>` on the same line.
+  const STUB_PATTERNS = [
+    /\bglobalThis\.fetch\s*=(?!=)/,
+    /\bspyOn\(\s*globalThis\s*,\s*["']fetch["']\s*\)/,
+  ];
+  const violations: string[] = [];
+  const isTs = (p: string) => p.endsWith(".ts") || p.endsWith(".tsx");
+  const files = [
+    // engine test files (suites + helpers under tests/ dirs)
+    ...listFiles(
+      ENGINE_SRC,
+      (p) =>
+        isTs(p) && (p.includes(".test.") || p.includes("/tests/") || p.includes("/__tests__/")),
+    ),
+    // the eval harness is test infrastructure end-to-end
+    ...listFiles(join(REPO, "apps/engine/eval"), isTs),
+  ];
+  for (const f of files) {
+    const rel = relative(REPO, f);
+    const lines = readFileSync(f, "utf8").split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] ?? "";
+      if (line.includes("global-fetch-allowed:")) continue;
+      if (STUB_PATTERNS.some((p) => p.test(line))) {
+        violations.push(`${rel}:${i + 1}`);
+      }
+    }
+  }
+  if (violations.length === 0) {
+    return {
+      id: "no_global_fetch_stub_in_tests",
+      status: "PASS",
+      message:
+        "no engine test stubs globalThis.fetch (egress fakes go through the driver-fetch seam)",
+    };
+  }
+  return {
+    id: "no_global_fetch_stub_in_tests",
+    status: "FAIL",
+    message: `engine test(s) stub globalThis.fetch — concurrent test files share one process, the stub leaks into sibling suites; use withDriverFetchForTests (test-helpers/driver-fetch.ts) or a Bun.serve loopback, or annotate \`// global-fetch-allowed: <reason>\`:\n  ${violations.join("\n  ")}`,
+  };
+}
+
 function checkCompileBuildsKeepNodeEnvDynamic(): Result {
   // Every `bun build --compile` invocation MUST carry the identity define
   // `process.env.NODE_ENV=process.env.NODE_ENV`. Without it the bundler
@@ -759,6 +811,7 @@ const CHECKS: Array<() => Result> = [
   checkSystemdUnitJitFriendly,
   checkTestSeamsGated,
   checkEngineHomedirAbsence,
+  checkNoGlobalFetchStubInTests,
   checkCompileBuildsKeepNodeEnvDynamic,
 ];
 

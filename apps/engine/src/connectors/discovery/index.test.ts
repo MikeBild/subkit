@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { discoverConnectorEndpoints } from "./index.ts";
 import {
   DiscoveryError,
@@ -6,6 +7,25 @@ import {
   type DiscoveryStrategy,
   type DiscoveryStrategyName,
 } from "./types.ts";
+
+// Spy signature covers only the (input, init) subset the strategies use
+// — `typeof fetch` would force every mockImplementation to also carry
+// `preconnect`.
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+let fetchSpy: ReturnType<typeof mock<FetchLike>>;
+
+beforeEach(() => {
+  fetchSpy = mock<FetchLike>();
+});
+
+// Driver-fetch seam: the code under test reads getDriverFetch(), not
+// globalThis — run each body under the seam's explicit wrapper (the
+// override must scope the body itself; an enterWith-from-beforeEach
+// binding did not propagate into test bodies under bun).
+function seamTest(name: string, body: () => Promise<void>) {
+  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+}
 
 const MINIMAL_SPEC = {
   openapi: "3.0.0",
@@ -104,22 +124,21 @@ describe("discoverConnectorEndpoints — fallback chain", () => {
     expect(caught?.message).toContain("third failed");
   });
 
-  test("template_id resolves the bundled stripe ingestion_url and discovers endpoints", async () => {
-    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(MINIMAL_SPEC), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    try {
+  seamTest(
+    "template_id resolves the bundled stripe ingestion_url and discovers endpoints",
+    async () => {
+      fetchSpy.mockResolvedValue(
+        new Response(JSON.stringify(MINIMAL_SPEC), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
       const result = await discoverConnectorEndpoints({ template_id: "stripe" });
       expect(result.endpoints.length).toBeGreaterThan(0);
       expect(result.endpoints[0]?.operation_id).toBe("listCustomers");
       expect(result.source_url).toMatch(/openapi/);
-    } finally {
-      fetchSpy.mockRestore();
-    }
-  });
+    },
+  );
 
   test("template_id throws template_not_found for unknown slug", async () => {
     let caught: DiscoveryError | null = null;
@@ -185,17 +204,7 @@ describe("discoverConnectorEndpoints — extended chain (graphql + llms-txt)", (
 });
 
 describe("discoverConnectorEndpoints — integration with default strategies", () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
-
-  beforeEach(() => {
-    fetchSpy = spyOn(globalThis, "fetch");
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  test("first strategy 404s, swagger-ui-scrape wins and records the warning", async () => {
+  seamTest("first strategy 404s, swagger-ui-scrape wins and records the warning", async () => {
     const HTML_WITH_EMBEDDED = `<html><body>
       <script>SwaggerUIBundle({ url: "openapi.json" })</script>
     </body></html>`;
