@@ -22,6 +22,17 @@ import {
 
 const configCache = new Map<string, oauth.Configuration>();
 
+const oauthFetch: oauth.CustomFetch = (url, options) => {
+  const init: RequestInit = {
+    method: options.method,
+    headers: options.headers,
+    redirect: options.redirect,
+    ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.body === undefined ? {} : { body: options.body as BodyInit | null }),
+  };
+  return getDriverFetch()(url, init);
+};
+
 function cacheKey(cfg: OAuth2ClientConfig): string {
   return `${cfg.issuer_url}|${cfg.client_id}|${cfg.token_auth_method ?? "body"}`;
 }
@@ -59,7 +70,9 @@ async function getConfig(cfg: OAuth2ClientConfig): Promise<oauth.Configuration> 
     );
   } else {
     const discoveryOptions: oauth.DiscoveryRequestOptions =
-      server.protocol === "http:" ? { execute: [oauth.allowInsecureRequests] } : {};
+      server.protocol === "http:"
+        ? { execute: [oauth.allowInsecureRequests], [oauth.customFetch]: oauthFetch }
+        : { [oauth.customFetch]: oauthFetch };
     configuration = await oauth.discovery(
       server,
       cfg.client_id,
@@ -71,6 +84,7 @@ async function getConfig(cfg: OAuth2ClientConfig): Promise<oauth.Configuration> 
   if (server.protocol === "http:") {
     oauth.allowInsecureRequests(configuration);
   }
+  configuration[oauth.customFetch] = oauthFetch;
   configCache.set(key, configuration);
   return configuration;
 }
@@ -423,7 +437,9 @@ export async function dynamicallyRegisterClient(
   const server = new URL(args.issuerUrl);
   const isHttp = server.protocol === "http:";
   const discoveryOptions: oauth.DiscoveryRequestOptions =
-    isHttp || args.allowInsecureRequests ? { execute: [oauth.allowInsecureRequests] } : {};
+    isHttp || args.allowInsecureRequests
+      ? { execute: [oauth.allowInsecureRequests], [oauth.customFetch]: oauthFetch }
+      : { [oauth.customFetch]: oauthFetch };
 
   let configuration: oauth.Configuration;
   try {
