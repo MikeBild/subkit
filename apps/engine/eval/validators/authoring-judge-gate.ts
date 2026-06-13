@@ -99,7 +99,7 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       "blocked preview did not join the requires_repair path on the draft",
     );
     c.check(
-      wrongCtx.current().state?.judge_breaker?.blocks === 1,
+      wrongCtx.current().state?.judge_breaker?.blocks_since_commit === 1,
       "judge breaker did not record the block",
     );
 

@@ -55,13 +55,14 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
       c.check(result.ok === false, `block ${i}: preview should have been blocked`);
       c.check(
-        toolCtx.current().state?.judge_breaker?.blocks === i,
-        `block ${i}: breaker counter is ${String(toolCtx.current().state?.judge_breaker?.blocks)}, expected ${i}`,
+        toolCtx.current().state?.judge_breaker?.blocks_since_commit === i,
+        `block ${i}: breaker counter is ${String(toolCtx.current().state?.judge_breaker?.blocks_since_commit)}, expected ${i}`,
       );
     }
 
-    // Third identical preview: advisory — commit proceeds, verdict
-    // attached, counter frozen.
+    // Third identical preview: advisory — the breaker is at the cap, so
+    // the verdict degrades to advisory and the auto-commit proceeds with
+    // the (still failing) verdict attached.
     const advisory = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     c.check(advisory.ok === true, "post-breaker preview should succeed (advisory verdict)");
     const data = advisory.data as JudgeEnvelope;
@@ -70,9 +71,12 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       data.judge?.verdict === input.failed_verdict.verdict,
       "advisory verdict must still ride the result",
     );
+    // The monotonic counter is "blocks since the last commit": the
+    // advisory auto-commit clears the breaker, so a subsequent edit gets
+    // a fresh judging budget instead of an immediately-degraded judge.
     c.check(
-      toolCtx.current().state?.judge_breaker?.blocks === input.max_blocks,
-      "advisory verdict must not increment the breaker counter",
+      (toolCtx.current().state?.judge_breaker ?? null) === null,
+      "advisory auto-commit must reset the per-draft breaker (blocks-since-commit)",
     );
 
     if (c.failed) return { pass: false, reason: c.failed };
