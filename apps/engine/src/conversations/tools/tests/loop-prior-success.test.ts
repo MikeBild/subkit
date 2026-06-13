@@ -100,21 +100,23 @@ describe("loop guard — prior-success attachment", () => {
       output: successPayload,
     };
 
-    // Calls 2 and 3 with IDENTICAL args — the 3rd trips the guard.
+    // Call 2 with IDENTICAL args — because the exact execution already
+    // succeeded this turn, the wrapper returns the prior output instead
+    // of creating a duplicate execution row.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    await (run!.execute as any)(sameArgs, { toolCallId: "t2", messages: [] });
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const result3 = await (run!.execute as any)(sameArgs, { toolCallId: "t3", messages: [] });
-    const data3 = result3.data as {
+    const result2 = await (run!.execute as any)(sameArgs, { toolCallId: "t2", messages: [] });
+    const data2 = result2.data as {
       error_code?: string;
       message?: string;
       prior_success_output?: unknown;
+      repeat_count?: number;
     };
-    expect(data3.error_code).toBe("tool_loop_detected");
+    expect(data2.error_code).toBe("tool_loop_detected");
+    expect(data2.repeat_count).toBe(2);
     // The finished run's output rides on the abort envelope…
-    expect(data3.prior_success_output).toEqual(successPayload);
+    expect(data2.prior_success_output).toEqual(successPayload);
     // …and the message tells the model to PRESENT it, not retry.
-    expect(data3.message).toContain("prior_success_output");
+    expect(data2.message).toContain("prior_success_output");
   });
 
   it("fallback synthesis describes the prior success instead of the abort", () => {

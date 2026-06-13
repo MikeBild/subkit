@@ -486,7 +486,19 @@ export function wrapOne(
           signals.toolArgsRepeat.set(inner.name, { hash: argsHash, count: repeatCount });
         }
         const priorCount = signals.toolInvocationCount.get(inner.name) ?? 0;
-        const tripped = !isReadOnly && repeatCount >= REPEAT_THRESHOLD;
+        // Execution-shaped tools have tenant-visible side effects. Once an
+        // identical call already succeeded in this turn, the second call is
+        // not a useful retry: return the prior result instead of running the
+        // workflow again and creating duplicate execution/audit rows.
+        const priorSuccess =
+          signals.lastExecutionSuccess &&
+          signals.lastExecutionSuccess.tool === inner.name &&
+          signals.lastExecutionSuccess.args_hash === argsHash
+            ? signals.lastExecutionSuccess.output
+            : undefined;
+        const repeatsSuccessfulExecution = priorSuccess !== undefined && repeatCount >= 2;
+        const tripped =
+          !isReadOnly && (repeatCount >= REPEAT_THRESHOLD || repeatsSuccessfulExecution);
         if (tripped) {
           signals.totalLoopWarnings += 1;
           const turnBudgetReached = signals.totalLoopWarnings >= MAX_TURN_LOOP_WARNINGS;
@@ -515,6 +527,7 @@ export function wrapOne(
             args_hash: argsHash.slice(0, 64),
             total_loop_warnings: signals.totalLoopWarnings,
             repeat_threshold: REPEAT_THRESHOLD,
+            repeats_successful_execution: repeatsSuccessfulExecution,
             turn_budget_reached: turnBudgetReached,
           });
           events.push({
@@ -524,20 +537,11 @@ export function wrapOne(
             level: "warn",
             message: turnBudgetReached
               ? `tool.loop_detected: ${inner.name} repeated identical args ${repeatCount}×; turn-level loop budget exhausted (${signals.totalLoopWarnings}) — ending turn`
-              : `tool.loop_detected: ${inner.name} called with identical args ${repeatCount}× in a row — change approach or ask the user`,
+              : repeatsSuccessfulExecution
+                ? `tool.loop_detected: ${inner.name} already succeeded with identical args this turn — present the prior_success_output instead of running it again`
+                : `tool.loop_detected: ${inner.name} called with identical args ${repeatCount}× in a row — change approach or ask the user`,
             ts: new Date().toISOString(),
           });
-          // When the IDENTICAL call already succeeded this turn, the work
-          // is done — hand its result back on the abort envelope so the
-          // model (and the fallback synthesis) presents the data instead
-          // of "no output". Production A2: a re-issued run_workflow
-          // tripped the guard and the finished run's output vanished.
-          const priorSuccess =
-            signals.lastExecutionSuccess &&
-            signals.lastExecutionSuccess.tool === inner.name &&
-            signals.lastExecutionSuccess.args_hash === argsHash
-              ? signals.lastExecutionSuccess.output
-              : undefined;
           return {
             ok: false,
             data: {
