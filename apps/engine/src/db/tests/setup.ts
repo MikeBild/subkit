@@ -13,6 +13,7 @@
 // file serially by default. Different files get different databases so
 // parallel file execution is safe.
 
+import { setDefaultTimeout } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -21,6 +22,12 @@ import { runMigrations } from "../migrate.ts";
 import * as schema from "../schema/index.ts";
 
 const { Client, Pool } = pg;
+
+// Database-backed suites create and drop full migrated databases. Under
+// the release gate's parallel file runner, Postgres can serialize drops
+// behind other admin work, so use the same hook budget as journey tests.
+export const TEST_DB_HOOK_TIMEOUT = 120_000;
+setDefaultTimeout(TEST_DB_HOOK_TIMEOUT);
 
 // Orphan sweep — runs at most once per bun test process. Killed runs
 // (Ctrl-C, OOM, timeout) leave test_* databases behind. Without a
