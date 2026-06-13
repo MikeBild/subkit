@@ -1,4 +1,4 @@
-// End-to-end webhook trigger test (issue #46).
+// End-to-end webhook trigger test.
 //
 // Drives an inbound `charge.failed` Stripe event through the executor
 // pipeline against a workflow whose definition declares
@@ -27,6 +27,7 @@ import {
 } from "../../../db/schema/index.ts";
 import { registerExecutionRunHandler } from "../../../queue/handlers/execution-run.ts";
 import { waitFor } from "../../../test-helpers/determinism/wait.ts";
+import { markSeenIfNew } from "../dedup.ts";
 import { bindFromWorkflow, handleInbound, rotateInboundSecret } from "../service.ts";
 import { createInboundCtx, type InboundTestCtx } from "./setup.ts";
 
@@ -336,18 +337,19 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
   test("duplicate event id is deduped + emits webhook.trigger.failed_verification with reason replay_dedup", async () => {
     const eventId = "evt_replay_001";
     const body = buildChargeFailedBody(eventId);
+    const beforeRows = await ctx.db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(eq(executions.tenant_id, ctx.tenantId));
+    const marked = await markSeenIfNew(ctx.db, {
+      tenant_id: ctx.tenantId,
+      webhook_id: inboundId,
+      standard_webhook_id: eventId,
+    });
+    expect(marked).toBe(true);
     // allow-wall-clock: stripe signature window is real-time
     const ts = Math.floor(Date.now() / 1000);
     const sig = signStripe(SECRET, ts, body);
-    const first = await handleInbound(
-      { db: ctx.db, boss: ctx.boss },
-      {
-        slug: "wf-wf-stripe-trigger",
-        rawBody: body,
-        headers: { "stripe-signature": sig },
-      },
-    );
-    expect(first.status).toBe("ok");
     const second = await handleInbound(
       { db: ctx.db, boss: ctx.boss },
       {
@@ -357,6 +359,14 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
       },
     );
     expect(second.status).toBe("deduped");
+    if (second.status !== "deduped") throw new Error("expected deduped");
+    expect(second.inbound_id).toBe(inboundId);
+
+    const afterRows = await ctx.db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(eq(executions.tenant_id, ctx.tenantId));
+    expect(afterRows.length).toBe(beforeRows.length);
 
     // `audit()` is fire-and-forget — the row is queued through
     // `writeAudit` without awaiting. Poll briefly so the test
