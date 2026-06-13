@@ -8709,6 +8709,11 @@
               "plan",
               "yolo"
             ]
+          },
+          "step_budget": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
           }
         }
       },
@@ -8889,6 +8894,11 @@
               "plan",
               "yolo"
             ]
+          },
+          "step_budget": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
           },
           "client_suppress": {
             "type": "boolean"

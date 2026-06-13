@@ -12137,6 +12137,7 @@ export interface components {
             title?: string;
             /** @enum {string} */
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
+            step_budget?: number;
         };
         ConversationDetail: {
             conversation: components["schemas"]["Conversation"];
@@ -12180,6 +12181,7 @@ export interface components {
             memory?: string;
             /** @enum {string} */
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
+            step_budget?: number;
             client_suppress?: boolean;
         };
         RespondElicitationBody: {
