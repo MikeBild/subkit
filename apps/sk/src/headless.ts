@@ -37,6 +37,8 @@ import { loadSettings } from "./settings.ts";
 
 export type OutputFormat = "text" | "json" | "stream-json";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export interface HeadlessRunOptions {
   profile: ResolvedProfile;
   prompt: string;
@@ -93,6 +95,43 @@ function sanitizeError(err: unknown): { status: number; message: string; exit: 1
   return { status: 0, message: msg, exit: 2 };
 }
 
+function readStringField(row: Record<string, unknown>, key: string): string | null {
+  const value = row[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function matchesSelector(row: Record<string, unknown>, selector: string): boolean {
+  return (
+    readStringField(row, "id") === selector ||
+    readStringField(row, "slug") === selector ||
+    readStringField(row, "name") === selector ||
+    readStringField(row, "display_name") === selector
+  );
+}
+
+async function resolveResourceSelector(
+  client: EngineClient,
+  kind: "connector" | "workflow",
+  selector: string,
+): Promise<string> {
+  if (UUID_RE.test(selector)) return selector;
+
+  const page =
+    kind === "connector"
+      ? await client.listConnectors({ limit: 100 })
+      : await client.listWorkflows({ limit: 100 });
+  const matches = page.items.filter((row) => matchesSelector(row, selector));
+  if (matches.length === 1) {
+    const id = readStringField(matches[0]!, "id");
+    if (id && UUID_RE.test(id)) return id;
+  }
+
+  if (matches.length > 1) {
+    throw new Error(`${kind} selector '${selector}' matched ${matches.length} resources`);
+  }
+  throw new Error(`${kind} '${selector}' was not found`);
+}
+
 /**
  * Run a single headless turn end-to-end. Returns the final session
  * state plus an exit code. Does NOT call process.exit so tests can
@@ -122,6 +161,8 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   });
   const turn_id = newDebugTurnId("headless");
   let conversationId: string | null = opts.resume ?? null;
+  let connectorId = opts.connector_id;
+  let workflowId = opts.workflow_id;
   const traceContext = (): DebugCorrelationFields => ({
     mode: "headless",
     conversation_id: conversationId,
@@ -134,8 +175,8 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       raw_input: opts.prompt,
       output_format: opts.output,
       resume: opts.resume ?? null,
-      connector_id: opts.connector_id ?? null,
-      workflow_id: opts.workflow_id ?? null,
+      connector_id: connectorId ?? null,
+      workflow_id: workflowId ?? null,
       memory_sources: memory.sources,
     },
     traceContext(),
@@ -192,6 +233,33 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   const attachPaths = opts.attach ?? [];
   const hasAttach = attachPaths.length > 0;
 
+  try {
+    if (!conversationId && connectorId) {
+      connectorId = await resolveResourceSelector(client, "connector", connectorId);
+    }
+    if (!conversationId && workflowId) {
+      workflowId = await resolveResourceSelector(client, "workflow", workflowId);
+    }
+  } catch (err) {
+    const e = sanitizeError(err);
+    debugLog(
+      "dialog.error",
+      {
+        input_kind: "prompt",
+        stage: "binding_resolution",
+        error: serializeDebugError(err),
+      },
+      traceContext(),
+    );
+    debugLog(
+      "dialog.turn_end",
+      { input_kind: "prompt", status: "error", exit_code: e.exit },
+      traceContext(),
+    );
+    stderr.write(`sk: ${e.message}\n`);
+    return { exitCode: e.exit, session, conversation_id: conversationId };
+  }
+
   // Handle --resume: append a user message to an existing conversation.
   // Otherwise create a new one with the prompt as `initial_message`.
   // When `--attach` is set we always create-then-append so file
@@ -228,8 +296,8 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           // is appended after `attachFiles()` succeeds.
           ...(hasAttach ? {} : { initial_message: resolved.prompt }),
           ...(memory.content ? { memory: memory.content } : {}),
-          ...(opts.connector_id ? { connector_id: opts.connector_id } : {}),
-          ...(opts.workflow_id ? { workflow_id: opts.workflow_id } : {}),
+          ...(connectorId ? { connector_id: connectorId } : {}),
+          ...(workflowId ? { workflow_id: workflowId } : {}),
           ...(settings.merged.model ? { model: settings.merged.model } : {}),
           ...(opts.maxTurns !== undefined ? { step_budget: opts.maxTurns } : {}),
         },
