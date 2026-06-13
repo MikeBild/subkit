@@ -46,6 +46,17 @@ export interface WaitForOAuthCredentialInput {
   /** Upper bound in ms. Defaults to 45s — see `OAUTH_WAIT_CEILING_MS`. */
   timeout_ms?: number;
   db: Db;
+  /** Test-only listener injection; production uses the engine-global listener. */
+  listener?: {
+    on: <P = unknown>(
+      channel: "connector.oauth",
+      handler: (event: EventEnvelope<P>) => void,
+    ) => void;
+    off: <P = unknown>(
+      channel: "connector.oauth",
+      handler: (event: EventEnvelope<P>) => void,
+    ) => void;
+  };
 }
 
 // Upper bound for an OAuth wait — also the budget ceiling for callers
@@ -98,6 +109,7 @@ export function waitForOAuthCredential(p: WaitForOAuthCredentialInput): Promise<
     let settled = false;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
     let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+    let subscribedListener: WaitForOAuthCredentialInput["listener"] | null = null;
 
     // The listener has no per-tenant channel — we subscribe to the
     // global `connector.oauth` channel and filter every event in the
@@ -141,7 +153,7 @@ export function waitForOAuthCredential(p: WaitForOAuthCredentialInput): Promise<
 
     const cleanup = (): void => {
       try {
-        getListener().off("connector.oauth", handler);
+        subscribedListener?.off("connector.oauth", handler);
       } catch {
         /* listener may not be running in tests — ignore */
       }
@@ -178,7 +190,8 @@ export function waitForOAuthCredential(p: WaitForOAuthCredentialInput): Promise<
     // resolve the wait early, so a misconfigured prod listener must not
     // stay invisible.
     try {
-      getListener().on("connector.oauth", handler);
+      subscribedListener = p.listener ?? getListener();
+      subscribedListener.on("connector.oauth", handler);
     } catch (err) {
       logger.warn({
         module: "oauth",

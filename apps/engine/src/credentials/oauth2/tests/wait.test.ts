@@ -15,8 +15,8 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
-import { globalEmitter } from "../../../pubsub/emitter.ts";
-import { startListener, stopListener } from "../../../pubsub/listener.ts";
+import { PubSubEmitter } from "../../../pubsub/emitter.ts";
+import { PubSubListener } from "../../../pubsub/listener.ts";
 import type { EventEnvelope } from "../../../pubsub/types.ts";
 import { waitFor } from "../../../test-helpers/determinism/wait.ts";
 import { OAUTH_WAIT_MIN_FLOOR_MS, POLL_INTERVAL_MS, waitForOAuthCredential } from "../wait.ts";
@@ -50,6 +50,8 @@ let ctx: TestDb;
 let tenant_id: string;
 let connector_id: string;
 let otherConnectorId: string;
+let emitter: PubSubEmitter;
+let listener: PubSubListener;
 
 const PLACEHOLDER = Buffer.from([0x01]);
 
@@ -89,18 +91,22 @@ beforeAll(async () => {
     .returning();
   otherConnectorId = c2!.id;
 
-  // Boot the listener so `getListener()` resolves inside waitForOAuthCredential.
-  // Subscribe only to `connector.oauth` to keep the boot lean.
-  await startListener({
+  // Keep this suite off the module-global listener. The full release
+  // gate runs files concurrently, and shared listener start/stop races
+  // can strand a LISTEN client long enough to trip hook timeouts.
+  emitter = new PubSubEmitter();
+  listener = new PubSubListener({
     connectionString: ctx.url,
     db: ctx.db,
     channels: ["connector.oauth"],
     listenerId: "oauth-wait-test",
+    emitter,
   });
+  await listener.start();
 });
 
 afterAll(async () => {
-  await stopListener();
+  await listener.stop();
   await ctx.cleanup();
 });
 
@@ -179,7 +185,7 @@ async function awaitHandlerRegistered(beforeCount: number): Promise<void> {
   // The idempotency check is a real Postgres round-trip — poll with a
   // short real sleep (allow-wall-clock: I/O-bound) rather than a
   // microtask flush, which would out-run the query.
-  await waitFor(() => globalEmitter.listenerCount("connector.oauth") > beforeCount, {
+  await waitFor(() => emitter.listenerCount("connector.oauth") > beforeCount, {
     label: "oauth.wait handler registration",
     sleepMs: 5,
     // 4s ceiling — only consumed under load; the uncontended case
@@ -200,13 +206,14 @@ describe("waitForOAuthCredential", () => {
       // matters. A small positive value is all that is required.
       timeout_ms: 500,
       db: ctx.db,
+      listener,
     });
     expect(status).toBe("succeeded");
     await hardDeleteCredential(credId);
   });
 
   test("succeeded via the callback_succeeded event (credential row re-read)", async () => {
-    const before = globalEmitter.listenerCount("connector.oauth");
+    const before = emitter.listenerCount("connector.oauth");
     // No credential yet — start the wait, then land the row + fire the event.
     const waiting = waitForOAuthCredential({
       tenant_id,
@@ -214,12 +221,13 @@ describe("waitForOAuthCredential", () => {
       environment: "dev",
       timeout_ms: EVENT_BUDGET_MS,
       db: ctx.db,
+      listener,
     });
     await awaitHandlerRegistered(before);
     // The handler re-reads the credential row before concluding succeeded;
     // insert the row first so the re-read passes.
     const credId = await insertCredential(connector_id);
-    await globalEmitter.dispatch(succeededEvent(connector_id));
+    await emitter.dispatch(succeededEvent(connector_id));
     const status = await waiting;
     expect(status).toBe("succeeded");
     await hardDeleteCredential(credId);
@@ -234,6 +242,7 @@ describe("waitForOAuthCredential", () => {
       // poll ticks (POLL_BUDGET_MS = 4 × POLL_INTERVAL_MS).
       timeout_ms: POLL_BUDGET_MS,
       db: ctx.db,
+      listener,
     });
     const credId = await insertCredential(connector_id);
     const status = await waiting;
@@ -244,33 +253,35 @@ describe("waitForOAuthCredential", () => {
   test("a callback_succeeded event WITHOUT a credential row does not resolve succeeded", async () => {
     // The handler re-reads the credential row; if it is absent the event
     // is ignored and only the timeout settles the wait.
-    const before = globalEmitter.listenerCount("connector.oauth");
+    const before = emitter.listenerCount("connector.oauth");
     const waiting = waitForOAuthCredential({
       tenant_id,
       connector_id,
       environment: "dev",
       timeout_ms: SHORT_TIMEOUT_MS,
       db: ctx.db,
+      listener,
     });
     await awaitHandlerRegistered(before);
     // Fire the event mid-wait — but no credential row was inserted, so
     // the handler's credential re-read fails and the event is dropped.
-    await globalEmitter.dispatch(succeededEvent(connector_id));
+    await emitter.dispatch(succeededEvent(connector_id));
     const status = await waiting;
     expect(status).toBe("timeout");
   });
 
   test("failed ONLY via an explicit callback_failed event", async () => {
-    const before = globalEmitter.listenerCount("connector.oauth");
+    const before = emitter.listenerCount("connector.oauth");
     const waiting = waitForOAuthCredential({
       tenant_id,
       connector_id,
       environment: "dev",
       timeout_ms: EVENT_BUDGET_MS,
       db: ctx.db,
+      listener,
     });
     await awaitHandlerRegistered(before);
-    await globalEmitter.dispatch(failedEvent(connector_id));
+    await emitter.dispatch(failedEvent(connector_id));
     const status = await waiting;
     expect(status).toBe("failed");
   });
@@ -282,40 +293,43 @@ describe("waitForOAuthCredential", () => {
       environment: "dev",
       timeout_ms: SHORT_TIMEOUT_MS,
       db: ctx.db,
+      listener,
     });
     expect(status).toBe("timeout");
   });
 
   test("ignores a callback_succeeded event for a DIFFERENT connector", async () => {
-    const before = globalEmitter.listenerCount("connector.oauth");
+    const before = emitter.listenerCount("connector.oauth");
     const waiting = waitForOAuthCredential({
       tenant_id,
       connector_id,
       environment: "dev",
       timeout_ms: SHORT_TIMEOUT_MS,
       db: ctx.db,
+      listener,
     });
     await awaitHandlerRegistered(before);
     // Land a credential for the OTHER connector + fire its event — the
     // wait keyed on `connector_id` must not resolve on it.
     const credId = await insertCredential(otherConnectorId);
-    await globalEmitter.dispatch(succeededEvent(otherConnectorId));
+    await emitter.dispatch(succeededEvent(otherConnectorId));
     const status = await waiting;
     expect(status).toBe("timeout");
     await hardDeleteCredential(credId);
   });
 
   test("ignores a callback_failed event for a DIFFERENT connector", async () => {
-    const before = globalEmitter.listenerCount("connector.oauth");
+    const before = emitter.listenerCount("connector.oauth");
     const waiting = waitForOAuthCredential({
       tenant_id,
       connector_id,
       environment: "dev",
       timeout_ms: SHORT_TIMEOUT_MS,
       db: ctx.db,
+      listener,
     });
     await awaitHandlerRegistered(before);
-    await globalEmitter.dispatch(failedEvent(otherConnectorId));
+    await emitter.dispatch(failedEvent(otherConnectorId));
     const status = await waiting;
     expect(status).toBe("timeout");
   });
@@ -331,13 +345,14 @@ describe("waitForOAuthCredential", () => {
       environment: "dev",
       timeout_ms: SHORT_TIMEOUT_MS,
       db: ctx.db,
+      listener,
     });
     expect(status).toBe("timeout");
     await hardDeleteCredential(credId);
   });
 
   test("a callback_succeeded event for the wrong tenant is ignored", async () => {
-    const before = globalEmitter.listenerCount("connector.oauth");
+    const before = emitter.listenerCount("connector.oauth");
     // Budget spans several poll ticks — the cross-tenant event is
     // dropped, so only the DB poll can settle this `succeeded`.
     const waiting = waitForOAuthCredential({
@@ -346,10 +361,11 @@ describe("waitForOAuthCredential", () => {
       environment: "dev",
       timeout_ms: POLL_BUDGET_MS,
       db: ctx.db,
+      listener,
     });
     await awaitHandlerRegistered(before);
     const credId = await insertCredential(connector_id);
-    await globalEmitter.dispatch({
+    await emitter.dispatch({
       ...succeededEvent(connector_id),
       tenant_id: "00000000-0000-0000-0000-000000000000",
     });
