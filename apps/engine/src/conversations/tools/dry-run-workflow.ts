@@ -14,7 +14,6 @@ import {
   recordAuthoringGateBlock,
   recordExecutionDryRun,
   recordExecutionWarningsEmitted,
-  recordPreviewJudgeVerdict,
 } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
 import {
@@ -563,6 +562,10 @@ export const dryRunWorkflowTool: ConversationTool = {
     let judgeBlocked = false;
     /** undefined = leave the stored breaker untouched. */
     let nextJudgeBreaker: JudgeBreakerState | undefined;
+    /** Terminal done-signal (P3) — set when the judge blocked at/over the
+     *  cap and degraded to advisory; the model gets an EXIT, not another
+     *  silent requires_repair. */
+    let judgeDoneSignal: Awaited<ReturnType<typeof runPreviewJudgeGate>>["doneSignal"] = null;
     if (dryRunGreen) {
       const gate = await runPreviewJudgeGate({
         tenant_id: ctx.tenant_id,
@@ -573,10 +576,12 @@ export const dryRunWorkflowTool: ConversationTool = {
         steps: steps as unknown as Array<Record<string, unknown>>,
         run_steps: run.steps,
         prior_breaker: ctx.getDraft().state?.judge_breaker ?? null,
+        ...(signal ? { signal } : {}),
       });
       judgeOutcome = gate.judgeOutcome;
       judgeBlocked = gate.judgeBlocked;
       nextJudgeBreaker = gate.nextJudgeBreaker;
+      judgeDoneSignal = gate.doneSignal;
       if (gate.warning) runWarnings.push(gate.warning);
     }
 
@@ -858,6 +863,21 @@ export const dryRunWorkflowTool: ConversationTool = {
           // verdicts, skips (no_goal / judge_unavailable), and
           // breaker-degraded advisory verdicts are all visible here.
           ...(judgeOutcome ? { judge: judgeOutcome } : {}),
+          // Terminal done-signal (P3): when a still-unsatisfied preview
+          // was committed as-is because the judge hit its block cap, the
+          // model gets an explicit EXIT — stop editing, tell the user
+          // what's missing, ask how to proceed. Surfaced as guidance,
+          // not another silent requires_repair.
+          ...(judgeDoneSignal
+            ? {
+                judge_done: {
+                  committed_as_is: true,
+                  attempts: judgeDoneSignal.attempts,
+                  missing: judgeDoneSignal.missing,
+                  next_action: judgeDoneSignal.guidance,
+                },
+              }
+            : {}),
           dry_run_summary: {
             steps_ran: run.steps.length,
             duration_ms: totalDryRunMs,
@@ -895,6 +915,7 @@ export const dryRunWorkflowTool: ConversationTool = {
       input: args.input ?? null,
       tenant_id: ctx.tenant_id,
       db: ctx.db,
+      ...(signal ? { signal } : {}),
     });
     const repairCount = repairWarnings.length;
     return {

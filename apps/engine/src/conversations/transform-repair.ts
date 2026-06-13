@@ -88,6 +88,12 @@ export interface RepairTransformParams {
   site?: string;
   tenant_id: string;
   db?: Executor;
+  /** Optional pipeline/turn deadline signal, threaded into the repair
+   *  `invoke()` so an in-flight repair aborts the moment the enclosing
+   *  pipeline's shared deadline fires (P2). When it aborts, `invoke()`
+   *  throws a typed `LlmProviderError`, which is caught below and
+   *  degrades to `{ repaired: false }` like any other provider failure. */
+  signal?: AbortSignal;
 }
 
 export type TransformRepairOutcome =
@@ -272,6 +278,7 @@ export async function repairTransformExpression(
           tenant_id: params.tenant_id,
           user_turns: [{ role: "user", content: buildRepairPrompt(params, lastError) }],
           schema: RepairProposalSchema,
+          ...(params.signal ? { signal: params.signal } : {}),
         },
         params.db,
       );

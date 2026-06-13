@@ -85,7 +85,11 @@ import {
   MAX_REPAIRS_PER_TURN,
   resolveLanguageModel,
 } from "./loop/model-resolver.ts";
-import { committedStopCondition, pausedStopCondition } from "./loop/stop-conditions.ts";
+import {
+  committedStopCondition,
+  noProgressRepairStopCondition,
+  pausedStopCondition,
+} from "./loop/stop-conditions.ts";
 import { buildNextSuggestionFrame } from "./loop/suggest-next-emitter.ts";
 import { detectToolHallucinatedAbsence } from "./loop/tool-not-available-guard.ts";
 import { readStepUsage, stepPromptTokens, stepTotalTokens } from "./loop/usage.ts";
@@ -1274,6 +1278,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         committedStopCondition as any,
         // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
         turnLoopBudgetStopCondition as any,
+        // No-progress repair stop: N consecutive dry_run_workflow results
+        // with the SAME requires_repair / judge-missing fingerprint mean
+        // the build→dry_run→edit loop is stalled — stop the turn and let
+        // the assistant surface the verdict instead of re-driving it to
+        // the step budget. Belt to P3's suspenders (P3 makes the judge
+        // advisory-commit at its cap; this halts a model that keeps
+        // re-driving before that).
+        // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
+        noProgressRepairStopCondition as any,
       ],
       // Retry transient provider errors (Anthropic `Overloaded`/529, 429,
       // 5xx) with the SDK's exponential backoff BEFORE the catch below

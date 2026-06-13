@@ -59,6 +59,18 @@ import type { WorkflowDraftDocument } from "./types.ts";
  *  bounded (≤2 attempts per finding) repair stage. */
 export const MAX_GENERATION_PASSES = 2;
 
+/** Single wall-clock budget for the WHOLE pipeline — both generate
+ *  passes plus recorded-eval's repair fan-out — expressed as one
+ *  `AbortSignal.timeout`. Threaded as `signal` into every `invoke()` the
+ *  pipeline and its repairs make (P1 gives each provider call its own
+ *  90s ceiling; this is the aggregate ceiling so a serial chain of calls
+ *  can't sum past it). On a deadline hit `invoke()` throws a typed
+ *  `LlmProviderError`; the pipeline catches it and returns the best
+ *  draft it has with the findings, never hangs. 120s leaves room for two
+ *  generate passes plus a small bounded repair fan-out while staying
+ *  well under the client socket budget the STALL exceeded. */
+export const PIPELINE_DEADLINE_MS = 120_000;
+
 /** Per-connector char budget for the ingested-docs excerpt embedded in
  *  the generation prompt. Mirrors the context assembler's discipline of
  *  bounding every section; tuning is a source change, not a knob. */
@@ -87,7 +99,7 @@ export const GeneratedWorkflowSchema = z.object({
   output_schema: z.record(z.string(), z.unknown()).optional(),
   output_transform: z.string().optional(),
   trigger: TriggerSchema.optional(),
-  steps: z.array(z.record(z.string(), z.unknown())).min(1).max(50),
+  steps: z.array(z.record(z.string(), z.unknown())).min(1).max(25),
 });
 
 export type GeneratedWorkflow = z.infer<typeof GeneratedWorkflowSchema>;
@@ -115,6 +127,11 @@ export type AuthoringPipelineResult =
       attempts: number;
       /** Connector slugs/ids the caller named that did not resolve. */
       unresolved_connectors: string[];
+      /** Set when the shared pipeline deadline (or turn abort) fired
+       *  mid-generation: the draft below is the best one produced so
+       *  far and the model should refine it from `recorded_eval`'s
+       *  findings rather than expecting a clean artifact. */
+      note?: string;
       next: "dry_run_workflow";
     }
   | {
@@ -347,12 +364,31 @@ export async function runAuthoringPipeline(
   }
 
   // ---------------------------------------------------- GENERATE/EVALUATE
+  // One shared deadline for the whole pipeline (generate passes + the
+  // recorded-eval repair fan-out). Merged with the turn's abort signal
+  // when present so the stricter of (turn abort, pipeline deadline)
+  // wins; threaded as `signal` into every nested `invoke()`. A hit
+  // surfaces as a typed `LlmProviderError` out of `invoke()` (P1 maps
+  // abort → provider error), which the loop below catches to degrade
+  // gracefully instead of hanging.
+  const deadlineSignal = ctx.abortSignal
+    ? AbortSignal.any([ctx.abortSignal, AbortSignal.timeout(PIPELINE_DEADLINE_MS)])
+    : AbortSignal.timeout(PIPELINE_DEADLINE_MS);
+
   let definition: GeneratedWorkflow | null = null;
   let validationErrors: ValidationError[] = [];
   let attempts = 0;
   let priorFindings: string[] | null = null;
+  /** Set when a generate pass aborted on the shared deadline / turn
+   *  signal — the pipeline returns the best draft so far with a clear
+   *  note instead of throwing or hanging. */
+  let deadlineExceeded = false;
 
   for (let pass = 1; pass <= MAX_GENERATION_PASSES; pass++) {
+    if (deadlineSignal.aborted) {
+      deadlineExceeded = true;
+      break;
+    }
     const prompt = buildGenerationPrompt({
       goal,
       connectors,
@@ -371,6 +407,7 @@ export async function runAuthoringPipeline(
           tenant_id: ctx.tenant_id,
           user_turns: [{ role: "user", content: prompt }],
           schema: GeneratedWorkflowSchema,
+          signal: deadlineSignal,
         },
         ctx.db,
       );
@@ -387,6 +424,23 @@ export async function runAuthoringPipeline(
       // Provider/quota failure: never throw out of the pipeline — the
       // tool surfaces a typed envelope the model can act on.
       const message = err instanceof Error ? err.message : String(err);
+      // A deadline / turn-abort hit surfaces here as a typed provider
+      // error (P1 maps abort → LlmProviderError). Stop the pipeline and
+      // return what we have — do not burn the second pass re-hitting an
+      // already-blown budget.
+      if (deadlineSignal.aborted) {
+        deadlineExceeded = true;
+        logger.warn({
+          module: "conversations",
+          action: "authoring_pipeline.deadline_exceeded",
+          msg: "generation aborted on the shared pipeline deadline — returning the best draft so far",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          pass,
+        });
+        if (!definition) validationErrors = [{ path: "(llm)", message }];
+        break;
+      }
       logger.warn({
         module: "conversations",
         action: "authoring_pipeline.generate_failed",
@@ -451,8 +505,18 @@ export async function runAuthoringPipeline(
       input: lastPreview?.input ?? currentDraft.latest_preview?.input ?? null,
       probedConnectorSlugs,
     },
-    { repair: { tenant_id: ctx.tenant_id, db: ctx.db } },
+    // Repair shares the pipeline deadline: an aborted repair `invoke()`
+    // degrades to `{ repaired: false }` inside recorded-eval, so the
+    // pipeline never hangs on the fan-out. If the deadline already fired
+    // during generation, arm repair WITHOUT a signal-less budget — the
+    // already-aborted signal makes every repair invoke fail fast, which
+    // recorded-eval absorbs, leaving the findings intact for the model.
+    { repair: { tenant_id: ctx.tenant_id, db: ctx.db, signal: deadlineSignal } },
   );
+  // A deadline hit DURING the repair fan-out (not only during generation)
+  // must also surface the time-budget note (round-5 Finding 3) — else the
+  // model gets findings with no signal that time ran out mid-repair.
+  if (deadlineSignal.aborted) deadlineExceeded = true;
 
   // ----------------------------------------------------------------- EMIT
   // Stash as the conversation draft. Goal + connector ids ride the
@@ -478,6 +542,11 @@ export async function runAuthoringPipeline(
   const nextDraft = withWorkflowDraft(currentDraft, merged, "workflow_authored_one_shot");
   await ctx.setDraft(nextDraft);
 
+  const findingCount = recordedEval.expressions.filter((f) => f.status !== "ok").length;
+  const note = deadlineExceeded
+    ? `generation/repair time budget exceeded — returning the current draft with ${findingCount} finding(s) for you to refine (edit_workflow_patch / update_param from recorded_eval.expressions)`
+    : undefined;
+
   return {
     ok: true,
     definition,
@@ -485,6 +554,7 @@ export async function runAuthoringPipeline(
     recorded_eval: recordedEval,
     attempts,
     unresolved_connectors: unresolved,
+    ...(note ? { note } : {}),
     next: "dry_run_workflow",
   };
 }

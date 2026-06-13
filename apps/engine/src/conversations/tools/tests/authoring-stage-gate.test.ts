@@ -135,7 +135,7 @@ describe("unlock conditions", () => {
         latest_execution: null,
         latest_diagnosis: null,
       }),
-      judge_breaker: { fingerprint: "abc123", blocks: 1 },
+      judge_breaker: { blocks_since_commit: 1 },
     };
     expect(draftHasStageEvidence(draft)).toBe(true);
     const toolCtx = makeCtx(draft);

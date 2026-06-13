@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
-import { AiSdkModel } from "../ai-sdk-model.ts";
+import { AiSdkModel, LlmCallAbortedError } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
 
 interface GenerateTextStubResult {
@@ -57,6 +57,125 @@ function makeMultiStub(results: GenerateTextStubResult[]) {
   };
   return { fn, calls };
 }
+
+// A stub that mimics the AI SDK's abort behaviour: it never resolves on its
+// own and rejects with an `AbortError`-named error the moment the supplied
+// `abortSignal` fires (timeout or caller). Records each call's opts.
+function makeAbortAwareStub() {
+  const calls: Array<{ abortSignal: AbortSignal | undefined; model: unknown }> = [];
+  const fn = (opts: { abortSignal?: AbortSignal; model: unknown }) => {
+    calls.push({ abortSignal: opts.abortSignal, model: opts.model });
+    return new Promise((_resolve, reject) => {
+      const signal = opts.abortSignal;
+      if (!signal) return; // never resolves — would hang without a signal
+      const onAbort = () => {
+        const err = new Error("The operation was aborted");
+        err.name = "AbortError";
+        reject(err);
+      };
+      if (signal.aborted) return onAbort();
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+  };
+  return { fn, calls };
+}
+
+describe("AiSdkModel per-call timeout + abort", () => {
+  it("aborts a hung provider call at the injected timeout with a typed error", async () => {
+    const stub = makeAbortAwareStub();
+    const model = new AiSdkModel({
+      defaultModel: "claude-sonnet-4-5",
+      callTimeoutMs: 40,
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    await expect(model.generateText([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
+      LlmCallAbortedError,
+    );
+  });
+
+  it("propagates a caller-supplied signal abort promptly", async () => {
+    const stub = makeAbortAwareStub();
+    const model = new AiSdkModel({
+      defaultModel: "claude-sonnet-4-5",
+      // long timeout so the caller signal is what fires
+      callTimeoutMs: 60_000,
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    const controller = new AbortController();
+    const p = model.generateText([{ role: "user", content: "hi" }], {
+      signal: controller.signal,
+    });
+    // Abort on the next microtask — deterministic, no wall clock.
+    queueMicrotask(() => controller.abort());
+    await expect(p).rejects.toBeInstanceOf(LlmCallAbortedError);
+  });
+
+  it("passes an abortSignal to the provider call even with no caller signal", async () => {
+    const stub = makeStub({ text: "ok", usage: { inputTokens: 1, outputTokens: 1 } });
+    const model = new AiSdkModel({
+      defaultModel: "claude-sonnet-4-5",
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    await model.generateText([{ role: "user", content: "hi" }]);
+    const call = stub.calls[0] as { abortSignal?: AbortSignal };
+    expect(call.abortSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("does not regress a normal fast call", async () => {
+    const stub = makeStub({ text: "hello", usage: { inputTokens: 5, outputTokens: 2 } });
+    const model = new AiSdkModel({
+      defaultModel: "claude-sonnet-4-5",
+      callTimeoutMs: 50,
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    const r = await model.generateText([{ role: "user", content: "hi" }]);
+    expect(r.response).toBe("hello");
+    expect(r.usage.input_tokens).toBe(5);
+  });
+
+  it("bounds the fallback model call with the same timeout", async () => {
+    // Primary throws a fallback-eligible provider error immediately; the
+    // fallback call then hangs and must abort at the injected timeout.
+    const calls: Array<{ model: unknown; abortSignal: AbortSignal | undefined }> = [];
+    let i = 0;
+    const fn = (opts: { model: unknown; abortSignal?: AbortSignal }) => {
+      calls.push({ model: opts.model, abortSignal: opts.abortSignal });
+      i += 1;
+      if (i === 1) {
+        // Primary: overloaded → fallback-eligible.
+        return Promise.reject(new Error("overloaded"));
+      }
+      // Fallback: hang until the signal aborts.
+      return new Promise((_resolve, reject) => {
+        const signal = opts.abortSignal;
+        if (!signal) return;
+        const onAbort = () => {
+          const err = new Error("aborted");
+          err.name = "AbortError";
+          reject(err);
+        };
+        if (signal.aborted) return onAbort();
+        signal.addEventListener("abort", onAbort, { once: true });
+      });
+    };
+    const model = new AiSdkModel({
+      defaultModel: "claude-sonnet-4-5",
+      callTimeoutMs: 40,
+      fallback: { defaultModel: "claude-sonnet-4-6" },
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: fn as any,
+    });
+    await expect(model.generateText([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
+      LlmCallAbortedError,
+    );
+    // Both the primary and the fallback were attempted.
+    expect(calls.length).toBe(2);
+  });
+});
 
 describe("AiSdkModel.generateText", () => {
   it("prepends the date, returns text + usage", async () => {

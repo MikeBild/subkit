@@ -18,6 +18,8 @@ import type {
   AuthoringSummary,
   AuthoringSurfaceMode,
   ConnectorDraftDocument,
+  JudgeBreakerState,
+  JudgeVerdictMemo,
   LatestDiagnosisSummary,
   LatestExecutionSummary,
   PersistedResourceRef,
@@ -375,6 +377,47 @@ export function normalizeLatestDiagnosis(value: unknown): LatestDiagnosisSummary
   };
 }
 
+function normalizeJudgeVerdictMemo(value: unknown): JudgeVerdictMemo | null {
+  if (
+    !isRecord(value) ||
+    typeof value.fingerprint !== "string" ||
+    (value.verdict !== "passes" && value.verdict !== "partial" && value.verdict !== "failed") ||
+    typeof value.reason !== "string"
+  ) {
+    return null;
+  }
+  return {
+    fingerprint: value.fingerprint,
+    verdict: value.verdict,
+    reason: value.reason,
+    missing: Array.isArray(value.missing)
+      ? value.missing.filter((m): m is string => typeof m === "string")
+      : [],
+  };
+}
+
+/**
+ * Coerce the persisted preview-judge breaker (P3). Reads the current
+ * `blocks_since_commit` shape; falls back to the legacy
+ * `{ fingerprint, blocks }` entry by seeding the monotonic counter from
+ * `blocks` (a stale legacy entry over-counts at worst, never deadlocks).
+ */
+function normalizeJudgeBreaker(value: unknown): JudgeBreakerState | null {
+  if (!isRecord(value)) return null;
+  const blocksSinceCommit =
+    typeof value.blocks_since_commit === "number"
+      ? value.blocks_since_commit
+      : typeof value.blocks === "number"
+        ? value.blocks
+        : null;
+  const lastVerdict = normalizeJudgeVerdictMemo(value.last_verdict);
+  if (blocksSinceCommit === null && lastVerdict === null) return null;
+  return {
+    blocks_since_commit: blocksSinceCommit ?? 0,
+    last_verdict: lastVerdict,
+  };
+}
+
 export function normalizeState(
   raw: unknown,
   legacyMode: AuthoringMode | undefined,
@@ -403,19 +446,15 @@ export function normalizeState(
       : [],
     latest_execution: normalizeLatestExecution(state.latest_execution),
     latest_diagnosis: normalizeLatestDiagnosis(state.latest_diagnosis),
-    // Preview-judge circuit-breaker — keyed on the definition
-    // fingerprint, so a stale entry is harmless (key mismatch reads
-    // as blocks=0) but a valid one must survive the round-trip or the
-    // breaker never trips across turns.
-    judge_breaker:
-      isRecord(state.judge_breaker) &&
-      typeof state.judge_breaker.fingerprint === "string" &&
-      typeof state.judge_breaker.blocks === "number"
-        ? {
-            fingerprint: state.judge_breaker.fingerprint,
-            blocks: state.judge_breaker.blocks,
-          }
-        : null,
+    // Preview-judge circuit-breaker (P3) — a MONOTONIC count of judge
+    // blocks since the last commit plus a fingerprint-keyed verdict
+    // memo. It must survive the round-trip or the breaker never trips
+    // across turns and the memo never skips a re-judge. Backward
+    // tolerant: a legacy `{ fingerprint, blocks }` entry seeds
+    // `blocks_since_commit` from `blocks` (a soft over-count at worst —
+    // it only makes the breaker degrade to advisory one block sooner,
+    // never a deadlock).
+    judge_breaker: normalizeJudgeBreaker(state.judge_breaker),
   };
   if (isRecord(state.checkpoints)) {
     for (const key of CHECKPOINT_KEYS) {

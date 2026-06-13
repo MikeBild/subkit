@@ -290,6 +290,14 @@ export interface InvokeParams<T = unknown> {
   telemetry_metadata?: Record<string, string | number | boolean>;
   /** Optional explicit route; otherwise resolved from tenant settings. */
   route?: ModelRoute;
+  /**
+   * Optional caller abort signal. Threaded down to the provider round-trip in
+   * `AiSdkModel`, where it is merged with a per-call hard timeout. Nested
+   * `invoke()`s inside a tool execution pass the turn/pipeline signal here so a
+   * wedged provider connection can't outlive the turn (the STALL fix). When
+   * omitted, the per-call timeout still bounds the call.
+   */
+  signal?: AbortSignal;
 }
 
 export interface InvokeResult<T = unknown> {
@@ -629,6 +637,7 @@ async function dispatchReal<T>(
         temperature: 0,
         metadata: telemetryMeta,
         toolChoice: "required",
+        ...(params.signal ? { signal: params.signal } : {}),
       });
       usage = r.usage;
       if (r.success) {
@@ -641,6 +650,7 @@ async function dispatchReal<T>(
       const r = await model.generateText(messages, {
         temperature: 0,
         metadata: telemetryMeta,
+        ...(params.signal ? { signal: params.signal } : {}),
       });
       usage = r.usage;
       text = r.response;

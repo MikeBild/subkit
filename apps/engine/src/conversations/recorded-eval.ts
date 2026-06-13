@@ -76,6 +76,34 @@ const VALUE_PREVIEW_MAX_CHARS = 500;
 const PATH_CANDIDATES_PER_REF = 8;
 const PATH_CANDIDATES_MAX = 12;
 
+/**
+ * Total number of per-site repair `invoke()` fan-outs allowed across a
+ * SINGLE recorded-eval pass, regardless of how many findings the draft
+ * carries. The bound is a property of the repair option, so every
+ * caller that arms repair (the authoring pipeline, build_workflow,
+ * propose_step, edit_workflow_patch) inherits it.
+ *
+ * Rationale (STALL root cause S2): a freshly-generated draft evaluated
+ * against thin recorded evidence produces compile_error / empty_result
+ * on most transform/loop sites. The old code ran a sequential `for`
+ * loop over EVERY such finding, each firing up to MAX_REPAIR_ATTEMPTS
+ * (2) untimed slow-model `invoke()`s — 6-10 findings × 2 = 12-20 serial
+ * calls inside one tool execution, minutes of wall-clock even without a
+ * hang. A draft that broken should be regenerated/edited by the
+ * conversation model in ONE shot from the full findings list, not
+ * auto-repaired site-by-site. So:
+ *   - findings ≤ MAX_REPAIR_FINDINGS  → repair them (≤ this many sites).
+ *   - findings >  MAX_REPAIR_FINDINGS → SKIP per-site repair entirely;
+ *     ALL findings ride the result envelope for the model to fix.
+ */
+export const MAX_PIPELINE_REPAIRS = 3;
+/** When the count of repairable findings exceeds this threshold the
+ *  draft is "too broken to patch site-by-site" — skip repair and return
+ *  every finding to the model. Kept equal to {@link MAX_PIPELINE_REPAIRS}
+ *  so the only two regimes are "repair all (few)" or "repair none
+ *  (many)" — never a confusing partial-repair-of-a-broken-draft. */
+export const MAX_REPAIR_FINDINGS = MAX_PIPELINE_REPAIRS;
+
 export interface RecordedEvalExpressionFinding {
   /** Dotted site, e.g. `steps.shape.expression`, `steps.iter.over`,
    *  `output_transform`. */
@@ -129,6 +157,12 @@ export interface RecordedEvalReport {
   missing_evidence: RecordedEvalMissingEvidence[];
   /** Ordered, deduplicated tool names the model should reach for. */
   next_actions: string[];
+  /** Set when repair was armed but the draft carried more repairable
+   *  findings than `MAX_REPAIR_FINDINGS`, so per-site auto-repair was
+   *  skipped and ALL findings are returned for the model to fix in one
+   *  shot (regenerate / edit) rather than serial site-by-site repair.
+   *  Carries the finding count so the envelope explains the skip. */
+  repair_skipped?: { reason: "too_many_findings"; finding_count: number; threshold: number };
 }
 
 export interface RecordedEvalEvidence {
@@ -151,6 +185,10 @@ export interface RecordedEvalRepairContext {
   /** DB executor passed through to `invoke()` for route resolution +
    *  token-budget accounting. */
   db?: Parameters<typeof repairTransformExpression>[0]["db"];
+  /** Optional pipeline/turn deadline signal, threaded into every repair
+   *  `invoke()` so the fan-out is bounded by one shared clock and a
+   *  deadline hit aborts the remaining repairs (P2). */
+  signal?: AbortSignal;
 }
 
 export interface RecordedEvalOptions {
@@ -625,39 +663,71 @@ export async function runRecordedEval(
     );
   }
 
-  // Bounded auto-repair (Fix 10). For compile errors and empty results
-  // over recorded evidence, run ≤2 focused LLM attempts per finding and
-  // attach the verified outcome. The draft is NOT touched — the model
-  // sees `repair.expression` in the envelope and applies it via a
-  // normal edit. Repairs run sequentially: a draft rarely carries more
-  // than a couple of broken expressions, and each repair is itself
-  // budget-accounted through `invoke()`.
+  // Bounded auto-repair (Fix 10, fan-out bound P2). For compile errors
+  // and empty results over recorded evidence, run ≤MAX_REPAIR_ATTEMPTS
+  // focused LLM attempts per finding and attach the verified outcome.
+  // The draft is NOT touched — the model sees `repair.expression` in the
+  // envelope and applies it via a normal edit.
+  //
+  // Fan-out bound (STALL S2): the total number of per-site repair
+  // invokes is capped at MAX_PIPELINE_REPAIRS. If the draft carries MORE
+  // than MAX_REPAIR_FINDINGS repairable findings it is too broken to
+  // patch site-by-site — auto-repair is SKIPPED entirely and every
+  // finding rides the envelope for the model to fix in one shot
+  // (regenerate / edit), instead of serializing 12-20 untimed slow-model
+  // calls inside a single tool execution. Each repair is also threaded
+  // the optional deadline signal so the whole fan-out is bounded by one
+  // shared clock; an aborted repair degrades to `{ repaired: false }`.
   const siteByName = new Map(sites.map((s) => [s.site, s] as const));
+  let repair_skipped: RecordedEvalReport["repair_skipped"];
   if (options.repair) {
-    for (const finding of expressions) {
-      if (finding.status !== "compile_error" && finding.status !== "empty_result") continue;
-      const site = siteByName.get(finding.site);
-      if (!site) continue;
-      const refs = referencedStepIds(site, stepIds);
-      // `empty_result` findings only exist for sites that were
-      // evaluated, so their refs are recorded by construction;
-      // compile-error sites get the scope when it happens to exist.
-      const hasRecordedScope = refs.length > 0 && refs.every((ref) => ref in recordedScope);
-      finding.repair = await repairTransformExpression({
-        expression: site.expression,
-        language: site.language,
-        finding: {
-          kind: finding.status,
-          message: finding.message ?? "",
-          ...(finding.position !== undefined ? { position: finding.position } : {}),
-        },
-        scopeSample: hasRecordedScope ? recordedScope : null,
-        input: evidence.input ?? null,
-        pathCandidates: finding.path_candidates ?? [],
-        site: finding.site,
+    const repairable = expressions.filter(
+      (f): f is RecordedEvalExpressionFinding & { status: "compile_error" | "empty_result" } =>
+        f.status === "compile_error" || f.status === "empty_result",
+    );
+    if (repairable.length > MAX_REPAIR_FINDINGS) {
+      repair_skipped = {
+        reason: "too_many_findings",
+        finding_count: repairable.length,
+        threshold: MAX_REPAIR_FINDINGS,
+      };
+      logger.info({
+        module: "conversations",
+        action: "recorded_eval.repair_skipped",
+        msg: "draft carries more repairable findings than the per-pass cap — skipping site-by-site auto-repair, returning all findings to the model",
         tenant_id: options.repair.tenant_id,
-        ...(options.repair.db ? { db: options.repair.db } : {}),
+        finding_count: repairable.length,
+        threshold: MAX_REPAIR_FINDINGS,
       });
+    } else {
+      let spent = 0;
+      for (const finding of repairable) {
+        if (spent >= MAX_PIPELINE_REPAIRS) break;
+        const site = siteByName.get(finding.site);
+        if (!site) continue;
+        spent++;
+        const refs = referencedStepIds(site, stepIds);
+        // `empty_result` findings only exist for sites that were
+        // evaluated, so their refs are recorded by construction;
+        // compile-error sites get the scope when it happens to exist.
+        const hasRecordedScope = refs.length > 0 && refs.every((ref) => ref in recordedScope);
+        finding.repair = await repairTransformExpression({
+          expression: site.expression,
+          language: site.language,
+          finding: {
+            kind: finding.status,
+            message: finding.message ?? "",
+            ...(finding.position !== undefined ? { position: finding.position } : {}),
+          },
+          scopeSample: hasRecordedScope ? recordedScope : null,
+          input: evidence.input ?? null,
+          pathCandidates: finding.path_candidates ?? [],
+          site: finding.site,
+          tenant_id: options.repair.tenant_id,
+          ...(options.repair.db ? { db: options.repair.db } : {}),
+          ...(options.repair.signal ? { signal: options.repair.signal } : {}),
+        });
+      }
     }
   }
 
@@ -749,6 +819,11 @@ export async function runRecordedEval(
       `${repairedCount} verified repair proposal(s) attached (findings[].repair.expression) — the draft was NOT changed; apply via update_param / edit_workflow_patch`,
     );
   }
+  if (repair_skipped) {
+    problems.push(
+      `${repair_skipped.finding_count} repairable findings exceed the per-pass auto-repair cap (${repair_skipped.threshold}) — site-by-site repair was skipped; the draft is too broken to patch piecemeal, regenerate or edit it in one pass from the full findings list`,
+    );
+  }
   const summary = ok
     ? "recorded evaluation passed: expressions compile and resolve against recorded evidence"
     : `recorded evaluation found: ${problems.join("; ")}`;
@@ -764,6 +839,7 @@ export async function runRecordedEval(
     },
     missing_evidence,
     next_actions: [...new Set(next_actions)],
+    ...(repair_skipped ? { repair_skipped } : {}),
   };
 }
 

@@ -245,20 +245,41 @@ export interface LatestDiagnosisSummary {
 }
 
 /**
- * Anti-churn guard for the instruction-grounded preview judge (Fix C).
- * Lives next to the fingerprint-keyed preview evidence: the counter is
- * valid for exactly one definition shape. A miscalibrated judge may
- * BLOCK auto-commit at most `JUDGE_BREAKER_MAX_BLOCKS` times per
- * fingerprint; after that its verdict degrades to advisory until the
- * definition actually changes (new fingerprint ⇒ counter resets by
- * key mismatch — no explicit clearing needed on mutation paths).
+ * One judged verdict memoized against the definition fingerprint it was
+ * computed for (P3). If the current definition fingerprint + goal still
+ * match this entry, the judge LLM call is SKIPPED and this verdict is
+ * reused — an unchanged re-preview never re-judges.
+ */
+export interface JudgeVerdictMemo {
+  /** Whole-definition fingerprint (sha256[:16] of the canonical JSON)
+   *  this verdict was computed against. */
+  fingerprint: string;
+  verdict: "passes" | "partial" | "failed";
+  reason: string;
+  missing: string[];
+}
+
+/**
+ * Anti-churn guard for the instruction-grounded preview judge (Fix C /
+ * P3). The breaker now counts **blocks since the last successful
+ * commit** — a MONOTONIC per-draft counter, NOT per-fingerprint. It
+ * increments on every block regardless of whether the model edited the
+ * definition in between (an edit changes the fingerprint but does NOT
+ * reset the counter), and resets to 0 only when a workflow actually
+ * commits. After `JUDGE_BREAKER_MAX_BLOCKS` blocks the verdict degrades
+ * to advisory (attached + logged, non-blocking → auto-commit proceeds),
+ * so a model churning edits still converges instead of looping forever.
+ *
+ * `last_verdict` memoizes the most recent judged verdict against its
+ * fingerprint so an unchanged re-preview skips the judge LLM call.
  */
 export interface JudgeBreakerState {
-  /** Whole-definition fingerprint (sha256[:16] of the canonical JSON)
-   *  the counter is keyed on. */
-  fingerprint: string;
-  /** Times the judge blocked auto-commit for this exact definition. */
-  blocks: number;
+  /** Consecutive judge blocks since the last successful commit. Reset
+   *  to 0 only on commit (or explicit force-commit), never on a mere
+   *  edit. */
+  blocks_since_commit: number;
+  /** Memoized verdict for fingerprint-keyed re-judge skipping. */
+  last_verdict?: JudgeVerdictMemo | null;
 }
 
 export interface AuthoringState {

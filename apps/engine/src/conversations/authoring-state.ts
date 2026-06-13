@@ -42,7 +42,6 @@ import {
   emptySummary,
 } from "./authoring-state/summary.ts";
 import { pruneTracesForMutation, retainFingerprintValidTraces } from "./step-fingerprint.ts";
-import { canonicalJson } from "./text-line-diff.ts";
 import type {
   AuthoringCheckpointKey,
   AuthoringCheckpointRecord,
@@ -178,20 +177,25 @@ function applyWorkflowMutation(
   const state = cloneState(normalized.state ?? createEmptyState("workflow"));
   state.mode = "workflow";
   state.stage = workflow.steps.length > 0 ? "workflow_draft_started" : "workflow_targeted";
-  state.workflow_mutation_seq += 1;
-  state.latest_execution = null;
-  state.latest_diagnosis = null;
-  // Judge breaker hygiene: the breaker is keyed to a whole-definition
-  // fingerprint, so any change to the steps invalidates it anyway — but
-  // leaving the stale object on the draft made `draftHasStageEvidence`
-  // read a replaced draft as past-initial-stage and left the commit
-  // guard's safety resting solely on the mutation_seq bump. Clear it
-  // whenever the step set actually changed (canonicalJson equality on
-  // the steps array is the same stability rule the fingerprints use).
-  if (
-    state.judge_breaker &&
-    canonicalJson(normalized.workflow?.steps ?? []) !== canonicalJson(workflow.steps)
-  ) {
+  // Judge breaker hygiene (P3): `blocks_since_commit` is a MONOTONIC
+  // count of judge blocks since the last successful commit — a same-goal
+  // edit must NOT reset it, or a model churning edits between blocks
+  // resets the breaker on every fingerprint change and never converges
+  // (the C1 loop). Only a commit clears it (see `clearJudgeBreakerOnCommit`).
+  // The fingerprint-keyed verdict memo (`last_verdict`) is naturally
+  // invalidated by an edit — it only matches when the fingerprint
+  // matches — so a stale memo after a step change is harmless and is
+  // left in place rather than cleared.
+  //
+  // BUT a GOAL CHANGE invalidates the count: the goal is the judge's
+  // evaluation target, so blocks accumulated against goal A must not
+  // carry into goal B (else the first green preview for B degrades
+  // straight to advisory and auto-commits WITHOUT the judge ever
+  // blocking once on B — the green-but-wrong commit the judge exists
+  // to prevent). Reset the breaker (count + memo) when the goal differs.
+  const priorGoal = normalized.workflow?.goal ?? null;
+  const nextGoal = workflow.goal ?? null;
+  if (priorGoal !== nextGoal) {
     state.judge_breaker = null;
   }
   // Fingerprint-keyed evidence retention (Fix 5, session 784c1b02).
@@ -432,6 +436,9 @@ export function startNewWorkflowDraft(
   state.workflow_mutation_seq += 1;
   state.latest_execution = null;
   state.latest_diagnosis = null;
+  // A fresh workflow target is a fresh judge subject — drop any blocks
+  // accumulated against the previous goal (P3 / round-5 Finding 1).
+  state.judge_breaker = null;
   state.persisted_resources = state.persisted_resources.filter((item) => item.kind !== "workflow");
   delete state.checkpoints.workflow_inspected;
   delete state.checkpoints.workflow_validated;
@@ -724,6 +731,14 @@ export function bindPersistedWorkflow(
     : state.latest_execution
       ? "execution"
       : "workflow";
+  // Judge breaker reset (P3): a successful commit is the ONLY event
+  // that clears `blocks_since_commit`. Every commit path funnels
+  // through here (auto-commit on green dry-run + explicit/force
+  // save_workflow_draft both call commitWorkflowAtomic →
+  // withWorkflowPersisted → here), so this is the single reset site.
+  // The fingerprint-keyed verdict memo is dropped too — the committed
+  // definition no longer needs a cached "is this preview good?" answer.
+  state.judge_breaker = null;
   state = addPersistedResource(state, resource);
   state = recordCheckpoint(
     state,

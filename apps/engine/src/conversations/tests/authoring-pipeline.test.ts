@@ -29,7 +29,11 @@ import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
-import { MAX_GENERATION_PASSES, runAuthoringPipeline } from "../authoring-pipeline.ts";
+import {
+  GeneratedWorkflowSchema,
+  MAX_GENERATION_PASSES,
+  runAuthoringPipeline,
+} from "../authoring-pipeline.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import type { RecordedEvalReport } from "../recorded-eval.ts";
 import { authorWorkflowTool } from "../tools/author-workflow.ts";
@@ -346,6 +350,103 @@ describe("runAuthoringPipeline — grounding", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
     expect(result.unresolved_connectors).toEqual(["no-such-connector"]);
+  });
+});
+
+describe("GeneratedWorkflowSchema — step breadth bound (P2)", () => {
+  test("rejects a definition with more than 25 steps", () => {
+    const steps = Array.from({ length: 26 }, (_, i) => ({
+      id: `s_${i}`,
+      kind: "transform",
+      language: "javascript",
+      expression: "return input.input;",
+    }));
+    const parsed = GeneratedWorkflowSchema.safeParse({
+      name: "too wide",
+      slug: "too-wide",
+      steps,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  test("accepts a definition at the 25-step bound", () => {
+    const steps = Array.from({ length: 25 }, (_, i) => ({
+      id: `s_${i}`,
+      kind: "transform",
+      language: "javascript",
+      expression: "return input.input;",
+    }));
+    const parsed = GeneratedWorkflowSchema.safeParse({
+      name: "at bound",
+      slug: "at-bound",
+      steps,
+    });
+    expect(parsed.success).toBe(true);
+  });
+});
+
+describe("runAuthoringPipeline — shared deadline / abort degradation (P2)", () => {
+  tw(
+    "a deadline/turn abort mid-generation returns the best draft so far with a findings note, no hang",
+    async () => {
+      // Drive the abort through ctx.abortSignal (merged into the shared
+      // pipeline deadline). Pass 1 produces a definition that FAILS
+      // validation (so a second pass is wanted), and aborts the signal
+      // as a side effect — so the loop-top deadline check fires before
+      // pass 2. The pipeline must return the best (pass-1) draft with a
+      // note instead of throwing or hanging.
+      const controller = new AbortController();
+      let calls = 0;
+      getMockProvider().generateOverrides.generate = () => {
+        calls += 1;
+        if (calls === 1) {
+          controller.abort();
+          return NEVER_VALID_DEF;
+        }
+        return VALID_DEF;
+      };
+
+      const toolCtx = makeCtx();
+      (toolCtx as { abortSignal?: AbortSignal }).abortSignal = controller.signal;
+
+      const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "abort me" });
+
+      // Degrades gracefully: ok envelope, best draft stashed, note set.
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      // Only ONE generate pass spent — the second was short-circuited by
+      // the deadline check, not re-attempted against a blown budget.
+      expect(calls).toBe(1);
+      expect(result.attempts).toBe(1);
+      expect(result.note).toBeDefined();
+      expect(result.note).toContain("time budget exceeded");
+      // The best draft so far (the pass-1 definition) is stashed for the
+      // model to refine from the findings.
+      expect(toolCtx._draft.value?.workflow.slug).toBe("broken-loop");
+      expect(result.recorded_eval).toBeDefined();
+      expect(fetchCalls).toBe(0);
+    },
+  );
+
+  tw("a pre-aborted turn signal returns a typed failure, never hangs", async () => {
+    let calls = 0;
+    getMockProvider().generateOverrides.generate = () => {
+      calls += 1;
+      return VALID_DEF;
+    };
+    const toolCtx = makeCtx();
+    (toolCtx as { abortSignal?: AbortSignal }).abortSignal = AbortSignal.abort();
+
+    const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "already aborted" });
+
+    // No generate call fires (the loop-top check breaks immediately) and
+    // the pipeline returns a typed failure with nothing stashed.
+    expect(calls).toBe(0);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.error_code).toBe("authoring_generation_failed");
+    expect(toolCtx._draft.value).toBeNull();
+    expect(fetchCalls).toBe(0);
   });
 });
 

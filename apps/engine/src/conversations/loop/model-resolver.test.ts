@@ -56,8 +56,11 @@ describe("resolveLanguageModel", () => {
 });
 
 describe("loop budget constants", () => {
-  test("DEFAULT_BUDGET is 50 (matches the SDK reference impl)", () => {
-    expect(DEFAULT_BUDGET).toBe(50);
+  test("DEFAULT_BUDGET is 24 — caps in-turn authoring churn (lowered from 50)", () => {
+    // A turn cannot run 50 steps of build→dry_run→judge→edit repair churn.
+    // 24 fits ground → author_workflow → dry_run → a couple of repairs,
+    // and does not starve non-authoring multi-step turns.
+    expect(DEFAULT_BUDGET).toBe(24);
   });
 
   test("MAX_REPAIRS_PER_TURN caps repair-tool-call at 2 per turn", () => {

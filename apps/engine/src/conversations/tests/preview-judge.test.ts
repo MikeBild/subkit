@@ -24,7 +24,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { normalizeDraftDocument } from "../authoring-state.ts";
+import {
+  normalizeDraftDocument,
+  startNewWorkflowDraft,
+  withWorkflowDraft,
+} from "../authoring-state.ts";
 import {
   buildJudgeDefinitionSummary,
   buildJudgeStepArtifacts,
@@ -56,6 +60,12 @@ interface JudgeEnvelope {
   auto_committed?: boolean;
   classification?: string;
   judge?: { verdict: string; reason: string; missing?: string[] };
+  judge_done?: {
+    committed_as_is?: boolean;
+    attempts?: number;
+    missing?: string[];
+    next_action?: string;
+  };
   warnings?: Array<{ code: string; message: string }>;
   next_best_actions?: string[];
 }
@@ -132,8 +142,8 @@ describe("preview judge · dry_run_workflow wiring", () => {
 
     // The blocked preview joins the requires_repair path on the draft.
     expect(toolCtx.current().latest_preview?.requires_repair).toBe(true);
-    // The breaker recorded the block, keyed on the def fingerprint.
-    expect(toolCtx.current().state?.judge_breaker?.blocks).toBe(1);
+    // The breaker recorded the block as blocks-since-commit (P3).
+    expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(1);
   });
 
   test("passing fixture: auto-commits and the result carries the passes verdict", async () => {
@@ -182,50 +192,117 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(data.judge).toEqual({ verdict: "skipped", reason: "judge_unavailable" });
   });
 
-  test("circuit-breaker: two blocks per fingerprint, third identical preview is advisory; def change resets", async () => {
+  test("blocks-since-commit caps after N regardless of fingerprint churn — edit between each block still degrades to advisory + commits at N+1", async () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-breaker", GOAL));
 
+    // Edit the draft to a fresh, still-failing transform between every
+    // preview so the definition fingerprint changes each time — the OLD
+    // per-fingerprint breaker would reset to 0 and never cap. The P3
+    // blocks-since-commit breaker is monotonic across edits.
+    const editToFreshFailing = async (marker: string) => {
+      await toolCtx.setDraft(
+        normalizeDraftDocument({
+          ...toolCtx.current(),
+          workflow: {
+            ...toolCtx.current().workflow,
+            steps: [
+              {
+                id: "shape-email",
+                kind: "transform",
+                language: "jsonata",
+                expression: `{ "html": "<p>Project: (${marker})</p>", "projects": [{"name": ""}] }`,
+              },
+            ],
+          },
+        }),
+      );
+    };
+
     const first = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(first.ok).toBe(false);
-    expect(toolCtx.current().state?.judge_breaker?.blocks).toBe(1);
+    expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(1);
 
+    await editToFreshFailing("v2");
     const second = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(second.ok).toBe(false);
-    expect(toolCtx.current().state?.judge_breaker?.blocks).toBe(2);
+    // Counter advanced even though the fingerprint changed.
+    expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(2);
 
-    // Third identical preview: verdict degrades to advisory — the
-    // commit proceeds with the (still failed) verdict attached.
+    await editToFreshFailing("v3");
+    // At the cap now: this block degrades to advisory and auto-commits,
+    // carrying the terminal done-signal with the missing items.
     const third = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(third.ok).toBe(true);
     const thirdData = third.data as JudgeEnvelope;
     expect(thirdData.auto_committed).toBe(true);
     expect(thirdData.judge?.verdict).toBe("failed");
-    // Advisory did not increment the counter.
-    expect(toolCtx.current().state?.judge_breaker?.blocks).toBe(2);
+    expect(thirdData.judge_done?.committed_as_is).toBe(true);
+    expect(thirdData.judge_done?.missing).toEqual(FAILED_VERDICT.missing);
+    expect(thirdData.judge_done?.next_action).toContain("STOP editing");
+    expect(thirdData.judge_done?.next_action).toContain("ask how to proceed");
+    // The commit reset the counter (breaker cleared on persist).
+    expect(toolCtx.current().state?.judge_breaker ?? null).toBeNull();
+  });
 
-    // Definition change → new fingerprint → the judge may block again.
-    const fingerprintBefore = toolCtx.current().state?.judge_breaker?.fingerprint;
-    const mutated = normalizeDraftDocument({
-      ...toolCtx.current(),
-      workflow: {
-        ...toolCtx.current().workflow,
-        steps: [
-          {
-            id: "shape-email",
-            kind: "transform",
-            language: "jsonata",
-            expression: `{ "html": "<p>Project: (still empty)</p>" }`,
-          },
-        ],
-      },
+  test("a commit resets the blocks-since-commit counter", async () => {
+    // First a passing preview commits (counter is 0 → stays 0/clears).
+    // Then re-block twice and confirm the counter restarts from 1.
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const toolCtx = makeCtx(wrongContentDraft("judge-commit-reset", GOAL));
+
+    const block1 = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(block1.ok).toBe(false);
+    expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(1);
+
+    // Force a clean commit by switching the verdict to passes + editing.
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "ok now",
+      missing: [],
     });
-    await toolCtx.setDraft(mutated);
-    const fourth = await dryRunWorkflowTool.execute(toolCtx, { input: null });
-    expect(fourth.ok).toBe(false);
-    const breaker = toolCtx.current().state?.judge_breaker;
-    expect(breaker?.blocks).toBe(1);
-    expect(breaker?.fingerprint).not.toBe(fingerprintBefore);
+    await toolCtx.setDraft(
+      normalizeDraftDocument({
+        ...toolCtx.current(),
+        workflow: {
+          ...toolCtx.current().workflow,
+          steps: [
+            {
+              id: "shape-email",
+              kind: "transform",
+              language: "jsonata",
+              expression: `{ "html": "<p>fixed</p>", "projects": [{"name": "x"}] }`,
+            },
+          ],
+        },
+      }),
+    );
+    const committed = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(committed.ok).toBe(true);
+    expect((committed.data as JudgeEnvelope).auto_committed).toBe(true);
+    // Commit cleared the breaker.
+    expect(toolCtx.current().state?.judge_breaker ?? null).toBeNull();
+  });
+
+  test("memoized verdict on an unchanged re-preview makes ZERO judge LLM calls", async () => {
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const toolCtx = makeCtx(wrongContentDraft("judge-memo", GOAL));
+
+    const first = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(first.ok).toBe(false);
+    const callsAfterFirst = getMockProvider().calls.filter((c) => c.flow === "judge").length;
+    expect(callsAfterFirst).toBe(1);
+
+    // Re-preview the UNCHANGED draft (same fingerprint). The verdict is
+    // reused from the memo — no second judge LLM call fires.
+    const second = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(second.ok).toBe(false);
+    const callsAfterSecond = getMockProvider().calls.filter((c) => c.flow === "judge").length;
+    expect(callsAfterSecond).toBe(1);
+    // The block still counted (blocks-since-commit is monotonic).
+    expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(2);
+    // The reused verdict still rode the result.
+    expect((second.data as JudgeEnvelope).judge?.verdict).toBe("failed");
   });
 
   test("explicit save still works after a failed verdict (judge gates AUTO-commit only)", async () => {
@@ -271,16 +348,92 @@ describe("preview judge · goal stash round-trip", () => {
     expect(normalized.workflow.goal).toBe(GOAL);
   });
 
-  test("judge_breaker survives the state normalize round-trip", () => {
+  test("judge_breaker (blocks-since-commit + verdict memo) survives the state normalize round-trip", () => {
+    const memo = {
+      fingerprint: "abc123",
+      verdict: "failed" as const,
+      reason: "still empty",
+      missing: ["names"],
+    };
     const normalized = normalizeDraftDocument({
       workflow: { name: "g", steps: [] },
       state: {
         mode: "workflow",
         stage: "workflow_draft_started",
-        judge_breaker: { fingerprint: "abc123", blocks: 2 },
+        judge_breaker: { blocks_since_commit: 2, last_verdict: memo },
       },
     });
-    expect(normalized.state?.judge_breaker).toEqual({ fingerprint: "abc123", blocks: 2 });
+    expect(normalized.state?.judge_breaker).toEqual({
+      blocks_since_commit: 2,
+      last_verdict: memo,
+    });
+  });
+
+  test("a goal change resets blocks_since_commit (round-5 Finding 1: no carry-over across goals)", () => {
+    // A draft accumulated 2 blocks against goal A (now at advisory).
+    const atCap = normalizeDraftDocument({
+      workflow: { name: "A", slug: "a", goal: "goal A", steps: [] },
+      state: {
+        mode: "workflow",
+        stage: "workflow_draft_started",
+        judge_breaker: {
+          blocks_since_commit: 2,
+          last_verdict: { fingerprint: "fpA", verdict: "failed", reason: "x", missing: ["a"] },
+        },
+      },
+    });
+    expect(atCap.state?.judge_breaker?.blocks_since_commit).toBe(2);
+    // Re-author under a DIFFERENT goal → breaker must reset, so the
+    // first judge on goal B can still BLOCK (not silently advisory-commit).
+    const pivoted = withWorkflowDraft(
+      atCap,
+      { name: "B", slug: "b", goal: "goal B", steps: [] },
+      "workflow_authored_one_shot",
+    );
+    expect(pivoted.state?.judge_breaker ?? null).toBeNull();
+  });
+
+  test("a same-goal edit does NOT reset blocks_since_commit (convergence preserved)", () => {
+    const atOne = normalizeDraftDocument({
+      workflow: { name: "A", slug: "a", goal: "same goal", steps: [] },
+      state: {
+        mode: "workflow",
+        stage: "workflow_draft_started",
+        judge_breaker: { blocks_since_commit: 1, last_verdict: null },
+      },
+    });
+    const edited = withWorkflowDraft(
+      atOne,
+      { name: "A", slug: "a", goal: "same goal", steps: [{ id: "x", kind: "transform" }] as never },
+      "edit",
+    );
+    expect(edited.state?.judge_breaker?.blocks_since_commit).toBe(1);
+  });
+
+  test("startNewWorkflowDraft clears the judge breaker", () => {
+    const withBreaker = normalizeDraftDocument({
+      workflow: { name: "A", slug: "a", goal: "goal A", steps: [] },
+      state: {
+        mode: "workflow",
+        stage: "workflow_draft_started",
+        judge_breaker: { blocks_since_commit: 2, last_verdict: null },
+      },
+    });
+    const fresh = startNewWorkflowDraft(withBreaker);
+    expect(fresh.state?.judge_breaker ?? null).toBeNull();
+  });
+
+  test("a legacy { fingerprint, blocks } judge_breaker seeds blocks_since_commit", () => {
+    const normalized = normalizeDraftDocument({
+      workflow: { name: "g", steps: [] },
+      state: {
+        mode: "workflow",
+        stage: "workflow_draft_started",
+        judge_breaker: { fingerprint: "legacy", blocks: 2 },
+      },
+    });
+    expect(normalized.state?.judge_breaker?.blocks_since_commit).toBe(2);
+    expect(normalized.state?.judge_breaker?.last_verdict ?? null).toBeNull();
   });
 });
 

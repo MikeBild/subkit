@@ -60,6 +60,12 @@ export interface SubkitLlmObjectGeneratorInput {
    * cheap flows or raise it for genuinely multi-step planning prompts.
    */
   maxAttempts?: number;
+  /**
+   * Optional caller abort signal. Merged with the per-call hard timeout inside
+   * `AiSdkModel` so the stricter of (caller abort, timeout) bounds every
+   * provider round-trip in the submit/abort tool loop.
+   */
+  signal?: AbortSignal;
 }
 
 export interface SubkitLlmTelemetryMetadata {
@@ -84,7 +90,13 @@ export interface SubkitLlm {
   modelId: string;
   generateText(
     messages: SubkitLlmMessage[],
-    opts?: { temperature?: number; metadata?: SubkitLlmTelemetryMetadata },
+    opts?: {
+      temperature?: number;
+      metadata?: SubkitLlmTelemetryMetadata;
+      /** Caller abort signal (P1) — merged with the per-call timeout
+       *  ceiling inside the implementation. */
+      signal?: AbortSignal;
+    },
   ): Promise<SubkitLlmResponse>;
   generateObject<T>(
     input: SubkitLlmObjectGeneratorInput & { metadata?: SubkitLlmTelemetryMetadata },

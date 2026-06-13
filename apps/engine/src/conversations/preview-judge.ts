@@ -25,15 +25,26 @@
 //   - missing goal is the caller's skip (`reason:"no_goal"`); the
 //     helper below exists so both skip shapes share one type.
 //
-// Circuit-breaker (anti-churn): a miscalibrated judge must not become
-// the next authoring deadlock. The caller tracks blocks per definition
-// fingerprint (`workflowDefinitionFingerprint`, stored in the draft's
-// `state.judge_breaker`); after `JUDGE_BREAKER_MAX_BLOCKS` blocks on
-// the SAME definition the verdict degrades to advisory until the
-// definition changes — a new fingerprint implicitly resets the count.
+// Circuit-breaker (anti-churn, P3): a miscalibrated judge must not
+// become the next authoring deadlock. The caller tracks
+// `blocks_since_commit` — a MONOTONIC per-draft counter that increments
+// on every block REGARDLESS of fingerprint change and resets to 0 only
+// when a workflow actually commits. After `JUDGE_BREAKER_MAX_BLOCKS`
+// blocks the verdict degrades to advisory (attached + logged,
+// non-blocking → auto-commit proceeds), so a model churning edits still
+// converges. At/over the cap the dry_run result carries a terminal
+// done-signal (tell the user what's missing and stop) instead of yet
+// another silent requires_repair.
+//
+// Memoization (P3): the most recent judged verdict is cached against
+// its definition fingerprint (`state.judge_breaker.last_verdict`). An
+// unchanged re-preview (same fingerprint) reuses the cached verdict and
+// SKIPS the judge LLM call entirely.
 //
 // Cost discipline: the call rides `invoke()` (flow "judge"), so it is
-// tenant-budget-accounted and routed exactly like "repair".
+// tenant-budget-accounted and routed exactly like "repair", and the
+// turn's abort signal is threaded into it (P1) so a wedged judge call
+// can't outlive the turn.
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -45,8 +56,10 @@ import { truncateStepPreviewForLlm } from "./tools/truncate.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-/** Max times the judge may BLOCK auto-commit per definition fingerprint
- *  before its verdict degrades to advisory. */
+/** Max consecutive judge blocks since the last commit before the
+ *  verdict degrades to advisory (auto-commit proceeds). Counted
+ *  per-draft, NOT per-fingerprint — an edit between blocks does not
+ *  reset it (P3). */
 export const JUDGE_BREAKER_MAX_BLOCKS = 2;
 
 /** Total char budget for the step-artifacts block in the prompt. Each
@@ -95,6 +108,10 @@ export interface JudgePreviewParams {
   step_artifacts: JudgeStepArtifact[];
   tenant_id: string;
   db?: Executor;
+  /** Turn/pipeline abort signal (P1) — threaded into the judge's
+   *  `invoke()` so a wedged judge call is bounded by the turn. The 90s
+   *  provider ceiling applies regardless. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -245,6 +262,7 @@ export async function judgePreview(params: JudgePreviewParams): Promise<PreviewJ
         tenant_id: params.tenant_id,
         user_turns: [{ role: "user", content: buildJudgePrompt(params) }],
         schema: JudgeVerdictSchema,
+        ...(params.signal ? { signal: params.signal } : {}),
       },
       params.db,
     );

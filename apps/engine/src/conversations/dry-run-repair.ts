@@ -11,6 +11,7 @@
 // and owns when (not whether) proposals are gathered.
 
 import type { Db } from "../db/client.ts";
+import { MAX_PIPELINE_REPAIRS } from "./recorded-eval.ts";
 import { repairTransformExpression } from "./transform-repair.ts";
 
 export interface DryRunRepairProposal {
@@ -45,9 +46,16 @@ export async function proposeDryRunRepairs(opts: {
   input: unknown;
   tenant_id: string;
   db: Db;
+  /** Turn/pipeline abort signal (P1) threaded into each repair invoke
+   *  so a wedged provider call can't outlive the turn. */
+  signal?: AbortSignal;
 }): Promise<DryRunRepairProposal[]> {
-  const { steps, runWarnings, runError, previewScope, input, tenant_id, db } = opts;
+  const { steps, runWarnings, runError, previewScope, input, tenant_id, db, signal } = opts;
   const proposals: DryRunRepairProposal[] = [];
+  // Same aggregate fan-out bound as the pipeline path (P2 symmetry,
+  // round-5 Finding 2): repair at most MAX_PIPELINE_REPAIRS sites per
+  // dry-run, regardless of how many warnings fired.
+  let repairBudget = MAX_PIPELINE_REPAIRS;
 
   const controlFlowChildIds = new Set<string>();
   for (const s of steps) {
@@ -66,6 +74,7 @@ export async function proposeDryRunRepairs(opts: {
     if (w.code !== "transform_empty_extraction" && w.code !== "unresolved_identifier") {
       continue;
     }
+    if (repairBudget <= 0) break;
     const stepId = w.step_key;
     if (!stepId || repairedStepIds.has(stepId) || controlFlowChildIds.has(stepId)) continue;
     const step = steps.find((s) => s.id === stepId);
@@ -78,6 +87,7 @@ export async function proposeDryRunRepairs(opts: {
       continue;
     }
     repairedStepIds.add(stepId);
+    repairBudget--;
     proposals.push({
       step_id: stepId,
       site: `steps.${stepId}.expression`,
@@ -92,11 +102,13 @@ export async function proposeDryRunRepairs(opts: {
         site: `steps.${stepId}.expression`,
         tenant_id,
         db,
+        ...(signal ? { signal } : {}),
       }),
     });
   }
 
   if (
+    repairBudget > 0 &&
     runError?.code === "output_transform_failed" &&
     typeof opts.output_transform === "string" &&
     opts.output_transform.length > 0
@@ -112,6 +124,7 @@ export async function proposeDryRunRepairs(opts: {
         site: "output_transform",
         tenant_id,
         db,
+        ...(signal ? { signal } : {}),
       }),
     });
   }

@@ -37,6 +37,18 @@ import { normalizeSchema, unwrapResult } from "./schema-normalizer.ts";
 
 const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
+// Per-call hard ceiling on a single provider round-trip. Nested LLM calls made
+// inside a tool execution (author_workflow pipeline, transform-repair,
+// preview-judge) historically had ZERO timeout — the turn's stream abort signal
+// only reaches the top-level `streamText`, never these nested `invoke()`s. A
+// single wedged provider connection could therefore outlive the client socket
+// (~15 min) while the engine stayed healthy. This constant bounds EVERY
+// provider call so a stuck round-trip aborts promptly instead of hanging. It is
+// merged (via `AbortSignal.any`) with any caller-supplied signal, so the
+// stricter of (caller abort, 90s timeout) wins. Overridable per-model via
+// `AiSdkModelOptions.callTimeoutMs`.
+export const LLM_CALL_TIMEOUT_MS = 90_000;
+
 // Hard cap on the submit/abort tool-use loop in `generateObject()`. Prevents a
 // buggy or adversarial model from looping indefinitely when it keeps calling
 // auxiliary tools without ever choosing `submit` or `abort`. Eight attempts is
@@ -82,8 +94,57 @@ export interface AiSdkModelOptions extends ModelInitOptions {
   fallback?: ModelInitOptions;
   /** Max retries at the SDK layer. Default 0 — upstream handles retries. */
   maxRetries?: number;
+  /**
+   * Per-call hard timeout in ms. Default {@link LLM_CALL_TIMEOUT_MS} (90s).
+   * Merged with any caller-supplied signal so the stricter abort wins. Tests
+   * inject a short value to assert the timeout without a real 90s wait.
+   */
+  callTimeoutMs?: number;
   /** Override the `generateText` reference (used by unit tests). */
   generateTextFn?: typeof generateText;
+}
+
+/**
+ * Marker for an LLM call that was aborted by the per-call timeout or a
+ * caller-supplied signal. `classifyProviderError` maps `timeout`/abort wording
+ * to a retryable provider-error kind, so wrapping the platform `AbortError`
+ * with a clear message lets `invoke()`'s existing dispatch surface it as a
+ * typed `LlmProviderError` rather than a raw hang.
+ */
+export class LlmCallAbortedError extends Error {
+  constructor(timeoutMs: number, callerAborted: boolean) {
+    super(
+      callerAborted
+        ? "llm call aborted (caller signal)"
+        : `llm call aborted (timeout ${Math.round(timeoutMs / 1000)}s or caller signal)`,
+    );
+    this.name = "LlmCallAbortedError";
+  }
+}
+
+/**
+ * Merge a caller-supplied abort signal with a per-call hard timeout into a
+ * single signal. Either source aborts the provider round-trip. Uses the
+ * platform `AbortSignal.any` / `AbortSignal.timeout` (Bun supports both).
+ */
+function buildCallSignal(
+  timeoutMs: number,
+  callerSignal?: AbortSignal,
+): { signal: AbortSignal; isCallerAborted: () => boolean } {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
+  return { signal, isCallerAborted: () => callerSignal?.aborted ?? false };
+}
+
+/**
+ * True when the error is the platform abort raised by an `AbortSignal`
+ * (timeout or caller). The AI SDK rejects with a `DOMException`/`Error` whose
+ * `name` is `AbortError` or `TimeoutError` when the supplied signal fires.
+ */
+function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const name = (err as { name?: unknown }).name;
+  return name === "AbortError" || name === "TimeoutError";
 }
 
 export class AiSdkModel implements SubkitLlm {
@@ -193,14 +254,23 @@ export class AiSdkModel implements SubkitLlm {
     tools?: Record<string, Tool>;
     toolChoice?: "auto" | "required" | "none" | { type: "tool"; toolName: string };
     metadata?: SubkitLlmTelemetryMetadata;
+    /** Optional caller abort signal; merged with the per-call timeout. */
+    signal?: AbortSignal;
     // biome-ignore lint/suspicious/noExplicitAny: generic result
   }): Promise<any> {
     const primary = await this.ensureInit();
+    // Bound EVERY provider round-trip: a per-call hard timeout merged with the
+    // optional caller signal. Even with no caller signal, the call cannot
+    // outlive the timeout — this is the foundational fix for the nested-call
+    // STALL. The same signal is reused for the fallback model call below.
+    const timeoutMs = this.opts.callTimeoutMs ?? LLM_CALL_TIMEOUT_MS;
+    const { signal: callSignal, isCallerAborted } = buildCallSignal(timeoutMs, params.signal);
     // biome-ignore lint/suspicious/noExplicitAny: ai sdk options shape
     const callOpts: any = {
       model: primary.model,
       messages: params.messages,
       maxRetries: this.opts.maxRetries ?? 0,
+      abortSignal: callSignal,
     };
     if (params.temperature !== undefined) callOpts.temperature = params.temperature;
     if (params.tools) callOpts.tools = params.tools;
@@ -227,6 +297,11 @@ export class AiSdkModel implements SubkitLlm {
         fn: () => this.gt(callOpts),
       });
     } catch (err) {
+      // A timed-out or caller-aborted call surfaces as a clean typed error
+      // (mapped to `timeout` by classifyProviderError) rather than a hang. We
+      // do NOT fall back here: the timeout already represents a wedged call,
+      // and a caller abort means the work is no longer wanted.
+      if (isAbortError(err)) throw new LlmCallAbortedError(timeoutMs, isCallerAborted());
       if (!this.fallbackResolved || !isFallbackEligible(err)) throw err;
       const kind = classifyProviderError(err);
       if (kind === "quota_exhausted" && this.fallbackResolved.provider === primary.provider) {
@@ -239,20 +314,30 @@ export class AiSdkModel implements SubkitLlm {
         primary: primary.modelId,
         fallback: this.fallbackResolved.modelId,
       });
+      // Reuse the same merged signal so the fallback call is bounded too.
       // biome-ignore lint/suspicious/noExplicitAny: ai sdk options shape
       const fbOpts: any = { ...callOpts, model: this.fallbackResolved.model };
-      return await instrument({
-        module: "llm",
-        action: "model.call",
-        fields: { model: this.fallbackResolved.modelId },
-        fn: () => this.gt(fbOpts),
-      });
+      try {
+        return await instrument({
+          module: "llm",
+          action: "model.call",
+          fields: { model: this.fallbackResolved.modelId },
+          fn: () => this.gt(fbOpts),
+        });
+      } catch (fbErr) {
+        if (isAbortError(fbErr)) throw new LlmCallAbortedError(timeoutMs, isCallerAborted());
+        throw fbErr;
+      }
     }
   }
 
   async generateText(
     messages: SubkitLlmMessage[],
-    opts?: { temperature?: number; metadata?: SubkitLlmTelemetryMetadata },
+    opts?: {
+      temperature?: number;
+      metadata?: SubkitLlmTelemetryMetadata;
+      signal?: AbortSignal;
+    },
   ): Promise<SubkitLlmResponse> {
     const prepared = prependDate(messages);
     const params: Parameters<typeof this.callWithFallback>[0] = {
@@ -260,6 +345,7 @@ export class AiSdkModel implements SubkitLlm {
       temperature: opts?.temperature ?? 0,
     };
     if (opts?.metadata) params.metadata = opts.metadata;
+    if (opts?.signal) params.signal = opts.signal;
     const result = await this.callWithFallback(params);
     const newMessages = [
       ...prepared,
@@ -320,6 +406,7 @@ export class AiSdkModel implements SubkitLlm {
       };
       if (temperature !== undefined) cwfParams.temperature = temperature;
       if (input.metadata) cwfParams.metadata = input.metadata;
+      if (input.signal) cwfParams.signal = input.signal;
       const result = await this.callWithFallback(cwfParams);
 
       aggregatedUsage = {

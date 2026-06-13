@@ -55,8 +55,8 @@ describe("turn-level step ceiling · loop/model-resolver.ts + loop.ts", () => {
   const modelResolverBody = readFileSync(LOOP_MODEL_RESOLVER, "utf-8");
   const loopBody = readFileSync(LOOP, "utf-8");
 
-  test("DEFAULT_BUDGET matches reference's 50-step ceiling", () => {
-    expect(modelResolverBody).toMatch(/DEFAULT_BUDGET\s*=\s*50/);
+  test("DEFAULT_BUDGET is the lowered 24-step ceiling (caps in-turn authoring churn)", () => {
+    expect(modelResolverBody).toMatch(/DEFAULT_BUDGET\s*=\s*24/);
   });
 
   test("loop.ts imports DEFAULT_BUDGET from the extracted model-resolver module", () => {
