@@ -109,7 +109,7 @@ describe("workflow-authoring.md · field coverage", () => {
   test("documents the inside-a-loop-body addressing table ($item-only)", () => {
     expect(body).toContain("Inside a loop body — addressing table");
     // $item in JSONata vs ${item.…} in request strings — item_var is retired
-    expect(body).toContain("${item.name}");
+    expect(body).toContain(`\${item.name}`);
     expect(body).toContain("$item.name");
     expect(body).toMatch(/`item_var` is retired/);
     expect(body).not.toMatch(/"item_var":/);
@@ -120,7 +120,7 @@ describe("workflow-authoring.md · field coverage", () => {
     expect(body).toContain("$scope.<body_step_id>.data");
     expect(body).toContain("$scope.<loop_id>.data.<body_step_id>.data");
     // the compact worked example: request + transform in one body
-    expect(body).toContain("${item.full_name}");
+    expect(body).toContain(`\${item.full_name}`);
     expect(body).toContain("$scope.fetch_languages.data");
   });
   test("documents author_workflow as the canonical one-shot authoring entry", () => {
@@ -170,7 +170,7 @@ describe("data-handling.md · $item-only loop contract + JS-first transforms", (
   test("documents the $item-only loop iteration contract (item_var retired)", () => {
     expect(body).toMatch(/`item_var` is RETIRED/);
     expect(body).not.toMatch(/"item_var":/);
-    expect(body).toContain("${item.id}");
+    expect(body).toContain(`\${item.id}`);
     expect(body).toContain("$item.name");
     expect(body).toContain("$loop_index");
   });
@@ -192,9 +192,9 @@ describe("subkit-concepts.md / multi-step-best-practices.md · item_var retired"
     const body = read("subkit-concepts.md");
     expect(body).not.toMatch(/"item_var":/);
     expect(body).toContain("$item");
-    expect(body).toContain("${item.");
+    expect(body).toContain(`\${item.`);
   });
-  test("multi-step-best-practices teaches $item / ${item.…} and rejects item_var", () => {
+  test(`multi-step-best-practices teaches $item / \${item.…} and rejects item_var`, () => {
     const body = read("multi-step-best-practices.md");
     expect(body).not.toMatch(/"item_var":/);
     expect(body).toContain("$item");

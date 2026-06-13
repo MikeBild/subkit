@@ -1185,6 +1185,7 @@ export class EngineClient {
       model?: string;
       title?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      step_budget?: number;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
@@ -1206,6 +1207,7 @@ export class EngineClient {
       model?: string;
       title?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      step_budget?: number;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<Response> {
@@ -1220,6 +1222,7 @@ export class EngineClient {
       message: string;
       memory?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      step_budget?: number;
       /** Client-side opt-out for the next-message preview frame. */
       client_suppress?: boolean;
     },
@@ -1265,6 +1268,7 @@ export class EngineClient {
       message: string;
       memory?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      step_budget?: number;
       /** Client-side opt-out for the next-message preview frame. */
       client_suppress?: boolean;
     },

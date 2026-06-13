@@ -42,10 +42,14 @@ export interface Sk {
   ): Record<string, T[]>;
   uniq<T>(arr: readonly T[]): T[];
 
-  /** UTF-8 base64 of `input` (matches jsonata `$base64encode`). */
+  /** JSONata-compatible base64 of `input` using one low-8-bit byte per UTF-16 code unit. */
   base64Encode(input: unknown): string;
-  /** UTF-8 base64url (`+`→`-`, `/`→`_`, padding kept) — Gmail `raw`. */
+  /** JSONata-compatible base64url (`+`→`-`, `/`→`_`, padding kept). */
   base64UrlEncode(input: unknown): string;
+  /** UTF-8 base64 of `input`; preferred for new Unicode text payloads. */
+  base64EncodeUtf8(input: unknown): string;
+  /** UTF-8 base64url (`+`→`-`, `/`→`_`, padding kept). */
+  base64UrlEncodeUtf8(input: unknown): string;
 
   isString(v: unknown): v is string;
   isNumber(v: unknown): v is number;

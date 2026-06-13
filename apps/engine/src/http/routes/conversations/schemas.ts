@@ -123,6 +123,7 @@ export const CreateBody = z
     model: z.string().optional(),
     title: z.string().optional(),
     permission_mode: PermissionModeSchema.optional(),
+    step_budget: z.number().int().min(1).max(64).optional(),
   })
   .openapi("CreateConversationBody");
 
@@ -131,6 +132,7 @@ export const AppendMessageBody = z
     message: z.string().min(1),
     memory: z.string().optional(),
     permission_mode: PermissionModeSchema.optional(),
+    step_budget: z.number().int().min(1).max(64).optional(),
     /**
      * Per-conversation opt-out for the next-message suggestion that
      * normally rides on the SSE response. Sk-cli sets this to `true`

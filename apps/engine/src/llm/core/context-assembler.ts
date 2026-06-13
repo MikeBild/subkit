@@ -835,6 +835,14 @@ export async function assembleEnhancedPrompt(
   const skillCandidatesTokens =
     skillCandidatesBlock !== null ? countTokens(skillCandidatesBlock) : 0;
   const priorWorkflowsTokens = priorWorkflowsBlock !== null ? countTokens(priorWorkflowsBlock) : 0;
+  const ambientSkillTokens =
+    countTokens(formatSkillIndex("Global", globalSkills, p.runtime_context) ?? "") +
+    countTokens(formatSkillIndex("Connector", connectorSkills, p.runtime_context) ?? "") +
+    countTokens(formatSkillIndex("Workflow", workflowSkills, p.runtime_context) ?? "");
+  const loadedSkillTokens = loadedSkills.reduce(
+    (t, s) => t + countTokens(formatSkill(s, p.runtime_context)),
+    0,
+  );
   // Survivor lists: only items in blocks the global trimmer kept count.
   // When the section was dropped above, the ids zero out — so the
   // observability hashes report exactly what the LLM actually saw.
@@ -850,10 +858,7 @@ export async function assembleEnhancedPrompt(
     messages: p.user_turns,
     token_counts: {
       system: systemTokens,
-      skills: includedSkills.reduce(
-        (t, s) => t + countTokens(formatSkill(s, p.runtime_context)),
-        0,
-      ),
+      skills: ambientSkillTokens + loadedSkillTokens,
       knowledge: knowledgeChunks.reduce((t, kc) => t + kc.tokens, 0),
       docs: chunks.reduce((t, c) => t + c.tokens, 0),
       failures: failures.reduce((t, f) => t + countTokens(formatFailure(f)), 0),

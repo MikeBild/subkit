@@ -17,6 +17,12 @@ The LLM-authoring layer proposes `sk.*` calls by default (see
 `conversations/seed/skills/workflow-authoring.md`) — if you change this
 surface, also update that skill so proposals stay consistent.
 
+Encoding helpers carry migration-sensitive semantics. `base64Encode` and
+`base64UrlEncode` intentionally match JSONata `$base64encode` low-8-bit
+binary-string behavior so JSONata-to-JavaScript migrations can prove
+byte-identical output. Use `base64EncodeUtf8` and `base64UrlEncodeUtf8`
+for new Unicode text payloads.
+
 ## Layout
 
 | File                 | Role                                                                 |

@@ -538,6 +538,15 @@ const mainCommand = defineCommand({
       description: "Output format for headless: text|json|stream-json (default: text)",
       default: "text",
     },
+    quiet: {
+      type: "boolean",
+      description: "Suppress non-critical headless warnings",
+      default: false,
+    },
+    "max-turns": {
+      type: "string",
+      description: "Maximum model/tool steps for one headless turn",
+    },
     c: {
       type: "boolean",
       description: "Continue the most recent session",
@@ -658,6 +667,16 @@ const mainCommand = defineCommand({
       process.stderr.write(`sk: invalid --output '${output}'\n`);
       process.exit(2);
     }
+    const maxTurnsRaw = args["max-turns"] as string | undefined;
+    let maxTurns: number | undefined;
+    if (maxTurnsRaw !== undefined) {
+      const parsed = Number(maxTurnsRaw);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 64) {
+        process.stderr.write("sk: --max-turns must be an integer between 1 and 64\n");
+        process.exit(2);
+      }
+      maxTurns = parsed;
+    }
 
     // Resolve --resume / --session-id / -c → effective conversation id.
     const sessionIdFlag = args["session-id"] as string | undefined;
@@ -701,6 +720,8 @@ const mainCommand = defineCommand({
         prompt: headlessPrompt,
         output,
         noMemory: Boolean(args["no-memory"]),
+        quiet: Boolean(args.quiet),
+        ...(maxTurns !== undefined ? { maxTurns } : {}),
         ...(resumeId ? { resume: resumeId } : {}),
         ...(args.connector ? { connector_id: String(args.connector) } : {}),
         ...(args.workflow ? { workflow_id: String(args.workflow) } : {}),

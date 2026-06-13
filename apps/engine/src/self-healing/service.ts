@@ -45,17 +45,14 @@ import { type Db, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import {
   executionFixtures,
-  executionSteps,
   patchCandidates,
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
-import { RequestMetaSchema } from "../execution/request-meta-schema.ts";
 import { MAX_REPAIR_ATTEMPTS } from "../execution/timeouts.ts";
 import { LlmQuotaExhausted } from "../llm/errors.ts";
 import {
   type PatchProposal,
-  PatchProposalSchema,
   type PreviousRepairAttempt,
   runRepairFlow,
 } from "../llm/flows/repair.ts";
@@ -68,7 +65,7 @@ import {
 import { getLatestShape } from "../schema-versions/service.ts";
 import { classifyPatch } from "./classifier.ts";
 import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from "./drift-detector.ts";
-import { applyPatchToStep, runFixtureDryRun } from "./fixture-runner.ts";
+import { runFixtureDryRun } from "./fixture-runner.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
 import type { DriftSignal, DryRunStep, WorkflowRepairJob } from "./types.ts";

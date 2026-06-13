@@ -35,9 +35,9 @@ function makeRecipe(overrides: Partial<RecipeBodyView> = {}): RecipeBodyView {
         {
           id: "notify",
           kind: "request",
-          connector_id: "${slack}",
+          connector_id: `\${slack}`,
           path: "/chat.postMessage",
-          params: { channel: "#payments", text: "New charge: ${scope.trigger.amount}" },
+          params: { channel: "#payments", text: `New charge: \${scope.trigger.amount}` },
         },
       ],
     },
@@ -123,7 +123,7 @@ describe("trimRecipeBodiesToBudget — 2000-token cap", () => {
       steps: Array.from({ length: 20 }, (_, i) => ({
         id: `step-${i}`,
         kind: "request",
-        connector_id: "${stripe}",
+        connector_id: `\${stripe}`,
         path: `/v1/charges/${i}`,
         params: { amount: i * 100, currency: "usd", description: `step ${i} description` },
       })),
@@ -153,7 +153,7 @@ describe("trimRecipeBodiesToBudget — 2000-token cap", () => {
       steps: Array.from({ length: 30 }, (_, i) => ({
         id: `s${i}`,
         kind: "request",
-        connector_id: "${c}",
+        connector_id: `\${c}`,
         path: `/v1/items/${i}`,
         params: { key: `value-${i}-${"x".repeat(50)}` },
       })),
@@ -187,7 +187,7 @@ describe("renderRecipeBody — 800-token hybrid fallback", () => {
       steps: Array.from({ length: 50 }, (_, i) => ({
         id: `step-${i}`,
         kind: "request",
-        connector_id: "${stripe}",
+        connector_id: `\${stripe}`,
         path: `/v1/items/${i}`,
         description: `${"A very long description of step ".repeat(5)}${i}`,
         params: { key: `value-${i}-${"data".repeat(20)}` },

@@ -88,7 +88,7 @@ const RECIPE_SNAPSHOT: Record<string, unknown> = {
           {
             id: "notify",
             kind: "request",
-            connector_id: "${stripe}",
+            connector_id: `\${stripe}`,
             path: "/v1/charges",
             params: { limit: 1 },
           },
@@ -463,7 +463,7 @@ const HEAVY_RECIPE_SNAPSHOT: Record<string, unknown> = {
       steps: Array.from({ length: 8 }, (_, j) => ({
         id: `step-${j}`,
         kind: "request",
-        connector_id: "${stripe}",
+        connector_id: `\${stripe}`,
         path: `/v1/items/${i}/${j}`,
         params: { key: `value-${i}-${j}-${"data".repeat(4)}` },
       })),

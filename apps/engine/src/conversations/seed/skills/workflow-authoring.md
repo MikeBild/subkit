@@ -849,6 +849,11 @@ Available calls:
 - `sk.allow()` / `sk.deny(reason)` — canonical hook decisions
 - `sk.pick(obj, keys)` / `sk.omit(obj, keys)` — subset / exclusion
 - `sk.pluck(arr, key)` / `sk.groupBy(arr, keyOrFn)` / `sk.uniq(arr)` — array reshapers
+- `sk.base64Encode(input)` / `sk.base64UrlEncode(input)` — JSONata-compatible
+  low-8-bit base64 helpers; use when migrating `$base64encode` transforms and
+  preserving byte-identical output matters
+- `sk.base64EncodeUtf8(input)` / `sk.base64UrlEncodeUtf8(input)` — UTF-8
+  base64 helpers; prefer for new Unicode text payloads such as MIME/API bodies
 - `sk.isString / isNumber / isArray / isObject / isNil` — type guards
 - `sk.version` — stdlib version (persisted for drift detection)
 

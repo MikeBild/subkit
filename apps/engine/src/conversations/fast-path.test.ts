@@ -239,7 +239,13 @@ describe("tryFastPath — run <slug> with a required input contract defers to th
         dag: {
           name: "needs-input",
           slug: "needs-input",
-          steps: [{ id: "s1", kind: "request", url: "https://example.com/items/${input.item_id}" }],
+          steps: [
+            {
+              id: "s1",
+              kind: "request",
+              url: `https://example.com/items/\${input.item_id}`,
+            },
+          ],
         },
       })
       .returning();

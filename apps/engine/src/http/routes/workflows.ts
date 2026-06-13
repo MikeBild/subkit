@@ -144,6 +144,13 @@ function serializeWorkflow(w: svc.WorkflowView) {
   };
 }
 
+type WorkflowBody = z.infer<typeof CreateBody>;
+
+function preserveOmittedTrigger(body: WorkflowBody, existing: svc.WorkflowView): WorkflowBody {
+  if (Object.hasOwn(body, "trigger") || !existing.definition.trigger) return body;
+  return { ...body, trigger: existing.definition.trigger };
+}
+
 const listRoute = createRoute({
   method: "get",
   path: "/v1/workflows",
@@ -480,8 +487,15 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
+    const existing = await svc.getWorkflow(principal.tenant_id, id, db);
+    if (!existing) throw new NotFoundError("workflow");
     const result = await svc.updateWorkflow(
-      { tenant_id: principal.tenant_id, id, def: body, actor_id: principal.id },
+      {
+        tenant_id: principal.tenant_id,
+        id,
+        def: preserveOmittedTrigger(body, existing),
+        actor_id: principal.id,
+      },
       db,
     );
     if ("errors" in result) {

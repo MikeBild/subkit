@@ -10,8 +10,8 @@
 //   - dispatchDeleteConnector with confirm_orphan:true → delete proceeds.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq, isNotNull } from "drizzle-orm";
-import { connectors, workflows } from "../../db/schema/index.ts";
+import { eq } from "drizzle-orm";
+import { connectors } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { listWorkflowsUsingConnector } from "../../workflows/connector-dependents.ts";
 import { createWorkflow } from "../../workflows/service.ts";

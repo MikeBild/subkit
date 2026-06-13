@@ -12,7 +12,7 @@
 //      (d) a credential_rotated audit row exists.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { markConnectorNeedsReauth } from "../../connectors/reauth.ts";
 import { auditLog, connectors, credentials, users } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";

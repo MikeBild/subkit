@@ -203,4 +203,33 @@ describe("POST /v1/workflows (definition fields are not silently dropped)", () =
     // Pre-fix this was stripped by CreateBody → serialized as null.
     expect(body.output_transform).toBe('{ "ok": true }');
   });
+
+  test("PUT preserves an existing trigger when the body omits trigger", async () => {
+    const wf = await createWorkflow({
+      name: "scheduled-put-preserve",
+      trigger: { kind: "schedule", cron: "11 9 * * *", tz: "Europe/Berlin" },
+      steps: [{ kind: "transform", id: "out", expression: '{ "ok": true }' }],
+    });
+
+    const put = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}`, {
+      method: "PUT",
+      headers: headers(ctx.apiKey),
+      body: JSON.stringify({
+        name: "scheduled-put-preserve",
+        steps: [{ kind: "transform", id: "out", expression: '{ "ok": "updated" }' }],
+      }),
+    });
+    expect(put.status).toBe(200);
+    const updated = (await put.json()) as { trigger?: { kind?: string; cron?: string } };
+    expect(updated.trigger?.kind).toBe("schedule");
+    expect(updated.trigger?.cron).toBe("11 9 * * *");
+
+    const rows = await ctx.db
+      .select()
+      .from(workflowsSchedules)
+      .where(eq(workflowsSchedules.workflow_id, wf.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.cron).toBe("11 9 * * *");
+    expect(rows[0]?.timezone).toBe("Europe/Berlin");
+  });
 });

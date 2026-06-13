@@ -1,0 +1,91 @@
+{
+  "manifest_version": 1,
+  "generated_at": "2026-06-13T00:00:00.000Z",
+  "tenant_id": "example",
+  "description": "Non-sensitive example of the JSONata-to-JavaScript estate replay proof format.",
+  "cases": [
+    {
+      "id": "step-transform-example",
+      "workflow_slug": "example-summary",
+      "transform_id": "shape",
+      "kind": "step_transform",
+      "old_jsonata": {
+        "expression": "{ \"total\": $scope.fetch.data.total, \"label\": $input.label }",
+        "data": {
+          "fetch": {
+            "data": {
+              "total": 42
+            }
+          }
+        },
+        "bindings": {
+          "scope": {
+            "fetch": {
+              "data": {
+                "total": 42
+              }
+            }
+          },
+          "input": {
+            "label": "droplets"
+          }
+        }
+      },
+      "new_javascript": {
+        "code": "return { total: input.scope.fetch.data.total, label: input.input.label };",
+        "input": {
+          "scope": {
+            "fetch": {
+              "data": {
+                "total": 42
+              }
+            }
+          },
+          "input": {
+            "label": "droplets"
+          }
+        }
+      }
+    },
+    {
+      "id": "side-effect-held-request-example",
+      "workflow_slug": "example-email",
+      "transform_id": "mime",
+      "kind": "output_transform",
+      "old_jsonata": {
+        "expression": "{ \"subject\": subject, \"body\": body }",
+        "data": {
+          "subject": "Report",
+          "body": "OK"
+        }
+      },
+      "new_javascript": {
+        "code": "return { subject: input.subject, body: input.body };",
+        "input": {
+          "subject": "Report",
+          "body": "OK"
+        }
+      },
+      "side_effects": {
+        "old_held_requests": [
+          {
+            "method": "POST",
+            "path": "/gmail/v1/users/me/messages/send",
+            "body": {
+              "raw": "UmVwb3J0"
+            }
+          }
+        ],
+        "new_held_requests": [
+          {
+            "method": "POST",
+            "path": "/gmail/v1/users/me/messages/send",
+            "body": {
+              "raw": "UmVwb3J0"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

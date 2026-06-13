@@ -175,6 +175,49 @@ describe("AiSdkModel per-call timeout + abort", () => {
     // Both the primary and the fallback were attempted.
     expect(calls.length).toBe(2);
   });
+
+  it("uses one aggregate timeout signal across primary and fallback", async () => {
+    const calls: Array<{ abortSignal: AbortSignal | undefined; sawAbortedAtStart: boolean }> = [];
+    let i = 0;
+    const fn = (opts: { abortSignal?: AbortSignal }) => {
+      calls.push({
+        abortSignal: opts.abortSignal,
+        sawAbortedAtStart: opts.abortSignal?.aborted ?? false,
+      });
+      i += 1;
+      if (i === 1) {
+        return new Promise((_resolve, reject) => {
+          const rejectOverloaded = () => reject(new Error("overloaded"));
+          if (opts.abortSignal?.aborted) return rejectOverloaded();
+          opts.abortSignal?.addEventListener("abort", rejectOverloaded, { once: true });
+        });
+      }
+      return new Promise((_resolve, reject) => {
+        const onAbort = () => {
+          const err = new Error("aborted");
+          err.name = "AbortError";
+          reject(err);
+        };
+        if (opts.abortSignal?.aborted) return onAbort();
+        opts.abortSignal?.addEventListener("abort", onAbort, { once: true });
+      });
+    };
+    const model = new AiSdkModel({
+      defaultModel: "claude-sonnet-4-5",
+      callTimeoutMs: 5,
+      fallback: { defaultModel: "claude-sonnet-4-6" },
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: fn as any,
+    });
+
+    await expect(model.generateText([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
+      LlmCallAbortedError,
+    );
+
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.abortSignal).toBe(calls[0]?.abortSignal);
+    expect(calls[1]?.sawAbortedAtStart).toBe(true);
+  });
 });
 
 describe("AiSdkModel.generateText", () => {

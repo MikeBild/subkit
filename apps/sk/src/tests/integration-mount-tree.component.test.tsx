@@ -86,7 +86,7 @@ function ThemeSwitch({ to }: { to: ThemeName }): React.ReactElement | null {
 describe("sk overhaul — mount tree integration", () => {
   test("Theme + Resize + Toast wrappers compose cleanly", async () => {
     const ui = renderInk(
-      <ThemeProvider name="dark">
+      <ThemeProvider name="dark" forceNoColor={false}>
         <ResizeBoundary minCols={20} minRows={5}>
           <ToastQueue>
             <App buffer="" cursor={0} />
@@ -127,7 +127,7 @@ describe("sk overhaul — mount tree integration", () => {
 
   test("Theme switch propagates through the tree at runtime", async () => {
     const ui = renderInk(
-      <ThemeProvider name="dark">
+      <ThemeProvider name="dark" forceNoColor={false}>
         <ResizeBoundary>
           <ToastQueue>
             <App buffer="" cursor={0} />

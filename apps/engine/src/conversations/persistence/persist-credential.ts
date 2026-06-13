@@ -9,7 +9,6 @@ import { runCognitoUserPasswordGrant } from "../../credentials/oauth2/client.ts"
 import { upsertCredential } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { connectors as connectorsTable } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
 import type { AtomicCredentialInput } from "./save-connector.ts";
 
 export async function persistCredential(p: {

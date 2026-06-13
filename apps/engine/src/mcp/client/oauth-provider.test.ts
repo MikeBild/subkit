@@ -15,7 +15,7 @@ import { and, eq } from "drizzle-orm";
 import { credentials, mcpOauthStates, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
-import { McpDbOAuthClientProvider, makeMcpOAuthProvider } from "./oauth-provider.ts";
+import { makeMcpOAuthProvider } from "./oauth-provider.ts";
 import { createMcpServer } from "./registry.ts";
 
 let ctx: TestDb;

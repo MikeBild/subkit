@@ -145,19 +145,62 @@
   // belongs on the curated surface rather than re-implemented per
   // transform.
   //
-  // Byte semantics are deliberately IDENTICAL to jsonata's `$base64encode`
+  // `base64Encode` is deliberately IDENTICAL to jsonata's `$base64encode`
   // (each character contributes one byte = its low 8 bits — the "binary
   // string" convention, not UTF-8). This is what lets a transform move
-  // from jsonata to javascript with byte-for-byte the same output, which
-  // the migration's equivalence check enforces. (UTF-8 correctness for
-  // non-ASCII is a separate, pre-existing question about those workflows'
-  // MIME encoding — not something a language switch should silently
-  // change.)
+  // from jsonata to javascript with byte-for-byte the same output.
+  //
+  // `base64EncodeUtf8` is the explicit Unicode-safe helper for new MIME
+  // and API payloads. Keeping both names prevents a migration from
+  // silently changing historical outputs while still giving new code the
+  // encoding most external APIs expect.
   const B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  function stringInput(input) {
+    return typeof input === "string" ? input : String(input);
+  }
 
   function binaryBytes(str) {
     const bytes = [];
     for (let i = 0; i < str.length; i++) bytes.push(str.charCodeAt(i) & 0xff);
+    return bytes;
+  }
+
+  function utf8Bytes(str) {
+    const bytes = [];
+    for (let i = 0; i < str.length; i++) {
+      let codePoint = str.charCodeAt(i);
+      if (codePoint >= 0xd800 && codePoint <= 0xdbff) {
+        const next = str.charCodeAt(i + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          codePoint = 0x10000 + ((codePoint - 0xd800) << 10) + (next - 0xdc00);
+          i += 1;
+        } else {
+          codePoint = 0xfffd;
+        }
+      } else if (codePoint >= 0xdc00 && codePoint <= 0xdfff) {
+        codePoint = 0xfffd;
+      }
+
+      if (codePoint <= 0x7f) {
+        bytes.push(codePoint);
+      } else if (codePoint <= 0x7ff) {
+        bytes.push(0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f));
+      } else if (codePoint <= 0xffff) {
+        bytes.push(
+          0xe0 | (codePoint >> 12),
+          0x80 | ((codePoint >> 6) & 0x3f),
+          0x80 | (codePoint & 0x3f),
+        );
+      } else {
+        bytes.push(
+          0xf0 | (codePoint >> 18),
+          0x80 | ((codePoint >> 12) & 0x3f),
+          0x80 | ((codePoint >> 6) & 0x3f),
+          0x80 | (codePoint & 0x3f),
+        );
+      }
+    }
     return bytes;
   }
 
@@ -177,7 +220,11 @@
   }
 
   function base64Encode(input) {
-    return bytesToBase64(binaryBytes(typeof input === "string" ? input : String(input)));
+    return bytesToBase64(binaryBytes(stringInput(input)));
+  }
+
+  function base64EncodeUtf8(input) {
+    return bytesToBase64(utf8Bytes(stringInput(input)));
   }
 
   // base64url: the standard alphabet with `+`→`-`, `/`→`_`. Padding (`=`)
@@ -186,6 +233,10 @@
   // for the Gmail `raw` field.
   function base64UrlEncode(input) {
     return base64Encode(input).replace(/\+/g, "-").replace(/\//g, "_");
+  }
+
+  function base64UrlEncodeUtf8(input) {
+    return base64EncodeUtf8(input).replace(/\+/g, "-").replace(/\//g, "_");
   }
 
   function isString(v) {
@@ -226,12 +277,14 @@
     uniq: uniq,
     base64Encode: base64Encode,
     base64UrlEncode: base64UrlEncode,
+    base64EncodeUtf8: base64EncodeUtf8,
+    base64UrlEncodeUtf8: base64UrlEncodeUtf8,
     isString: isString,
     isNumber: isNumber,
     isArray: isArray,
     isObject: isObject,
     isNil: isNil,
-    version: "1.1.0",
+    version: "1.2.0",
   });
 
   Object.defineProperty(globalThis, "sk", {

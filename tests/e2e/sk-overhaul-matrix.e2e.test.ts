@@ -15,7 +15,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { EXPECT_BIN, runPtyScenario, SK_BIN } from "./_helpers/pty.ts";
-import { boot, type E2EEnv, shutdown } from "./setup.ts";
+import { boot, cli, type E2EEnv, expectSuccess, shutdown } from "./setup.ts";
 
 const HAS_BINARY = existsSync(SK_BIN);
 const HAS_EXPECT = !!EXPECT_BIN;
@@ -28,7 +28,7 @@ const SKIP_PTY = !HAS_BINARY || !HAS_EXPECT;
 let env: E2EEnv | null = null;
 
 beforeAll(async () => {
-  if (SKIP_PTY) return;
+  if (!HAS_BINARY) return;
   env = await boot("sk-overhaul-matrix", { llm: "mock" });
 }, 90_000);
 
@@ -43,33 +43,69 @@ const E = (): E2EEnv => {
 
 describe("e2e matrix: sk CLI overhaul (live engine)", () => {
   // ----- login flows (#2 / #3 / #4) -----
-  // R11-W1 review fix: the original (matrix #2..#7) tests ran an
-  // identical "boot, wait for banner, EOF, exitCode === 0" scenario
-  // — they were stubs that didn't actually exercise device login,
-  // api-key login, portal-token login, headless `-p`, `--quiet`, or
-  // `--max-turns`. Stub coverage is worse than missing coverage
-  // because it masquerades as matrix completion. Marked as
-  // `test.todo` until the PTY harness can drive these flows; the
-  // smoke-suite `sk-headless.smoke.ts` already covers `-p` /
-  // `--quiet` / `--max-turns` at the binary level.
+  // Only rows needing a dedicated auth provider/token harness remain
+  // todos. Rows with enough local fixtures are asserted directly here.
   test.todo(
     "(matrix #2) device login renders the auth flow chrome — needs device-flow mock harness",
   );
-  test.todo(
-    "(matrix #3) api-key login boots cleanly — covered by boot() persona harness; matrix entry needs distinct assertion",
-  );
+
+  test.skipIf(!HAS_BINARY)("(matrix #3) api-key login stores a usable profile", async () => {
+    const result = await cli(
+      ["login", "--engine-url", E().baseUrl, "--api-key", E().personas.admin.apiKey],
+      { env: E(), persona: "admin" },
+    );
+    expectSuccess(result, "matrix api-key login");
+    expect(result.stdout).toContain("saved");
+    expect(result.stdout).toContain("engine health: ok");
+  });
+
   test.todo(
     "(matrix #4) portal-token login boots and exits clean — needs portal-token mint harness",
   );
-  test.todo(
-    "(matrix #5) headless `sk -p` resolves cleanly — covered by sk-headless.smoke.ts; matrix entry needs PTY-driven equivalent",
-  );
-  test.todo(
-    "(matrix #6) `--quiet` reduces output — covered by sk-headless.smoke.ts; matrix entry needs PTY-driven equivalent",
-  );
-  test.todo(
-    "(matrix #7) `--max-turns` arg is honored at boot — covered by sk-headless.smoke.ts; matrix entry needs PTY-driven equivalent",
-  );
+
+  test.skipIf(!HAS_BINARY)("(matrix #5) headless `sk -p` resolves cleanly", async () => {
+    const result = await cli(["--p", "say hello", "--output", "json"], {
+      env: E(),
+      persona: "admin",
+      timeout: 60_000,
+    });
+    expectSuccess(result, "matrix headless");
+    const body = JSON.parse(result.stdout) as { status: string; session_id: string };
+    expect(body.status).toBe("completed");
+    expect(body.session_id).toBeTruthy();
+  });
+
+  test.skipIf(!HAS_BINARY)("(matrix #6) `--quiet` suppresses headless warnings", async () => {
+    const noisy = await cli(["--p", "please inspect @missing-file", "--output", "text"], {
+      env: E(),
+      persona: "admin",
+      timeout: 60_000,
+    });
+    expectSuccess(noisy, "matrix quiet baseline");
+    expect(noisy.stderr).toContain("@missing-file: not found");
+
+    const quiet = await cli(
+      ["--quiet", "--p", "please inspect @missing-file", "--output", "text"],
+      {
+        env: E(),
+        persona: "admin",
+        timeout: 60_000,
+      },
+    );
+    expectSuccess(quiet, "matrix quiet");
+    expect(quiet.stderr).not.toContain("@missing-file: not found");
+  });
+
+  test.skipIf(!HAS_BINARY)("(matrix #7) `--max-turns` is accepted by headless mode", async () => {
+    const result = await cli(["--max-turns", "1", "--p", "say hello", "--output", "json"], {
+      env: E(),
+      persona: "admin",
+      timeout: 60_000,
+    });
+    expectSuccess(result, "matrix max-turns");
+    const body = JSON.parse(result.stdout) as { status: string };
+    expect(body.status).toBe("completed");
+  });
 
   // ----- slash matrix (#8 / #9 / #10) -----
   test.skipIf(SKIP_PTY)(
@@ -108,10 +144,6 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     20_000,
   );
 
-  // R11-W1: also a stub — same shape as #2..#7. Real assertion would
-  // grep the rendered welcome banner for the enduser-specific
-  // wording. Marked todo until the PTY harness can capture frame
-  // text reliably for assertion.
   test.todo(
     "(matrix #10) enduser persona renders welcome hint — needs frame-text capture in PTY harness",
   );

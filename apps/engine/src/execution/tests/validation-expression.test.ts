@@ -165,6 +165,41 @@ describe("workflow.validation_expression", () => {
     expect(result.output).toEqual({ count: 2, ids: ["a", "b"] });
   });
 
+  test("step JS sees scope wrapper; workflow output JS sees last output only", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "output-transform-fn-context",
+      steps: [
+        {
+          id: "raw",
+          kind: "transform",
+          language: "jsonata",
+          expression: "{ 'value': 'last-step-data' }",
+        },
+        {
+          id: "shape",
+          kind: "transform",
+          language: "javascript",
+          expression:
+            "return { from_scope: input.scope.raw.data.value, from_input: input.input.marker };",
+        },
+      ],
+      output_transform_function:
+        "return { final_value: input.from_scope, marker: input.from_input, scope_type: typeof scope };",
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: { marker: "workflow-input" },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({
+      final_value: "last-step-data",
+      marker: "workflow-input",
+      scope_type: "undefined",
+    });
+  });
+
   test("output_transform_function that throws fails with output_transform_failed", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "output-transform-fn-throws",

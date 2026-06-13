@@ -50,6 +50,10 @@ export interface HeadlessRunOptions {
   /** Optional initial connector / workflow binding for a new conversation. */
   connector_id?: string;
   workflow_id?: string;
+  /** Optional per-turn engine step budget. */
+  maxTurns?: number;
+  /** Suppress non-critical human warnings on stderr. */
+  quiet?: boolean;
   /**
    * Paths to upload + link as attachments BEFORE the prompt runs.
    * Each path is uploaded through `uploadPath`, linked to the
@@ -202,6 +206,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           {
             message: resolved.prompt,
             ...(memory.content ? { memory: memory.content } : {}),
+            ...(opts.maxTurns !== undefined ? { step_budget: opts.maxTurns } : {}),
           },
           traceContext(),
         );
@@ -226,6 +231,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           ...(opts.connector_id ? { connector_id: opts.connector_id } : {}),
           ...(opts.workflow_id ? { workflow_id: opts.workflow_id } : {}),
           ...(settings.merged.model ? { model: settings.merged.model } : {}),
+          ...(opts.maxTurns !== undefined ? { step_budget: opts.maxTurns } : {}),
         },
         traceContext(),
       );
@@ -319,7 +325,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
         );
         if (opts.output === "stream-json") {
           writeLine(stdout, JSON.stringify({ file_attached: row.id, filename: row.filename }));
-        } else {
+        } else if (!opts.quiet) {
           stderr.write(`sk: attached ${row.id} (${row.filename})\n`);
         }
       }
@@ -330,6 +336,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
         {
           message: resolved.prompt,
           ...(memory.content ? { memory: memory.content } : {}),
+          ...(opts.maxTurns !== undefined ? { step_budget: opts.maxTurns } : {}),
         },
         traceContext(),
       );
@@ -449,7 +456,9 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       if (exec) writeLine(stdout, renderExecutionOutput(exec));
     }
     // Surface mention warnings for the operator.
-    for (const w of resolved.warnings) stderr.write(`sk: ${w}\n`);
+    if (!opts.quiet) {
+      for (const w of resolved.warnings) stderr.write(`sk: ${w}\n`);
+    }
   } else if (opts.output === "json") {
     const payload = {
       session_id: conversationId,

@@ -95,6 +95,73 @@ export interface BootOpts {
   llm?: "mock";
 }
 
+async function withTeardownTimeout<T>(
+  label: string,
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      // allow-wall-clock: e2e teardown must bound leaked sockets and DB handles.
+      timer = setTimeout(
+        () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+      timer.unref?.();
+    });
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function bestEffortTeardown(
+  label: string,
+  action: () => Promise<void>,
+  timeoutMs: number,
+): Promise<void> {
+  try {
+    await withTeardownTimeout(label, action(), timeoutMs);
+  } catch {
+    /* cleanup must not mask the suite result; orphan DB sweep handles leftovers */
+  }
+}
+
+async function closeHttpServer(server: ServerType): Promise<void> {
+  const s = server as unknown as {
+    close: (cb: (err?: Error) => void) => void;
+    closeAllConnections?: () => void;
+    closeIdleConnections?: () => void;
+  };
+  await bestEffortTeardown(
+    "http server close",
+    async () => {
+      await new Promise<void>((resolve, reject) => {
+        try {
+          s.close((err?: Error) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            resolve();
+          });
+          s.closeIdleConnections?.();
+          s.closeAllConnections?.();
+        } catch (err) {
+          reject(err);
+        }
+      });
+    },
+    5_000,
+  );
+  try {
+    s.closeAllConnections?.();
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Real-LLM detection. Mirrors the precedence in
  * `apps/engine/src/llm/core/model-init.ts`: gateway first when both
@@ -293,28 +360,15 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
     testDb,
     cleanup: async () => {
       // 1. Close HTTP server.
-      const s = server as unknown as {
-        close: (cb: () => void) => void;
-        closeAllConnections?: () => void;
-      };
-      s.closeAllConnections?.();
-      await new Promise<void>((r) => s.close(() => r()));
+      await closeHttpServer(server);
       // 2. Stop pg-boss and close all its Postgres connections.
-      try {
-        await stopBoss(5_000);
-      } catch {
-        /* ignore */
-      }
-      try {
-        await disposeBoss(boss, 2_000);
-      } catch {
-        /* ignore */
-      }
+      await bestEffortTeardown("shared pg-boss stop", () => stopBoss(5_000), 8_000);
+      await bestEffortTeardown("suite pg-boss dispose", () => disposeBoss(boss, 2_000), 3_000);
       // 3. Give pg-boss connections time to fully close before dropping DB.
       // allow-wall-clock: socket teardown requires real I/O time.
       await new Promise((r) => setTimeout(r, 200));
       // 4. Drop the test database.
-      await testDb.cleanup();
+      await bestEffortTeardown("test database cleanup", testDb.cleanup, 10_000);
       // 5. Clean up temp directories.
       for (const p of Object.values(personas)) {
         try {

@@ -90,9 +90,9 @@ describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes (Fix 8)", (
     expect(hint).toMatch(/ARRAY of step ids/i);
   });
 
-  it("workflow_unsupported_placeholder teaches loop-body addressing (${item.…} / $item)", () => {
+  it(`workflow_unsupported_placeholder teaches loop-body addressing (\${item.…} / $item)`, () => {
     const hint = ERROR_CODE_ALTERNATIVES.workflow_unsupported_placeholder;
-    expect(hint).toContain("${item.<path>}");
+    expect(hint).toContain(`\${item.<path>}`);
     expect(hint).toContain("$item.<path>");
     expect(hint).not.toContain("item_var");
     expect(hint).toMatch(/JSONata/);
@@ -101,8 +101,8 @@ describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes (Fix 8)", (
   it("placeholder_unresolved teaches loop-body addressing and sibling scope refs", () => {
     const hint = ERROR_CODE_ALTERNATIVES.placeholder_unresolved;
     expect(hint).toBeDefined();
-    expect(hint).toContain("${item.<path>}");
-    expect(hint).toContain("${scope.<body_step_id>.data.<field>}");
+    expect(hint).toContain(`\${item.<path>}`);
+    expect(hint).toContain(`\${scope.<body_step_id>.data.<field>}`);
   });
 });
 

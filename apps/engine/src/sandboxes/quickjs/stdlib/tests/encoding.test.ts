@@ -1,12 +1,15 @@
 // sk.base64Encode / sk.base64UrlEncode — the encoding surface the
 // email-send (`raw`) and git-commit (`content`) workflows depend on once
 // their transforms move from jsonata to javascript. The contract is
-// byte-identical output to jsonata's `$base64encode` (UTF-8), so a
-// transform can switch language without changing what it sends. These
-// tests run the JS inside the real QuickJS sandbox and compare against
-// the engine's jsonata runtime — the same two runtimes production uses.
+// byte-identical output to jsonata's `$base64encode` (low-8-bit binary
+// string semantics, not UTF-8), so a transform can switch language
+// without changing what it sends. Separate UTF-8 helpers exist for new
+// Unicode-safe payloads. These tests run the JS inside the real QuickJS
+// sandbox and compare against the engine's jsonata runtime — the same
+// two runtimes production uses.
 
 import { describe, expect, test } from "bun:test";
+import { Buffer } from "node:buffer";
 import { evaluate as jsonataEval } from "../../../../execution/jsonata-engine.ts";
 import { runJs } from "../../runtime.ts";
 
@@ -21,6 +24,7 @@ describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () =>
     "abc", // 3 bytes → 0 pad
     "Veröffentlichung", // German umlaut (multi-byte)
     "Projekt: Größe & Maß — 100% ✓", // mixed multi-byte + symbol + check mark
+    "Emoji: 😀", // surrogate pair must preserve jsonata's historical low-byte behavior
     "To: mike@mikebild.com\r\nSubject: Essays published: 3\r\n\r\n<html>ä</html>", // MIME shape
   ];
 
@@ -52,5 +56,25 @@ describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () =>
       { s: msg },
     );
     expect(fromJs).toBe(fromJsonata);
+  });
+
+  test("base64EncodeUtf8 is explicit Unicode-safe encoding, not the migration helper", async () => {
+    const s = "Größe 😀";
+    const fromUtf8 = await b64("return sk.base64EncodeUtf8(input.s);", { s });
+    const fromJsonataCompat = await b64("return sk.base64Encode(input.s);", { s });
+
+    expect(fromUtf8).toBe(Buffer.from(s, "utf8").toString("base64"));
+    expect(fromUtf8).not.toBe(fromJsonataCompat);
+  });
+
+  test("base64UrlEncodeUtf8 applies url-safe substitutions while keeping padding", async () => {
+    const s = "࿿a"; // UTF-8 bytes produce +, /, and padding in base64.
+    const url = await b64("return sk.base64UrlEncodeUtf8(input.s);", { s });
+    const std = Buffer.from(s, "utf8").toString("base64");
+
+    expect(url).toBe(std.replace(/\+/g, "-").replace(/\//g, "_"));
+    expect(url).not.toContain("+");
+    expect(url).not.toContain("/");
+    expect(url.endsWith("=")).toBe(true);
   });
 });

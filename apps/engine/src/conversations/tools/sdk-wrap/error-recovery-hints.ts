@@ -68,10 +68,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the JSONata/JS expression is invalid — call suggest_jsonata_paths for available scope keys, then dry_run_transform to validate before saving",
   workflow_unresolved_step_reference:
     "a step referenced an id that doesn't exist — call inspect_workflow_draft to list step ids and connect_steps to wire missing edges",
-  workflow_unsupported_placeholder:
-    "a placeholder used an unsupported binding — the resolver accepts only cred|connector|input|scope|item|state. Inside a loop body: use ${item.<path>} in request strings (path/url/headers/query/body) and $item.<path> in JSONata expressions — bare item names (project.name), ${project.id}, ${user.email}, and Mustache {{…}} are all rejected. Call suggest_jsonata_paths for valid forms, or update_param to replace it",
-  placeholder_unresolved:
-    "a ${…} placeholder did not resolve from scope at runtime — inside a loop body write ${item.<path>} in request strings and $item.<path> in JSONata expressions (never a bare item name); for sibling body steps use ${scope.<body_step_id>.data.<field>}. Verify the path against the recorded preview via inspect_workflow_draft, then re-run dry_run_workflow",
+  workflow_unsupported_placeholder: `a placeholder used an unsupported binding — the resolver accepts only cred|connector|input|scope|item|state. Inside a loop body: use \${item.<path>} in request strings (path/url/headers/query/body) and $item.<path> in JSONata expressions — bare item names (project.name), \${project.id}, \${user.email}, and Mustache {{…}} are all rejected. Call suggest_jsonata_paths for valid forms, or update_param to replace it`,
+  placeholder_unresolved: `a \${…} placeholder did not resolve from scope at runtime — inside a loop body write \${item.<path>} in request strings and $item.<path> in JSONata expressions (never a bare item name); for sibling body steps use \${scope.<body_step_id>.data.<field>}. Verify the path against the recorded preview via inspect_workflow_draft, then re-run dry_run_workflow`,
   workflow_cycle_detected:
     "the workflow has a step-dependency cycle — call inspect_workflow_draft to see the graph, then propose_step / connect_steps to remove the cycle",
   workflow_schema_invalid:

@@ -22,11 +22,13 @@
 // Exit codes: 0 — every scenario met every target; 1 — at least one
 // target FAILED or a run errored; 2 — usage error.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { compareLiveAuthoringReports } from "./live-benchmark.ts";
 import {
   buildLiveReport,
   LIVE_SCENARIOS,
+  type LiveAuthoringReport,
   type LiveScenarioSpec,
   type ObservedToolCall,
   type ScenarioObservation,
@@ -45,13 +47,14 @@ interface CliArgs {
   api_key: string;
   scenarios: string[] | null;
   out: string;
+  baseline: string | null;
 }
 
 function usage(): never {
   console.error(
     [
       "Usage: bun run apps/engine/eval/live-authoring.ts --engine-url <url> --api-key <key>",
-      "         [--scenario <slug>[,<slug>…]] [--out <report.json>]",
+      "         [--scenario <slug>[,<slug>…]] [--out <report.json>] [--baseline <report.json>]",
       "",
       `Scenarios: ${LIVE_SCENARIOS.map((s) => s.slug).join(", ")}`,
       "",
@@ -66,6 +69,7 @@ function parseArgs(argv: string[]): CliArgs {
   let api_key = process.env.SK_API_KEY ?? "";
   let scenarios: string[] | null = null;
   let out = DEFAULT_OUT;
+  let baseline: string | null = null;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const next = () => {
@@ -82,11 +86,12 @@ function parseArgs(argv: string[]): CliArgs {
         .map((s) => s.trim())
         .filter(Boolean);
     else if (arg === "--out") out = next();
+    else if (arg === "--baseline") baseline = next();
     else if (arg === "--help" || arg === "-h") usage();
     else usage();
   }
   if (!engine_url || !api_key) usage();
-  return { engine_url: engine_url.replace(/\/+$/, ""), api_key, scenarios, out };
+  return { engine_url: engine_url.replace(/\/+$/, ""), api_key, scenarios, out, baseline };
 }
 
 interface TurnEventLike {
@@ -245,7 +250,22 @@ async function main(): Promise<void> {
   console.log(`Report: ${args.out}`);
   console.log(`Scenarios: ${report.total}   PASS: ${report.passed}   FAIL: ${report.failed}`);
 
-  process.exit(report.scenarios.every((s) => scenarioPassed(s)) ? 0 : 1);
+  let passed = report.scenarios.every((s) => scenarioPassed(s));
+  if (args.baseline) {
+    const baseline = JSON.parse(readFileSync(args.baseline, "utf8")) as LiveAuthoringReport;
+    const comparison = compareLiveAuthoringReports(baseline, report);
+    console.log(
+      `Benchmark: ${comparison.common_scenarios} common, ` +
+        `${comparison.regressions.length} regression(s), ${comparison.changes.length} change(s)`,
+    );
+    for (const change of comparison.changes) {
+      const prefix = change.severity === "regression" ? "REGRESSION" : change.severity;
+      console.log(`  ${prefix} ${change.scenario} ${change.metric}: ${change.message}`);
+    }
+    passed &&= comparison.passed;
+  }
+
+  process.exit(passed ? 0 : 1);
 }
 
 if (import.meta.main) {
