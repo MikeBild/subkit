@@ -201,13 +201,11 @@ if [ "$SKIP_TESTS" -eq 0 ]; then
   run bun run lint
   run bun run typecheck
   # Match the standard `verify` recipe in package.json so the deploy
-  # gate doesn't drift from local-verify behavior. Without the
-  # `--max-concurrency=4`, parallel journey tests stack up DROP
-  # DATABASE on the same postgres and the hook-timeout safety net
-  # never fires — a single beforeAll has been observed to spin at
-  # 100% CPU for 38 minutes. `--timeout 120000` aligns per-test
-  # budget with `JOURNEY_HOOK_TIMEOUT` in apps/engine/src/tests/journeys/setup.ts.
-  run bun test --max-concurrency=4 --timeout 120000 apps/ packages/
+  # gate doesn't drift from local-verify behavior. Keep the full-repo
+  # gate serial: many files create/drop full migrated Postgres databases,
+  # and cross-file admin-operation contention can surface as unnamed Bun
+  # hook timeouts even when the individual suites are healthy.
+  run bun test --max-concurrency=1 --timeout 120000 apps/ packages/
   ok "gate passed"
 else
   info "skipping gate (--skip-tests)"
