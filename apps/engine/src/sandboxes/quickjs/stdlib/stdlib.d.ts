@@ -42,6 +42,11 @@ export interface Sk {
   ): Record<string, T[]>;
   uniq<T>(arr: readonly T[]): T[];
 
+  /** UTF-8 base64 of `input` (matches jsonata `$base64encode`). */
+  base64Encode(input: unknown): string;
+  /** UTF-8 base64url (`+`→`-`, `/`→`_`, padding kept) — Gmail `raw`. */
+  base64UrlEncode(input: unknown): string;
+
   isString(v: unknown): v is string;
   isNumber(v: unknown): v is number;
   isArray(v: unknown): v is unknown[];

@@ -138,6 +138,56 @@
     return out;
   }
 
+  // ── Base64 ────────────────────────────────────────────────────────
+  // The sandbox installs no host globals, so `btoa`/`Buffer`/TextEncoder
+  // are absent. Email-send (`raw` as base64url MIME) and git-commit
+  // (`content` as base64) workflows universally need encoding, so it
+  // belongs on the curated surface rather than re-implemented per
+  // transform.
+  //
+  // Byte semantics are deliberately IDENTICAL to jsonata's `$base64encode`
+  // (each character contributes one byte = its low 8 bits — the "binary
+  // string" convention, not UTF-8). This is what lets a transform move
+  // from jsonata to javascript with byte-for-byte the same output, which
+  // the migration's equivalence check enforces. (UTF-8 correctness for
+  // non-ASCII is a separate, pre-existing question about those workflows'
+  // MIME encoding — not something a language switch should silently
+  // change.)
+  const B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  function binaryBytes(str) {
+    const bytes = [];
+    for (let i = 0; i < str.length; i++) bytes.push(str.charCodeAt(i) & 0xff);
+    return bytes;
+  }
+
+  function bytesToBase64(bytes) {
+    let out = "";
+    const len = bytes.length;
+    for (let i = 0; i < len; i += 3) {
+      const b0 = bytes[i];
+      const b1 = i + 1 < len ? bytes[i + 1] : 0;
+      const b2 = i + 2 < len ? bytes[i + 2] : 0;
+      out += B64_ALPHABET[b0 >> 2];
+      out += B64_ALPHABET[((b0 & 3) << 4) | (b1 >> 4)];
+      out += i + 1 < len ? B64_ALPHABET[((b1 & 15) << 2) | (b2 >> 6)] : "=";
+      out += i + 2 < len ? B64_ALPHABET[b2 & 63] : "=";
+    }
+    return out;
+  }
+
+  function base64Encode(input) {
+    return bytesToBase64(binaryBytes(typeof input === "string" ? input : String(input)));
+  }
+
+  // base64url: the standard alphabet with `+`→`-`, `/`→`_`. Padding (`=`)
+  // is preserved, matching the prevailing `$replace($replace(
+  // $base64encode(x),'+','-'),'/','_')` jsonata idiom these workflows use
+  // for the Gmail `raw` field.
+  function base64UrlEncode(input) {
+    return base64Encode(input).replace(/\+/g, "-").replace(/\//g, "_");
+  }
+
   function isString(v) {
     return typeof v === "string";
   }
@@ -174,12 +224,14 @@
     pluck: pluck,
     groupBy: groupBy,
     uniq: uniq,
+    base64Encode: base64Encode,
+    base64UrlEncode: base64UrlEncode,
     isString: isString,
     isNumber: isNumber,
     isArray: isArray,
     isObject: isObject,
     isNil: isNil,
-    version: "1.0.0",
+    version: "1.1.0",
   });
 
   Object.defineProperty(globalThis, "sk", {

@@ -14,7 +14,7 @@ describe("detectStdlibDrift", () => {
   });
 
   test("patch and minor diffs on the same major return null", () => {
-    // Today's stdlib is 1.0.0. Anything under 2.x is compatible.
+    // Today's stdlib is 1.x. Anything under 2.x is compatible.
     expect(detectStdlibDrift("1.0.1")).toBeNull();
     expect(detectStdlibDrift("1.2.3")).toBeNull();
     expect(detectStdlibDrift("1.9.99")).toBeNull();
