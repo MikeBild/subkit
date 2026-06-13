@@ -840,6 +840,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           }
           const res = await withEgressAudit(
             {
+              executor: p.ctx.db,
               tenant_id: p.ctx.tenant_id,
               actor_id: p.ctx.principal?.id ?? null,
               actor_type: p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
@@ -1005,6 +1006,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           }
           const res = await withEgressAudit(
             {
+              executor: p.ctx.db,
               tenant_id: p.ctx.tenant_id,
               actor_id: p.ctx.principal?.id ?? null,
               actor_type: p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
@@ -1236,6 +1238,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
 
           const dispatched = await withEgressAudit(
             {
+              executor: p.ctx.db,
               tenant_id: p.ctx.tenant_id,
               actor_id: p.ctx.principal?.id ?? null,
               actor_type: p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
@@ -1602,6 +1605,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
       const httpEgressInput = activeConnector
         ? {
+            executor: p.ctx.db,
             tenant_id: p.ctx.tenant_id,
             actor_id: p.ctx.principal?.id ?? null,
             actor_type: (p.ctx.principal?.kind === "system_account" ? "system_account" : "user") as
@@ -1955,6 +1959,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         });
       const pageEgressInput = activeConnector
         ? {
+            executor: p.ctx.db,
             tenant_id: p.ctx.tenant_id,
             actor_id: p.ctx.principal?.id ?? null,
             actor_type: (p.ctx.principal?.kind === "system_account" ? "system_account" : "user") as

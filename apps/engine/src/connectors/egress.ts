@@ -15,9 +15,10 @@
 //
 // This module is the wrapper layer; it does not own the driver protocol.
 
-import { audit } from "../audit/audit.ts";
-import type { AuditActorType } from "../audit/types.ts";
+import { auditAwait } from "../audit/audit.ts";
+import type { AuditActorType, AuditEntry } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
+import type { Db } from "../db/client.ts";
 import { getContext } from "../logging/context.ts";
 
 const SENSITIVE_QUERY_KEYS = new Set([
@@ -98,6 +99,7 @@ export type EgressKind =
   | "smb";
 
 export interface EgressInput {
+  executor?: Db;
   tenant_id: string;
   actor_id: string | null;
   actor_type?: AuditActorType;
@@ -137,6 +139,8 @@ export interface EgressOutcome {
   reason?: string;
 }
 
+type EgressAuditWriter = (entry: Partial<AuditEntry>) => Promise<unknown>;
+
 /**
  * Wrap a driver invocation with audit + accounting. Emits exactly one
  * `CONNECTOR_INVOKED` row per call (success or failure) and one
@@ -154,14 +158,15 @@ export async function withEgressAudit<T>(
   input: EgressInput,
   fn: () => Promise<T>,
   extract?: (result: T) => EgressOutcome | undefined,
+  auditWriter: EgressAuditWriter = (entry) => auditAwait(entry, input.executor),
 ): Promise<T> {
   const start = Date.now();
   const url = input.url ?? null;
   const url_host = url ? safeHost(url) : null;
   const url_redacted = url ? scrubUrl(url) : null;
 
-  const emitCredentialAccess = (credential_id: string) => {
-    audit({
+  const emitCredentialAccess = async (credential_id: string) => {
+    await auditWriter({
       tenant_id: input.tenant_id,
       actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
       actor_id: input.actor_id,
@@ -179,7 +184,7 @@ export async function withEgressAudit<T>(
     });
   };
 
-  if (input.credential_id) emitCredentialAccess(input.credential_id);
+  if (input.credential_id) await emitCredentialAccess(input.credential_id);
 
   try {
     const result = await fn();
@@ -188,14 +193,14 @@ export async function withEgressAudit<T>(
     // surface it on the result envelope (`{credential_id}`). Honour it
     // post-call so the audit trail still names the secret that was used.
     const lateCredentialId = readCredentialId(result);
-    if (!input.credential_id && lateCredentialId) emitCredentialAccess(lateCredentialId);
+    if (!input.credential_id && lateCredentialId) await emitCredentialAccess(lateCredentialId);
 
     // A driver can reach the wire and still fail logically — a GraphQL
     // response with `body.errors` on HTTP 200 is the canonical case.
     // `extract` reports that via `ok: false`; the audit outcome must
     // reflect it, not the bare "fn() did not throw".
     const logicalFailure = outcome.ok === false;
-    audit({
+    await auditWriter({
       tenant_id: input.tenant_id,
       actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
       actor_id: input.actor_id,
@@ -228,7 +233,7 @@ export async function withEgressAudit<T>(
     });
     return result;
   } catch (err) {
-    audit({
+    await auditWriter({
       tenant_id: input.tenant_id,
       actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
       actor_id: input.actor_id,
@@ -247,6 +252,8 @@ export async function withEgressAudit<T>(
         duration_ms: Date.now() - start,
         ...(input.credential_id ? { credential_id: input.credential_id } : {}),
         ...(input.execution_id ? { execution_id: input.execution_id } : {}),
+        ...(input.workflow_id ? { workflow_id: input.workflow_id } : {}),
+        ...(input.step_id ? { step_id: input.step_id } : {}),
       },
     });
     throw err;

@@ -6,6 +6,8 @@ import { describe, expect, mock, test } from "bun:test";
 import { withContext } from "../../logging/context.ts";
 import { injectTraceContext, scrubUrl, withEgressAudit } from "../egress.ts";
 
+const noopAudit = async () => undefined;
+
 describe("scrubUrl", () => {
   test("masks sensitive query params, keeps host + path", () => {
     const out = scrubUrl("https://api.example.com/v1/users?token=abc&limit=10");
@@ -94,6 +96,7 @@ describe("withEgressAudit", () => {
       },
       async () => ({ status: 200, body: "ok" }),
       (r) => ({ status: r.status }),
+      noopAudit,
     );
     expect(result).toEqual({ status: 200, body: "ok" });
   });
@@ -114,6 +117,8 @@ describe("withEgressAudit", () => {
         async () => {
           throw boom;
         },
+        undefined,
+        noopAudit,
       );
     } catch (err) {
       caught = err;
@@ -137,6 +142,7 @@ describe("withEgressAudit", () => {
       },
       async () => ({ status: 200, credential_id: "cred-late" }),
       (r) => ({ status: r.status }),
+      noopAudit,
     );
     expect(result.credential_id).toBe("cred-late");
   });
