@@ -149,7 +149,7 @@ describe("runHeadless debug tracing", () => {
       profile: {
         name: "default",
         engine_url: "http://engine.local",
-        api_key: "wf_live_test123",
+        api_key: "test-key",
         active_tenant_id: "tenant-1",
       },
       prompt: "say hi",
@@ -203,7 +203,7 @@ describe("runHeadless debug tracing", () => {
       profile: {
         name: "default",
         engine_url: "http://engine.local",
-        api_key: "wf_live_test123",
+        api_key: "test-key",
         active_tenant_id: "tenant-1",
       },
       prompt: "use weather",
