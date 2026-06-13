@@ -6,15 +6,15 @@
 // by a credential re-read), a `credentials`-row poll, an explicit
 // `callback_failed` event, or a timeout.
 //
-// These tests boot the real pub/sub listener against a disposable
-// Postgres so `getListener()` resolves, then drive the GLOBAL emitter
-// directly — no NOTIFY round-trip, fully deterministic. The credential
-// row content is irrelevant to the wait (it only checks existence), so
-// rows are inserted with placeholder ciphertext bytes.
+// These tests boot a real pub/sub listener against a disposable
+// Postgres, then drive a private emitter directly — no NOTIFY
+// round-trip, fully deterministic. The credential row content is
+// irrelevant to the wait (it only checks existence), so rows are
+// inserted with placeholder ciphertext bytes.
 
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../../db/tests/setup.ts";
 import { PubSubEmitter } from "../../../pubsub/emitter.ts";
 import { PubSubListener } from "../../../pubsub/listener.ts";
 import type { EventEnvelope } from "../../../pubsub/types.ts";
@@ -27,7 +27,7 @@ import { OAUTH_WAIT_MIN_FLOOR_MS, POLL_INTERVAL_MS, waitForOAuthCredential } fro
 // timeouts). Timeliness is asserted by the wait constants above — the
 // test-runner budget only needs to outlast load, so give it real
 // headroom (hooks included).
-setDefaultTimeout(30_000);
+setDefaultTimeout(TEST_DB_HOOK_TIMEOUT);
 
 // Test timeout budgets derived from `wait.ts`'s own constants so a
 // cadence/ceiling change cannot silently invalidate these tests.
