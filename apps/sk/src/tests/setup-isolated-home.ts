@@ -28,9 +28,15 @@
 // `os.tmpdir()`, gets gc'd by the OS, and the lifecycle invariant we
 // care about is "tests in this process never write to the real HOME".
 
+import { setDefaultTimeout } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+// The release gate runs the whole repo with --timeout 120000, but Bun
+// can still enforce its 30s default on hooks. Set the same process-wide
+// budget before any test file registers before*/after* hooks.
+setDefaultTimeout(120_000);
 
 const SK_HOME = mkdtempSync(join(tmpdir(), "sk-test-home-"));
 process.env.HOME = SK_HOME;
