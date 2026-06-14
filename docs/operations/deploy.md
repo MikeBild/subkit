@@ -4,6 +4,8 @@ This guide walks the 4.2.0 systemd-native path: a single `bun build --compile` b
 
 > **Local dev?** This page is for production hosts. For your laptop, use `bun run compose:up` per [docs/quickstart/developer.md](../quickstart/developer.md).
 
+> **Before accepting untrusted traffic:** read [`production-hardening.md`](./production-hardening.md) — it covers the deliberate defaults the engine warns about at boot (file uploads are **not** virus-scanned until clamd is wired; `storage.files.dir` must point at a persistent path) with the concrete fix steps and future TODOs.
+
 ## What ends up on the host
 
 | Path | Purpose |
