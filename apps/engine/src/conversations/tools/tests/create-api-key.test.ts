@@ -59,6 +59,11 @@ describe("create_api_key — tool description contract", () => {
   test("use_case also gates on AFTER-confirmation wording", () => {
     expect(createApiKeyTool.use_case).toMatch(/after the user explicitly confirms/i);
   });
+
+  test("description forbids manual ask_user_confirm before minting", () => {
+    expect(createApiKeyTool.description).toMatch(/do not call ask_user_confirm yourself/i);
+    expect(createApiKeyTool.description).toMatch(/engine policy gate/i);
+  });
 });
 
 describe("create_api_key", () => {

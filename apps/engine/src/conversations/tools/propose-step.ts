@@ -56,12 +56,14 @@ const EXAMPLE_PER_KIND: Record<ValidKind, Record<string, unknown>> = {
     kind: "request",
     method: "GET",
     url: "https://api.example.com/users/${input.user_id}",
+    // for_each: "(sourceData) => sourceData.<prior_step>.data.<array>" — add when iterating
   },
   transform: {
     id: "shape_payload",
     kind: "transform",
-    expression: '{ "name": $scope.fetch_user.data.name, "email": $scope.fetch_user.data.email }',
-    language: "jsonata",
+    language: "javascript",
+    expression:
+      "return { name: input.scope.fetch_user.data.name, email: input.scope.fetch_user.data.email };",
   },
   call: {
     id: "run_subflow",
@@ -96,9 +98,12 @@ const DESCRIPTION = [
   "REQUIRED: each step has `id` (unique string) and `kind` (one of: request, transform, call, wait, branch, parallel, loop).",
   "Do NOT use `type`, `@type`, or invented kinds (`trigger.*`, `flow.*`, `util.*`). Those will fail.",
   "Placeholder grammar — only `${cred|connector|input|scope|item|...}`. Mustache `{{ ... }}` is rejected.",
+  'For_each field (baseStep): any step kind can declare `for_each: "(sourceData) => sourceData.<step>.data.<array>"` for inline iteration (preferred over the `loop` kind for simple fan-out). Inside the step body use `${item.<field>}` in strings, `$item.<field>` in JSONata data_selector.',
+  'Transforms default to JS (`language: "javascript"`). Function body with explicit `return`; `input.scope.<step>.data` is the upstream envelope. JSONata (`language: "jsonata"`) is legacy/compat.',
   "Examples:",
   '- request: {"id":"fetch","kind":"request","method":"GET","url":"https://api.example.com/x"}',
-  '- transform: {"id":"shape","kind":"transform","expression":"$scope.fetch.data.{ \\"name\\": name }","language":"jsonata"}',
+  '- request with for_each: {"id":"fetch_detail","kind":"request","method":"GET","connector_id":"<id>","path":"/items/${item.id}","for_each":"(sourceData) => sourceData.list_items.data.items"}',
+  '- transform (JS): {"id":"shape","kind":"transform","language":"javascript","expression":"return input.scope.fetch.data.map(r => ({ id: r.id, name: r.name }));"}',
   '- branch: {"id":"gate","kind":"branch","when":"$scope.fetch.data.x = true","then_steps":["a"],"else_steps":["b"]}',
   '- loop: {"id":"each","kind":"loop","over":"$scope.fetch.data","body":["body_step"]} — inside the body, address the current item as `$item` in JSONata and `${item.<path>}` in request strings (`item_var` is retired and rejected)',
   '- wait: {"id":"sleep","kind":"wait","duration_ms":5000}',

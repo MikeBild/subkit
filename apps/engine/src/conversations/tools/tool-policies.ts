@@ -303,7 +303,6 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
     confirmationKind: "schema_change",
     reason: "Persists workflow",
   },
-
   // ---- External calls -----------------------------------------------------
   {
     name: "call_connector",
@@ -440,8 +439,8 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   {
     name: "create_api_key",
     defaultMode: "confirm_before_execution",
-    confirmationKind: "sensitive_input",
-    reason: "Mints a new API key",
+    confirmationKind: "external_call",
+    reason: "Mints a plaintext API key shown exactly once",
   },
   { name: "create_schedule", defaultMode: "auto" },
 

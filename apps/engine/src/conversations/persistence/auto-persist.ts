@@ -62,6 +62,7 @@ import { runExecution } from "../../execution/engine.ts";
 import { logger } from "../../logging/logger.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
+import { createApiKeyTool } from "../tools/generated/writes/create-api-key.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { mergeFormIntoCredential } from "./auto-persist/credential-cache.ts";
 import {
@@ -363,6 +364,11 @@ export async function maybeAutoPersistFromElicitation(
             ...(run.warnings && run.warnings.length > 0 ? { warnings: run.warnings } : {}),
           },
         };
+        break;
+      }
+      case "create_api_key": {
+        toolName = "create_api_key";
+        result = await createApiKeyTool.execute(ctx, intent.payload);
         break;
       }
       case "oauth_completed": {

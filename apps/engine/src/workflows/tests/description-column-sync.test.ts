@@ -36,7 +36,9 @@ function defWith(slug: string, description?: string) {
     name: slug,
     slug,
     ...(description !== undefined ? { description } : {}),
-    steps: [{ id: "compute", kind: "transform", language: "jsonata", expression: "$input" }],
+    steps: [
+      { id: "compute", kind: "transform", language: "javascript", expression: "return input;" },
+    ],
   };
 }
 

@@ -9,7 +9,7 @@
 //
 // Every mutation writes an audit row.
 
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
@@ -701,6 +701,102 @@ export async function getOAuth2ClientCredentialForMcpServer(
   const value = deserializePlain("oauth2_client", plain);
   if (value.mode !== "oauth2_client") return null;
   return { client_id: value.client_id, client_secret: value.client_secret };
+}
+
+/**
+ * Determine the environment a connector actually has an authorised primary
+ * credential for, so dry-run flows can avoid hard-pinning "dev" when the
+ * connector only has a prod grant.
+ *
+ * Resolution order (mirrors the preference stated in the connector-builder
+ * spec):
+ *   1. dev  — when a primary-slot dev credential exists.
+ *   2. prod — when a primary-slot prod credential exists but no dev one.
+ *   3. null — when neither environment has a credential (never-configured
+ *              or draft connector id that is not yet a UUID).
+ *
+ * Read-only — no audit entry is written.
+ */
+export async function resolveDefaultEnvironmentForConnector(
+  tenant_id: string,
+  connector_id: string,
+  exec?: Executor,
+): Promise<"dev" | "prod" | null> {
+  // Draft-authoring flows use synthetic ids like `draft-<uuid>`. The
+  // credentials.connector_id column is UUID-typed; a non-UUID value
+  // would throw a Postgres 22P02 (invalid_text_representation).
+  if (!UUID_RE.test(connector_id)) return null;
+  const db = exec ?? getDb();
+  const rows = await db
+    .select({ environment: credentials.environment })
+    .from(credentials)
+    .where(
+      and(
+        eq(credentials.tenant_id, tenant_id),
+        eq(credentials.connector_id, connector_id),
+        // Only primary-slot rows — skip the oauth2_client registration
+        // identity slot, which always exists alongside the real grant.
+        ne(credentials.mode, "oauth2_client"),
+        inArray(credentials.environment, ["dev", "prod"]),
+      ),
+    )
+    // Fetch both environments in one query; we pick dev below if present.
+    .limit(2);
+  if (rows.length === 0) return null;
+  if (rows.some((r) => r.environment === "dev")) return "dev";
+  return "prod";
+}
+
+/**
+ * Resolve the effective execution environment for a dry-run. When the
+ * caller passes `requested`, that value is authoritative. Otherwise probe
+ * the credentials table for every connector referenced by the draft
+ * steps: prefer "dev" when any connector has a dev grant, fall back to
+ * "prod" when all connectors only have prod grants. When no referenced
+ * connector has any credential (mis-configured, or no connector_id
+ * steps), default to "dev" and warn so the operator understands why the
+ * run may 404/401. Extracted from dry-run-workflow.ts so the credential
+ * logic lives next to `resolveDefaultEnvironmentForConnector`.
+ */
+export async function resolveDryRunEnvironment(p: {
+  tenant_id: string;
+  steps: unknown[];
+  requested?: "dev" | "prod" | undefined;
+  exec?: Executor;
+  conversation_id?: string | undefined;
+  onLog?: ((level: "debug" | "info" | "warn" | "error", message: string) => void) | undefined;
+}): Promise<"dev" | "prod"> {
+  if (p.requested !== undefined) return p.requested;
+  const connectorIds = [
+    ...new Set(
+      p.steps
+        .map((s) => (s as { connector_id?: unknown }).connector_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+  if (connectorIds.length === 0) return "dev";
+  const envResults = await Promise.all(
+    connectorIds.map((id) =>
+      resolveDefaultEnvironmentForConnector(p.tenant_id, id, p.exec).catch(() => null),
+    ),
+  );
+  const resolvedEnvs = envResults.filter((e): e is "dev" | "prod" => e !== null);
+  if (resolvedEnvs.length === 0) {
+    logger.warn({
+      module: "conversation_tool",
+      action: "dry_run_workflow.no_credential_found",
+      msg: "none of the draft's connector(s) have a credential in any environment; defaulting to dev — the run may fail with 401/404",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      connector_ids: connectorIds,
+    });
+    p.onLog?.(
+      "warn",
+      `no credential found for connector(s) [${connectorIds.join(", ")}] in dev or prod — the run may fail with 401/404`,
+    );
+    return "dev";
+  }
+  return resolvedEnvs.includes("dev") ? "dev" : "prod";
 }
 
 export async function deleteCredential(

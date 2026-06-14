@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, transforms, jsonata]
-version: 6
+version: 7
 ---
 
 # Data Handling Between Steps
@@ -377,6 +377,52 @@ Walk-through:
 2. `joined` correlates by email with a null-safe default of `'unknown'`.
 3. `totals_by_lifecycle` groups + sums in one JSONata expression.
 4. `output_transform` builds the public payload with a row count sibling.
+
+## `for_each` — inline per-step iteration (JS, preferred)
+
+A step can declare `for_each` (a JS arrow-function string) instead of
+wrapping itself in a `loop` step. The selector receives `sourceData`
+(the full scope) and returns an array; the step executes once per item.
+
+```json
+[
+  { "id": "list_projects", "kind": "request", "path": "/v2/projects" },
+  {
+    "id": "fetch_resources",
+    "kind": "request",
+    "connector_id": "<connector_id>",
+    "path": "/v2/projects/${item.id}/resources",
+    "for_each": "(sourceData) => sourceData.list_projects.data.projects"
+  }
+]
+```
+
+`for_each` bindings inside the step:
+
+| You need | In `path`/`url`/`headers`/`query`/`body` strings | In `data_selector` (JSONata) |
+|---|---|---|
+| Current item field | `${item.<field>}` | `$item.<field>` |
+| Iteration index (zero-based) | not available inline — derive in a prior transform | `$loop_index` |
+
+The step output is an array: `$scope.fetch_resources.data` is an array
+of iteration envelopes. To project across iterations in a downstream
+JS transform:
+
+```json
+{
+  "id": "shape_output",
+  "kind": "transform",
+  "language": "javascript",
+  "expression": "return input.scope.fetch_resources.data.map(iter => ({ id: iter.data.id, name: iter.data.name }));"
+}
+```
+
+**`for_each` vs `loop` kind:**
+
+- `for_each` on `baseStep` = inline iteration, flat pipeline, no body
+  array; preferred for simple fan-out.
+- `loop` kind = explicit container with `body: [...]` steps; use only
+  when each iteration needs multiple sequential sibling steps.
 
 ## Loop iteration variables — `$item` only
 

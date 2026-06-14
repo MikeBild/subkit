@@ -212,7 +212,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
       slug: "empty-loop-journey",
       name: "Empty Loop Journey",
       steps: [
-        { kind: "transform", id: "items", expression: "['p1', 'p2', 'p3']" },
+        { kind: "transform", id: "items", language: "jsonata", expression: "['p1', 'p2', 'p3']" },
         {
           kind: "loop",
           id: "iter",
@@ -221,10 +221,15 @@ describe("journey 53: session-79bf2cca regression set", () => {
           body: ["fetch_resources"],
         },
         // Body always returns []. Three iterations succeed; productive body output = 0.
-        { kind: "transform", id: "fetch_resources", expression: "[]" },
+        { kind: "transform", id: "fetch_resources", language: "jsonata", expression: "[]" },
         // Top-level output is non-empty so the *legacy* heuristic ("output is []")
         // would have missed this; only the new `loop_body_empty` warning catches it.
-        { kind: "transform", id: "format_output", expression: "{ 'count': 3 }" },
+        {
+          kind: "transform",
+          id: "format_output",
+          language: "jsonata",
+          expression: "{ 'count': 3 }",
+        },
       ],
     });
 

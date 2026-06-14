@@ -64,6 +64,8 @@ export function mapToolToCommitIntentKind(tool: string): string | null {
       return "delete_connector";
     case "delete_workflow":
       return "delete_workflow";
+    case "create_api_key":
+      return "create_api_key";
     default:
       return null;
   }
@@ -267,6 +269,18 @@ export function buildPolicyGateCommitIntent(
       kind: "delete_workflow",
       payload: { id },
       description: "Permanently delete this workflow.",
+    };
+  }
+  if (intentKind === "create_api_key") {
+    const {
+      __policy_confirmed: _policyConfirmed,
+      _meta,
+      ...payload
+    } = rawArgs as Record<string, unknown>;
+    return {
+      kind: "create_api_key",
+      payload,
+      description: "Create a new API key.",
     };
   }
   // run_workflow / update_* — payload shapes still owned by the

@@ -174,7 +174,11 @@ function readHeldRequest(step: JudgeSourceStep): unknown {
 export function buildJudgeStepArtifacts(
   steps: ReadonlyArray<JudgeSourceStep>,
 ): JudgeStepArtifact[] {
-  const prioritized = [...steps].sort((a, b) => {
+  // Skipped steps carry no output and no held_request — feeding them to
+  // the judge as "missing data" would cause it to flag the workflow as
+  // incomplete (the A4 judge-loop root cause).
+  const eligible = steps.filter((s) => s.status !== "skipped");
+  const prioritized = [...eligible].sort((a, b) => {
     const score = (s: JudgeSourceStep): number =>
       s.kind === "transform" ? 0 : readHeldRequest(s) !== undefined ? 1 : 2;
     return score(a) - score(b);

@@ -17,6 +17,7 @@ describe("transform · transform_empty_extraction did_you_mean", () => {
     const step = TransformStepSchema.parse({
       kind: "transform",
       id: "shape",
+      language: "jsonata",
       // typo: fetch_projets vs. fetch_projects (the actual scope key)
       expression: "$scope.fetch_projets.data.projects",
     });

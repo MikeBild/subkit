@@ -20,6 +20,7 @@ import { compile as compileJsonata } from "../execution/jsonata-engine.ts";
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
 import { compileSelector } from "../execution/selectors.ts";
 import { detectReservedAuthHeaders } from "./header-policy.ts";
+import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 /**
@@ -155,13 +156,19 @@ export function validateWorkflowDef(
   }
   for (const step of wf.steps) {
     if (step.data_selector) {
-      try {
-        compileSelector(step.data_selector);
-      } catch (e) {
-        errors.push({
-          path: `steps.${step.id}.data_selector`,
-          message: e instanceof Error ? e.message : String(e),
-        });
+      // `loop` step's `data_selector` is a JS arrow function (the source-
+      // array selector evaluated by runLoopStep via runJs). It shares the
+      // field name with baseStep's output-projector `data_selector` but has
+      // different semantics — skip the JSONPath compile check for loop steps.
+      if (step.kind !== "loop") {
+        try {
+          compileSelector(step.data_selector);
+        } catch (e) {
+          errors.push({
+            path: `steps.${step.id}.data_selector`,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
     }
     if (step.kind === "request") {
@@ -198,7 +205,7 @@ export function validateWorkflowDef(
     }
     if (
       step.kind === "transform" &&
-      (step.language ?? "jsonata") === "jsonata" &&
+      (step.language ?? "javascript") === "jsonata" &&
       step.expression !== undefined
     ) {
       try {
@@ -342,13 +349,17 @@ export function validateWorkflowDef(
   const ITEM_PLACEHOLDER_RE = /\$\{\s*item\.[a-zA-Z_]/;
   for (const step of wf.steps) {
     if (containedStepIds.has(step.id)) continue;
+    // A step with `for_each` declared is its own iteration context —
+    // it binds `$item` per element, so `${item.…}` placeholders are
+    // valid without a surrounding `loop` wrapper.
+    if (step.for_each !== undefined) continue;
     const haystack = JSON.stringify(step);
     if (ITEM_PLACEHOLDER_RE.test(haystack)) {
       errors.push({
         path: `steps.${step.id}`,
         message:
           // biome-ignore lint/suspicious/noTemplateCurlyInString: literal `${item.…}` token names the placeholder grammar surfaced to the LLM.
-          "step uses `${item.…}` placeholder but is not contained in any `loop.body[]`. Add a `loop` step that lists this step in its `body` (the placeholder resolver only sets `$item` inside loop iterations).",
+          'step uses `${item.…}` placeholder but is not contained in any `loop.body[]` and has no `for_each` declared. Set `for_each: "(sourceData) => sourceData.<prev_step>.<array_path>"` on this step to bind `$item` per element (the placeholder resolver only sets `$item` inside a `for_each` iteration or a loop body).',
       });
     }
   }
@@ -384,6 +395,45 @@ export function validateWorkflowDef(
     options.noneAuthConnectorIds ? { noneAuthConnectorIds: options.noneAuthConnectorIds } : {},
   )) {
     errors.push({ path: v.path, message: v.message });
+  }
+
+  // Input-schema drift check (E4 / W4c-input_schema-drift).
+  //
+  // When `input_schema` is declared and carries a `properties` map, verify
+  // that every `$input.<key>` / `input.<key>` reference in step strings and
+  // expressions actually names a declared property.  A referenced key that is
+  // absent from `properties` would resolve to `undefined` at runtime and the
+  // step would silently receive an empty placeholder — exactly the drift that
+  // produced the essay-word-count failure.
+  //
+  // We deliberately do NOT flag the reverse direction (a declared `required`
+  // key that no step references): a step may consume `$input` / `input`
+  // wholesale, and JS-transform steps read `input.<key>` in a way the
+  // reference extractor cannot see — so "required but unreferenced" is a
+  // false-positive magnet, not a reliable signal.
+  //
+  // The check is skipped when `input_schema` is absent: the synthesiser
+  // produces a schema on-the-fly from the references themselves, so there can
+  // be no declared-vs-referenced mismatch.
+  if (wf.input_schema && typeof wf.input_schema === "object") {
+    const declaredProps = (wf.input_schema as { properties?: unknown }).properties;
+    if (declaredProps && typeof declaredProps === "object" && !Array.isArray(declaredProps)) {
+      const declaredKeys = new Set(Object.keys(declaredProps as Record<string, unknown>));
+      // Reuse the same reference-extraction logic the synthesiser uses so
+      // the two surfaces always agree on what counts as an `$input.*` ref.
+      const synth = synthesizeInputSchema(wf);
+      const referencedKeys = new Set(synth ? Object.keys(synth.properties) : []);
+
+      // 1. Referenced but not declared → runtime placeholder will be empty.
+      for (const key of referencedKeys) {
+        if (!declaredKeys.has(key)) {
+          errors.push({
+            path: "input_schema",
+            message: `step references input key "${key}" which is not declared in input_schema.properties — add it or remove the reference`,
+          });
+        }
+      }
+    }
   }
 
   if (errors.length > 0) {

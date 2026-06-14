@@ -96,7 +96,24 @@ function isAbsoluteUrl(s: string): boolean {
 
 /**
  * Resolve the final URL for a request relative to a connector's
- * base_url. If the input already absolute, the base_url is ignored.
+ * base_url. If the input is already absolute, the base_url is ignored.
+ *
+ * Leading-slash path + base with a non-root pathname (e.g.
+ * base="https://api.example.com/v1", path="/users/me") would normally
+ * resolve to "https://api.example.com/users/me" via the URL spec —
+ * discarding the "/v1" path prefix and producing 404s. When the base
+ * URL has a non-root pathname and the path starts with "/", we strip
+ * exactly one leading "/" so the path is treated as relative and
+ * appended to the base pathname instead of replacing it:
+ *
+ *   base "https://api.example.com/v1"  + path "/users/me"
+ *     → https://api.example.com/v1/users/me   (correct)
+ *
+ * Paths without a leading slash already append correctly via new URL().
+ * Absolute URLs (https?://) short-circuit before this function body.
+ * Base URLs with root pathname ("/") are unchanged — stripping the
+ * leading slash of "/users" when base is "https://api.example.com/"
+ * gives "https://api.example.com/users" which is the same result.
  */
 export function resolveUrl(base_url: string | null, path_or_url: string): URL {
   if (isAbsoluteUrl(path_or_url)) return new URL(path_or_url);
@@ -106,8 +123,15 @@ export function resolveUrl(base_url: string | null, path_or_url: string): URL {
       `HTTP driver: no base_url on connector and path "${path_or_url}" is not absolute`,
     );
   }
-  // new URL(path, base) — URL normalises leading slashes for us.
-  return new URL(path_or_url, base.endsWith("/") ? base : `${base}/`);
+  const normalizedBase = base.endsWith("/") ? base : `${base}/`;
+  // When the base URL has a non-root pathname (e.g. "/v1/" rather than
+  // just "/") and the caller supplied a leading-slash path, the URL
+  // constructor would treat it as an absolute path and silently drop
+  // the base pathname. Strip the leading slash so the join appends.
+  const basePathname = new URL(normalizedBase).pathname;
+  const effectivePath =
+    path_or_url.startsWith("/") && basePathname !== "/" ? path_or_url.slice(1) : path_or_url;
+  return new URL(effectivePath, normalizedBase);
 }
 
 /**

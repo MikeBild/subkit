@@ -78,6 +78,7 @@ describe("workflow file-output: $file ref in step result", () => {
         {
           kind: "transform",
           id: "wrap",
+          language: "jsonata",
           // JSONata: return an object that passes through the fid from $input.
           expression: `{ "file_ref": $input.fid, "status": "done" }`,
         },

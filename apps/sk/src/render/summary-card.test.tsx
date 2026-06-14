@@ -27,7 +27,18 @@ const workflowUsage: ResourceUsage = {
     },
     { via: "schedule", label: "Schedule (live)", detail: "0 0 * * * (UTC)" },
   ],
-  follow_up: "Run it now?",
+  follow_up: "Run it now, show the REST/HTTP call, or set up a schedule?",
+};
+
+const workflowUsageWithOptions: ResourceUsage = {
+  ...workflowUsage,
+  follow_up_options: [
+    { label: "sk CLI", value: "cli", detail: "sk workflows run nightly-sync" },
+    { label: "MCP tool", value: "mcp", detail: "wf_nightly-sync" },
+    { label: "Chat", value: "chat", detail: "/subkit run nightly-sync" },
+    { label: "REST API", value: "rest", detail: "POST /v1/executions" },
+    { label: "Schedule (live)", value: "schedule", detail: "0 0 * * * (UTC)" },
+  ],
 };
 
 function snapshot(ui: ReturnType<typeof render>): string {
@@ -109,7 +120,7 @@ describe("SummaryCard · workflow", () => {
     expect(out).toContain("/subkit run nightly-sync");
     expect(out).toContain("POST /v1/executions");
     expect(out).toContain("0 0 * * * (UTC)");
-    expect(out).toContain("Run it now?");
+    expect(out).toContain("Run it now, show the REST/HTTP call, or set up a schedule?");
     ui.unmount();
   });
 
@@ -117,6 +128,32 @@ describe("SummaryCard · workflow", () => {
     const ui = renderSummary(base);
     const out = snapshot(ui);
     expect(out).not.toContain("Use it via:");
+    ui.unmount();
+  });
+
+  test("follow_up_options renders as numbered choice list when present", () => {
+    const ui = renderSummary({ ...base, usage: workflowUsageWithOptions });
+    const out = snapshot(ui);
+    // Numbered entries must appear
+    expect(out).toContain("1. sk CLI");
+    expect(out).toContain("2. MCP tool");
+    expect(out).toContain("3. Chat");
+    expect(out).toContain("4. REST API");
+    expect(out).toContain("5. Schedule (live)");
+    // Detail values must appear
+    expect(out).toContain("wf_nightly-sync");
+    expect(out).toContain("POST /v1/executions");
+    // The plain follow_up text must NOT appear when options are present
+    expect(out).not.toContain("Run it now, show the REST/HTTP call, or set up a schedule?");
+    ui.unmount();
+  });
+
+  test("plain follow_up text renders when follow_up_options is absent", () => {
+    const ui = renderSummary({ ...base, usage: workflowUsage });
+    const out = snapshot(ui);
+    expect(out).toContain("Run it now, show the REST/HTTP call, or set up a schedule?");
+    // No numbered list
+    expect(out).not.toContain("1. sk CLI");
     ui.unmount();
   });
 });

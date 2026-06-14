@@ -31,7 +31,8 @@ const DRAFT = {
     {
       kind: "transform" as const,
       id: "render",
-      expression: '{ "markdown": "# Title", "slug": "title", "title": "Title" }',
+      language: "javascript" as const,
+      expression: 'return { markdown: "# Title", slug: "title", title: "Title" };',
     },
   ],
 };

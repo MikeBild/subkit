@@ -95,6 +95,8 @@ export function intentToolName(kind: CommitIntent["kind"]): string {
       return "authenticate_oauth";
     case "run_workflow":
       return "run_workflow";
+    case "create_api_key":
+      return "create_api_key";
   }
 }
 

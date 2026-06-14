@@ -48,11 +48,20 @@ export interface UsageAccessEntry {
   detail?: string;
 }
 
+export interface FollowUpOption {
+  label: string;
+  value: string;
+  detail?: string;
+}
+
 export interface ResourceUsage {
   inputs: Array<{ name: string; type: string; required: boolean }>;
   output: string | null;
   access: UsageAccessEntry[];
   follow_up: string;
+  /** Structured execution-options picker — present only for workflow usage.
+   *  Parsed defensively from the persist envelope; sk never imports engine types. */
+  follow_up_options?: FollowUpOption[];
 }
 
 export interface WorkflowSummary {

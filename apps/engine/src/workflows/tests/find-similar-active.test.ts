@@ -111,12 +111,12 @@ describe("findSimilarActive · stage-1 ranking", () => {
     await seed(tenant_id, {
       name: "Bravo",
       slug: "wf-bravo",
-      steps: [{ id: "s", kind: "transform", language: "jsonata", expression: "$" }],
+      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "$" }],
     });
     await seed(tenant_id, {
       name: "Alpha",
       slug: "wf-alpha",
-      steps: [{ id: "s", kind: "transform", language: "jsonata", expression: "$" }],
+      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "$" }],
     });
 
     const refs = await findSimilarActive(
@@ -232,7 +232,7 @@ describe("findSimilarActive · stage-1 ranking", () => {
         {
           id: "shape",
           kind: "transform",
-          language: "jsonata",
+          language: "javascript",
           expression: "$",
         },
         {
@@ -316,7 +316,7 @@ describe("findSimilarActive · stage-1 ranking", () => {
     await seed(tenant_id, {
       name: "Some workflow",
       slug: "wf-some",
-      steps: [{ id: "s", kind: "transform", language: "jsonata", expression: "$" }],
+      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "$" }],
     });
 
     const refs = await findSimilarActive(
@@ -344,7 +344,7 @@ describe("findSimilarActive · stage-1 ranking", () => {
         required: ["whatever"],
         additionalProperties: false,
       },
-      steps: [{ id: "s", kind: "transform", language: "jsonata", expression: "$" }],
+      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "$" }],
     });
 
     const [ref] = await findSimilarActive(

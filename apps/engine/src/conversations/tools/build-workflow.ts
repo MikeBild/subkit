@@ -200,7 +200,23 @@ export const buildWorkflowTool: ConversationTool = {
         connector_id: "00000000-0000-0000-0000-000000000000",
         method: "GET",
         path: "/v1/customers",
-        headers: { Authorization: String.raw`Bearer \${cred.stripe.token}` },
+      },
+      {
+        id: "fetch_detail",
+        kind: "request",
+        connector_id: "00000000-0000-0000-0000-000000000000",
+        method: "GET",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${…} token is the placeholder grammar surfaced to the LLM.
+        path: "/v1/customers/${item.id}",
+        // Inline iteration: runs once per customer from the fetch step.
+        for_each: "(sourceData) => sourceData.fetch.data.data",
+      },
+      {
+        id: "shape",
+        kind: "transform",
+        language: "javascript",
+        expression:
+          "return input.scope.fetch_detail.data.map(iter => ({ id: iter.data.id, email: iter.data.email }));",
       },
     ],
     environment: "dev",

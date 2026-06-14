@@ -47,7 +47,7 @@ import {
   wrapEnvelope,
 } from "./engine/envelope.ts";
 import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
-import { buildLoopChildScope } from "./loop-scope.ts";
+import { buildLoopChildScope, resolveForEachCollection } from "./loop-scope.ts";
 import { isOffloadRef, maybeOffload, previewOf } from "./offload.ts";
 import { deepResolveOffloadRefs, previewOffloadRefs } from "./offload-rehydrate.ts";
 import { checkOutputContract, summarizeViolations } from "./output-contract.ts";
@@ -56,6 +56,7 @@ import { applyResponseFilters } from "./response-filter.ts";
 import {
   createExecution,
   finalizeExecution,
+  finalizeStepRow,
   insertStepRow,
   markExecutionRunning,
 } from "./state.ts";
@@ -260,6 +261,26 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     executionOrder = def.steps.map((s) => s.id);
   }
 
+  // Static container-child exclusion: compute the union of ids that are
+  // managed INSIDE their container driver and must not run at the top level.
+  // Applies to: loop bodies (run by the loop driver per item) and parallel
+  // branches (run by the parallel driver concurrently). Does NOT include
+  // branch arms — branch arms execute in the top-level walk; only the
+  // NOT-TAKEN arm is excluded at runtime via the `skippedStepIds` set that
+  // is populated after the branch step reports which arm it chose.
+  const containerChildIds = new Set<string>();
+  for (const s of def.steps) {
+    if (s.kind === "parallel") {
+      const p = s as ParallelStep;
+      for (const branch of p.branches ?? []) {
+        for (const id of branch ?? []) containerChildIds.add(id);
+      }
+    } else if (s.kind === "loop") {
+      const l = s as LoopStep;
+      for (const id of l.body ?? []) containerChildIds.add(id);
+    }
+  }
+
   for (let topoIdx = 0; topoIdx < executionOrder.length; topoIdx++) {
     const id = executionOrder[topoIdx]!;
     const i = stepIndexById.get(id) ?? topoIdx;
@@ -277,12 +298,19 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       });
       continue;
     }
-    if (skippedStepIds.has(step.id)) {
+    // Container children are excluded from the top-level walk — they run
+    // inside their container (branch arm, parallel branch, loop body).
+    // The static `containerChildIds` set catches them regardless of
+    // container outcome (success, failure, held), fixing the bug where a
+    // failed or held container left its children to run at top level with
+    // unbound `$item`. The `skippedStepIds` set handles the branch arm
+    // that was NOT taken (runtime control flow).
+    if (skippedStepIds.has(step.id) || containerChildIds.has(step.id)) {
       stepSummaries.push({
         step_key: step.id,
         step_index: i,
         kind: step.kind,
-        status: "aborted",
+        status: "skipped",
         duration_ms: 0,
         retry_count: 0,
         error: { code: "skipped", message: "skipped by branch control flow" },
@@ -337,7 +365,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           step_key: step.id,
           step_index: i,
           kind: step.kind,
-          status: "aborted",
+          status: "skipped",
           duration_ms: 0,
           retry_count: 0,
           error: {
@@ -377,6 +405,268 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       llm_budget: llmBudget,
       ...(opts.hold_writes ? { hold_writes: true } : {}),
     };
+
+    // for_each inline iteration: resolve the JS selector to an array,
+    // then run THIS SAME step once per item with a child scope that
+    // binds $item + $loop_index. The iteration results accumulate into
+    // the same envelope shape as a legacy `loop` body, so downstream
+    // transforms read `$scope.<step>.data[0].data` uniformly. The
+    // container step row (inserted above) records the aggregate; each
+    // iteration gets its own per-iteration row keyed `<step>[N]`.
+    if (step.for_each) {
+      const forEachStart = Date.now();
+      const collectionResult = await resolveForEachCollection(
+        step.for_each,
+        step.id,
+        scope,
+        forEachStart,
+      );
+      if (collectionResult.kind === "failure") {
+        // Collection resolution failed — record the failure as the step
+        // outcome, write the step row, and apply the on_error semantics.
+        const failureOutcome: import("./step-runner.ts").RunStepOutcome = {
+          result: collectionResult.result,
+          scope_value: undefined,
+        };
+        scope[step.id] = envelopeFor(failureOutcome);
+        lastOutput = undefined;
+        await finalizeStepRow(
+          db,
+          step_row_id,
+          collectionResult.result.status as import("./types.ts").StepStatus,
+          {
+            status: collectionResult.result.status,
+            duration_ms: collectionResult.result.duration_ms ?? 0,
+            retry_count: collectionResult.result.retry_count ?? 0,
+            error: collectionResult.result.error ?? null,
+          },
+          { output_preview: null, result_preview: null, result_storage_uri: null },
+        );
+        stepSummaries.push({
+          step_key: step.id,
+          step_index: i,
+          kind: step.kind,
+          status: collectionResult.result.status,
+          duration_ms: collectionResult.result.duration_ms ?? null,
+          retry_count: collectionResult.result.retry_count ?? 0,
+          error: collectionResult.result.error ?? null,
+          request_meta: null,
+        });
+        if (collectionResult.result.status !== "succeeded") {
+          const onError = step.on_error ?? "fail";
+          lastError = collectionResult.result.error ?? {
+            code: "step_failed",
+            message: "step failed",
+          };
+          if (onError === "fail") {
+            failedStepId = step.id;
+            finalStatus = "failed";
+            for (let j = topoIdx + 1; j < executionOrder.length; j++) {
+              const remainingId = executionOrder[j]!;
+              const remainingIdx = stepIndexById.get(remainingId) ?? j;
+              const s = def.steps[remainingIdx] as StepDef;
+              stepSummaries.push({
+                step_key: s.id,
+                step_index: remainingIdx,
+                kind: s.kind,
+                status: "skipped",
+                duration_ms: 0,
+                retry_count: 0,
+                error: { code: "skipped", message: "skipped due to upstream failure" },
+                request_meta: null,
+              });
+            }
+            break;
+          }
+        }
+        continue;
+      }
+      if (collectionResult.kind === "empty_warning") {
+        // Selector resolved to non-array — zero iterations, warn.
+        const warnResult = collectionResult.result;
+        scope[step.id] = wrapEnvelope({
+          data: [],
+          duration_ms: warnResult.duration_ms ?? 0,
+          error: null,
+        });
+        lastOutput = [];
+        for (const w of warnResult.warnings ?? []) {
+          warningsAccum.push({ ...w, step_key: step.id });
+        }
+        await finalizeStepRow(
+          db,
+          step_row_id,
+          "succeeded",
+          {
+            status: "succeeded",
+            duration_ms: warnResult.duration_ms ?? 0,
+            retry_count: 0,
+          },
+          { output_preview: [], result_preview: null, result_storage_uri: null },
+        );
+        stepSummaries.push({
+          step_key: step.id,
+          step_index: i,
+          kind: step.kind,
+          status: "succeeded",
+          duration_ms: warnResult.duration_ms ?? null,
+          retry_count: 0,
+          error: null,
+          request_meta: null,
+          output_preview: [],
+        });
+        continue;
+      }
+      // kind === "collection" — iterate.
+      const items = collectionResult.items;
+      const iterationResults: unknown[] = [];
+      const iterationHeldIds = new Set<string>();
+      for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+        if (signal.aborted) break;
+        const item = items[itemIdx];
+        // Build iteration scope: parent scope + $item + $loop_index.
+        // Pass a no-item_var loopStep shape so buildLoopChildScope only
+        // binds the canonical $item + $loop_index — no legacy alias.
+        const childScope = buildLoopChildScope({}, scope, item, itemIdx);
+        const iterStepRowId = await insertStepRow(db, {
+          tenant_id,
+          execution_id,
+          step_key: `${step.id}[${itemIdx}]`,
+          step_index: i,
+          kind: step.kind,
+        });
+        if (opts.hold_writes) {
+          const heldDep = findHeldDependency(
+            dag,
+            step.id,
+            (sid) => iterationHeldIds.has(sid) || heldOrSkippedStepIds.has(sid),
+          );
+          if (heldDep) {
+            iterationHeldIds.add(step.id);
+            const skippedEnv = wrapEnvelope({
+              data: null,
+              duration_ms: 0,
+              error: {
+                code: "skipped_dependency_held",
+                message: `skipped (depends on held step "${heldDep}")`,
+              },
+            });
+            iterationResults.push({ [step.id]: skippedEnv });
+            continue;
+          }
+        }
+        const iterCtx: StepRunContext = {
+          ...ctx,
+          scope: childScope,
+          step_row_id: iterStepRowId,
+        };
+        const iterOutcome = await instrument({
+          module: "execution",
+          action: "step",
+          level: "debug",
+          thresholdMs: 1000,
+          fields: { step_id: step.id, step_kind: step.kind, for_each_index: itemIdx },
+          fn: () =>
+            runStep(iterCtx, childScope, normalizedInput, async ({ ctx: cctx, step: cstep }) =>
+              runCallStep(db, cctx, cstep as CallStep),
+            ),
+        });
+        // Retain $item + $loop_index on the scope for downstream
+        // string/JSONata refs within this iteration. The child scope
+        // already has them; the parent scope's step.id key will carry
+        // the aggregate after all iterations complete.
+        childScope[step.id] = envelopeFor(iterOutcome);
+        const accumEnv = bodyEnvelopeForLoopAccumulator(iterOutcome);
+        iterationResults.push({ [step.id]: accumEnv });
+        if (iterOutcome.result.held) {
+          iterationHeldIds.add(step.id);
+        }
+      }
+      scope[step.id] = wrapEnvelope({
+        data: iterationResults,
+        duration_ms: Date.now() - forEachStart,
+        error: null,
+      });
+      lastOutput = iterationResults;
+      // Empty-loop-body warning reuse: same heuristic as the legacy loop.
+      if (iterationResults.length > 0) {
+        let offloadedIterations = 0;
+        const productiveIterations = iterationResults.filter((iter) => {
+          if (!iter || typeof iter !== "object") return false;
+          let iterProductive = false;
+          let iterOffloaded = false;
+          for (const value of Object.values(iter as Record<string, unknown>)) {
+            const env = value as ScopeEnvelope | null | undefined;
+            if (!env || typeof env !== "object") continue;
+            if (env.held) {
+              iterProductive = true;
+              continue;
+            }
+            if (env.error) {
+              if (env.error.code === "skipped_dependency_held") iterProductive = true;
+              continue;
+            }
+            const data = env.data;
+            if (data == null) continue;
+            if (isOffloadRef(data)) {
+              iterOffloaded = true;
+              iterProductive = true;
+              continue;
+            }
+            if (Array.isArray(data) && data.length === 0) continue;
+            if (typeof data === "object" && Object.keys(data as object).length === 0) continue;
+            iterProductive = true;
+          }
+          if (iterOffloaded) offloadedIterations += 1;
+          return iterProductive;
+        }).length;
+        if (offloadedIterations > 0) {
+          recordLoopIterationsOffloaded({ tenant_id, count: offloadedIterations });
+        }
+        if (productiveIterations === 0) {
+          warningsAccum.push({
+            code: "loop_body_empty",
+            identifier: step.id,
+            message: `for_each step "${step.id}" ran ${iterationResults.length} iteration${iterationResults.length === 1 ? "" : "s"} but no iteration produced productive output — every result was null / [] / {}`,
+            step_key: step.id,
+            details: {
+              iterations: iterationResults.length,
+              productive_iterations: 0,
+              scope_shape: `$scope.${step.id}.data is an array of ${iterationResults.length} iteration objects`,
+            },
+          });
+        }
+      }
+      const forEachDurationMs = Date.now() - forEachStart;
+      await finalizeStepRow(
+        db,
+        step_row_id,
+        "succeeded",
+        {
+          status: "succeeded",
+          duration_ms: forEachDurationMs,
+          retry_count: 0,
+        },
+        {
+          output_preview: previewOffloadRefs(iterationResults),
+          result_preview: null,
+          result_storage_uri: null,
+        },
+      );
+      stepSummaries.push({
+        step_key: step.id,
+        step_index: i,
+        kind: step.kind,
+        status: "succeeded",
+        duration_ms: forEachDurationMs,
+        retry_count: 0,
+        error: null,
+        request_meta: null,
+        output_preview: previewOffloadRefs(iterationResults),
+      });
+      continue;
+    }
+
     let outcome: import("./step-runner.ts").RunStepOutcome;
     try {
       outcome = await instrument({
@@ -651,10 +941,6 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           }
         }
       }
-      // Mark body step ids as skipped in the linear walk (they run inside the loop)
-      for (const bodyStepId of loopStep.body) {
-        skippedStepIds.add(bodyStepId);
-      }
     }
 
     // Parallel fan-out: run each branch concurrently via Promise.all.
@@ -760,12 +1046,6 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         error: null,
       });
       lastOutput = branchResults;
-      // Mark parallel branch step ids as skipped in the linear walk
-      for (const branchStepIds of parallelStep.branches) {
-        for (const branchStepId of branchStepIds) {
-          skippedStepIds.add(branchStepId);
-        }
-      }
     }
 
     // Capture an output preview for this step. For request/transform/
@@ -812,12 +1092,11 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         if (outcome.result.status === "aborted") finalStatus = "aborted";
         else if (outcome.result.status === "timed_out") finalStatus = "timed_out";
         else finalStatus = "failed";
-        // Mark every remaining step in the topological order as
-        // aborted. Iterating `executionOrder` rather than the raw
-        // declaration array ensures contained branch arms / parallel
-        // branches that haven't been visited yet still surface a
-        // summary entry — and we don't double-count any step already
-        // executed earlier in the topo walk.
+        // Mark every remaining step in the topological order as skipped.
+        // Iterating `executionOrder` rather than the raw declaration array
+        // ensures contained branch arms / parallel branches that haven't been
+        // visited yet still surface a summary entry — and we don't
+        // double-count any step already executed earlier in the topo walk.
         for (let j = topoIdx + 1; j < executionOrder.length; j++) {
           const remainingId = executionOrder[j]!;
           const remainingIdx = stepIndexById.get(remainingId) ?? j;
@@ -826,7 +1105,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             step_key: s.id,
             step_index: remainingIdx,
             kind: s.kind,
-            status: "aborted",
+            status: "skipped",
             duration_ms: 0,
             retry_count: 0,
             error: { code: "skipped", message: "skipped due to upstream failure" },

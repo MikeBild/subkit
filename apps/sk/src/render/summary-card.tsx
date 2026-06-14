@@ -9,6 +9,7 @@ import {
 } from "./helpers.ts";
 import type {
   ConnectorSummary,
+  FollowUpOption,
   KnowledgeSourceSummary,
   ResourceUsage,
   WorkflowSummary,
@@ -44,10 +45,21 @@ const UsageBlock: React.FC<{ usage: ResourceUsage }> = ({ usage }) => (
         </Text>
       </Box>
     ))}
-    <Box marginTop={1}>
-      <Text dimColor italic>
-        {usage.follow_up}
-      </Text>
+    <Box marginTop={1} flexDirection="column">
+      {usage.follow_up_options && usage.follow_up_options.length > 0 ? (
+        usage.follow_up_options.map((opt: FollowUpOption, i: number) => (
+          <Box key={`opt-${opt.value}-${i}`} marginLeft={2}>
+            <Text dimColor>
+              {`${i + 1}. ${opt.label}`}
+              {opt.detail ? `: ${opt.detail}` : ""}
+            </Text>
+          </Box>
+        ))
+      ) : (
+        <Text dimColor italic>
+          {usage.follow_up}
+        </Text>
+      )}
     </Box>
   </Box>
 );

@@ -219,6 +219,12 @@ describe("resolveExecutionMode — table coverage", () => {
     );
   });
 
+  it("create_api_key — confirm_before", () => {
+    const r = resolveExecutionMode("create_api_key", { name: "REST access" }, CTX);
+    expect(r.mode).toBe("confirm_before_execution");
+    expect(r.confirmationKind).toBe("external_call");
+  });
+
   it("update_connector with auth_type touches auth → confirm_before", () => {
     expect(resolveExecutionMode("update_connector", { auth_type: "bearer" }, CTX).mode).toBe(
       "confirm_before_execution",

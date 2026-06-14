@@ -101,6 +101,7 @@ export function classifyRunResult(step: StepDef, run: RunResult): PreviewStepSum
 
 export function classifyFailure(result: StepResult): PreviewClassification {
   if (result.status === "aborted") return "aborted";
+  if (result.status === "skipped") return "aborted";
   if (result.status === "timed_out") return "timeout";
   const code = result.error?.code ?? "";
   const message = (result.error?.message ?? "").toLowerCase();

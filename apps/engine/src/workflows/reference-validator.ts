@@ -465,6 +465,15 @@ export function validateBareIterationIdentifiers(
 
   const jsonataSite = (step: Record<string, unknown>): { field: string; text: string } | null => {
     if (step.kind === "transform") {
+      // Apply the bare-item AST lint to any expression that is either
+      // explicitly `language: "jsonata"` or has no language specified
+      // (legacy stored definitions without a language tag). New definitions
+      // default to "javascript" at runtime, but the authoring lint is
+      // conservative — it runs on language-untagged expressions too because
+      // stored legacy JSONata bodies may not carry the tag. The lint
+      // produces a false-negative (misses a legacy bare ref) only when the
+      // expression cannot be parsed as JSONata, which is surfaced by
+      // `findBareItemRefs`'s `ok: false` guard below.
       const language = typeof step.language === "string" ? step.language : "jsonata";
       if (language === "jsonata" && typeof step.expression === "string" && step.expression) {
         return { field: "expression", text: step.expression };
@@ -503,6 +512,34 @@ export function validateBareIterationIdentifiers(
       });
     }
   }
+
+  // `for_each` inline-iteration lint. A step that declares `for_each`
+  // (a JS selector body returning an array) must reference `$item` or
+  // `${item.…}` somewhere in its own definition — otherwise the iteration
+  // runs N copies of the same call, exactly the bug the loop-body check
+  // targets. The check mirrors the loop body reference rule
+  // (`validateWorkflowDef` lines 311-319) but applies to the step itself
+  // rather than to an enclosing loop wrapper.
+  const ITEM_REF_RE = /\$item\b|\$\{item[.[]/;
+  for (const step of steps) {
+    const id = typeof step.id === "string" ? step.id : null;
+    if (!id) continue;
+    if (typeof step.for_each !== "string" || step.for_each.length === 0) continue;
+    const haystack = JSON.stringify(step);
+    if (!ITEM_REF_RE.test(haystack)) {
+      errors.push({
+        step_id: id,
+        field: "for_each",
+        bad_reference: "(missing)",
+        context: step.for_each as string,
+        did_you_mean: [
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message names the literal `${item.…}` placeholder grammar.
+          "$item (use `$item.<field>` in JS expressions or `${item.<field>}` in URL/header/body strings)",
+        ],
+      });
+    }
+  }
+
   return errors;
 }
 

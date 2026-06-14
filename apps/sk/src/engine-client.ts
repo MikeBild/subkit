@@ -1839,9 +1839,6 @@ export class EngineClient {
   ): Promise<{ ok: boolean; errors?: Array<{ path: string; message: string }> }> {
     return this.request("POST", "/v1/workflows/validate", body);
   }
-  patchWorkflow(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.request("PATCH", `/v1/workflows/${encodeURIComponent(id)}`, body);
-  }
   deleteWorkflow(id: string): Promise<void> {
     return this.request("DELETE", `/v1/workflows/${encodeURIComponent(id)}`);
   }

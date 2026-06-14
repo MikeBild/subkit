@@ -20,21 +20,23 @@ describe("workflow-authoring.md · Build Recipe (mandatory preflight)", () => {
     );
   });
 
-  test("orders steps as: load_skill → list/probe → search → call_connector → author", () => {
-    // The exact same six-step preflight the reference impl uses for
-    // `build_tool`, adapted to subkit's tool names. We anchor on
-    // canonical numbered-step markers ("1. **Load skills.**" etc.) so
-    // unrelated mentions of these tool names elsewhere in the doc do
-    // not confuse the order check.
+  test("orders steps as: load_skill → list_connectors → probe → call_connector → search → author", () => {
+    // The same mandatory preflight the reference impl uses for
+    // `build_tool`, adapted to subkit's tool names. `probe_connector` and
+    // `call_connector` capture the REAL response shape before the model
+    // reads docs (`search_docs`) or authors — grounding generation in
+    // evidence, not guesses. We anchor on canonical numbered-step markers
+    // ("1. **Load skills.**" etc.) so unrelated mentions of these tool
+    // names elsewhere in the doc do not confuse the order check.
     const start = workflowAuthoring.indexOf("## Authoring recipe (mandatory order before");
     expect(start).toBeGreaterThan(-1);
     const recipeBlock = workflowAuthoring.slice(start);
     const expectedAnchors = [
       "1. **Load skills.**",
       "2. **`list_connectors`.**",
-      "3. **`probe_connector`.**",
-      "4. **`search_docs`",
-      "5. **`call_connector`.**",
+      "3. **`probe_connector` (MANDATORY",
+      "4. **`call_connector` (probe supplement).**",
+      "5. **`search_docs` and `search_knowledge`.**",
       "6. **Only then** call `author_workflow`",
     ];
     let lastIdx = -1;

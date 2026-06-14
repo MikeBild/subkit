@@ -21,7 +21,7 @@ import { join } from "node:path";
 // in `tools/sdk-wrap/policy-helpers.ts`.
 const SRC = join(import.meta.dir, "..", "sdk-wrap", "policy-helpers.ts");
 
-describe("policy-gate commit-intent · delete tools", () => {
+describe("policy-gate commit-intent · policy-gated writes", () => {
   const body = readFileSync(SRC, "utf-8");
 
   test("mapToolToCommitIntentKind covers delete_connector", () => {
@@ -40,5 +40,14 @@ describe("policy-gate commit-intent · delete tools", () => {
   test("buildPolicyGateCommitIntent constructs a delete_workflow payload with id", () => {
     expect(body).toMatch(/intentKind === "delete_workflow"/);
     expect(body).toContain('description: "Permanently delete this workflow."');
+  });
+
+  test("mapToolToCommitIntentKind covers create_api_key", () => {
+    expect(body).toMatch(/case "create_api_key":\s*\n?\s*return "create_api_key"/);
+  });
+
+  test("buildPolicyGateCommitIntent constructs a create_api_key payload", () => {
+    expect(body).toMatch(/intentKind === "create_api_key"/);
+    expect(body).toContain('description: "Create a new API key."');
   });
 });

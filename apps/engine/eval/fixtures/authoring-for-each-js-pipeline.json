@@ -1,0 +1,37 @@
+{
+  "name": "authoring-for-each-js-pipeline",
+  "description": "for_each per-step inline iteration contract: a step with for_each runs once per array element (binding $item/$loop_index into scope), produces an array of per-iteration envelopes, and a downstream JS transform projects across iterations. No loop kind, JS-first transforms throughout. Zero egress.",
+  "flow": "infra",
+  "input": {
+    "workflow_input": {},
+    "steps": [
+      {
+        "id": "list_items",
+        "kind": "transform",
+        "language": "javascript",
+        "expression": "return [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }];"
+      },
+      {
+        "id": "tag_item",
+        "kind": "transform",
+        "language": "javascript",
+        "expression": "return { tagged: input.scope.$item.name + '_' + String(input.scope.$loop_index) };",
+        "for_each": "(sourceData) => sourceData.list_items.data"
+      },
+      {
+        "id": "collect",
+        "kind": "transform",
+        "language": "javascript",
+        "expression": "return input.scope.tag_item.data.map(function(iter) { return iter.tag_item.data.tagged; });"
+      }
+    ],
+    "expect": {
+      "list_items_status": "succeeded",
+      "tag_item_is_array": true,
+      "tag_item_length": 2,
+      "collect_length": 2,
+      "no_loop_kind": true,
+      "all_transforms_javascript": true
+    }
+  }
+}

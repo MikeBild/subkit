@@ -106,11 +106,11 @@ describe("49: Parallel step — concurrent branches, merged output, skipped in l
       steps: Array<{ step_key: string; status: string }>;
     };
 
-    // Both branch steps should appear as skipped (aborted) in the linear walk —
+    // Both branch steps should appear as skipped in the linear walk —
     // they were already executed inside the parallel driver.
     const stepA = runBody.steps.find((s) => s.step_key === "step_a");
     const stepB = runBody.steps.find((s) => s.step_key === "step_b");
-    expect(stepA?.status).toBe("aborted");
-    expect(stepB?.status).toBe("aborted");
+    expect(stepA?.status).toBe("skipped");
+    expect(stepB?.status).toBe("skipped");
   });
 });

@@ -16,9 +16,19 @@ export type RequestSource = "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "
 
 export type ExecutionMode = "dev" | "prod";
 
-export type StepStatus = "queued" | "running" | "succeeded" | "failed" | "aborted" | "timed_out";
+export type StepStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "aborted"
+  | "timed_out"
+  | "skipped";
 
-export type ExecutionStatus = StepStatus;
+/** Top-level execution status persisted to `executions.status` (DB enum).
+ *  Excludes `"skipped"` — an entire execution is never skipped, only
+ *  individual steps within it can be. */
+export type ExecutionStatus = Exclude<StepStatus, "skipped">;
 
 export interface ExecutionContext {
   db: Db;
@@ -341,7 +351,7 @@ export interface HeldRequest {
 }
 
 export interface StepResult {
-  status: "succeeded" | "failed" | "aborted" | "timed_out";
+  status: "succeeded" | "failed" | "aborted" | "timed_out" | "skipped";
   /** Hold-writes mode: true when this write-classified step was fully
    *  resolved but NOT dispatched. Always paired with `held_request`
    *  and `status: "succeeded"`. `output` is null — the engine skips

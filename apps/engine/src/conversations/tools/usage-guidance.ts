@@ -36,6 +36,15 @@ export interface UsageInputEntry {
   required: boolean;
 }
 
+export interface FollowUpOption {
+  /** Short label shown in the choice list (e.g. "Run now"). */
+  label: string;
+  /** Canonical action value — matches `UsageAccessEntry.via` or a tool name. */
+  value: string;
+  /** Copy-pasteable command, tool name, or short qualifier string. */
+  detail?: string;
+}
+
 export interface ResourceUsage {
   kind: "workflow" | "connector" | "knowledge_source";
   slug: string;
@@ -46,6 +55,10 @@ export interface ResourceUsage {
   access: UsageAccessEntry[];
   /** Exactly ONE follow-up question for the COMMIT SUMMARY prompt rule. */
   follow_up: string;
+  /** Structured execution-options picker — only present for workflow usage.
+   *  Non-interactive surfaces (MCP headless, connectors, knowledge sources)
+   *  use the plain `follow_up` text instead. */
+  follow_up_options?: FollowUpOption[];
 }
 
 /** Minimal structural view of a workflow definition — both the stored
@@ -116,9 +129,19 @@ export function buildWorkflowUsageFromParts(p: WorkflowUsageParts): ResourceUsag
     (synthesizeInputSchema(def as unknown as WorkflowDef) as Record<string, unknown> | null);
   const inputs = inputsFromSchema(schema ?? null);
   const inputHint = inputs.length > 0 ? ` ${inputs.map((i) => `${i.name}=<value>`).join(" ")}` : "";
-  const restBody = `{"source":"saved","workflow_id":"${workflow.id}"${
-    inputs.length > 0 ? `,"input":{…}` : ""
-  }}`;
+  const restBody = {
+    source: "saved",
+    workflow_id: workflow.id,
+    ...(inputs.length > 0
+      ? {
+          input: Object.fromEntries(
+            inputs.map((input) => [input.name, input.required ? `<${input.name}>` : null]),
+          ),
+        }
+      : { input: {} }),
+  };
+  const restPath = "/v1/executions";
+  const restUrl = publicBaseUrl ? `${publicBaseUrl}${restPath}` : restPath;
 
   const access: UsageAccessEntry[] = [
     {
@@ -140,9 +163,9 @@ export function buildWorkflowUsageFromParts(p: WorkflowUsageParts): ResourceUsag
     {
       via: "rest",
       label: "REST API",
-      command: `POST ${publicBaseUrl ?? ""}/v1/executions`,
-      ...(publicBaseUrl ? { url: `${publicBaseUrl}/v1/executions` } : {}),
-      detail: `body: ${restBody}`,
+      command: `POST ${restUrl}`,
+      ...(publicBaseUrl ? { url: restUrl } : {}),
+      detail: `body: ${JSON.stringify(restBody)}`,
     },
   ];
 
@@ -173,6 +196,20 @@ export function buildWorkflowUsageFromParts(p: WorkflowUsageParts): ResourceUsag
     });
   }
 
+  // Derive follow_up_options from the already-built access array — do not
+  // duplicate logic: one entry per actionable via, in presentation order.
+  const follow_up_options: FollowUpOption[] = access
+    .filter((e) => e.via !== "webhook") // webhooks are not interactive choices
+    .reduce<FollowUpOption[]>((acc, e) => {
+      // Deduplicate: only the first entry per via (e.g. only one schedule entry).
+      if (acc.some((o) => o.value === e.via)) return acc;
+      const optDetail = e.command ?? e.tool ?? e.detail;
+      const opt: FollowUpOption = { label: e.label, value: e.via };
+      if (optDetail !== undefined) opt.detail = optDetail;
+      acc.push(opt);
+      return acc;
+    }, []);
+
   return {
     kind: "workflow",
     slug: workflow.slug,
@@ -181,7 +218,8 @@ export function buildWorkflowUsageFromParts(p: WorkflowUsageParts): ResourceUsag
     inputs,
     output: workflowOutputLine(def),
     access,
-    follow_up: "Run it now?",
+    follow_up: "Run it now, show the REST/HTTP call, or set up a schedule?",
+    follow_up_options,
   };
 }
 

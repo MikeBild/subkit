@@ -36,6 +36,7 @@ describe("request + transform", () => {
         {
           kind: "transform",
           id: "names",
+          language: "jsonata",
           expression: "users.data.name",
         },
       ],
@@ -54,11 +55,12 @@ describe("request + transform", () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-bindings",
       steps: [
-        { kind: "transform", id: "letters", expression: "['a', 'b', 'c']" },
+        { kind: "transform", id: "letters", language: "jsonata", expression: "['a', 'b', 'c']" },
         { kind: "loop", id: "iter", over: "letters.data", item_var: "letter", body: ["tag"] },
         {
           kind: "transform",
           id: "tag",
+          language: "jsonata",
           expression: "{ 'index': $loop_index, 'letter': letter }",
         },
       ],
@@ -87,10 +89,10 @@ describe("request + transform", () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "empty-loop-body",
       steps: [
-        { kind: "transform", id: "items", expression: "['a', 'b', 'c']" },
+        { kind: "transform", id: "items", language: "jsonata", expression: "['a', 'b', 'c']" },
         { kind: "loop", id: "iter", over: "items.data", item_var: "item", body: ["empty"] },
         // Body step returns an empty array — body succeeds, but no row.
-        { kind: "transform", id: "empty", expression: "[]" },
+        { kind: "transform", id: "empty", language: "jsonata", expression: "[]" },
       ],
     });
     const result = await runExecution({
@@ -130,11 +132,17 @@ describe("request + transform", () => {
         {
           kind: "transform",
           id: "source",
+          language: "jsonata",
           expression: "{ 'chargers': { 'edges': [ { 'node': { 'id': 'c1' } } ] } }",
         },
         // `.chargers.items` does not exist — the real path is
         // `.chargers.edges`.
-        { kind: "transform", id: "filter_bad", expression: "$scope.source.data.chargers.items" },
+        {
+          kind: "transform",
+          id: "filter_bad",
+          language: "jsonata",
+          expression: "$scope.source.data.chargers.items",
+        },
       ],
     });
     const result = await runExecution({
@@ -174,7 +182,7 @@ describe("request + transform", () => {
         name: "fixture-replay",
         steps: [
           { kind: "request", id: "users", method: "GET", url: `${counterMock.baseUrl}/users` },
-          { kind: "transform", id: "names", expression: "users.data.name" },
+          { kind: "transform", id: "names", language: "jsonata", expression: "users.data.name" },
         ],
       });
       // First run: real fetch.
@@ -229,7 +237,12 @@ describe("request + transform", () => {
       steps: [
         // `$match`'s second argument must be a regex literal; passing a
         // string triggers a JSONata runtime (T2003-class) error.
-        { kind: "transform", id: "boom", expression: "$match('hello', 'world')" },
+        {
+          kind: "transform",
+          id: "boom",
+          language: "jsonata",
+          expression: "$match('hello', 'world')",
+        },
       ],
     });
     const result = await runExecution({
@@ -250,10 +263,10 @@ describe("request + transform", () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "productive-loop-body",
       steps: [
-        { kind: "transform", id: "items", expression: "['a', 'b', 'c']" },
+        { kind: "transform", id: "items", language: "jsonata", expression: "['a', 'b', 'c']" },
         { kind: "loop", id: "iter", over: "items.data", item_var: "item", body: ["pick"] },
         // Returns a real value for every iteration → no warning.
-        { kind: "transform", id: "pick", expression: "item" },
+        { kind: "transform", id: "pick", language: "jsonata", expression: "item" },
       ],
     });
     const result = await runExecution({

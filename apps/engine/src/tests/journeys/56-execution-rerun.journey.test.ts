@@ -35,7 +35,7 @@ beforeAll(async () => {
     slug: "rerun-wf",
     name: "Rerun Wf",
     // Echo the input so AC1/AC4 can assert on the output.
-    steps: [{ kind: "transform", id: "echo", expression: "$input" }],
+    steps: [{ kind: "transform", id: "echo", language: "jsonata", expression: "$input" }],
   });
   workflowId = wf.id;
   versionId = wf.version_id;
@@ -113,7 +113,7 @@ describe("journey 56: execution rerun with lineage", () => {
           dag: {
             name: "Rerun Wf",
             slug: "rerun-wf",
-            steps: [{ kind: "transform", id: "echo", expression: `"v2"` }],
+            steps: [{ kind: "transform", id: "echo", language: "jsonata", expression: `"v2"` }],
           },
         })
         .returning();
@@ -163,7 +163,7 @@ describe("journey 56: execution rerun with lineage", () => {
           definition: {
             name: "Inline Draft",
             slug: "inline-draft",
-            steps: [{ kind: "transform", id: "t", expression: `"x"` }],
+            steps: [{ kind: "transform", id: "t", language: "jsonata", expression: `"x"` }],
           },
         }),
       });

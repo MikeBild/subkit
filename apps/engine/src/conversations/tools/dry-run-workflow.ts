@@ -5,6 +5,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
+import { resolveDryRunEnvironment } from "../../credentials/service.ts";
 import { conversationToolCalls } from "../../db/schema/index.ts";
 import type { PreviewStepSummary } from "../../execution/classify.ts";
 import { classifyRunResult } from "../../execution/classify.ts";
@@ -306,9 +307,21 @@ export const dryRunWorkflowTool: ConversationTool = {
       ...(draft.output_schema ? { output_schema: draft.output_schema } : {}),
     };
     const signal = ctx.abortSignal;
+
+    // Resolve the effective execution environment (dev vs prod credential
+    // grant) for the draft's connectors. See resolveDryRunEnvironment.
+    const effectiveEnvironment = await resolveDryRunEnvironment({
+      tenant_id: ctx.tenant_id,
+      steps,
+      requested: args.environment,
+      exec: ctx.db,
+      conversation_id: ctx.conversation_id,
+      onLog: ctx.onLog,
+    });
+
     ctx.onLog?.(
       "info",
-      `dry-running ${steps.length} step${steps.length === 1 ? "" : "s"} (env=${args.environment ?? "dev"})`,
+      `dry-running ${steps.length} step${steps.length === 1 ? "" : "s"} (env=${effectiveEnvironment})`,
     );
     // Cache hit short-circuit. Pre-fix re-previewing an unchanged draft
     // re-ran every step end-to-end (109 calls to api.digitalocean.com
@@ -317,7 +330,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     // the upstream again.
     const cacheKey = buildDryRunCacheKey({
       tenant_id: ctx.tenant_id,
-      execution_mode: args.environment ?? "dev",
+      execution_mode: effectiveEnvironment,
       draft: definition,
       input: args.input ?? null,
     });
@@ -344,7 +357,7 @@ export const dryRunWorkflowTool: ConversationTool = {
         if (!isStepKindCacheable(step.kind, step)) break;
         const prefixHash = buildStepPrefixHash({
           tenant_id: ctx.tenant_id,
-          execution_mode: args.environment ?? "dev",
+          execution_mode: effectiveEnvironment,
           draft: { steps, ...(draft.name ? { name: draft.name } : {}) },
           input: args.input ?? null,
           stepIndex: i,
@@ -372,7 +385,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           input: args.input ?? null,
           options: {
             request_source: "chat",
-            execution_mode: args.environment ?? "dev",
+            execution_mode: effectiveEnvironment,
             // Previews are side-effect-safe by default: write-classified
             // steps are fully resolved (the judge reads the would-be
             // payload) but never dispatched. `execute_writes: true` is
@@ -437,7 +450,7 @@ export const dryRunWorkflowTool: ConversationTool = {
         }
         const prefixHash = buildStepPrefixHash({
           tenant_id: ctx.tenant_id,
-          execution_mode: args.environment ?? "dev",
+          execution_mode: effectiveEnvironment,
           draft: { steps, ...(draft.name ? { name: draft.name } : {}) },
           input: args.input ?? null,
           stepIndex: i,

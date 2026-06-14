@@ -15,7 +15,7 @@ import { exitCodeFor, isEngineError, wasReported } from "@cli-core/errors";
 import { runBrowserLogin, runDeviceFlow } from "@cli-core/index.ts";
 import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 import { VERSION } from "@cli-core/version.ts";
-import { defineCommand, runCommand, showUsage } from "citty";
+import { type CommandDef, defineCommand, runCommand, showUsage } from "citty";
 import pc from "picocolors";
 import { apiKeysCommand } from "./commands/apikeys.ts";
 import { auditCommand } from "./commands/audit.ts";
@@ -863,8 +863,33 @@ async function dispatch(): Promise<void> {
     return;
   }
   if (rawArgs.includes("--help") || rawArgs.includes("-h")) {
-    // Filter subcommands by cached persona_hint so operators/admins see
-    // their extra commands without a network call. Engine enforces all perms.
+    // If the user ran `sk <subcommand> [sub-subcommand] --help`, resolve
+    // the most-specific matching command and show its own help rather than
+    // the global help. Walk the tree at most two levels deep (top-level
+    // subcommand → its own subCommands) to cover both:
+    //   sk workflows --help
+    //   sk workflows list --help
+    //   sk apikeys --help
+    //   sk apikeys create --help
+    const positionals = rawArgs.filter((a) => !a.startsWith("-"));
+    const topName = positionals[0];
+    const topEntry = topName ? SUB_COMMANDS[topName] : undefined;
+    if (topEntry) {
+      // biome-ignore lint/suspicious/noExplicitAny: citty CommandDef generic param is untyped
+      const topCmd = topEntry.command as CommandDef<any> & {
+        // biome-ignore lint/suspicious/noExplicitAny: citty sub-command value type is untyped
+        subCommands?: Record<string, CommandDef<any>>;
+      };
+      const subName = positionals[1];
+      const leafCmd = subName && topCmd.subCommands ? topCmd.subCommands[subName] : undefined;
+      if (leafCmd) {
+        await showUsage(leafCmd, topCmd);
+      } else {
+        await showUsage(topCmd);
+      }
+      return;
+    }
+    // No matching subcommand — show the persona-filtered global help.
     const personaHint = loadConfig().profiles[loadConfig().active_profile]?.persona_hint ?? null;
     const visible = Object.fromEntries(
       Object.entries(SUB_COMMANDS)

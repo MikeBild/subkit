@@ -35,6 +35,7 @@ export const COMMIT_INTENT_KINDS = [
   // get-jira-ticket-details): the model re-called with empty input and
   // looped back into the same form.
   "run_workflow",
+  "create_api_key",
 ] as const;
 
 export type CommitIntentKind = (typeof COMMIT_INTENT_KINDS)[number];
@@ -79,6 +80,11 @@ export const commitIntentSchema = z
      * For `run_workflow` — `{ workflow_id, workflow_slug?, environment?,
      * input_partial? }`. The harness merges the submitted form values
      * over `input_partial` and runs the execution directly.
+     *
+     * For `create_api_key` — the create_api_key tool input shape.
+     * The harness mints the key directly after approval so the model
+     * cannot forget to re-issue the write and leave the operator with
+     * an approved no-op.
      *
      * For `rollback_after_execute` — `{ execution_id }` (NOT
      * implemented yet; harness emits a no-op result).

@@ -117,6 +117,14 @@ export const saveWorkflowDraftTool: ConversationTool = {
       }
     }
 
+    // Snapshot the draft target before commit so it can be echoed in the
+    // result envelope even on the already_persisted / error paths. The
+    // 'edited the wrong draft' bug occurred because the model had no
+    // authoritative signal about which draft was being mutated — surfacing
+    // draft_target on every save response closes that gap.
+    const draftSlug = draftSnapshot.slug ?? null;
+    const draftName = draftSnapshot.name ?? null;
+
     const result = await commitWorkflowAtomic({
       ctx,
       forceCommit: args.force_commit,
@@ -198,6 +206,13 @@ export const saveWorkflowDraftTool: ConversationTool = {
         `force_commit: workflow saved with a failed preview (${failureCode}). Audit reason: manual_re_issue, kind: preview_override.`,
       );
     }
+    // Resolve the authoritative slug/id from the commit result — the
+    // committed slug is canonical; fall back to the draft snapshot values
+    // captured before the commit for the already_persisted path.
+    const resolvedSlug = typeof data.slug === "string" ? data.slug : draftSlug;
+    const resolvedId = workflow_id;
+    const resolvedName = typeof data.name === "string" ? data.name : draftName;
+
     return {
       ok: true,
       data: {
@@ -205,6 +220,14 @@ export const saveWorkflowDraftTool: ConversationTool = {
         // block plus next_best_actions / next_prompt — do not re-stamp
         // them here or the usage.follow_up gets clobbered.
         ...data,
+        // Always surface the active draft target so the model and
+        // operator can confirm which workflow was mutated. Closes the
+        // 'edited the wrong draft' failure class.
+        draft_target: {
+          id: resolvedId,
+          slug: resolvedSlug,
+          name: resolvedName,
+        },
         re_issued: true,
         audit_reason: "manual_re_issue",
         ...(warnings.length > 0 ? { warnings } : {}),

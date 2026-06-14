@@ -155,7 +155,7 @@ describe("hold-writes · HTTP", () => {
     // The dependent transform is skipped explicitly and labeled — not
     // failed with placeholder_unresolved.
     const confirmStep = result.steps.find((s) => s.step_key === "confirm");
-    expect(confirmStep?.status).toBe("aborted");
+    expect(confirmStep?.status).toBe("skipped");
     expect((confirmStep?.error as { code?: string })?.code).toBe("skipped_dependency_held");
     expect((confirmStep?.error as { message?: string })?.message).toContain(
       'depends on held step "send"',

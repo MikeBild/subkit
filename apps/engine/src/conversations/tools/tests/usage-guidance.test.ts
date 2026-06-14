@@ -259,8 +259,9 @@ describe("buildWorkflowUsageFromParts — access entries (static)", () => {
     const rest = usage.access.find((a) => a.via === "rest");
     expect(rest).toBeDefined();
     expect(rest?.url).toBeUndefined();
-    // command is path-only (no origin)
-    expect(rest?.command).toContain("/v1/executions");
+    expect(rest?.command).toBe("POST /v1/executions");
+    expect(rest?.detail).toContain('"source":"saved"');
+    expect(rest?.detail).toContain('"workflow_id":"wf-010"');
   });
 
   test("rest entry has absolute url when publicBaseUrl is set", () => {
@@ -278,6 +279,34 @@ describe("buildWorkflowUsageFromParts — access entries (static)", () => {
 
     const rest = usage.access.find((a) => a.via === "rest");
     expect(rest?.url).toBe("https://engine.example.com/v1/executions");
+    expect(rest?.command).toBe("POST https://engine.example.com/v1/executions");
+  });
+
+  test("rest body includes input placeholders for declared inputs", () => {
+    const usage = buildWorkflowUsageFromParts({
+      workflow: {
+        id: "wf-011b",
+        slug: "with-inputs",
+        name: "With Inputs",
+        definition: {
+          input_schema: {
+            type: "object",
+            required: ["ticket_key"],
+            properties: {
+              ticket_key: { type: "string" },
+              include_history: { type: "boolean" },
+            },
+          },
+          steps: [],
+        },
+      },
+      schedules: [],
+      inboundHooks: [],
+      publicBaseUrl: "https://engine.example.com",
+    });
+
+    const rest = usage.access.find((a) => a.via === "rest");
+    expect(rest?.detail).toContain('"input":{"ticket_key":"<ticket_key>","include_history":null}');
   });
 
   test("mcp entry carries the correct tool name", () => {
@@ -437,7 +466,7 @@ describe("buildWorkflowUsageFromParts — webhook access entries", () => {
 });
 
 describe("buildWorkflowUsageFromParts — identity + follow_up", () => {
-  test("kind is 'workflow' and follow_up is 'Run it now?'", () => {
+  test("kind is 'workflow' and follow_up offers run, REST, and schedule options", () => {
     const usage = buildWorkflowUsageFromParts({
       workflow: {
         id: "wf-020",
@@ -451,10 +480,174 @@ describe("buildWorkflowUsageFromParts — identity + follow_up", () => {
     });
 
     expect(usage.kind).toBe("workflow");
-    expect(usage.follow_up).toBe("Run it now?");
+    expect(usage.follow_up).toBe("Run it now, show the REST/HTTP call, or set up a schedule?");
     expect(usage.summary).toBe("A test workflow");
     expect(usage.slug).toBe("the-wf");
     expect(usage.name).toBe("The WF");
+  });
+});
+
+// ── follow_up_options ───────────────────────────────────────────────────────
+
+describe("buildWorkflowUsageFromParts — follow_up_options", () => {
+  test("follow_up_options is present and non-empty for workflow usage", () => {
+    const usage = buildWorkflowUsageFromParts({
+      workflow: {
+        id: "wf-021",
+        slug: "picker-wf",
+        name: "Picker WF",
+        definition: { steps: [] },
+      },
+      schedules: [],
+      inboundHooks: [],
+      publicBaseUrl: null,
+    });
+
+    expect(usage.follow_up_options).toBeDefined();
+    expect(Array.isArray(usage.follow_up_options)).toBe(true);
+    expect((usage.follow_up_options ?? []).length).toBeGreaterThan(0);
+  });
+
+  test("follow_up_options entries each have label, value, and optional detail", () => {
+    const usage = buildWorkflowUsageFromParts({
+      workflow: {
+        id: "wf-022",
+        slug: "shape-wf",
+        name: "Shape WF",
+        definition: { steps: [] },
+      },
+      schedules: [],
+      inboundHooks: [],
+      publicBaseUrl: null,
+    });
+
+    for (const opt of usage.follow_up_options ?? []) {
+      expect(typeof opt.label).toBe("string");
+      expect(typeof opt.value).toBe("string");
+      expect(opt.label.length).toBeGreaterThan(0);
+      expect(opt.value.length).toBeGreaterThan(0);
+      if (opt.detail !== undefined) {
+        expect(typeof opt.detail).toBe("string");
+      }
+    }
+  });
+
+  test("follow_up_options values are derived from access entry vias (no duplicates)", () => {
+    const usage = buildWorkflowUsageFromParts({
+      workflow: {
+        id: "wf-023",
+        slug: "dedup-wf",
+        name: "Dedup WF",
+        definition: { steps: [] },
+      },
+      schedules: [
+        { cron: "0 9 * * 1-5", timezone: "UTC", paused: false },
+        { cron: "0 18 * * 5", timezone: "UTC", paused: false },
+      ],
+      inboundHooks: [],
+      publicBaseUrl: null,
+    });
+
+    const values = (usage.follow_up_options ?? []).map((o) => o.value);
+    // No duplicate values
+    expect(new Set(values).size).toBe(values.length);
+    // Must include the four primary access vias
+    expect(values).toContain("cli");
+    expect(values).toContain("mcp");
+    expect(values).toContain("chat");
+    expect(values).toContain("rest");
+    expect(values).toContain("schedule");
+  });
+
+  test("follow_up_options excludes webhook entries", () => {
+    const usage = buildWorkflowUsageFromParts({
+      workflow: {
+        id: "wf-024",
+        slug: "hook-opts-wf",
+        name: "Hook Opts WF",
+        definition: { steps: [] },
+      },
+      schedules: [],
+      inboundHooks: [{ slug: "hook-abc" }],
+      publicBaseUrl: "https://engine.example.com",
+    });
+
+    const values = (usage.follow_up_options ?? []).map((o) => o.value);
+    expect(values).not.toContain("webhook");
+  });
+
+  test("mcp option detail is the wf_<slug> tool name", () => {
+    const usage = buildWorkflowUsageFromParts({
+      workflow: {
+        id: "wf-025",
+        slug: "mcp-opts-wf",
+        name: "MCP Opts WF",
+        definition: { steps: [] },
+      },
+      schedules: [],
+      inboundHooks: [],
+      publicBaseUrl: null,
+    });
+
+    const mcpOpt = (usage.follow_up_options ?? []).find((o) => o.value === "mcp");
+    expect(mcpOpt).toBeDefined();
+    expect(mcpOpt?.detail).toBe("wf_mcp-opts-wf");
+  });
+
+  test("rest option detail contains the POST command", () => {
+    const usage = buildWorkflowUsageFromParts({
+      workflow: {
+        id: "wf-026",
+        slug: "rest-opts-wf",
+        name: "REST Opts WF",
+        definition: { steps: [] },
+      },
+      schedules: [],
+      inboundHooks: [],
+      publicBaseUrl: "https://engine.example.com",
+    });
+
+    const restOpt = (usage.follow_up_options ?? []).find((o) => o.value === "rest");
+    expect(restOpt).toBeDefined();
+    expect(restOpt?.detail).toContain("POST");
+    expect(restOpt?.detail).toContain("/v1/executions");
+  });
+
+  test("chat option detail contains /subkit run <slug>", () => {
+    const usage = buildWorkflowUsageFromParts({
+      workflow: {
+        id: "wf-027",
+        slug: "chat-opts-wf",
+        name: "Chat Opts WF",
+        definition: { steps: [] },
+      },
+      schedules: [],
+      inboundHooks: [],
+      publicBaseUrl: null,
+    });
+
+    const chatOpt = (usage.follow_up_options ?? []).find((o) => o.value === "chat");
+    expect(chatOpt).toBeDefined();
+    expect(chatOpt?.detail).toContain("/subkit run");
+    expect(chatOpt?.detail).toContain("chat-opts-wf");
+  });
+
+  test("schedule hint option detail contains create_schedule when no live schedule", () => {
+    const usage = buildWorkflowUsageFromParts({
+      workflow: {
+        id: "wf-028",
+        slug: "sched-opts-wf",
+        name: "Sched Opts WF",
+        definition: { steps: [] },
+      },
+      schedules: [],
+      inboundHooks: [],
+      publicBaseUrl: null,
+    });
+
+    const schedOpt = (usage.follow_up_options ?? []).find((o) => o.value === "schedule");
+    expect(schedOpt).toBeDefined();
+    expect(schedOpt?.detail).toContain("create_schedule");
   });
 });
 

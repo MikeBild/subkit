@@ -31,7 +31,12 @@ const sampleDef = {
   slug: "scope-index-test",
   steps: [
     { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
-    { id: "shape", kind: "transform", language: "jsonata", expression: "$scope.fetch.data" },
+    {
+      id: "shape",
+      kind: "transform",
+      language: "javascript",
+      expression: "return input.scope.fetch.data;",
+    },
   ],
 };
 
@@ -137,8 +142,8 @@ describe("workflow_versions.scope_index", () => {
             {
               id: "shape",
               kind: "transform",
-              language: "jsonata",
-              expression: "$scope.fetch.data.items",
+              language: "javascript",
+              expression: "return input.scope.fetch.data.items;",
             },
           ],
         },

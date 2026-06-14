@@ -177,6 +177,26 @@ const baseStep = {
   on_error: onError.optional(),
   data_selector: z.string().optional(),
   timeout_ms: z.number().int().positive().optional(),
+  /**
+   * Inline iteration — JS selector body that replaces the `loop` step
+   * kind for simple fan-out. The expression receives `sourceData` (the
+   * full execution scope) and must return an array. The step runs once
+   * per element; each iteration binds `$item` (the current element) and
+   * `$loop_index` (0-based counter) into the substitution scope.
+   *
+   * Example:
+   *   for_each: "(sourceData) => sourceData.fetch_projects.data"
+   *
+   * This field is distinct from `LoopStep.data_selector` (which is a
+   * per-loop-step source selector run via runJs on the LOOP step itself,
+   * NOT on baseStep). `for_each` lives on baseStep so any step kind can
+   * declare inline iteration without a surrounding loop wrapper.
+   *
+   * Returns an array; semantics identical to LoopStep.data_selector's
+   * runJs path. Never shadows the output-projector `data_selector`
+   * (JSONPath-lite, handled by applySelector in step-runner.ts).
+   */
+  for_each: z.string().optional(),
 };
 
 export const RequestStepSchema = z
@@ -636,7 +656,7 @@ export const TransformStepSchema = z
       .openapi({ description: "Suppress specific non-fatal warnings on this step." }),
   })
   .superRefine((s, ctx) => {
-    const language = s.language ?? "jsonata";
+    const language = s.language ?? "javascript";
     if (TRANSFORM_LANGUAGES_NEEDING_EXPRESSION.has(language)) {
       if (s.expression === undefined || s.expression.length === 0) {
         ctx.addIssue({
@@ -697,11 +717,7 @@ export const TransformStepSchema = z
     //   - `(const|let|var) <name> =` declaration with assignment
     //     (JSONata uses `:=` for assignment; `const/let/var` keywords
     //     have no JSONata role).
-    if (
-      (language === "jsonata" || s.language === undefined) &&
-      typeof s.expression === "string" &&
-      s.expression.length > 0
-    ) {
+    if (language === "jsonata" && typeof s.expression === "string" && s.expression.length > 0) {
       const js = s.expression;
       // Strip quoted literals so JS markers inside prose don't trip.
       const stripped = js

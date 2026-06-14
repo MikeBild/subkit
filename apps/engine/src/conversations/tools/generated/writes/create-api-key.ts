@@ -63,7 +63,7 @@ const inputSchema = z
 export const createApiKeyTool: ConversationTool = {
   name: "create_api_key",
   description:
-    "Mint a new API key and return the plaintext token EXACTLY ONCE together with a paste-ready MCP/SDK config block. Call ONLY when the user has explicitly confirmed they want a new key minted (e.g. 'yes, create one', 'mint a key', 'I need a key'). Do NOT call in response to informational questions ('how do I connect…', 'what's the config…', 'can subkit work with X?') — answer those with a config template first, then ask the user to confirm before minting. Never invent placeholder keys, never tell the user to run a CLI command to get one.",
+    "Mint a new API key and return the plaintext token EXACTLY ONCE together with a paste-ready MCP/SDK config block. Call ONLY when the user has explicitly confirmed they want a new key minted (e.g. 'yes, create one', 'mint a key', 'I need a key'). Do NOT call in response to informational questions ('how do I connect…', 'what's the config…', 'can subkit work with X?') — answer those with a config template first, then ask the user to confirm before minting. Do NOT call ask_user_confirm yourself for this tool; the engine policy gate raises the confirmation and mints the key after approval. Never invent placeholder keys, never tell the user to run a CLI command to get one.",
   inputSchema,
   category: "tenant_write",
   use_case:

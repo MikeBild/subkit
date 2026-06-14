@@ -39,16 +39,16 @@ return Object.keys(grouped).map(type => ({ type, count: grouped[type].length }))
     ).toEqual({ error_code: "language_mismatch", suggested_language: "javascript" });
   });
 
-  test("missing language treated as jsonata still trips the JS-body heuristic", () => {
-    // Pre-fix runtime defaulted missing language to jsonata silently;
-    // the heuristic must fire on the implicit default too, otherwise
-    // the LLM can omit `language` and dodge the validation.
+  test("missing language defaults to javascript — JS body without language tag is accepted", () => {
+    // W3a: the default language is now `javascript` (flipped from the
+    // prior `jsonata` default). A JS expression body with no `language`
+    // field must NOT trip the language-mismatch heuristic.
     const result = TransformStepSchema.safeParse({
       kind: "transform",
       id: "shape",
       expression: "const x = 1; return x;",
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   test("JSONata body tagged language=javascript is rejected with suggested_language=jsonata", () => {

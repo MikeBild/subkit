@@ -45,7 +45,7 @@ beforeAll(async () => {
   const wf = await seedWorkflow(ctx, {
     slug: "portal-only",
     name: "Portal Only",
-    steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+    steps: [{ id: "noop", kind: "transform", language: "jsonata", expression: "$input" }],
   });
   workflowId = wf.id;
   // A second workflow with no relation to the portal token — used by
@@ -53,7 +53,7 @@ beforeAll(async () => {
   const other = await seedWorkflow(ctx, {
     slug: "not-allowed",
     name: "Not Allowed",
-    steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+    steps: [{ id: "noop", kind: "transform", language: "jsonata", expression: "$input" }],
   });
   otherWorkflowId = other.id;
 }, JOURNEY_HOOK_TIMEOUT);

@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 9
+version: 10
 ---
 
 # Authoring Workflows In A Conversation
@@ -20,11 +20,25 @@ micro-tools exist only to repair specific findings afterwards.
 
 ## The canonical flow
 
+**Proof-before-proposal contract.** Before calling `author_workflow`,
+`build_workflow`, or `propose_step`, you MUST have a successful
+`probe_connector` (or `call_connector`) result for EVERY connector the
+workflow will use. A probe verifies that the credential resolves and the
+base URL responds; a `call_connector` call on a primary endpoint records
+the real response shape. Skipping this step is the largest single source
+of authoring-time errors — the pipeline generates against guesses, and
+the session-level failure rate for un-probed connectors is 364 dry-run
+retries in the worst recorded session.
+
 1. **Ground** — `get_engine_status`, then `list_connectors` to see what's
-   already wired. For each connector the workflow will call:
-   `probe_connector` if it has never been called (a successful probe
-   records the real response shape, which grounds generation), and
-   `search_docs` / `search_knowledge` when the endpoint surface is unclear.
+   already wired. For EVERY connector the workflow will call:
+   (a) `probe_connector` to verify credentials and base URL respond — a
+   successful probe records the real response shape as shape evidence;
+   (b) `call_connector` on the primary endpoint(s) when the probe alone
+   does not cover the response shape you need (e.g. pagination, a
+   collection endpoint, a nested resource); and
+   (c) `search_docs` / `search_knowledge` when the endpoint surface is
+   unclear. Only proceed to step 2 once EVERY connector has a green probe.
 2. **`author_workflow`** (ONE call) — pass the user's goal VERBATIM plus the
    connector ids/slugs (and an `input_example` when the user supplied one).
    The engine grounds generation in the recorded endpoint samples + docs,
@@ -131,6 +145,54 @@ write JSONata, the addressing contract is strict:
   `$loop_index`). `item_var` is retired: declaring it is rejected, and a
   bare item name (`project.name`) is rejected at authoring time with a
   `did_you_mean: "$item.name"` rewrite.
+
+## `for_each` — inline per-step iteration (preferred over `loop` for simple fan-out)
+
+Any step (request, transform, call, wait) can declare a `for_each` field
+on `baseStep`. It replaces the standalone `loop` step for simple flat
+iteration: no body array, no sibling step ids, no container/child
+exclusion — just ONE step that runs once per element.
+
+```json
+{
+  "id": "fetch_resource",
+  "kind": "request",
+  "method": "GET",
+  "connector_id": "<connector_id>",
+  "path": "/v2/projects/${item.id}/resources",
+  "for_each": "(sourceData) => sourceData.fetch_projects.data.projects"
+}
+```
+
+**`for_each` contract:**
+
+- The value is a **JS arrow function** (or any expression) that receives
+  `sourceData` (the full execution scope, i.e. `input.scope`) and returns
+  an array. The expression is evaluated by the QuickJS runtime.
+- Each iteration binds `$item` (the current element) and `$loop_index`
+  (zero-based) into the substitution scope — identical to a `loop` body.
+- Inside the step's `path`/`url`/`headers`/`query`/`body` strings: use
+  `${item.<field>}` (same as loop body placeholders).
+- Inside JSONata `data_selector` on the SAME step: use `$item.<field>`.
+- The step output is an array of envelopes (one per iteration), keyed by
+  iteration index: `$scope.<step_id>.data[i]`.
+
+**`for_each` vs `loop` kind — when to use which:**
+
+| Situation | Use |
+|---|---|
+| Simple fan-out: one step per item, no sibling body steps needed | `for_each` on the step (preferred) |
+| Each iteration needs multiple sequential sibling steps | `loop` with `body: [...]` |
+| HATEOAS expansion needing two sequential passes | Two flat `for_each` steps separated by a transform |
+
+**Addressing `for_each` output downstream (after the step):**
+
+- JS transform: `input.scope.<step_id>.data.map(iter => iter.<field>)`
+- JSONata: `$scope.<step_id>.data[*].<field>`
+
+A step with `for_each` is NOT a container — it is a regular step that
+the runtime expands inline. The static container/child exclusion that
+applies to `loop.body` steps does not apply here.
 
 ## Recurring cadence is part of the workflow definition
 
@@ -745,14 +807,19 @@ shape that fails at runtime. Follow the order:
    `s3-connectors`, `graphql-connectors`) and any domain skill the tenant
    has seeded.
 2. **`list_connectors`.** Note `id`, `slug`, `base_url`, stored credentials.
-3. **`probe_connector`.** Verify credential resolves and base URL responds.
-   A successful probe also records the response shape — the pipeline's
-   grounding reads it.
-4. **`search_docs` and `search_knowledge`.** Look up endpoints, auth,
+3. **`probe_connector` (MANDATORY — do not skip).** Verify credential
+   resolves and base URL responds. A green probe records the response
+   shape as evidence that grounds generation. Call this for EVERY
+   connector the workflow will use. Skipping the probe is the primary
+   cause of authoring-time failures — the pipeline generates against
+   guesses instead of real shapes.
+4. **`call_connector` (probe supplement).** Call the primary endpoint(s)
+   and capture the real response shape when the probe alone does not
+   cover the endpoint you need (collection endpoints, nested resources,
+   paginated lists). Prefer `call_connector` over guessing response shape
+   from documentation.
+5. **`search_docs` and `search_knowledge`.** Look up endpoints, auth,
    pagination, response structure. Do not guess paths from the URL.
-5. **`call_connector`.** Execute one or two primary endpoints and
-   capture the real response shape when no probe/recorded sample covers
-   the endpoint you need.
 6. **Only then** call `author_workflow` (or `build_workflow` when you
    already hold the exact definition). The pipeline grounds generation
    in the recorded shapes; without them it generates against guesses.
@@ -864,9 +931,15 @@ Prefer the stdlib over raw comparisons so hook + transform code stays uniform.
 - **Micro-iterating a new workflow with `propose_step`.** Initial authoring
   is ONE `author_workflow` call; the micro-tools refuse with
   `authoring_stage_violation` until a preview or findings exist.
-- **Skipping `probe_connector`.** You'll spend five turns debugging a credential
-  that never existed — and the pipeline generates against guessed shapes.
-  Probe first, every time.
+- **Skipping `probe_connector` or `call_connector` before `author_workflow`.**
+  The pipeline generates against guesses. A missed probe is the highest-
+  leverage source of authoring failures — verified across 364 dry-run
+  retries in one session. Probe every connector, call the primary
+  endpoint, then author. No exceptions.
+- **Using the `loop` kind for simple one-step fan-out.** Prefer `for_each`
+  on the step (`for_each: "(sourceData) => sourceData.<step>.data.<array>"`).
+  The `loop` kind is only needed when the iteration body requires multiple
+  sequential sibling steps or nested aggregation.
 - **Skipping `dry_run_workflow` and reaching for `save_workflow_draft`
   directly.** Direct `save_workflow_draft` calls are policy-gated and the inner
   prior-approval check rejects with `no_prior_approval`. The persistence

@@ -15,6 +15,7 @@ import {
   HttpRequestInvalidError,
   parseResponseBody,
   probeHttpConnector,
+  resolveUrl,
 } from "../drivers/http.ts";
 import { createConnector, getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
@@ -527,6 +528,55 @@ describe("executePlannedHttpRequest header contract", () => {
         signal: new AbortController().signal,
       }),
     ).rejects.toBeInstanceOf(HttpRequestInvalidError);
+  });
+});
+
+// resolveUrl — pure-function tests. No DB required.
+//
+// The key invariant: a base_url with a non-root pathname must not have
+// its path segment silently discarded when the caller passes a
+// leading-slash path. The URL spec's `new URL('/foo', base)` behaviour
+// strips the base pathname — we normalise this before delegating to the
+// constructor (see W3.6 fix comment in http.ts).
+describe("resolveUrl — base-path preservation", () => {
+  test("base with subpath + leading-slash path: appends to base path", () => {
+    // This is the A5 failure pattern: base "…/gmail/v1" + path "/users/me/messages"
+    // was resolving to "…/users/me/messages" (drops /gmail/v1) → 404.
+    const url = resolveUrl("https://api.example.com/v1", "/users/me");
+    expect(url.href).toBe("https://api.example.com/v1/users/me");
+  });
+
+  test("base with subpath + no-leading-slash path: appends correctly", () => {
+    // Already worked before the fix; confirm it still does.
+    const url = resolveUrl("https://api.example.com/v1", "users/me");
+    expect(url.href).toBe("https://api.example.com/v1/users/me");
+  });
+
+  test("base with subpath + trailing slash + leading-slash path: appends to base path", () => {
+    // Explicit trailing slash on base should still work.
+    const url = resolveUrl("https://api.example.com/v1/", "/users/me");
+    expect(url.href).toBe("https://api.example.com/v1/users/me");
+  });
+
+  test("base root path + leading-slash path: resolves from origin (unchanged behaviour)", () => {
+    // When base is root ("/"), the URL spec behaviour is correct:
+    // "/users/me" against "https://api.example.com/" → "https://api.example.com/users/me".
+    const url = resolveUrl("https://api.example.com", "/users/me");
+    expect(url.href).toBe("https://api.example.com/users/me");
+  });
+
+  test("absolute URL passthrough: base_url is ignored entirely", () => {
+    const url = resolveUrl("https://api.example.com/v1", "https://other.example.com/endpoint");
+    expect(url.href).toBe("https://other.example.com/endpoint");
+  });
+
+  test("deep subpath base + leading-slash path: appends, does not double-slash", () => {
+    const url = resolveUrl("https://api.example.com/gmail/v1", "/users/me/messages");
+    expect(url.href).toBe("https://api.example.com/gmail/v1/users/me/messages");
+  });
+
+  test("null base_url with non-absolute path throws descriptive error", () => {
+    expect(() => resolveUrl(null, "/users/me")).toThrow("no base_url");
   });
 });
 

@@ -386,7 +386,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
     module: "execution",
     action: "transform",
     memory: true,
-    fields: { step_id: p.step.id, language: p.step.language ?? "jsonata" },
+    fields: { step_id: p.step.id, language: p.step.language ?? "javascript" },
     fn: () => runTransformStepInner(p),
   });
 }
@@ -397,7 +397,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
   const timeoutCtrl = new AbortController();
   const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
   const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
-  const language = p.step.language ?? "jsonata";
+  const language = p.step.language ?? "javascript";
   // A transform is a downstream JSONata/JS consumer of the scope. When
   // an upstream loop spilled large body payloads to storage, the loop
   // key in `scope` holds `OffloadRef` placeholders — re-hydrate them

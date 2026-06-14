@@ -64,7 +64,7 @@ describe("onError modes", () => {
     expect(result.status).toBe("failed");
     expect(result.steps).toHaveLength(2);
     expect(result.steps[0]?.status).toBe("failed");
-    expect(result.steps[1]?.status).toBe("aborted");
+    expect(result.steps[1]?.status).toBe("skipped");
   });
 
   test("Seraph anonymous-200 (dead credential) fails the step instead of succeeding empty", async () => {

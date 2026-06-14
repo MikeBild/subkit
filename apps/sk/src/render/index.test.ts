@@ -55,7 +55,7 @@ const wfSummary: WorkflowSummary = {
       { via: "cli", label: "sk CLI", command: "sk workflows run daily-report date=<value>" },
       { via: "mcp", label: "MCP tool", tool: "wf_daily-report" },
     ],
-    follow_up: "Run it now?",
+    follow_up: "Run it now, show the REST/HTTP call, or set up a schedule?",
   },
 };
 
@@ -252,7 +252,7 @@ describe("renderSummary · non-TTY plain ASCII", () => {
     expect(stderrBuf).toContain("Use it via:");
     expect(stderrBuf).toContain("sk workflows run daily-report");
     expect(stderrBuf).toContain("wf_daily-report");
-    expect(stderrBuf).toContain("Run it now?");
+    expect(stderrBuf).toContain("Run it now, show the REST/HTTP call, or set up a schedule?");
   });
 
   test("connector summary emits every fixture field", async () => {

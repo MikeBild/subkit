@@ -36,6 +36,7 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
           {
             kind: "transform",
             id: "prepare",
+            language: "jsonata",
             expression: "{ 'status': 'approved' }",
           },
           {
@@ -48,11 +49,13 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
           {
             kind: "transform",
             id: "handle_approved",
+            language: "jsonata",
             expression: "'payment_accepted'",
           },
           {
             kind: "transform",
             id: "handle_rejected",
+            language: "jsonata",
             expression: "'payment_denied'",
           },
         ],
@@ -77,7 +80,7 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
     expect(approvedStep?.status).toBe("succeeded");
 
     const rejectedStep = body.steps.find((s) => s.step_key === "handle_rejected");
-    expect(rejectedStep?.status).toBe("aborted");
+    expect(rejectedStep?.status).toBe("skipped");
     expect(rejectedStep?.error?.code).toBe("skipped");
   });
 
@@ -92,6 +95,7 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
           {
             kind: "transform",
             id: "prepare",
+            language: "jsonata",
             expression: "{ 'status': 'pending' }",
           },
           {
@@ -104,11 +108,13 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
           {
             kind: "transform",
             id: "handle_approved",
+            language: "jsonata",
             expression: "'payment_accepted'",
           },
           {
             kind: "transform",
             id: "handle_rejected",
+            language: "jsonata",
             expression: "'payment_denied'",
           },
         ],
@@ -130,7 +136,7 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
     expect(body.status).toBe("succeeded");
 
     const approvedStep = body.steps.find((s) => s.step_key === "handle_approved");
-    expect(approvedStep?.status).toBe("aborted");
+    expect(approvedStep?.status).toBe("skipped");
     expect(approvedStep?.error?.code).toBe("skipped");
 
     const rejectedStep = body.steps.find((s) => s.step_key === "handle_rejected");

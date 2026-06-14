@@ -14,8 +14,8 @@ const BASE = {
     {
       kind: "transform",
       id: "shape",
-      language: "jsonata",
-      expression: "{ 'total': 1, 'items': [] }",
+      language: "javascript",
+      expression: "return { total: 1, items: [] };",
     },
   ],
 };

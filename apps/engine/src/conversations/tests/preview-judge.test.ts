@@ -473,6 +473,33 @@ describe("preview judge · helpers", () => {
     expect(artifacts[artifacts.length - 1]?.step_id).toBe("shape");
   });
 
+  test("buildJudgeStepArtifacts excludes skipped steps so the judge never reads a skipped step as missing data", () => {
+    const artifacts = buildJudgeStepArtifacts([
+      {
+        step_key: "fetch",
+        kind: "request",
+        status: "succeeded",
+        output_preview: { items: [1, 2, 3] },
+      },
+      {
+        step_key: "send",
+        kind: "request",
+        status: "skipped",
+        output_preview: undefined,
+      },
+      {
+        step_key: "shape",
+        kind: "transform",
+        status: "succeeded",
+        output_preview: { result: "ok" },
+      },
+    ]);
+    const ids = artifacts.map((a) => a.step_id);
+    expect(ids).not.toContain("send");
+    expect(ids).toContain("fetch");
+    expect(ids).toContain("shape");
+  });
+
   test("buildJudgeStepArtifacts reads a held request duck-typed off request_meta", () => {
     const artifacts = buildJudgeStepArtifacts([
       {

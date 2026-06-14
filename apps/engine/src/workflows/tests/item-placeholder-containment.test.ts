@@ -79,7 +79,7 @@ describe("validateWorkflowDef · item-placeholder containment", () => {
         // validators.
         { id: "a", kind: "request", method: "GET", url: "https://x/${item.id}" },
         // x must exist for the loop validator to pass — add a dummy step.
-        { id: "x", kind: "transform", language: "jsonata", expression: "[1, 2]" },
+        { id: "x", kind: "transform", language: "javascript", expression: "[1, 2]" },
       ],
     });
     // The loop is structurally OK now; the body step is contained.
