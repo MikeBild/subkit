@@ -111,6 +111,35 @@ const fetchWorkflowRows = async (client: EngineClient) => {
   }));
 };
 
+const WORKFLOW_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Resolve a `sk workflows run` positional that may be a workflow id OR a
+ *  slug (or exact name). A UUID passes through untouched; otherwise we look
+ *  it up against the tenant's workflows. The engine's saved-run route only
+ *  accepts a UUID `workflow_id`, so resolving here turns the prior cryptic
+ *  `bad_request: request validation failed` into either the correct run or a
+ *  clear, actionable error. */
+export async function resolveWorkflowIdOrSlug(
+  client: EngineClient,
+  idOrSlug: string,
+): Promise<string> {
+  if (WORKFLOW_UUID_RE.test(idOrSlug)) return idOrSlug;
+  const { items } = await client.listWorkflows({ limit: 200 });
+  const matches = (items as Record<string, unknown>[]).filter(
+    (r) => r.slug === idOrSlug || r.name === idOrSlug,
+  );
+  if (matches.length === 1) return String(matches[0]?.id);
+  if (matches.length > 1) {
+    throw new Error(
+      `workflow '${idOrSlug}' is ambiguous — matched ${matches.length} workflows; pass the workflow id (see 'sk workflows list')`,
+    );
+  }
+  throw new Error(
+    `no workflow found with id or slug '${idOrSlug}' — run 'sk workflows list' to see available workflows`,
+  );
+}
+
 type SnippetLang = "curl" | "node" | "python";
 
 /** Render an authenticated, copy-paste snippet that runs a saved
@@ -317,7 +346,7 @@ const runCommand = defineCommand({
     id: {
       type: "positional",
       required: false,
-      description: "Workflow id (omit when using --draft or --step)",
+      description: "Workflow id or slug (omit when using --draft or --step)",
     },
     input: {
       type: "string",
@@ -463,11 +492,14 @@ const runCommand = defineCommand({
 
       // Saved workflow (default). An omitted id opens an interactive
       // picker in a TTY; non-TTY keeps the informative required error.
-      const workflowId = await pickId({
-        label: "workflow id (positional, unless --draft or --step is provided)",
+      const picked = await pickId({
+        label: "workflow id or slug (positional, unless --draft or --step is provided)",
         argValue: args.id,
         fetch: () => fetchWorkflowRows(client),
       });
+      // Accept a slug or exact name as well as a UUID — the engine's
+      // saved-run route requires a UUID, so resolve before posting.
+      const workflowId = await resolveWorkflowIdOrSlug(client, picked);
       // Use the engine's `RunExecutionBody` so the body shape is
       // type-checked against the canonical POST /v1/executions schema.
       const body: Extract<RunExecutionBody, { source: "saved" }> = {
