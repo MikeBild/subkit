@@ -57,7 +57,7 @@ Each **step** has at minimum:
 | Kind | Purpose | One-line config example |
 |---|---|---|
 | `request` | Call an external connector boundary via a connector (http / graphql / s3) | `{ "connector_id": "00000000-0000-0000-0000-000000000001", "method": "GET", "path": "/crm/v3/objects/contacts" }` |
-| `transform` | Reshape data with sandboxed JavaScript (default for new transforms) or legacy JSONata, no I/O | `{ "language": "javascript", "expression": "return input.scope.list_orders.data.results.filter(r => r.amount > 100);" }` |
+| `transform` | Reshape data with sandboxed JavaScript (JS-only — JSONata is not a transform language), no I/O | `{ "language": "javascript", "expression": "return input.scope.list_orders.data.results.filter(r => r.amount > 100);" }` |
 | `wait` | Pause for a duration | `{ "duration_ms": 30000 }` |
 | `branch` | Conditional routing by step id | `{ "when": "$scope.classify.data.tier = 'gold'", "then_steps": ["notify_gold"], "else_steps": ["notify_standard"] }` |
 | `parallel` | Run child step ids concurrently | `{ "branches": [["write_pg"], ["write_s3"]] }` |
@@ -108,16 +108,18 @@ resolves them at step-start time:
 `${scope...}` and `$scope...` are two interchangeable forms for the same scope
 access. Use `${scope.foo.data.x}` inside string-interpolated configs (URLs, headers,
 SQL text), and `$scope.foo.data.x` inside JSONata expressions (data_selector,
-transform.expression, branch.when).
+loop.over, branch.when, output_transform). Inside a JavaScript `transform`
+expression the same data is `input.scope.foo.data.x`.
 
 ## JSONata basics
 
-`data_selector`, `loop.over`, and `branch.when` use JSONata. New `transform`
-steps default to JavaScript instead: the expression is a function body with
-exactly one global, `input` (`input.scope.<step_id>.data…` for upstream
-steps, `input.input` for the workflow input), and an explicit `return`.
-JSONata transforms (`language: "jsonata"`) remain supported as legacy.
-Common JSONata patterns:
+`data_selector`, `loop.over`, `branch.when`, `output_transform`, and
+`${scope.x.data}` string interpolation use JSONata. `transform` steps are
+JavaScript-ONLY: the expression is a function body with exactly one global,
+`input` (`input.scope.<step_id>.data…` for upstream steps, `input.input` for
+the workflow input), and an explicit `return`. JSONata is NOT a transform
+language — `language: "jsonata"` on a `transform` step is rejected by the
+schema. Common JSONata patterns (for the valid JSONata slots above):
 
 - **Select a field:** `$scope.list_orders.data.results`
 - **Filter:** `$scope.list_orders.data.results[status = 'open']`
@@ -156,14 +158,14 @@ long as connector slugs match and required credentials exist in the prod env.
     {
       "id": "pick_fields",
       "kind": "transform",
-      "expression": "$scope.fetch_signups.data.{ 'id': id, 'email': email }",
-      "language": "jsonata"
+      "language": "javascript",
+      "expression": "return input.scope.fetch_signups.data.map((u) => ({ id: u.id, email: u.email }));"
     },
     {
       "id": "shape",
       "kind": "transform",
-      "expression": "{ 'users': $scope.pick_fields.data, 'count': $count($scope.pick_fields.data) }",
-      "language": "jsonata"
+      "language": "javascript",
+      "expression": "return { users: input.scope.pick_fields.data, count: input.scope.pick_fields.data.length };"
     }
   ],
   "output_transform": "$scope.shape.data"

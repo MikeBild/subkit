@@ -121,7 +121,8 @@ describe("workflow-authoring.md · field coverage", () => {
     expect(body).toContain("$scope.<loop_id>.data.<body_step_id>.data");
     // the compact worked example: request + transform in one body
     expect(body).toContain(`\${item.full_name}`);
-    expect(body).toContain("$scope.fetch_languages.data");
+    // the body transform is JavaScript-only — sibling read via input.scope
+    expect(body).toContain("input.scope.fetch_languages.data");
   });
   test("documents author_workflow as the canonical one-shot authoring entry", () => {
     expect(body).toContain("`author_workflow`");
@@ -136,8 +137,9 @@ describe("workflow-authoring.md · field coverage", () => {
     expect(body).toContain("input.input");
     expect(body).toMatch(/must `return` its result/);
     expect(body).toMatch(/QuickJS/);
-    // JSONata demoted to legacy/compat with $item-only addressing
-    expect(body).toMatch(/JSONata is legacy\/compat/);
+    // JSONata is NOT a transform language; it survives only in the valid slots
+    expect(body).toMatch(/JSONata is NOT a transform language/);
+    expect(body).toMatch(/`language: "jsonata"` on a `transform` step is rejected/);
     expect(body).toMatch(/\*\*`\$item` ONLY\*\*/);
   });
   test("documents the bulk-endpoint design rule", () => {

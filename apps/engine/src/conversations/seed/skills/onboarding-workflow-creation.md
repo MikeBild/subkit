@@ -81,8 +81,8 @@ After this lands, the next iteration usually adds a transform step:
 {
   "id": "shape",
   "kind": "transform",
-  "language": "jsonata",
-  "expression": "$scope.list_customers.data.data.{ 'id': id, 'email': email }"
+  "language": "javascript",
+  "expression": "return input.scope.list_customers.data.data.map((c) => ({ id: c.id, email: c.email }));"
 }
 ```
 

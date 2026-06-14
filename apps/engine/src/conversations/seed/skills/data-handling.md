@@ -53,10 +53,11 @@ The three envelope fields you actually use downstream:
 
 ## JSONata cheatsheet
 
-New `transform` steps default to `language: "javascript"` (see "Transform
-step" below) — JSONata is the legacy/compat transform surface. It remains
-the canonical language for `data_selector`, `loop.over`, `branch.when`,
-and the JSONata `output_transform`, so this cheatsheet still matters.
+`transform` steps are JavaScript-ONLY (see "Transform step" below) —
+JSONata is NOT a transform language. It remains the canonical language
+for `data_selector`, `loop.over`, `branch.when`, the JSONata
+`output_transform`, and `${scope.x.data}` string interpolation, so this
+cheatsheet still matters for those slots.
 
 ### Selection
 
@@ -265,9 +266,11 @@ original bloated response is gone from scope entirely.
 ## Transform step — reshape across steps
 
 A `transform` step has its own envelope and is the right place for
-multi-source reshaping. **New transforms are JavaScript-first**
-(`language: "javascript"`). The authored code is a FUNCTION BODY with
-exactly ONE global, `input`, and an explicit `return`:
+multi-source reshaping. **Transforms are JavaScript-ONLY**
+(`language: "javascript"`). JSONata is NOT a transform language —
+`language: "jsonata"` on a `transform` step is rejected by the schema.
+The authored code is a FUNCTION BODY with exactly ONE global, `input`,
+and an explicit `return`:
 
 - `input.scope.<step_id>.data` — each upstream step's output (every step
   output is enveloped; always read through `.data`).
@@ -279,18 +282,6 @@ exactly ONE global, `input`, and an explicit `return`:
   "kind": "transform",
   "language": "javascript",
   "expression": "return input.scope.orders.data.map(o => { const c = input.scope.customers.data.find(c => c.id === o.customer_id); return { order_id: o.id, customer: c ? c.email : 'unknown', total: o.total }; });"
-}
-```
-
-The JSONata form (`language: "jsonata"`) remains supported as
-legacy/compat — existing workflows keep running unchanged:
-
-```json
-{
-  "id": "report_rows",
-  "kind": "transform",
-  "language": "jsonata",
-  "expression": "$scope.orders.data.{ 'order_id': id, 'customer': $scope.customers.data[id = $$.customer_id].email, 'total': total }"
 }
 ```
 
@@ -357,14 +348,14 @@ input at the gate.
     {
       "id": "joined",
       "kind": "transform",
-      "language": "jsonata",
-      "expression": "$scope.fetch_orders.data.{ 'order_id': id, 'total': total, 'lifecycle': $scope.fetch_contacts.data[email = $$.email].lifecycle ? $scope.fetch_contacts.data[email = $$.email].lifecycle : 'unknown' }"
+      "language": "javascript",
+      "expression": "return input.scope.fetch_orders.data.map((o) => { const c = input.scope.fetch_contacts.data.find((x) => x.email === o.email); return { order_id: o.id, total: o.total, lifecycle: c && c.lifecycle ? c.lifecycle : 'unknown' }; });"
     },
     {
       "id": "totals_by_lifecycle",
       "kind": "transform",
-      "language": "jsonata",
-      "expression": "$scope.joined.data{ lifecycle: $sum(total) }"
+      "language": "javascript",
+      "expression": "return input.scope.joined.data.reduce((acc, r) => { acc[r.lifecycle] = (acc[r.lifecycle] || 0) + r.total; return acc; }, {});"
     }
   ],
   "output_transform": "{ 'report': $scope.totals_by_lifecycle.data, 'row_count': $count($scope.joined.data) }"
@@ -375,7 +366,7 @@ Walk-through:
 
 1. `fetch_orders` and `fetch_contacts` each trim to 4 and 2 fields via `data_selector`. Scope stays small.
 2. `joined` correlates by email with a null-safe default of `'unknown'`.
-3. `totals_by_lifecycle` groups + sums in one JSONata expression.
+3. `totals_by_lifecycle` groups + sums in a JS `reduce`.
 4. `output_transform` builds the public payload with a row count sibling.
 
 ## `for_each` — inline per-step iteration (JS, preferred)
@@ -463,8 +454,8 @@ Wrong — the validator (or the engine at run time) will reject each of these:
 "/v2/projects/${project.id}/resources"                # bare item names are rejected — `item` is the only item placeholder kind
 ```
 
-In JSONata surfaces inside the loop body (`data_selector`, `branch.when`,
-legacy transforms) the only form is `$item.field` — no `$scope.` prefix,
+In JSONata surfaces inside the loop body (`data_selector`, `branch.when`)
+the only form is `$item.field` — no `$scope.` prefix,
 no `.data`. Sibling body-step results in the same iteration are read via
 `$scope.<body_step_id>.data.<field>` (JSONata) /
 `input.scope.<body_step_id>.data.<field>` (JS transforms) /

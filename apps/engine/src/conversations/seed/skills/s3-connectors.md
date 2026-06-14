@@ -176,8 +176,8 @@ S3 has no real directories, but clients lean on prefix conventions:
     {
       "id": "build_payload",
       "kind": "transform",
-      "language": "jsonata",
-      "expression": "{ 'generated_at': $now(), 'rows': $scope.query.data }"
+      "language": "javascript",
+      "expression": "return { generated_at: input.input.generated_at, rows: input.scope.query.data };"
     },
     {
       "id": "archive",

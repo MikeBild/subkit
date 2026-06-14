@@ -132,12 +132,14 @@ A curated `sk` stdlib global is pre-installed in the sandbox (see
 workflow-level output transform (mutually exclusive with the JSONata
 `output_transform`).
 
-### JSONata is legacy/compat
+### JSONata is NOT a transform language
 
-`language: "jsonata"` transforms, `loop.over`, `branch.when`, and
-`output_transform` remain fully supported — existing workflows keep
-running unchanged — but author NEW transforms in JavaScript. When you do
-write JSONata, the addressing contract is strict:
+A `transform` step is JavaScript-ONLY. JSONata is not a valid transform
+language — `language: "jsonata"` on a `transform` step is rejected by the
+schema. JSONata survives only in `data_selector`, `loop.over`,
+`branch.when`, `output_transform`, and `${scope.x.data}` string
+interpolation. When you write JSONata in one of THOSE slots, the
+addressing contract is strict:
 
 - Upstream steps: `$scope.<step_id>.data…` (bare `<step_id>.data` also
   resolves). Workflow input: `$input`.
@@ -443,8 +445,9 @@ the engine writes `step_id → scope_at_step` to
 months later have `suggest_jsonata_paths` populated from this
 persisted vocabulary even before the first dry-run.
 
-**`loop.over`** is JSONata evaluated with the same bindings as
-JSONata transform expressions: `$input`, `$scope`, `$steps`, and
+**`loop.over`** is JSONata evaluated with the same bindings as the
+other JSONata slots (`data_selector`, `branch.when`): `$input`,
+`$scope`, `$steps`, and
 unpacked `$<key>` bindings. Both forms below are equivalent — pick
 whichever reads better:
 
@@ -503,7 +506,7 @@ authoring churn. There are exactly two expression surfaces and each
 accepts exactly one form — mixing them surfaces as
 `placeholder_unresolved` or `unresolved_identifier`:
 
-| You need | JSONata expressions (`data_selector`, `branch.when`, legacy transforms) | Request placeholder strings (`path` / `url` / `headers` / `query` / `body`) |
+| You need | JSONata expressions (`data_selector`, `branch.when`) | Request placeholder strings (`path` / `url` / `headers` / `query` / `body`) |
 |---|---|---|
 | Current item field | `$item.name` (the ONLY form — bare item names are rejected) | `${item.name}` |
 | Iteration index (zero-based) | `$loop_index` | not available — derive it in a prior transform if needed |
@@ -538,17 +541,17 @@ Compact worked example — a request + a transform inside one body:
   {
     "id": "shape_repo",
     "kind": "transform",
-    "language": "jsonata",
-    "expression": "{ \"name\": $item.name, \"index\": $loop_index, \"languages\": $scope.fetch_languages.data }"
+    "language": "javascript",
+    "expression": "return { name: input.scope.$item.name, index: input.scope.$loop_index, languages: input.scope.fetch_languages.data };"
   }
 ]
 ```
 
 `fetch_languages` (request) addresses the item via `${item.full_name}`;
-`shape_repo` (transform) reads `$item.name`, the always-bound
-`$loop_index`, and its sibling's result via
-`$scope.fetch_languages.data`. After the loop, a downstream transform
-reads `$scope.iterate_repos.data.shape_repo.data.name`.
+`shape_repo` (transform) reads the current item via `input.scope.$item`,
+the always-bound `input.scope.$loop_index`, and its sibling's result via
+`input.scope.fetch_languages.data`. After the loop, a downstream transform
+reads `input.scope.iterate_repos.data.shape_repo.data.name`.
 
 **`body` is an ARRAY of step ids.** Write
 `body: ["fetch_languages", "shape_repo"]` — never a string
@@ -574,10 +577,9 @@ exists.
 by body step id with a full ScopeEnvelope inside. Path to a body field:
 `$scope.<loop_id>.data.<body_step_id>.data.<field>`.
 
-To project across iterations, prefer a JS transform
-(`input.scope.<loop_id>.data.map(iter => iter.<body_step_id>.data…)`);
-the JSONata equivalent is `$map(loop_id.data, function($iter, $i) {...})`
-with `$iter.<body_step_id>.data` as the response payload. If
+To project across iterations, use a JS transform
+(`input.scope.<loop_id>.data.map(iter => iter.<body_step_id>.data…)`).
+Transforms are JavaScript — there is no JSONata transform form. If
 fewer keys come out than went in, a `transform_dropped_fields` warning fires
 (informational only — see "Repair signal" below).
 
@@ -732,8 +734,8 @@ the shape is consistent.
 
 ### JSONata flavour rules (variable blocks, dynamic keys, concatenation)
 
-These apply to the legacy JSONata surface (`loop.over`, `branch.when`,
-`output_transform`, compat transforms). Three syntax rules real sessions
+These apply to the JSONata slots (`loop.over`, `branch.when`,
+`output_transform`, `data_selector`). Three syntax rules real sessions
 repeatedly got wrong. Each produces a compile error
 (`expression_invalid` with a caret position, also surfaced as a
 `compile_error` finding in `recorded_eval`) — do not burn dry-runs
