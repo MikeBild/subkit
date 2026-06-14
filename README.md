@@ -86,7 +86,7 @@ anything is committed.
 - **Multi-AI provider** — Claude, OpenAI, and Gemini are all supported. The platform
   routes to the best model for the task; swap providers without changing workflows.
 
-- **Connector Catalog** — 90 pre-built connector templates for Stripe, Salesforce,
+- **Connector Catalog** — 105 pre-built connector templates for Stripe, Salesforce,
   GitHub, Slack, Jira, and more. Each template includes setup guidance, documentation
   ingestion, and auth configuration. The AI uses these templates to propose accurate
   integrations, not generic HTTP requests.

@@ -10,7 +10,7 @@ instruction files are compatibility layers or indexes — not competing sources 
   agentic operationalisation.** It is not a chat product, not an LLM provider, and not a
   general workflow-automation tool. It owns: identity & access (RBAC/ABAC, encrypted
   credentials, portal tokens, API keys), unified data/tool interfaces (9 typed drivers,
-  90 connector templates), governed execution (immutable audit log, human-in-the-loop
+  105 connector templates), governed execution (immutable audit log, human-in-the-loop
   approvals, versioned workflows with full snapshots), observability (Prometheus,
   structured logs, drift detection), and multi-tenant conversation-first surfaces (CLI,
   `sk`, Slack, Teams, Google Chat, MCP).
@@ -49,7 +49,7 @@ Priority when sources conflict:
 
 1. Code, types, tests, and verified inline decisions.
 2. Canonical docs in `docs/` (numbered) and workflow/config files.
-3. Existing implementation examples (e.g. the 90 templates, the 9 drivers).
+3. Existing implementation examples (e.g. the 105 templates, the 9 drivers).
 
 High-value references (by task type):
 
@@ -60,13 +60,14 @@ High-value references (by task type):
   `docs/positioning.md` (Document C, how sk realises them). Read in that order when you
   need to reason about positioning, vocabulary, or category claims.
 - **Platform & concepts** — `docs/01-platform.md`, `docs/02-concepts.md`
-- **Input surfaces** — `docs/03-input-surfaces.md`. The sk REPL exposes a 10-tab
-  `/settings` palette (`Settings · Status · Config · Usage · Stats · Skills ·
-  Permissions · Knowledge · Profile · Admin`) embedded in-process via the
-  `kind: "settings"` PaneSpec; the Admin tab is hidden unless the principal
-  holds an admin-scoped permission. Slash registry is in
-  `apps/sk/src/slash.ts`; deleted-slash redirects in
-  `apps/sk/src/repl/slash/dispatcher.ts:REMOVED_SLASH_GUIDANCE`.
+- **Input surfaces** — `docs/03-input-surfaces.md`. The sk REPL exposes a 5-tab
+  `/settings` palette (`Status · Config · Usage · Skills · Knowledge`) embedded
+  in-process via the `kind: "settings"` PaneSpec. Operator surfaces
+  (`Permissions`, `Profile`, `Admin`) are not tabs — each is its own SinglePane
+  slash command (`/permissions`, `/profile`, `/admin`); `/admin` renders a
+  "no admin permissions" message unless the principal holds an admin-scoped
+  permission. Slash registry is in `apps/sk/src/slash.ts`; deleted-slash
+  redirects in `apps/sk/src/repl/slash/dispatcher.ts:REMOVED_SLASH_GUIDANCE`.
 - **AI authoring** — `docs/04-authoring.md`
 - **Connectors & integration** — `docs/05-connectors.md`
 - **Execution** — `docs/06-execution.md`
@@ -170,7 +171,8 @@ Subsystem map inside `apps/engine/src/` (43 directories + 5 loose root files):
 | Immutable audit log | `audit/` | `docs/07-security-governance.md` |
 | Auth providers (OIDC, API key, portal token) | `auth/` | `docs/07-security-governance.md` |
 | Chat adapters (Slack, Teams, Google Chat) | `chat/` | `docs/03-input-surfaces.md` |
-| 9 drivers + 90 templates | `connectors/` | `docs/05-connectors.md` |
+| Layered config loader (override → tenant → global → default) | `config/` | `docs/operations/configuration.md` |
+| 9 drivers + 105 templates | `connectors/` | `docs/05-connectors.md` |
 | AI authoring loop + tool use | `conversations/` | `docs/04-authoring.md` |
 | Encrypted secret storage + OAuth2 refresh + credential rotation | `credentials/` (incl. `credentials/oauth2/`) | `docs/07-security-governance.md` |
 | AES-256-GCM + redaction | `crypto/` | `docs/07-security-governance.md` |
@@ -206,6 +208,8 @@ Subsystem map inside `apps/engine/src/` (43 directories + 5 loose root files):
 | Top-level integration suites | `tests/` | (test infrastructure) |
 | Cross-subsystem utilities | `utils/` | (shared helpers) |
 | Inbound + outbound webhooks (incl. transactional outbox dispatch) | `webhooks/` | `docs/03-input-surfaces.md` |
+| Inbound signal write + atomic-claim match (wait-for-event step) | `workflow-signals/` | `docs/06-execution.md` |
+| Persistent per-workflow tenant-encrypted state (`state_read` / `state_write`) | `workflow-state/` | `docs/06-execution.md` |
 | DAG versioning + locking + execution | `workflows/` | `docs/06-execution.md` |
 
 Loose root files in `apps/engine/src/`:

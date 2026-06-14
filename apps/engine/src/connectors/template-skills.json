@@ -20,16 +20,26 @@
     "body": "Authenticate via Client Credentials grant: POST client_id and secret with Basic Auth to /v1/oauth2/token to obtain a Bearer token. All requests go to https://api-m.paypal.com (production) or https://api-m.sandbox.paypal.com (sandbox). Responses are JSON.",
     "examples": [
       "POST /v2/checkout/orders — create an order",
-      "POST /v2/checkout/orders/{id}/capture — capture an approved order"
+      "POST /v2/checkout/orders/{id}/capture — capture an approved order",
+      "GET /v1/reporting/transactions?start_date=2026-05-01T00:00:00Z&end_date=2026-05-31T23:59:59Z&fields=transaction_info&page_size=500&page=1 — Transaction Search (list transactions in a window)"
     ],
     "best_practices": [
       "Always use sandbox (api-m.sandbox.paypal.com) for development and testing",
-      "Store and reuse Bearer tokens until they expire (typically 9 hours)"
+      "Store and reuse Bearer tokens until they expire (typically 9 hours)",
+      "Transaction Search (GET /v1/reporting/transactions) needs the scope https://uri.paypal.com/services/reporting/search/read and the 'Transaction Search' feature enabled on the REST app (Business accounts only)",
+      "Transaction Search dates are RFC 3339 (e.g. 2026-05-01T00:00:00Z); a single call covers at most a 31-day window and only the last ~3 years — to fetch a full history, iterate contiguous <=31-day windows",
+      "Paginate each window with page_size (max 500) and page (1-based); read total_pages from the response and fetch pages 2..total_pages when total_pages > 1"
     ],
     "pitfalls": [
-      "Never mix sandbox and production credentials — calls will silently fail or return confusing errors"
+      "Never mix sandbox and production credentials — calls will silently fail or return confusing errors",
+      "Transaction Search returns 403 if the app lacks the Transaction Search feature, and an empty result for windows wider than 31 days or older than ~3 years — chunk the range instead",
+      "Executed transactions can take up to ~3 hours to appear in Transaction Search results"
     ],
-    "doc_refs": ["https://developer.paypal.com/docs/api/overview/"]
+    "doc_refs": [
+      "https://developer.paypal.com/docs/api/overview/",
+      "https://developer.paypal.com/docs/transaction-search/",
+      "https://developer.paypal.com/docs/api/transaction-search/v1/"
+    ]
   },
   "square-basics": {
     "title": "Square API Basics",

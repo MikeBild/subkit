@@ -56,7 +56,7 @@ describe("GET /v1/workflows/:id (schema fields)", () => {
         {
           kind: "transform",
           id: "out",
-          expression: '{ "echoed": $input.msg }',
+          expression: "return { echoed: input.input.msg };",
         },
       ],
     });
@@ -84,7 +84,7 @@ describe("GET /v1/workflows/:id/input-schema", () => {
         properties: { x: { type: "number" } },
         required: ["x"],
       },
-      steps: [{ kind: "transform", id: "out", expression: '{ "y": $input.x * 2 }' }],
+      steps: [{ kind: "transform", id: "out", expression: "return { y: input.input.x * 2 };" }],
     });
 
     const res = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}/input-schema`, {
@@ -104,7 +104,7 @@ describe("GET /v1/workflows/:id/input-schema", () => {
         {
           kind: "transform",
           id: "out",
-          expression: '{ "id": $input.user_id }',
+          expression: "return { id: input.input.user_id };",
         },
       ],
     });
@@ -125,7 +125,7 @@ describe("GET /v1/workflows/:id/input-schema", () => {
   test("returns source='none' when no inputs are referenced anywhere", async () => {
     const wf = await createWorkflow({
       name: "no-input-references",
-      steps: [{ kind: "transform", id: "constant", expression: "42" }],
+      steps: [{ kind: "transform", id: "constant", expression: "return 42;" }],
     });
 
     const res = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}/input-schema`, {
@@ -148,7 +148,7 @@ describe("GET /v1/workflows/:id/input-schema", () => {
   test("requires authentication", async () => {
     const wf = await createWorkflow({
       name: "auth-check",
-      steps: [{ kind: "transform", id: "out", expression: "1" }],
+      steps: [{ kind: "transform", id: "out", expression: "return 1;" }],
     });
     const res = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}/input-schema`);
     expect(res.status).toBe(401);
@@ -165,7 +165,7 @@ describe("POST /v1/workflows (definition fields are not silently dropped)", () =
     const wf = await createWorkflow({
       name: "scheduled-fields-check",
       trigger: { kind: "schedule", cron: "7 8 * * *", tz: "Europe/Berlin" },
-      steps: [{ kind: "transform", id: "out", expression: '{ "ok": true }' }],
+      steps: [{ kind: "transform", id: "out", expression: "return { ok: true };" }],
     });
 
     const rows = await ctx.db
@@ -192,7 +192,7 @@ describe("POST /v1/workflows (definition fields are not silently dropped)", () =
     const wf = await createWorkflow({
       name: "output-transform-check",
       output_transform: '{ "ok": true }',
-      steps: [{ kind: "transform", id: "out", expression: "1" }],
+      steps: [{ kind: "transform", id: "out", expression: "return 1;" }],
     });
 
     const res = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}`, {
@@ -208,7 +208,7 @@ describe("POST /v1/workflows (definition fields are not silently dropped)", () =
     const wf = await createWorkflow({
       name: "scheduled-put-preserve",
       trigger: { kind: "schedule", cron: "11 9 * * *", tz: "Europe/Berlin" },
-      steps: [{ kind: "transform", id: "out", expression: '{ "ok": true }' }],
+      steps: [{ kind: "transform", id: "out", expression: "return { ok: true };" }],
     });
 
     const put = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}`, {
@@ -216,7 +216,7 @@ describe("POST /v1/workflows (definition fields are not silently dropped)", () =
       headers: headers(ctx.apiKey),
       body: JSON.stringify({
         name: "scheduled-put-preserve",
-        steps: [{ kind: "transform", id: "out", expression: '{ "ok": "updated" }' }],
+        steps: [{ kind: "transform", id: "out", expression: 'return { ok: "updated" };' }],
       }),
     });
     expect(put.status).toBe(200);

@@ -5,8 +5,9 @@
 //   1. `${input.<pointer>}` placeholders in request URLs / paths /
 //      headers / query values / body strings (parsed via the canonical
 //      `parsePlaceholders`).
-//   2. `$input.<identifier>` (and bare `input.<identifier>`) references
-//      inside jsonata transform expressions, walked via jsonata's AST.
+//   2. `input.input.<identifier>` references inside JavaScript transform
+//      bodies (the sole transform language), plus `$input.<identifier>`
+//      inside the remaining JSONata slots (`branch.when`).
 //
 // Output: `{type: "object", properties: {foo: {type: "string"}}, additionalProperties: true}`
 // or `null` when nothing references `input`. String is the safe default
@@ -80,6 +81,25 @@ function collectFromJsonataAst(node: unknown, into: Set<string>): void {
   }
 }
 
+// JS counterpart of the JSONata `$input.<name>` walk: workflow-input
+// references inside a JavaScript transform body. Dot access and quoted
+// bracket access are both recognised (bracket covers names dot-syntax can't
+// express). Mirrors `extractJsScopeReferences` in conversations/js-transform-eval.ts.
+const JS_INPUT_REF_PATTERNS = [
+  /\binput\??\.input\??\.([A-Za-z_$][A-Za-z0-9_$]*)/g,
+  /\binput\??\.input\[\s*["']([^"'\]]+)["']\s*\]/g,
+];
+
+function collectJsInputRefs(code: string, into: Set<string>): void {
+  for (const re of JS_INPUT_REF_PATTERNS) {
+    re.lastIndex = 0;
+    for (let m = re.exec(code); m !== null; m = re.exec(code)) {
+      const name = m[1];
+      if (name && name.length > 0) into.add(name);
+    }
+  }
+}
+
 function collectFromStep(step: StepDef, into: Set<string>): void {
   if (step.kind === "request") {
     if (step.url) collectFromString(step.url, into);
@@ -96,11 +116,12 @@ function collectFromStep(step: StepDef, into: Set<string>): void {
     return;
   }
   if (step.kind === "transform") {
-    const language = step.language ?? "jsonata";
-    if (language !== "jsonata") return;
-    if (!step.expression) return;
-    const ast = extractAst(step.expression) as AstNode | null;
-    if (ast) collectFromJsonataAst(ast, into);
+    // Transforms are JavaScript. Collect workflow-input references of the
+    // form `input.input.<name>` / `input.input["name"]` so an input used
+    // only inside a transform still surfaces in the synthesized schema.
+    if (typeof step.expression === "string" && step.expression.length > 0) {
+      collectJsInputRefs(step.expression, into);
+    }
     return;
   }
   if (step.kind === "branch" && step.when) {

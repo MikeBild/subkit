@@ -74,7 +74,7 @@ function makeToolCtx(): ToolContext {
       name: "test-wf",
       steps: [
         { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
-        { id: "format", kind: "transform", expression: "$scope.fetch.data.items" },
+        { id: "format", kind: "transform", expression: "input.scope.fetch.data.items" },
       ],
     },
     latest_preview: { ok: false, step_id: null, summary: "stage evidence", step_traces: [] },
@@ -128,7 +128,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     for (let i = 1; i <= MAX_ERROR_CODE_REPEAT; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       const result = await (updateParam!.execute as any)(
-        { step_id: "format", param: "expression", value: `$scope.fetch.data.variant_${i}` },
+        { step_id: "format", param: "expression", value: `input.scope.fetch.data.variant_${i}` },
         { toolCallId: `t${i}`, messages: [] },
       );
       const errCode = result.data?.error_code ?? result.error_code;
@@ -149,7 +149,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
       {
         step_id: "format",
         param: "expression",
-        value: `$scope.fetch.data.variant_${MAX_ERROR_CODE_REPEAT + 1}`,
+        value: `input.scope.fetch.data.variant_${MAX_ERROR_CODE_REPEAT + 1}`,
       },
       { toolCallId: `t${MAX_ERROR_CODE_REPEAT + 1}`, messages: [] },
     );
@@ -192,7 +192,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
       // Failure i on update_param.
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       await (updateParam!.execute as any)(
-        { step_id: "format", param: "expression", value: `$scope.fetch.data.v${i}` },
+        { step_id: "format", param: "expression", value: `input.scope.fetch.data.v${i}` },
         { toolCallId: `u${i}`, messages: [] },
       );
       expect(signals.toolErrorCodeRepeat.get("update_param")?.count).toBe(i);
@@ -224,7 +224,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
       {
         step_id: "format",
         param: "expression",
-        value: `$scope.fetch.data.v${MAX_ERROR_CODE_REPEAT + 1}`,
+        value: `input.scope.fetch.data.v${MAX_ERROR_CODE_REPEAT + 1}`,
       },
       { toolCallId: `u${MAX_ERROR_CODE_REPEAT + 1}`, messages: [] },
     );
@@ -263,7 +263,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     for (let i = 1; i <= 2; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       await (updateParam!.execute as any)(
-        { step_id: "format", param: "expression", value: `$scope.fetch.data.x${i}` },
+        { step_id: "format", param: "expression", value: `input.scope.fetch.data.x${i}` },
         { toolCallId: `ta${i}`, messages: [] },
       );
     }

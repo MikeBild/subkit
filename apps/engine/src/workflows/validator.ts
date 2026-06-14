@@ -3,7 +3,7 @@
 // - referenced child step ids on parallel/loop/branch must exist
 // - data_selector must parse as a JSONPath-lite expression
 // - request urls must be syntactically valid
-// - jsonata expressions must parse
+// - transform expressions (JavaScript function bodies) must parse
 // - loop bodies must reference the iteration item (`$item` in JSONata,
 //   `${item.…}` in strings) — otherwise the loop is N copies of the
 //   same call, typically a bug. Legacy stored versions that declare
@@ -16,12 +16,12 @@
 // onto `RunResult.warnings` and trigger the `partial_success` gate in
 // `run-workflow.ts` that refuses the commit.
 
-import { compile as compileJsonata } from "../execution/jsonata-engine.ts";
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
 import { compileSelector } from "../execution/selectors.ts";
 import { detectReservedAuthHeaders } from "./header-policy.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "./types-web-scraper.ts";
 
 /**
  * Skill-schema gate. When a workflow declares `derived_from_skill_id`,
@@ -205,11 +205,18 @@ export function validateWorkflowDef(
     }
     if (
       step.kind === "transform" &&
-      (step.language ?? "javascript") === "jsonata" &&
-      step.expression !== undefined
+      typeof step.expression === "string" &&
+      step.expression.length > 0 &&
+      // Web-scraper languages (readability / html-to-markdown / structured-data)
+      // carry no `expression` — their config blocks do. Everything else is a
+      // JavaScript transform body.
+      !TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION.has(step.language ?? "javascript")
     ) {
       try {
-        compileJsonata(step.expression);
+        // Parse-only JS syntax check: the QuickJS sandbox wraps the body as
+        // `(function(input){ <expression> })`, so `new Function("input", body)`
+        // compiles it under the same grammar without executing it (parse-only).
+        new Function("input", step.expression);
       } catch (e) {
         errors.push({
           path: `steps.${step.id}.expression`,

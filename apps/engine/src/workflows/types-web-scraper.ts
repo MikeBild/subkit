@@ -80,8 +80,10 @@ export type MarkdownOutput = z.infer<typeof MarkdownOutputSchema>;
 export type StructuredDataOutput = z.infer<typeof StructuredDataOutputSchema>;
 
 /** Languages on `TransformStep.language` that require a non-empty
- *  `expression`. Used by the superRefine in `types.ts`. */
-export const TRANSFORM_LANGUAGES_NEEDING_EXPRESSION = new Set(["jsonata", "javascript"]);
+ *  `expression`. Transforms are JavaScript-only; JSONata survives only in
+ *  the one-line slots (`data_selector`, `branch.when`, `output_transform`,
+ *  `${...}` interpolation). Used by the superRefine in `types.ts`. */
+export const TRANSFORM_LANGUAGES_NEEDING_EXPRESSION = new Set(["javascript"]);
 
 /** Languages on `TransformStep.language` that forbid an `expression`
  *  field (the per-language config object is the carrier). */

@@ -3,14 +3,14 @@ import { STDLIB_VERSION } from "../../sandboxes/quickjs/stdlib/index.ts";
 import { annotateRuntime, workflowUsesSandboxedJs } from "../runtime-annotation.ts";
 import type { WorkflowDef } from "../types.ts";
 
-function defWithJs(language: "jsonata" | "javascript" | undefined): WorkflowDef {
+function defWithJs(language: "javascript" | "html-to-markdown" | undefined): WorkflowDef {
   return {
     name: "x",
     steps: [
       {
         kind: "transform",
         id: "t",
-        expression: "input",
+        expression: "return input;",
         ...(language ? { language } : {}),
       },
     ],
@@ -22,8 +22,11 @@ describe("workflowUsesSandboxedJs", () => {
     expect(workflowUsesSandboxedJs(defWithJs("javascript"))).toBe(true);
   });
 
-  test("jsonata default does not count", () => {
-    expect(workflowUsesSandboxedJs(defWithJs("jsonata"))).toBe(false);
+  test("only the explicit `javascript` language counts as sandboxed JS", () => {
+    // `workflowUsesSandboxedJs` keys on `language === "javascript"`.
+    // A web-scraper language (own driver, no QuickJS body) and an
+    // unlabelled transform both return false here.
+    expect(workflowUsesSandboxedJs(defWithJs("html-to-markdown"))).toBe(false);
     expect(workflowUsesSandboxedJs(defWithJs(undefined))).toBe(false);
   });
 
@@ -43,7 +46,7 @@ describe("annotateRuntime", () => {
   });
 
   test("leaves non-JS workflows unchanged", () => {
-    const input = defWithJs("jsonata");
+    const input = defWithJs("html-to-markdown");
     const out = annotateRuntime(input);
     expect(out.runtime).toBeUndefined();
     expect(out).toBe(input);

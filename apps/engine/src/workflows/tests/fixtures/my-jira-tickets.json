@@ -17,9 +17,9 @@
     {
       "id": "format_output",
       "kind": "transform",
-      "language": "jsonata",
+      "language": "javascript",
       "on_error": "fail",
-      "expression": "$scope.fetch_my_tickets.data.issues.{ \"key\": key, \"summary\": fields.summary, \"status\": fields.status.name, \"priority\": fields.priority.name, \"updated\": fields.updated }"
+      "expression": "return (input.scope.fetch_my_tickets.data.issues || []).map((r) => ({ key: r.key, summary: r.fields.summary, status: r.fields.status.name, priority: r.fields.priority ? r.fields.priority.name : undefined, updated: r.fields.updated }));"
     }
   ]
 }

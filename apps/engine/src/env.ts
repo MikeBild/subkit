@@ -158,7 +158,3 @@ export const env: Env = new Proxy({} as Env, {
     return Object.getOwnPropertyDescriptor(resolveEnv(), prop);
   },
 });
-
-export function _resetEnvCacheForTests(): void {
-  _resolved = null;
-}

@@ -36,8 +36,8 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
           {
             kind: "transform",
             id: "prepare",
-            language: "jsonata",
-            expression: "{ 'status': 'approved' }",
+            language: "javascript",
+            expression: "return { status: 'approved' };",
           },
           {
             kind: "branch",
@@ -49,14 +49,14 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
           {
             kind: "transform",
             id: "handle_approved",
-            language: "jsonata",
-            expression: "'payment_accepted'",
+            language: "javascript",
+            expression: "return 'payment_accepted';",
           },
           {
             kind: "transform",
             id: "handle_rejected",
-            language: "jsonata",
-            expression: "'payment_denied'",
+            language: "javascript",
+            expression: "return 'payment_denied';",
           },
         ],
       }),
@@ -95,8 +95,8 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
           {
             kind: "transform",
             id: "prepare",
-            language: "jsonata",
-            expression: "{ 'status': 'pending' }",
+            language: "javascript",
+            expression: "return { status: 'pending' };",
           },
           {
             kind: "branch",
@@ -108,14 +108,14 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
           {
             kind: "transform",
             id: "handle_approved",
-            language: "jsonata",
-            expression: "'payment_accepted'",
+            language: "javascript",
+            expression: "return 'payment_accepted';",
           },
           {
             kind: "transform",
             id: "handle_rejected",
-            language: "jsonata",
-            expression: "'payment_denied'",
+            language: "javascript",
+            expression: "return 'payment_denied';",
           },
         ],
       }),

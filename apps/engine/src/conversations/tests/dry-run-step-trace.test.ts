@@ -63,8 +63,8 @@ describe("dry_run_workflow · step_trace envelope", () => {
           {
             id: "shape",
             kind: "transform",
-            language: "jsonata",
-            expression: "$input.{ 'doubled': value * 2 }",
+            language: "javascript",
+            expression: "return { doubled: input.input.value * 2 };",
           },
         ],
       },
@@ -96,45 +96,6 @@ describe("dry_run_workflow · step_trace envelope", () => {
     expect(entry.error).toBeUndefined();
   });
 
-  test("failing JSONata identifier surfaces error_code in step_trace", async () => {
-    const draft: DraftDocument = {
-      workflow: {
-        name: "trace-fail",
-        slug: "trace-fail",
-        steps: [
-          {
-            id: "shape",
-            kind: "transform",
-            language: "jsonata",
-            // Reference an identifier that isn't in scope. The runtime
-            // emits an `unresolved_identifier` warning and the step
-            // resolves to undefined — which trips the
-            // transform_empty_extraction detector and surfaces an
-            // error envelope on the step.
-            expression: "$nonexistent.value",
-          },
-        ],
-      },
-      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
-    } as any;
-    const result = await dryRunWorkflowTool.execute(
-      makeCtx(() => draft),
-      { input: {} },
-    );
-    const data = result.data as {
-      warnings?: Array<{ code?: string }>;
-      step_trace?: Array<Record<string, unknown>>;
-    };
-    expect(Array.isArray(data.step_trace)).toBe(true);
-    expect(data.step_trace!.length).toBe(1);
-    // The unresolved-identifier path is an authoring-warning surface
-    // (run is technically "succeeded" but the warnings array signals
-    // the LLM should look). Confirm warnings show up so the trace
-    // stays useful even on the soft-fail path.
-    const warningCodes = (data.warnings ?? []).map((w) => w.code);
-    expect(warningCodes).toContain("unresolved_identifier");
-  });
-
   test("step_trace preserves kind for every step in a multi-step draft (auto-committed envelope)", async () => {
     // With auto-commit-on-green-dry-run the envelope returned by
     // dry_run_workflow is the committed-workflow shape — but
@@ -151,14 +112,14 @@ describe("dry_run_workflow · step_trace envelope", () => {
           {
             id: "shape",
             kind: "transform",
-            language: "jsonata",
-            expression: "$input",
+            language: "javascript",
+            expression: "return input.input;",
           },
           {
             id: "second",
             kind: "transform",
-            language: "jsonata",
-            expression: "$scope.shape.data",
+            language: "javascript",
+            expression: "return input.scope.shape.data;",
           },
         ],
       },

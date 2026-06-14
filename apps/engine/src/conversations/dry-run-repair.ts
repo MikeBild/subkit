@@ -1,16 +1,16 @@
 // Bounded auto-repair proposals for a finished dry-run (Fix 10) —
-// propose-only. For each failing jsonata transform (empty extraction /
-// unresolved identifier) and for a thrown output_transform, run ≤2
-// verified LLM repair attempts against the scope that very run just
-// recorded. The draft is NEVER mutated by this; the model applies an
-// accepted expression via a normal edit and re-previews. Loop-body
-// steps are skipped — their `$item` iteration context is not
-// reproducible from the flat scope.
+// propose-only. For each failing transform (empty extraction / unresolved
+// identifier) and for a thrown output_transform, run ≤2 verified LLM repair
+// attempts against the scope that very run just recorded. The draft is NEVER
+// mutated by this; the model applies an accepted expression via a normal edit
+// and re-previews. Loop-body steps are skipped — their iteration context is
+// not reproducible from the flat scope.
 //
 // Extracted from dry-run-workflow.ts; the tool stays the only caller
 // and owns when (not whether) proposals are gathered.
 
 import type { Db } from "../db/client.ts";
+import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "../workflows/types-web-scraper.ts";
 import { MAX_PIPELINE_REPAIRS } from "./recorded-eval.ts";
 import { repairTransformExpression } from "./transform-repair.ts";
 
@@ -81,8 +81,10 @@ export async function proposeDryRunRepairs(opts: {
     if (
       !step ||
       step.kind !== "transform" ||
-      (step.language ?? "jsonata") !== "jsonata" ||
-      typeof step.expression !== "string"
+      typeof step.expression !== "string" ||
+      // Web-scraper languages carry no `expression`; everything else is a
+      // JavaScript transform body.
+      TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION.has(step.language ?? "javascript")
     ) {
       continue;
     }
@@ -93,6 +95,7 @@ export async function proposeDryRunRepairs(opts: {
       site: `steps.${stepId}.expression`,
       repair: await repairTransformExpression({
         expression: step.expression,
+        language: "javascript",
         finding: {
           kind: w.code === "transform_empty_extraction" ? "empty_result" : "eval_error",
           message: w.message,

@@ -58,7 +58,7 @@ Three persona-specific paths to get running fast.
 
 **Operators** — start with the [operator quickstart](quickstart/operator.md) to get the engine running, then [07-security-governance.md](07-security-governance.md) for identity and RBAC setup, and [08-operations.md](08-operations.md) for monitoring and operational hygiene.
 
-**Developers** — start with [AGENTS.md](../AGENTS.md) for the subsystem map and contribution rules, then read all eight concept docs for full architectural context. The [developer quickstart](quickstart/developer.md) gets the local environment running in 10 minutes.
+**Developers** — start with [AGENTS.md](../AGENTS.md) for the subsystem map and contribution rules, then read all nine concept docs for full architectural context. The [developer quickstart](quickstart/developer.md) gets the local environment running in 10 minutes.
 
 **Architects** — start with [thesis.md](thesis.md) for the structural category sk occupies and the platform thesis, then [system-requirements.md](system-requirements.md) for the requirements that follow, then [positioning.md](positioning.md) for sk's realisation. After that, [01-platform.md](01-platform.md) for the design rationale, [02-concepts.md](02-concepts.md) for the domain model, and [07-security-governance.md](07-security-governance.md) for the security architecture.
 

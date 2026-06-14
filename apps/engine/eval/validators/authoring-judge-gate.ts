@@ -47,7 +47,7 @@ function previewableDraft(slug: string, goal: string, expression: string): Draft
       name: slug,
       slug,
       goal,
-      steps: [{ id: "shape-email", kind: "transform", language: "jsonata", expression }],
+      steps: [{ id: "shape-email", kind: "transform", language: "javascript", expression }],
     },
   } as unknown as DraftDocument;
 }

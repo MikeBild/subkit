@@ -97,7 +97,12 @@ describe("build_workflow — recorded_eval envelope (Fix 9)", () => {
         steps: [
           { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
           { id: "iter", kind: "loop", over: "$scope.fetch.data", body: ["b"] },
-          { id: "b", kind: "transform", language: "jsonata", expression: "$item" },
+          {
+            id: "b",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.scope.$item;",
+          },
         ],
         environment: "dev",
       });
@@ -174,7 +179,7 @@ describe("propose_step — recorded_eval envelope (Fix 9)", () => {
   );
 
   tw(
-    "transform reading an un-previewed sibling is accepted with the transform gate verdict in the envelope",
+    "JS transform reading an un-previewed sibling is accepted; the missing evidence rides the scope-ref envelope",
     async () => {
       const toolCtx = makeCtx();
       seedStageEvidence(toolCtx);
@@ -185,18 +190,26 @@ describe("propose_step — recorded_eval envelope (Fix 9)", () => {
         step: {
           id: "shape",
           kind: "transform",
-          language: "jsonata",
-          expression: "$scope.fetch.data.items",
+          language: "javascript",
+          expression: "return input.scope.fetch.data.items;",
         },
       });
       // Old behavior: bounced with `transform_authoring_requires_inspect`.
       expect(result.ok).toBe(true);
       const data = result.data as { recorded_eval: RecordedEvalReport };
-      expect(data.recorded_eval.gates.transform.ok).toBe(false);
-      expect(
-        data.recorded_eval.gates.transform.blocks.some((b) => b.referenced_step_id === "fetch"),
-      ).toBe(true);
-      expect(data.recorded_eval.missing_evidence.map((m) => m.step_id)).toContain("fetch");
+      // Transforms are JavaScript now. The JSONata-keyed transform gate
+      // (`evaluateTransformAuthoringGate` matches `$scope.<id>`) does not
+      // apply to a JS body; the un-recorded sibling instead surfaces as a
+      // language-aware scope-ref with `missing` evidence, and the site is
+      // left `not_evaluated` for the model to record evidence for.
+      const ref = data.recorded_eval.scope_refs.find(
+        (r) => r.site === "steps.shape.expression" && r.referenced_step_id === "fetch",
+      );
+      expect(ref?.evidence).toBe("missing");
+      const finding = data.recorded_eval.expressions.find(
+        (f) => f.site === "steps.shape.expression",
+      );
+      expect(finding?.status).toBe("not_evaluated");
       expect(fetchCalls).toBe(0);
     },
   );

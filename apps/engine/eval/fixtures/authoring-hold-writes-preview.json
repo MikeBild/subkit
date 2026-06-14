@@ -25,8 +25,8 @@
       {
         "id": "confirm",
         "kind": "transform",
-        "language": "jsonata",
-        "expression": "$scope.send.data"
+        "language": "javascript",
+        "expression": "return input.scope.send.data;"
       }
     ],
     "expect": {

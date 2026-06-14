@@ -8,11 +8,6 @@ export type ValidationResult<P = void, E = ValidationIssue> =
   | { valid: true; payload: P }
   | { valid: false; errors: readonly E[] };
 
-export type RoundtripResult<E = string> =
-  | { status: "ok" }
-  | { status: "fail"; issues: readonly E[] }
-  | { status: "unverified"; issues: readonly E[] };
-
 export interface ValidationIssue {
   code: string;
   message: string;

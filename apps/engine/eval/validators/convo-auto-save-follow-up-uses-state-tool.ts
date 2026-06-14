@@ -22,7 +22,9 @@ export function validate(fixture: FixtureRecord): ValidationResult {
   let workflowDraft = withWorkflowDraft(createEmptyDraftDocument(), {
     name: "daily-sync",
     slug: "daily-sync",
-    steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
+    steps: [
+      { id: "shape", kind: "transform", expression: "return input.input;", language: "javascript" },
+    ],
   });
   workflowDraft = withWorkflowInspection(workflowDraft);
   workflowDraft = withWorkflowValidation(workflowDraft, true, "Workflow draft valid.");

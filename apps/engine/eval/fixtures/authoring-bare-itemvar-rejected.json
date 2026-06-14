@@ -1,6 +1,6 @@
 {
   "name": "authoring-bare-itemvar-rejected",
-  "description": "item_var retirement: a generated/built definition that addresses the loop item by a bare name is rejected with a `$item` did_you_mean, and declaring `item_var` itself is rejected as a retired field.",
+  "description": "item_var retirement: a generated/built definition that addresses the loop item by a bare name in a loop-body JSONata slot (branch.when) is rejected with a `$item` did_you_mean, and declaring `item_var` itself is rejected as a retired field. (Transforms are JavaScript-only and are not JSONata-linted, so the bare-item lint is exercised through the still-linted branch.when slot.)",
   "flow": "converse",
   "input": {
     "bare_item_workflow": {
@@ -11,12 +11,11 @@
           "method": "GET",
           "url": "https://api.example.com/projects"
         },
-        { "id": "each", "kind": "loop", "over": "$scope.fetch.data.projects", "body": ["shape"] },
+        { "id": "each", "kind": "loop", "over": "$scope.fetch.data.projects", "body": ["gate"] },
         {
-          "id": "shape",
-          "kind": "transform",
-          "language": "jsonata",
-          "expression": "{ \"name\": item.name }"
+          "id": "gate",
+          "kind": "branch",
+          "when": "item.active = true"
         }
       ]
     },
@@ -33,13 +32,12 @@
           "kind": "loop",
           "over": "$scope.fetch.data.projects",
           "item_var": "project",
-          "body": ["shape"]
+          "body": ["gate"]
         },
         {
-          "id": "shape",
-          "kind": "transform",
-          "language": "jsonata",
-          "expression": "{ \"name\": project.name }"
+          "id": "gate",
+          "kind": "branch",
+          "when": "project.active = true"
         }
       ]
     },

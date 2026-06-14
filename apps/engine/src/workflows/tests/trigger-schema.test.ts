@@ -17,8 +17,8 @@ const baseDef = {
     {
       id: "s1",
       kind: "transform" as const,
-      expression: "$",
-      language: "jsonata" as const,
+      expression: "return input.input;",
+      language: "javascript" as const,
     },
   ],
 };

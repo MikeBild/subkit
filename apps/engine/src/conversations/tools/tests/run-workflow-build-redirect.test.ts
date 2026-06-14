@@ -72,7 +72,14 @@ describe("run_workflow — authoring-intent redirect", () => {
     const draft = {
       workflow: {
         name: "wip",
-        steps: [{ id: "s1", kind: "transform", expression: "$input", language: "jsonata" }],
+        steps: [
+          {
+            id: "s1",
+            kind: "transform",
+            expression: "return input.input;",
+            language: "javascript",
+          },
+        ],
       },
     };
     const result = await runWorkflowTool.execute(makeCtx(draft), {});

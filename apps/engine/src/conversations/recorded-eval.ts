@@ -120,6 +120,14 @@ export interface RecordedEvalExpressionFinding {
   /** Copy-paste `$scope.<id>.data.<path>` candidates when an evaluated
    *  expression produced an empty result over non-empty evidence. */
   path_candidates?: string[];
+  /** Set when an `empty_result` was produced while the recorded evidence
+   *  for a referenced step was TRUNCATED (offloaded payload / `[omitted: …]`
+   *  stub / sampling marker). An empty result over truncated evidence is
+   *  NOT a confirmed problem — the path may be correct but the data was
+   *  stubbed out — so it does NOT block the commit gate or the judge. This
+   *  is the dry-run-vs-runtime divergence behind the Gmail session: the
+   *  preview showed `[]` while the live run returned 174. */
+  against_truncated_evidence?: boolean;
   /** Bounded auto-repair outcome (Fix 10), present when the caller
    *  enabled repair and this finding was `compile_error` /
    *  `empty_result`. PROPOSE-only: the draft is NOT mutated — apply
@@ -243,7 +251,10 @@ function collectExpressionSites(workflow: WorkflowLike): ExpressionSite[] {
     // only, never evaluate.
     const inControlFlowBody = controlFlowChildren.has(id);
     if (kind === "transform") {
-      const language = typeof step.language === "string" ? step.language : "jsonata";
+      // Transforms are JavaScript-only; an unset language means JS (mirrors
+      // the runtime executor). The web-scraper languages carry no expression
+      // and are excluded by the `expression` guard below.
+      const language = typeof step.language === "string" ? step.language : "javascript";
       if (
         (language === "jsonata" || language === "javascript") &&
         typeof step.expression === "string" &&
@@ -480,13 +491,16 @@ export async function evaluateJsonataSite(
     };
   }
   if (isEmptyEvalResult(outcome.value)) {
+    const truncated = refsHaveTruncatedEvidence(refs, recordedScope);
     const candidates = pathCandidatesFor(refs, recordedScope);
     return {
       site: site.site,
       step_id: site.step_id,
       status: "empty_result",
-      message:
-        "expression evaluated to an empty result against the recorded scope — either the JSONata path is wrong, or a filter matched no rows",
+      message: truncated
+        ? EMPTY_AGAINST_TRUNCATED_MESSAGE
+        : "expression evaluated to an empty result against the recorded scope — either the JSONata path is wrong, or a filter matched no rows",
+      ...(truncated ? { against_truncated_evidence: true } : {}),
       ...(candidates.length > 0 ? { path_candidates: candidates } : {}),
     };
   }
@@ -543,13 +557,16 @@ async function evaluateJavascriptSite(
     };
   }
   if (isEmptyEvalResult(outcome.value)) {
+    const truncated = refsHaveTruncatedEvidence(refs, recordedScope);
     const candidates = pathCandidatesFor(refs, recordedScope, "input.scope");
     return {
       site: site.site,
       step_id: site.step_id,
       status: "empty_result",
-      message:
-        "function body returned an empty result against the recorded scope — either the input.scope.<step_id>.data path is wrong, or a filter matched no rows",
+      message: truncated
+        ? EMPTY_AGAINST_TRUNCATED_MESSAGE
+        : "function body returned an empty result against the recorded scope — either the input.scope.<step_id>.data path is wrong, or a filter matched no rows",
+      ...(truncated ? { against_truncated_evidence: true } : {}),
       ...(candidates.length > 0 ? { path_candidates: candidates } : {}),
     };
   }
@@ -564,6 +581,43 @@ async function evaluateJavascriptSite(
 function isEmptyEvalResult(value: unknown): boolean {
   return value === undefined || value === null || (Array.isArray(value) && value.length === 0);
 }
+
+// Deep-scan a recorded value for any marker that means "this is not the
+// full payload": an in-memory OffloadRef, a truncate omission stub
+// (`[omitted: … get_raw_result(…)]`), or a sampling/clip marker
+// (`_truncated`, `_truncation_note`, `… sampled N of M items`, `+N more
+// items`). Bounded depth so a pathological value can't stall the pass.
+const OMISSION_STRING_RE = /^\[omitted: |… sampled \d+ of \d+|^\+\d+ more items/;
+function valueContainsOmission(value: unknown, depth = 0): boolean {
+  if (depth > 6 || value === null || value === undefined) return false;
+  if (typeof value === "string") return OMISSION_STRING_RE.test(value);
+  if (typeof value !== "object") return false;
+  if (Array.isArray(value)) {
+    for (const v of value) if (valueContainsOmission(v, depth + 1)) return true;
+    return false;
+  }
+  const obj = value as Record<string, unknown>;
+  if (obj.$offloaded === true) return true;
+  if ("_truncated" in obj || "_truncation_note" in obj) return true;
+  for (const v of Object.values(obj)) if (valueContainsOmission(v, depth + 1)) return true;
+  return false;
+}
+
+// True when the recorded evidence for ANY referenced step is truncated —
+// so an empty evaluation result against it is unreliable (the path may be
+// correct, the data just isn't all there).
+function refsHaveTruncatedEvidence(
+  refs: ReadonlyArray<string>,
+  recordedScope: Record<string, unknown>,
+): boolean {
+  return refs.some((ref) => valueContainsOmission(recordedScope[ref]));
+}
+
+const EMPTY_AGAINST_TRUNCATED_MESSAGE =
+  "function body returned an empty result, BUT it evaluated against TRUNCATED recorded evidence " +
+  "(an upstream step's payload was offloaded/omitted in the preview). This is NOT a confirmed " +
+  "problem — the path may be correct and the data simply wasn't all present. Re-run dry_run_workflow " +
+  "for a faithful check, or call get_raw_result on the referenced step to inspect the full shape.";
 
 /**
  * Run the recorded-evaluation pass over a candidate workflow draft.
@@ -683,7 +737,10 @@ export async function runRecordedEval(
   if (options.repair) {
     const repairable = expressions.filter(
       (f): f is RecordedEvalExpressionFinding & { status: "compile_error" | "empty_result" } =>
-        f.status === "compile_error" || f.status === "empty_result",
+        f.status === "compile_error" ||
+        // Skip empties produced against truncated evidence — there is nothing
+        // to repair (the path may be correct; the data was just offloaded).
+        (f.status === "empty_result" && f.against_truncated_evidence !== true),
     );
     if (repairable.length > MAX_REPAIR_FINDINGS) {
       repair_skipped = {
@@ -763,13 +820,22 @@ export async function runRecordedEval(
   const missing_evidence = [...missingByStep.values()];
 
   const languageOf = (f: RecordedEvalExpressionFinding): "jsonata" | "javascript" =>
-    siteByName.get(f.site)?.language ?? "jsonata";
+    siteByName.get(f.site)?.language ?? "javascript";
   const hasCompileErrors = expressions.some((f) => f.status === "compile_error");
   const hasEvalErrors = expressions.some((f) => f.status === "eval_error");
-  const hasEmptyResults = expressions.some((f) => f.status === "empty_result");
-  const hasJsonataEmptyResults = expressions.some(
-    (f) => f.status === "empty_result" && languageOf(f) === "jsonata",
+  // An empty result over TRUNCATED evidence is not a confirmed problem — the
+  // payload was offloaded/omitted in the preview, so emptiness proves nothing.
+  // It must not block the commit gate (the dry-run-vs-runtime divergence behind
+  // the Gmail session). It still surfaces as a finding and points the author at
+  // a faithful re-run, but only NON-truncated empties make `ok` false.
+  const blockingEmptyResults = expressions.filter(
+    (f) => f.status === "empty_result" && f.against_truncated_evidence !== true,
   );
+  const hasEmptyResults = blockingEmptyResults.length > 0;
+  const hasTruncatedEmptyResults = expressions.some(
+    (f) => f.status === "empty_result" && f.against_truncated_evidence === true,
+  );
+  const hasJsonataEmptyResults = blockingEmptyResults.some((f) => languageOf(f) === "jsonata");
   const gatesOk = loopGate.ok && transformGate.ok;
 
   const repairedCount = expressions.filter((f) => f.repair?.repaired === true).length;
@@ -789,7 +855,9 @@ export async function runRecordedEval(
     if (hasJsonataEmptyResults) next_actions.push("suggest_jsonata_paths");
     next_actions.push("dry_run_transform");
   }
-  if (!gatesOk || missing_evidence.length > 0) {
+  // Truncated-evidence empties resolve with a faithful full-data run, not a
+  // transform rewrite — steer to dry_run_workflow.
+  if (hasTruncatedEmptyResults || !gatesOk || missing_evidence.length > 0) {
     next_actions.push("dry_run_workflow");
   }
 

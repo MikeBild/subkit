@@ -94,6 +94,56 @@ describe("runRecordedEval — javascript transform evaluation", () => {
     expect(finding?.value_preview).toEqual({ first: "Ada", who: "mike" });
   });
 
+  test("empty result over TRUNCATED evidence is non-blocking (against_truncated_evidence)", async () => {
+    // The Gmail divergence (F2): the preview showed `[]` because the
+    // upstream payload was offloaded/omitted in the recorded evidence, while
+    // the live run returned 174. An empty result over a stubbed payload is
+    // not a confirmed problem and must not block the commit gate.
+    const fetch = fetchStep();
+    const report = await runRecordedEval(
+      {
+        steps: [
+          fetch,
+          jsTransform(
+            "return (input.scope.fetch.data.messages || []).flatMap((m) => m.payload?.parts || []);",
+          ),
+        ],
+      },
+      {
+        latest_preview: evidenceFor(fetch, {
+          messages: [
+            '[omitted: 9123 chars · shape: object{id,payload} — get_raw_result(ref="raw_abc")]',
+          ],
+        }),
+      },
+    );
+    const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
+    expect(finding?.status).toBe("empty_result");
+    expect(finding?.against_truncated_evidence).toBe(true);
+    // Must NOT block the gate, and must steer to a faithful re-run rather than
+    // a transform rewrite.
+    expect(report.ok).toBe(true);
+    expect(report.next_actions).toContain("dry_run_workflow");
+    expect(report.next_actions).not.toContain("dry_run_transform");
+  });
+
+  test("empty result over FULL evidence still blocks (no false-negative)", async () => {
+    const fetch = fetchStep();
+    const report = await runRecordedEval(
+      {
+        steps: [
+          fetch,
+          jsTransform("return (input.scope.fetch.data.messages || []).filter(() => false);"),
+        ],
+      },
+      { latest_preview: evidenceFor(fetch, { messages: [{ id: "1" }, { id: "2" }] }) },
+    );
+    const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
+    expect(finding?.status).toBe("empty_result");
+    expect(finding?.against_truncated_evidence).toBeUndefined();
+    expect(report.ok).toBe(false);
+  });
+
   test("a syntax error yields compile_error with the sandbox's message", async () => {
     const fetch = fetchStep();
     const report = await runRecordedEval(

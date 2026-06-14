@@ -117,9 +117,7 @@ function parseHHMM(s: string): number | null {
  * The result is cached with a 5-minute TTL so `spawnSync` (with a
  * 200 ms timeout per probe) doesn't run on every notification gate,
  * yet operators who toggle DND mid-REPL pick up the new state within
- * at most 5 minutes. An explicit
- * `resetOsDoNotDisturbCacheForTests` is exported so unit tests can
- * re-probe without leaking state.
+ * at most 5 minutes.
  */
 const OS_DND_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -135,11 +133,6 @@ export function isOsDoNotDisturb(now: number = Date.now()): boolean {
   const value = probeOsDoNotDisturb();
   osDndCache = { value, expiresAt: now + OS_DND_CACHE_TTL_MS };
   return value;
-}
-
-/** Reset the in-memory DND cache. Test-only — never call from prod. */
-export function resetOsDoNotDisturbCacheForTests(): void {
-  osDndCache = null;
 }
 
 function probeOsDoNotDisturb(): boolean {

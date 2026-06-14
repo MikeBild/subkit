@@ -14,13 +14,13 @@ quality gate, and the promotion checklist.
 Every recipe ships inline on its connector template at:
 
 ```
-apps/engine/src/connectors/templates.json   # 95 templates, 190 recipes
+apps/engine/src/connectors/templates.json   # 105 templates, 248 recipes
 ```
 
 The schema is defined at:
 
 ```
-apps/engine/src/connectors/templates.ts:171  # ConnectorRecipeSchema
+apps/engine/src/connectors/templates.ts:222  # ConnectorRecipeSchema
 ```
 
 Recipes are read-only at runtime. Tenant-scoped per-recipe overrides
@@ -157,8 +157,8 @@ that cannot express the connector via a `base_url` placeholder.
         "id": "create",
         "method": "POST",
         "url": "${connector.stripe.base_url}/customers",
-        "headers": { "content-type": "application/x-www-form-urlencoded" },
-        "form": {
+        "headers": { "content-type": "application/json" },
+        "body": {
           "email": "${input.email}",
           "metadata": "${input.metadata}"
         },
@@ -246,8 +246,8 @@ Slack channel.
       {
         "kind": "transform",
         "id": "extract",
-        "language": "jsonata",
-        "expression": "$input.body.data.object.{ \"charge_id\": id, \"amount\": amount, \"currency\": currency, \"failure_code\": failure_code, \"failure_message\": failure_message, \"email\": billing_details.email }"
+        "language": "javascript",
+        "expression": "const o = input.input.body.data.object; return { charge_id: o.id, amount: o.amount, currency: o.currency, failure_code: o.failure_code, failure_message: o.failure_message, email: o.billing_details.email };"
       },
       {
         "kind": "request",
@@ -345,8 +345,8 @@ external cron, no `sk run` loop.
       {
         "kind": "transform",
         "id": "summary",
-        "language": "jsonata",
-        "expression": "( $charges := $.list.body.data; { \"count\": $count($charges), \"by_currency\": $charges{ currency: { \"count\": $count($), \"amount_total\": $sum($.amount) } } } )"
+        "language": "javascript",
+        "expression": "const charges = input.scope.list.data.body.data; const byCurrency = {}; for (const c of charges) { const g = (byCurrency[c.currency] ??= { count: 0, amount_total: 0 }); g.count += 1; g.amount_total += c.amount; } return { count: charges.length, by_currency: byCurrency };"
       }
     ]
   }

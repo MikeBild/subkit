@@ -110,8 +110,8 @@ function draftWithBrokenTransforms(n: number) {
     steps.push({
       id: `shape_${i}`,
       kind: "transform",
-      language: "jsonata",
-      expression: `$scope.fetch.data.missing_field_${i}`,
+      language: "javascript",
+      expression: `return input.scope.fetch.data.missing_field_${i};`,
     });
   }
   return { steps, fetch };
@@ -124,7 +124,7 @@ describe("runRecordedEval — repair fan-out bound (P2)", () => {
     // irrelevant to the bound; we count round-trips, not successes.
     getMockProvider().generateOverrides.repair = () => {
       repairCalls += 1;
-      return { expression: "$scope.fetch.data.items", reasoning: "guess" };
+      return { expression: "return input.scope.fetch.data.items;", reasoning: "guess" };
     };
 
     const { steps, fetch } = draftWithBrokenTransforms(10);
@@ -154,7 +154,7 @@ describe("runRecordedEval — repair fan-out bound (P2)", () => {
       repairCalls += 1;
       // Each repair takes 2 attempts to "succeed" — verify the per-site
       // attempt bound (≤2) is independent of the cross-finding cap.
-      return { expression: "$scope.fetch.data.bad", reasoning: "still wrong" };
+      return { expression: "return input.scope.fetch.data.bad;", reasoning: "still wrong" };
     };
 
     const { steps, fetch } = draftWithBrokenTransforms(MAX_REPAIR_FINDINGS);
@@ -180,7 +180,7 @@ describe("runRecordedEval — repair fan-out bound (P2)", () => {
     let repairCalls = 0;
     getMockProvider().generateOverrides.repair = () => {
       repairCalls += 1;
-      return { expression: "$scope.fetch.data.items", reasoning: "x" };
+      return { expression: "return input.scope.fetch.data.items;", reasoning: "x" };
     };
 
     const { steps, fetch } = draftWithBrokenTransforms(2);

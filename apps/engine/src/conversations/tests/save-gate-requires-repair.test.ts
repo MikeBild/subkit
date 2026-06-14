@@ -85,7 +85,14 @@ function makeDraft(opts: {
     workflow: {
       name: slug,
       slug,
-      steps: [{ id: "shape", kind: "transform", language: "jsonata", expression: "$input" }],
+      steps: [
+        {
+          id: "shape",
+          kind: "transform",
+          language: "javascript",
+          expression: "return input.input;",
+        },
+      ],
     },
     // biome-ignore lint/suspicious/noExplicitAny: minimal test fixture
   } as any;

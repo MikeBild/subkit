@@ -34,7 +34,7 @@ matters" — not only how to change code — read the three strategy documents i
 ## Domain / procedural
 
 - [`subkit-connector-patterns`](.claude/skills/subkit-connector-patterns/SKILL.md) —
-  Add a connector template, driver tweak, or OAuth2 flow. References the 90 existing
+  Add a connector template, driver tweak, or OAuth2 flow. References the 105 existing
   templates and 9 drivers.
 - [`subkit-ai-context-pipeline`](.claude/skills/subkit-ai-context-pipeline/SKILL.md) —
   Work on Skills, Knowledge Sources, Skill Candidates, Conversations, Self-Healing,
@@ -45,9 +45,9 @@ matters" — not only how to change code — read the three strategy documents i
 
 ## sk REPL surface (consolidated in #159)
 
-- `/settings` opens a 10-tab palette in-process: `Settings · Status · Config · Usage ·
-  Stats · Skills · Permissions · Knowledge · Profile · Admin`. The Admin tab is
-  hidden unless the principal holds an admin-scoped permission.
+- `/settings` opens a 5-tab palette in-process: `Status · Config · Usage · Skills ·
+  Knowledge`. Operator surfaces are separate slash commands (`/permissions`,
+  `/profile`, `/admin`), not tabs; `/admin` is gated to admin-scoped principals.
 - Slash registry lives in `apps/sk/src/slash.ts`; deleted-slash redirects in
   `apps/sk/src/repl/slash/dispatcher.ts:REMOVED_SLASH_GUIDANCE`. Permanent
   guidance for slashes subkit intentionally never ships (`/agents`, `/fast`,

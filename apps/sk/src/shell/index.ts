@@ -9,16 +9,13 @@
 // internal re-organization stays behind it.
 
 export type { ThemeName, ThemeTokens } from "@chat-ui/index.ts";
-// Theme + keybindings re-exports for callers that don't import directly from chat-ui.
+// Theme re-exports for callers that don't import directly from chat-ui.
 export {
   defaultTheme,
-  KeybindingProvider,
   PALETTES,
   paletteFor,
   shouldForceNoColor,
   ThemeProvider,
-  useActiveContext,
-  useKeybinding,
   useTheme,
   useThemeControl,
 } from "@chat-ui/index.ts";

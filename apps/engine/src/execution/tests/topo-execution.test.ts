@@ -27,14 +27,14 @@ describe("execution · topological step ordering", () => {
         {
           id: "s1",
           kind: "transform",
-          language: "jsonata",
-          expression: "$scope.s2.data * 2",
+          language: "javascript",
+          expression: "return input.scope.s2.data * 2;",
         },
         {
           id: "s2",
           kind: "transform",
-          language: "jsonata",
-          expression: "21",
+          language: "javascript",
+          expression: "return 21;",
         },
       ],
     });
@@ -60,9 +60,9 @@ describe("execution · topological step ordering", () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "linear-order",
       steps: [
-        { id: "a", kind: "transform", language: "jsonata", expression: "1" },
-        { id: "b", kind: "transform", language: "jsonata", expression: "2" },
-        { id: "c", kind: "transform", language: "jsonata", expression: "3" },
+        { id: "a", kind: "transform", language: "javascript", expression: "return 1;" },
+        { id: "b", kind: "transform", language: "javascript", expression: "return 2;" },
+        { id: "c", kind: "transform", language: "javascript", expression: "return 3;" },
       ],
     });
     const result = await runExecution({
@@ -84,20 +84,20 @@ describe("execution · topological step ordering", () => {
         {
           id: "s1",
           kind: "transform",
-          language: "jsonata",
-          expression: "$scope.s2.data + 1",
+          language: "javascript",
+          expression: "return input.scope.s2.data + 1;",
         },
         {
           id: "s2",
           kind: "transform",
-          language: "jsonata",
-          expression: "$scope.s3.data * 10",
+          language: "javascript",
+          expression: "return input.scope.s3.data * 10;",
         },
         {
           id: "s3",
           kind: "transform",
-          language: "jsonata",
-          expression: "5",
+          language: "javascript",
+          expression: "return 5;",
         },
       ],
     });

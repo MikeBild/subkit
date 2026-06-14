@@ -18,9 +18,9 @@
     {
       "id": "filter_by_owner",
       "kind": "transform",
-      "language": "jsonata",
+      "language": "javascript",
       "on_error": "fail",
-      "expression": "$scope.fetch_repos.data[owner.login = 'MikeBild'].{ \"name\": name, \"full_name\": full_name, \"private\": private, \"html_url\": html_url, \"description\": description, \"updated_at\": updated_at }"
+      "expression": "return (input.scope.fetch_repos.data || []).filter((r) => r.owner && r.owner.login === 'MikeBild').map((r) => ({ name: r.name, full_name: r.full_name, private: r.private, html_url: r.html_url, description: r.description, updated_at: r.updated_at }));"
     }
   ],
   "description": "List private GitHub repos owned by MikeBild"

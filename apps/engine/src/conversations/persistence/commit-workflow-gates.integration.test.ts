@@ -53,8 +53,8 @@ function readyDraft(slug: string, name = slug): DraftDocument {
         {
           id: "echo",
           kind: "transform",
-          expression: "$input",
-          language: "jsonata",
+          expression: "return input.input;",
+          language: "javascript",
         },
       ],
     },

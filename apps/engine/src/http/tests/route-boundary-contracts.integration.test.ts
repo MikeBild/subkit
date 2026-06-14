@@ -235,7 +235,9 @@ const ROUTE_SPECS: RouteSpec[] = [
     resolvePath: async () => "/v1/workflows",
     validBody: () => ({
       name: "Boundary contract probe",
-      steps: [{ id: "s1", kind: "transform", expression: "$input", language: "jsonata" }],
+      steps: [
+        { id: "s1", kind: "transform", expression: "return input.input;", language: "javascript" },
+      ],
     }),
     invalidBody: { name: 42 }, // name must be a string
   },

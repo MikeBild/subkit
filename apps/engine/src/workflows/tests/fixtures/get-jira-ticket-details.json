@@ -16,9 +16,9 @@
     {
       "id": "format_ticket",
       "kind": "transform",
-      "language": "jsonata",
+      "language": "javascript",
       "on_error": "fail",
-      "expression": "$scope.fetch_ticket_details.data.{ \"key\": key, \"summary\": fields.summary, \"description\": fields.description.content[0].content[0].text, \"assignee\": fields.assignee.displayName, \"status\": fields.status.name, \"priority\": fields.priority.name, \"type\": fields.issuetype.name, \"components\": fields.components.name, \"created\": fields.created, \"updated\": fields.updated }"
+      "expression": "const t = input.scope.fetch_ticket_details.data; const f = t.fields || {}; const desc = (f.description && f.description.content && f.description.content[0] && f.description.content[0].content && f.description.content[0].content[0]) ? f.description.content[0].content[0].text : undefined; return { key: t.key, summary: f.summary, description: desc, assignee: f.assignee ? f.assignee.displayName : undefined, status: f.status ? f.status.name : undefined, priority: f.priority ? f.priority.name : undefined, type: f.issuetype ? f.issuetype.name : undefined, components: (f.components || []).map((c) => c.name), created: f.created, updated: f.updated };"
     }
   ]
 }

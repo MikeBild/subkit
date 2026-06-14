@@ -150,8 +150,9 @@ class MockProvider {
             {
               kind: "transform",
               id: "step-2",
-              expression: "$[0..1].{name: name}",
-              language: "jsonata",
+              language: "javascript",
+              expression:
+                'return (input.scope["step-1"].data || []).slice(0, 2).map((u) => ({ name: u.name }));',
             },
           ],
         };
@@ -379,8 +380,8 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
         step: {
           kind: "transform",
           id: "shape-users",
-          expression: "$input.users",
-          language: "jsonata",
+          language: "javascript",
+          expression: "return input.input.users;",
         },
       },
     },
@@ -442,7 +443,7 @@ export function cannedListPrivateGithubReposPlan(connector_id?: string): Convers
         },
       },
     },
-    // Tail transform so the auto-commit preview targets pure JSONata
+    // Tail transform so the auto-commit preview targets a pure transform
     // rather than the live HTTP request — mirrors cannedListUsersPlan.
     // The shape is what an operator typically asks for: a slim repo
     // summary rather than the raw GitHub envelope.
@@ -452,8 +453,9 @@ export function cannedListPrivateGithubReposPlan(connector_id?: string): Convers
         step: {
           kind: "transform",
           id: "shape-repos",
-          expression: '$input.items.{ "id": id, "name": full_name, "private": private }',
-          language: "jsonata",
+          language: "javascript",
+          expression:
+            "return (input.input.items || []).map((r) => ({ id: r.id, name: r.full_name, private: r.private }));",
         },
       },
     },
@@ -533,9 +535,9 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
         step: {
           kind: "transform",
           id: "tomorrow-only",
+          language: "javascript",
           expression:
-            "daily.{date: time[1], tmax: temperature_2m_max[1], tmin: temperature_2m_min[1]}",
-          language: "jsonata",
+            'const d = input.scope["forecast-berlin"].data.daily; return { date: d.time[1], tmax: d.temperature_2m_max[1], tmin: d.temperature_2m_min[1] };',
         },
       },
     },

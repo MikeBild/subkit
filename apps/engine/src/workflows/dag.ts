@@ -28,6 +28,7 @@ export interface StepEdge {
     | "scope_placeholder"
     | "jsonata_scope"
     | "jsonata_bare"
+    | "js_scope"
     | "data_selector"
     | "branch_arm"
     | "parallel_branch"
@@ -63,6 +64,13 @@ const JSONATA_SCOPE_RE = /\$scope\.([a-zA-Z_][\w-]*)/g;
 // forward-ref via the bare form (which the JSONata regex above
 // misses).
 const BARE_PATH_RE = /(?:^|[^\w$.])([a-zA-Z_][\w]*)\./g;
+// JS transform scope access: `input.scope.<id>` / `scope.<id>` /
+// `sourceData.<id>`. Transform-step bodies are JavaScript-only and read
+// upstream outputs as `input.scope.<id>.data` (see
+// execution/steps/transform.ts). The JSONata regexes above never match
+// that form, so without this the cycle detector is blind to data-flow
+// edges authored in JS transform expressions.
+const JS_SCOPE_RE = /(?:^|[^\w$.])(?:input\.)?(?:scope|sourceData)\.([a-zA-Z_][\w]*)/g;
 
 /**
  * Walk every string field on a step config and collect the step IDs
@@ -90,12 +98,16 @@ function collectStepReferences(
   function scanString(s: string): void {
     SCOPE_PLACEHOLDER_RE.lastIndex = 0;
     JSONATA_SCOPE_RE.lastIndex = 0;
+    JS_SCOPE_RE.lastIndex = 0;
     BARE_PATH_RE.lastIndex = 0;
     for (let m = SCOPE_PLACEHOLDER_RE.exec(s); m !== null; m = SCOPE_PLACEHOLDER_RE.exec(s)) {
       add(m[1] ?? "", "scope_placeholder");
     }
     for (let m = JSONATA_SCOPE_RE.exec(s); m !== null; m = JSONATA_SCOPE_RE.exec(s)) {
       add(m[1] ?? "", "jsonata_scope");
+    }
+    for (let m = JS_SCOPE_RE.exec(s); m !== null; m = JS_SCOPE_RE.exec(s)) {
+      add(m[1] ?? "", "js_scope");
     }
     // Bare-path edges are only added when the leading identifier
     // matches a KNOWN step id. The validator's bare-path detector

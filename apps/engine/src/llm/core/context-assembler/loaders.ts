@@ -631,12 +631,6 @@ const proposedCandidatesFailureState = {
   warnedTenants: new Set<string>(),
 };
 
-/** Internal helper used by tests to reset the per-tenant warning
- *  tracker between cases. Production code never calls this. */
-export function __resetProposedCandidatesFailureStateForTests(): void {
-  proposedCandidatesFailureState.warnedTenants.clear();
-}
-
 export async function loadProposedCandidates(
   tenant_id: string,
   scope_hints: { connector_id?: string; workflow_id?: string },

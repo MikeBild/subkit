@@ -50,8 +50,8 @@ async function seedWorkflow(): Promise<{
           {
             id: "shape",
             kind: "transform",
-            expression: '{ "date": $input.date }',
-            language: "jsonata",
+            expression: "return { date: input.input.date };",
+            language: "javascript",
           },
         ],
       },
@@ -289,8 +289,8 @@ describe("run_workflow tool", () => {
             {
               id: "shape",
               kind: "transform",
-              expression: '{ "date": $input.date }',
-              language: "jsonata",
+              expression: "return { date: input.input.date };",
+              language: "javascript",
             },
           ],
         },
@@ -386,8 +386,8 @@ describe("run_workflow tool", () => {
             {
               id: "shape",
               kind: "transform",
-              expression: '{ "ticket": $input.ticket_key }',
-              language: "jsonata",
+              expression: "return { ticket: input.input.ticket_key };",
+              language: "javascript",
             },
           ],
         },

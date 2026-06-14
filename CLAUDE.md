@@ -20,6 +20,5 @@ pointer. The real content lives in:
 
 For the nearest directory-local rules when editing code, see
 [`apps/engine/AGENTS.md`](apps/engine/AGENTS.md),
-[`apps/sk/AGENTS.md`](apps/sk/AGENTS.md),
-[`apps/agent/AGENTS.md`](apps/agent/AGENTS.md), and
+[`apps/sk/AGENTS.md`](apps/sk/AGENTS.md), and
 [`packages/shared/AGENTS.md`](packages/shared/AGENTS.md).

@@ -14,7 +14,7 @@
 // looks visible until the next bootstrap; never the other way around.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
@@ -386,14 +386,5 @@ function writeCachedSnapshot(path: string, snap: PersistedSnapshot): void {
     // read-only `~/.sk/cache` (or similar) doesn't silently disable
     // caching forever.
     debugLog("bootstrap.cache_write_failed", { path, error: serializeDebugError(err) }, {});
-  }
-}
-
-/** Test-only: drop a cached snapshot for a profile. */
-export function _clearBootstrapCacheForTests(profile: ResolvedProfile, cacheDir?: string): void {
-  try {
-    unlinkSync(bootstrapCachePath(profile, cacheDir));
-  } catch {
-    /* fine — already gone */
   }
 }

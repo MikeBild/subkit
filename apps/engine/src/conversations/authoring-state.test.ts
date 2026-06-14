@@ -209,7 +209,14 @@ describe("authoring-state", () => {
     let draft = withWorkflowDraft(createEmptyDraftDocument(), {
       name: "daily-sync",
       slug: "daily-sync",
-      steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
+      steps: [
+        {
+          id: "shape",
+          kind: "transform",
+          expression: "return input.input;",
+          language: "javascript",
+        },
+      ],
     });
     draft = withWorkflowInspection(draft);
     draft = withWorkflowValidation(draft, true, "Workflow draft valid.");

@@ -94,7 +94,9 @@ describe("loop output_preview never renders null for an iteration that ran", () 
     walk(r.data);
     expect(stubs.length).toBeGreaterThan(0);
     for (const stub of stubs) {
-      expect(stub).toMatch(/^\[omitted: \d+ chars — get_raw_result\(ref="raw_[0-9a-f-]+"\)\]$/);
+      expect(stub).toMatch(
+        /^\[omitted: \d+ chars( · shape: .+)? — get_raw_result\(ref="raw_[0-9a-f-]+"\)\]$/,
+      );
     }
   });
 

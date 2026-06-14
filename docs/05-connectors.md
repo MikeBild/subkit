@@ -68,7 +68,7 @@ The two connectors can coexist in a tenant — one `github` connector for writes
 
 Templates are what make the AI's proposals accurate. Without templates, the AI can suggest "use an HTTP connector to call Salesforce" — but it cannot propose the correct authentication pattern, suggest the right endpoints, or explain the connector target's specific behaviors and limitations.
 
-The reference implementation ships 90 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Microsoft Teams, Google services, AWS services, databases, and more.
+The reference implementation ships 105 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Microsoft Teams, Google services, AWS services, databases, and more.
 
 A Template is more than a configuration skeleton. It includes: the appropriate driver, the authentication configuration for that service (OAuth2 scopes, API key placement, basic auth conventions), links to documentation that the platform will index, setup guidance the AI presents when a user configures the Connector, and example Skill content the AI can draw on when proposing integrations.
 
@@ -248,7 +248,7 @@ Per-vendor backoff escalates exponentially on 429/5xx (cap 30s, 4 attempts). Out
 The Layer-1 test emits a `console.warn` (it does **not** fail the suite) when a template's `verified_at` is `null` or older than 90 days. Sample output:
 
 ```
-[connector-templates] vendor-drift sweep stale on 101/101 templates.
+[connector-templates] vendor-drift sweep stale on 105/105 templates.
 Run: RUN_TEMPLATE_AUDIT=1 bun run scripts/audit/template-vendor-sweep.ts --update-templates
   - airtable (verified_at=null, never swept)
   - apify (verified_at=null, never swept)

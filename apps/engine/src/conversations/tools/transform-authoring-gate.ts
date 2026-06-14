@@ -19,9 +19,28 @@
 // one round-trip.
 
 import { extractStepIdReferences } from "../../workflows/levenshtein.ts";
+import { extractJsScopeReferences } from "../js-transform-eval.ts";
 import { traceFailedWithRuntimeDataError } from "../persistence/preview-failure-class.ts";
 import { stepFingerprint } from "../step-fingerprint.ts";
 import type { DraftDocument, WorkflowDraftStepPreview } from "../types.ts";
+
+// A transform `expression` is JavaScript (`input.scope.<id>.data…`), while a
+// `data_selector` is JSONata (`$scope.<id>…`). Collect upstream step-id
+// references from whichever the step carries, in the right dialect, and union
+// them. Before transforms became JavaScript-only this gate used the JSONata
+// extractor for everything, so a JS transform that guessed an un-previewed
+// sibling's shape slipped through ungated — exactly the failure the gate
+// exists to block.
+function extractTransformStepRefs(step: Record<string, unknown>): string[] {
+  const out = new Set<string>();
+  if (typeof step.expression === "string" && step.expression.length > 0) {
+    for (const r of extractJsScopeReferences(step.expression)) out.add(r);
+  }
+  if (typeof step.data_selector === "string" && step.data_selector.length > 0) {
+    for (const r of extractStepIdReferences(step.data_selector)) out.add(r);
+  }
+  return [...out];
+}
 
 export interface TransformGateBlock {
   /** id of the transform step that triggered the block. */
@@ -203,14 +222,7 @@ export function evaluateTransformAuthoringGate(
       // the transform-chain check rather than failing closed here.
     }
     if ((s as { kind?: unknown }).kind !== "transform") return false;
-    const expr =
-      typeof s.expression === "string"
-        ? (s.expression as string)
-        : typeof s.data_selector === "string"
-          ? (s.data_selector as string)
-          : null;
-    if (!expr) return false;
-    const upstream = extractStepIdReferences(expr);
+    const upstream = extractTransformStepRefs(s);
     if (upstream.length === 0) return false;
     return upstream.some((u) => transitivelyExempt(u, seen));
   }
@@ -219,7 +231,7 @@ export function evaluateTransformAuthoringGate(
     if (!isTransformStep(step)) continue;
     const expr = typeof step.expression === "string" ? step.expression : "";
     if (!expr) continue;
-    const referenced = extractStepIdReferences(expr);
+    const referenced = extractTransformStepRefs(step);
     if (referenced.length === 0) continue;
     for (const ref of referenced) {
       // Only enforce on references that point at SIBLING steps in

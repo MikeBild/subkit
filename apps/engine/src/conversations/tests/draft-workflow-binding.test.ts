@@ -40,7 +40,14 @@ describe("loadDraft", () => {
         dag: {
           name: "Berlin Weather",
           slug: "berlin-weather",
-          steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
+          steps: [
+            {
+              id: "shape",
+              kind: "transform",
+              language: "javascript",
+              expression: "return input.input;",
+            },
+          ],
         },
       })
       .returning();

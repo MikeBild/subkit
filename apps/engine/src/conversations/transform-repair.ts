@@ -69,7 +69,9 @@ export interface RepairTransformParams {
    *  `input`; data at `input.scope.<step_id>.data…`, workflow input at
    *  `input.input`; explicit `return`). */
   expression: string;
-  /** Authored language of the failed expression. Default: jsonata. */
+  /** Authored language of the failed expression. Transforms are
+   *  JavaScript-only; default: javascript. (The `jsonata` member of the
+   *  union remains for the one-line JSONata slots that may route here.) */
   language?: TransformRepairLanguage;
   finding: TransformRepairFinding;
   /** Envelope-shaped recorded scope (`$scope.<id>.data` addressing)
@@ -299,7 +301,7 @@ export async function repairTransformExpression(
     tried.add(candidate);
     const verdict = await verifyCandidate(
       candidate,
-      params.language ?? "jsonata",
+      params.language ?? "javascript",
       params.finding,
       params.scopeSample,
       params.input,
@@ -311,7 +313,7 @@ export async function repairTransformExpression(
         msg: "bounded transform repair produced a verified candidate",
         tenant_id: params.tenant_id,
         site: params.site ?? null,
-        language: params.language ?? "jsonata",
+        language: params.language ?? "javascript",
         failure_kind: params.finding.kind,
         attempts: attempt,
       });
@@ -331,7 +333,7 @@ export async function repairTransformExpression(
     msg: "bounded transform repair exhausted its attempts",
     tenant_id: params.tenant_id,
     site: params.site ?? null,
-    language: params.language ?? "jsonata",
+    language: params.language ?? "javascript",
     failure_kind: params.finding.kind,
     attempts: MAX_REPAIR_ATTEMPTS,
     last_error: lastError,

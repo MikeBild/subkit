@@ -17,8 +17,8 @@
 // suggestions come from the engine asynchronously but render as
 // soon as they arrive — the picker never blocks typing.
 
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
@@ -219,6 +219,3 @@ export const MentionPicker: React.FC<MentionPickerProps> = ({
     </Box>
   );
 };
-
-/** Expose basename / dirname for consumers that want to show tooltips. */
-export const __test = { basename, dirname, existsSync };

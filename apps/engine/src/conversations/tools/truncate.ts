@@ -33,6 +33,7 @@
 // reduction, still way too large for the prompt budget.
 
 import { logger } from "../../logging/logger.ts";
+import { summarizeScopeShape } from "../../workflows/scope-shape.ts";
 
 const MAX_JSON_CHARS = 8000;
 const MAX_ARRAY_LEN = 20;
@@ -50,6 +51,13 @@ const MAX_NESTED_ARRAY_LEN = 10;
 // went through. dry_run_workflow.ts already documents the contract
 // ("output_preview is already capped"); this is the missing cap.
 const MAX_STEP_PREVIEW_CHARS = 1500;
+
+// Only annotate the omission stub with a shape summary for branches large
+// enough that (a) the structure is genuinely worth surfacing and (b) the
+// extra ~40 chars per stub can't multiply across many small siblings and
+// blow the step-preview cap. Targets the case that actually misleads the
+// LLM/judge: a multi-KB offloaded payload omitted as one opaque blob.
+const SHAPE_STUB_MIN_CHARS = 1024;
 
 // Raw-ref retention. Refs are looked up by `get_raw_result` later in the
 // same conversation, so eviction must be driven by AGE, not by a small
@@ -139,6 +147,13 @@ function truncateNode(value: unknown, arrayDepth = 0): unknown {
 
 interface BranchHandle {
   size: number;
+  /** One-line shape of the branch (`array[200]<object>`,
+   *  `object{messages[200],nextPageToken}`) embedded in the omission stub
+   *  so the LLM and the preview judge see the STRUCTURE that was omitted —
+   *  not an opaque byte count. Pre-fix a stub read as "no data here", so a
+   *  transform over `[omitted: 9123 chars]` looked empty and the judge
+   *  false-flagged a present-but-omitted payload as missing. */
+  shape: string;
   replace: (marker: unknown) => void;
 }
 
@@ -168,6 +183,7 @@ function collectHeaviestBranches(root: unknown): BranchHandle[] {
         if (child !== null && typeof child === "object") {
           handles.push({
             size: approxJsonLength(child),
+            shape: summarizeScopeShape(child),
             replace: (marker) => {
               node[i] = marker;
             },
@@ -184,6 +200,7 @@ function collectHeaviestBranches(root: unknown): BranchHandle[] {
       if (child !== null && (typeof child === "object" || typeof child === "string")) {
         handles.push({
           size: approxJsonLength(child),
+          shape: summarizeScopeShape(child),
           replace: (marker) => {
             obj[k] = marker;
           },
@@ -230,7 +247,10 @@ function shrinkToCap(data: unknown, cap: number, rawRef: string): ShrinkResult {
     // The stub mirrors the `previewOffloadRefs` convention (a labeled
     // primitive string): honest about WHY the value is absent and how
     // to recover it, safe through every renderer.
-    const stub = `[omitted: ${handle.size} chars — get_raw_result(ref="${rawRef}")]`;
+    const stub =
+      handle.size >= SHAPE_STUB_MIN_CHARS
+        ? `[omitted: ${handle.size} chars · shape: ${handle.shape} — get_raw_result(ref="${rawRef}")]`
+        : `[omitted: ${handle.size} chars — get_raw_result(ref="${rawRef}")]`;
     // Replacing a branch with a stub LONGER than the branch would grow
     // the payload — skip those; they're too small to matter anyway.
     if (handle.size <= stub.length + 16) continue;

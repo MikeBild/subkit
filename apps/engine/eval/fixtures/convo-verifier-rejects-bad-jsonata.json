@@ -1,14 +1,18 @@
 {
   "name": "convo-verifier-rejects-bad-jsonata",
-  "description": "Static verifier must reject a draft whose transform expression doesn't parse.",
+  "description": "Static verifier must reject a draft whose transform expression doesn't parse. Transforms are JavaScript, so an unparseable body surfaces as js_syntax_error.",
   "flow": "converse",
   "input": {
     "workflow": {
       "steps": [
         { "id": "fetch", "kind": "request", "method": "GET", "path": "/x" },
-        { "id": "broken", "kind": "transform", "expression": "$scope.fetch.data.[unclosed" }
+        {
+          "id": "broken",
+          "kind": "transform",
+          "expression": "return input.scope.fetch.data.[unclosed"
+        }
       ]
     },
-    "expect_error_code": "jsonata_syntax_error"
+    "expect_error_code": "js_syntax_error"
   }
 }

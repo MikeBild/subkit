@@ -68,12 +68,6 @@ export function getMaxAttempts(): number {
   return activeDelays.length + 1;
 }
 
-/** Backwards-compat constant used by the production webhook delivery
- * worker. Equal to `getMaxAttempts()` evaluated at import time against
- * the default ladder. New code should call `getMaxAttempts()` so it
- * picks up test-time overrides. */
-export const MAX_ATTEMPTS = DEFAULT_RETRY_DELAYS_MS.length + 1;
-
 /**
  * Compute the next delay, in milliseconds, given the number of
  * ALREADY-COMPLETED attempts. `attemptNumber` is 1-based:
@@ -94,8 +88,4 @@ export function nextDelayMs(
   const span = base * 0.1;
   const delta = (Math.random() * 2 - 1) * span;
   return Math.max(0, Math.round(base + delta));
-}
-
-export function isTerminalAttempt(attemptNumber: number): boolean {
-  return attemptNumber >= getMaxAttempts();
 }

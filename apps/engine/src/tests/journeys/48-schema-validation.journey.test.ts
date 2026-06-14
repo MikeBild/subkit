@@ -37,8 +37,8 @@ beforeAll(async () => {
         {
           kind: "transform",
           id: "echo_input",
-          language: "jsonata",
-          expression: "$input",
+          language: "javascript",
+          expression: "return input.input;",
         },
       ],
     }),

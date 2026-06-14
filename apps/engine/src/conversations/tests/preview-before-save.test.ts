@@ -83,7 +83,14 @@ describe("save_workflow_draft preview-before-commit gate", () => {
       workflow: {
         name: "no-preview",
         slug: "no-preview",
-        steps: [{ id: "s1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+        steps: [
+          {
+            id: "s1",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.input.n;",
+          },
+        ],
       },
       // No latest_preview — gate must refuse.
     });
@@ -160,7 +167,14 @@ describe("save_workflow_draft preview-before-commit gate", () => {
         workflow: {
           name: "previewed-commit",
           slug: "previewed-preview-gate",
-          steps: [{ id: "t1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+          steps: [
+            {
+              id: "t1",
+              kind: "transform",
+              language: "javascript",
+              expression: "return input.input.n;",
+            },
+          ],
         },
       }),
       {

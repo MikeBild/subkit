@@ -122,9 +122,9 @@ beforeAll(async () => {
           {
             id: "extract",
             kind: "transform",
-            language: "jsonata",
+            language: "javascript",
             expression:
-              '$input.body.data.object.{ "charge_id": id, "amount": amount, "currency": currency, "failure_code": failure_code, "email": billing_details.email }',
+              "const o = input.input.body.data.object; return { charge_id: o.id, amount: o.amount, currency: o.currency, failure_code: o.failure_code, email: o.billing_details.email };",
           },
           {
             id: "post",

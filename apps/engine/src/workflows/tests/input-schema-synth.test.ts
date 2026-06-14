@@ -55,7 +55,7 @@ describe("synthesizeInputSchema", () => {
     }
   });
 
-  it("collects $input.X references inside jsonata transforms", () => {
+  it("collects input.input.X references inside JavaScript transforms", () => {
     const dag: WorkflowDef = {
       name: "transform-refs",
       steps: [
@@ -68,8 +68,8 @@ describe("synthesizeInputSchema", () => {
         {
           kind: "transform",
           id: "format",
-          language: "jsonata",
-          expression: '{ "city": $input.city, "date": $input.date }',
+          language: "javascript",
+          expression: "return { city: input.input.city, date: input.input.date };",
         },
       ],
     };
@@ -78,7 +78,7 @@ describe("synthesizeInputSchema", () => {
     expect(Object.keys(schema?.properties ?? {}).sort()).toEqual(["city", "date"]);
   });
 
-  it("merges placeholder + jsonata identifiers, dedup'd", () => {
+  it("merges placeholder + JS transform identifiers, dedup'd", () => {
     const dag: WorkflowDef = {
       name: "merged",
       steps: [
@@ -91,8 +91,8 @@ describe("synthesizeInputSchema", () => {
         {
           kind: "transform",
           id: "t",
-          language: "jsonata",
-          expression: '{ "c": $input.city, "d": $input.date }',
+          language: "javascript",
+          expression: "return { c: input.input.city, d: input.input.date };",
         },
       ],
     };
@@ -100,15 +100,40 @@ describe("synthesizeInputSchema", () => {
     expect(Object.keys(schema?.properties ?? {}).sort()).toEqual(["city", "date"]);
   });
 
-  it("ignores malformed jsonata expressions without crashing", () => {
+  it("collects $input.X references inside a jsonata branch.when predicate", () => {
+    // JSONata survives in the branch.when slot; the synthesiser still walks
+    // its AST for `$input.<name>` references.
+    const dag: WorkflowDef = {
+      name: "branch-refs",
+      steps: [
+        {
+          kind: "request",
+          id: "fetch",
+          method: "GET",
+          url: "https://example.test/ping",
+        },
+        {
+          kind: "branch",
+          id: "gate",
+          when: "$input.region = 'eu' and $input.tier",
+          then_steps: ["fetch"],
+        },
+      ],
+    };
+    const schema = synthesizeInputSchema(dag);
+    expect(schema).not.toBeNull();
+    expect(Object.keys(schema?.properties ?? {}).sort()).toEqual(["region", "tier"]);
+  });
+
+  it("ignores a malformed jsonata branch.when without crashing", () => {
     const dag: WorkflowDef = {
       name: "broken",
       steps: [
         {
-          kind: "transform",
-          id: "t",
-          language: "jsonata",
-          expression: "this is not ( valid",
+          kind: "branch",
+          id: "gate",
+          when: "this is not ( valid",
+          then_steps: ["gate"],
         },
       ],
     };
@@ -116,7 +141,7 @@ describe("synthesizeInputSchema", () => {
     expect(synthesizeInputSchema(dag)).toBeNull();
   });
 
-  it("skips non-jsonata transforms (javascript language)", () => {
+  it("returns null for a JS transform that references no workflow input", () => {
     const dag: WorkflowDef = {
       name: "js",
       steps: [
@@ -124,7 +149,7 @@ describe("synthesizeInputSchema", () => {
           kind: "transform",
           id: "t",
           language: "javascript",
-          expression: "return { x: input.whatever };",
+          expression: "return { x: input.scope.fetch.data };",
         },
       ],
     };

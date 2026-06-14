@@ -263,8 +263,8 @@ describe("loop body offload — iterationResults hold references", () => {
         {
           kind: "transform",
           id: "items",
-          language: "jsonata",
-          expression: "[1, 2]",
+          language: "javascript",
+          expression: "return [1, 2];",
         },
         {
           kind: "loop",

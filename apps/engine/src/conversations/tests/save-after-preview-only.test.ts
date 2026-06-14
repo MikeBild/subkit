@@ -92,7 +92,14 @@ describe("save_workflow_draft · workflow_previewed subsumes inspect+validate", 
       workflow: {
         name: "preview-only",
         slug: "preview-only",
-        steps: [{ id: "s1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+        steps: [
+          {
+            id: "s1",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.input.n;",
+          },
+        ],
       },
     };
     const previewed = withLatestPreview(
@@ -145,7 +152,14 @@ describe("commitWorkflowAtomic · hash-dedup on unchanged re-commit", () => {
       workflow: {
         name: "Dedup WF",
         slug,
-        steps: [{ id: "s1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+        steps: [
+          {
+            id: "s1",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.input.n;",
+          },
+        ],
       },
     };
     const previewed = withLatestPreview(

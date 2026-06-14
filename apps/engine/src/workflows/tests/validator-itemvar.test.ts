@@ -110,80 +110,99 @@ describe("validateWorkflowDef — item_var rejection (single enforcement point)"
 });
 
 describe("validateBareIterationIdentifiers — authoring lint", () => {
-  test("bare `item` in loop-body JSONata → did_you_mean carries the $item rewrite", () => {
+  // Transforms are JavaScript-only and exempt from this JSONata lint; the
+  // surviving JSONata slots a loop body can carry are `branch.when` and a
+  // nested `loop.over`, so the bare-item lint is exercised through `branch.when`.
+  test("bare `item` in loop-body branch.when → did_you_mean carries the $item rewrite", () => {
     const errors = validateBareIterationIdentifiers([
-      { id: "get", kind: "transform", expression: "[1]" },
-      { id: "iter", kind: "loop", over: "get.data", body: ["shape"] },
-      { id: "shape", kind: "transform", expression: "item.name" },
+      { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
+      { id: "iter", kind: "loop", over: "get.data", body: ["gate"] },
+      { id: "gate", kind: "branch", when: "item.name", then_steps: [], else_steps: [] },
     ]);
     expect(errors).toHaveLength(1);
-    expect(errors[0]?.step_id).toBe("shape");
-    expect(errors[0]?.field).toBe("expression");
+    expect(errors[0]?.step_id).toBe("gate");
+    expect(errors[0]?.field).toBe("when");
     expect(errors[0]?.bad_reference).toBe("item");
     expect(errors[0]?.did_you_mean).toEqual(["$item.name"]);
   });
 
-  test("legacy declared item_var name is linted with the concrete rewrite", () => {
+  test("legacy declared item_var name is linted in loop-body branch.when", () => {
     const errors = validateBareIterationIdentifiers([
-      { id: "get", kind: "transform", expression: "[1]" },
-      { id: "iter", kind: "loop", over: "get.data", item_var: "project", body: ["shape"] },
-      { id: "shape", kind: "transform", expression: "project.name & ' x'" },
+      { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
+      { id: "iter", kind: "loop", over: "get.data", item_var: "project", body: ["gate"] },
+      { id: "gate", kind: "branch", when: "project.name & ' x'", then_steps: [], else_steps: [] },
     ]);
     expect(errors).toHaveLength(1);
     expect(errors[0]?.bad_reference).toBe("project");
     expect(errors[0]?.did_you_mean).toEqual(["$item.name & ' x'"]);
   });
 
-  test("canonical $item usage produces no findings", () => {
+  test("a JavaScript transform in a loop body is NOT bare-item-linted", () => {
+    // A JS transform addresses the item as `input.scope.$item`; the bare-item
+    // JSONata lint does not apply to it.
     const errors = validateBareIterationIdentifiers([
-      { id: "get", kind: "transform", expression: "[1]" },
+      { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
       { id: "iter", kind: "loop", over: "get.data", body: ["shape"] },
-      { id: "shape", kind: "transform", expression: "$item.name" },
+      {
+        id: "shape",
+        kind: "transform",
+        language: "javascript",
+        expression: "return input.scope.$item.name;",
+      },
+    ]);
+    expect(errors).toHaveLength(0);
+  });
+
+  test("canonical $item branch.when produces no findings", () => {
+    const errors = validateBareIterationIdentifiers([
+      { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
+      { id: "iter", kind: "loop", over: "get.data", body: ["gate"] },
+      { id: "gate", kind: "branch", when: "$item.name", then_steps: [], else_steps: [] },
     ]);
     expect(errors).toHaveLength(0);
   });
 
   test("steps outside any loop body are not linted", () => {
     const errors = validateBareIterationIdentifiers([
-      { id: "shape", kind: "transform", expression: "item.name" },
+      { id: "gate", kind: "branch", when: "item.name", then_steps: [], else_steps: [] },
     ]);
     expect(errors).toHaveLength(0);
   });
 
   test("item as a field lookup inside a predicate is not linted", () => {
     const errors = validateBareIterationIdentifiers([
-      { id: "get", kind: "transform", expression: "[1]" },
-      { id: "iter", kind: "loop", over: "get.data", body: ["shape"] },
-      { id: "shape", kind: "transform", expression: "$item.rows[item > 2]" },
+      { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
+      { id: "iter", kind: "loop", over: "get.data", body: ["gate"] },
+      { id: "gate", kind: "branch", when: "$item.rows[item > 2]", then_steps: [], else_steps: [] },
     ]);
     expect(errors).toHaveLength(0);
   });
 });
 
 describe("conversations verifier — build-time rejection", () => {
-  test("item_var declaration is an error finding", () => {
+  test("item_var declaration + bare loop-body branch.when are both error findings", () => {
     const report = verifyWorkflow({
       name: "legacy",
       steps: [
-        { id: "get", kind: "transform", expression: "[1]" },
-        { id: "iter", kind: "loop", over: "get.data", item_var: "num", body: ["double"] },
-        { id: "double", kind: "transform", expression: "num * 2" },
+        { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
+        { id: "iter", kind: "loop", over: "get.data", item_var: "num", body: ["gate"] },
+        { id: "gate", kind: "branch", when: "num > 2", then_steps: [], else_steps: [] },
       ],
     });
     const codes = report.errors.map((e) => e.code);
     expect(codes).toContain("item_var_retired");
     expect(codes).toContain("bare_iteration_identifier");
     const bare = report.errors.find((e) => e.code === "bare_iteration_identifier");
-    expect(bare?.message).toContain("$item * 2");
+    expect(bare?.message).toContain("$item > 2");
   });
 
   test("canonical $item draft verifies clean", () => {
     const report = verifyWorkflow({
       name: "ok",
       steps: [
-        { id: "get", kind: "transform", expression: "[1]" },
-        { id: "iter", kind: "loop", over: "get.data", body: ["double"] },
-        { id: "double", kind: "transform", expression: "$item * 2" },
+        { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
+        { id: "iter", kind: "loop", over: "get.data", body: ["gate"] },
+        { id: "gate", kind: "branch", when: "$item > 2", then_steps: [], else_steps: [] },
       ],
     });
     expect(report.errors).toHaveLength(0);

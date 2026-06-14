@@ -393,8 +393,5 @@ export const doctorCommand = defineCommand({
     process.exit(exitCodeFromStatus(overall));
   },
 });
-
-// Re-export for tests
-export const _internal = { worst, exitCodeFromStatus };
 // Suppress unused warning for the error-mapping helper kept for future use.
 void exitCodeFor;

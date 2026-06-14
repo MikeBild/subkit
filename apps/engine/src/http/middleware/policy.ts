@@ -4,7 +4,6 @@
 
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { policy } from "../../auth/policy.ts";
 import type { PolicyDecision, ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { ForbiddenError } from "../errors.ts";
@@ -38,5 +37,3 @@ export function enforce(
   );
   throw new ForbiddenError(decision.reason ?? "policy_denied");
 }
-
-export const policyHelpers = policy;

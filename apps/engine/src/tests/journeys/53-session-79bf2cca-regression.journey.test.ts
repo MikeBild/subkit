@@ -22,10 +22,11 @@
 //     "succeeded" but each produced an empty array — was not in the
 //     fixture set, so the false-positive `succeeded` workflow status
 //     went undetected.
-//   - The transform-warning tests checked that `unresolved_identifier`
-//     fires, but not that the warning carries enough context for the
-//     LLM to self-correct in the same turn. So the agent could keep
-//     guessing JSONata variants until a circuit-breaker fired.
+//   - (Retired) The transform-warning case that checked the
+//     `unresolved_identifier` runtime warning was a JSONata-runtime
+//     diagnostic. Transforms are JavaScript-only now and the JS
+//     transform runtime no longer emits that warning class, so the
+//     case was removed (see the AC4 note below).
 //   - Authoring-context-block tests asserted the human-readable lines
 //     for steps and previews but not the typed scope manifest — the
 //     thing that would prevent the agent from inventing
@@ -44,15 +45,18 @@
 //      classified `partial_success`, surfaces a `loop_body_empty`
 //      warning with the actual envelope shape, and the run_workflow
 //      tool result reflects the downgrade — not "succeeded".
-// AC4. An `unresolved_identifier` warning carries `details.available_paths`
-//      and (when close enough) `details.suggestion` so the LLM can
-//      cite a real path on the next turn instead of guessing.
+// AC4. (Removed) Previously asserted an `unresolved_identifier` warning
+//      with `details.available_paths` + `details.suggestion`. That was a
+//      JSONata-runtime diagnostic; transforms are JavaScript-only now and
+//      the JS transform runtime does not emit it. The surviving bare-path
+//      typo/suggestion contract lives in the authoring-time reference
+//      validator (reference-validator-fp.test.ts).
 // AC5. The dialog.turn_end log line on the engine side includes the
 //      per-turn token breakdown (system, skills, knowledge, docs,
 //      messages, total). Operators reading engine logs alone can
 //      attribute cost to turns.
 //
-// These six ACs are the post-fix invariants that, together, make the
+// These ACs are the post-fix invariants that, together, make the
 // session-79bf2cca transcript impossible to reproduce silently.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -99,9 +103,6 @@ import type { ToolContext } from "../../conversations/tools/index.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
 import { conversationElicitations } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
-import { runTransformStep } from "../../execution/steps/transform.ts";
-import type { StepRunContext } from "../../execution/types.ts";
-import { RunLlmBudget } from "../../llm/accounting/index.ts";
 import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
@@ -212,7 +213,12 @@ describe("journey 53: session-79bf2cca regression set", () => {
       slug: "empty-loop-journey",
       name: "Empty Loop Journey",
       steps: [
-        { kind: "transform", id: "items", language: "jsonata", expression: "['p1', 'p2', 'p3']" },
+        {
+          kind: "transform",
+          id: "items",
+          language: "javascript",
+          expression: "return ['p1', 'p2', 'p3'];",
+        },
         {
           kind: "loop",
           id: "iter",
@@ -221,14 +227,19 @@ describe("journey 53: session-79bf2cca regression set", () => {
           body: ["fetch_resources"],
         },
         // Body always returns []. Three iterations succeed; productive body output = 0.
-        { kind: "transform", id: "fetch_resources", language: "jsonata", expression: "[]" },
+        {
+          kind: "transform",
+          id: "fetch_resources",
+          language: "javascript",
+          expression: "return [];",
+        },
         // Top-level output is non-empty so the *legacy* heuristic ("output is []")
         // would have missed this; only the new `loop_body_empty` warning catches it.
         {
           kind: "transform",
           id: "format_output",
-          language: "jsonata",
-          expression: "{ 'count': 3 }",
+          language: "javascript",
+          expression: "return { count: 3 };",
         },
       ],
     });
@@ -328,61 +339,14 @@ describe("journey 53: session-79bf2cca regression set", () => {
     expect(out.ok).toBe(false);
   });
 
-  test("AC4: unresolved_identifier warning carries available_paths + suggestion for LLM self-correction", async () => {
-    const stepCtx: StepRunContext = {
-      db: undefined as unknown as StepRunContext["db"],
-      tenant_id: ctx.tenantId,
-      execution_id: "ex",
-      workflow_id: "wf",
-      workflow_version_id: "wv",
-      request_source: "mcp",
-      parent_execution_id: null,
-      depth: 0,
-      signal: new AbortController().signal,
-      scope: {},
-      started_at: new Date(TEST_NOW_MS),
-      workflow_slug: "s",
-      trace_id: null,
-      principal: null,
-      execution_mode: "dev",
-      step: {
-        kind: "transform",
-        id: "format_output",
-        language: "jsonata",
-        expression: "x",
-      },
-      step_index: 0,
-      step_row_id: "r",
-      llm_budget: new RunLlmBudget(null),
-    };
-    const result = await runTransformStep({
-      ctx: stepCtx,
-      step: {
-        kind: "transform",
-        id: "format_output",
-        language: "jsonata",
-        // 1-char typo: should suggest `fetch_projects`.
-        expression: "fetch_projets.data.resources",
-      },
-      scope: {
-        // Real-shape envelope as the engine emits at runtime.
-        fetch_projects: {
-          data: { projects: [{ id: "p1" }] },
-          duration_ms: 5,
-          error: null,
-        },
-      },
-      input: {},
-    });
-    const warning = (result.warnings ?? [])[0];
-    expect(warning?.code).toBe("unresolved_identifier");
-    const details = warning?.details as
-      | { available_paths: string[]; suggestion?: string }
-      | undefined;
-    expect(details?.available_paths).toContain("fetch_projects");
-    expect(details?.available_paths).toContain("fetch_projects.data");
-    expect(details?.suggestion).toBe("fetch_projects");
-  });
+  // AC4 (removed): the old `unresolved_identifier` warning with
+  // `available_paths` + `suggestion` was a JSONata-runtime diagnostic.
+  // Transforms are now JavaScript-only — the JS transform runtime
+  // (execution/steps/transform.ts) does not emit that warning class, so
+  // the case it asserted no longer has a code path to exercise. The
+  // bare-path typo / suggestion contract that survives lives in the
+  // authoring-time reference validator (reference-validator.ts), covered
+  // by reference-validator-fp.test.ts.
 
   test("AC5: scope manifest in authoring context exposes typed paths for plain steps and loop body", async () => {
     const out = renderAuthoringContextBlock({

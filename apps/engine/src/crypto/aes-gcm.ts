@@ -81,13 +81,6 @@ function getKey(): Buffer {
   return cachedKey;
 }
 
-// Used only by tests that want to reset the module state across runs
-// (e.g. after swapping an env var). Safe to no-op in production.
-export function __resetCryptoForTests(): void {
-  cachedKey = null;
-  loggedLoad = false;
-}
-
 export interface EncryptedPayload {
   ciphertext: Uint8Array;
   iv: Uint8Array;

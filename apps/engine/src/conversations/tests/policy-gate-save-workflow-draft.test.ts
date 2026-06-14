@@ -87,8 +87,8 @@ function readyWorkflowDraft(slug: string): DraftDocument {
         {
           id: "echo",
           kind: "transform",
-          expression: "$input",
-          language: "jsonata",
+          language: "javascript",
+          expression: "return input.input;",
         },
       ],
     },

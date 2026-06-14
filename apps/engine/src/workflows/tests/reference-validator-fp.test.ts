@@ -15,7 +15,7 @@ function wf(steps: WorkflowDef["steps"]): WorkflowDef {
 }
 
 describe("reference-validator · false-positive guards", () => {
-  test("does not flag links.self inside a transform expression", () => {
+  test("does not flag links.self inside a JS transform expression", () => {
     const draft = {
       name: "draft",
       steps: [
@@ -23,11 +23,11 @@ describe("reference-validator · false-positive guards", () => {
         {
           id: "shape",
           kind: "transform",
-          language: "jsonata",
-          // The expression projects each resource carrying a
-          // `links.self` URL; `links` is a HATEOAS field name, not a
-          // step id.
-          expression: '$scope.fetch.data.resources.{ "urn": urn, "path": links.self }',
+          language: "javascript",
+          // The body projects each resource carrying a `links.self` URL;
+          // `links` is a HATEOAS field name, not a step id.
+          expression:
+            "return input.scope.fetch.data.resources.map((r) => ({ urn: r.urn, path: r.links.self }));",
         },
       ],
     };
@@ -42,12 +42,12 @@ describe("reference-validator · false-positive guards", () => {
         {
           id: "shape",
           kind: "transform",
-          language: "jsonata",
+          language: "javascript",
           // `mikebild.com` and `codecommission.de` are inside string
           // literals — the validator must not extract the prefixes
           // (`mikebild`, `codecommission`) as candidate step refs.
           expression:
-            '$scope.fetch.data.{ "primary": \'mikebild.com\', "secondary": "codecommission.de" }',
+            "return { primary: 'mikebild.com', secondary: \"codecommission.de\", from: input.scope.fetch.data };",
         },
       ],
     };
@@ -62,8 +62,8 @@ describe("reference-validator · false-positive guards", () => {
         {
           id: "shape",
           kind: "transform",
-          language: "jsonata",
-          expression: "$scope.fetch.data.{ \"ct\": 'application/json' }",
+          language: "javascript",
+          expression: "return { ct: 'application/json', from: input.scope.fetch.data };",
         },
       ],
     };
@@ -83,9 +83,10 @@ describe("reference-validator · false-positive guards", () => {
         {
           id: "shape",
           kind: "transform",
-          language: "jsonata",
-          // typo: fetcch_projects (1 char extra) → flagged
-          expression: "fetcch_projects.data",
+          language: "javascript",
+          // typo: fetcch_projects (1 char extra) → flagged as a bare-path
+          // reference close to the real step id.
+          expression: "return fetcch_projects.data;",
         },
       ],
     };

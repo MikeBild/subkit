@@ -33,8 +33,3 @@ export function setHealthState(patch: Partial<EngineHealthState>): void {
 export function getHealthState(): Readonly<EngineHealthState> {
   return _state;
 }
-
-/** Test-only reset. */
-export function resetHealthState(): void {
-  _state = { ...INITIAL };
-}

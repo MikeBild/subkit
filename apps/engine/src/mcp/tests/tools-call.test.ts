@@ -141,8 +141,8 @@ describe("mcp tools/call", () => {
         {
           kind: "transform",
           id: "shape",
-          expression: "$input.date",
-          language: "jsonata",
+          expression: "return input.input.date;",
+          language: "javascript",
         },
       ],
     });

@@ -29,9 +29,9 @@
     {
       "id": "format_output",
       "kind": "transform",
-      "language": "jsonata",
+      "language": "javascript",
       "on_error": "fail",
-      "expression": "$scope.projects_loop.data ~> $map(function($loop_item, $idx) { { \"project\": $scope.list_projects.data.projects[$idx].name, \"id\": $scope.list_projects.data.projects[$idx].id, \"resource_count\": $count($loop_item.fetch_resources.data.resources), \"resources\": $loop_item.fetch_resources.data.resources.urn } })"
+      "expression": "return (input.scope.projects_loop.data || []).map((loop_item, idx) => { const resources = (loop_item.fetch_resources.data.resources) || []; const project = input.scope.list_projects.data.projects[idx]; return { project: project.name, id: project.id, resource_count: resources.length, resources: resources.map((x) => x.urn) }; });"
     }
   ]
 }

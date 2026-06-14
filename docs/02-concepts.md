@@ -126,7 +126,7 @@ These appear across the strategy docs. Listed here so every reader has the same 
 
 **Connector** — a configured connection to an external integration boundary. A Connector is built from a template, a driver, and credentials. It represents a specific integration instance — for example, a Stripe production account or a GitHub organisation. Connectors are tenant-scoped and versioned.
 
-**Connector Template** — a pre-built blueprint for a well-known service. Templates include the driver type, authentication configuration, documentation ingestion setup, and guided setup instructions. The reference implementation ships 90 Connector Templates covering services across payments, CRM, DevOps, data, communication, and cloud infrastructure. Templates are the starting point for creating a Connector; they are not Connectors themselves.
+**Connector Template** — a pre-built blueprint for a well-known service. Templates include the driver type, authentication configuration, documentation ingestion setup, and guided setup instructions. The reference implementation ships 105 Connector Templates covering services across payments, CRM, DevOps, data, communication, and cloud infrastructure. Templates are the starting point for creating a Connector; they are not Connectors themselves.
 
 **Driver** — the protocol layer that executes Connector requests. The reference implementation has nine built-in drivers: HTTP, GraphQL, PostgreSQL, S3, FTP, SFTP, SMB, MSSQL, and Redis. Each driver handles request construction, response parsing, pagination, and error normalisation for its protocol. Drivers are not pluggable at runtime — the nine built-in drivers cover the intended integration surface.
 
@@ -138,7 +138,7 @@ These appear across the strategy docs. Listed here so every reader has the same 
 
 **Workflow** — a versioned, directed acyclic graph (DAG) of Steps that produces a deterministic outcome. Workflows are authored through Conversations, approved by a human, and then committed as immutable versions. Each version is a complete snapshot of the workflow at the time of approval. Workflows are tenant-scoped and support a lifecycle of draft, active, and archived.
 
-**Step** — a single unit of work within a Workflow DAG. Step types are: request (call a Connector), transform (reshape data), branch (conditional routing), loop (iterate over a collection), parallel (run Steps concurrently), wait (introduce a delay), call (invoke another Workflow), and tool (run a sandboxed container step). Each Step declares retry policy, timeout, error handling behaviour, and optional field masking for sensitive data.
+**Step** — a single unit of work within a Workflow DAG. Step types are: request (call a Connector), transform (reshape data), branch (conditional routing), loop (iterate over a collection), parallel (run Steps concurrently), wait (introduce a delay), wait_for_event (pause until an inbound signal), and call (invoke another Workflow). Each Step declares retry policy, timeout, error handling behaviour, and optional field masking for sensitive data.
 
 **Execution** — a single run of a Workflow. An Execution carries its own state, step-by-step results, logs, and final status. Executions are immutable records — they are never modified after completion. Each Execution records its request source (API, CLI, scheduler, webhook, MCP, or chat) and its environment (dev or prod). Executions are queryable and searchable after the fact.
 

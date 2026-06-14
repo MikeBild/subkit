@@ -25,7 +25,9 @@ beforeAll(async () => {
   const wf = await seedWorkflow(ctx, {
     slug: "cron-probe",
     name: "Cron Probe",
-    steps: [{ id: "noop", kind: "transform", language: "jsonata", expression: "$input" }],
+    steps: [
+      { id: "noop", kind: "transform", language: "javascript", expression: "return input.input;" },
+    ],
   });
   workflowId = wf.id;
 

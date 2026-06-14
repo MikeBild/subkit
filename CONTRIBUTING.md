@@ -1,6 +1,6 @@
 # Contributing to subkit
 
-This file is the short form. The canonical contract is [`AGENTS.md`](AGENTS.md) — read that before changing behavior. Directory-local rules live in `apps/engine/AGENTS.md`, `apps/sk/AGENTS.md`, `apps/agent/AGENTS.md`, and `packages/shared/AGENTS.md`.
+This file is the short form. The canonical contract is [`AGENTS.md`](AGENTS.md) — read that before changing behavior. Directory-local rules live in `apps/engine/AGENTS.md`, `apps/sk/AGENTS.md`, and `packages/shared/AGENTS.md`.
 
 ## Setup
 
@@ -46,7 +46,7 @@ A `BREAKING CHANGE:` token in the body bumps the major.
 - **Biome** is the only formatter and linter (`biome.json`). 100-char width, 2-space indent, double quotes, semicolons, trailing commas. `bun run lint:fix` fixes most issues.
 - **TypeScript strict mode.** No `any` in new code. No non-null assertions without a documented invariant.
 - **Zod at every boundary.** Every HTTP route, MCP tool, webhook, and CLI input gets a Zod schema first. OpenAPI is generated from those schemas — do not hand-edit `packages/cli-core/src/engine-api/`.
-- **Structured logger only** (`apps/engine/src/logging/`) in app code. No `console.log/warn/error` in `apps/engine/src/`, `apps/sk/src/`, `apps/agent/src/`, `packages/`. Build scripts under `scripts/` may use console output.
+- **Structured logger only** (`apps/engine/src/logging/`) in app code. No `console.log/warn/error` in `apps/engine/src/`, `apps/sk/src/`, `packages/`. Build scripts under `scripts/` may use console output.
 - **Comments explain why, not what.** One line max, no docblocks, no decorative banners.
 
 ## Naming and terminology

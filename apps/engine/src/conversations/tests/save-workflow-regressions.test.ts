@@ -40,7 +40,14 @@ function readyDraft(input: { name: string; slug: string }): DraftDocument {
         withWorkflowDraft(createEmptyDraftDocument(), {
           name: input.name,
           slug: input.slug,
-          steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
+          steps: [
+            {
+              id: "shape",
+              kind: "transform",
+              language: "javascript",
+              expression: "return input.input;",
+            },
+          ],
         }),
       ),
       true,
@@ -74,7 +81,14 @@ async function seedLiveWorkflow(slug: string, name: string): Promise<{ id: strin
       dag: {
         name,
         slug,
-        steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
+        steps: [
+          {
+            id: "shape",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.input;",
+          },
+        ],
       },
     })
     .returning();

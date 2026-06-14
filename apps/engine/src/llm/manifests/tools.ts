@@ -43,8 +43,3 @@ export function getToolManifest(): ToolManifest {
   if (!cached) cached = build();
   return cached;
 }
-
-/** Test/restart hook — drop the cache so the next call rebuilds. */
-export function refreshToolManifest(): void {
-  cached = undefined;
-}

@@ -20,6 +20,7 @@
 
 import { compile as compileJsonata } from "../execution/jsonata-engine.ts";
 import { validateBareIterationIdentifiers } from "../workflows/reference-validator.ts";
+import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "../workflows/types-web-scraper.ts";
 
 export type VerifierSeverity = "error" | "warning" | "info";
 
@@ -52,7 +53,9 @@ const JSONATA_FIELDS: Array<{
   /** Field name on the step or workflow root. */
   field: string;
 }> = [
-  { kind: "transform", field: "expression" },
+  // NOTE: `transform.expression` is intentionally NOT here — a transform may
+  // be JSONata OR JavaScript, so it is routed by `language` in
+  // `validateTransformExpression`. `branch.when` is always JSONata.
   { kind: "branch", field: "when" },
 ];
 
@@ -74,6 +77,47 @@ function tryJsonata(expression: string, path: string, report: VerifierReport): v
       path,
     });
   }
+}
+
+// Validate a JavaScript transform body WITHOUT executing it. The QuickJS
+// sandbox (sandboxes/quickjs/runtime.ts) wraps user code as
+// `(function(input){ <expression> })`, so `new Function("input", expression)`
+// parses the body under the exact same grammar. The Function constructor
+// compiles but never RUNS the body, so this stays as pure and cheap as the
+// JSONata path — a SyntaxError here is the same failure the author would
+// otherwise only discover at runtime in the sandbox.
+function tryJavascript(expression: string, path: string, report: VerifierReport): void {
+  try {
+    // Parse-only: the Function constructor compiles the body but never runs it.
+    new Function("input", expression);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    addFinding(report, {
+      severity: "error",
+      code: "js_syntax_error",
+      message: `JavaScript transform failed to parse: ${msg}`,
+      path,
+    });
+  }
+}
+
+// Validate a transform step's `expression`. Transforms are JavaScript-only —
+// validating a JS body through the JSONata parser is exactly the bug that
+// trapped the authoring loop ("JSONata expression failed to parse" on correct
+// JavaScript). JSONata survives only in the one-line slots (`data_selector`,
+// `branch.when`, `output_transform`, `${scope.x.data}` interpolation), which
+// are validated elsewhere. The three web-scraper languages carry no
+// `expression` (their config blocks do), so they are skipped.
+function validateTransformExpression(
+  step: Record<string, unknown>,
+  path: string,
+  report: VerifierReport,
+): void {
+  const expression = step.expression;
+  if (typeof expression !== "string" || expression.length === 0) return;
+  const language = typeof step.language === "string" ? step.language : "javascript";
+  if (TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION.has(language)) return;
+  tryJavascript(expression, `${path}.expression`, report);
 }
 
 const SCOPE_RE = /\$\{scope\.([A-Za-z0-9_-]+)\./g;
@@ -232,6 +276,12 @@ export function verifyWorkflow(wf: InputWorkflow): VerifierReport {
 
     // Scope refs in this step can only reference PREVIOUS steps.
     scanScopeRefs(step, seenStepIds, path, report);
+
+    // Transform expressions are validated against their DECLARED language
+    // (JSONata XOR JavaScript), not unconditionally as JSONata.
+    if (kind === "transform") {
+      validateTransformExpression(step, path, report);
+    }
 
     // JSONata-only fields per step kind.
     for (const spec of JSONATA_FIELDS) {

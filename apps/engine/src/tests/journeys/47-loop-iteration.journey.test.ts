@@ -46,8 +46,8 @@ describe("47: Loop step — iterates items, injects $item and $loop_index", () =
           {
             kind: "transform",
             id: "get_numbers",
-            language: "jsonata",
-            expression: "[1, 2, 3]",
+            language: "javascript",
+            expression: "return [1, 2, 3];",
           },
           // Loop over the collection; body step runs for each item.
           {
@@ -60,8 +60,8 @@ describe("47: Loop step — iterates items, injects $item and $loop_index", () =
           {
             kind: "transform",
             id: "double_num",
-            language: "jsonata",
-            expression: "$item * 2",
+            language: "javascript",
+            expression: "return input.scope.$item * 2;",
           },
         ],
       }),
@@ -101,8 +101,8 @@ describe("47: Loop step — iterates items, injects $item and $loop_index", () =
           {
             kind: "transform",
             id: "get_items",
-            language: "jsonata",
-            expression: "['a', 'b', 'c']",
+            language: "javascript",
+            expression: "return ['a', 'b', 'c'];",
           },
           {
             kind: "loop",
@@ -113,9 +113,9 @@ describe("47: Loop step — iterates items, injects $item and $loop_index", () =
           {
             kind: "transform",
             id: "build_tag",
-            language: "jsonata",
+            language: "javascript",
             // Produces { index: 0|1|2, letter: "a"|"b"|"c" }
-            expression: "{ 'index': $loop_index, 'letter': $item }",
+            expression: "return { index: input.scope.$loop_index, letter: input.scope.$item };",
           },
         ],
       }),
@@ -144,14 +144,24 @@ describe("47: Loop step — iterates items, injects $item and $loop_index", () =
         name: "loop-no-double",
         slug: "loop-no-double",
         steps: [
-          { kind: "transform", id: "get_items", language: "jsonata", expression: "[10, 20]" },
+          {
+            kind: "transform",
+            id: "get_items",
+            language: "javascript",
+            expression: "return [10, 20];",
+          },
           {
             kind: "loop",
             id: "process_items",
             over: "get_items.data",
             body: ["halve"],
           },
-          { kind: "transform", id: "halve", language: "jsonata", expression: "$item / 2" },
+          {
+            kind: "transform",
+            id: "halve",
+            language: "javascript",
+            expression: "return input.scope.$item / 2;",
+          },
         ],
       }),
     });
@@ -194,8 +204,8 @@ describe("47: Loop step — iterates items, injects $item and $loop_index", () =
             {
               kind: "transform",
               id: "get_ids",
-              language: "jsonata",
-              expression: "[{ 'id': 1 }, { 'id': 2 }]",
+              language: "javascript",
+              expression: "return [{ id: 1 }, { id: 2 }];",
             },
             {
               kind: "loop",

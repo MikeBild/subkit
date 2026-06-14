@@ -59,7 +59,11 @@ const DryRunInput = z
   .object({
     expression: z.string().min(1).max(10_000),
     sample_data: z.unknown().default(null),
-    dialect: Dialect.default("jsonata"),
+    // Transforms are JavaScript — default the probe to the same language so
+    // an author testing a transform body gets execution-parity by default.
+    // jsonata/jsonpath/template remain available for the one-line slots
+    // (data_selector, branch.when, output_transform, ${…} interpolation).
+    dialect: Dialect.default("javascript"),
     /**
      * Optional draft step id to emulate. When the step sits inside a
      * loop body, the evaluation reproduces the engine's per-iteration
@@ -197,11 +201,10 @@ export const dryRunTransformTool: ConversationTool = {
   ],
   requires_skill: "data-handling",
   example_input: {
-    expression: "$scope.fetch.data.results[?(@.active)].id",
-    sample_data: {
-      $scope: { fetch: { data: { results: [{ id: "a", active: true }] } } },
-    },
-    dialect: "jsonata",
+    expression:
+      "const r = input.scope.fetch.data.results || []; return r.filter((x) => x.active).map((x) => x.id);",
+    sample_data: { fetch: { data: { results: [{ id: "a", active: true }] } } },
+    dialect: "javascript",
   },
   inputSchema: DryRunInput,
   category: "tenant_read",

@@ -26,8 +26,8 @@ describe("workflow.validation_expression", () => {
         {
           kind: "transform",
           id: "shape",
-          language: "jsonata",
-          expression: "{ 'orders': [{ 'id': 'a' }, { 'id': 'b' }] }",
+          language: "javascript",
+          expression: "return { orders: [{ id: 'a' }, { id: 'b' }] };",
         },
       ],
       validation_expression: "$count(orders) > 0",
@@ -49,9 +49,9 @@ describe("workflow.validation_expression", () => {
         {
           kind: "transform",
           id: "shape",
-          language: "jsonata",
+          language: "javascript",
           // Empty orders array — invariant requires at least one.
-          expression: "{ 'orders': [] }",
+          expression: "return { orders: [] };",
         },
       ],
       validation_expression: "$count(orders) > 0",
@@ -75,8 +75,8 @@ describe("workflow.validation_expression", () => {
         {
           kind: "transform",
           id: "shape",
-          language: "jsonata",
-          expression: "{ 'orders': [] }",
+          language: "javascript",
+          expression: "return { orders: [] };",
         },
       ],
       // Reference a path that doesn't exist on the output. JSONata
@@ -101,8 +101,8 @@ describe("workflow.validation_expression", () => {
         {
           id: "shape",
           kind: "transform",
-          language: "jsonata",
-          expression: "{ 'count': 0 }",
+          language: "javascript",
+          expression: "return { count: 0 };",
         },
       ],
       // Imperative invariant: count must be > 5.
@@ -125,8 +125,8 @@ describe("workflow.validation_expression", () => {
         {
           id: "raw",
           kind: "transform",
-          language: "jsonata",
-          expression: "{ 'orders': [{ 'id': 'a' }, { 'id': 'b' }] }",
+          language: "javascript",
+          expression: "return { orders: [{ id: 'a' }, { id: 'b' }] };",
         },
       ],
       output_transform: "{ 'count': $count(orders), 'ids': orders.id }",
@@ -148,8 +148,8 @@ describe("workflow.validation_expression", () => {
         {
           id: "raw",
           kind: "transform",
-          language: "jsonata",
-          expression: "{ 'orders': [{ 'id': 'a' }, { 'id': 'b' }] }",
+          language: "javascript",
+          expression: "return { orders: [{ id: 'a' }, { id: 'b' }] };",
         },
       ],
       output_transform_function:
@@ -172,8 +172,8 @@ describe("workflow.validation_expression", () => {
         {
           id: "raw",
           kind: "transform",
-          language: "jsonata",
-          expression: "{ 'value': 'last-step-data' }",
+          language: "javascript",
+          expression: "return { value: 'last-step-data' };",
         },
         {
           id: "shape",
@@ -207,8 +207,8 @@ describe("workflow.validation_expression", () => {
         {
           id: "raw",
           kind: "transform",
-          language: "jsonata",
-          expression: "{ 'a': 1 }",
+          language: "javascript",
+          expression: "return { a: 1 };",
         },
       ],
       output_transform_function: "throw new Error('forced');",
@@ -230,8 +230,8 @@ describe("workflow.validation_expression", () => {
         {
           id: "raw",
           kind: "transform",
-          language: "jsonata",
-          expression: "{ 'a': 1 }",
+          language: "javascript",
+          expression: "return { a: 1 };",
         },
       ],
       // $type is a JSONata function; invoking it with too many args
@@ -261,8 +261,8 @@ describe("workflow.validation_expression", () => {
         {
           kind: "transform",
           id: "shape",
-          language: "jsonata",
-          expression: "{ 'count': 0 }",
+          language: "javascript",
+          expression: "return { count: 0 };",
         },
       ],
       validation_expression: "count > 5",

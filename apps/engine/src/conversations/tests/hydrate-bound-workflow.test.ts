@@ -127,7 +127,12 @@ async function seedConversation(workflow_id: string): Promise<{ conversation_id:
 
 const STEPS_TWO = [
   { id: "fetch", kind: "connector", connector_id: "c1", endpoint_key: "get_users" },
-  { id: "transform", kind: "transform", expression: "$input.data", language: "jsonata" },
+  {
+    id: "transform",
+    kind: "transform",
+    language: "javascript",
+    expression: "return input.input.data;",
+  },
 ] as Array<Record<string, unknown>>;
 
 // ---------------------------------------------------------------------------

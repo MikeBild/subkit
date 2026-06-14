@@ -1,6 +1,6 @@
 // Integration test: workflow steps that reference a $file ref in their output.
 //
-// Use-case: a transform step whose JSONata expression returns
+// Use-case: a transform step whose JS body returns
 // `{ "$file": fid }` — the execution result carries the ref intact so
 // downstream consumers can call GET /v1/files/{id}/content.
 //
@@ -69,18 +69,18 @@ describe("workflow file-output: $file ref in step result", () => {
       slug: "output-pdf",
     });
 
-    // A transform step whose expression produces a JSON object containing the
-    // $file ref.  JSONata `$` expression returns the input unchanged.
-    // We seed the input with the fid so the transform can pass it through.
+    // A transform step whose JS body produces a JSON object containing the
+    // $file ref. We seed the input with the fid so the transform can pass
+    // it through.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "file-output-wf",
       steps: [
         {
           kind: "transform",
           id: "wrap",
-          language: "jsonata",
-          // JSONata: return an object that passes through the fid from $input.
-          expression: `{ "file_ref": $input.fid, "status": "done" }`,
+          language: "javascript",
+          // JS: return an object that passes through the fid from input.input.
+          expression: `return { file_ref: input.input.fid, status: "done" };`,
         },
       ],
     });

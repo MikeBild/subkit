@@ -1,6 +1,7 @@
-// Conversation-quality: verifier catches broken JSONata in a
-// transform step before the draft is committed. Gates a regression
-// where the model is allowed to persist a non-parseable expression.
+// Conversation-quality: verifier catches an unparseable JavaScript
+// transform body (js_syntax_error) before the draft is committed.
+// Gates a regression where the model is allowed to persist a
+// non-parseable expression.
 
 import { verifyWorkflow } from "../../src/conversations/verifier.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";

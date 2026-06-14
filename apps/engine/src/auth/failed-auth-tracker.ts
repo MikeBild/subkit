@@ -54,8 +54,3 @@ export function recordAuthFailure(ip: string): void {
     failures.set(ip, { count: 1, first: now, alerted: false });
   }
 }
-
-/** Visible for testing. */
-export function resetTracker(): void {
-  failures.clear();
-}

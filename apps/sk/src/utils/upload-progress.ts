@@ -77,19 +77,6 @@ export function renderProgressLine(ev: UploadProgressEvent): string {
   return `↑ ${ev.filename} ${sentH} / ${totalH} (${pct}%) · ${rateH} · ETA ${etaH}`;
 }
 
-/** Format an `UploadProgressEvent` as a one-line JSON event suitable
- *  for `--output stream-json` consumers. The shape is documented in
- *  the headless spec so script authors can rely on the field names. */
-export function renderProgressJson(ev: UploadProgressEvent): string {
-  return JSON.stringify({
-    uploading: ev.fid,
-    filename: ev.filename,
-    sent: ev.sent,
-    total: ev.total,
-    elapsed_ms: ev.elapsed_ms,
-  });
-}
-
 /** Compact byte-count formatter — keeps two significant digits up to
  *  TB scale, identical to the convention `sk` uses elsewhere
  *  (executions, audit). Local copy avoids dragging the heavier

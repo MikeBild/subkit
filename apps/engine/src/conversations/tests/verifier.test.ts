@@ -4,31 +4,6 @@ import { describe, expect, test } from "bun:test";
 import { isAcceptable, verifyWorkflow } from "../verifier.ts";
 
 describe("verifyWorkflow — JSONata parsing", () => {
-  test("valid transform expression → no error", () => {
-    const r = verifyWorkflow({
-      steps: [
-        { id: "fetch", kind: "request", method: "GET", path: "/x" },
-        {
-          id: "t",
-          kind: "transform",
-          // Real JSONata: filter syntax is square brackets with a
-          // boolean predicate (no JSONPath @.prop form).
-          expression: "$scope.fetch.data.users[active=true]",
-        },
-      ],
-    });
-    expect(r.errors).toEqual([]);
-  });
-
-  test("invalid transform expression → jsonata_syntax_error", () => {
-    const r = verifyWorkflow({
-      steps: [{ id: "t", kind: "transform", expression: "users[" }],
-    });
-    expect(r.errors.length).toBe(1);
-    expect(r.errors[0]!.code).toBe("jsonata_syntax_error");
-    expect(r.errors[0]!.path).toBe("steps[0].expression");
-  });
-
   test("invalid data_selector → jsonata_syntax_error on data_selector path", () => {
     const r = verifyWorkflow({
       steps: [{ id: "r", kind: "request", method: "GET", path: "/x", data_selector: "$xxx[" }],
@@ -47,6 +22,73 @@ describe("verifyWorkflow — JSONata parsing", () => {
   });
 });
 
+describe("verifyWorkflow — JavaScript transforms (language-aware)", () => {
+  test("valid JavaScript body → no error, NOT parsed as JSONata", () => {
+    const r = verifyWorkflow({
+      steps: [
+        { id: "fetch", kind: "request", method: "GET", path: "/x" },
+        {
+          id: "t",
+          kind: "transform",
+          language: "javascript",
+          expression:
+            "const xs = input.scope.fetch.data || []; return xs.map((x) => ({ id: x.id }));",
+        },
+      ],
+    });
+    expect(r.errors).toEqual([]);
+  });
+
+  test("invalid JavaScript body → js_syntax_error (not jsonata_syntax_error)", () => {
+    const r = verifyWorkflow({
+      steps: [{ id: "t", kind: "transform", language: "javascript", expression: "const = ;" }],
+    });
+    expect(r.errors.length).toBe(1);
+    expect(r.errors[0]!.code).toBe("js_syntax_error");
+    expect(r.errors[0]!.path).toBe("steps[0].expression");
+  });
+
+  test("unset language defaults to JavaScript (mirrors the runtime executor)", () => {
+    // A JSONata object-constructor `{ 'a': 1 }` is a SyntaxError when parsed
+    // as a JS function body (string label), proving the default parser is JS.
+    const r = verifyWorkflow({
+      steps: [{ id: "t", kind: "transform", expression: "{ 'a': $scope.x.data }" }],
+    });
+    expect(r.errors.some((e) => e.code === "js_syntax_error")).toBe(true);
+    expect(r.errors.some((e) => e.code === "jsonata_syntax_error")).toBe(false);
+  });
+
+  test("a correct JS body that LOOKS like the authoring session does not loop", () => {
+    // The exact failure mode from the session: a JS transform reported as a
+    // JSONata parse error. With language honored, this is clean.
+    const r = verifyWorkflow({
+      steps: [
+        { id: "fetch_message", kind: "request", method: "GET", path: "/m" },
+        {
+          id: "extract",
+          kind: "transform",
+          language: "javascript",
+          expression:
+            "const msgs = input.scope.fetch_message.data || []; return msgs.flatMap((m) => (m.payload?.parts || []).filter((p) => p.body?.attachmentId));",
+        },
+      ],
+    });
+    expect(r.errors.filter((e) => e.code === "jsonata_syntax_error")).toEqual([]);
+    expect(r.errors.filter((e) => e.code === "js_syntax_error")).toEqual([]);
+  });
+
+  test("web-scraper languages carry no expression and are skipped", () => {
+    const r = verifyWorkflow({
+      steps: [
+        { id: "fetch", kind: "request", method: "GET", path: "/page" },
+        { id: "rd", kind: "transform", language: "readability" },
+      ],
+    });
+    expect(r.errors.filter((e) => e.code === "jsonata_syntax_error")).toEqual([]);
+    expect(r.errors.filter((e) => e.code === "js_syntax_error")).toEqual([]);
+  });
+});
+
 describe("verifyWorkflow — scope reference integrity", () => {
   test("reference to earlier step id is allowed", () => {
     const r = verifyWorkflow({
@@ -55,6 +97,7 @@ describe("verifyWorkflow — scope reference integrity", () => {
         {
           id: "use",
           kind: "transform",
+          language: "javascript",
           expression: "$scope.fetch.data",
         },
       ],
@@ -64,7 +107,14 @@ describe("verifyWorkflow — scope reference integrity", () => {
 
   test("reference to unknown step id → scope_ref_unresolved", () => {
     const r = verifyWorkflow({
-      steps: [{ id: "only", kind: "transform", expression: "$scope.not_here.data" }],
+      steps: [
+        {
+          id: "only",
+          kind: "transform",
+          language: "javascript",
+          expression: "$scope.not_here.data",
+        },
+      ],
     });
     expect(r.errors.some((e) => e.code === "scope_ref_unresolved")).toBe(true);
   });
@@ -75,6 +125,7 @@ describe("verifyWorkflow — scope reference integrity", () => {
         {
           id: "a",
           kind: "transform",
+          language: "javascript",
           // tries to read from step `b` which comes after
           expression: "$scope.b.data.x",
         },
@@ -122,6 +173,7 @@ describe("verifyWorkflow — scope reference integrity", () => {
         {
           id: "shape",
           kind: "transform",
+          language: "javascript",
           expression: "$scope.fetch.users",
         },
       ],
@@ -136,7 +188,8 @@ describe("verifyWorkflow — scope reference integrity", () => {
         {
           id: "shape",
           kind: "transform",
-          expression: "{ 'status': $scope.fetch.status_code, 'headers': $scope.fetch.headers }",
+          language: "javascript",
+          expression: "return { status: $scope.fetch.status_code, headers: $scope.fetch.headers };",
         },
       ],
     });

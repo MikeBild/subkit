@@ -73,9 +73,10 @@ export const DEMO_WORKFLOWS: ReadonlyArray<DemoWorkflowSpec> = [
         {
           kind: "transform",
           id: "top_names",
-          language: "jsonata",
-          // JSONata slice + map: take the first 5 elements, keep name + stars.
-          expression: "$.fetch_repos.data[[0..4]].{ 'name': name, 'stars': stargazers_count }",
+          language: "javascript",
+          // JS slice + map: take the first 5 elements, keep name + stars.
+          expression:
+            "return (input.scope.fetch_repos.data || []).slice(0, 5).map((r) => ({ name: r.name, stars: r.stargazers_count }));",
         },
       ],
     },

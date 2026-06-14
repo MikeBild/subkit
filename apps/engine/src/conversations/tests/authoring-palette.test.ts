@@ -98,7 +98,14 @@ describe("authoring tool palette — skill-gated visibility", () => {
       {
         name: "Focused Workflow",
         slug: "focused-workflow",
-        steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
+        steps: [
+          {
+            id: "shape",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.input;",
+          },
+        ],
       },
       "workflow_seeded_from_goal",
     );
@@ -157,7 +164,14 @@ describe("authoring tool palette — skill-gated visibility", () => {
       {
         name: "Focused Workflow",
         slug: "focused-workflow",
-        steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
+        steps: [
+          {
+            id: "shape",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.input;",
+          },
+        ],
       },
       "workflow_seeded_from_goal",
     );

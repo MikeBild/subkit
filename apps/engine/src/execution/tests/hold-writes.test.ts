@@ -117,7 +117,12 @@ describe("hold-writes · HTTP", () => {
           },
           body: { to: "${scope.fetch.data.email}", subject: "Welcome" },
         },
-        { kind: "transform", id: "confirm", language: "jsonata", expression: "$scope.send.data" },
+        {
+          kind: "transform",
+          id: "confirm",
+          language: "javascript",
+          expression: "return input.scope.send.data;",
+        },
       ],
     });
     const result = await runExecution({
@@ -314,7 +319,12 @@ describe("hold-writes · HTTP", () => {
           url: `${mock.baseUrl}/send`,
           body: { to: "${scope.fetch.data.email}" },
         },
-        { kind: "transform", id: "confirm", language: "jsonata", expression: "$scope.send.data" },
+        {
+          kind: "transform",
+          id: "confirm",
+          language: "javascript",
+          expression: "return input.scope.send.data;",
+        },
       ],
     });
     const result = await runExecution({

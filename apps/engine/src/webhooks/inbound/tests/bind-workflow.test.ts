@@ -39,8 +39,8 @@ beforeAll(async () => {
           {
             id: "extract",
             kind: "transform",
-            expression: "$input.body.invoice_id",
-            language: "jsonata",
+            expression: "return input.input.body.invoice_id;",
+            language: "javascript",
           },
         ],
       },

@@ -66,8 +66,8 @@ describe("loop memory-bounded: OOM guard", () => {
         {
           kind: "transform",
           id: "items",
-          language: "jsonata",
-          expression: "[1, 2, 3]",
+          language: "javascript",
+          expression: "return [1, 2, 3];",
         },
         {
           kind: "loop",
@@ -137,8 +137,8 @@ describe("loop memory-bounded: OOM guard", () => {
         {
           kind: "transform",
           id: "items2",
-          language: "jsonata",
-          expression: "[42]",
+          language: "javascript",
+          expression: "return [42];",
         },
         {
           kind: "loop",
@@ -202,8 +202,8 @@ describe("loop memory-bounded: OOM guard", () => {
         {
           kind: "transform",
           id: "items3",
-          language: "jsonata",
-          expression: "[1, 2]",
+          language: "javascript",
+          expression: "return [1, 2];",
         },
         {
           kind: "loop",
@@ -222,8 +222,8 @@ describe("loop memory-bounded: OOM guard", () => {
         {
           kind: "transform",
           id: "count_results",
-          language: "jsonata",
-          expression: "$count($scope.each3.data)",
+          language: "javascript",
+          expression: "return (input.scope.each3.data || []).length;",
         },
       ],
     });
@@ -288,8 +288,8 @@ describe("loop memory-bounded: OOM guard", () => {
         {
           kind: "transform",
           id: "items5",
-          language: "jsonata",
-          expression: "[1, 2]",
+          language: "javascript",
+          expression: "return [1, 2];",
         },
         {
           kind: "loop",
@@ -377,8 +377,8 @@ describe("loop memory-bounded: OOM guard", () => {
         {
           kind: "transform",
           id: "items6",
-          language: "jsonata",
-          expression: "[1]",
+          language: "javascript",
+          expression: "return [1];",
         },
         {
           kind: "loop",
@@ -438,8 +438,8 @@ describe("loop memory-bounded: OOM guard", () => {
         {
           kind: "transform",
           id: "items7",
-          language: "jsonata",
-          expression: "[1, 2]",
+          language: "javascript",
+          expression: "return [1, 2];",
         },
         // Outer loop: each iteration fetches a large blob → offloaded.
         {
@@ -470,8 +470,8 @@ describe("loop memory-bounded: OOM guard", () => {
         {
           kind: "transform",
           id: "pick_blob7",
-          language: "jsonata",
-          expression: "$length(row.fetch_blob7.data.blob)",
+          language: "javascript",
+          expression: "return input.scope.$item.fetch_blob7.data.blob.length;",
         },
       ],
     });
@@ -521,8 +521,8 @@ describe("loop memory-bounded: OOM guard", () => {
         {
           kind: "transform",
           id: "items8",
-          language: "jsonata",
-          expression: "[1, 2]",
+          language: "javascript",
+          expression: "return [1, 2];",
         },
         {
           kind: "loop",
@@ -570,8 +570,8 @@ describe("loop memory-bounded: OOM guard", () => {
         {
           kind: "transform",
           id: "items9",
-          language: "jsonata",
-          expression: "[1]",
+          language: "javascript",
+          expression: "return [1];",
         },
         {
           kind: "loop",

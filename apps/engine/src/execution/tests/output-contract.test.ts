@@ -94,8 +94,8 @@ describe("live run — output_schema violation is a NON-blocking warning", () =>
         {
           kind: "transform",
           id: "shape",
-          language: "jsonata",
-          expression: "{ 'count': 1 }",
+          language: "javascript",
+          expression: "return { count: 1 };",
         },
       ],
       output_schema: CONTRACT,
@@ -125,8 +125,8 @@ describe("live run — output_schema violation is a NON-blocking warning", () =>
         {
           kind: "transform",
           id: "shape",
-          language: "jsonata",
-          expression: "{ 'count': 2 }",
+          language: "javascript",
+          expression: "return { count: 2 };",
         },
       ],
       // The contract validates the FINAL output — post output_transform.

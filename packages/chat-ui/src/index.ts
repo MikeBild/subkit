@@ -53,45 +53,12 @@ export {
   resetHyperlinkSupportCacheForTests,
   terminalSupportsHyperlinks,
 } from "./hyperlink.ts";
-export {
-  KeybindingProvider,
-  useActiveContext,
-  useKeybinding,
-} from "./keybindings/Provider.tsx";
-export {
-  defaultKeybindings,
-  type KeybindingContext,
-  type KeybindingKey,
-  type KeybindingSpec,
-} from "./keybindings/schema.ts";
 export { Code, type CodeProps } from "./markdown/Code.tsx";
 export { Table, type TableColumn, type TableProps } from "./markdown/Table.tsx";
 export { Pane, type PaneProps } from "./Pane.tsx";
 export type { Platform, PlatformImage } from "./platform.ts";
-export {
-  FilePreview,
-  type FilePreviewLine,
-  type FilePreviewProps,
-} from "./preview/FilePreview.tsx";
 export { ScrollView, type ScrollViewProps } from "./ScrollView.tsx";
-export {
-  type SlashCommand,
-  SlashPalette,
-  type SlashPaletteProps,
-} from "./SlashPalette.tsx";
-export {
-  type Mode,
-  StatusLine,
-  type StatusLineContext,
-  type StatusLineProps,
-} from "./StatusLine.tsx";
 export { StatusPane, type StatusPaneProps, type StatusPaneRow } from "./StatusPane.tsx";
-export {
-  type StepNode,
-  type StepStatus,
-  StepTree,
-  type StepTreeProps,
-} from "./spinner/StepTree.tsx";
 export { ThemeProvider, useTheme, useThemeControl } from "./theme/Provider.tsx";
 export {
   defaultTheme,

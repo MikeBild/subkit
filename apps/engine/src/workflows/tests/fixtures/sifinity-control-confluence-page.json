@@ -19,9 +19,9 @@
     {
       "id": "extract_content",
       "kind": "transform",
-      "language": "jsonata",
+      "language": "javascript",
       "on_error": "fail",
-      "expression": "$scope.fetch_confluence_page.data"
+      "expression": "return input.scope.fetch_confluence_page.data;"
     }
   ],
   "description": "Retrieves full Confluence wiki page y4ozBQ containing Sifinity Control architecture with complete HTML content"

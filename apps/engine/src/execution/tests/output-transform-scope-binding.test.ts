@@ -31,10 +31,10 @@ describe("output_transform sees $scope + $input", () => {
         {
           id: "render",
           kind: "transform",
-          language: "jsonata",
-          expression: '{ "slug": "why-x", "title": "Why X" }',
+          language: "javascript",
+          expression: 'return { slug: "why-x", title: "Why X" };',
         },
-        { id: "tag", kind: "transform", language: "jsonata", expression: '{ "n": 42 }' },
+        { id: "tag", kind: "transform", language: "javascript", expression: "return { n: 42 };" },
       ],
       // References two upstream steps by $scope.<id>.data — the exact pattern
       // that previously collapsed to {}.
@@ -54,7 +54,14 @@ describe("output_transform sees $scope + $input", () => {
   test("output_transform can reference $input", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "echo-input",
-      steps: [{ id: "noop", kind: "transform", language: "jsonata", expression: "$input" }],
+      steps: [
+        {
+          id: "noop",
+          kind: "transform",
+          language: "javascript",
+          expression: "return input.input;",
+        },
+      ],
       output_transform: '{ "echoed": $input.page_id, "from_scope": $scope.noop.data.page_id }',
     });
     const result = await runExecution({
@@ -71,7 +78,12 @@ describe("output_transform sees $scope + $input", () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "validate-from-scope",
       steps: [
-        { id: "render", kind: "transform", language: "jsonata", expression: '{ "slug": "ok" }' },
+        {
+          id: "render",
+          kind: "transform",
+          language: "javascript",
+          expression: 'return { slug: "ok" };',
+        },
       ],
       // Falsy → failed if $scope is unbound; truthy now that it resolves.
       validation_expression: "$scope.render.data.slug = 'ok'",

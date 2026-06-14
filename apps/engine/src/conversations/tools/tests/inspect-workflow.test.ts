@@ -84,7 +84,7 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
   test("returns config + result for multiple steps in a single call", async () => {
     const draft = draftWithSteps([
       { id: "fetch", kind: "request", method: "GET", path: "/v2/projects" },
-      { id: "extract", kind: "transform", language: "jsonata", expression: "$" },
+      { id: "extract", kind: "transform", language: "javascript", expression: "return input;" },
       {
         id: "fetch_resources",
         kind: "loop",

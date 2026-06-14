@@ -6,8 +6,9 @@
 //
 // Also covers the W3a-for_each schema:
 //   - `for_each` on baseStep accepts a JS selector string.
-//   - `validateWorkflowDef` rejects `language: "jsonata"` transform steps
-//     and `kind: "loop"` steps (both retired from authored contract).
+//   - Transforms are JavaScript-only: `language: "jsonata"` is no longer a
+//     valid enum value and a transform declaring it fails `WorkflowDefSchema`.
+//   - `kind: "loop"` remains a valid step kind.
 
 import { describe, expect, test } from "bun:test";
 import { StepSchema } from "./types.ts";
@@ -283,13 +284,13 @@ describe("validateWorkflowDef — E4 input_schema drift", () => {
 });
 
 describe("validateWorkflowDef — W3a retirement enforcement", () => {
-  test("accepts language:'jsonata' transform step (backwards compat — still parses and validates)", () => {
-    // `language: "jsonata"` is still accepted at the validation layer
-    // for backwards compat with stored historical definitions. The
-    // runtime default changed to `javascript`, but old JSONata-tagged
-    // steps keep executing unchanged.
+  test("rejects language:'jsonata' transform step — jsonata is no longer a transform language", () => {
+    // The `jsonata` enum value was removed from TransformStep.language.
+    // Transforms are JavaScript-only, so a transform declaring
+    // `language: "jsonata"` fails WorkflowDefSchema at the enum, and
+    // validateWorkflowDef surfaces the parse error.
     const res = validateWorkflowDef({
-      name: "jsonata-compat",
+      name: "jsonata-rejected",
       steps: [
         {
           id: "shape",
@@ -299,8 +300,8 @@ describe("validateWorkflowDef — W3a retirement enforcement", () => {
         },
       ],
     });
-    expect(res.ok).toBe(true);
-    expect(res.errors).toHaveLength(0);
+    expect(res.ok).toBe(false);
+    expect(res.errors.length).toBeGreaterThan(0);
   });
 
   test("accepts language:'javascript' transform step", () => {

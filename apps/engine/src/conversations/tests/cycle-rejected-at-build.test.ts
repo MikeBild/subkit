@@ -32,8 +32,13 @@ function makeAcyclicDraft(): DraftDocument {
       name: "linear-ok",
       slug: "linear-ok",
       steps: [
-        { id: "a", kind: "transform", language: "jsonata", expression: "$input" },
-        { id: "b", kind: "transform", language: "jsonata", expression: "$scope.a.data" },
+        { id: "a", kind: "transform", language: "javascript", expression: "return input.input;" },
+        {
+          id: "b",
+          kind: "transform",
+          language: "javascript",
+          expression: "return input.scope.a.data;",
+        },
       ],
     },
     // Minimal latest_preview so the transform-authoring gate (v4.8.0)
@@ -84,7 +89,7 @@ describe("workflow_cycle_detected · edit_workflow_patch", () => {
           {
             op: "replace",
             path: "/steps/1/expression",
-            value: "$scope.a.data * 2",
+            value: "return input.scope.a.data * 2;",
           },
         ],
       },
@@ -104,7 +109,7 @@ describe("workflow_cycle_detected · edit_workflow_patch", () => {
           {
             op: "replace",
             path: "/steps/0/expression",
-            value: "$scope.b.data",
+            value: "return input.scope.b.data;",
           },
         ],
       },
@@ -126,7 +131,7 @@ describe("workflow_cycle_detected · edit_workflow_patch", () => {
           {
             op: "replace",
             path: "/steps/0/expression",
-            value: "$scope.a.data",
+            value: "return input.scope.a.data;",
           },
         ],
       },

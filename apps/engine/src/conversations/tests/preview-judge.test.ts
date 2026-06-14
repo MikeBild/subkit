@@ -105,8 +105,8 @@ function wrongContentDraft(slug: string, goal: string | null): DraftDocument {
         {
           id: "shape-email",
           kind: "transform",
-          language: "jsonata",
-          expression: `{ "html": "<p>Project: ()</p>", "projects": [{"name": ""}] }`,
+          language: "javascript",
+          expression: `return { html: "<p>Project: ()</p>", projects: [{ name: "" }] };`,
         },
       ],
     },
@@ -210,8 +210,8 @@ describe("preview judge · dry_run_workflow wiring", () => {
               {
                 id: "shape-email",
                 kind: "transform",
-                language: "jsonata",
-                expression: `{ "html": "<p>Project: (${marker})</p>", "projects": [{"name": ""}] }`,
+                language: "javascript",
+                expression: `return { html: "<p>Project: (${marker})</p>", projects: [{ name: "" }] };`,
               },
             ],
           },
@@ -270,8 +270,8 @@ describe("preview judge · dry_run_workflow wiring", () => {
             {
               id: "shape-email",
               kind: "transform",
-              language: "jsonata",
-              expression: `{ "html": "<p>fixed</p>", "projects": [{"name": "x"}] }`,
+              language: "javascript",
+              expression: `return { html: "<p>fixed</p>", projects: [{ name: "x" }] };`,
             },
           ],
         },

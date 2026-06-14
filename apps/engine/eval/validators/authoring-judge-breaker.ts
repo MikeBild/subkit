@@ -43,7 +43,7 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
           {
             id: "shape-email",
             kind: "transform",
-            language: "jsonata",
+            language: "javascript",
             expression: input.expression,
           },
         ],

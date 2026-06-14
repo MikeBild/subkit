@@ -51,7 +51,14 @@ async function seedLiveWorkflow(slug: string, name: string): Promise<{ id: strin
       dag: {
         name,
         slug,
-        steps: [{ id: "p1", kind: "transform", expression: "$input", language: "jsonata" }],
+        steps: [
+          {
+            id: "p1",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.input;",
+          },
+        ],
       },
     })
     .returning();

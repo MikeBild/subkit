@@ -70,7 +70,7 @@ function draftWith(
     workflow: {
       name: slug,
       slug,
-      steps: [{ id: "shape", kind: "transform", language: "jsonata", expression }],
+      steps: [{ id: "shape", kind: "transform", language: "javascript", expression }],
       output_schema: CONTRACT,
       ...extra,
     },
@@ -80,7 +80,7 @@ function draftWith(
 
 describe("dry_run_workflow · output contract", () => {
   test("mismatching final output: classification needs_repair, no auto-commit, field paths surfaced", async () => {
-    const toolCtx = makeCtx(draftWith("contract-fails", "{ 'count': 1 }"));
+    const toolCtx = makeCtx(draftWith("contract-fails", "return { count: 1 };"));
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
 
     // Blocking: the preview is NOT green and the draft did not commit.
@@ -104,7 +104,7 @@ describe("dry_run_workflow · output contract", () => {
   });
 
   test("contracted shape: same draft goes green and auto-commits", async () => {
-    const toolCtx = makeCtx(draftWith("contract-passes", "{ 'total': 1, 'items': ['a'] }"));
+    const toolCtx = makeCtx(draftWith("contract-passes", "return { total: 1, items: ['a'] };"));
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(result.ok).toBe(true);
     const data = result.data as { auto_committed?: boolean };
@@ -116,7 +116,7 @@ describe("dry_run_workflow · output contract", () => {
     // output_transform produces the contracted shape. The dry-run must
     // validate the POST-transform payload — i.e. pass.
     const toolCtx = makeCtx(
-      draftWith("contract-via-transform", "{ 'count': 3 }", {
+      draftWith("contract-via-transform", "return { count: 3 };", {
         output_transform: "{ 'total': count, 'items': [] }",
       }),
     );

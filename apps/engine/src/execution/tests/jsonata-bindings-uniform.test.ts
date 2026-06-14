@@ -1,7 +1,7 @@
-// `$scope` / `$input` / `$steps` / `$<key>` bindings must work
-// uniformly across every author-written JSONata site:
+// `$scope` / `$input` bindings must work uniformly across every
+// author-written JSONata site that survives the transform-language
+// removal:
 //
-//   transform.expression  (already worked pre-fix)
 //   loop.over             (was broken; session ebd66982: 105 307
 //                          turn-tokens spent guessing $scope.X.data
 //                          → undefined → step budget exhausted)
@@ -9,9 +9,10 @@
 //                          visible because branches usually use the
 //                          bare path form)
 //
-// The data-handling skill promises uniform `$scope.<id>.data`
-// access. These tests pin the contract so the regression can't
-// reappear.
+// Transforms themselves are now JavaScript-only, so the upstream/body
+// steps here are JS — but the loop `over` and branch `when` slots stay
+// JSONata, and those are what this file pins. The data-handling skill
+// promises uniform `$scope.<id>.data` access from those slots.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runExecution } from "../engine.ts";
@@ -28,7 +29,7 @@ afterAll(async () => {
 });
 
 describe("loop.over · honors $scope / $input bindings", () => {
-  test("$scope.<id>.data resolves the same way it does inside transform.expression", async () => {
+  test("$scope.<id>.data resolves the same way it does inside a JS transform body", async () => {
     // Repro of session ebd66982: a transform produces an array,
     // the loop's `over` is `$scope.<id>.data`. Pre-fix the loop
     // saw `undefined` because `$scope` was unbound; the LLM
@@ -40,21 +41,20 @@ describe("loop.over · honors $scope / $input bindings", () => {
         {
           id: "extract_projects",
           kind: "transform",
-          language: "jsonata",
-          expression: "['alpha', 'beta', 'gamma']",
+          language: "javascript",
+          expression: "return ['alpha', 'beta', 'gamma'];",
         },
         {
           id: "iter",
           kind: "loop",
           over: "$scope.extract_projects.data",
-          item_var: "project",
           body: ["body"],
         },
         {
           id: "body",
           kind: "transform",
-          language: "jsonata",
-          expression: "$project",
+          language: "javascript",
+          expression: "return input.scope.$item;",
         },
       ],
     });
@@ -82,14 +82,13 @@ describe("loop.over · honors $scope / $input bindings", () => {
           id: "iter",
           kind: "loop",
           over: "$input.items",
-          item_var: "x",
           body: ["body"],
         },
         {
           id: "body",
           kind: "transform",
-          language: "jsonata",
-          expression: "$x * 2",
+          language: "javascript",
+          expression: "return input.scope.$item * 2;",
         },
       ],
     });
@@ -111,21 +110,20 @@ describe("loop.over · honors $scope / $input bindings", () => {
         {
           id: "extract_projects",
           kind: "transform",
-          language: "jsonata",
-          expression: "['a', 'b']",
+          language: "javascript",
+          expression: "return ['a', 'b'];",
         },
         {
           id: "iter",
           kind: "loop",
           over: "extract_projects.data",
-          item_var: "x",
           body: ["body"],
         },
         {
           id: "body",
           kind: "transform",
-          language: "jsonata",
-          expression: "$x",
+          language: "javascript",
+          expression: "return input.scope.$item;",
         },
       ],
     });
@@ -149,8 +147,8 @@ describe("branch.when · honors $scope / $input bindings", () => {
         {
           id: "fetch",
           kind: "transform",
-          language: "jsonata",
-          expression: "{ 'tier': 'enterprise' }",
+          language: "javascript",
+          expression: "return { tier: 'enterprise' };",
         },
         {
           id: "router",
@@ -162,14 +160,14 @@ describe("branch.when · honors $scope / $input bindings", () => {
         {
           id: "enterprise_path",
           kind: "transform",
-          language: "jsonata",
-          expression: "'ENTERPRISE'",
+          language: "javascript",
+          expression: "return 'ENTERPRISE';",
         },
         {
           id: "self_serve_path",
           kind: "transform",
-          language: "jsonata",
-          expression: "'SELF_SERVE'",
+          language: "javascript",
+          expression: "return 'SELF_SERVE';",
         },
       ],
     });
@@ -203,14 +201,14 @@ describe("branch.when · honors $scope / $input bindings", () => {
         {
           id: "yes",
           kind: "transform",
-          language: "jsonata",
-          expression: "'YES'",
+          language: "javascript",
+          expression: "return 'YES';",
         },
         {
           id: "no",
           kind: "transform",
-          language: "jsonata",
-          expression: "'NO'",
+          language: "javascript",
+          expression: "return 'NO';",
         },
       ],
     });

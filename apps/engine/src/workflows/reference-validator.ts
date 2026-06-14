@@ -465,19 +465,11 @@ export function validateBareIterationIdentifiers(
 
   const jsonataSite = (step: Record<string, unknown>): { field: string; text: string } | null => {
     if (step.kind === "transform") {
-      // Apply the bare-item AST lint to any expression that is either
-      // explicitly `language: "jsonata"` or has no language specified
-      // (legacy stored definitions without a language tag). New definitions
-      // default to "javascript" at runtime, but the authoring lint is
-      // conservative — it runs on language-untagged expressions too because
-      // stored legacy JSONata bodies may not carry the tag. The lint
-      // produces a false-negative (misses a legacy bare ref) only when the
-      // expression cannot be parsed as JSONata, which is surfaced by
-      // `findBareItemRefs`'s `ok: false` guard below.
-      const language = typeof step.language === "string" ? step.language : "jsonata";
-      if (language === "jsonata" && typeof step.expression === "string" && step.expression) {
-        return { field: "expression", text: step.expression };
-      }
+      // The bare-`item` lint is a JSONata-only AST check. Transforms are
+      // JavaScript (default), and a JS body addresses the loop item through
+      // its own scope, not a bare JSONata `item` reference — so transform
+      // expressions are never linted here. JSONata bare-item linting still
+      // applies to the `branch.when` and `loop.over` slots below.
       return null;
     }
     if (step.kind === "branch" && typeof step.when === "string" && step.when) {

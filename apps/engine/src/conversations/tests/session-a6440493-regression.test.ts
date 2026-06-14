@@ -8,10 +8,6 @@
 //   #2 — commitWorkflowAtomic refuses commit when the latest execution
 //        had warnings_count > 0 unless preview is clean OR forceCommit
 //        is set. Caps the version churn at 1 attempt.
-//   #3 — runTransformStep emits `transform_empty_extraction` when its
-//        result is empty/null but upstream scope had non-empty data.
-//        Surfaces the silent extraction failure that produced "[]
-//        resources" for the subkit DO project.
 //   #5 — withStatus contract: every gate-error return on the
 //        run_workflow tool stamps `status: "failed"` so the
 //        ExecutionDiagnosisCard never falls into the
@@ -19,13 +15,17 @@
 //
 // Fix #4 (confirmation transcript payload preview) is unit-tested in
 // apps/sk/src/tests/render-elicit-answer.test.ts.
+//
+// NOTE: Fixes #1, #3, and #21 covered runtime warnings emitted by the
+// JSONata transform-evaluation path (`unresolved_identifier`,
+// `transform_empty_extraction`, `transform_dropped_fields`). Transforms
+// are now JavaScript-only — the JSONata evaluation path and those
+// runtime warnings have been removed from `runTransformStep`, so the
+// `runTransformStep` describe blocks that verified them were deleted.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { conversationElicitations, conversations, workflows } from "../../db/schema/index.ts";
-import { runTransformStep } from "../../execution/steps/transform.ts";
-import type { StepRunContext } from "../../execution/types.ts";
-import { RunLlmBudget } from "../../llm/accounting/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   withLatestPreview,
@@ -64,8 +64,8 @@ function readyDraft(
         {
           id: "echo",
           kind: "transform",
-          expression: "$input",
-          language: "jsonata",
+          language: "javascript",
+          expression: "return input.input;",
         },
       ],
     },
@@ -218,187 +218,6 @@ describe("commit gate · warnings_unacknowledged", () => {
 });
 
 // -----------------------------------------------------------------------
-// Fix #3 — transform_empty_extraction warning
-// -----------------------------------------------------------------------
-
-describe("runTransformStep · transform_empty_extraction warning", () => {
-  function transformCtx(): StepRunContext {
-    return {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal stub for transform run
-      db: {} as any,
-      tenant_id: ctx.tenant_id,
-      execution_id: "00000000-0000-0000-0000-000000000099",
-      workflow_id: "00000000-0000-0000-0000-0000000000aa",
-      workflow_version_id: "00000000-0000-0000-0000-0000000000ab",
-      request_source: "chat",
-      parent_execution_id: null,
-      depth: 0,
-      scope: {},
-      started_at: new Date(TEST_NOW_MS),
-      workflow_slug: "test-wf",
-      trace_id: null,
-      execution_mode: "dev",
-      // biome-ignore lint/suspicious/noExplicitAny: minimal step stub
-      step: {} as any,
-      step_index: 0,
-      step_row_id: "00000000-0000-0000-0000-000000000aaa",
-      signal: new AbortController().signal,
-      llm_budget: new RunLlmBudget(null),
-    };
-  }
-
-  test("emits warning when result is [] but upstream scope had data", async () => {
-    const result = await runTransformStep({
-      ctx: transformCtx(),
-      step: {
-        id: "extract",
-        kind: "transform",
-        expression: "$.no_such_path",
-        language: "jsonata",
-      },
-      scope: {
-        upstream: {
-          data: [
-            { id: 1, name: "a" },
-            { id: 2, name: "b" },
-          ],
-          status: "ok",
-        },
-      },
-      input: null,
-    });
-    expect(result.status).toBe("succeeded");
-    const warning = (result.warnings ?? []).find((w) => w.code === "transform_empty_extraction");
-    expect(warning).toBeDefined();
-    expect(warning?.details).toMatchObject({ step_key: "extract" });
-  });
-
-  test("does NOT emit warning when result is non-empty", async () => {
-    const result = await runTransformStep({
-      ctx: transformCtx(),
-      step: {
-        id: "ok",
-        kind: "transform",
-        expression: "upstream.data",
-        language: "jsonata",
-      },
-      scope: {
-        upstream: {
-          data: [{ id: 1 }],
-        },
-      },
-      input: null,
-    });
-    expect(result.status).toBe("succeeded");
-    const warning = (result.warnings ?? []).find((w) => w.code === "transform_empty_extraction");
-    expect(warning).toBeUndefined();
-  });
-
-  test("does NOT emit warning when scope itself was empty (legitimate filter-of-nothing)", async () => {
-    const result = await runTransformStep({
-      ctx: transformCtx(),
-      step: {
-        id: "filter",
-        kind: "transform",
-        expression: "upstream.data",
-        language: "jsonata",
-      },
-      scope: {
-        upstream: { data: [] },
-      },
-      input: null,
-    });
-    expect(result.status).toBe("succeeded");
-    const warning = (result.warnings ?? []).find((w) => w.code === "transform_empty_extraction");
-    expect(warning).toBeUndefined();
-  });
-});
-
-// -----------------------------------------------------------------------
-// Fix #1 — unresolved_identifier warnings suppressed when result is meaningful
-// -----------------------------------------------------------------------
-
-describe("runTransformStep · unresolved_identifier suppression", () => {
-  function transformCtx(): StepRunContext {
-    return {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal stub for transform run
-      db: {} as any,
-      tenant_id: ctx.tenant_id,
-      execution_id: "00000000-0000-0000-0000-000000000098",
-      workflow_id: "00000000-0000-0000-0000-0000000000aa",
-      workflow_version_id: "00000000-0000-0000-0000-0000000000ab",
-      request_source: "chat",
-      parent_execution_id: null,
-      depth: 0,
-      scope: {},
-      started_at: new Date(TEST_NOW_MS),
-      workflow_slug: "test-wf",
-      trace_id: null,
-      execution_mode: "dev",
-      // biome-ignore lint/suspicious/noExplicitAny: minimal step stub
-      step: {} as any,
-      step_index: 0,
-      step_row_id: "00000000-0000-0000-0000-000000000bbb",
-      signal: new AbortController().signal,
-      llm_budget: new RunLlmBudget(null),
-    };
-  }
-
-  test("bare-identifier projection { 'id': id } produces NO unresolved_identifier warning when the path resolves at runtime", async () => {
-    // `{ 'id': id, 'name': name }` is valid JSONata when applied to a
-    // context whose data has those keys; the AST walker can't prove the
-    // binding statically, but the runtime result IS meaningful — so the
-    // parse-time warning gets suppressed.
-    const result = await runTransformStep({
-      ctx: transformCtx(),
-      step: {
-        id: "project_summary",
-        kind: "transform",
-        expression: "fetch_projects.data.{ 'id': id, 'name': name }",
-        language: "jsonata",
-      },
-      scope: {
-        fetch_projects: {
-          data: [
-            { id: "p1", name: "alpha" },
-            { id: "p2", name: "beta" },
-          ],
-        },
-      },
-      input: null,
-    });
-    expect(result.status).toBe("succeeded");
-    const unresolved = (result.warnings ?? []).filter((w) => w.code === "unresolved_identifier");
-    expect(unresolved).toEqual([]);
-  });
-
-  test("bare identifier that did NOT resolve at runtime still surfaces (paired with empty-extraction)", async () => {
-    // When the runtime result IS empty/null, the parse-time warnings
-    // are kept — the LLM needs them to figure out what went wrong.
-    const result = await runTransformStep({
-      ctx: transformCtx(),
-      step: {
-        id: "broken",
-        kind: "transform",
-        expression: "missing.data.{ 'id': id }",
-        language: "jsonata",
-      },
-      scope: {
-        upstream: { data: [{ id: "x" }] },
-      },
-      input: null,
-    });
-    expect(result.status).toBe("succeeded");
-    const codes = (result.warnings ?? []).map((w) => w.code);
-    // Either unresolved_identifier OR transform_empty_extraction must
-    // surface so the commit gate refuses on this draft.
-    expect(
-      codes.includes("unresolved_identifier") || codes.includes("transform_empty_extraction"),
-    ).toBe(true);
-  });
-});
-
-// -----------------------------------------------------------------------
 // Fix #5 — withStatus contract: gate paths always stamp status
 // -----------------------------------------------------------------------
 //
@@ -451,93 +270,6 @@ test("regression suite did not persist workflows via gate paths", async () => {
   // The "warnings cleared" test DID commit one workflow; the "force"
   // test committed another. No more than 2 from this suite.
   expect(rows.length).toBeLessThanOrEqual(3);
-});
-
-// -----------------------------------------------------------------------
-// Fix #21 — transform_dropped_fields warning
-// -----------------------------------------------------------------------
-
-describe("runTransformStep · transform_dropped_fields warning", () => {
-  function transformCtx(): StepRunContext {
-    return {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal stub for transform run
-      db: {} as any,
-      tenant_id: ctx.tenant_id,
-      execution_id: "00000000-0000-0000-0000-000000000099",
-      workflow_id: "00000000-0000-0000-0000-0000000000aa",
-      workflow_version_id: "00000000-0000-0000-0000-0000000000ab",
-      request_source: "chat",
-      parent_execution_id: null,
-      depth: 0,
-      scope: {},
-      started_at: new Date(TEST_NOW_MS),
-      workflow_slug: "test-wf",
-      trace_id: null,
-      execution_mode: "dev",
-      // biome-ignore lint/suspicious/noExplicitAny: minimal step stub
-      step: {} as any,
-      step_index: 0,
-      step_row_id: "00000000-0000-0000-0000-000000000aaa",
-      signal: new AbortController().signal,
-      llm_budget: new RunLlmBudget(null),
-    };
-  }
-
-  test("flags wholesale field drop — session 3f6082d2's format_output bug", async () => {
-    // Source iteration has body step keys [extract, fetch_resources];
-    // projection emits only [project_id, project_name] — fetch_resources
-    // is silently dropped. Pre-fix this slipped through and the LLM
-    // committed v1→v2→v3 of the same broken workflow.
-    const result = await runTransformStep({
-      ctx: transformCtx(),
-      step: {
-        id: "format_output",
-        kind: "transform",
-        expression:
-          'project_loop.data.{ "project_id": extract.data.id, "project_name": extract.data.name }',
-        language: "jsonata",
-      },
-      scope: {
-        project_loop: {
-          data: [
-            {
-              extract: { data: { id: "p1", name: "alpha" } },
-              fetch_resources: { data: { resources: ["dropletA"] } },
-            },
-            {
-              extract: { data: { id: "p2", name: "beta" } },
-              fetch_resources: { data: { resources: ["domainB"] } },
-            },
-          ],
-        },
-      },
-      input: null,
-    });
-    expect(result.status).toBe("succeeded");
-    const dropped = (result.warnings ?? []).find((w) => w.code === "transform_dropped_fields");
-    expect(dropped).toBeDefined();
-    const details = dropped?.details as { dropped_keys?: string[] } | undefined;
-    expect(details?.dropped_keys).toContain("fetch_resources");
-  });
-
-  test("does NOT flag legitimate single-rename projections", async () => {
-    // `id → project_id` rename is a legitimate single-key transform;
-    // wholesale drop heuristic must not trip.
-    const result = await runTransformStep({
-      ctx: transformCtx(),
-      step: {
-        id: "rename",
-        kind: "transform",
-        expression: 'src.data.{ "project_id": id }',
-        language: "jsonata",
-      },
-      scope: { src: { data: [{ id: "p1" }, { id: "p2" }] } },
-      input: null,
-    });
-    expect(result.status).toBe("succeeded");
-    const dropped = (result.warnings ?? []).find((w) => w.code === "transform_dropped_fields");
-    expect(dropped).toBeUndefined();
-  });
 });
 
 // -----------------------------------------------------------------------

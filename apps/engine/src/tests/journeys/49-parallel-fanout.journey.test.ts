@@ -40,13 +40,13 @@ describe("49: Parallel step — concurrent branches, merged output, skipped in l
           {
             kind: "transform",
             id: "fetch_user_score",
-            expression: "{ 'score': 42 }",
+            expression: "return { score: 42 };",
           },
           // Branch B: risk flag
           {
             kind: "transform",
             id: "fetch_risk_flag",
-            expression: "{ 'risk': false }",
+            expression: "return { risk: false };",
           },
         ],
       }),
@@ -89,8 +89,8 @@ describe("49: Parallel step — concurrent branches, merged output, skipped in l
             id: "fan_out",
             branches: [["step_a"], ["step_b"]],
           },
-          { kind: "transform", id: "step_a", expression: "1" },
-          { kind: "transform", id: "step_b", expression: "2" },
+          { kind: "transform", id: "step_a", expression: "return 1;" },
+          { kind: "transform", id: "step_b", expression: "return 2;" },
         ],
       }),
     });

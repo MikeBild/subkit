@@ -4,8 +4,8 @@
   "flow": "judge",
   "input": {
     "goal": "Email me the DigitalOcean resources per project: include project names and droplet specs (CPU, memory, disk).",
-    "wrong_expression": "{ \"html\": \"<p>Project: ()</p>\", \"projects\": [{\"name\": \"\"}] }",
-    "correct_expression": "{ \"html\": \"<p>Project: alpha — 2 vCPU / 4GB RAM / 80GB disk</p>\", \"projects\": [{\"name\": \"alpha\", \"specs\": {\"cpu\": 2, \"memory_gb\": 4, \"disk_gb\": 80}}] }",
+    "wrong_expression": "return { html: \"<p>Project: ()</p>\", projects: [{ name: \"\" }] };",
+    "correct_expression": "return { html: \"<p>Project: alpha — 2 vCPU / 4GB RAM / 80GB disk</p>\", projects: [{ name: \"alpha\", specs: { cpu: 2, memory_gb: 4, disk_gb: 80 } }] };",
     "empty_name_marker": "\"name\": \"\"",
     "failed_verdict": {
       "verdict": "failed",

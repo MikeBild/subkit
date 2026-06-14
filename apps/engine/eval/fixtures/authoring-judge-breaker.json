@@ -4,7 +4,7 @@
   "flow": "judge",
   "input": {
     "goal": "Email me the DigitalOcean resources per project: include project names and droplet specs (CPU, memory, disk).",
-    "expression": "{ \"html\": \"<p>Project: ()</p>\", \"projects\": [{\"name\": \"\"}] }",
+    "expression": "return { html: \"<p>Project: ()</p>\", projects: [{ name: \"\" }] };",
     "failed_verdict": {
       "verdict": "failed",
       "reason": "Project names are empty and droplet specs are absent from the previewed email.",

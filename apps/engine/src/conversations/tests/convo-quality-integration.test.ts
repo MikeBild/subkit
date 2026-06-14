@@ -161,7 +161,7 @@ describe("convo-quality integration chain", () => {
         {
           id: "shape",
           kind: "transform",
-          expression: "$scope.fetch.data.{ 'id': id, 'email': email }",
+          expression: "return input.scope.fetch.data.map((r) => ({ id: r.id, email: r.email }));",
         },
       ],
       environment: "dev",

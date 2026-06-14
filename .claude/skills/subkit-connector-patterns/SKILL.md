@@ -10,7 +10,7 @@ description: Add or modify a connector template, driver, or auth flow in subkit.
 Everything connector-related lives under `apps/engine/src/connectors/`. Nine typed
 drivers (`drivers/http.ts`, `graphql.ts`, `postgres.ts`, `s3.ts`, `ftp.ts`, `sftp.ts`,
 `smb.ts`, `mssql.ts`, `redis.ts`) fan out from a single `service.ts`. Templates are
-declarative JSON (`templates.json`, currently 90 entries) with optional
+declarative JSON (`templates.json`, currently 105 entries) with optional
 connector-bound skills (`template-skills.json`).
 
 Two conversation tools bootstrap a connector from a URL or a spec:

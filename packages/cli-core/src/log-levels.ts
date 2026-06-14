@@ -8,8 +8,6 @@ import pc from "picocolors";
 
 export type LogLevelName = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 
-export const LOG_LEVELS = ["trace", "debug", "info", "warn", "error", "fatal"] as const;
-
 export const LOG_LEVEL_WEIGHT: Record<LogLevelName, number> = {
   trace: 10,
   debug: 20,

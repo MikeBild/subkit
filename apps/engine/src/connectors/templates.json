@@ -2269,8 +2269,8 @@
             {
               "kind": "transform",
               "id": "now",
-              "language": "jsonata",
-              "expression": "$millis()"
+              "language": "javascript",
+              "expression": "return Date.now();"
             },
             {
               "kind": "request",
@@ -8616,8 +8616,8 @@
             {
               "kind": "transform",
               "id": "shape_digest",
-              "language": "jsonata",
-              "expression": "( $deals := $.deals_due.body.results; { \"swept_at\": $now(), \"prior_sweep\": $.deals_due[\"_state\"].last_postmortem_swept_at, \"deals_in_window\": $count($deals) } )"
+              "language": "javascript",
+              "expression": "const deals = input.scope.deals_due.body.results; return { swept_at: new Date().toISOString(), prior_sweep: input.scope.deals_due['_state'].last_postmortem_swept_at, deals_in_window: (deals || []).length };"
             }
           ]
         }
@@ -9242,8 +9242,8 @@
             {
               "kind": "transform",
               "id": "summary",
-              "language": "jsonata",
-              "expression": "( $contacts := $.due_contacts.body.data; { \"swept_at\": $now(), \"due_count\": $count($contacts) } )"
+              "language": "javascript",
+              "expression": "const contacts = input.scope.due_contacts.body.data; return { swept_at: new Date().toISOString(), due_count: (contacts || []).length };"
             }
           ]
         }
@@ -13694,9 +13694,9 @@
       "issuer_url": "https://api-m.paypal.com",
       "authorization_endpoint": "https://www.paypal.com/signin/authorize",
       "token_endpoint": "https://api-m.paypal.com/v1/oauth2/token",
-      "scopes": "openid",
+      "scopes": "openid https://uri.paypal.com/services/reporting/search/read",
       "grant_type": "client_credentials",
-      "token_auth_method": "body",
+      "token_auth_method": "basic_auth",
       "token_content_type": "form",
       "use_pkce": false,
       "client_id": null,
@@ -16996,8 +16996,8 @@
             {
               "kind": "transform",
               "id": "summary",
-              "language": "jsonata",
-              "expression": "( $charges := $.list.body.data; { \"count\": $count($charges), \"by_currency\": $charges{ currency: { \"count\": $count($), \"amount_total\": $sum($.amount) } } } )"
+              "language": "javascript",
+              "expression": "const charges = input.scope.list.body.data || []; const by_currency = {}; for (const c of charges) { const k = c.currency; if (!by_currency[k]) by_currency[k] = { count: 0, amount_total: 0 }; by_currency[k].count += 1; by_currency[k].amount_total += (c.amount || 0); } return { count: charges.length, by_currency: by_currency };"
             }
           ]
         }
@@ -17065,8 +17065,8 @@
             {
               "kind": "transform",
               "id": "summary",
-              "language": "jsonata",
-              "expression": "( $rows := $.list_new.body.data; { \"new_count\": $count($rows), \"newest_id\": $rows[$count($rows)-1].id, \"window_amount\": $sum($rows.amount) } )"
+              "language": "javascript",
+              "expression": "const rows = input.scope.list_new.body.data || []; return { new_count: rows.length, newest_id: rows.length > 0 ? rows[rows.length - 1].id : undefined, window_amount: rows.reduce((s, r) => s + (r.amount || 0), 0) };"
             }
           ]
         }
@@ -17698,8 +17698,8 @@
             {
               "kind": "transform",
               "id": "extract",
-              "language": "jsonata",
-              "expression": "$input.body.data.object.{ \"charge_id\": id, \"amount\": amount, \"currency\": currency, \"failure_code\": failure_code, \"failure_message\": failure_message, \"email\": billing_details.email }"
+              "language": "javascript",
+              "expression": "const o = input.input.body.data.object; return { charge_id: o.id, amount: o.amount, currency: o.currency, failure_code: o.failure_code, failure_message: o.failure_message, email: o.billing_details ? o.billing_details.email : undefined };"
             },
             {
               "kind": "request",
@@ -18865,8 +18865,8 @@
             {
               "kind": "transform",
               "id": "envelope",
-              "language": "jsonata",
-              "expression": "{ \"title\": readable.title, \"byline\": readable.byline, \"lang\": readable.lang, \"url\": readable.url, \"markdown\": to_markdown.markdown, \"bytes\": to_markdown.bytes, \"truncated\": to_markdown.truncated }"
+              "language": "javascript",
+              "expression": "return { title: input.scope.readable.title, byline: input.scope.readable.byline, lang: input.scope.readable.lang, url: input.scope.readable.url, markdown: input.scope.to_markdown.markdown, bytes: input.scope.to_markdown.bytes, truncated: input.scope.to_markdown.truncated };"
             }
           ],
           "output_transform": "envelope"
@@ -18919,8 +18919,8 @@
             {
               "kind": "transform",
               "id": "urls",
-              "language": "jsonata",
-              "expression": "fetch_sitemap.data.urlset.url.loc"
+              "language": "javascript",
+              "expression": "const u = input.scope.fetch_sitemap.data.urlset.url; return (Array.isArray(u) ? u : [u]).map((x) => x.loc);"
             },
             {
               "kind": "loop",
@@ -18951,8 +18951,8 @@
             {
               "kind": "transform",
               "id": "envelope",
-              "language": "jsonata",
-              "expression": "{ \"title\": readable.title, \"url\": readable.url, \"markdown\": to_markdown.markdown, \"bytes\": to_markdown.bytes }"
+              "language": "javascript",
+              "expression": "return { title: input.scope.readable.title, url: input.scope.readable.url, markdown: input.scope.to_markdown.markdown, bytes: input.scope.to_markdown.bytes };"
             }
           ],
           "output_transform": "{ \"pages\": pages }"

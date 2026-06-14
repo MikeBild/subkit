@@ -21,8 +21,8 @@ const fetchStep = () => ({
 const shapeStep = () => ({
   id: "shape",
   kind: "transform",
-  language: "jsonata",
-  expression: "$scope.fetch.data.items",
+  language: "javascript",
+  expression: "return input.scope.fetch.data.items;",
 });
 
 function trace(step: Record<string, unknown>): WorkflowDraftStepPreview {
@@ -56,7 +56,7 @@ describe("stepFingerprint", () => {
 describe("pruneTracesForMutation", () => {
   test("keeps evidence for unchanged steps, drops it for changed and removed ones", () => {
     const prev = [fetchStep(), shapeStep()];
-    const next = [fetchStep(), { ...shapeStep(), expression: "$scope.fetch.data" }];
+    const next = [fetchStep(), { ...shapeStep(), expression: "return input.scope.fetch.data;" }];
     const kept = pruneTracesForMutation([trace(fetchStep()), trace(shapeStep())], prev, next);
     expect(kept.map((t) => t.step_id)).toEqual(["fetch"]);
 

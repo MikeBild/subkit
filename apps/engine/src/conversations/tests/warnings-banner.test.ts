@@ -62,8 +62,8 @@ describe("dry_run_workflow · warnings_banner", () => {
           {
             id: "shape",
             kind: "transform",
-            language: "jsonata",
-            expression: "{ 'ok': true }",
+            language: "javascript",
+            expression: "return { ok: true };",
           },
           {
             id: "iter",
@@ -75,8 +75,8 @@ describe("dry_run_workflow · warnings_banner", () => {
           {
             id: "body",
             kind: "transform",
-            language: "jsonata",
-            expression: "$item",
+            language: "javascript",
+            expression: "return input.scope.$item;",
           },
         ],
       },
@@ -112,8 +112,8 @@ describe("dry_run_workflow · warnings_banner", () => {
           {
             id: "shape",
             kind: "transform",
-            language: "jsonata",
-            expression: "{ 'ok': true }",
+            language: "javascript",
+            expression: "return { ok: true };",
           },
         ],
       },
@@ -140,8 +140,8 @@ describe("dry_run_workflow · warnings_banner", () => {
           {
             id: "shape",
             kind: "transform",
-            language: "jsonata",
-            expression: "{ 'ok': true }",
+            language: "javascript",
+            expression: "return { ok: true };",
           },
           {
             id: "iter",
@@ -152,8 +152,8 @@ describe("dry_run_workflow · warnings_banner", () => {
           {
             id: "body",
             kind: "transform",
-            language: "jsonata",
-            expression: "$item",
+            language: "javascript",
+            expression: "return input.scope.$item;",
           },
         ],
       },

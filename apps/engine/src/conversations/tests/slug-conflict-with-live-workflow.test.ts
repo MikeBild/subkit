@@ -82,7 +82,14 @@ function readyDraft(input: { name: string; slug: string }): DraftDocument {
         workflow: {
           name: input.name,
           slug: input.slug,
-          steps: [{ id: "t1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+          steps: [
+            {
+              id: "t1",
+              kind: "transform",
+              language: "javascript",
+              expression: "return input.input.n;",
+            },
+          ],
         },
       }),
       true,
@@ -117,7 +124,12 @@ async function seedLiveWorkflow(slug: string, name: string): Promise<{ id: strin
         name,
         slug,
         steps: [
-          { id: "p1", kind: "transform", expression: "$input.preexisting", language: "jsonata" },
+          {
+            id: "p1",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.input.preexisting;",
+          },
         ],
       },
     })

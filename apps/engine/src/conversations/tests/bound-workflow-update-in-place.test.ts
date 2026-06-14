@@ -94,7 +94,12 @@ function boundReadyDraft(opts: {
   workflow_id: string;
   version_id: string;
 }): DraftDocument {
-  const step = { id: "t1", kind: "transform", expression: "$input.n", language: "jsonata" };
+  const step = {
+    id: "t1",
+    kind: "transform",
+    language: "javascript",
+    expression: "return input.input.n;",
+  };
   const base = createEmptyDraftDocument();
   const withStep = {
     ...base,
@@ -123,7 +128,12 @@ function boundReadyDraft(opts: {
 describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place", () => {
   test("editing a hydrated workflow with the same slug succeeds as update-in-place", async () => {
     const existing = await seedLiveWorkflow("rc4-update-in-place", "RC4 Update In Place", [
-      { id: "old_step", kind: "transform", expression: "$input", language: "jsonata" },
+      {
+        id: "old_step",
+        kind: "transform",
+        language: "javascript",
+        expression: "return input.input;",
+      },
     ]);
 
     // Conversation has no target_workflow_id — simulates the state
@@ -176,11 +186,11 @@ describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place"
   test("a draft whose slug matches a DIFFERENT workflow (not the bound one) still fails with slug_conflict_with_live_workflow", async () => {
     // The bound workflow.
     const bound = await seedLiveWorkflow("rc4-bound-wf", "RC4 Bound WF", [
-      { id: "s1", kind: "transform", expression: "$input", language: "jsonata" },
+      { id: "s1", kind: "transform", language: "javascript", expression: "return input.input;" },
     ]);
     // A different workflow occupying the slug the draft uses.
     const conflicting = await seedLiveWorkflow("rc4-conflict-slug", "RC4 Conflict Slug", [
-      { id: "s2", kind: "transform", expression: "$input", language: "jsonata" },
+      { id: "s2", kind: "transform", language: "javascript", expression: "return input.input;" },
     ]);
 
     const [conv] = await ctx.testDb.db
@@ -194,7 +204,12 @@ describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place"
     if (!conv) throw new Error("conversation insert failed");
 
     // Draft is bound to `bound`, but its slug is `rc4-conflict-slug` (a different wf).
-    const step = { id: "t1", kind: "transform", expression: "$input.n", language: "jsonata" };
+    const step = {
+      id: "t1",
+      kind: "transform",
+      language: "javascript",
+      expression: "return input.input.n;",
+    };
     const base = createEmptyDraftDocument();
     const withStep = {
       ...base,

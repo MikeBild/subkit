@@ -33,7 +33,11 @@ describe("evaluateTransformAuthoringGate", () => {
     const result = evaluateTransformAuthoringGate(
       {
         steps: [
-          { id: "shape", kind: "transform", expression: "{ id: $input.x, n: $count($input.xs) }" },
+          {
+            id: "shape",
+            kind: "transform",
+            expression: "{ id: input.input.x, n: $count(input.input.xs) }",
+          },
         ],
       },
       null,
@@ -49,7 +53,7 @@ describe("evaluateTransformAuthoringGate", () => {
           {
             id: "format",
             kind: "transform",
-            expression: "$scope.fetch.data.items.{name: $.name}",
+            expression: "input.scope.fetch.data.items.{name: $.name}",
           },
         ],
       },
@@ -70,7 +74,7 @@ describe("evaluateTransformAuthoringGate", () => {
           {
             id: "format",
             kind: "transform",
-            expression: "$scope.fetch.data.items",
+            expression: "input.scope.fetch.data.items",
           },
         ],
       },
@@ -94,7 +98,7 @@ describe("evaluateTransformAuthoringGate", () => {
           {
             id: "format",
             kind: "transform",
-            expression: "$scope.fetch.data.items",
+            expression: "input.scope.fetch.data.items",
           },
         ],
       },
@@ -114,7 +118,7 @@ describe("evaluateTransformAuthoringGate", () => {
           {
             id: "format",
             kind: "transform",
-            expression: "$scope.format.data",
+            expression: "input.scope.format.data",
           },
         ],
       },
@@ -130,7 +134,7 @@ describe("evaluateTransformAuthoringGate", () => {
           {
             id: "format",
             kind: "transform",
-            expression: "$scope.unknown.data",
+            expression: "input.scope.unknown.data",
           },
         ],
       },
@@ -147,7 +151,7 @@ describe("evaluateTransformAuthoringGate", () => {
           {
             id: "format",
             kind: "transform",
-            expression: "$scope.fetch.data",
+            expression: "input.scope.fetch.data",
           },
         ],
       },
@@ -185,7 +189,7 @@ describe("evaluateTransformAuthoringGate", () => {
           {
             id: "summarize",
             kind: "transform",
-            expression: "{ n: $count($scope.publish_loop.data.publish_one.data) }",
+            expression: "{ n: $count(input.scope.publish_loop.data.publish_one.data) }",
           },
         ],
       },
@@ -207,7 +211,7 @@ describe("evaluateTransformAuthoringGate", () => {
           },
           { id: "publish_one", kind: "call", workflow_slug: "x" },
           { id: "mark", kind: "request" },
-          { id: "summarize", kind: "transform", expression: "$scope.publish_one.data.output" },
+          { id: "summarize", kind: "transform", expression: "input.scope.publish_one.data.output" },
         ],
       },
       null,
@@ -231,7 +235,7 @@ describe("evaluateTransformAuthoringGate", () => {
           {
             id: "consumer",
             kind: "transform",
-            expression: "$scope.fmt.data & $scope.fallback.data",
+            expression: "input.scope.fmt.data & input.scope.fallback.data",
           },
         ],
       },
@@ -250,7 +254,7 @@ describe("evaluateTransformAuthoringGate", () => {
           {
             id: "join",
             kind: "transform",
-            expression: "{ a: $scope.par.data, b: $scope.w1.data }",
+            expression: "{ a: input.scope.par.data, b: input.scope.w1.data }",
           },
         ],
       },
@@ -264,7 +268,7 @@ describe("evaluateTransformAuthoringGate", () => {
       {
         steps: [
           { id: "fetch", kind: "request" },
-          { id: "fmt", kind: "transform", expression: "$scope.fetch.data.items" },
+          { id: "fmt", kind: "transform", expression: "input.scope.fetch.data.items" },
         ],
       },
       null,
@@ -284,7 +288,7 @@ describe("evaluateTransformAuthoringGate", () => {
       {
         steps: [
           { id: "fetch", kind: "request" },
-          { id: "fmt", kind: "transform", expression: "$scope.fetch.data.items" },
+          { id: "fmt", kind: "transform", expression: "input.scope.fetch.data.items" },
         ],
       },
       {
@@ -310,7 +314,7 @@ describe("evaluateTransformAuthoringGate", () => {
       {
         steps: [
           { id: "fetch", kind: "request" },
-          { id: "fmt", kind: "transform", expression: "$scope.fetch.data.items" },
+          { id: "fmt", kind: "transform", expression: "input.scope.fetch.data.items" },
         ],
       },
       {
@@ -337,7 +341,7 @@ describe("evaluateTransformAuthoringGate", () => {
       {
         steps: [
           { id: "fetch", kind: "request" },
-          { id: "fmt", kind: "transform", expression: "$scope.fetch.data.items" },
+          { id: "fmt", kind: "transform", expression: "input.scope.fetch.data.items" },
         ],
       },
       {

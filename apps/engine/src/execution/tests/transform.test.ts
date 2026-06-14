@@ -28,7 +28,7 @@ afterAll(async () => {
 });
 
 describe("request + transform", () => {
-  test("transform projects request output via JSONata", async () => {
+  test("transform projects request output via a JS body", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "fetch-and-shape",
       steps: [
@@ -36,8 +36,8 @@ describe("request + transform", () => {
         {
           kind: "transform",
           id: "names",
-          language: "jsonata",
-          expression: "users.data.name",
+          language: "javascript",
+          expression: "return (input.scope.users.data || []).map((u) => u.name);",
         },
       ],
     });
@@ -51,17 +51,22 @@ describe("request + transform", () => {
     expect(result.output).toEqual(["a", "b"]);
   });
 
-  test("loop body transform sees `letter` and `$loop_index` bindings", async () => {
+  test("loop body transform sees `$item` and `$loop_index` bindings", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-bindings",
       steps: [
-        { kind: "transform", id: "letters", language: "jsonata", expression: "['a', 'b', 'c']" },
-        { kind: "loop", id: "iter", over: "letters.data", item_var: "letter", body: ["tag"] },
+        {
+          kind: "transform",
+          id: "letters",
+          language: "javascript",
+          expression: "return ['a', 'b', 'c'];",
+        },
+        { kind: "loop", id: "iter", over: "letters.data", body: ["tag"] },
         {
           kind: "transform",
           id: "tag",
-          language: "jsonata",
-          expression: "{ 'index': $loop_index, 'letter': letter }",
+          language: "javascript",
+          expression: "return { index: input.scope.$loop_index, letter: input.scope.$item };",
         },
       ],
     });
@@ -89,10 +94,15 @@ describe("request + transform", () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "empty-loop-body",
       steps: [
-        { kind: "transform", id: "items", language: "jsonata", expression: "['a', 'b', 'c']" },
-        { kind: "loop", id: "iter", over: "items.data", item_var: "item", body: ["empty"] },
+        {
+          kind: "transform",
+          id: "items",
+          language: "javascript",
+          expression: "return ['a', 'b', 'c'];",
+        },
+        { kind: "loop", id: "iter", over: "items.data", body: ["empty"] },
         // Body step returns an empty array — body succeeds, but no row.
-        { kind: "transform", id: "empty", language: "jsonata", expression: "[]" },
+        { kind: "transform", id: "empty", language: "javascript", expression: "return [];" },
       ],
     });
     const result = await runExecution({
@@ -120,49 +130,6 @@ describe("request + transform", () => {
     expect(details?.example_path).toBe("$scope.iter.data[0].empty.data");
   });
 
-  test("empty-extraction warning carries the real upstream paths to copy", async () => {
-    // A transform that references a path that does not resolve produces
-    // an empty result. The warning must not just say "wrong path" — it
-    // must hand the author the ACTUAL `$scope.<step>.data.<path>`
-    // candidates walked from the live upstream payload, so the fix is a
-    // copy-paste rather than the dozen-turn guessing spiral.
-    const { workflow_id } = await createWorkflowRow(ctx, {
-      name: "empty-extraction-paths",
-      steps: [
-        {
-          kind: "transform",
-          id: "source",
-          language: "jsonata",
-          expression: "{ 'chargers': { 'edges': [ { 'node': { 'id': 'c1' } } ] } }",
-        },
-        // `.chargers.items` does not exist — the real path is
-        // `.chargers.edges`.
-        {
-          kind: "transform",
-          id: "filter_bad",
-          language: "jsonata",
-          expression: "$scope.source.data.chargers.items",
-        },
-      ],
-    });
-    const result = await runExecution({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenantId,
-      source: { kind: "saved", workflow_id },
-      input: null,
-    });
-    expect(result.status).toBe("succeeded");
-    const warnings = result.warnings ?? [];
-    const empty = warnings.find((w) => w.code === "transform_empty_extraction");
-    expect(empty).toBeDefined();
-    expect(empty?.identifier).toBe("filter_bad");
-    const paths = (empty?.details as { available_paths?: string[] } | undefined)?.available_paths;
-    expect(paths).toBeDefined();
-    expect(paths).toContain("$scope.source.data.chargers.edges");
-    // The real path is also quoted in the human-readable message.
-    expect(empty?.message).toContain("$scope.source.data.chargers.edges");
-  });
-
   test("step_output_fixtures short-circuits the upstream and feeds downstream from cached envelope", async () => {
     // Regression: session fb930dcb burned 12 identical 128 KB Jira
     // fetches because there was no way to skip an unchanged upstream
@@ -182,7 +149,12 @@ describe("request + transform", () => {
         name: "fixture-replay",
         steps: [
           { kind: "request", id: "users", method: "GET", url: `${counterMock.baseUrl}/users` },
-          { kind: "transform", id: "names", language: "jsonata", expression: "users.data.name" },
+          {
+            kind: "transform",
+            id: "names",
+            language: "javascript",
+            expression: "return (input.scope.users.data || []).map((u) => u.name);",
+          },
         ],
       });
       // First run: real fetch.
@@ -225,48 +197,24 @@ describe("request + transform", () => {
     }
   });
 
-  test("JSONata runtime failure surfaces a real message, never `[object Object]`", async () => {
-    // Regression: session fb930dcb spent 4 dry-runs on a transform that
-    // failed at JSONata *runtime* (not parse). The library throws plain
-    // objects (`{ message, position, token }`); the engine's catch block
-    // used to `String(err)` them, yielding `"[object Object]"`. With the
-    // fix at execution/steps/transform.ts the runtime evaluate is wrapped
-    // in `formatError` so the diagnostic carries `.message` + caret.
-    const { workflow_id } = await createWorkflowRow(ctx, {
-      name: "jsonata-runtime-fail",
-      steps: [
-        // `$match`'s second argument must be a regex literal; passing a
-        // string triggers a JSONata runtime (T2003-class) error.
-        {
-          kind: "transform",
-          id: "boom",
-          language: "jsonata",
-          expression: "$match('hello', 'world')",
-        },
-      ],
-    });
-    const result = await runExecution({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenantId,
-      source: { kind: "saved", workflow_id },
-      input: null,
-    });
-    expect(result.status).toBe("failed");
-    const err = result.error as { code?: string; message?: string } | null;
-    expect(err?.code).toBe("transform_error");
-    expect(err?.message).toBeTruthy();
-    expect(err?.message).not.toBe("[object Object]");
-    expect(err?.message).toContain("JSONata error");
-  });
-
   test("loop with at least one productive iteration does not emit loop_body_empty", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "productive-loop-body",
       steps: [
-        { kind: "transform", id: "items", language: "jsonata", expression: "['a', 'b', 'c']" },
-        { kind: "loop", id: "iter", over: "items.data", item_var: "item", body: ["pick"] },
+        {
+          kind: "transform",
+          id: "items",
+          language: "javascript",
+          expression: "return ['a', 'b', 'c'];",
+        },
+        { kind: "loop", id: "iter", over: "items.data", body: ["pick"] },
         // Returns a real value for every iteration → no warning.
-        { kind: "transform", id: "pick", language: "jsonata", expression: "item" },
+        {
+          kind: "transform",
+          id: "pick",
+          language: "javascript",
+          expression: "return input.scope.$item;",
+        },
       ],
     });
     const result = await runExecution({

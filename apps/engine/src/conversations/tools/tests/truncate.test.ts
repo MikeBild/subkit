@@ -16,6 +16,41 @@ describe("truncateForLlm", () => {
     expect(r.raw_ref).toBeUndefined();
   });
 
+  it("annotates a large omitted branch with its shape (F2 — judge/author see structure)", () => {
+    clearRawStore();
+    // One large branch (>1024 chars) so it crosses SHAPE_STUB_MIN and gets a
+    // shape annotation; the rest is padding so the whole payload trips the cap.
+    const bigArray = Array.from({ length: 40 }, (_, i) => ({
+      id: i,
+      threadId: `t${i}`,
+      payload: { headers: "x".repeat(60) },
+    }));
+    const r = truncateForLlm({ messages: bigArray, pad: "y".repeat(9000) });
+    expect(r.truncated).toBe(true);
+    const serialized = JSON.stringify(r.data);
+    // The omitted `messages` array surfaces its element shape, not an opaque
+    // byte count — so a transform/judge knows objects with `id`/`payload` exist.
+    expect(serialized).toMatch(/\[omitted: \d+ chars · shape: .+ — get_raw_result/);
+  });
+
+  it("keeps small omitted branches compact (no shape annotation)", () => {
+    clearRawStore();
+    // Many small objects (each well under SHAPE_STUB_MIN) → plain stubs so the
+    // per-stub overhead can't multiply past the step-preview cap.
+    const repos = Array.from({ length: 16 }, (_, i) => ({
+      name: `repo-${i}`,
+      description: "x".repeat(120),
+    }));
+    const r = truncateStepPreviewForLlm(repos);
+    const serialized = JSON.stringify(r.data);
+    if (serialized.includes("[omitted:")) {
+      expect(serialized).not.toContain("· shape:");
+    }
+    expect(JSON.stringify(r.data).length).toBeLessThanOrEqual(
+      TRUNCATE_INTERNALS.MAX_STEP_PREVIEW_CHARS,
+    );
+  });
+
   it("truncates long arrays and stashes raw under raw_ref", () => {
     clearRawStore();
     // Array too large to fit: 200 entries of ~200 chars each ≈ 40k chars.

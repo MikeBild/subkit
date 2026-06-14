@@ -29,23 +29,23 @@
     {
       "id": "collect_project",
       "kind": "transform",
-      "language": "jsonata",
+      "language": "javascript",
       "on_error": "fail",
-      "expression": "{ \"name\": $item.name, \"purpose\": $item.purpose, \"environment\": $item.environment, \"resources\": $scope.fetch_resources.data.resources }"
+      "expression": "const item = input.scope.$item; return { name: item.name, purpose: item.purpose, environment: item.environment, resources: input.scope.fetch_resources.data.resources };"
     },
     {
       "id": "format_email_html",
       "kind": "transform",
-      "language": "jsonata",
+      "language": "javascript",
       "on_error": "fail",
-      "expression": "(\n  $blocks := $scope.projects_loop.data.collect_project.data;\n  $body := '<html><body><h2>Daily DigitalOcean Resources Summary</h2><p>Date: ' & $now() & '</p>' & $join($blocks.(\n    '<h3>Project: ' & $.name & '</h3>' &\n    '<ul>' &\n    '<li>Environment: ' & ($.environment != '' ? $.environment : 'n/a') & '</li>' &\n    '<li>Purpose: ' & $.purpose & '</li>' &\n    '<li>Resource count: ' & $string($count($.resources)) & '</li>' &\n    '</ul>' &\n    ($count($.resources) > 0 ? '<ul>' & $join($.resources.('<li>' & $.urn & ' (' & $.status & ')</li>')) & '</ul>' : '<p><em>No resources</em></p>')\n  )) & '</body></html>';\n  { \"html\": $body, \"subject\": 'Daily DigitalOcean Resources Summary' }\n)"
+      "expression": "const blocks = (input.scope.projects_loop.data || []).map((it) => it.collect_project.data); const body = '<html><body><h2>Daily DigitalOcean Resources Summary</h2><p>Date: ' + new Date().toISOString() + '</p>' + blocks.map((b) => { const resources = b.resources || []; return '<h3>Project: ' + b.name + '</h3>' + '<ul>' + '<li>Environment: ' + (b.environment !== '' ? b.environment : 'n/a') + '</li>' + '<li>Purpose: ' + b.purpose + '</li>' + '<li>Resource count: ' + String(resources.length) + '</li>' + '</ul>' + (resources.length > 0 ? '<ul>' + resources.map((r) => '<li>' + r.urn + ' (' + r.status + ')</li>').join('') + '</ul>' : '<p><em>No resources</em></p>'); }).join('') + '</body></html>'; return { html: body, subject: 'Daily DigitalOcean Resources Summary' };"
     },
     {
       "id": "encode_email",
       "kind": "transform",
-      "language": "jsonata",
+      "language": "javascript",
       "on_error": "fail",
-      "expression": "( $msg := 'To: ' & $input.recipient_email & '\\r\\nSubject: ' & $scope.format_email_html.data.subject & '\\r\\nMIME-Version: 1.0\\r\\nContent-Type: text/html; charset=utf-8\\r\\n\\r\\n' & $scope.format_email_html.data.html; { \"raw\": $replace($replace($base64encode($msg), '+', '-'), '/', '_') } )"
+      "expression": "const msg = 'To: ' + input.input.recipient_email + '\\r\\nSubject: ' + input.scope.format_email_html.data.subject + '\\r\\nMIME-Version: 1.0\\r\\nContent-Type: text/html; charset=utf-8\\r\\n\\r\\n' + input.scope.format_email_html.data.html; return { raw: sk.base64UrlEncode(msg) };"
     },
     {
       "id": "send_email",

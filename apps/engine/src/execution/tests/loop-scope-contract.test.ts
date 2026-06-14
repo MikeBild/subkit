@@ -37,8 +37,8 @@ function mkCtx(): StepRunContext {
     step: {
       kind: "transform",
       id: "body",
-      language: "jsonata",
-      expression: "dummy",
+      language: "javascript",
+      expression: "return null;",
     },
     step_index: 0,
     step_row_id: "r",
@@ -68,32 +68,16 @@ describe("buildLoopChildScope — conditional bare binding", () => {
   });
 });
 
-describe("runtime regression — bare name without item_var", () => {
-  it("yields unresolved_identifier (not silent empty) for a bare iteration name", async () => {
-    const childScope = buildLoopChildScope({}, {}, 21, 0);
-    const result = await runTransformStep({
-      ctx: mkCtx(),
-      step: { kind: "transform", id: "body", language: "jsonata", expression: "num * 2" },
-      scope: childScope,
-      input: null,
-    });
-    expect(result.status).toBe("succeeded");
-    expect(result.output).toBeUndefined();
-    const codes = (result.warnings ?? []).map((w) => w.code);
-    expect(codes).toContain("unresolved_identifier");
-    const unresolved = (result.warnings ?? []).find((w) => w.code === "unresolved_identifier");
-    expect(unresolved?.identifier).toBe("num");
-  });
-
-  it("$item resolves for a definition without item_var", async () => {
+describe("runtime — loop-item bindings reach the transform body", () => {
+  it("$item + $loop_index resolve for a definition without item_var", async () => {
     const childScope = buildLoopChildScope({}, {}, { name: "Ada" }, 0);
     const result = await runTransformStep({
       ctx: mkCtx(),
       step: {
         kind: "transform",
         id: "body",
-        language: "jsonata",
-        expression: "{ 'name': $item.name, 'idx': $loop_index }",
+        language: "javascript",
+        expression: "return { name: input.scope.$item.name, idx: input.scope.$loop_index };",
       },
       scope: childScope,
       input: null,
@@ -103,16 +87,20 @@ describe("runtime regression — bare name without item_var", () => {
     expect(result.warnings ?? []).toHaveLength(0);
   });
 
-  it("legacy definition WITH item_var still binds the bare name (stored-data contract)", async () => {
+  it("legacy definition WITH item_var still binds the bare name into scope (stored-data contract)", async () => {
     const childScope = buildLoopChildScope({ item_var: "num" }, {}, 21, 0);
     const result = await runTransformStep({
       ctx: mkCtx(),
-      step: { kind: "transform", id: "body", language: "jsonata", expression: "num * 2" },
+      step: {
+        kind: "transform",
+        id: "body",
+        language: "javascript",
+        expression: "return input.scope.num * 2;",
+      },
       scope: childScope,
       input: null,
     });
     expect(result.status).toBe("succeeded");
     expect(result.output).toBe(42);
-    expect((result.warnings ?? []).map((w) => w.code)).not.toContain("unresolved_identifier");
   });
 });

@@ -56,5 +56,3 @@ export const OAuthApprovalInputSchema = z
     redirect_uri: z.string().url(),
   })
   .passthrough();
-
-export type OAuthApprovalInput = z.infer<typeof OAuthApprovalInputSchema>;

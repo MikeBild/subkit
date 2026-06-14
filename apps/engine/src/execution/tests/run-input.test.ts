@@ -28,8 +28,8 @@ describe("runExecution input normalization", () => {
         {
           kind: "transform",
           id: "shape",
-          expression: "$input.date",
-          language: "jsonata",
+          expression: "return input.input.date;",
+          language: "javascript",
         },
       ],
     });

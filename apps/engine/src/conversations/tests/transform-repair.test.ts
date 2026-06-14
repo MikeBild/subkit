@@ -80,15 +80,15 @@ const RECORDED_SCOPE: Record<string, unknown> = {
 };
 
 describe("repairTransformExpression — bounded repair mechanics", () => {
-  test("fixes a `:=` misuse (compile error) on the first attempt with before/after", async () => {
+  test("fixes a syntax error (compile error) on the first attempt with before/after", async () => {
     getMockProvider().generateOverrides.repair = () => ({
-      expression: "( $items := $scope.fetch.data.items; $items )",
-      reasoning: "JSONata variables must be $-prefixed",
+      expression: "const items = input.scope.fetch.data.items; return items;",
+      reasoning: "a transform body must be valid JavaScript with an explicit return",
     });
-    const bad = "items := $scope.fetch.data.items";
+    const bad = "const items = ; return items;";
     const outcome = await repairTransformExpression({
       expression: bad,
-      finding: { kind: "compile_error", message: "The left side of := must be a variable name" },
+      finding: { kind: "compile_error", message: "Unexpected token ';'" },
       tenant_id,
       db: ctx.db,
     });
@@ -96,7 +96,7 @@ describe("repairTransformExpression — bounded repair mechanics", () => {
     if (!outcome.repaired) throw new Error("unreachable");
     expect(outcome.attempts).toBe(1);
     expect(outcome.before).toBe(bad);
-    expect(outcome.after).toBe("( $items := $scope.fetch.data.items; $items )");
+    expect(outcome.after).toBe("const items = input.scope.fetch.data.items; return items;");
     expect(outcome.expression).toBe(outcome.after);
   });
 
@@ -105,30 +105,30 @@ describe("repairTransformExpression — bounded repair mechanics", () => {
     getMockProvider().generateOverrides.repair = () => {
       calls += 1;
       return calls === 1
-        ? { expression: "$scope.fetch.data.nope" } // compiles, still empty
-        : { expression: "$scope.fetch.data.items" }; // non-empty against recorded scope
+        ? { expression: "return input.scope.fetch.data.nope;" } // parses, still empty
+        : { expression: "return input.scope.fetch.data.items;" }; // non-empty against recorded scope
     };
     const outcome = await repairTransformExpression({
-      expression: "$scope.fetch.data.wrong_field",
+      expression: "return input.scope.fetch.data.wrong_field;",
       finding: { kind: "empty_result", message: "expression evaluated to an empty result" },
       scopeSample: RECORDED_SCOPE,
-      pathCandidates: ["$scope.fetch.data.items"],
+      pathCandidates: ["input.scope.fetch.data.items"],
       tenant_id,
       db: ctx.db,
     });
     expect(outcome.repaired).toBe(true);
     if (!outcome.repaired) throw new Error("unreachable");
     expect(outcome.attempts).toBe(2);
-    expect(outcome.after).toBe("$scope.fetch.data.items");
+    expect(outcome.after).toBe("return input.scope.fetch.data.items;");
     expect(calls).toBe(2);
   });
 
   test("gives up cleanly after the attempt bound with repaired:false + last_error", async () => {
     getMockProvider().generateOverrides.repair = () => ({
-      expression: "$scope.fetch.data.still_wrong",
+      expression: "return input.scope.fetch.data.still_wrong;",
     });
     const outcome = await repairTransformExpression({
-      expression: "$scope.fetch.data.wrong_field",
+      expression: "return input.scope.fetch.data.wrong_field;",
       finding: { kind: "empty_result", message: "expression evaluated to an empty result" },
       scopeSample: RECORDED_SCOPE,
       tenant_id,
@@ -164,7 +164,7 @@ describe("build_workflow — repair proposals are PROPOSE-only", () => {
 
   test("recorded-eval repair lands in the envelope; the accepted draft keeps the broken expression verbatim", async () => {
     getMockProvider().generateOverrides.repair = () => ({
-      expression: "$scope.fetch.data.items",
+      expression: "return input.scope.fetch.data.items;",
     });
     const fetch = {
       id: "fetch",
@@ -172,7 +172,7 @@ describe("build_workflow — repair proposals are PROPOSE-only", () => {
       method: "GET",
       url: "https://example.com/items",
     };
-    const badExpression = "$scope.fetch.data.wrong_field";
+    const badExpression = "return input.scope.fetch.data.wrong_field;";
     // Seed the conversation draft with fingerprint-valid recorded
     // evidence for `fetch`, so the rebuilt draft retains it (Fix 5)
     // and the recorded-eval pass can actually evaluate the transform.
@@ -205,7 +205,7 @@ describe("build_workflow — repair proposals are PROPOSE-only", () => {
       slug: "repair-propose",
       steps: [
         fetch,
-        { id: "shape", kind: "transform", language: "jsonata", expression: badExpression },
+        { id: "shape", kind: "transform", language: "javascript", expression: badExpression },
       ],
       environment: "dev",
     });
@@ -217,7 +217,7 @@ describe("build_workflow — repair proposals are PROPOSE-only", () => {
     expect(finding?.repair?.repaired).toBe(true);
     if (!finding?.repair?.repaired) throw new Error("unreachable");
     expect(finding.repair.before).toBe(badExpression);
-    expect(finding.repair.after).toBe("$scope.fetch.data.items");
+    expect(finding.repair.after).toBe("return input.scope.fetch.data.items;");
     expect(data.recorded_eval.next_actions).toContain("update_param");
     expect(data.recorded_eval.summary).toContain("repair proposal");
 
