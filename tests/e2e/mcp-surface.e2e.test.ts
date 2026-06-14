@@ -144,8 +144,8 @@ describe("MCP tenant tool surface", () => {
           {
             kind: "transform",
             id: "noop",
-            language: "jsonata",
-            expression: '{ "ok": true }',
+            language: "javascript",
+            expression: "return { ok: true };",
           },
         ],
       }),

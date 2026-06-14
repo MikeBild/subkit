@@ -43,7 +43,12 @@ describe("admin create → member query", () => {
       description: "A workflow created by admin for member to query",
       steps: [
         { kind: "request", id: "fetch", method: "GET", url: `${env.baseUrl}/openapi.json` },
-        { kind: "transform", id: "pluck", expression: "$.info", language: "jsonata" },
+        {
+          kind: "transform",
+          id: "pluck",
+          language: "javascript",
+          expression: "return input.scope.fetch.data.info;",
+        },
       ],
     });
     const filePath = writeTempFile(env.personas.admin, "cross-cli-wf.json", wfDef);

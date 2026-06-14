@@ -29,7 +29,9 @@ function readyDraft() {
   let draft = withWorkflowDraft(createEmptyDraftDocument(), {
     name: "GitHub Private Repos by Owner",
     slug: "github-private-repos-mikebild",
-    steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
+    steps: [
+      { id: "shape", kind: "transform", language: "javascript", expression: "return input.input;" },
+    ],
   });
   draft = withWorkflowInspection(draft);
   draft = withWorkflowValidation(draft, true, "Workflow draft valid.");

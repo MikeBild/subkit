@@ -56,8 +56,8 @@ async function seedWorkflow(): Promise<string> {
           {
             id: "shape",
             kind: "transform",
-            expression: '{ "date": $input.date }',
-            language: "jsonata",
+            language: "javascript",
+            expression: "return { date: input.input.date };",
           },
         ],
       },
