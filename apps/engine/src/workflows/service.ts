@@ -16,6 +16,7 @@ import { type WorkflowLifecyclePayload, WorkflowLifecyclePayloadSchema } from ".
 import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
+import { slugConflictResult } from "./slug-conflict.ts";
 import { applyTriggerBindings } from "./trigger-bindings.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
@@ -175,57 +176,66 @@ export async function createWorkflow(
   if (!skillGate.ok) return { errors: skillGate.errors };
   const def = annotateRuntime(validation.workflow);
   const slug = def.slug ?? slugify(def.name);
-  const result = await db.transaction(async (tx) => {
-    const [wf] = await tx
-      .insert(workflows)
-      .values({
+  let result: string;
+  try {
+    result = await db.transaction(async (tx) => {
+      const [wf] = await tx
+        .insert(workflows)
+        .values({
+          tenant_id: input.tenant_id,
+          slug,
+          name: def.name,
+          // Seed the top-level description column from the DAG so a freshly
+          // built workflow's `wf_<slug>` tool carries the authored description
+          // immediately — without forcing a follow-up update_workflow /
+          // edit_workflow_patch. The column is the canonical source the catalog
+          // prefers (column → DAG → name); leaving it NULL here was why every
+          // newly committed workflow showed a "missing" top-level description.
+          ...(def.description ? { description: def.description } : {}),
+          lifecycle: "active",
+        })
+        .returning();
+      assertInsertRow(wf, "workflows");
+      const [v] = await tx
+        .insert(workflowVersions)
+        .values({
+          tenant_id: input.tenant_id,
+          workflow_id: wf.id,
+          version: 1,
+          dag: def,
+          ...(input.scope_index ? { scope_index: input.scope_index } : {}),
+        })
+        .returning();
+      assertInsertRow(v, "workflow_versions");
+      await tx.update(workflows).set({ current_version_id: v.id }).where(eq(workflows.id, wf.id));
+      await auditAwait(
+        {
+          tenant_id: input.tenant_id,
+          actor_type: input.actor_id ? "user" : "system",
+          actor_id: input.actor_id,
+          action: AuditAction.WORKFLOW_CREATED,
+          resource_type: "workflow",
+          resource_id: wf.id,
+          result: "success",
+          metadata: { slug, version: 1 },
+        },
+        tx,
+      );
+      await emitWorkflowLifecycle(tx, {
         tenant_id: input.tenant_id,
-        slug,
-        name: def.name,
-        // Seed the top-level description column from the DAG so a freshly
-        // built workflow's `wf_<slug>` tool carries the authored description
-        // immediately — without forcing a follow-up update_workflow /
-        // edit_workflow_patch. The column is the canonical source the catalog
-        // prefers (column → DAG → name); leaving it NULL here was why every
-        // newly committed workflow showed a "missing" top-level description.
-        ...(def.description ? { description: def.description } : {}),
-        lifecycle: "active",
-      })
-      .returning();
-    assertInsertRow(wf, "workflows");
-    const [v] = await tx
-      .insert(workflowVersions)
-      .values({
-        tenant_id: input.tenant_id,
-        workflow_id: wf.id,
-        version: 1,
-        dag: def,
-        ...(input.scope_index ? { scope_index: input.scope_index } : {}),
-      })
-      .returning();
-    assertInsertRow(v, "workflow_versions");
-    await tx.update(workflows).set({ current_version_id: v.id }).where(eq(workflows.id, wf.id));
-    await auditAwait(
-      {
-        tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
-        action: AuditAction.WORKFLOW_CREATED,
-        resource_type: "workflow",
-        resource_id: wf.id,
-        result: "success",
-        metadata: { slug, version: 1 },
-      },
-      tx,
-    );
-    await emitWorkflowLifecycle(tx, {
-      tenant_id: input.tenant_id,
-      type: "workflow.created",
-      payload: { workflow_id: wf.id, slug, version: 1, actor_id: input.actor_id ?? null },
+        type: "workflow.created",
+        payload: { workflow_id: wf.id, slug, version: 1, actor_id: input.actor_id ?? null },
+      });
+      await applyTriggerBindings(tx, input.tenant_id, wf.id, slug, def, input.actor_id);
+      return wf.id;
     });
-    await applyTriggerBindings(tx, input.tenant_id, wf.id, slug, def, input.actor_id);
-    return wf.id;
-  });
+  } catch (err) {
+    // Duplicate active slug → clean conflict result instead of an unhandled
+    // 500. Any non-conflict failure rethrows unchanged.
+    const conflict = await slugConflictResult(err, db, input.tenant_id, slug);
+    if (conflict) return { errors: conflict.errors };
+    throw err;
+  }
   log.workflow.committed({
     workflow_id: result,
     tenant_id: input.tenant_id,
@@ -592,39 +602,11 @@ export async function updateWorkflowMetadata(
     if (!view) return { errors: ["workflow not found after rename"] };
     return { workflow: view };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const cause = (err as { cause?: { code?: string; constraint?: string } }).cause;
-    const code = (err as { code?: string }).code ?? cause?.code;
-    const looksLikeSlugConflict =
-      code === "23505" ||
-      msg.includes("23505") ||
-      msg.toLowerCase().includes("duplicate key") ||
-      msg.includes("workflows_tenant_slug");
-    if (looksLikeSlugConflict && desiredSlug) {
-      const conflictRows = await db
-        .select({ id: workflows.id, slug: workflows.slug, name: workflows.name })
-        .from(workflows)
-        .where(
-          and(
-            eq(workflows.tenant_id, input.tenant_id),
-            eq(workflows.slug, desiredSlug),
-            isNull(workflows.deleted_at),
-          ),
-        )
-        .limit(1);
-      const existing = conflictRows[0];
-      return {
-        errors: [
-          existing
-            ? `slug "${desiredSlug}" already belongs to workflow "${existing.name}" (id=${existing.id})`
-            : `slug "${desiredSlug}" already exists for this tenant`,
-        ],
-        ...(existing
-          ? { conflict: { workflow_id: existing.id, slug: existing.slug, name: existing.name } }
-          : {}),
-      };
+    if (desiredSlug) {
+      const conflict = await slugConflictResult(err, db, input.tenant_id, desiredSlug);
+      if (conflict) return conflict;
     }
-    return { errors: [msg] };
+    return { errors: [err instanceof Error ? err.message : String(err)] };
   }
 }
 
