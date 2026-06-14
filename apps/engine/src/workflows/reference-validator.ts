@@ -124,6 +124,14 @@ const BARE_PATH_RE = /(?:^|[^\w$.])([a-zA-Z_][\w]*)\./g;
 // is the runtime scope object, so the leading identifier after the
 // dot is the step id.
 const JS_SCOPE_ACCESS_RE = /(?:^|[^\w$.])(?:scope|sourceData)\.([a-zA-Z_][\w]*)/g;
+// JS TRANSFORM scope access: a transform body addresses upstream steps as
+// `input.scope.<id>.data…` (dot form) or `input.scope["<id>"]` (bracket form,
+// for ids JS dot-syntax can't express, e.g. hyphens). The `scope.<id>` here is
+// preceded by `input.`, so JS_SCOPE_ACCESS_RE (which excludes a leading dot)
+// does NOT catch it — without these a JS transform referencing a non-existent
+// step (typo) produced a silent `undefined` with no static error.
+const JS_INPUT_SCOPE_RE = /\binput\??\.scope\??\.([a-zA-Z_][\w]*)/g;
+const JS_INPUT_SCOPE_BRACKET_RE = /\binput\??\.scope\[\s*["']([^"'\]]+)["']\s*\]/g;
 
 /** JSONata built-ins + author-facing bindings that legitimately
  * appear at the start of a bare path. Bare-path validation skips
@@ -217,7 +225,13 @@ function collectReferences(
   knownIds: ReadonlySet<string>,
   emitOffender: (badRef: string) => void,
 ): void {
-  for (const re of [SCOPE_PLACEHOLDER_RE, JSONATA_SCOPE_RE, JSONATA_STEPS_RE]) {
+  for (const re of [
+    SCOPE_PLACEHOLDER_RE,
+    JSONATA_SCOPE_RE,
+    JSONATA_STEPS_RE,
+    JS_INPUT_SCOPE_RE,
+    JS_INPUT_SCOPE_BRACKET_RE,
+  ]) {
     re.lastIndex = 0;
     for (let m = re.exec(text); m !== null; m = re.exec(text)) {
       const ref = m[1] ?? "";

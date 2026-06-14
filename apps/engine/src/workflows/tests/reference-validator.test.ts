@@ -23,7 +23,8 @@ describe("validateStepReferences", () => {
       {
         id: "b",
         kind: "transform",
-        expression: "{ id: $scope.a.data.id }",
+        language: "javascript",
+        expression: "return { id: input.scope.a.data.id };",
       },
     ]);
     expect(validateStepReferences(draft)).toEqual([]);
@@ -35,7 +36,8 @@ describe("validateStepReferences", () => {
       {
         id: "b",
         kind: "transform",
-        expression: "{ id: $scope.wrong_step.data.id }",
+        language: "javascript",
+        expression: "return { id: input.scope.wrong_step.data.id };",
       },
     ]);
     const errors = validateStepReferences(draft);
@@ -98,8 +100,18 @@ describe("validateStepReferences", () => {
   test("returns multiple errors when multiple sites reference unknown step ids", () => {
     const draft = wf([
       { id: "a", kind: "request", method: "GET", url: "https://x/y" },
-      { id: "b", kind: "transform", expression: "$scope.aa.data" },
-      { id: "c", kind: "transform", expression: "$scope.bb.data" },
+      {
+        id: "b",
+        kind: "transform",
+        language: "javascript",
+        expression: "return input.scope.aa.data;",
+      },
+      {
+        id: "c",
+        kind: "transform",
+        language: "javascript",
+        expression: "return input.scope.bb.data;",
+      },
     ]);
     const errors = validateStepReferences(draft);
     expect(errors.length).toBe(2);

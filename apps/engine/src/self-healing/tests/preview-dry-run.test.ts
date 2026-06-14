@@ -65,7 +65,11 @@ describe("diffStepPaths", () => {
     expect(diffStepPaths(before, after)).toEqual(["data_selector"]);
   });
   test("identical steps yield no paths", () => {
-    const step = { id: "s1", kind: "transform" as const, expression: "$.x" };
+    const step = {
+      id: "s1",
+      kind: "transform" as const,
+      expression: "return input.scope.s0.data.x;",
+    };
     expect(diffStepPaths(step, { ...step })).toEqual([]);
   });
 });

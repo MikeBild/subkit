@@ -63,7 +63,12 @@ describe("journey: sk-cli elicitation diff surfacing", () => {
                 connector_id: "00000000-0000-0000-0000-000000000001",
                 path: "/v1/invoices?since=yesterday",
               },
-              { id: "summarize", kind: "transform", expression: "$.items" },
+              {
+                id: "summarize",
+                kind: "transform",
+                language: "javascript",
+                expression: "return input.scope.fetch.data.items;",
+              },
             ],
           },
         },

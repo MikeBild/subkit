@@ -229,20 +229,11 @@ describe("runRecordedEval — javascript transform evaluation", () => {
             language: "javascript",
             expression: "return input.scope.fetch.data.items.length;",
           },
-          {
-            id: "jn_shape",
-            kind: "transform",
-            language: "jsonata",
-            expression: "$scope.fetch.data.items.name",
-          },
         ],
       },
       { latest_preview: evidenceFor(fetch, { items: [{ name: "Ada" }, { name: "Grace" }] }) },
     );
     expect(report.expressions.find((f) => f.site === "steps.js_shape.expression")?.status).toBe(
-      "ok",
-    );
-    expect(report.expressions.find((f) => f.site === "steps.jn_shape.expression")?.status).toBe(
       "ok",
     );
     expect(report.ok).toBe(true);
