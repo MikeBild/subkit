@@ -98,22 +98,22 @@ function isAbsoluteUrl(s: string): boolean {
  * Resolve the final URL for a request relative to a connector's
  * base_url. If the input is already absolute, the base_url is ignored.
  *
- * Leading-slash path + base with a non-root pathname (e.g.
- * base="https://api.example.com/v1", path="/users/me") would normally
- * resolve to "https://api.example.com/users/me" via the URL spec —
- * discarding the "/v1" path prefix and producing 404s. When the base
- * URL has a non-root pathname and the path starts with "/", we strip
- * exactly one leading "/" so the path is treated as relative and
- * appended to the base pathname instead of replacing it:
+ * Two real-world authoring patterns must BOTH resolve correctly against a
+ * base with a non-root pathname (e.g. base="https://api.example.com/v1"):
  *
- *   base "https://api.example.com/v1"  + path "/users/me"
- *     → https://api.example.com/v1/users/me   (correct)
+ *   1. path WITHOUT the base prefix:  "/users/me" or "users/me"
+ *   2. path WITH the base prefix:     "/v1/users/me" or "v1/users/me"
  *
- * Paths without a leading slash already append correctly via new URL().
- * Absolute URLs (https?://) short-circuit before this function body.
- * Base URLs with root pathname ("/") are unchanged — stripping the
- * leading slash of "/users" when base is "https://api.example.com/"
- * gives "https://api.example.com/users" which is the same result.
+ * The bare URL spec mishandles both: `new URL("/users/me", base)` drops the
+ * "/v1" prefix (404), while naively appending "/v1/users/me" doubles it to
+ * "/v1/v1/users/me" (also 404). We normalize by (a) treating the path as
+ * relative (strip a leading "/") so it appends to — not replaces — the base
+ * pathname, and (b) stripping a duplicated leading base-pathname segment so
+ * an author who already included the prefix does not double it. Both
+ * patterns therefore land on "https://api.example.com/v1/users/me".
+ *
+ * Absolute URLs (https?://) short-circuit. Base URLs with root pathname
+ * ("/") have no prefix to preserve or dedupe, so they pass through.
  */
 export function resolveUrl(base_url: string | null, path_or_url: string): URL {
   if (isAbsoluteUrl(path_or_url)) return new URL(path_or_url);
@@ -124,13 +124,17 @@ export function resolveUrl(base_url: string | null, path_or_url: string): URL {
     );
   }
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
-  // When the base URL has a non-root pathname (e.g. "/v1/" rather than
-  // just "/") and the caller supplied a leading-slash path, the URL
-  // constructor would treat it as an absolute path and silently drop
-  // the base pathname. Strip the leading slash so the join appends.
-  const basePathname = new URL(normalizedBase).pathname;
-  const effectivePath =
-    path_or_url.startsWith("/") && basePathname !== "/" ? path_or_url.slice(1) : path_or_url;
+  // Base pathname without surrounding slashes, e.g. "/v1/" → "v1",
+  // "/gmail/v1/" → "gmail/v1", "/" → "".
+  const basePrefix = new URL(normalizedBase).pathname.replace(/^\/+|\/+$/g, "");
+  // Treat the path as relative so it appends to the base pathname instead of
+  // replacing it (the URL-spec drop bug).
+  let effectivePath = path_or_url.replace(/^\/+/, "");
+  // Dedupe: if the author already prefixed the base pathname, strip it so the
+  // relative join below does not double it.
+  if (basePrefix && (effectivePath === basePrefix || effectivePath.startsWith(`${basePrefix}/`))) {
+    effectivePath = effectivePath.slice(basePrefix.length).replace(/^\/+/, "");
+  }
   return new URL(effectivePath, normalizedBase);
 }
 

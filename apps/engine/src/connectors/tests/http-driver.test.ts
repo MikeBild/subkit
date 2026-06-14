@@ -575,6 +575,22 @@ describe("resolveUrl — base-path preservation", () => {
     expect(url.href).toBe("https://api.example.com/gmail/v1/users/me/messages");
   });
 
+  test("path that already includes the base prefix is NOT doubled (regression: get-last-3-gmail-messages)", () => {
+    // The author wrote the full "/gmail/v1/..." prefix relying on the old
+    // leading-slash-replaces-base behavior. The dedupe must collapse it to a
+    // single prefix instead of "/gmail/v1/gmail/v1/...".
+    expect(
+      resolveUrl("https://gmail.googleapis.com/gmail/v1", "/gmail/v1/users/me/messages").href,
+    ).toBe("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    expect(
+      resolveUrl("https://gmail.googleapis.com/gmail/v1", "gmail/v1/users/me/messages").href,
+    ).toBe("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    // Query string is preserved through the dedupe.
+    expect(resolveUrl("https://api.example.com/v1", "/v1/users?limit=3").href).toBe(
+      "https://api.example.com/v1/users?limit=3",
+    );
+  });
+
   test("null base_url with non-absolute path throws descriptive error", () => {
     expect(() => resolveUrl(null, "/users/me")).toThrow("no base_url");
   });
