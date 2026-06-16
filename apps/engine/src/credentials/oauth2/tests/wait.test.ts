@@ -6,11 +6,19 @@
 // by a credential re-read), a `credentials`-row poll, an explicit
 // `callback_failed` event, or a timeout.
 //
-// These tests boot a real pub/sub listener against a disposable
-// Postgres, then drive a private emitter directly — no NOTIFY
-// round-trip, fully deterministic. The credential row content is
-// irrelevant to the wait (it only checks existence), so rows are
-// inserted with placeholder ciphertext bytes.
+// These tests drive a private `PubSubEmitter` directly — no NOTIFY
+// round-trip, fully deterministic. `waitForOAuthCredential` consumes the
+// listener purely through `.on()`/`.off()`, which delegate to the
+// in-process emitter (see listener.ts), so the wait's event path is fully
+// exercised WITHOUT opening the listener's dedicated Postgres LISTEN
+// connection. We therefore construct the listener but never `start()` it:
+// a live LISTEN connection delivered none of these events, yet its
+// connect/end under full-suite load was the sole source of the 120s hook-
+// timeout flake (a stranded LISTEN client on the shared, near-max_connections
+// Postgres). Dropping it removes the flake with zero coverage loss — the
+// real NOTIFY → emitter path is the listener's own concern, covered in the
+// pubsub suite. The credential row content is irrelevant to the wait (it
+// only checks existence), so rows use placeholder ciphertext bytes.
 
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
@@ -21,12 +29,11 @@ import type { EventEnvelope } from "../../../pubsub/types.ts";
 import { waitFor } from "../../../test-helpers/determinism/wait.ts";
 import { OAUTH_WAIT_MIN_FLOOR_MS, POLL_INTERVAL_MS, waitForOAuthCredential } from "../wait.ts";
 
-// Real-I/O suite (Postgres round-trips + pubsub waits): under full-suite
-// concurrency the scheduler can starve these tests past bun's 5s default
-// and the run flakes (verify-gate 120s observation, stress-run 5s
-// timeouts). Timeliness is asserted by the wait constants above — the
-// test-runner budget only needs to outlast load, so give it real
-// headroom (hooks included).
+// Real-I/O suite (Postgres round-trips for the DB-poll path): under
+// full-suite load the shared Postgres + scheduler can starve a beforeAll
+// past bun's 5s default. Timeliness is asserted by the wait constants
+// below — the test-runner budget only needs to outlast load, so give it
+// real headroom (hooks included).
 setDefaultTimeout(TEST_DB_HOOK_TIMEOUT);
 
 // Test timeout budgets derived from `wait.ts`'s own constants so a
@@ -91,9 +98,11 @@ beforeAll(async () => {
     .returning();
   otherConnectorId = c2!.id;
 
-  // Keep this suite off the module-global listener. The full release
-  // gate runs files concurrently, and shared listener start/stop races
-  // can strand a LISTEN client long enough to trip hook timeouts.
+  // A dedicated, UNSTARTED listener: `waitForOAuthCredential` only calls
+  // `.on()`/`.off()`, which delegate to this `emitter`, so the wait's
+  // event path runs without a live LISTEN connection. Not starting it is
+  // what keeps this suite off the shared-Postgres connection budget and
+  // out of the 120s hook-timeout flake.
   emitter = new PubSubEmitter();
   listener = new PubSubListener({
     connectionString: ctx.url,
@@ -102,11 +111,9 @@ beforeAll(async () => {
     listenerId: "oauth-wait-test",
     emitter,
   });
-  await listener.start();
 });
 
 afterAll(async () => {
-  await listener.stop();
   await ctx.cleanup();
 });
 
