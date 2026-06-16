@@ -33,6 +33,7 @@ import {
   type CallStep,
   type LoopStep,
   type ParallelStep,
+  type RequestStep,
   type StepDef,
   type WorkflowDef,
   WorkflowDefSchema,
@@ -61,6 +62,7 @@ import {
   markExecutionRunning,
 } from "./state.ts";
 import { runStep } from "./step-runner.ts";
+import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 import { MAX_CALL_DEPTH, WORKFLOW_TIMEOUT_DEFAULT_MS } from "./timeouts.ts";
 import type {
   ExecutionStatus,
@@ -73,6 +75,39 @@ import type {
 
 export { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 export type { ScopeEnvelope } from "./engine/envelope.ts";
+
+/** Default upper bound on concurrent `for_each` iterations when the
+ *  engine auto-selects parallelism (read-classified request bodies).
+ *  Kept modest so an unattended fan-out cannot stampede a target API
+ *  past its rate budget — the per-iteration 429/Retry-After path still
+ *  applies on top. Authors opt into a higher bound via
+ *  `step.for_each_concurrency`. */
+const DEFAULT_FOR_EACH_CONCURRENCY = 8;
+
+/**
+ * Resolve how many `for_each` iterations may run concurrently.
+ *
+ *   - explicit `step.for_each_concurrency` (>= 1) always wins, clamped
+ *     to the item count.
+ *   - otherwise auto-select from the step's side-effect class: a
+ *     READ-classified `request` body fans out at the default bound;
+ *     write-classified requests and every non-request body (transform,
+ *     …) stay strictly sequential (1).
+ *
+ * Reuses {@link classifyRequestStepSideEffects} — the single seam that
+ * already owns read/write knowledge for HTTP/GraphQL/SQL/S3 plus the
+ * author's `side_effects` override — rather than re-deriving a
+ * method/keyword list here.
+ */
+export function resolveForEachConcurrency(step: StepDef, itemCount: number): number {
+  if (itemCount <= 1) return 1;
+  const explicit = (step as { for_each_concurrency?: number }).for_each_concurrency;
+  if (explicit != null && explicit >= 1) return Math.min(explicit, itemCount);
+  if (step.kind === "request" && classifyRequestStepSideEffects(step as RequestStep) === "read") {
+    return Math.min(itemCount, DEFAULT_FOR_EACH_CONCURRENCY);
+  }
+  return 1;
+}
 
 /**
  * Hold-writes (Fix G): find the first DAG dependency of `stepId` whose
@@ -517,14 +552,19 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         });
         continue;
       }
-      // kind === "collection" — iterate.
+      // kind === "collection" — iterate. Iterations are independent:
+      // each binds $item/$loop_index off the PARENT scope via
+      // buildLoopChildScope, mutates only its own child scope, and
+      // contributes one entry to a fixed result slot. That independence
+      // lets a read-classified fan-out run with bounded concurrency
+      // (resolveForEachConcurrency) while write/transform bodies stay
+      // strictly sequential. Result order is preserved regardless —
+      // every iteration writes its own index, never appends.
       const items = collectionResult.items;
-      const iterationResults: unknown[] = [];
-      const iterationHeldIds = new Set<string>();
-      for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
-        if (signal.aborted) break;
+      const slots: (Record<string, unknown> | undefined)[] = new Array(items.length);
+
+      const runIteration = async (itemIdx: number): Promise<void> => {
         const item = items[itemIdx];
-        // Build iteration scope: parent scope + $item + $loop_index.
         // Pass a no-item_var loopStep shape so buildLoopChildScope only
         // binds the canonical $item + $loop_index — no legacy alias.
         const childScope = buildLoopChildScope({}, scope, item, itemIdx);
@@ -536,13 +576,12 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           kind: step.kind,
         });
         if (opts.hold_writes) {
-          const heldDep = findHeldDependency(
-            dag,
-            step.id,
-            (sid) => iterationHeldIds.has(sid) || heldOrSkippedStepIds.has(sid),
-          );
+          // The held decision is iteration-invariant — it depends only on
+          // the global held/skipped set, not on sibling iterations — so
+          // each iteration reads it read-only, the same contract parallel
+          // branches use for `heldOrSkippedStepIds`.
+          const heldDep = findHeldDependency(dag, step.id, (sid) => heldOrSkippedStepIds.has(sid));
           if (heldDep) {
-            iterationHeldIds.add(step.id);
             const skippedEnv = wrapEnvelope({
               data: null,
               duration_ms: 0,
@@ -551,8 +590,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                 message: `skipped (depends on held step "${heldDep}")`,
               },
             });
-            iterationResults.push({ [step.id]: skippedEnv });
-            continue;
+            slots[itemIdx] = { [step.id]: skippedEnv };
+            return;
           }
         }
         const iterCtx: StepRunContext = {
@@ -573,15 +612,41 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         });
         // Retain $item + $loop_index on the scope for downstream
         // string/JSONata refs within this iteration. The child scope
-        // already has them; the parent scope's step.id key will carry
-        // the aggregate after all iterations complete.
+        // already has them; the parent scope's step.id key carries the
+        // aggregate after all iterations complete.
         childScope[step.id] = envelopeFor(iterOutcome);
-        const accumEnv = bodyEnvelopeForLoopAccumulator(iterOutcome);
-        iterationResults.push({ [step.id]: accumEnv });
-        if (iterOutcome.result.held) {
-          iterationHeldIds.add(step.id);
+        slots[itemIdx] = { [step.id]: bodyEnvelopeForLoopAccumulator(iterOutcome) };
+      };
+
+      const concurrency = resolveForEachConcurrency(step, items.length);
+      if (concurrency <= 1) {
+        // Sequential: honour cooperative cancellation between iterations,
+        // exactly as before.
+        for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+          if (signal.aborted) break;
+          await runIteration(itemIdx);
         }
+      } else {
+        // Bounded-parallel: a fixed worker set pulls the next index off a
+        // shared cursor, so at most `concurrency` iterations are in
+        // flight at once. A mid-flight abort stops claiming new indices;
+        // slots never claimed stay empty and compact out below.
+        let cursor = 0;
+        const worker = async (): Promise<void> => {
+          for (;;) {
+            if (signal.aborted) return;
+            const myIdx = cursor++;
+            if (myIdx >= items.length) return;
+            await runIteration(myIdx);
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+        );
       }
+      // Compact away any slots left empty by an abort; completed
+      // iterations keep their original relative order.
+      const iterationResults: unknown[] = slots.filter((s) => s !== undefined);
       scope[step.id] = wrapEnvelope({
         data: iterationResults,
         duration_ms: Date.now() - forEachStart,

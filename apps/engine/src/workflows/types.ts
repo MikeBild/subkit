@@ -197,6 +197,19 @@ const baseStep = {
    * (JSONPath-lite, handled by applySelector in step-runner.ts).
    */
   for_each: z.string().optional(),
+  /**
+   * Bounded parallelism for `for_each` iterations. When set (>= 1), at
+   * most this many iterations run concurrently; iteration result order
+   * is preserved regardless. When unset, the engine auto-selects from
+   * the step's side-effect class: a READ-classified `request` body
+   * (HTTP GET/HEAD/OPTIONS, GraphQL query, SQL SELECT-only, S3
+   * GET/HEAD/LIST, or an explicit `side_effects: "read"`) fans out at
+   * the default bound; write-classified requests and non-request bodies
+   * (transform/…) stay sequential. An explicit value always wins — set
+   * `1` to force sequential, or a higher bound to parallelize a
+   * write fan-out the author knows is safe (e.g. independent POSTs).
+   */
+  for_each_concurrency: z.number().int().min(1).optional(),
 };
 
 export const RequestStepSchema = z

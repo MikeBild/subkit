@@ -18,7 +18,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { executionSteps } from "../../db/schema/index.ts";
-import { runExecution } from "../engine.ts";
+import type { RequestStep, StepDef, TransformStep } from "../../workflows/types.ts";
+import { resolveForEachConcurrency, runExecution } from "../engine.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 
 let ctx: EngineTestCtx;
@@ -291,5 +292,99 @@ describe("for_each · container execution_steps row finalization", () => {
     const containerRow = rows.find((r) => r.step_key === "proc");
     expect(containerRow).toBeDefined();
     expect(containerRow?.status).toBe("succeeded");
+  });
+});
+
+describe("resolveForEachConcurrency · auto-selection from side-effect class", () => {
+  const get = (over: Record<string, unknown> = {}): StepDef =>
+    ({ id: "s", kind: "request", method: "GET", ...over }) as RequestStep as StepDef;
+  const post = (over: Record<string, unknown> = {}): StepDef =>
+    ({ id: "s", kind: "request", method: "POST", ...over }) as RequestStep as StepDef;
+  const transform = (over: Record<string, unknown> = {}): StepDef =>
+    ({
+      id: "s",
+      kind: "transform",
+      language: "javascript",
+      expression: "return 1;",
+      ...over,
+    }) as TransformStep as StepDef;
+
+  test("read-classified request fans out at the default bound, clamped to item count", () => {
+    expect(resolveForEachConcurrency(get(), 50)).toBe(8);
+    expect(resolveForEachConcurrency(get(), 5)).toBe(5);
+  });
+
+  test("write-classified request stays sequential", () => {
+    expect(resolveForEachConcurrency(post(), 50)).toBe(1);
+  });
+
+  test("non-request (transform) body stays sequential", () => {
+    expect(resolveForEachConcurrency(transform(), 50)).toBe(1);
+  });
+
+  test("explicit side_effects override flips the class", () => {
+    // A GET the author marks as a write must NOT auto-parallelize…
+    expect(resolveForEachConcurrency(get({ side_effects: "write" }), 50)).toBe(1);
+    // …and a POST marked as a read (a search endpoint) may.
+    expect(resolveForEachConcurrency(post({ side_effects: "read" }), 50)).toBe(8);
+  });
+
+  test("explicit for_each_concurrency always wins, clamped to item count", () => {
+    expect(resolveForEachConcurrency(get({ for_each_concurrency: 3 }), 50)).toBe(3);
+    expect(resolveForEachConcurrency(transform({ for_each_concurrency: 4 }), 50)).toBe(4);
+    expect(resolveForEachConcurrency(post({ for_each_concurrency: 100 }), 50)).toBe(50);
+    // `1` is the author's escape hatch back to strict sequential.
+    expect(resolveForEachConcurrency(get({ for_each_concurrency: 1 }), 50)).toBe(1);
+  });
+
+  test("single-item (or empty) collections never parallelize", () => {
+    expect(resolveForEachConcurrency(get(), 1)).toBe(1);
+    expect(resolveForEachConcurrency(get(), 0)).toBe(1);
+  });
+});
+
+describe("for_each · bounded-parallel iteration preserves order", () => {
+  // A transform body forced parallel via explicit `for_each_concurrency`
+  // exercises the worker-pool path with deterministic compute: the slot
+  // mechanism must reconstruct iteration order independent of completion
+  // order. (Transforms are normally sequential by default; the explicit
+  // bound opts this one into the parallel branch.)
+  test("explicit concurrency over a transform body keeps results index-ordered", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "for-each-parallel-order",
+      steps: [
+        {
+          id: "src",
+          kind: "transform",
+          language: "javascript",
+          expression: "return [10, 11, 12, 13, 14, 15];",
+        },
+        {
+          id: "proc",
+          kind: "transform",
+          language: "javascript",
+          // Return the index so order is directly assertable downstream.
+          expression: "return input.scope.$loop_index;",
+          for_each: "(sourceData) => sourceData.src.data",
+          for_each_concurrency: 4,
+        },
+        {
+          id: "collect",
+          kind: "transform",
+          language: "javascript",
+          expression: "return (input.scope.proc.data || []).map((e) => e.proc.data);",
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("succeeded");
+    // Slots reconstruct [0,1,2,3,4,5] regardless of which worker finished
+    // first — order is a property of the index, not the schedule.
+    expect(result.output).toEqual([0, 1, 2, 3, 4, 5]);
   });
 });

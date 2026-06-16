@@ -352,16 +352,25 @@ export async function runAuthoringPipeline(
       unresolved_connectors: unresolved,
     };
   }
-  const samples = await loadProbeShapeExamples(
-    ctx.tenant_id,
-    connectors.map((c) => c.id),
-    ctx.db,
-  );
+  // GROUND fetches are independent reads — the probe-shape examples and
+  // every per-connector docs excerpt run concurrently rather than one
+  // connector at a time (a 5-connector goal paid 5× the slowest docs
+  // search serially). Order is reconstructed deterministically below, so
+  // the generation prompt is byte-identical to the sequential version.
+  const [samples, docExcerpts] = await Promise.all([
+    loadProbeShapeExamples(
+      ctx.tenant_id,
+      connectors.map((c) => c.id),
+      ctx.db,
+    ),
+    Promise.all(
+      connectors.map(async (c) => ({ id: c.id, excerpt: await loadDocsExcerpt(ctx, goal, c) })),
+    ),
+  ]);
   const samplesSection = formatProbeShapeExamples(samples);
   const docsByConnector = new Map<string, string[]>();
-  for (const c of connectors) {
-    const excerpt = await loadDocsExcerpt(ctx, goal, c);
-    if (excerpt.length > 0) docsByConnector.set(c.id, excerpt);
+  for (const { id, excerpt } of docExcerpts) {
+    if (excerpt.length > 0) docsByConnector.set(id, excerpt);
   }
 
   // ---------------------------------------------------- GENERATE/EVALUATE

@@ -757,34 +757,42 @@ export async function runRecordedEval(
         threshold: MAX_REPAIR_FINDINGS,
       });
     } else {
-      let spent = 0;
-      for (const finding of repairable) {
-        if (spent >= MAX_PIPELINE_REPAIRS) break;
-        const site = siteByName.get(finding.site);
-        if (!site) continue;
-        spent++;
-        const refs = referencedStepIds(site, stepIds);
-        // `empty_result` findings only exist for sites that were
-        // evaluated, so their refs are recorded by construction;
-        // compile-error sites get the scope when it happens to exist.
-        const hasRecordedScope = refs.length > 0 && refs.every((ref) => ref in recordedScope);
-        finding.repair = await repairTransformExpression({
-          expression: site.expression,
-          language: site.language,
-          finding: {
-            kind: finding.status,
-            message: finding.message ?? "",
-            ...(finding.position !== undefined ? { position: finding.position } : {}),
-          },
-          scopeSample: hasRecordedScope ? recordedScope : null,
-          input: evidence.input ?? null,
-          pathCandidates: finding.path_candidates ?? [],
-          site: finding.site,
-          tenant_id: options.repair.tenant_id,
-          ...(options.repair.db ? { db: options.repair.db } : {}),
-          ...(options.repair.signal ? { signal: options.repair.signal } : {}),
-        });
-      }
+      // The ≤ MAX_PIPELINE_REPAIRS resolvable sites repair concurrently.
+      // Each `invoke()` is independent and mutates only its own finding;
+      // every call threads the shared deadline `signal`, so a deadline
+      // hit still aborts the whole fan-out — but the wall-clock is one
+      // slow-model call, not the serial sum of three.
+      const repairCtx = options.repair;
+      const targets = repairable
+        .map((finding) => ({ finding, site: siteByName.get(finding.site) }))
+        .filter((t) => t.site !== undefined)
+        .slice(0, MAX_PIPELINE_REPAIRS);
+      await Promise.all(
+        targets.map(async ({ finding, site }) => {
+          const resolved = site!;
+          const refs = referencedStepIds(resolved, stepIds);
+          // `empty_result` findings only exist for sites that were
+          // evaluated, so their refs are recorded by construction;
+          // compile-error sites get the scope when it happens to exist.
+          const hasRecordedScope = refs.length > 0 && refs.every((ref) => ref in recordedScope);
+          finding.repair = await repairTransformExpression({
+            expression: resolved.expression,
+            language: resolved.language,
+            finding: {
+              kind: finding.status,
+              message: finding.message ?? "",
+              ...(finding.position !== undefined ? { position: finding.position } : {}),
+            },
+            scopeSample: hasRecordedScope ? recordedScope : null,
+            input: evidence.input ?? null,
+            pathCandidates: finding.path_candidates ?? [],
+            site: finding.site,
+            tenant_id: repairCtx.tenant_id,
+            ...(repairCtx.db ? { db: repairCtx.db } : {}),
+            ...(repairCtx.signal ? { signal: repairCtx.signal } : {}),
+          });
+        }),
+      );
     }
   }
 
