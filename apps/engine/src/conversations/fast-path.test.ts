@@ -157,6 +157,46 @@ describe("tryFastPath — list intents (German)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Multi-catalog enumeration — "list X and Y and Z"
+// ---------------------------------------------------------------------------
+
+describe("tryFastPath — multi-catalog list intents", () => {
+  test("'list my connectors and workflows and knowledge sources' renders all three deterministically", async () => {
+    const result = await tryFastPath(
+      makeParams("list my connectors and workflows and knowledge sources"),
+    );
+    expect(result).not.toBeNull();
+    expect(result?.fast_path_tool).toBe("list_catalogs");
+    expect(result?.status).toBe("active");
+    // No LLM turn — so it cannot leak tool-call markup for a catalog the
+    // snapshot lacked (the reported bug).
+    expect(getMockProvider().calls.length).toBe(0);
+    const reply = result?.assistant_text ?? "";
+    expect(reply.toLowerCase()).toContain("connector");
+    expect(reply.toLowerCase()).toContain("workflow");
+    expect(reply.toLowerCase()).toContain("knowledge");
+  });
+
+  test("'list my workflows and connectors' (informal, two catalogs) hits the fast path", async () => {
+    const result = await tryFastPath(makeParams("list my workflows and connectors"));
+    expect(result?.fast_path_tool).toBe("list_catalogs");
+    expect(getMockProvider().calls.length).toBe(0);
+  });
+
+  test("a single catalog still routes to its own renderer, not list_catalogs", async () => {
+    const result = await tryFastPath(makeParams("list my workflows"));
+    expect(result?.fast_path_tool).toBe("list_workflows");
+  });
+
+  test("multi-catalog with extra prose falls through to the LLM (null)", async () => {
+    const result = await tryFastPath(
+      makeParams("list my workflows and connectors and explain them"),
+    );
+    expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // run <slug> — unknown slug falls through (returns null)
 // ---------------------------------------------------------------------------
 

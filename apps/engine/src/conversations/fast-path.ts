@@ -119,6 +119,61 @@ function matchListIntent(text: string): keyof typeof LIST_RES | null {
   return null;
 }
 
+// Multi-catalog enumeration: "list my connectors and workflows and
+// knowledge sources". The single-catalog regexes above are strictly
+// anchored, so a combined ask misses them and would otherwise fall to
+// the LLM — which, with tools withheld for enumeration, has leaked
+// tool-call markup as text. The matcher stays inside the fast-path
+// discipline: a list verb followed by ONLY catalog nouns, articles, and
+// connectors (and / , / und / & / +). Any other token fails `^…$` and
+// falls through to the LLM.
+const CATALOG_NOUN_RES: Array<[keyof typeof LIST_RES, RegExp]> = [
+  ["workflows", /\bworkflows?\b/i],
+  ["connectors", /\bconnectors?\b/i],
+  ["executions", /\b(?:executions?|runs?)\b/i],
+  ["schedules", /\bschedules?\b/i],
+  ["knowledge_sources", /\b(?:knowledge[\s-]?sources?|knowledges?|wissensquellen)\b/i],
+];
+
+const MULTI_CATALOG_RE =
+  /^(?:list|show|display|view|get|zeige|liste|welche)\s+(?:my|all|the|our|meine|alle|unsere|and|und|sowie|plus|also|,|&|\+|\s|workflows?|connectors?|executions?|runs?|schedules?|knowledge[\s-]?sources?|knowledges?|wissensquellen)+\s*\??$/i;
+
+/**
+ * Returns the ordered, de-duplicated set of catalogs named in a pure
+ * multi-catalog enumeration (≥2 distinct), or null when the message is
+ * not one. Single-catalog asks are left to `matchListIntent`.
+ */
+function matchMultiCatalog(text: string): Array<keyof typeof LIST_RES> | null {
+  if (!MULTI_CATALOG_RE.test(text)) return null;
+  const kinds: Array<keyof typeof LIST_RES> = [];
+  for (const [kind, re] of CATALOG_NOUN_RES) {
+    if (re.test(text) && !kinds.includes(kind)) kinds.push(kind);
+  }
+  return kinds.length >= 2 ? kinds : null;
+}
+
+/** Map a catalog kind to its deterministic renderer. Shared by the
+ *  single- and multi-catalog branches so they never drift. */
+function rendererFor(kind: keyof typeof LIST_RES): (p: FastPathParams) => Promise<RenderPayload> {
+  switch (kind) {
+    case "workflows":
+      return renderWorkflowsList;
+    case "connectors":
+      return renderConnectorsList;
+    case "executions":
+      return renderExecutionsList;
+    case "schedules":
+      return renderSchedulesList;
+    case "knowledge_sources":
+      return renderKnowledgeSourcesList;
+  }
+}
+
+/** Canonical conversation-tool slug for a catalog kind (observability). */
+function listToolFor(kind: keyof typeof LIST_RES): string {
+  return kind === "knowledge_sources" ? "list_knowledge_sources" : `list_${kind}`;
+}
+
 // HTTP routes gate the matching list endpoints on these permissions
 // (see `apps/engine/src/http/routes/workflows.ts:267`,
 // `connectors/index.ts:36`, `executions/list.ts`,
@@ -393,7 +448,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
   // List intents — always emit a deterministic answer.
   const listKind = matchListIntent(text);
   if (listKind) {
-    const tool = listKind === "knowledge_sources" ? "list_knowledge_sources" : `list_${listKind}`;
+    const tool = listToolFor(listKind);
     // Mirror the HTTP route's `*:read` gate so a principal who lacks
     // the corresponding permission cannot enumerate via chat what the
     // HTTP layer would deny. The deny is deterministic (no fall-through
@@ -435,17 +490,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         };
       }
     }
-    const renderer =
-      listKind === "workflows"
-        ? renderWorkflowsList
-        : listKind === "connectors"
-          ? renderConnectorsList
-          : listKind === "executions"
-            ? renderExecutionsList
-            : listKind === "schedules"
-              ? renderSchedulesList
-              : renderKnowledgeSourcesList;
-    const payload = await renderer(p);
+    const payload = await rendererFor(listKind)(p);
     const persisted = await persistFastPathTurn(
       p,
       tool,
@@ -472,6 +517,66 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       events: persisted.events,
       fast_path_tool: tool,
       assistant_text: payload.reply,
+    };
+  }
+
+  // Multi-catalog enumeration ("connectors and workflows and knowledge
+  // sources") — render every named catalog deterministically. Each is
+  // gated on its own `*:read` permission (mirroring the single-catalog
+  // branch); a denied catalog renders its deny line + audit row while
+  // the rest still render. This keeps the whole enumeration off the LLM,
+  // so it cannot leak tool-call markup for a catalog the snapshot lacked.
+  const multiKinds = matchMultiCatalog(text);
+  if (multiKinds) {
+    const sections: string[] = [];
+    const dataByKind: Record<string, unknown> = {};
+    let anyOk = false;
+    for (const kind of multiKinds) {
+      const permission = READ_PERMISSION_BY_LIST[kind];
+      const decision = await can(p.db, {
+        tenant_id: p.tenant_id,
+        principal: p.principal,
+        permission,
+      });
+      if (!decision.allow) {
+        const reason = decision.reason ?? "permission_denied";
+        await auditPolicyDenied(p, permission, listToolFor(kind), reason);
+        sections.push(`Permission denied: ${permission}.`);
+        dataByKind[kind] = { ok: false, denied: true, permission, reason };
+        continue;
+      }
+      const payload = await rendererFor(kind)(p);
+      sections.push(payload.reply);
+      dataByKind[kind] = { ok: payload.ok, ...payload.data };
+      anyOk = anyOk || payload.ok;
+    }
+    const reply = sections.join("\n\n");
+    const persisted = await persistFastPathTurn(
+      p,
+      "list_catalogs",
+      { catalogs: multiKinds },
+      { ok: anyOk, catalogs: dataByKind, skipped_llm: true },
+      reply,
+    );
+    recordConversationToolCall({
+      category: "tenant_read",
+      tool: "list_catalogs",
+      outcome: anyOk ? "ok" : "error",
+      duration_ms: 0,
+    });
+    logger.info({
+      module: "conversation",
+      action: "conversation.fast_path",
+      msg: "fast-path handled multi-catalog list intent",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      catalogs: multiKinds,
+    });
+    return {
+      status: "active",
+      events: persisted.events,
+      fast_path_tool: "list_catalogs",
+      assistant_text: reply,
     };
   }
 

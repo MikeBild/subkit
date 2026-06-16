@@ -95,4 +95,26 @@ describe("filterSuggestion", () => {
     expect(filterSuggestion("Here's what I think")).toBe("claude_voice");
     expect(filterSuggestion("You should commit")).toBe("claude_voice");
   });
+
+  test("rejects enumerate-a-resource suggestions for non-existent catalogs", () => {
+    // The reported bug: after "list my workflows / skills / …" the model
+    // extrapolates a plausible but non-existent next catalog.
+    expect(filterSuggestion("list my agents")).toBe("unknown_catalog");
+    expect(filterSuggestion("show my pipelines")).toBe("unknown_catalog");
+    expect(filterSuggestion("list all bots")).toBe("unknown_catalog");
+  });
+
+  test("passes enumerate-a-resource suggestions for real catalogs", () => {
+    expect(filterSuggestion("list my workflows")).toBeNull();
+    expect(filterSuggestion("show my connectors")).toBeNull();
+    expect(filterSuggestion("list my knowledge sources")).toBeNull();
+    expect(filterSuggestion("show all skills")).toBeNull();
+    expect(filterSuggestion("list the recent executions")).toBeNull();
+  });
+
+  test("does not over-filter free-form suggestions that start with a list verb", () => {
+    // No "my/all/the/our" possessive → not the enumerate-a-resource shape.
+    expect(filterSuggestion("show me the diff")).toBeNull();
+    expect(filterSuggestion("list of changes")).toBeNull();
+  });
 });

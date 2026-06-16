@@ -30,6 +30,7 @@ import { placeholderScanner } from "./scanners/placeholder.ts";
 import { toolScanner } from "./scanners/tool.ts";
 import { urlScanner } from "./scanners/url.ts";
 import { vendorRecipeScanner } from "./scanners/vendor-recipe.ts";
+import { stripLeakedToolCallMarkup } from "./strip-tool-call-markup.ts";
 import type { GuardMode, GuardResult, Scanner, ScannerContext, Violation } from "./types.ts";
 
 export type { GuardMode, GuardResult, Scanner, ScannerContext, Violation };
@@ -165,6 +166,20 @@ export function runOutputGuard(
   }
   for (const s of secretSpans) {
     recordLlmOutputViolation({ kind: `secret.${s.kind}`, mode });
+  }
+
+  // Tool-call-markup pre-pass — NOT a scanner, same rationale as the
+  // secret pre-pass above. Leaked `<function_calls>`/`<invoke name=…>`
+  // syntax in the text channel is a malformed tool call that must never
+  // reach the transcript, in every mode (including `off` and `hard`).
+  // Recorded as a violation so the misbehaviour is observable; stripped
+  // before scanners run so their spans stay aligned with the returned text.
+  const toolStrip = stripLeakedToolCallMarkup(scanText);
+  if (toolStrip.stripped > 0) {
+    scanText = toolStrip.text;
+    for (let i = 0; i < toolStrip.stripped; i++) {
+      recordLlmOutputViolation({ kind: "tool.leaked_markup", mode });
+    }
   }
 
   if (mode === "off") {

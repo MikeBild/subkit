@@ -22,7 +22,22 @@ export type FilterReason =
   | "multiple_sentences"
   | "has_formatting"
   | "evaluative"
-  | "claude_voice";
+  | "claude_voice"
+  | "unknown_catalog";
+
+// The resource catalogs `sk` can actually enumerate. The suggestion
+// model, after a run of "list my X / list my Y", tends to extrapolate a
+// plausible-sounding next catalog that does not exist ("list my agents",
+// "list my pipelines"). A bare "list/show my <noun>" suggestion is only
+// valid when <noun> names a real catalog — otherwise we'd lead the user
+// straight into a "subkit has no such thing" reply.
+const CATALOG_NOUN_RE =
+  /\b(workflows?|connectors?|executions?|runs?|schedules?|skills?|knowledge|knowledges?|wissensquellen|credentials?|patch[\s-]?candidates?|api[\s-]?keys?|roles?|users?|tenants?|knowledge[\s-]?sources?)\b/i;
+
+// "(list|show|display|view|get) (my|all|the|our) …" — the bare
+// enumerate-a-resource shape. Free-form suggestions ("run the tests",
+// "commit this") never match this and pass through untouched.
+const ENUMERATE_RESOURCE_RE = /^(?:list|show|display|view|get)\s+(?:my|all|the|our)\b/i;
 
 const ALLOWED_SINGLE_WORDS = new Set<string>([
   // Affirmatives
@@ -88,6 +103,13 @@ export function filterSuggestion(suggestion: string | null | undefined): FilterR
   // Prefixed label like "Suggestion: run the tests" — the model is
   // labeling its output instead of just emitting the suggestion.
   if (/^\w+:\s/.test(trimmed)) return "prefixed_label";
+
+  // "list my agents" / "show my pipelines" — an enumerate-a-resource
+  // suggestion whose noun is not a catalog sk actually has. Drop it so
+  // the predictor never leads the user into a dead-end concept.
+  if (ENUMERATE_RESOURCE_RE.test(trimmed) && !CATALOG_NOUN_RE.test(trimmed)) {
+    return "unknown_catalog";
+  }
 
   if (wordCount < 2) {
     if (trimmed.startsWith("/")) {
