@@ -154,6 +154,15 @@ export const patchCandidates = pgTable(
     workflow_id: uuid("workflow_id")
       .notNull()
       .references(() => workflows.id, { onDelete: "cascade" }),
+    // The drift signal's anchor endpoint, when it has one. These mirror
+    // `signal.connector_id` / `signal.endpoint_key` and exist so the
+    // proactive scan can find an already-active candidate for the same
+    // endpoint (status in proposed|applied) and refresh-or-skip instead
+    // of inserting a fresh row every hour — the patch_candidates flood
+    // fix. Null for workflow-scoped signals (stdlib_version_drift,
+    // validation_failed) which carry no endpoint anchor.
+    connector_id: uuid("connector_id").references(() => connectors.id, { onDelete: "cascade" }),
+    endpoint_key: text("endpoint_key"),
     diff: jsonb("diff").notNull(),
     classification: patchClassificationEnum("classification").notNull(),
     fixture_id: uuid("fixture_id"),
@@ -172,6 +181,15 @@ export const patchCandidates = pgTable(
     // Covers the connector-pattern detector scan (tenant_id, status='applied',
     // created_at >= cutoff) with no workflow_id — see migration 0036.
     index("patch_candidates_tenant_status_created_idx").on(t.tenant_id, t.status, t.created_at),
+    // Covers the proactive refresh-or-skip lookup: an active candidate for
+    // the same (tenant, workflow, connector, endpoint) — see migration 0050.
+    index("patch_candidates_endpoint_idx").on(
+      t.tenant_id,
+      t.workflow_id,
+      t.connector_id,
+      t.endpoint_key,
+      t.status,
+    ),
   ],
 );
 

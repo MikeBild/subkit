@@ -67,6 +67,7 @@ import sql0046KnowledgeSourceLastError from "./0046_knowledge_source_last_error.
 import sql0047ExecutionsInput from "./0047_executions_input.sql" with { type: "text" };
 import sql0048ConnectorOauthStartGrants from "./0048_connector_oauth_start_grants.sql" with { type: "text" };
 import sql0049DataMigrations from "./0049_data_migrations.sql" with { type: "text" };
+import sql0050PatchCandidatesEndpointKey from "./0050_patch_candidates_endpoint_key.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -141,6 +142,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0047_executions_input": sql0047ExecutionsInput,
   "0048_connector_oauth_start_grants": sql0048ConnectorOauthStartGrants,
   "0049_data_migrations": sql0049DataMigrations,
+  "0050_patch_candidates_endpoint_key": sql0050PatchCandidatesEndpointKey,
 };
 
 const journal = journalMeta as unknown as Journal;

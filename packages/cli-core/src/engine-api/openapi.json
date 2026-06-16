@@ -10629,6 +10629,150 @@
           }
         }
       },
+      "OperatorHealthDigest": {
+        "type": "object",
+        "properties": {
+          "generated_at": {
+            "type": "string"
+          },
+          "window_hours": {
+            "type": "integer"
+          },
+          "headline": {
+            "type": "string"
+          },
+          "failure_groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperatorFailureGroup"
+            }
+          },
+          "patch_candidates": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "integer"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OperatorDigestPatch"
+                }
+              }
+            },
+            "required": [
+              "pending",
+              "items"
+            ]
+          },
+          "rendered": {
+            "type": "string"
+          },
+          "all_clear": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generated_at",
+          "window_hours",
+          "headline",
+          "failure_groups",
+          "patch_candidates",
+          "rendered",
+          "all_clear"
+        ]
+      },
+      "OperatorFailureGroup": {
+        "type": "object",
+        "properties": {
+          "signature": {
+            "type": "string"
+          },
+          "workflow_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "workflow_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "step_key": {
+            "type": "string",
+            "nullable": true
+          },
+          "error_code": {
+            "type": "string",
+            "nullable": true
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "authoring",
+              "manual",
+              "scheduled",
+              "mixed"
+            ]
+          },
+          "count": {
+            "type": "integer"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "cause": {
+            "type": "string"
+          },
+          "guidance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "signature",
+          "workflow_id",
+          "workflow_name",
+          "step_key",
+          "error_code",
+          "origin",
+          "count",
+          "last_seen",
+          "cause",
+          "guidance"
+        ]
+      },
+      "OperatorDigestPatch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workflow_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "workflow_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "safe",
+              "unsafe"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_id",
+          "workflow_name",
+          "classification",
+          "summary"
+        ]
+      },
       "SelfHealingScanResponse": {
         "type": "object",
         "properties": {
@@ -21675,6 +21819,45 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operator/health-digest": {
+      "get": {
+        "tags": [
+          "operator"
+        ],
+        "summary": "Operator health digest",
+        "description": "Deterministic, LLM-free summary of failed runs (grouped by root cause, tagged by origin) and self-healing fixes awaiting review, over a recent window.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 720
+            },
+            "required": false,
+            "name": "window_hours",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorHealthDigest"
                 }
               }
             }

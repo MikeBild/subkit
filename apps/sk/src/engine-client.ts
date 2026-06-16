@@ -178,6 +178,37 @@ interface StatsEnvelope {
   truncated_at?: string;
 }
 
+// Operator health digest — mirrors apps/engine/src/operator/health-digest.ts.
+export type FailureOrigin = "authoring" | "manual" | "scheduled" | "mixed";
+export interface DigestFailureGroup {
+  signature: string;
+  workflow_id: string | null;
+  workflow_name: string | null;
+  step_key: string | null;
+  error_code: string | null;
+  origin: FailureOrigin;
+  count: number;
+  last_seen: string;
+  cause: string;
+  guidance: string | null;
+}
+export interface DigestPatch {
+  id: string;
+  workflow_id: string | null;
+  workflow_name: string | null;
+  classification: "safe" | "unsafe";
+  summary: string;
+}
+export interface OperatorHealthDigest {
+  generated_at: string;
+  window_hours: number;
+  headline: string;
+  failure_groups: DigestFailureGroup[];
+  patch_candidates: { pending: number; items: DigestPatch[] };
+  rendered: string;
+  all_clear: boolean;
+}
+
 export interface StatsExecutionsResponse extends StatsEnvelope {
   groups: Array<{
     key: Record<string, string>;
@@ -2084,6 +2115,21 @@ export class EngineClient {
     body: { input?: unknown; async?: boolean } = {},
   ): Promise<RunExecutionResponse> {
     return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/rerun`, body);
+  }
+
+  // -------------------- Operator --------------------
+  /**
+   * Deterministic operator health digest — failed runs grouped by root
+   * cause + tagged by origin, plus pending self-healing fixes. The REPL
+   * renders this as a colored first assistant turn at startup.
+   */
+  getOperatorHealthDigest(query: { window_hours?: number } = {}): Promise<OperatorHealthDigest> {
+    return this.request(
+      "GET",
+      "/v1/operator/health-digest",
+      undefined,
+      query,
+    ) as Promise<OperatorHealthDigest>;
   }
 
   // -------------------- Patch Candidates --------------------

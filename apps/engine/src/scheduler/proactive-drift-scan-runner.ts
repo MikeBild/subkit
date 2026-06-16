@@ -28,8 +28,10 @@ import { processDriftSignal, scanForDrift } from "../self-healing/index.ts";
  * Execute one proactive drift scan for a single tenant.
  *
  * Inserts a `self_healing_scans` row in `status='running'`, runs the
- * scanner, drives `processDriftSignal({ allowAutoApply: false })` on
- * each emitted signal, updates the row with counters + final status,
+ * scanner, drives `processDriftSignal({ allowAutoApply: true })` on
+ * each emitted signal (the dedup guard + policy keep unsafe patches
+ * parked and already-healed endpoints untouched), updates the row with
+ * counters + final status,
  * emits the SELF_HEALING_SCAN_TRIGGERED and SELF_HEALING_SCAN_COMPLETED
  * audit rows, and records the Prometheus metrics.
  *
@@ -111,7 +113,12 @@ export async function runProactiveDriftScanForTenant(
             scan_id,
             repair_input: ctx.repair_input,
           },
-          { allowAutoApply: false },
+          // Auto-apply `safe` rename/widening drift so a clean proactive
+          // signal heals itself instead of parking forever. The policy
+          // still parks anything unsafe, and the endpoint dedup guard in
+          // processDriftSignal stops re-applying an already-healed
+          // endpoint on the next tick.
+          { allowAutoApply: true },
           db,
         );
         candidates_created += 1;

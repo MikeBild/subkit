@@ -7858,6 +7858,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/operator/health-digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Operator health digest
+         * @description Deterministic, LLM-free summary of failed runs (grouped by root cause, tagged by origin) and self-healing fixes awaiting review, over a recent window.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    window_hours?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OperatorHealthDigest"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/self-healing/scans": {
         parameters: {
             query?: never;
@@ -12603,6 +12644,39 @@ export interface components {
         };
         RejectPatchCandidateBody: {
             reason?: string;
+        };
+        OperatorHealthDigest: {
+            generated_at: string;
+            window_hours: number;
+            headline: string;
+            failure_groups: components["schemas"]["OperatorFailureGroup"][];
+            patch_candidates: {
+                pending: number;
+                items: components["schemas"]["OperatorDigestPatch"][];
+            };
+            rendered: string;
+            all_clear: boolean;
+        };
+        OperatorFailureGroup: {
+            signature: string;
+            workflow_id: string | null;
+            workflow_name: string | null;
+            step_key: string | null;
+            error_code: string | null;
+            /** @enum {string} */
+            origin: "authoring" | "manual" | "scheduled" | "mixed";
+            count: number;
+            last_seen: string;
+            cause: string;
+            guidance: string | null;
+        };
+        OperatorDigestPatch: {
+            id: string;
+            workflow_id: string | null;
+            workflow_name: string | null;
+            /** @enum {string} */
+            classification: "safe" | "unsafe";
+            summary: string;
         };
         SelfHealingScanResponse: {
             /** Format: uuid */

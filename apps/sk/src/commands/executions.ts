@@ -18,6 +18,17 @@ const fetchExecutionRows = async (client: EngineClient) => {
   }));
 };
 
+/** Where a run came from, mirroring the engine's operator digest:
+ *  authoring trial-runs and manual test runs are NOT production
+ *  incidents, so the list tags each row honestly. */
+function originOf(row: Record<string, unknown>): string {
+  const sourceKind = typeof row.source_kind === "string" ? row.source_kind : "saved";
+  const reqSource = typeof row.request_source === "string" ? row.request_source : "";
+  if (sourceKind === "draft" || sourceKind === "step") return "authoring";
+  if (reqSource === "scheduler") return "scheduled";
+  return "manual";
+}
+
 /** Compact human-readable byte formatter (matches files.ts / audit). */
 function humanBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
@@ -67,6 +78,10 @@ const listCommand = defineCommand({
   args: {
     limit: { type: "string", description: "Max rows", default: "20" },
     status: { type: "string", description: "Filter by status" },
+    source: {
+      type: "string",
+      description: "Filter by request source (e.g. scheduler, cli, api, mcp, chat)",
+    },
     parent: {
       type: "string",
       description: "Lineage filter: list the reruns spawned from this execution id",
@@ -79,13 +94,13 @@ const listCommand = defineCommand({
     try {
       const query: Record<string, string | number | undefined> = { limit: Number(args.limit) };
       if (args.status) query.status = args.status;
+      if (args.source) query.request_source = String(args.source);
       if (args.parent) query.parent_execution_id = String(args.parent);
       const { items, total } = await client.listExecutions(query);
-      emitList(
-        !!args.json,
-        ["id", "workflow_id", "status", "started_at"],
-        items as Record<string, unknown>[],
-      );
+      // Tag each row by origin so authoring/manual trial-runs are not
+      // mistaken for production incidents.
+      const rows = (items as Record<string, unknown>[]).map((r) => ({ ...r, origin: originOf(r) }));
+      emitList(!!args.json, ["id", "workflow_id", "origin", "status", "started_at"], rows);
       // Executions are an unbounded history — always say how big the
       // filtered set really is and how to page deeper.
       if (!args.json) {
@@ -122,6 +137,17 @@ const getCommand = defineCommand({
       // `$file` ref found anywhere in the execution payload. JSON
       // output stays unchanged so script consumers see no drift.
       if (!args.json) {
+        // A failed execution is useless without the reason — pull the
+        // step errors and print them inline instead of making the
+        // operator run `executions steps … --json | grep`.
+        if (execution.status === "failed") {
+          try {
+            const { items } = await client.executionSteps(id);
+            printFailedStepErrors(items as Record<string, unknown>[]);
+          } catch {
+            /* best-effort: error block is decorative */
+          }
+        }
         await maybePrintOutputFiles(client, execution as Record<string, unknown>);
       }
     } catch (err) {
@@ -148,37 +174,56 @@ const stepsCommand = defineCommand({
       const { items } = await client.executionSteps(id);
       // Flatten request_meta so operators can see, at a glance, which URL
       // was hit with what status, size, retry count, and which auth method
-      // actually applied to the request.
+      // actually applied to the request. The `error` column carries the
+      // failing step's code so the table no longer hides why a run failed.
       const rows = (items as Record<string, unknown>[]).map((s) => {
         const rm = (s.request_meta ?? null) as Record<string, unknown> | null;
         const conn = (rm?.connector ?? null) as Record<string, unknown> | null;
+        const err = (s.error ?? null) as Record<string, unknown> | null;
         return {
           ...s,
           url: (rm?.url as string | undefined) ?? "—",
           status_code: (rm?.status as number | undefined) ?? "—",
           bytes_in: (rm?.bytes_in as number | undefined) ?? "—",
           auth_method: (conn?.auth_method as string | undefined) ?? "—",
+          error: (err?.code as string | undefined) ?? "—",
         };
       });
       emitList(
         !!args.json,
-        [
-          "step_id",
-          "name",
-          "status",
-          "duration_ms",
-          "url",
-          "status_code",
-          "bytes_in",
-          "auth_method",
-        ],
+        ["step_key", "status", "duration_ms", "url", "status_code", "error", "auth_method"],
         rows,
       );
+      // The table truncates the error to a code. For failed steps,
+      // print the full message + connector guidance below it — the most
+      // actionable field, previously only reachable via `--json | grep`.
+      if (!args.json) {
+        printFailedStepErrors(items as Record<string, unknown>[]);
+      }
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }
   },
 });
+
+/** Print a red error block for each failed step: code, message, and the
+ *  connector-authored guidance hint. No-op when nothing failed. */
+function printFailedStepErrors(steps: Record<string, unknown>[]): void {
+  const failed = steps.filter((s) => s.status === "failed" && s.error);
+  if (failed.length === 0) return;
+  process.stdout.write(`\n${pc.bold(pc.red("Failures:"))}\n`);
+  for (const s of failed) {
+    const err = s.error as Record<string, unknown>;
+    const stepKey = typeof s.step_key === "string" ? s.step_key : "(step)";
+    const code = typeof err.code === "string" ? err.code : "error";
+    const message = typeof err.message === "string" ? err.message : "";
+    const guidance = typeof err.guidance === "string" ? err.guidance : null;
+    const resolvedUrl = typeof err.resolved_url === "string" ? err.resolved_url : null;
+    process.stdout.write(`  ${pc.red("●")} ${pc.bold(stepKey)} — ${pc.red(code)}: ${message}\n`);
+    if (resolvedUrl) process.stdout.write(`      ${pc.dim(`url: ${resolvedUrl}`)}\n`);
+    if (guidance) process.stdout.write(`      ${pc.yellow(guidance)}\n`);
+  }
+}
 
 const abortCommand = defineCommand({
   meta: { name: "abort", description: "Abort a running execution" },

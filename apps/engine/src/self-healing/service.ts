@@ -10,11 +10,14 @@
 //   * `processDriftSignal` — the signal-to-candidate pipeline,
 //     reusable by reactive AND proactive callers (scheduler tick,
 //     admin POST /v1/self-healing/scans, the MCP `self_healing.scan`
-//     tool). Proactive callers pass `allowAutoApply: false` so the
-//     resulting Patch Candidate is always parked for operator review,
-//     no matter how clean the classification + fixture dry-run come
-//     out. This preserves the human-in-the-loop guarantee that
-//     proactive scans never silently mutate a tenant's workflows.
+//     tool). The unattended scheduler tick passes `allowAutoApply: true`
+//     so a `safe` rename/widening drift heals itself instead of parking
+//     forever; the operator-invoked admin/MCP scans pass
+//     `allowAutoApply: false` so an explicit scan parks for review. All
+//     proactive sources share the endpoint dedup guard at the top of
+//     this function — an already-active candidate for the same endpoint
+//     is refreshed or skipped, never duplicated, so scans no longer pile
+//     up identical proposals on every cadence tick.
 //
 // The downstream sequence inside `processDriftSignal`:
 //
@@ -37,18 +40,13 @@
 // from pg-boss telemetry alone. Audit rows are written for the four
 // enumerated lifecycle events in docs/19.
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { audit, auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import {
-  executionFixtures,
-  patchCandidates,
-  workflows,
-  workflowVersions,
-} from "../db/schema/index.ts";
+import { executionFixtures, patchCandidates } from "../db/schema/index.ts";
 import { MAX_REPAIR_ATTEMPTS } from "../execution/timeouts.ts";
 import { LlmQuotaExhausted } from "../llm/errors.ts";
 import {
@@ -63,6 +61,7 @@ import {
   recordSelfHealingRepairRetried,
 } from "../observability/instrumentation.ts";
 import { getLatestShape } from "../schema-versions/service.ts";
+import { autoApplyPatch } from "./auto-apply.ts";
 import { classifyPatch } from "./classifier.ts";
 import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from "./drift-detector.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
@@ -142,10 +141,11 @@ export interface ProcessSignalOptions {
   /**
    * When false, the function NEVER auto-applies the patch — the
    * candidate is always persisted in `status='proposed'` regardless
-   * of classification, fixture dry-run, or policy. Proactive callers
-   * (scheduler tick, admin HTTP, MCP tool) pass false. Reactive
-   * callers pass true and the existing policy/classification/fixture
-   * gates decide whether `autoApplyPatch` runs.
+   * of classification, fixture dry-run, or policy. The operator-invoked
+   * admin HTTP + MCP scans pass false (an explicit scan parks for
+   * review). The reactive queue handler and the unattended scheduler
+   * tick pass true; the policy/classification/fixture gates then decide
+   * whether `autoApplyPatch` runs.
    */
   allowAutoApply: boolean;
 }
@@ -192,84 +192,157 @@ async function loadFixture(
 }
 
 /**
- * Auto-apply a safe patch by writing a new workflow version whose `dag`
- * carries an appended `__self_healing` annotation. The engine does NOT
- * try to surgically rewrite the upstream DAG — the repair flow's
- * narrow palette is applied out-of-band on the NEXT execution by the
- * request driver, which reads the patch_candidates row and layers the
- * rename on top of the live step. The workflow_versions insert is the
- * audit anchor that makes the change reviewable and reversible.
+ * Handle a proactive signal whose endpoint already has an active patch
+ * candidate. Returns a `ProcessSignalResult` that the caller short-
+ * circuits on, or `null` to fall through to the full repair pipeline
+ * (only when the existing row is unusable — no stored proposal).
+ *
+ *   - `applied`  → the fix is already in place; skip silently (no LLM,
+ *                  no version churn). Re-applying every hour would
+ *                  rotate the workflow version endlessly.
+ *   - `proposed` → refresh `updated_at` so the candidate reflects the
+ *                  still-live drift, then re-evaluate auto-apply against
+ *                  the current policy. A `safe` candidate that was
+ *                  parked under the old never-auto-without-fixture rule
+ *                  now auto-applies here.
  */
-async function autoApplyPatch(
-  tx: Executor,
-  params: {
-    tenant_id: string;
-    workflow_id: string;
-    candidate_id: string;
-    proposal: PatchProposal;
-  },
-): Promise<string | null> {
-  const wfRows = await tx
-    .select()
-    .from(workflows)
-    .where(and(eq(workflows.tenant_id, params.tenant_id), eq(workflows.id, params.workflow_id)))
-    .limit(1);
-  const wf = wfRows[0];
-  if (!wf?.current_version_id) return null;
+async function refreshOrSkipExistingCandidate(
+  db: Db,
+  existing: typeof patchCandidates.$inferSelect,
+  ctx: SignalContext,
+  options: ProcessSignalOptions,
+): Promise<ProcessSignalResult | null> {
+  const diff = (existing.diff ?? {}) as Record<string, unknown>;
+  const proposal = diff.proposal as PatchProposal | undefined;
+  if (!proposal) return null;
 
-  const cvRows = await tx
+  const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);
+
+  if (existing.status === "applied") {
+    logger.info({
+      module: "self-healing",
+      action: "patch.already_applied",
+      msg: "endpoint already healed by an applied patch — skipping re-proposal",
+      tenant_id: ctx.tenant_id,
+      workflow_id: ctx.workflow_id,
+      patch_candidate_id: existing.id,
+      connector_id: ctx.connector_id ?? null,
+      endpoint_key: ctx.endpoint_key ?? null,
+      source: ctx.source,
+    });
+    return {
+      candidate_id: existing.id,
+      classification: existing.classification,
+      status: "applied",
+      auto_applied: false,
+      dry_run_passed: null,
+      proposal,
+      policy,
+    };
+  }
+
+  // status === 'proposed' — proactive scans never have a fixture, so
+  // the auto-apply decision rests solely on classification + policy.
+  const wouldAutoApply = shouldAutoApply({
+    policy,
+    classification: existing.classification,
+    fixture_passed: false,
+    has_fixture: false,
+  });
+  const autoApply = options.allowAutoApply && wouldAutoApply;
+
+  const appliedVersionId = await db.transaction(async (tx) => {
+    await tx
+      .update(patchCandidates)
+      .set({ updated_at: new Date() })
+      .where(eq(patchCandidates.id, existing.id));
+    if (!autoApply) return null;
+    const versionId = await autoApplyPatch(tx, {
+      tenant_id: ctx.tenant_id,
+      workflow_id: ctx.workflow_id,
+      candidate_id: existing.id,
+      proposal,
+    });
+    if (versionId) {
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: "system",
+          action: AuditAction.PATCH_CANDIDATE_AUTO_APPLIED,
+          resource_type: "patch_candidate",
+          resource_id: existing.id,
+          result: "success",
+          metadata: {
+            workflow_id: ctx.workflow_id,
+            new_workflow_version_id: versionId,
+            classification: existing.classification,
+            policy,
+            source: ctx.source,
+            via: "proactive_refresh",
+          },
+        },
+        tx,
+      );
+    }
+    return versionId;
+  });
+
+  const auto_applied = !!appliedVersionId;
+  recordPatchCandidate({
+    classification: existing.classification,
+    decision: auto_applied ? "auto_applied" : "parked",
+  });
+  logger.info({
+    module: "self-healing",
+    action: auto_applied ? "patch.auto_applied" : "patch.refreshed",
+    msg: auto_applied
+      ? "self-healing auto-applied a refreshed proactive patch"
+      : "refreshed existing proactive patch candidate — no duplicate row",
+    tenant_id: ctx.tenant_id,
+    workflow_id: ctx.workflow_id,
+    patch_candidate_id: existing.id,
+    classification: existing.classification,
+    policy,
+    source: ctx.source,
+  });
+
+  return {
+    candidate_id: existing.id,
+    classification: existing.classification,
+    status: auto_applied ? "applied" : "proposed",
+    auto_applied,
+    dry_run_passed: null,
+    proposal,
+    policy,
+  };
+}
+
+/**
+ * Find an already-active patch candidate (status proposed|applied) for
+ * the same endpoint anchor, newest first. The proactive scan uses this
+ * to refresh-or-skip instead of inserting a fresh row every cadence
+ * tick — the patch_candidates flood fix. Returns null when the signal
+ * has no endpoint anchor (workflow-scoped drift) or none is active.
+ */
+async function findActiveEndpointCandidate(
+  exec: Executor,
+  params: { tenant_id: string; workflow_id: string; connector_id: string; endpoint_key: string },
+) {
+  const rows = await exec
     .select()
-    .from(workflowVersions)
+    .from(patchCandidates)
     .where(
       and(
-        eq(workflowVersions.tenant_id, params.tenant_id),
-        eq(workflowVersions.id, wf.current_version_id),
+        eq(patchCandidates.tenant_id, params.tenant_id),
+        eq(patchCandidates.workflow_id, params.workflow_id),
+        eq(patchCandidates.connector_id, params.connector_id),
+        eq(patchCandidates.endpoint_key, params.endpoint_key),
+        inArray(patchCandidates.status, ["proposed", "applied"]),
       ),
     )
+    .orderBy(desc(patchCandidates.created_at))
     .limit(1);
-  const currentVersion = cvRows[0];
-  if (!currentVersion) return null;
-
-  const newDag = {
-    ...(currentVersion.dag as Record<string, unknown>),
-    __self_healing: {
-      applied_patch_id: params.candidate_id,
-      kind: params.proposal.kind,
-      description: params.proposal.description,
-      applied_at: new Date().toISOString(),
-    },
-  };
-
-  // DB-side MAX(version)+1 in the INSERT itself — a read-then-insert
-  // computed in JS loses the race when two reactive repairs for the same
-  // workflow run concurrently (both read the same max, both insert the
-  // same version → unique violation rolls one repair back).
-  const [inserted] = await tx
-    .insert(workflowVersions)
-    .values({
-      tenant_id: params.tenant_id,
-      workflow_id: params.workflow_id,
-      version: sql<number>`(SELECT COALESCE(MAX(${workflowVersions.version}), 0) + 1
-         FROM ${workflowVersions}
-        WHERE ${workflowVersions.tenant_id} = ${params.tenant_id}
-          AND ${workflowVersions.workflow_id} = ${params.workflow_id})`,
-      dag: newDag,
-      note: `self-healing auto-apply of patch ${params.candidate_id}`,
-    })
-    .returning();
-  if (!inserted) return null;
-
-  await tx
-    .update(workflows)
-    .set({ current_version_id: inserted.id, updated_at: new Date() })
-    .where(eq(workflows.id, params.workflow_id));
-
-  await tx
-    .update(patchCandidates)
-    .set({ status: "applied", updated_at: new Date() })
-    .where(eq(patchCandidates.id, params.candidate_id));
-
-  return inserted.id;
+  return rows[0] ?? null;
 }
 
 /**
@@ -280,9 +353,14 @@ async function autoApplyPatch(
  * policy gates decide whether the patch auto-applies.
  *
  * Proactive callers (scheduler tick, admin POST, MCP) pass
- * `allowAutoApply: false`. The Patch Candidate is always persisted
- * in `status='proposed'` and the existing approve/reject HTTP routes
- * remain the sole apply path.
+ * `allowAutoApply: true` as well now — the relaxed policy auto-applies
+ * `safe` rename/widening patches even without a fixture, so a clean
+ * proactive drift heals itself instead of parking forever. Before any
+ * LLM work, a proactive signal that already has an active candidate for
+ * the same endpoint is short-circuited: an `applied` candidate means
+ * the fix is already in place (skip), a `proposed` one is refreshed in
+ * place and re-evaluated for auto-apply (no duplicate row, no repeat
+ * LLM spend). This is what stops the hourly patch_candidates flood.
  */
 export async function processDriftSignal(
   signal: DriftSignal,
@@ -291,6 +369,23 @@ export async function processDriftSignal(
   exec?: Db,
 ): Promise<ProcessSignalResult> {
   const db = exec ?? getDb();
+
+  // Proactive idempotency guard. Reactive failures are genuine new
+  // events and keep the original behaviour; proactive scans re-fire on
+  // a cadence against unchanged recorded state, so they must dedupe.
+  const isProactive = ctx.source !== "reactive";
+  if (isProactive && ctx.connector_id && ctx.endpoint_key) {
+    const existing = await findActiveEndpointCandidate(db, {
+      tenant_id: ctx.tenant_id,
+      workflow_id: ctx.workflow_id,
+      connector_id: ctx.connector_id,
+      endpoint_key: ctx.endpoint_key,
+    });
+    if (existing) {
+      const dedup = await refreshOrSkipExistingCandidate(db, existing, ctx, options);
+      if (dedup) return dedup;
+    }
+  }
 
   const diff = renderDriftDiff(signal);
   const fixture = await loadFixture(
@@ -467,6 +562,10 @@ export async function processDriftSignal(
       .values({
         tenant_id: ctx.tenant_id,
         workflow_id: ctx.workflow_id,
+        // Endpoint anchor for the refresh-or-skip dedup on the next
+        // proactive scan. Null for workflow-scoped signals.
+        connector_id: ctx.connector_id ?? null,
+        endpoint_key: ctx.endpoint_key ?? null,
         classification: decision.classification,
         // Only stamp `fixture_id` on the row when the dry-run gate
         // actually ran against this fixture. Proactive scans load

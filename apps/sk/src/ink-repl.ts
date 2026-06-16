@@ -48,12 +48,12 @@ export interface InkReplOptions {
   noMemory?: boolean;
 }
 
+import { loadBootstrap, type SkBootstrapSnapshot } from "./lib/bootstrap.ts";
 // Persona resolution: prefer `/v1/sk/bootstrap` (one round-trip for the
 // full UX-gating allow-set) and fall back to the legacy tier-filtered
 // `whoami + rbac:can` fan-out for older engines. `loadBootstrap` owns
 // the disk cache + 3-tier resolution.
-import { backgroundFailureBanner } from "./lib/background-failures.ts";
-import { loadBootstrap, type SkBootstrapSnapshot } from "./lib/bootstrap.ts";
+import { digestAsContext, fetchOperatorDigest, renderDigestBanner } from "./lib/operator-digest.ts";
 
 interface ResolvedPersona {
   label: string;
@@ -113,6 +113,12 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       ? { max_bytes: settings.merged.maxInlineMentionBytes }
       : {}),
   });
+
+  // One-shot operator-digest context. Set when the startup health check
+  // surfaces open issues; folded into the FIRST conversation turn's
+  // memory so replying "yes" grounds the LLM in the same digest, then
+  // cleared so later turns aren't re-seeded.
+  let pendingDigestContext: string | null = null;
 
   const client = new EngineClient({
     engine_url: opts.profile.engine_url,
@@ -239,11 +245,18 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         ? "append_message"
         : "create_conversation";
       const isCreate = operation === "create_conversation";
+      // Fold the one-shot operator-digest context into the first turn's
+      // memory, then consume it so it never re-seeds a later turn.
+      const turnMemory =
+        isCreate && pendingDigestContext
+          ? [memory.content, pendingDigestContext].filter(Boolean).join("\n\n---\n\n")
+          : memory.content;
+      pendingDigestContext = null;
       const stream = isCreate
         ? await currentClient.createConversationStream(
             {
               initial_message: resolved.prompt,
-              ...(memory.content ? { memory: memory.content } : {}),
+              ...(turnMemory ? { memory: turnMemory } : {}),
               ...(settings.merged.model ? { model: settings.merged.model } : {}),
               ...(promptOpts?.permission_mode
                 ? { permission_mode: promptOpts.permission_mode }
@@ -929,12 +942,17 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     });
   };
 
-  // Surface unattended background failures the moment the REPL opens —
-  // failed scheduled-workflow runs and self-healing patch candidates
-  // have no other proactive surface in the CLI. Printed inline above
-  // the live UI; best-effort, never blocks startup.
-  const failureBanner = await backgroundFailureBanner(client);
-  if (failureBanner) process.stdout.write(`\n${failureBanner}\n\n`);
+  // Engine-seeded startup health check — subkit speaks first. Fetch the
+  // deterministic operator digest (failed runs grouped by root cause +
+  // tagged by origin, plus self-healing fixes awaiting review), render
+  // it as a colored assistant-voiced block above the live UI, and stash
+  // its context so the operator's first reply ("yes") grounds the LLM in
+  // the same issues. Best-effort; never blocks startup.
+  const operatorDigest = await fetchOperatorDigest(client);
+  if (operatorDigest) {
+    process.stdout.write(`\n${renderDigestBanner(operatorDigest)}\n\n`);
+    pendingDigestContext = digestAsContext(operatorDigest);
+  }
 
   // Enable bracketed paste mode before mounting Ink so terminal wraps
   // multi-line pastes with ESC[200~/ESC[201~ markers — the input
