@@ -125,21 +125,26 @@ LimitNPROC=4096
 ; The fix has two halves:
 ;   1. Cap *this* unit so memory pressure becomes a *cgroup* OOM (kills
 ;      the engine only, leaves Postgres + Caddy + system alone). The
-;      caps below assume the 16 GB droplet sk runs on after the
-;      2026-05-31 upsize (8 -> 16 GB; the prior 8 GB and 4 GB hosts
-;      both hit kernel global OOM). 13 G hard cap + 11 G soft throttle
-;      keeps the engine clear of the Postgres + Caddy + OS resident
-;      set with generous headroom. Conversation turns have been
-;      observed to allocate several GB of transient memory on the
-;      FIRST POST /v1/conversations after a cold start (the runner
-;      buffers the assembled prompt, tool palette, AI SDK streamText
-;      state, and tokenizer tables before the LLM round-trip even
-;      begins; root cause not yet isolated). Tighter caps tripped
+;      caps below assume the 8 GB droplet sk runs on after the
+;      2026-06-17 downsize (16 -> 8 GB; the 16 GB tier was idle-heavy
+;      over-provisioning — 39-day measured working set peaked at
+;      4.75 GB during the May pressure era and ~2.5 GB in the weeks
+;      after the 6.20.x memory-stabilization releases, with ZERO kernel
+;      OOM kills on 16 GB). 7 G hard cap + 6 G soft throttle clears the
+;      historical 4.75 GB transient peak (so a normal turn never
+;      throttles) while still containing a runaway turn within the
+;      engine cgroup: 7 G engine + ~0.7 G Postgres/Caddy/OS resident
+;      fits inside 8 GB physical, with the 4 GB swapfile as overflow.
+;      Conversation turns have been observed to allocate several GB of
+;      transient memory on the FIRST POST /v1/conversations after a
+;      cold start (the runner buffers the assembled prompt, tool
+;      palette, AI SDK streamText state, and tokenizer tables before
+;      the LLM round-trip even begins). Earlier, tighter caps tripped
 ;      MemoryHigh throttling so hard the engine stopped responding to
-;      /v1/health locally and the deploy/smoke chain tore itself down.
-;      The wider caps let the spike complete while still containing a
-;      runaway turn within the engine cgroup. Operators on larger or
-;      smaller droplets can raise/lower these via a drop-in override at
+;      /v1/health locally and the deploy/smoke chain tore itself down —
+;      6 G soft is deliberately set ABOVE the observed peak to avoid
+;      that. If worker_expired recurs, raise these (or resize back up)
+;      via a drop-in override at
 ;      /etc/systemd/system/subkit-engine.service.d/memory.conf.
 ;   2. Steer the kernel global OOM killer (if it ever fires anyway from
 ;      a noisy neighbour) to prefer killing the engine over Postgres.
@@ -151,8 +156,8 @@ LimitNPROC=4096
 ; ManagedOOMSwap=kill enrolls systemd-oomd if present so swap thrashing
 ; (the host has a 4 GB swapfile from the 2026-05-20 mitigation) triggers
 ; a clean kill before the kernel OOM has to make a hostile pick.
-MemoryHigh=11G
-MemoryMax=13G
+MemoryHigh=6G
+MemoryMax=7G
 MemorySwapMax=2G
 OOMScoreAdjust=500
 ManagedOOMSwap=kill
