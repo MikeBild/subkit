@@ -163,7 +163,7 @@ layer, stop and move it.
 - **`packages/shared/`** — shared domain types & helpers. Pure, deterministic, no
   `apps/*` imports. See `packages/shared/AGENTS.md` for stricter rules.
 
-Subsystem map inside `apps/engine/src/` (43 directories + 5 loose root files):
+Subsystem map inside `apps/engine/src/` (44 directories + 5 loose root files):
 
 | Concern | Directory | Key docs |
 |---|---|---|
@@ -180,7 +180,6 @@ Subsystem map inside `apps/engine/src/` (43 directories + 5 loose root files):
 | Unified file resource (chat attachments, workflow inputs/outputs, LLM context, MCP); `{$file: fid_uuid}` wire shape; `requireFileForTenant` chokepoint, `files` table + `file_links` polymorphic join, inline (≤5MB) vs presigned upload, scanner interface, soft-delete + cleanup cron with in-flight grace | `files/` | `docs/06-execution.md` |
 | File → connector/skill proposals | `discovery/` | `docs/04-authoring.md` |
 | OpenAPI / GraphQL / HTML → searchable context | `docs-ingestion/` | `docs/04-authoring.md` |
-| Core domain types | `domain/` | `docs/02-concepts.md` |
 | Typed engine HTTP client (used by sk + agent) | `engine-client/` | `docs/03-input-surfaces.md` |
 | DAG engine + step dispatch | `execution/` | `docs/06-execution.md` |
 | Hono routes + middleware + errors | `http/` | `docs/03-input-surfaces.md` |
@@ -193,6 +192,7 @@ Subsystem map inside `apps/engine/src/` (43 directories + 5 loose root files):
 | Rule-based fan-out (Slack, webhook) | `notifications/` | `docs/03-input-surfaces.md` |
 | Prometheus metrics + tracing | `observability/` | `docs/08-operations.md` |
 | First-run bootstrap + demo seed | `onboarding/` | `docs/08-operations.md` |
+| Operator health digest (drift/repair/queue summary) | `operator/` | `docs/08-operations.md` |
 | PG LISTEN/NOTIFY streaming | `pubsub/` | `docs/06-execution.md` |
 | pg-boss handler dispatch | `queue/` | `docs/06-execution.md` |
 | RBAC (40+ permissions) + ABAC + policies | `rbac/` | `docs/07-security-governance.md` |
