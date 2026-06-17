@@ -12697,7 +12697,7 @@ export interface components {
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
-            status: "proposed";
+            status: "proposed" | "applied" | "rejected" | "superseded";
         };
         SelfHealingScanUnanchored: {
             /** @enum {string} */

@@ -10846,7 +10846,10 @@
           "status": {
             "type": "string",
             "enum": [
-              "proposed"
+              "proposed",
+              "applied",
+              "rejected",
+              "superseded"
             ]
           }
         },

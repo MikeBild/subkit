@@ -70,7 +70,7 @@ export interface SelfHealingScanResult {
     id: string;
     signal_type: string;
     classification: "safe" | "unsafe";
-    status: "proposed";
+    status: "proposed" | "applied" | "rejected" | "superseded";
   }>;
   unanchored: Array<{
     signal_type: string;
@@ -195,7 +195,7 @@ export async function handleSelfHealingScan(
           id: result.candidate_id,
           signal_type: signal.kind,
           classification: result.classification,
-          status: "proposed",
+          status: result.status,
         });
       } catch (err) {
         logger.error({

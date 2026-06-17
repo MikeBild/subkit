@@ -337,12 +337,9 @@ export const METRIC_NAMES = {
   SELF_HEALING_REPAIR_RETRIED_TOTAL: "self_healing_repair_retried_total",
   EXECUTION_WARNINGS_EMITTED_TOTAL: "execution_warnings_emitted_total",
   EXECUTION_DRY_RUN_TOTAL: "execution_dry_run_total",
-  // Loop iterations whose body payload was offloaded to durable
-  // storage (the in-memory scope holds an `OffloadRef`, not the full
-  // envelope — the OOM fix). Counted at the `productiveIterations`
-  // short-circuit so operators can see big-loop memory pressure: a
-  // rising count means loops are pushing oversize payloads through
-  // the fixture / S3 offload path.
+  EXECUTION_FOR_EACH_ITEMS_TOTAL: "execution_for_each_items_total",
+  EXECUTION_FOR_EACH_CONCURRENCY_SELECTED: "execution_for_each_concurrency_selected",
+  EXECUTION_FOR_EACH_DURATION_MS: "execution_for_each_duration_ms",
   EXECUTION_LOOP_ITERATION_OFFLOADED_TOTAL: "execution_loop_iteration_offloaded_total",
   LLM_CACHE_HIT_TOTAL: "llm_cache_hit_tokens_total",
   LLM_CACHE_CREATION_TOTAL: "llm_cache_creation_tokens_total",
@@ -678,9 +675,7 @@ function buildRegistry(): MetricsRegistry {
     help: "Engine process uptime in seconds.",
     labels: [],
   });
-  // Runtime-telemetry series (process memory, event-loop lag, boot-phase +
-  // operation durations) are registered from a sibling module to keep this
-  // file under the 1000-LOC audit cap. See runtime-metrics.ts.
+  // Runtime-telemetry series live in runtime-metrics.ts.
   registerRuntimeTelemetryMetrics(reg);
   reg.registerCounter({
     name: METRIC_NAMES.HTTP_REQUESTS_TOTAL,
@@ -766,7 +761,6 @@ function buildRegistry(): MetricsRegistry {
     help: "Drift detected by proactive scans that could not be promoted to a Patch Candidate (no workflow anchor).",
     labels: ["tenant_id", "signal_type", "reason"],
   });
-  // Run → Drift → Patch → Skill loop closure (positioning.md §6).
   reg.registerCounter({
     name: METRIC_NAMES.AUTHORING_CONTEXT_SKILLS_USED_TOTAL,
     help: "Loop-originated skills in an authoring LLM context, by source. catalog = Skills promoted from a Candidate (excludes seed/template/manual); candidate = proposed Skill Candidates surfaced. The closing edge of the self-improvement loop.",
@@ -802,6 +796,23 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.EXECUTION_DRY_RUN_TOTAL,
     help: "Dry-run previews of workflows or steps, partitioned by source kind.",
     labels: ["tenant_id", "source_kind"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.EXECUTION_FOR_EACH_ITEMS_TOTAL,
+    help: "Total for_each iteration items encountered by the workflow engine.",
+    labels: ["tenant_id", "step_kind", "selection"],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.EXECUTION_FOR_EACH_CONCURRENCY_SELECTED,
+    help: "Selected for_each concurrency bound.",
+    labels: ["tenant_id", "step_kind", "selection"],
+    buckets: [1, 2, 4, 8, 16, 32, 64],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.EXECUTION_FOR_EACH_DURATION_MS,
+    help: "Wall-clock for_each container duration.",
+    labels: ["tenant_id", "step_kind", "selection"],
+    buckets: HISTOGRAM_DURATION_BUCKETS_MS,
   });
   reg.registerCounter({
     name: METRIC_NAMES.EXECUTION_LOOP_ITERATION_OFFLOADED_TOTAL,

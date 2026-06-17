@@ -964,6 +964,7 @@ export async function assembleContext(
     // log-line bounds, same headroom as recipes).
     included_prior_workflow_slugs: included_prior_workflow_slugs.slice(0, 12),
     dropped_sections: budget_report.dropped_sections,
+    section_tokens: prompt.token_counts,
   });
 
   // Closing edge of the Run → Drift → Patch → Skill loop (positioning.md §6):

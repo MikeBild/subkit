@@ -21,7 +21,10 @@ import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { logger } from "../logging/logger.ts";
-import { recordLoopIterationsOffloaded } from "../observability/instrumentation.ts";
+import {
+  recordForEachExecution,
+  recordLoopIterationsOffloaded,
+} from "../observability/instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
@@ -647,6 +650,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       // Compact away any slots left empty by an abort; completed
       // iterations keep their original relative order.
       const iterationResults: unknown[] = slots.filter((s) => s !== undefined);
+      recordForEachExecution({
+        tenant_id,
+        step_kind: step.kind,
+        items: items.length,
+        concurrency,
+        explicit: (step as { for_each_concurrency?: number }).for_each_concurrency != null,
+        duration_ms: Date.now() - forEachStart,
+      });
       scope[step.id] = wrapEnvelope({
         data: iterationResults,
         duration_ms: Date.now() - forEachStart,

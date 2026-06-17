@@ -58,6 +58,17 @@ function callRecordLlmContextAssembled(overrides: {
     included_recipe_slugs: overrides.included_recipe_slugs ?? [],
     included_prior_workflow_slugs: overrides.included_prior_workflow_slugs ?? [],
     dropped_sections: [],
+    section_tokens: {
+      system: 1000,
+      skills: 1000,
+      knowledge: 500,
+      docs: 500,
+      failures: 0,
+      messages: 500,
+      recipe_bodies: 0,
+      skill_candidates: 0,
+      prior_workflows: 0,
+    },
   });
 }
 

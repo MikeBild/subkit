@@ -56,7 +56,8 @@
     "release:minor": "scripts/deploy.sh minor",
     "release:major": "scripts/deploy.sh major",
     "release:dry": "scripts/deploy.sh patch --dry-run",
-    "release:verify": "scripts/release/verify.sh"
+    "release:verify": "scripts/release/verify.sh",
+    "release:canary": "scripts/release/canary.sh"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "4.0.83",

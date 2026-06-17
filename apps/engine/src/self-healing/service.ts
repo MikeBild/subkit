@@ -67,6 +67,7 @@ import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from ".
 import { runFixtureDryRun } from "./fixture-runner.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
+import { candidateProposal, findMatchingTerminalEndpointCandidate } from "./terminal-dedup.ts";
 import type { DriftSignal, DryRunStep, WorkflowRepairJob } from "./types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -153,7 +154,7 @@ export interface ProcessSignalOptions {
 export interface ProcessSignalResult {
   candidate_id: string;
   classification: "safe" | "unsafe";
-  status: "proposed" | "applied";
+  status: "proposed" | "applied" | "rejected" | "superseded";
   auto_applied: boolean;
   dry_run_passed: boolean | null;
   proposal: PatchProposal;
@@ -384,6 +385,36 @@ export async function processDriftSignal(
     if (existing) {
       const dedup = await refreshOrSkipExistingCandidate(db, existing, ctx, options);
       if (dedup) return dedup;
+    }
+    const terminal = await findMatchingTerminalEndpointCandidate(db, {
+      tenant_id: ctx.tenant_id,
+      workflow_id: ctx.workflow_id,
+      connector_id: ctx.connector_id,
+      endpoint_key: ctx.endpoint_key,
+      signal,
+    });
+    if (terminal) {
+      const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);
+      logger.info({
+        module: "self-healing",
+        action: "patch.terminal_dedup",
+        msg: "skipping proactive drift repair because a terminal candidate already covers the same drift fingerprint",
+        tenant_id: ctx.tenant_id,
+        workflow_id: ctx.workflow_id,
+        patch_candidate_id: terminal.id,
+        terminal_status: terminal.status,
+        classification: terminal.classification,
+        source: ctx.source,
+      });
+      return {
+        candidate_id: terminal.id,
+        classification: terminal.classification,
+        status: terminal.status,
+        auto_applied: false,
+        dry_run_passed: null,
+        proposal: candidateProposal(terminal),
+        policy,
+      };
     }
   }
 

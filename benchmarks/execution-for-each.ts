@@ -17,7 +17,8 @@
 // reachable.
 //
 // Usage:
-//   bun run benchmarks/execution-for-each.ts [--items N] [--delay-ms MS]
+//   bun run benchmarks/execution-for-each.ts [--items 24] [--delay-ms 40]
+//   bun run benchmarks/execution-for-each.ts --matrix --runs 3
 
 import { runExecution } from "../apps/engine/src/execution/engine.ts";
 import {
@@ -37,8 +38,25 @@ function arg(flag: string, fallback: number): number {
 
 const ITEMS = arg("--items", 24);
 const DELAY_MS = arg("--delay-ms", 40);
+const RUNS = arg("--runs", 1);
+const MATRIX = process.argv.includes("--matrix");
 
-function buildDef(name: string, concurrency: number | undefined) {
+function listArg(flag: string, fallback: number[]): number[] {
+  const i = process.argv.indexOf(flag);
+  if (i < 0 || !process.argv[i + 1]) return fallback;
+  const parsed = process.argv[i + 1]!.split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return parsed.length > 0 ? parsed : fallback;
+}
+
+function percentile(values: number[], p: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1);
+  return sorted[idx] ?? 0;
+}
+
+function buildDef(name: string, items: number, concurrency: number | undefined) {
   return {
     name,
     steps: [
@@ -46,7 +64,7 @@ function buildDef(name: string, concurrency: number | undefined) {
         id: "ids",
         kind: "transform",
         language: "javascript",
-        expression: `return Array.from({ length: ${ITEMS} }, (_, i) => i);`,
+        expression: `return Array.from({ length: ${items} }, (_, i) => i);`,
       },
       {
         id: "fetch",
@@ -64,9 +82,10 @@ async function timeRun(
   ctx: Awaited<ReturnType<typeof createEngineCtx>>,
   baseUrl: string,
   label: string,
+  items: number,
   concurrency: number | undefined,
 ): Promise<number> {
-  const def = buildDef(`bench-${label}`, concurrency);
+  const def = buildDef(`bench-${label}`, items, concurrency);
   // Late-bind the mock origin into the step url now that the server is up.
   def.steps[1]!.url = `${baseUrl}/item`;
   const { workflow_id } = await createWorkflowRow(ctx, def);
@@ -84,6 +103,28 @@ async function timeRun(
   return elapsed;
 }
 
+async function sampleRun(
+  ctx: Awaited<ReturnType<typeof createEngineCtx>>,
+  baseUrl: string,
+  items: number,
+  concurrency: number | undefined,
+  runs: number,
+): Promise<{ p50: number; p95: number; samples: number[] }> {
+  const samples: number[] = [];
+  for (let i = 0; i < runs; i++) {
+    samples.push(
+      await timeRun(
+        ctx,
+        baseUrl,
+        `items-${items}-c-${concurrency ?? "auto"}-${i}`,
+        items,
+        concurrency,
+      ),
+    );
+  }
+  return { p50: percentile(samples, 50), p95: percentile(samples, 95), samples };
+}
+
 async function main(): Promise<void> {
   const ctx = await createEngineCtx("bench-for-each");
   const mock = await createMockServer(async (_req, res) => {
@@ -95,10 +136,46 @@ async function main(): Promise<void> {
   try {
     // Warm the path once (JIT, connection pool, first-query overhead) so
     // neither timed run pays one-off startup costs.
-    await timeRun(ctx, mock.baseUrl, "warmup", 1);
+    await timeRun(ctx, mock.baseUrl, "warmup", ITEMS, 1);
 
-    const sequentialMs = await timeRun(ctx, mock.baseUrl, "sequential", 1);
-    const parallelMs = await timeRun(ctx, mock.baseUrl, "parallel-auto", undefined);
+    if (MATRIX) {
+      const itemCounts = listArg("--item-counts", [10, 50, 100]);
+      const concurrencies = listArg("--concurrency", [1, 2, 4, 8, 16]);
+      const rows: Array<{
+        items: number;
+        concurrency: number;
+        p50_ms: number;
+        p95_ms: number;
+        samples_ms: number[];
+      }> = [];
+      for (const items of itemCounts) {
+        for (const concurrency of concurrencies) {
+          const stats = await sampleRun(ctx, mock.baseUrl, items, concurrency, RUNS);
+          rows.push({
+            items,
+            concurrency,
+            p50_ms: stats.p50,
+            p95_ms: stats.p95,
+            samples_ms: stats.samples,
+          });
+        }
+      }
+      console.log("\n=== for_each execution benchmark matrix ===");
+      console.log(`delay=${DELAY_MS}ms runs=${RUNS}`);
+      console.log("items\tconcurrency\tp50_ms\tp95_ms\tsamples_ms");
+      for (const r of rows) {
+        console.log(
+          `${r.items}\t${r.concurrency}\t${r.p50_ms}\t${r.p95_ms}\t${r.samples_ms.join(",")}`,
+        );
+      }
+      console.log(
+        JSON.stringify({ benchmark: "for_each_execution_matrix", delay_ms: DELAY_MS, rows }),
+      );
+      return;
+    }
+
+    const sequentialMs = await timeRun(ctx, mock.baseUrl, "sequential", ITEMS, 1);
+    const parallelMs = await timeRun(ctx, mock.baseUrl, "parallel-auto", ITEMS, undefined);
 
     const speedup = sequentialMs / parallelMs;
     const idealParallelMs = Math.ceil(ITEMS / 8) * DELAY_MS;

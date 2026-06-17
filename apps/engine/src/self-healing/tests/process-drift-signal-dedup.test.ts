@@ -169,3 +169,75 @@ describe("processDriftSignal — proactive endpoint dedup", () => {
     expect(await versionCount()).toBe(versionsBefore); // no new version
   });
 });
+
+describe("processDriftSignal — terminal proactive endpoint dedup", () => {
+  test("rejected candidate suppresses the same proactive drift fingerprint without a duplicate", async () => {
+    const local = await createSelfHealingCtx("terminal-dedup");
+    try {
+      const db = local.testDb.db;
+      const lastShape = await getLatestShape(
+        {
+          tenant_id: local.tenant_id,
+          connector_id: local.connector_id,
+          endpoint_key: local.endpoint_key,
+        },
+        db,
+      );
+      const snapshot = {
+        id: local.step_id,
+        kind: "request" as const,
+        status: "failed",
+        error: {
+          kind: "http",
+          status: 404,
+          body: { error: { code: "not_found", detail: "User not found" } },
+        },
+        request_meta: null,
+        output_preview: { data: { id: 1 } },
+      };
+      const signal = analyzeStepFailure(snapshot, lastShape);
+      if (!signal) throw new Error("expected drift signal");
+      const signalCtx = {
+        tenant_id: local.tenant_id,
+        workflow_id: local.workflow_id,
+        execution_id: local.execution_id,
+        step_id: local.step_id,
+        connector_id: local.connector_id,
+        endpoint_key: local.endpoint_key,
+        actor_id: null,
+        source: "proactive_scheduler" as const,
+        repair_input: {
+          failing_step_id: `proactive:test:${local.step_id}`,
+          response: { data: { id: 1 } },
+        },
+      };
+
+      const first = await processDriftSignal(signal, signalCtx, { allowAutoApply: false }, db);
+      await db
+        .update(patchCandidates)
+        .set({ status: "rejected" })
+        .where(eq(patchCandidates.id, first.candidate_id));
+
+      const second = await processDriftSignal(signal, signalCtx, { allowAutoApply: true }, db);
+
+      expect(second.candidate_id).toBe(first.candidate_id);
+      expect(second.status).toBe("rejected");
+      expect(second.auto_applied).toBe(false);
+
+      const rows = await db
+        .select()
+        .from(patchCandidates)
+        .where(
+          and(
+            eq(patchCandidates.tenant_id, local.tenant_id),
+            eq(patchCandidates.workflow_id, local.workflow_id),
+            eq(patchCandidates.connector_id, local.connector_id),
+            eq(patchCandidates.endpoint_key, local.endpoint_key),
+          ),
+        );
+      expect(rows.length).toBe(1);
+    } finally {
+      await local.cleanup();
+    }
+  });
+});

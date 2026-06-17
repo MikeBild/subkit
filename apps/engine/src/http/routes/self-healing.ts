@@ -65,7 +65,7 @@ const ScanCandidateSchema = z
     id: z.string().uuid(),
     signal_type: SignalTypeEnum,
     classification: z.enum(["safe", "unsafe"]),
-    status: z.literal("proposed"),
+    status: z.enum(["proposed", "applied", "rejected", "superseded"]),
   })
   .openapi("SelfHealingScanCandidate");
 
@@ -340,7 +340,7 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
       id: string;
       signal_type: z.infer<typeof SignalTypeEnum>;
       classification: "safe" | "unsafe";
-      status: "proposed";
+      status: "proposed" | "applied" | "rejected" | "superseded";
     }> = [];
     const unanchored: Array<{
       signal_type: z.infer<typeof SignalTypeEnum>;
@@ -415,10 +415,7 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
             id: result.candidate_id,
             signal_type: signal.kind,
             classification: result.classification,
-            // Forced to "proposed" — processDriftSignal never auto-
-            // applies when allowAutoApply is false, so the literal
-            // matches reality.
-            status: "proposed",
+            status: result.status,
           });
         } catch (err) {
           logger.error({

@@ -20,7 +20,14 @@ import { eq } from "drizzle-orm";
 import { executionSteps } from "../../db/schema/index.ts";
 import type { RequestStep, StepDef, TransformStep } from "../../workflows/types.ts";
 import { resolveForEachConcurrency, runExecution } from "../engine.ts";
-import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
+import {
+  createEngineCtx,
+  createMockServer,
+  createWorkflowRow,
+  type EngineTestCtx,
+  jsonResponse,
+  type MockServer,
+} from "./setup.ts";
 
 let ctx: EngineTestCtx;
 
@@ -387,4 +394,51 @@ describe("for_each · bounded-parallel iteration preserves order", () => {
     // first — order is a property of the index, not the schedule.
     expect(result.output).toEqual([0, 1, 2, 3, 4, 5]);
   });
+
+  test("auto-parallelizes read-classified request bodies", async () => {
+    let active = 0;
+    let maxActive = 0;
+    let releaseGate: (() => void) | null = null;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    const mock: MockServer = await createMockServer(async (_, res) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      if (maxActive > 1) releaseGate?.();
+      await gate;
+      active -= 1;
+      jsonResponse(res, 200, { ok: true });
+    });
+    try {
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: "for-each-auto-request-concurrency",
+        steps: [
+          {
+            id: "src",
+            kind: "transform",
+            language: "javascript",
+            expression: "return [1, 2, 3, 4, 5, 6];",
+          },
+          {
+            id: "fetch",
+            kind: "request",
+            method: "GET",
+            url: `${mock.baseUrl}/data`,
+            for_each: "(sourceData) => sourceData.src.data",
+          },
+        ],
+      });
+      const result = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+      });
+      expect(result.status).toBe("succeeded");
+      expect(maxActive).toBeGreaterThan(1);
+    } finally {
+      await mock.close();
+    }
+  }, 15000);
 });

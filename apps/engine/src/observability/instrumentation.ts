@@ -577,6 +577,33 @@ export function recordExecutionDryRun(args: { tenant_id: string; source_kind: st
   });
 }
 
+export function recordForEachExecution(args: {
+  tenant_id: string;
+  step_kind: string;
+  items: number;
+  concurrency: number;
+  explicit: boolean;
+  duration_ms: number;
+}): void {
+  safe(() => {
+    const labels = {
+      tenant_id: args.tenant_id,
+      step_kind: args.step_kind,
+      selection: args.explicit ? "explicit" : "auto",
+    };
+    const reg = getMetrics();
+    if (Number.isFinite(args.items) && args.items > 0) {
+      reg.inc(METRIC_NAMES.EXECUTION_FOR_EACH_ITEMS_TOTAL, labels, args.items);
+    }
+    if (Number.isFinite(args.concurrency) && args.concurrency > 0) {
+      reg.observe(METRIC_NAMES.EXECUTION_FOR_EACH_CONCURRENCY_SELECTED, args.concurrency, labels);
+    }
+    if (Number.isFinite(args.duration_ms) && args.duration_ms >= 0) {
+      reg.observe(METRIC_NAMES.EXECUTION_FOR_EACH_DURATION_MS, args.duration_ms, labels);
+    }
+  });
+}
+
 export function recordLlmCacheUsage(args: {
   tenant_id: string;
   model: string;
@@ -668,6 +695,17 @@ export function recordLlmContextAssembled(args: {
   included_recipe_slugs: string[];
   included_prior_workflow_slugs: string[];
   dropped_sections: string[];
+  section_tokens: {
+    system: number;
+    skills: number;
+    knowledge: number;
+    docs: number;
+    failures: number;
+    messages: number;
+    recipe_bodies: number;
+    skill_candidates: number;
+    prior_workflows: number;
+  };
 }): void {
   safe(() => {
     const reg = getMetrics();
@@ -713,6 +751,7 @@ export function recordLlmContextAssembled(args: {
       included_recipe_slugs: args.included_recipe_slugs,
       included_prior_workflow_slugs: args.included_prior_workflow_slugs,
       dropped_sections: args.dropped_sections,
+      section_tokens: args.section_tokens,
     });
   });
 }
