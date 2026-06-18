@@ -14,8 +14,6 @@ import type {
   DraftDocument,
 } from "../types.ts";
 
-export type { Executor };
-
 export function normalizePermissionMode(value: unknown): ConversationPermissionMode | null {
   return value === "auto" || value === "ask" || value === "plan" || value === "yolo" ? value : null;
 }

@@ -6,8 +6,8 @@
 // Lives in its own file — extracted from the parent
 // `context-assembler.ts` orchestrator.
 
+import type { Executor } from "../../../db/client.ts";
 import { listAutoLoadSkills } from "../../../skills/service.ts";
-import type { Executor } from "./loaders.ts";
 
 export async function detectIntentSkills(
   tenant_id: string,

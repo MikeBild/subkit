@@ -4,6 +4,7 @@
 // service-layer imports.
 
 import { and, asc, desc, eq } from "drizzle-orm";
+import type { Executor } from "../../db/client.ts";
 import {
   conversationElicitations,
   conversationMessages,
@@ -18,7 +19,7 @@ import type {
   ConversationMessageRecord,
   ConversationToolCallRecord,
 } from "../types.ts";
-import { type Executor, rowToRecord } from "./shared.ts";
+import { rowToRecord } from "./shared.ts";
 
 /**
  * Strip every `[file:fid_<uuid>]` sentinel out of a stored message

@@ -23,9 +23,10 @@
 // "the override is here on purpose", and adds a `POST /v1/system/update`
 // route that bypasses the operator-shell-only contract.
 
+import type { Executor } from "../../db/client.ts";
 import { auditAwait } from "../audit.ts";
 import { AuditAction, EngineUpdateMetadataSchema, SYSTEM_TENANT_ID } from "../types.ts";
-import type { Executor, RecordedEntry } from "./types.ts";
+import type { RecordedEntry } from "./types.ts";
 
 /** Common shape for every engine.update.* recorder. Tenant + actor are
  *  fixed by the binary's host-only execution model; they are NOT

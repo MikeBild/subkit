@@ -20,8 +20,6 @@
 import type { Executor } from "../../db/client.ts";
 import type { AuditActorType, AuditEntry, AuditResult } from "../types.ts";
 
-export type { Executor };
-
 /** Shared base fields every recorder accepts. */
 export interface RecorderBase {
   tenant_id: string;

@@ -34,8 +34,6 @@ import {
   SKILL_CANDIDATES_SECTION_CAP,
 } from "./formatters.ts";
 
-export type { Executor };
-
 export interface InteractionLogEntry {
   tool_name: string;
   status: string;

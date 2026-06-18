@@ -22,8 +22,6 @@ import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 
-export type { Executor };
-
 /**
  * Emit a `workflow.lifecycle` outbox event after Zod-validating the
  * payload. Every state-changing entry point in this

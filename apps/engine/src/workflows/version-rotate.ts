@@ -6,10 +6,11 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
+import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { validateBareIterationIdentifiers } from "./reference-validator.ts";
-import { type Executor, emitWorkflowLifecycle } from "./service.ts";
+import { emitWorkflowLifecycle } from "./service.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 
