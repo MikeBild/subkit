@@ -46,9 +46,9 @@
 //      custom-role principal lacking `workflow:read` can piggy-back
 //      on a subscription URI it learned out-of-band. Always-on by
 //      design — the prior portal-only short-circuit was a latent
-//      timing-leak surface for custom roles (#178 round-3 W1).
+//      timing-leak surface for custom roles.
 //
-// Subscribe DoS defenses (#178 W-1): the subscribe handler rejects URIs
+// Subscribe DoS defenses: the subscribe handler rejects URIs
 // outside the four known prefixes (so a client can't trick the
 // lifecycle forwarder into a `can()` lookup for nonsense) and caps the
 // per-session subscribed-Set at `SUBSCRIBE_CAP`.
@@ -162,7 +162,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     // `workflow://<id>`. The MCP notification carries no payload —
     // only the URI — but timing alone is signal. The conservative
     // choice is to run `can()` every time and let the permissions
-    // cache absorb the cost (#178 round-3 W1).
+    // cache absorb the cost.
     if (args.rbacCheck) {
       const allow = await args.rbacCheck();
       if (!allow) {
@@ -252,7 +252,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       // `skill-candidate://` shape. The forwarder is gated on
       // `file:read` so a custom-role principal that subscribed to a
       // `file://<fid>` it learned out-of-band cannot piggy-back on the
-      // lifecycle event (#178 round-3 W1 parity).
+      // lifecycle event.
       const fileId = payload.file_id as string | undefined;
       if (fileId) {
         await forwardIfSubscribed({

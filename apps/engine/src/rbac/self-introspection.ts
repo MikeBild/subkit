@@ -12,7 +12,7 @@
 // explicit permission. Adding a new state-mutating route under
 // `identity/` does NOT inherit the carve-out automatically — the
 // test will fail until the route either declares a permission or is
-// added to this list. R5-S1 review fix.
+// added to this list.
 
 export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   // GET /v1/identity/whoami

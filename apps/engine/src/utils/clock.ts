@@ -13,7 +13,7 @@
 // `installClock`, `restoreClock`, the `getTestNow` alias) live in
 // `apps/engine/src/test-helpers/determinism/clock.ts` and consume the
 // `setTestNow` / `getNowProvider` writers exported here. Production
-// code never imports from `test-helpers/`. Per #147 review S6.
+// code never imports from `test-helpers/`.
 
 export type NowProvider = () => number;
 

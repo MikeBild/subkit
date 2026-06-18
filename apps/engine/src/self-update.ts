@@ -208,8 +208,7 @@ export async function runRollback(
     // audit_log should show the attempt even though the binary was not
     // touched. This row uses `request_source: "rollback"` and a fixed
     // FAILED reason so a forensic SELECT can distinguish "rollback was
-    // attempted but rejected" from "rollback succeeded". Issue #151
-    // round-2 review S5.
+    // attempted but rejected" from "rollback succeeded".
     const db = openAuditDb();
     await recordEngineUpdateFailed({
       from_version: VERSION,
@@ -227,8 +226,8 @@ export async function runRollback(
       request_source: "rollback",
     });
     recordEngineUpdate({ result: "failed", channel: CHANNEL });
-    // S1 (round-3 review): the audit row says `result: error`, so the
-    // process exit code must match. Throwing causes the outer
+    // The audit row says `result: error`, so the process exit code must
+    // match. Throwing causes the outer
     // `runRollback` flag handler in `index.ts` to write to stderr and
     // exit 1, keeping shell wrappers / CI in sync with the audit log.
     throw new Error(

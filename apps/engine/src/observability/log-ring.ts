@@ -110,8 +110,7 @@ export interface LogRing {
 }
 
 // Single source: re-export the cli-core helper so the engine logger,
-// the diagnostics route, and the `sk logs` CLI all read the same map
-// (review R2-S1).
+// the diagnostics route, and the `sk logs` CLI all read the same map.
 export { logLevelWeight as levelWeight } from "@cli-core/log-levels.ts";
 
 import { logLevelWeight } from "@cli-core/log-levels.ts";

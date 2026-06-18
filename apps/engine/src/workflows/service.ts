@@ -561,7 +561,7 @@ export async function updateWorkflowMetadata(
       );
       // Emit on the same channel as definition-level updates — a rename
       // / lifecycle flip changes what `readResource("workflow://<id>")`
-      // would return, so MCP subscribers must see it (#169 W1).
+      // would return, so MCP subscribers must see it.
       await emitWorkflowLifecycle(tx, {
         tenant_id: input.tenant_id,
         type: "workflow.metadata_updated",
@@ -904,7 +904,7 @@ export async function restoreWorkflowVersion(
       tx,
     );
     // A version restore replaces what `readResource("workflow://<id>")`
-    // returns; MCP subscribers must be notified (#169 W1).
+    // returns; MCP subscribers must be notified.
     await emitWorkflowLifecycle(tx, {
       tenant_id,
       type: "workflow.version_restored",
