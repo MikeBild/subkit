@@ -66,11 +66,16 @@ Environment=NODE_ENV=production
 ; binary gets the persistent path created by do-bootstrap.sh.
 Environment=SK_OVERRIDE_STORAGE_FILES_DIR=/var/lib/subkit/files
 
-; Working dir + state. systemd auto-creates these with mode 0750
-; under the unit's User/Group when the *Directory= keys are set.
+; Working dir + state. systemd creates these under the unit's
+; User/Group. Its default *DirectoryMode is 0755 — fine for the state
+; dir (no secrets), but /etc/subkit holds secrets (.env, .pgpass,
+; subkit.config.json), so we pin it to 0750 below. do-bootstrap.sh
+; created /etc/subkit as 0750; without the explicit mode here systemd's
+; 0755 default mismatches it and logs a warning on every start.
 WorkingDirectory=/var/lib/subkit
 StateDirectory=subkit
 ConfigurationDirectory=subkit
+ConfigurationDirectoryMode=0750
 
 ; Restart policy: process exit -> 5s cooldown -> retry, capped at 3
 ; restarts in 60s before systemd gives up. Operator sees the failure
