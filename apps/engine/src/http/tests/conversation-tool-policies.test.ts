@@ -1,6 +1,5 @@
 // Bug RR regression: per-conversation tool-policy overrides via the
-// /v1/conversations/:id/tool-policies route. Mirrors reference impl's
-// `setToolPolicy` API surface.
+// /v1/conversations/:id/tool-policies route.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";

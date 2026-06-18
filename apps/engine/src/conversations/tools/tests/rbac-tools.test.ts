@@ -1,6 +1,6 @@
 // find_role / find_user / inspect_role / edit_role — integration
 // tests against a real test database. Pins the contract for the
-// reference-impl-parity RBAC conversation surface.
+// RBAC conversation surface.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";

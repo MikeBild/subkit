@@ -32,9 +32,8 @@
 //   are rewarded — the run prints which files improved and exits 0; run
 //   `--update-baseline` to lock the improvement in.
 //
-//   Reset history (#147 review W-5): the baseline was drained from
-//   53 files / 56 tolerated warnings to {} as part of #146 / Part A.
-//   A regression that re-introduces 30+ warnings is a real regression,
+//   The baseline was drained from 53 files / 56 tolerated warnings to
+//   {}. A regression that re-introduces 30+ warnings is a real regression,
 //   not a fresh "0 → 30" shock — read the file's git log if a sudden
 //   spike surprises you (`git log scripts/determinism.baseline.json`).
 //   The aggregate-sum check below blocks any net growth from {}, so a

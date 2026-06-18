@@ -1,4 +1,4 @@
-// In-flight wait checkpoints (#48 SHRUNK). One row per in-flight wait
+// In-flight wait checkpoints. One row per in-flight wait
 // step. Written when the step starts; deleted when it completes (timer
 // fired) or is cancelled (abort signal).
 //
@@ -9,7 +9,7 @@
 // safety without a separate pg-boss queue.
 //
 // The cap is 24h (`WaitStepSchema.duration_ms.max`) — multi-day patterns
-// use the Schedule + State recipe (#51 + A8), not durable wait. PK is
+// use the Schedule + State recipe, not durable wait. PK is
 // UUID; uniqueness on `(tenant_id, execution_id, step_id)`.
 
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";

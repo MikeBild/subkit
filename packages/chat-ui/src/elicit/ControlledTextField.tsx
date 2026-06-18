@@ -1,7 +1,7 @@
 // A display-only, fully-controlled text field for elicit prompts.
-// Mirrors the claude-code BaseTextInput pattern: value lives in the
-// parent, the component renders it plus a reverse-video cursor glyph
-// when focused. No internal `useInput` — every keystroke is dispatched
+// Value lives in the parent; the component renders it plus a
+// reverse-video cursor glyph when focused. No internal `useInput` —
+// every keystroke is dispatched
 // by the owning prompt's single `useInput` hook, which is the only
 // reliable way to avoid the Tab-key conflict that stock Ink has when
 // multiple `useInput` hooks are active simultaneously.

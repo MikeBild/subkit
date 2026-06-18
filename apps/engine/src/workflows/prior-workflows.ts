@@ -1,4 +1,4 @@
-// Prior workflows — 5th authoring context source (#203).
+// Prior workflows — 5th authoring context source.
 //
 // Returns up to `k` active workflows most similar to the current
 // authoring intent, projected to a compressed reference-case shape the

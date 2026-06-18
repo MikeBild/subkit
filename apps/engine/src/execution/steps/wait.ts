@@ -1,10 +1,10 @@
-// Wait step (#48 SHRUNK). Same-day in-process pause with restart-safe
+// Wait step. Same-day in-process pause with restart-safe
 // resumption: a checkpoint row in `workflow_waits` is written before the
 // setTimeout starts and deleted on completion. Engine boot reaps any
 // rows still present, advancing or re-arming as needed.
 //
 // Cap is 24h via Zod (`WaitStepSchema.duration_ms.max`). Multi-day
-// patterns belong on the Schedule + State recipe (#51 + A8), not here.
+// patterns belong on the Schedule + State recipe, not here.
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";

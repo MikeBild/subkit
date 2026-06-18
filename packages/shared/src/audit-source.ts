@@ -27,9 +27,7 @@ export const DEPLOY_VERSION_HEADER = "x-subkit-deploy-version" as const;
 
 /** Allowed values for `AUDIT_SOURCE_HEADER`. Keep this list TIGHT:
  *  only values with a known caller today. Adding speculative entries
- *  clutters the audit ledger taxonomy. The historical v1 channel
- *  name (the term subkit retired in 4.0.x) is also explicitly
- *  disallowed by the terminology gate
- *  (scripts/terminology.banned.txt). */
+ *  clutters the audit ledger taxonomy. The retired legacy channel name
+ *  is intentionally absent — do not reintroduce it. */
 export const AUDIT_SOURCE_VALUES = ["sk_cli", "deploy_bootstrap"] as const;
 export type AuditSource = (typeof AUDIT_SOURCE_VALUES)[number];

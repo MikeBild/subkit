@@ -77,7 +77,7 @@ describe("readStepUsage", () => {
 });
 
 describe("stepPromptTokens / stepTotalTokens", () => {
-  // Honest cost telemetry (Fix 7): the `completed` envelope carries
+  // Honest cost telemetry: the `completed` envelope carries
   // `prompt_tokens_last_call` (last step's prompt size — comparable to
   // the context cap) and `turn_tokens_total` (sum across all steps).
   // These helpers are the per-step terms; the loop overwrites the
@@ -183,7 +183,7 @@ describe("isAbortError", () => {
     expect(isAbortError("some other message")).toBe(false);
   });
 
-  // #147 / run 25498312277 — pin the underscore-word-boundary blind
+  // Pin the underscore-word-boundary blind
   // spot. AI SDK rethrows the AbortController's reason verbatim, and
   // the canonical reason `CONVERSATION_CANCELLED_REASON =
   // "conversation_cancelled"` has an `_` before `cancelled`. Because

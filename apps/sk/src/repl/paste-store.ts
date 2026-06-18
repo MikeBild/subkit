@@ -22,8 +22,7 @@
 // mentions in the composed text and rewrites them to the same JSON
 // leaf at submit (see `parseAllFileMentions`).
 //
-// This mirrors Claude Code's paste-ref system (see history.ts in
-// anthropics/claude-code) but keeps the API small and subkit-native.
+// The paste-ref system keeps the API small and subkit-native.
 
 import { formatFileRef as formatFileLeaf, parseAllFileMentions } from "../utils/file-ref.ts";
 

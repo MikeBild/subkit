@@ -24,8 +24,8 @@ apps/engine/src/connectors/templates.ts:222  # ConnectorRecipeSchema
 ```
 
 Recipes are read-only at runtime. Tenant-scoped per-recipe overrides
-will land via `connector_recipes` (planned, see Workstream E in the
-roadmap); today, every operator sees the same shipped catalog.
+are planned via a `connector_recipes` table; today, every operator
+sees the same shipped catalog.
 
 ## Schema
 
@@ -443,8 +443,7 @@ Notes for authors:
 Every recipe-touching PR runs:
 
 ```sh
-bun run lint:recipes        # F4 lint
-bun run check:terminology   # see scripts/terminology.banned.txt
+bun run lint:recipes        # recipe lint
 bun run test:unit           # includes recipe-snapshot.test.ts
 bun run verify:ai           # includes recipe-discovery validator
 ```
@@ -473,11 +472,9 @@ Before opening a PR:
 6. If you are deprecating an existing recipe, set `deprecated` rather
    than deleting the slug — operators may have cloned drafts that
    reference it.
-7. PR description names the operator pain the recipe solves and the
-   competitor's equivalent (n8n / Zapier / Pipedream slug if any).
-   Per the "winner-at-all" rule, if a competitor ships the same
-   recipe, ours must beat it on validation, prerequisites clarity,
-   or step efficiency — not just match.
+7. PR description names the operator pain the recipe solves. The
+   recipe must beat any industry equivalent on validation,
+   prerequisites clarity, or step efficiency — not just match.
 
 ## Related
 

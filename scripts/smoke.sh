@@ -52,9 +52,8 @@ done
 # Bounded poll for info.version == EXPECTED. Without polling, a single-shot
 # check races the host's container-recreation: /v1/health flips green
 # (engine listening) seconds before /openapi.json swaps in the new spec
-# (caddy reload completes). PR #138 caught a real instance where the
-# host served 3.5.1 seconds after 4.0.0 was tagged — see
-# `fix(ci): release deploy retry now captures the real ssh exit code`.
+# (caddy reload completes). A real instance was caught where the host
+# served 3.5.1 seconds after 4.0.0 was tagged.
 # Tries up to 30× over 60s when EXPECTED is set; single-shot when not.
 echo "Smoke: checking /openapi.json"
 attempts=1

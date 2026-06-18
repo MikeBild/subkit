@@ -1,9 +1,8 @@
-// Bug PP regression: a global counter increments on every tool result
+// A global counter increments on every tool result
 // with `ok: false` and resets on the first success. When it reaches
 // MAX_CONSECUTIVE_FAILURES (5) the next non-ask_user / non-inspect tool
 // dispatch is short-circuited with a structured "ask the user"
-// envelope. Mirrors reference impl's "no more than 5 failed tool calls
-// in a row" prompt rule.
+// envelope ("no more than 5 failed tool calls in a row").
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Db } from "../../../db/client.ts";
@@ -52,8 +51,8 @@ function freshSignals(): TurnSignals {
   };
 }
 
-describe("consecutive-failures cap (Bug PP)", () => {
-  test("MAX_CONSECUTIVE_FAILURES is 5 (mirrors reference impl)", () => {
+describe("consecutive-failures cap", () => {
+  test("MAX_CONSECUTIVE_FAILURES is 5", () => {
     expect(MAX_CONSECUTIVE_FAILURES).toBe(5);
   });
 

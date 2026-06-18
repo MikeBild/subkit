@@ -292,9 +292,9 @@ export async function getElicitation(
 }
 
 /**
- * Lookup the active (pending) elicitation tied to a tool_call. Mirrors
- * the reference impl's `resumeToolCallId` resume key — clients that
- * tracked the originating tool_call_id can resolve the elicitation
+ * Lookup the active (pending) elicitation tied to a tool_call. Keyed by
+ * the originating tool_call_id — clients that
+ * tracked it can resolve the elicitation
  * without first reading the elicitation_id from the SSE stream.
  *
  * Returns the most recent matching row when multiple elicitations

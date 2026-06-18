@@ -1,4 +1,4 @@
-// Tests for the DevTools wrap (issue #164).
+// Tests for the DevTools wrap.
 //
 // Asserts: (1) mock-sentinel models pass through unwrapped,
 // (2) production models pass through unwrapped, (3) DEV models get

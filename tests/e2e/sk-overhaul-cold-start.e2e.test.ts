@@ -1,6 +1,6 @@
 // Cold-start E2E for the sk CLI overhaul.
 //
-// Closes plan item 14 (PTY E2E #1 in the matrix). Drives the compiled
+// Drives the compiled
 // binary through `expect(1)` and asserts: the welcome banner appears,
 // stdout shows the persona-aware status line within the bootstrap-
 // resolved budget, and Ctrl+D exits cleanly.
@@ -42,7 +42,7 @@ afterAll(async () => {
 
 describe("e2e: sk cold start", () => {
   test.skipIf(SKIP_PTY)(
-    "(matrix #1) banner renders within the cold-start budget",
+    "banner renders within the cold-start budget",
     async () => {
       if (!env) throw new Error("env not booted");
       // Wait for a string that's actually in the welcome banner (the
@@ -70,7 +70,7 @@ describe("e2e: sk cold start", () => {
   );
 
   test.skipIf(SKIP_PTY)(
-    "(matrix #19) Ctrl+C cancels and exits clean",
+    "Ctrl+C cancels and exits clean",
     async () => {
       if (!env) throw new Error("env not booted");
       const r = await runPtyScenario(

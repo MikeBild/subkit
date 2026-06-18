@@ -1,4 +1,4 @@
-// Theme/Personality/Title/Statusline pickers (M11 of #159).
+// Theme/Personality/Title/Statusline pickers.
 
 import { describe, expect, test } from "bun:test";
 import {

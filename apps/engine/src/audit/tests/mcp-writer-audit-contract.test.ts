@@ -1,9 +1,9 @@
 // Audit-contract guard + writer tests for the external-MCP-client
-// feature (#171).
+// feature.
 //
-// The `mcp_server.*` action constants were reserved under #166 W2 so
-// the writer could not mint free-string action values. With #171 the
-// recorders that emit each action land in
+// The `mcp_server.*` action constants are reserved so the writer
+// cannot mint free-string action values. The recorders that emit each
+// action land in
 // `apps/engine/src/audit/recorders/mcp-server.ts`; this file asserts:
 //
 //   1. the reserved action-string constants still hold their values
@@ -81,7 +81,7 @@ async function rowFor(action: string, resource_id: string) {
   return rows[0]!;
 }
 
-describe("issue #166 W2 — reserved audit-action constants", () => {
+describe("reserved audit-action constants", () => {
   it("reserves the seven mcp_server.* constants", () => {
     expect(AuditAction.MCP_SERVER_REGISTERED).toBe("mcp_server.registered");
     expect(AuditAction.MCP_SERVER_CONFIG_UPDATED).toBe("mcp_server.config_updated");
@@ -102,7 +102,7 @@ describe("issue #166 W2 — reserved audit-action constants", () => {
     );
   });
 
-  it("reserves the three mcp_server.authorization* constants (#171 follow-up)", () => {
+  it("reserves the three mcp_server.authorization* constants", () => {
     expect(AuditAction.MCP_SERVER_AUTHORIZATION_STARTED).toBe("mcp_server.authorization_started");
     expect(AuditAction.MCP_SERVER_AUTHORIZED).toBe("mcp_server.authorized");
     expect(AuditAction.MCP_SERVER_AUTHORIZATION_FAILED).toBe("mcp_server.authorization_failed");
@@ -114,7 +114,7 @@ describe("issue #166 W2 — reserved audit-action constants", () => {
   });
 });
 
-describe("#171 — external MCP server audit writers", () => {
+describe("external MCP server audit writers", () => {
   it("recordMcpServerRegistered writes mcp_server.registered with host-only url", async () => {
     const mcp_server_id = uuid();
     await recordMcpServerRegistered({

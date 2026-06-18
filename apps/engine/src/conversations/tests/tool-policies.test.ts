@@ -117,8 +117,8 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     ).toBe("confirm_before_execution");
   });
 
-  it("authenticate_oauth runs first, then pauses for review (confirm_after_execution, Bug UU)", () => {
-    // Mirrors reference impl: the OAuth dance produces a staged
+  it("authenticate_oauth runs first, then pauses for review (confirm_after_execution)", () => {
+    // The OAuth dance produces a staged
     // credential; the operator reviews the captured scopes / expiry
     // BEFORE the loop continues. Pre-fix this was
     // confirm_before_execution which had the operator approve a

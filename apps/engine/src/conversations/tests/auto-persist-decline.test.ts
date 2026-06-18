@@ -1,4 +1,4 @@
-// PR11/PR12 — auto-persist decline path.
+// Auto-persist decline path.
 //
 // Operator declines `ask_user_confirm` (or submits an empty form) →
 // no DB write, but a synthetic tool-result with

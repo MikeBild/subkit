@@ -1,5 +1,5 @@
 -- Pending interactive-OAuth (2.1) flow state for the external-MCP CLIENT
--- direction (#171 follow-up). One row = one in-flight browser
+-- direction. One row = one in-flight browser
 -- authorization-code + PKCE round-trip against an external MCP server
 -- that requires OAuth before its tools can be consumed.
 --

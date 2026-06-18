@@ -151,7 +151,7 @@ export const logsCommand = defineCommand({
     } catch (err) {
       if (isEngineError(err) && err.status === 404) {
         process.stderr.write(
-          "engine does not expose /v1/diagnostics/logs — upgrade the engine to a build that includes the #149 observability work.\n",
+          "engine does not expose /v1/diagnostics/logs — upgrade the engine to a build that exposes the diagnostics log surface.\n",
         );
         process.exit(1);
       }

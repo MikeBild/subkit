@@ -1,4 +1,4 @@
-// Verifies the claude-code-parity deep-links route through openPane
+// Verifies the settings deep-links route through openPane
 // with the right SettingsModal initialTab.
 //
 // /config → { kind: "settings", initialTab: "Config" }

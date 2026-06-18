@@ -1,5 +1,5 @@
 // Usage tab — month-to-date token usage, sourced from the tenant-scoped
-// /v1/stats/llm endpoint (#160) grouped by `flow`, plus the monthly
+// /v1/stats/llm endpoint grouped by `flow`, plus the monthly
 // budget bar whose denominator comes from /v1/status.monthly_budget_tokens.
 // Replaces the prior `llm.invocation` audit-log scraping: stats aggregate
 // at read time and carry the cache-read breakdown the bar visualizes.

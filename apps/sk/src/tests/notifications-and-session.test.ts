@@ -1,4 +1,4 @@
-// Push notifications + /session QR (M12 of #159).
+// Push notifications + /session QR.
 
 import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
@@ -16,7 +16,7 @@ class FakeStream {
   }
 }
 
-describe("notifications — env wiring contract (G3 of #159 M12 follow-up)", () => {
+describe("notifications — env wiring contract", () => {
   test("SK_PUSH_NOTIFY=1 turns shouldNotify on at the default threshold", () => {
     // The contract verified here is what ink-app.tsx applyEventStream
     // reads at turn-end. Documented in apps/sk/src/repl/notifications/.
@@ -160,7 +160,7 @@ describe("/session slash (M12)", () => {
     expect(out).toMatch(/invalid args|usage/);
   });
 
-  test("calls issuePortalToken with the workflow scope and 15-min TTL; routes plaintext URL into a pane (W1 of round 6)", async () => {
+  test("calls issuePortalToken with the workflow scope and 15-min TTL; routes plaintext URL into a pane", async () => {
     const issuePortalToken = mock(async (body: Record<string, unknown>) => ({
       id: "pt-1",
       plaintext_token: "secret-token-123",
@@ -183,7 +183,7 @@ describe("/session slash (M12)", () => {
       openedPanes.push(spec);
     };
     const out = await handleSlash("session", ["wf-7"], makeCtx(client, { openPane }));
-    // W1 of PR #161 review (round 6): the plaintext URL is NEVER in
+    // The plaintext URL is NEVER in
     // the slash return value — it goes to the pane spec only.
     expect(typeof out).toBe("string");
     expect(out ?? "").not.toContain("secret-token-123");
@@ -206,7 +206,7 @@ describe("/session slash (M12)", () => {
     });
   });
 
-  test("headless fallback (no openPane) still issues the token but never emits the plaintext URL into the transcript (W1 of round 6)", async () => {
+  test("headless fallback (no openPane) still issues the token but never emits the plaintext URL into the transcript", async () => {
     const issuePortalToken = mock(async () => ({
       id: "pt-2",
       plaintext_token: "secret-token-456",

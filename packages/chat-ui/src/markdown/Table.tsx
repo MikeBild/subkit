@@ -1,7 +1,6 @@
 // Markdown-style table renderer with dynamic column widths and
 // ANSI-aware wrapping. Replaces the ad-hoc padded-string tables
-// strewn across the operator CLI commands. Mirrors Claude Code's
-// `MarkdownTable` at minimal size.
+// strewn across the operator CLI commands.
 
 import { Box, Text } from "ink";
 import type React from "react";

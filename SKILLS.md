@@ -43,7 +43,7 @@ matters" — not only how to change code — read the three strategy documents i
   Drift detection, bounded repair loop, Execution Fixture dry-runs, Patch Candidates.
   Never auto-apply.
 
-## sk REPL surface (consolidated in #159)
+## sk REPL surface
 
 - `/settings` opens a 5-tab palette in-process: `Status · Config · Usage · Skills ·
   Knowledge`. Operator surfaces are separate slash commands (`/permissions`,

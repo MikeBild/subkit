@@ -4585,7 +4585,7 @@
     "operator_quirks": {
       "auth": "Use aws_service=sts. AssumeRole returns `Credentials.{AccessKeyId,SecretAccessKey,SessionToken,Expiration}` — propagate `SessionToken` as `session_token` for downstream sigv4 calls. Tokens expire (default 1h, max 12h with `DurationSeconds`).",
       "pagination": "STS responses are not paginated.",
-      "general": "AssumeRoleWithWebIdentity supports OIDC tokens (e.g. GitHub OIDC, Auth0). The Token output of AssumeRole is sensitive; downstream steps consuming it should mark `outputs.SessionToken.secret = true` once the secret-output flag (Workstream A7) ships."
+      "general": "AssumeRoleWithWebIdentity supports OIDC tokens (e.g. GitHub OIDC, Auth0). The Token output of AssumeRole is sensitive; downstream steps consuming it should mark `outputs.SessionToken.secret = true` so audit and logs scrub it."
     },
     "recipes": [
       {
@@ -8557,7 +8557,7 @@
     "recipes": [
       {
         "slug": "postmortem-due-in-n-days-via-state",
-        "title": "Daily check: are any HubSpot deals due for a postmortem in N days? (#51 + #47 pattern)",
+        "title": "Daily check: are any HubSpot deals due for a postmortem in N days?",
         "description": "Schedule + State multi-day lifecycle. Every morning the workflow scans HubSpot for closed-lost deals whose `closedate` falls within the next N days, reads `last_postmortem_swept_at` from persistent state, branches on whether the operator has already been notified for this window, and writes the new watermark in the same transaction as the digest. Adapt to any HubSpot lifecycle (renewal-due-in-30-days, contract-expiring, dormant-account-recheck) — the pattern is `state_read → query → branch → state_write`, never a multi-day in-flight wait.",
         "intent_keywords": [
           "postmortem reminder",
@@ -8573,8 +8573,8 @@
         "estimated_setup_minutes": 10,
         "prerequisites": [
           "HubSpot connector with read access to /crm/v3/objects/deals",
-          "Engine scheduler reconciler running (#47)",
-          "Persistent workflow state enabled (#51)"
+          "Engine scheduler reconciler running",
+          "Persistent workflow state enabled"
         ],
         "sample_input": null,
         "expected_output_preview": null,
@@ -9184,7 +9184,7 @@
     "recipes": [
       {
         "slug": "trial-nurture-day-1-3-7-14-via-state",
-        "title": "Daily trial-nurture sweep with state-driven cadence (#51 + #47 pattern)",
+        "title": "Daily trial-nurture sweep with state-driven cadence",
         "description": "Replaces a multi-day in-flight wait with the canonical Schedule + State pattern. Every morning the workflow lists Intercom contacts whose `created_at` matches one of the nurture-cadence days (1, 3, 7, 14 days post-signup), reads `last_nurture_sent_for` from state, sends only the messages that haven't been delivered yet, and advances the watermark. Adapt the cadence array (`[1, 3, 7, 14]`) for any time-shaped lifecycle.",
         "intent_keywords": [
           "trial nurture",
@@ -9200,8 +9200,8 @@
         "estimated_setup_minutes": 10,
         "prerequisites": [
           "Intercom connector with read access to /contacts and write to /messages",
-          "Engine scheduler reconciler running (#47)",
-          "Persistent workflow state enabled (#51)"
+          "Engine scheduler reconciler running",
+          "Persistent workflow state enabled"
         ],
         "sample_input": null,
         "expected_output_preview": null,
@@ -12895,7 +12895,7 @@
     "operator_quirks": {
       "auth": "Most providers accept client_id + client_secret as Basic auth (Authorization: Basic base64(client_id:client_secret)). Some require them in the form body instead — recipes can switch via the body field.",
       "pagination": "OAuth2 token endpoints are not paginated.",
-      "general": "Token responses include `access_token`, `expires_in`, optional `refresh_token`, and optional `scope`. Mark `outputs.access_token.secret = true` and `outputs.refresh_token.secret = true` once the secret-output flag (Workstream A7) ships, so audit and logs scrub them."
+      "general": "Token responses include `access_token`, `expires_in`, optional `refresh_token`, and optional `scope`. Mark `outputs.access_token.secret = true` and `outputs.refresh_token.secret = true` so audit and logs scrub them."
     },
     "recipes": [
       {
@@ -17004,7 +17004,7 @@
       },
       {
         "slug": "incremental-charges-via-state",
-        "title": "Incremental charges sync via persistent state (#51 + #47 pattern)",
+        "title": "Incremental charges sync via persistent state",
         "description": "Canonical AI-authoring few-shot for the multi-day lifecycle pattern: a daily schedule wakes the workflow, `state_read` pulls the last-synced cursor (`null` on the first run via `default_value`), the request lists only newer charges, and `state_write` advances the watermark in the same transaction as the step result. Replaces the multi-day-wait anti-pattern: subkit's mental model is *trigger fires run, run terminates* — not *function that sleeps for days*. Adapt to dunning (D1/D3/D7 reminders), trial nurture (Day 1/3/7/14), and any other lifecycle whose cadence is daily-or-coarser.",
         "intent_keywords": [
           "incremental sync",
@@ -17022,8 +17022,8 @@
         "estimated_setup_minutes": 10,
         "prerequisites": [
           "Stripe connector with read access to /v1/charges",
-          "Engine scheduler reconciler running (#47)",
-          "Persistent workflow state enabled (#51)"
+          "Engine scheduler reconciler running",
+          "Persistent workflow state enabled"
         ],
         "sample_input": null,
         "expected_output_preview": null,

@@ -39,7 +39,7 @@ describe("mcp resources", () => {
     expect(body.base_url).toBe("https://api.probe.test");
   });
 
-  // Regression guard for the codex/MCP round-trip failure: when a `wf.*`
+  // Regression guard for the MCP round-trip failure: when a `wf.*`
   // tool result is offloaded the envelope hands the client a
   // `fixture://<id>` URI, and the client MUST be able to read it back via
   // `resources/read`. Before this test the read path threw

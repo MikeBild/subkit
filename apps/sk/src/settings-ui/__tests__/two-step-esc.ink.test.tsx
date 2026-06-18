@@ -1,4 +1,4 @@
-// Two-step Esc contract — claude-code parity (`ownsEsc` pattern).
+// Two-step Esc contract (`ownsEsc` pattern).
 //
 // Every tab + sub-tab that consumes Esc for inner state (search,
 // editor, switcher, create form, confirm prompt) must fire

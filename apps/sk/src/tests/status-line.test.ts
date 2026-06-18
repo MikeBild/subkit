@@ -1,5 +1,5 @@
 // Unit tests for apps/sk/src/status-line.ts — the scriptable
-// status-line pipeline ported from Claude Code.
+// status-line pipeline.
 
 import { describe, expect, test } from "bun:test";
 import {

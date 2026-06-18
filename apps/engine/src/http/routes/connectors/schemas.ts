@@ -1,6 +1,5 @@
-// Shared Zod schemas + helpers for the connectors REST surface. After
-// the Phase 4 split (audit §4.4) every per-sub-resource module imports
-// from here.
+// Shared Zod schemas + helpers for the connectors REST surface. Every
+// per-sub-resource module imports from here.
 
 import { z } from "@hono/zod-openapi";
 import {

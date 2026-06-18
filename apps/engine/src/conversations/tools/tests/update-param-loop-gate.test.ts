@@ -11,7 +11,7 @@
 //   - editing the upstream step's OWN definition drops exactly that
 //     step's evidence, and only then does the gate block
 //
-// The gate's original refinement (#10 — only fire when the mutated
+// The gate's refinement (only fire when the mutated
 // param is the loop's `over`/`data_selector`) is also still pinned.
 
 import { describe, expect, test } from "bun:test";
@@ -109,7 +109,7 @@ function errorData(result: { ok: boolean; data?: unknown }): {
     .data;
 }
 
-describe("update_param · loop-gate refinement (#10, still pinned)", () => {
+describe("update_param · loop-gate refinement (still pinned)", () => {
   test("fires when editing the loop step's `over` field with no preview", async () => {
     const ctx = makeCtx(draftWithoutEvidence());
     const result = await updateParamTool.execute(ctx, {
@@ -136,7 +136,7 @@ describe("update_param · loop-gate refinement (#10, still pinned)", () => {
   });
 });
 
-describe("update_param · fingerprint-keyed evidence retention (Fix 5)", () => {
+describe("update_param · fingerprint-keyed evidence retention", () => {
   test("recorded evidence satisfies the gate: editing the loop's `over` passes", async () => {
     const ctx = makeCtx(draftWithFetchEvidence());
     const result = await updateParamTool.execute(ctx, {

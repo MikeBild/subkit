@@ -1,5 +1,5 @@
-// Import a connector draft from a Postman / HAR / OpenAPI / GraphQL /
-// curl spec:
+// Import a connector draft from an API collection, an HTTP archive
+// (HAR), an OpenAPI/GraphQL spec, or a curl command:
 //   POST /v1/connector-templates/import
 
 import { createRoute, type OpenAPIHono, type z } from "@hono/zod-openapi";
@@ -13,7 +13,8 @@ const importRoute = createRoute({
   method: "post",
   path: "/v1/connector-templates/import",
   tags: ["connectors"],
-  summary: "Import a connector draft from a Postman/HAR/OpenAPI/GraphQL/curl spec",
+  summary:
+    "Import a connector draft from an API collection, HAR, OpenAPI/GraphQL spec, or curl command",
   security: [{ bearerAuth: [] }],
   request: { body: { content: { "application/json": { schema: ImportRequestSchema } } } },
   responses: {

@@ -1,6 +1,5 @@
-// Bug SS regression: getApprovalMode + APPROVAL_LABELS power the
-// discoverable `/policy` panel (mirrors reference impl's
-// AgentCapabilities). The test pins:
+// getApprovalMode + APPROVAL_LABELS power the
+// discoverable `/policy` panel. The test pins:
 //   - every dangerous tool reports "approval_before"
 //   - read-only tools report "auto"
 //   - confirm_after_execution tools report "approval_after"
@@ -9,7 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import { APPROVAL_LABELS, getApprovalMode } from "./tool-policies.ts";
 
-describe("getApprovalMode (Bug SS)", () => {
+describe("getApprovalMode", () => {
   test("APPROVAL_LABELS covers all three approval modes", () => {
     expect(APPROVAL_LABELS.auto).toBe("Runs automatically");
     expect(APPROVAL_LABELS.approval_before).toBe("Asks before running");
@@ -23,7 +22,7 @@ describe("getApprovalMode (Bug SS)", () => {
     expect(getApprovalMode("approve_patch_candidate")).toBe("approval_before");
   });
 
-  test("authenticate_oauth is approval_after (Bug UU wiring)", () => {
+  test("authenticate_oauth is approval_after", () => {
     expect(getApprovalMode("authenticate_oauth")).toBe("approval_after");
   });
 

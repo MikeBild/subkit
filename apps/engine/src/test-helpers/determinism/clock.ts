@@ -4,7 +4,7 @@
 // builder and install/restore helpers tests use to freeze and advance
 // time. Production code never imports from this barrel.
 //
-// Per #147 review S6 + W-4: the barrel deliberately does NOT re-export
+// The barrel deliberately does NOT re-export
 // `now` (the production reader) so that a future production module
 // can't silently depend on `test-helpers/` via this path — the import
 // would have to reach across to `apps/engine/src/utils/clock.ts`

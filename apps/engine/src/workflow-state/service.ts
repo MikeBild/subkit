@@ -1,4 +1,4 @@
-// Persistent per-workflow state service (#51).
+// Persistent per-workflow state service.
 //
 // Read / write tenant-encrypted JSON values keyed by
 // `(tenant_id, workflow_id, key)`. The step-runner calls these around a

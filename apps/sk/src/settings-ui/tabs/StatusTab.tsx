@@ -3,7 +3,7 @@
 // the outer shell switches tabs, so polling stops).
 //
 // Embeds the activity heatmap below the runtime properties (former
-// Stats tab, merged here to match the claude-code Status layout).
+// Stats tab, merged into Status).
 // The heatmap captures `1`/`2`/`3` for window toggles via its own
 // useInput; StatusTab itself has no key handlers, so there is no
 // collision.

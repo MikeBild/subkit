@@ -1,8 +1,8 @@
-// CLI ↔ engine version-skew classifier. Pre-fix the operator had to
-// know that the engine container was running stale code by guessing
-// from missing fixes (waves 5–9: source had the fix, container did
-// not). Post-fix the CLI surfaces a one-line banner when versions
-// diverge so the rebuild hint is visible from the welcome row.
+// CLI ↔ engine version-skew classifier. Without it the operator has to
+// know that the engine container is running stale code by guessing
+// from missing fixes (source has the fix, container does not). The CLI
+// surfaces a one-line banner when versions diverge so the rebuild hint
+// is visible from the welcome row.
 
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";

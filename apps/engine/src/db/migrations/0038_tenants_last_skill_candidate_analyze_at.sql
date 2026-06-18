@@ -1,5 +1,5 @@
 -- Per-tenant CAS-stamp for the scheduler's skill-candidate pattern
--- analysis sweep (#202 follow-up).
+-- analysis sweep.
 --
 -- The repair-pattern (and sibling) detectors run inside the
 -- `skill-candidate.analyze` pg-boss job, but until now nothing enqueued

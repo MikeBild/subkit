@@ -84,10 +84,9 @@ export type TurnEvent =
       elicitation_id: string;
       /**
        * The originating `conversation_tool_calls` row id (the gated
-       * tool, OR the ask_user_* tool the LLM emitted directly). Mirrors
-       * the reference impl's `resumeToolCallId`: clients can correlate
-       * the elicitation back to "the tool call that paused" without a
-       * follow-up DB read, and may resume by either id.
+       * tool, OR the ask_user_* tool the LLM emitted directly). Clients
+       * can correlate the elicitation back to "the tool call that
+       * paused" without a follow-up DB read, and may resume by either id.
        */
       tool_call_id?: string;
       /** Which `ask_user_*` tool paused the loop. */
@@ -122,7 +121,7 @@ export type TurnEvent =
    * Inline unified-diff cell. Engine pre-computes the line hunks; the
    * CLI renders a colored gutter + content cell. Used for workflow /
    * connector mutations so the operator sees structural changes
-   * inline (codex `PatchHistoryCell` parity).
+   * inline as a patch-history cell.
    */
   | {
       type: "diff";
@@ -223,8 +222,8 @@ export interface ToolLogEntry {
  * status the CLI renders between the transcript and the spinner. Set
  * by every `activity` TurnEvent; cleared on `completed`.
  *
- * Intentionally NOT folded into transcript cells (codex pattern: keep
- * transient progress separate from durable history). Pre-fix the
+ * Intentionally NOT folded into transcript cells: keep transient
+ * progress separate from durable history. Pre-fix the
  * `summarising N tool results` line was the only signal during long
  * LLM-text-composition phases — operators saw the spinner and a token
  * count but no hint of WHAT the engine was doing.
@@ -835,8 +834,8 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
     case "activity": {
       // Single source of truth for the live ticker. Replaces (not
       // appends to) the previous payload — the renderer reads the
-      // current activity slot and shows ONE line. Codex pattern: keep
-      // transient progress separate from durable history. Never
+      // current activity slot and shows ONE line. Keep transient
+      // progress separate from durable history. Never
       // appended to messages or cells, never persisted.
       const next: ActivityState = {
         phase: ev.phase,
@@ -851,8 +850,8 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
     case "diff": {
       // Append a diff entry threaded under the most recent assistant
       // message. The Ink renderer pulls these from session.diffs and
-      // paints them inline below the parent assistant cell — codex's
-      // PatchHistoryCell parity.
+      // paints them inline below the parent assistant cell as a
+      // patch-history cell.
       const parent = lastAssistantMessageId(state);
       return {
         ...state,

@@ -1,5 +1,5 @@
-// H8 closure of #159 — size-budget regression test for the welcome
-// banner. The original issue framed this as a "token budget" but the
+// Size-budget regression test for the welcome
+// banner. This was once framed as a "token budget" but the
 // banner is rendered to the terminal, not injected into the LLM
 // context. The concrete operator-facing concern is: the first paint
 // shouldn't grow into a screenful of text. This test pins the line

@@ -1,4 +1,4 @@
-// Fingerprint-keyed preview evidence (Fix 5). Pins:
+// Fingerprint-keyed preview evidence. Pins:
 //   - fingerprint stability (canonical JSON — key order irrelevant)
 //   - mutation-time pruning drops exactly the changed/removed steps
 //   - `withLatestPreview` merges instead of replacing: a blocked

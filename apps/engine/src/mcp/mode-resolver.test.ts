@@ -1,11 +1,11 @@
 // MCP catalog visibility — RBAC-derived snapshot.
 //
-// Lock-the-lead invariant: the `tools/list` payload shape varies by
-// the principal's role. Reference impls of MCP frequently expose the
-// full tool palette to every API key; subkit narrows the surface
-// based on `mcp:admin` / `mcp:authoring` scopes derived from RBAC
-// roles. This test pins the resolution + flag matrix so a future
-// change can't silently widen the catalog for product-tier callers.
+// The `tools/list` payload shape varies by the principal's role:
+// subkit narrows the surface based on `mcp:admin` / `mcp:authoring`
+// scopes derived from RBAC roles rather than exposing the full tool
+// palette to every API key. This test pins the resolution + flag
+// matrix so a future change can't silently widen the catalog for
+// product-tier callers.
 
 import { describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../auth/types.ts";

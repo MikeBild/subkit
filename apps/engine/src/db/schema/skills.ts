@@ -97,7 +97,7 @@ export const tenantSkillOverrides = pgTable(
   (t) => [index("tenant_skill_overrides_pk_idx").on(t.tenant_id, t.skill_slug)],
 );
 
-// ----- H3: Skill Candidates — deterministic self-improving skills ------------
+// ----- Skill Candidates — deterministic self-improving skills ----------------
 //
 // Three tables for the observe → detect → propose → approve cycle:
 //   - skill_candidates: proposed skill improvements from pattern detection.

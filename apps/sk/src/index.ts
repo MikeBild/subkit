@@ -1,7 +1,6 @@
-// `sk` — end-user CLI for subkit-backend, modeled after Claude Code /
-// Codex CLI UX. See docs/03-input-surfaces.md and the approved plan at
-// /Users/mikebild/.claude/plans/swift-scribbling-petal.md for the
-// rationale; this file is the command entry point only.
+// `sk` — end-user conversational CLI for subkit-backend. See
+// docs/03-input-surfaces.md for the rationale; this file is the command
+// entry point only.
 //
 // Bare `sk` opens an interactive REPL against the active profile
 // (Step 4 of the rollout — currently a stub that points the user to
@@ -520,7 +519,7 @@ const mainCommand = defineCommand({
   meta: {
     name: "sk",
     version: VERSION,
-    description: "End-user CLI for subkit-backend (Claude Code / Codex CLI style)",
+    description: "End-user conversational CLI for subkit-backend",
   },
   args: {
     ...commonArgs,

@@ -339,8 +339,7 @@ describe("PUT /v1/settings/{path}", () => {
     expect(rows.length).toBe(0);
   });
 
-  // W6 of PR #161 review round 2: cross-tenant guard must cover the
-  // new tenant-scoped overlay sections that #159 introduced —
+  // Cross-tenant guard must cover the tenant-scoped overlay sections —
   // `repl.permissionMode`, `ui.*`, `notifications.push.*`. Without an
   // explicit assertion per section, a future refactor that special-
   // cases one of them risks letting a non-admin tenant flip another

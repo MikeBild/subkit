@@ -744,7 +744,7 @@ export function trimCandidatesToBudget(candidates: SkillCandidateView[]): {
 }
 
 // ---------------------------------------------------------------------------
-// Prior workflows — 5th authoring context source (#203)
+// Prior workflows — 5th authoring context source
 // ---------------------------------------------------------------------------
 
 /** Build the ranking query string for `loadPriorWorkflows` from the

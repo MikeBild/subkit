@@ -1,4 +1,4 @@
-// Bug QQ regression: the commit gate must distinguish informational
+// Regression: the commit gate must distinguish informational
 // warnings (transform_dropped_fields on an intentional projection) from
 // real bugs (requires_repair: true). Pre-fix the gate counted ANY
 // warning as "unacknowledged" and refused auto-persist, forcing the
@@ -124,7 +124,7 @@ function makeDraft(opts: {
   return next;
 }
 
-describe("commit gate · requires_repair (Bug QQ)", () => {
+describe("commit gate · requires_repair", () => {
   test("commit succeeds when execution requires_repair is FALSE even with warnings", async () => {
     // The session 16d6e46a scenario: run produced 2 informational
     // warnings (transform_dropped_fields), which we now classify as

@@ -1,6 +1,6 @@
 -- 0016 — pin `external_call_metering.provider` to a slug shape
 --
--- PR #178 review S4. The reserved metering ledger from 0015 currently
+-- The reserved metering ledger from 0015 currently
 -- accepts any text for `provider`. Before any writer ships, enforce a
 -- slug grammar server-side so the column cannot drift into typo soup
 -- (`cohere` / `Cohere` / `cohere-rerank` would all be silently
@@ -11,7 +11,7 @@
 -- with a letter, no length cap beyond Postgres' text type. Mirrors
 -- the existing slug convention used by `connectors.slug` and
 -- `audit_log.action` namespacing. The mirroring with `audit_log`'s
--- `external_provider.*` reserved actions (issue #166 W2) is
+-- `external_provider.*` reserved actions is
 -- deliberate — a writer that emits `EXTERNAL_PROVIDER_CALL_*` is the
 -- same writer that inserts here, so a single grammar keeps the two
 -- ledgers join-able on `provider` without normalisation.

@@ -1,8 +1,8 @@
 // Interactive ID picker for commands whose required ID was omitted.
 //
 // In a TTY, an omitted ID opens a @clack/prompts select over the
-// resource list instead of erroring — the codex-CLI "resume picker"
-// pattern. Non-TTY (CI, pipes) keeps the current behavior byte-
+// resource list instead of erroring — a resume-picker pattern.
+// Non-TTY (CI, pipes) keeps the current behavior byte-
 // identical: the same "<label> is required" error the command threw
 // before this helper existed, so scripts never block on a prompt.
 

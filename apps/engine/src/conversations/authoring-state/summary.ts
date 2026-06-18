@@ -12,9 +12,8 @@
 //      the read-only queries above plus the inputs.
 //
 // Splitting these into separate files would force a circular import
-// because every compute*() function calls a couple of the queries; the
-// audit doc's "preview.ts" target is satisfied by keeping them
-// together here.
+// because every compute*() function calls a couple of the queries, so
+// they are kept together here.
 
 import { extractTemplatePlaceholders } from "../connector-template-intelligence.ts";
 import type {

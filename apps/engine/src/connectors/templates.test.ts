@@ -23,9 +23,9 @@ describe("connector-template catalog — structural", () => {
     // every entry must pass `ConnectorTemplateSchema`. This test pins
     // the catalog size so a stray add/remove surfaces explicitly.
     //
-    // History: 95 → 101 (six AWS/oauth2 entries in F6) → 102
-    // (web-scraper from #144) → 103 (generic-multipart-upload) → 104
-    // (linkedin oauth2 + create-post recipe) → 105 (xray-cloud graphql).
+    // History: 95 → 101 (six AWS/oauth2 entries) → 102 (web-scraper) →
+    // 103 (generic-multipart-upload) → 104 (linkedin oauth2 + create-post
+    // recipe) → 105 (xray-cloud graphql).
     expect(templates.length).toBe(105);
   });
 
@@ -133,13 +133,13 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
     expect(total).toBeGreaterThanOrEqual(30);
   });
 
-  test("stripe / github / postgres carry the seeded + Workstream-D demonstration recipes", () => {
+  test("stripe / github / postgres carry the seeded + demonstration recipes", () => {
     const counts = Object.fromEntries(
       templates.filter((t) => t.recipes.length > 0).map((t) => [t.slug, t.recipes.length]),
     );
-    // Initial seed: stripe 12, github 10, postgres 8. Workstream D
-    // (recipe sweep) added demonstration recipes for unused
-    // WorkflowDefSchema primitives:
+    // Initial seed: stripe 12, github 10, postgres 8. The recipe sweep
+    // added demonstration recipes for unused WorkflowDefSchema
+    // primitives:
     //   stripe   +3 → 15 (charge-or-refund-by-amount [BranchStep],
     //                     create-customer-idempotent [idempotency_key],
     //                     list-charges-validate-no-zero-amount [validation_function])
@@ -149,16 +149,16 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
     //   postgres +3 → 11 (update-must-affect-exactly-one-row [expected_row_count],
     //                     atomic-debit-credit-double-entry [sql.also],
     //                     export-large-table-stream [sql.cursor])
-    // Issues #46 + #47 (trigger executor recipes):
+    // Trigger executor recipes:
     //   stripe   +2 → 17 (daily-charges-digest [trigger.kind=schedule],
     //                     on-charge-failed-notify-slack [trigger.kind=webhook])
-    // Issue #54 (multi-connector binding via connector_bindings):
+    // Multi-connector binding via connector_bindings:
     //   stripe   +1 → 18 (new-customer-enrich-notify
     //                     [3 placeholders: stripe + hubspot + slack])
-    // Workstream A8 (#51 + #47 lifecycle pattern, replaces multi-day wait):
+    // Lifecycle pattern (replaces multi-day wait):
     //   stripe   +1 → 19 (incremental-charges-via-state
     //                     [trigger.kind=schedule + state_read + state_write])
-    // Issue #146 / Part D (close KNOWN_UNCOVERED step kinds):
+    // Close KNOWN_UNCOVERED step kinds:
     //   github   +2 → 15 (delegated-triage-via-call [CallStep],
     //                     merge-pr-after-approval [WaitForEventStep])
     // 4.2.0: dropped lint-pr-changes-via-tool [ToolStep] when the
@@ -226,9 +226,9 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
     }
   });
 
-  // #147 review S7 — JSON round-trip safety for ConnectorTemplate.
+  // JSON round-trip safety for ConnectorTemplate.
   //
-  // After E.1, `buildTemplateBindingFields` returns the typed
+  // `buildTemplateBindingFields` returns the typed
   // `ConnectorTemplate` directly into a drizzle jsonb column (no
   // generic widening cast). That works only as long as every field
   // on `ConnectorTemplate` is JSON-serialisable: the moment a future
@@ -238,7 +238,7 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
   // test pins the invariant — every catalog entry must round-trip
   // through `JSON.parse(JSON.stringify(...))` without loss.
   //
-  // Scope (per #147 round-5 review S-5): this is a *structural* check
+  // Scope: this is a *structural* check
   // only — it catches `Date`/`Map`/method drops at the JSON codec
   // boundary. It does NOT catch a Zod-side semantic transform (e.g.
   // `z.string().transform(s => s.toLowerCase())`) where round-trip

@@ -27,7 +27,7 @@ const runTransformRoute = createRoute({
   tags: ["executions"],
   summary: "Execute a transform / filter pipeline against a payload (no run row)",
   description:
-    "Stateless transform pipeline: apply `output_transform` (JSONata) or `output_transform_function` (JS) to `payload`, then run `response_filters`. Mirrors the reference impl's `POST /tools/transform/run`. Does not create an execution row — useful for CI smoke tests, transform debugging, and external probes.",
+    "Stateless transform pipeline: apply `output_transform` (JSONata) or `output_transform_function` (JS) to `payload`, then run `response_filters`. Does not create an execution row — useful for CI smoke tests, transform debugging, and external probes.",
   security: [{ bearerAuth: [] }],
   request: {
     body: { content: { "application/json": { schema: RunTransformBodySchema } } },

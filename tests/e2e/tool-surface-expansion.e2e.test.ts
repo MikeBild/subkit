@@ -1,5 +1,5 @@
 // E2E verification for the expanded tool surface + observability
-// wiring (Gaps #0–#8). Covers:
+// wiring. Covers:
 //   1. New conversation tool surface is reachable via sk --p
 //   2. OTel counters for conversation tool calls increment via /metrics
 //   3. Audit rows are correctly labelled (actor_type = system_account)
@@ -16,7 +16,7 @@ afterAll(async () => {
   await shutdown(env);
 }, 30_000);
 
-describe("tool surface expansion (post-P5 gap fixes)", () => {
+describe("tool surface expansion", () => {
   test("login", async () => {
     const r = await cli(
       ["login", "--engine-url", env.baseUrl, "--api-key", env.personas.admin.apiKey],

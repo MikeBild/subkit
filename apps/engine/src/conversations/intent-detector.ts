@@ -54,10 +54,10 @@ const NEW_WORKFLOW_MODIFIER_PATTERN =
 
 /**
  * Enumeration phrases — the TENANT SNAPSHOT already lists workflows,
- * connectors, and executions. Pre-fix the detector forced
- * `list_workflows` here, which meant the model had no chance to use
- * the snapshot and would always spin list_* calls. Now we only signal
- * "answer from prompt" and let the caller pin toolChoice accordingly.
+ * connectors, and executions. Forcing `list_workflows` here would mean
+ * the model had no chance to use the snapshot and would always spin
+ * list_* calls. Instead we only signal "answer from prompt" and let the
+ * caller pin toolChoice accordingly.
  */
 // Enumeration patterns — only for resources covered by the TENANT
 // SNAPSHOT (workflows + connectors). Executions are intentionally
@@ -68,11 +68,9 @@ const NEW_WORKFLOW_MODIFIER_PATTERN =
 // still type "show my integrations" when they mean connectors. The
 // regex matches their intent so they hit the snapshot path; it does
 // NOT mean the entity is called "integration" anywhere in the
-// codebase. Do NOT strip this in a rename pass — the engine's
-// terminology gate (scripts/terminology.banned.txt) bans generic
-// workflow-execution umbrella terms
-// outright but permits `integration` precisely because of this user-
-// facing case.
+// codebase — the domain term is "connector". Do NOT strip this in a
+// rename pass: it is the one place the legacy user-facing word is
+// deliberately matched, precisely to route it onto the connector path.
 const ENUMERATION_PATTERNS = [
   /\b(welche|which|list|show|zeige?|gib|wieviele|how many|anzahl)\b.*\b(workflows?|connectors?|integrations?)\b/i,
   /\b(workflows?|connectors?|integrations?)\b.*\b(habe ich|do i have|listen?|available|vorhanden|insgesamt)/i,

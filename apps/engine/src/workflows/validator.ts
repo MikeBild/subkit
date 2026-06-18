@@ -92,10 +92,9 @@ export interface ValidationError {
  *   validation errors
  *   × unknown loop body target: fetch_resource_details
  *
- * Reference impl avoids this entirely because `build_tool` ships the
- * whole workflow at once. Subkit's incremental flow needs the same
- * leniency at authoring boundaries; the strict gate stays at preview /
- * commit so the saved workflow is never broken.
+ * Subkit's incremental authoring flow declares steps one at a time, so
+ * it needs leniency at authoring boundaries; the strict gate stays at
+ * preview / commit so the saved workflow is never broken.
  */
 export interface ValidateOptions {
   /** When true, unknown control-flow targets become `forward_refs`

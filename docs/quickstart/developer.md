@@ -34,7 +34,7 @@ bun run test:e2e            # compiles sk and runs journeys
 
 > **Note.** `test:unit` includes `execution/tests`, which uses a throwaway Postgres database. It's fast (seconds) because each file gets its own database, but you do need `compose:up` running.
 
-`bun run verify` is the local release gate. It runs terminology checks, determinism lint,
+`bun run verify` is the local release gate. It runs determinism lint,
 unit tests, eval fixtures, integration tests, `build:sk`, and e2e coverage on top of lint and
 typecheck. `bun run verify:ai` is the focused contract suite for prompt/context/authoring changes.
 

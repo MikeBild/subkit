@@ -195,7 +195,7 @@ export function evaluateTransformAuthoringGate(
    *   1. explicit `step.connector_slug` field
    *   2. `${connector.<slug>.*}` placeholders in any string leaf of
    *      the step config (URL, headers, body, query) — the
-   *      reference-impl-style and legacy binding shape
+   *      placeholder binding shape
    *   3. recursive walk through a `transform` step's expression
    */
   function transitivelyExempt(stepId: string, seen = new Set<string>()): boolean {
@@ -270,7 +270,7 @@ export function evaluateTransformAuthoringGate(
         });
         continue;
       }
-      // Fingerprint-keyed evidence (Fix 5): a trace recorded against a
+      // Fingerprint-keyed evidence: a trace recorded against a
       // DIFFERENT definition of the referenced step is not evidence.
       // Mirrors the loop gate; traces without a fingerprint keep the
       // legacy trust (mutation-time pruning keeps those honest).

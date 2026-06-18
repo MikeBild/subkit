@@ -380,12 +380,12 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         return res;
       }
       const is_additional_retry_status = p.retry_policy.additional_retry_statuses.has(res.status);
-      // Reference-aligned retry telemetry: every retry emits the
+      // Uniform retry telemetry: every retry emits the
       // same shape — `attempt_no`, `total_attempts`, `delay_ms`,
       // `next_attempt_at`, plus the typed `reason`. Lets an
       // operator grep `action: "request.retry"` and reconstruct
       // the entire backoff timeline without parsing free-form
-      // messages. Mirrors the reference impl's per-attempt logs.
+      // messages.
       if (res.status === 429) {
         const after = parseRetryAfter(res.headers["retry-after"] ?? null);
         const wait = Math.min(

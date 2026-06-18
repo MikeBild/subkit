@@ -1,4 +1,4 @@
-// Config tab — flat searchable list (M3 of #159).
+// Config tab — flat searchable list.
 // Asserts the filter narrows as typed and two-step Esc clears + closes.
 
 import { describe, expect, test } from "bun:test";

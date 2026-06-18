@@ -135,7 +135,7 @@ jobs:
           # skips the approval prompts the agent would otherwise wait
           # for. `--max-budget-usd 15.00` caps spend per run; raised
           # from $5 after observing budget-exhaustion placeholders on
-          # 170+-file audit-cleanup diffs (PR #143). $15 covers the
+          # 170+-file cleanup diffs. $15 covers the
           # largest realistic monorepo diff at sonnet-class context;
           # the workflow is `continue-on-error` and emits a
           # diagnostic placeholder + ::error:: annotation when the

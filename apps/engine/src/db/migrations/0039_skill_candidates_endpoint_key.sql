@@ -1,7 +1,7 @@
 -- Add endpoint_key to skill_candidates so connector-scoped repair candidates
 -- carry their interface identity.
 --
--- #202 made the repair detector emit one Skill Candidate per
+-- The repair detector emits one Skill Candidate per
 -- (connector_id, endpoint_key, kind) — fingerprint repair:conn:endpoint:kind.
 -- But upsertFromSignal's supersede step only matched on
 -- (scope, pattern_kind, connector_id), with no endpoint discriminator, so a
@@ -12,7 +12,7 @@
 -- endpoint-specific), restoring "one skill per interface = connector+endpoint".
 --
 -- Additive nullable column; IF NOT EXISTS keeps it idempotent. Existing rows
--- get NULL (correct: pre-#202 candidates were workflow-scoped).
+-- get NULL (correct: earlier candidates were workflow-scoped).
 
 ALTER TABLE "skill_candidates"
   ADD COLUMN IF NOT EXISTS "endpoint_key" text;

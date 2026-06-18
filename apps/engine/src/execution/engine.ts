@@ -1128,8 +1128,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     // simple steps we use the raw `outcome.result.output`; for loop +
     // parallel we use the just-assembled scope envelope which carries
     // the iterationResults / branchResults so downstream transforms
-    // can be authored against the canonical shape (see fix #20 in
-    // workflow-authoring.md). Truncated downstream by previewOf when
+    // can be authored against the canonical shape. Truncated downstream by previewOf when
     // serialised for the LLM.
     let outputPreview: unknown = outcome.result.output;
     if (step.kind === "loop" || step.kind === "parallel") {
@@ -1294,9 +1293,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
 
   // Workflow-level response filters. Run AFTER output_transform so the
   // operator-defined transform shapes the payload first, then filters
-  // mask/redact/strip — same order as the reference impl's
-  // `applyResponseFilters` step at the end of `workflow-executor.ts`.
-  // Per-step filters on individual `RequestStep.response_filters`
+  // mask/redact/strip last. Per-step filters on individual
+  // `RequestStep.response_filters`
   // already cleaned each step's HTTP response inline; this layer is
   // the last gate before the payload crosses the tenant boundary.
   if (
@@ -1388,7 +1386,6 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // self-healing flow recognises this code and produces a
   // `validation_failed` drift signal that carries the expression text
   // and the offending value, so the repair LLM can propose a patch.
-  // Mirrors the reference impl's optional `validationFunction`.
   if (def.validation_expression && lastOutput !== undefined && finalStatus === "succeeded") {
     try {
       // Same binding fix as output_transform above — a validation_expression

@@ -1,4 +1,4 @@
-// Integration tests for the #144 POST /v1/knowledge-sources/inline
+// Integration tests for the POST /v1/knowledge-sources/inline
 // OpenAPI route. Boots an in-process Hono server + real Postgres via
 // the shared http test scaffold so auth + RBAC + Zod validation +
 // chunking + persistence are all exercised end-to-end.

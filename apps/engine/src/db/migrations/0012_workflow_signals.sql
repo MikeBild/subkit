@@ -1,4 +1,4 @@
--- Inbound runtime signals for wait-for-event steps (#49). External
+-- Inbound runtime signals for wait-for-event steps. External
 -- approvers (Slack reaction, ServiceNow ticket close, customer reply)
 -- POST to /v1/runs/{id}/signals; the row stays until the wait-for-event
 -- step matches + consumes it, or until a retention sweep deletes

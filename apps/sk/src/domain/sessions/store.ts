@@ -7,8 +7,7 @@
 //
 // Why JSONL: append-only, line-by-line readable, durable on partial
 // writes (the tail can be a partial line and we just skip it on read),
-// and easy to diff / grep without a parser. Mirrors the Claude Code
-// session-persistence shape so power users have one mental model.
+// and easy to diff / grep without a parser.
 //
 // The store is intentionally narrow — it only knows about *events*
 // (turn boundaries, text deltas, tool calls, errors). The conversation

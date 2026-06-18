@@ -150,8 +150,8 @@ describe("loadBootstrap", () => {
     await loadBootstrap(client as unknown as EngineClient, PROFILE, { cacheDir });
     expect(client.bootstrapCalls).toBe(1);
     const cached = JSON.parse(readFileSync(path, "utf8")) as { v: number; allowed: string[] };
-    // H1 of #159 follow-up — bumped to 2 when `prefs` was added.
-    // S6 of PR #161 review (round 5) — bumped to 3 with portalTokenTtlMin.
+    // Cache version: bumped to 2 when `prefs` was added, then to 3 with
+    // portalTokenTtlMin.
     expect(cached.v).toBe(3);
     expect(cached.allowed).toEqual(["conversation:read", "workflow:read"]);
 

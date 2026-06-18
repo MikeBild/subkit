@@ -619,7 +619,7 @@ export interface ListWorkflowsOptions {
 
 /**
  * Build the WHERE conditions shared by `listWorkflows` and
- * `listWorkflowSummaries` (#178 round-3 S5). Centralising the
+ * `listWorkflowSummaries`. Centralising the
  * predicate avoids drift the next time the list surface gains a
  * filter (e.g. an `owner_id` knob).
  */
@@ -691,7 +691,7 @@ export interface WorkflowSummary {
  * `dag` payload over the wire. Uses Postgres' `jsonb_array_length`
  * to count steps server-side. Mirrors `listWorkflows` filtering
  * surface (status, name_contains, limit, offset) and ordering
- * (newest first). #178 review W-2.
+ * (newest first).
  */
 export async function listWorkflowSummaries(
   tenant_id: string,

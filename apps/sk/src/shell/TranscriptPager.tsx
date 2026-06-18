@@ -1,4 +1,4 @@
-// Full-screen transcript pager (Ctrl+T) — codex `pager_overlay` parity.
+// Full-screen transcript pager (Ctrl+T).
 //
 // Renders every cell with full output / full diff regardless of the
 // inline truncation state. Operator scrolls with arrow keys / page

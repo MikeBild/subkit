@@ -1,4 +1,4 @@
-// Unit tests for the `sk mcp-servers` command handlers (#171).
+// Unit tests for the `sk mcp-servers` command handlers.
 //
 // Follows the create-json-contract.test.ts pattern:
 //   - EngineClient and config (resolveProfile) are stubbed via mock.module()

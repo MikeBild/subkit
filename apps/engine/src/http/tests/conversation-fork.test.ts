@@ -1,4 +1,4 @@
-// C2 of PR #161 review — HTTP-layer coverage for the new
+// HTTP-layer coverage for the
 // `POST /v1/conversations/:id/fork-from-message/:message_id` route:
 //
 //   - admin api key with conversation:write → 200 + audit row written
@@ -196,7 +196,7 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
     expect(res.status).toBe(404);
   });
 
-  // S-4 of PR #161 review (round 3): the service-layer test at
+  // The service-layer test at
   // `apps/engine/src/conversations/service/fork.test.ts` covers the
   // memory + loaded_skills carry-over, but the HTTP route is the
   // operator-facing surface. Pin the same contract here so a route-
@@ -244,7 +244,7 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
   });
 
   test("admin → fork audit row records tool_calls_omitted + elicitations_omitted", async () => {
-    // S-1 of PR #161 review (round 3): the audit row carries the
+    // The audit row carries the
     // documented side-effect omissions so log-only incident readers
     // can reconstruct what the fork did NOT bring across.
     const res = await fetch(
@@ -263,7 +263,7 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
     const meta = audits[0]!.metadata as Record<string, unknown>;
     expect(meta.tool_calls_omitted).toBe(true);
     expect(meta.elicitations_omitted).toBe(true);
-    // W1 of PR #161 review (round 5): HTTP entry tags request_source: "api".
+    // HTTP entry tags request_source: "api".
     expect(meta.request_source).toBe("api");
   });
 });

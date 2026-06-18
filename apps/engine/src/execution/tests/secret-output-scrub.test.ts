@@ -12,10 +12,10 @@ import type { StepDef } from "../../workflows/types.ts";
 // intentionally module-private — to test it without exporting we
 // assert behavior end-to-end via runStep would require a full execution
 // harness. Instead, we exercise the same predicate the helper
-// embeds (Workstream A7's specific contract) and pin the marker shape.
+// embeds (the declared-secret output scrub contract) and pin the marker shape.
 const REDACT_MARKER = "***REDACTED:secret_output***";
 
-describe("Workstream A7 — declared-secret output scrub", () => {
+describe("declared-secret output scrub", () => {
   test("redaction marker matches the shared isAlreadyRedacted regex", () => {
     // The marker `***REDACTED:secret_output***` matches the regex
     // `^\*\*\*redacted(?::[a-z_]+)?\*\*\*$` (case-insensitive) used

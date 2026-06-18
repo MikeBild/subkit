@@ -1,4 +1,4 @@
-// Token-mint refresh worker (A4). Mirrors the oauth2 refresh-worker
+// Token-mint refresh worker. Mirrors the oauth2 refresh-worker
 // shape: pre-flight inline refresh, called from the HTTP driver right
 // before a request goes out.
 //

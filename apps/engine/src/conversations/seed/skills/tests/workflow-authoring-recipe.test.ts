@@ -1,6 +1,6 @@
-// Bug KK regression: skill discipline — the workflow-authoring skill
-// must encode the same root-cause-only patterns the reference impl
-// uses (mandatory preflight Build Recipe, 5-failure cap, requires_repair
+// Skill discipline — the workflow-authoring skill
+// must encode the root-cause-only patterns
+// (mandatory preflight Build Recipe, 5-failure cap, requires_repair
 // gating, inspect-before-patching). Drift on any of these brings back
 // the trial-and-error patch loops the contract is designed to prevent.
 
@@ -21,8 +21,8 @@ describe("workflow-authoring.md · Build Recipe (mandatory preflight)", () => {
   });
 
   test("orders steps as: load_skill → list_connectors → probe → call_connector → search → author", () => {
-    // The same mandatory preflight the reference impl uses for
-    // `build_tool`, adapted to subkit's tool names. `probe_connector` and
+    // The mandatory preflight before authoring.
+    // `probe_connector` and
     // `call_connector` capture the REAL response shape before the model
     // reads docs (`search_docs`) or authors — grounding generation in
     // evidence, not guesses. We anchor on canonical numbered-step markers

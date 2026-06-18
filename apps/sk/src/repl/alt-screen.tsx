@@ -6,7 +6,7 @@
 // history when they `/exit`.
 //
 // Rendering is a pass-through — this component is purely a side
-// effect on mount / unmount, same as Claude Code's AlternateScreen.
+// effect on mount / unmount that toggles the terminal alternate screen.
 
 import type React from "react";
 import { useEffect } from "react";

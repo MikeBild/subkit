@@ -19,8 +19,7 @@ export interface SkSettings {
   defaultTenant?: string;
   additionalDirectories?: string[];
   /**
-   * Status line configuration — mirrors Claude Code's
-   * `statusLine` hook. Provide `command` to run a shell
+   * Status line configuration. Provide `command` to run a shell
    * command with a JSON input on stdin; its stdout becomes
    * the line. Provide `format` as a fallback template that's
    * rendered locally when no command is set. `refreshMs`

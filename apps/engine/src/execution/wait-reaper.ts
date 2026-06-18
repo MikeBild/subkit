@@ -1,4 +1,4 @@
-// Engine-boot reaper for orphaned wait checkpoints (#48).
+// Engine-boot reaper for orphaned wait checkpoints.
 //
 // On graceful shutdown the wait step deletes its `workflow_waits` row
 // before resolving. After a crash the row survives. On the next boot,

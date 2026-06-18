@@ -18,7 +18,7 @@
 //      (`js-transform-eval.ts` — same sandbox, zero egress, zero host
 //      globals).
 //   2. Scope-reference resolution against fingerprint-valid recorded
-//      previews (Fix 5): every `$scope.<X>` cite is classified
+//      previews: every `$scope.<X>` cite is classified
 //      recorded / stale / missing.
 //   3. Transform / loop-over evaluation against the recorded
 //      `scope_at_step` where evidence exists, with the same

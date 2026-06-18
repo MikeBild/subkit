@@ -379,10 +379,10 @@ export const METRIC_NAMES = {
   // palette diverged from the seed-skill teaching.
   CONVERSATION_TOOL_HALLUCINATED_ABSENCE_TOTAL:
     "subkit_conversation_tool_hallucinated_absence_total",
-  // Defence-in-depth for Root A: counts workflow commits where the
-  // name+description carries cadence phrasing but `trigger.kind`
-  // remained `request`. Any non-zero count is a regression signal —
-  // the seed skill (Phase 2 fix) instructs the LLM to carry the
+  // Defence-in-depth for unbound-schedule drift: counts workflow
+  // commits where the name+description carries cadence phrasing but
+  // `trigger.kind` remained `request`. Any non-zero count is a
+  // regression signal — the seed skill instructs the LLM to carry the
   // schedule trigger inline with `build_workflow`.
   WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL: "subkit_workflow_schedule_not_bound_total",
   // Per-kind workflow trigger counter. Recorded at every successful
@@ -578,8 +578,7 @@ export const METRIC_NAMES = {
   /**
    * Patch Candidates that became a Skill Candidate via the repair-pattern
    * detector (evidence carries ≥1 `patch_candidate_id`). The middle edge of
-   * the loop. A second source (the #202 auto-aggregator) will later feed the
-   * same counter — no rework needed.
+   * the loop. Multiple sources may feed this counter.
    */
   LOOP_PATCH_TO_SKILL_CANDIDATE_TOTAL: "sk_loop_patch_to_skill_candidate_total",
   /**

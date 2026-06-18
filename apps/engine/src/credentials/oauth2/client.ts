@@ -113,7 +113,7 @@ function toBundle(
  * is within `bufferMs` of expiry. Callers should treat `true` as "refresh
  * before use" to avoid mid-request 401 retries.
  *
- * Default buffer: 5 minutes. The reference impl ships the same value.
+ * Default buffer: 5 minutes.
  */
 export function isTokenExpired(
   bundle: { expires_at?: Date | string | null } | null | undefined,

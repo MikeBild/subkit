@@ -1,7 +1,6 @@
 // Connectors HTTP surface — entry point.
 //
-// Phase 4 §4.4 of the 2026-05 architecture audit (#92). The former
-// http/routes/connectors.ts (734 LOC) split into per-sub-resource
+// The former http/routes/connectors.ts split into per-sub-resource
 // modules; this barrel registers shared per-path RBAC middleware and
 // delegates handler registration to each module. Public API
 // unchanged: server.ts still calls `registerConnectorRoutes(app)`.

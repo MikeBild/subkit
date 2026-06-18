@@ -1,4 +1,4 @@
-// #49 wait-for-event schema + timeout-coupling regression tests.
+// Wait-for-event schema + timeout-coupling regression tests.
 
 import { describe, expect, test } from "bun:test";
 import { WaitForEventStepSchema, WorkflowDefSchema } from "../types.ts";
@@ -37,7 +37,7 @@ describe("WaitForEventStepSchema", () => {
   });
 });
 
-describe("WorkflowDef.timeout_ms ≥ wait_for_event.timeout_ms (#49 superRefine)", () => {
+describe("WorkflowDef.timeout_ms ≥ wait_for_event.timeout_ms (superRefine)", () => {
   function workflowWith(opts: { workflowTimeoutMs?: number; waitTimeoutMs: number }) {
     return {
       name: "approve",

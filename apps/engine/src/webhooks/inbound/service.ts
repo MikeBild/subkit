@@ -230,7 +230,7 @@ export async function deleteInbound(
 //
 // The "none" mapping reuses the standard-webhooks verifier as a
 // pass-through so the inbound driver never has to special-case the
-// missing signature; the executor PR (#46) wires `skip` through.
+// missing signature; the executor wires `skip` through.
 
 const VERIFY_TO_VERIFIER: Record<WebhookTrigger["verify"], InboundVerifierName> = {
   "stripe-signature": "stripe",

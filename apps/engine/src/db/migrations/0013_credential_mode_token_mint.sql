@@ -1,4 +1,4 @@
--- Add `token_mint` to the credential_mode enum (A4). Generalises
+-- Add `token_mint` to the credential_mode enum. Generalises
 -- non-OAuth2 username/password→JWT flows: Cognito InitiateAuth, Firebase
 -- Auth REST signInWithPassword, generic POST /login. Persists like
 -- oauth2 (cached access_token + optional refresh_token + expires_at)

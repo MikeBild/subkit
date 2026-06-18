@@ -1,6 +1,6 @@
-// Plan-mandated smoke tier for the sk CLI overhaul.
+// Smoke tier for the sk CLI overhaul.
 //
-// Closes plan item 15 — the 9 smoke assertions that ride on top of
+// The 9 smoke assertions that ride on top of
 // the binary itself. Each test runs in its own spawnSync invocation
 // to keep state isolated. Tests are skipped when dist/sk doesn't
 // exist (the CI script builds it before this file runs).

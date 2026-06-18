@@ -360,7 +360,7 @@ async function runServer(): Promise<void> {
     });
   }
 
-  // #48: reap orphaned wait checkpoints. Re-enqueues `execution.run`
+  // Reap orphaned wait checkpoints. Re-enqueues `execution.run`
   // for every row in `workflow_waits` (`sendAfter:sleep_until_ts` for
   // future deadlines, immediate for overdue ones), then drops the
   // checkpoint row. Each reap emits `WAIT_COMPLETED { reason:

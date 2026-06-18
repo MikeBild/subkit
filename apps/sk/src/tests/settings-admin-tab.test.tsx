@@ -1,4 +1,4 @@
-// Admin role-gated CRUD (M8 of #159).
+// Admin role-gated CRUD.
 // AdminTab is no longer reachable from /settings — it's mounted via
 // /admin → AdminCommand (apps/sk/src/settings-ui/AdminCommand.tsx)
 // which wraps AdminTab in SinglePane. These unit tests cover the tab

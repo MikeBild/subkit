@@ -81,7 +81,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-      # Migrations are embedded in the engine binary (issue #149) and
+      # Migrations are embedded in the engine binary and
       # run in-process on boot. Integration tests provision per-file
       # databases via apps/engine/src/db/tests/setup.ts which calls
       # the embedded runner directly — no standalone CI step needed.
@@ -158,7 +158,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-      # Migrations are embedded in the engine binary (issue #149) and
+      # Migrations are embedded in the engine binary and
       # run in-process on boot. Integration tests provision per-file
       # databases via apps/engine/src/db/tests/setup.ts which calls
       # the embedded runner directly — no standalone CI step needed.

@@ -89,7 +89,7 @@ you need a new one:
 
 ## Quality gate before "done"
 
-Run `bun run verify` — full matrix (lint, typecheck, terminology, determinism lint, unit,
+Run `bun run verify` — full matrix (lint, typecheck, determinism lint, unit,
 eval, integration, build:sk, e2e). See `.claude/commands/verify.md` for the
 per-step breakdown.
 
@@ -177,8 +177,7 @@ extraction into a separate process with seccomp/seatbelt sandboxing.
 
 ### Why subkit splits engine vs sk vs agent vs chat-ui
 
-The reference impl ships as a single monolithic core package. Subkit splits
-along three axes that each demand a separate runtime:
+Subkit splits along three axes that each demand a separate runtime:
 
 - **`apps/engine/`** — HTTP / MCP / queue server. Multi-tenant, runs in a
   Postgres-backed cluster, talks to LLMs, owns RBAC. Big, stateful, careful.
@@ -191,16 +190,16 @@ along three axes that each demand a separate runtime:
 A monolithic package would force every CLI install to ship the engine's
 Postgres + LLM + queue surface. The split lets each binary stay minimal.
 
-### Why subkit uses a queue (pg-boss) instead of a synchronous Deno subprocess
+### Why subkit uses a queue (pg-boss) instead of a synchronous subprocess
 
-The reference impl spawns a Deno child process per workflow run; subkit
-enqueues to pg-boss. The queue path costs a millisecond of latency in
+Subkit enqueues each workflow run to pg-boss rather than spawning a child
+process per run. The queue path costs a millisecond of latency in
 exchange for:
 
 - **Crash recovery** — a job in pg-boss survives engine restart; an in-flight
-  Deno subprocess does not. SLA targets demand the former.
+  subprocess does not. SLA targets demand the former.
 - **Backpressure** — pg-boss caps `team-size` so a flood of executions
-  doesn't OOM the engine. Deno subprocesses fork unbounded.
+  doesn't OOM the engine. Subprocesses fork unbounded.
 - **Retry semantics** — pg-boss handles per-job retry / backoff / DLQ
   uniformly; spawning subprocesses leaves retry to the caller.
 - **Observability** — a single queue-depth + lag metric covers every
@@ -235,18 +234,17 @@ in the loop without updating the frame-ordering integration tests in
 
 ### `ConnectorSystem` facade (see `connectors/system.ts`)
 
-Mirrors the reference impl's `SystemManager` read-side interface
-(`getCredentials`, `getDocumentation`) so the same mental model applies
-in both codebases. Sk-specific extensions: `tenantId` and
-`templateVersion` fields on the facade enforce tenant-isolation and
-self-healing drift correlation by construction. Every consumer of
-credentials + driver + docs should go through this facade rather than
-hand-rolling three lookups.
+A read-side facade over a connector's credentials + driver + docs
+(`getCredentials`, `getDocumentation`). `tenantId` and `templateVersion`
+fields on the facade enforce tenant-isolation and self-healing drift
+correlation by construction. Every consumer of credentials + driver +
+docs should go through this facade rather than hand-rolling three
+lookups.
 
-Write-side enrichment (the reference impl's `enrichFromTemplate`)
-intentionally stays out of the facade — template merging is a
-write-time concern handled by `connectors/template-enrichment.ts` at
-connector-creation time, not by the read-side orchestrator.
+Write-side enrichment intentionally stays out of the facade — template
+merging is a write-time concern handled by
+`connectors/template-enrichment.ts` at connector-creation time, not by
+the read-side orchestrator.
 
 ## Determinism contract (test code)
 

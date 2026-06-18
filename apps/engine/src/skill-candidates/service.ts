@@ -379,7 +379,7 @@ async function upsertFromSignal(
     // conventions — different endpoints, or different repair kinds on one
     // endpoint (a field-path fix and a header add are both real, both needed).
     // They must COEXIST; cross-superseding them silently drops a valid,
-    // evidence-backed candidate (the bug #202's connector-scoping introduced).
+    // evidence-backed candidate (a bug connector-scoping can introduce).
     // Same-fingerprint recurrence is already handled by the dedup/update branch
     // above; a stale repair candidate is retired through the operator gate, not
     // by another endpoint/kind appearing. So we skip supersede entirely when
@@ -527,7 +527,7 @@ export async function runPatternAnalysis(
     // Middle edge of the Run → Drift → Patch → Skill loop (positioning.md §6):
     // a freshly-proposed candidate whose evidence carries a patch_candidate_id
     // is a Patch Candidate that became a Skill Candidate (the repair-pattern
-    // detector path). #202's auto-aggregator will later feed the same counter.
+    // detector path). The auto-aggregator feeds the same counter.
     if (result.action === "proposed" && signal.evidence.some((e) => e.patch_candidate_id)) {
       recordLoopPatchToSkillCandidate({ tenant_id: params.tenant_id });
     }

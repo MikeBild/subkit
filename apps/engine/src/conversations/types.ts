@@ -596,8 +596,7 @@ export type TurnEvent =
       /**
        * The `conversation_tool_calls` row id of the originating tool
        * call (the gated tool, OR the ask_user_* tool the LLM emitted
-       * directly). Mirrors the reference impl's `resumeToolCallId`
-       * pattern: clients can correlate the elicitation to "the call
+       * directly). Clients can correlate the elicitation to "the call
        * that paused" without a follow-up DB read, and may resume by
        * either id (engine accepts both as aliases).
        */
@@ -627,8 +626,8 @@ export type TurnEvent =
    * Inline unified-diff cell. Emitted after a draft-mutation tool
    * produces a meaningful structural change (workflow build, patch,
    * connector update). The CLI renders a colored gutter + content
-   * diff like codex's `PatchHistoryCell` — operators see exactly
-   * what changed without scrolling back to the prior state.
+   * diff — operators see exactly what changed without scrolling back
+   * to the prior state.
    *
    * The engine pre-computes line-by-line hunks (no diff library on
    * the CLI side). `language` lets the renderer pick a syntax theme
@@ -667,8 +666,8 @@ export type TurnEvent =
       type: "activity";
       phase: "tool" | "composing" | "idle";
       /** Free-form one-line label rendered to the right of the spinner.
-       *  Codex pattern: prefer visibility over silence — when in doubt
-       *  emit a generic "Working" label rather than nothing. */
+       *  Prefer visibility over silence — when in doubt emit a generic
+       *  "Working" label rather than nothing. */
       label: string;
       /** Optional tool name when phase is `"tool"` (call card already
        *  surfaced separately; this just lets the ticker stay accurate

@@ -287,7 +287,7 @@ describe("recordTransition — visible transcript message", () => {
 describe("service-layer wiring — code review", () => {
   test("respondElicitation mirrors output to recordTransition (source inspection)", async () => {
     // This is a best-effort static inspection: we assert the substring
-    // pattern in service/elicit.ts (post-§4.1 split) so future refactors
+    // pattern in service/elicit.ts so future refactors
     // that drop the wiring fail loudly rather than silently passing the
     // unit tests above.
     const fs = await import("node:fs/promises");

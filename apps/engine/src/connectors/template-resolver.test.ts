@@ -66,10 +66,10 @@ describe("buildTemplateBindingFields", () => {
     expect(fields.template_source).toBe("tenant");
   });
 
-  // #147 review W-2 — public Zod-gate parse for the serialized
-  // connector. After E.1 the producer (`buildTemplateBindingFields`)
-  // is internally typed as `ConnectorTemplate`, but the public route
-  // surface deliberately publishes `Record<string, unknown>` (see
+  // Public Zod-gate parse for the serialized connector. The producer
+  // (`buildTemplateBindingFields`) is internally typed as
+  // `ConnectorTemplate`, but the public route surface deliberately
+  // publishes `Record<string, unknown>` (see
   // http/routes/connectors/schemas.ts). This test pins the contract
   // through the public Zod gate clients are pinned against — a
   // future schema-side change that breaks the public surface (e.g.

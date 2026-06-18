@@ -1,5 +1,5 @@
 -- Let `credentials` rows be owned by an external MCP server instead of a
--- connector. Foundational for the external-MCP-client feature (#171):
+-- connector. Foundational for the external-MCP-client feature:
 -- external MCP servers reference encrypted bearer / OAuth tokens from
 -- `mcp_servers.auth_config.token_ref`, and those secrets live here.
 --

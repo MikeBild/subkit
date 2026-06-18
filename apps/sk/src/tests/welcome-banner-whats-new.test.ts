@@ -83,7 +83,7 @@ describe("loadWhatsNew", () => {
   test("fetches remote when cache stale and updates cache", async () => {
     const now = 1_700_000_000_000;
     writeCache({ headline: "stale", fetchedAt: now - 25 * 3600 * 1000 }, cachePath());
-    // W4 of round 6: pass url explicitly because the default posture
+    // Pass url explicitly because the default posture
     // is opt-in (no env var → no network call). Tests that exercise
     // the fetcher must supply `url` directly.
     const out = await loadWhatsNew({
@@ -221,7 +221,7 @@ describe("loadWhatsNew", () => {
     expect(loadWhatsNewSync({ cachePath: cachePath() })).toMatch(/^v\d/);
   });
 
-  test("sanitizeHeadline strips ANSI escapes (W5 of PR #161)", () => {
+  test("sanitizeHeadline strips ANSI escapes", () => {
     expect(sanitizeHeadline("[31mred[0m headline")).toBe("red headline");
     expect(sanitizeHeadline("\x1b]9;notify\x07hello")).toBe("hello");
   });
@@ -245,7 +245,7 @@ describe("loadWhatsNew", () => {
     expect(sanitizeHeadline(42)).toBeNull();
   });
 
-  test("whatsNewUrl returns null by default (opt-in, W4 of round 6)", () => {
+  test("whatsNewUrl returns null by default (opt-in)", () => {
     const prev = process.env.SK_WHATS_NEW_URL;
     try {
       delete process.env.SK_WHATS_NEW_URL;
@@ -257,7 +257,7 @@ describe("loadWhatsNew", () => {
     }
   });
 
-  test("whatsNewUrl returns null when SK_WHATS_NEW_URL is empty / disabled (W5 of PR #161)", () => {
+  test("whatsNewUrl returns null when SK_WHATS_NEW_URL is empty / disabled", () => {
     const prev = process.env.SK_WHATS_NEW_URL;
     try {
       process.env.SK_WHATS_NEW_URL = "";
@@ -274,7 +274,7 @@ describe("loadWhatsNew", () => {
     }
   });
 
-  test("whatsNewUrl returns the operator-supplied URL when SK_WHATS_NEW_URL is set (W4 of round 6)", () => {
+  test("whatsNewUrl returns the operator-supplied URL when SK_WHATS_NEW_URL is set", () => {
     const prev = process.env.SK_WHATS_NEW_URL;
     try {
       process.env.SK_WHATS_NEW_URL = "https://example.com/whats-new.json";
@@ -306,13 +306,13 @@ describe("loadWhatsNew", () => {
     }
   });
 
-  test("whatsNewUrl honors SK_WHATS_NEW_URL override and is null by default (W4 of round 6)", () => {
+  test("whatsNewUrl honors SK_WHATS_NEW_URL override and is null by default", () => {
     const prev = process.env.SK_WHATS_NEW_URL;
     try {
       process.env.SK_WHATS_NEW_URL = "https://example.test/wn.json";
       expect(whatsNewUrl()).toBe("https://example.test/wn.json");
       delete process.env.SK_WHATS_NEW_URL;
-      // W4 of round 6: opt-in default — `undefined` env yields null,
+      // Opt-in default — `undefined` env yields null,
       // not the recommended URL. Operators must set the env var
       // explicitly to enable the network call.
       expect(whatsNewUrl()).toBeNull();

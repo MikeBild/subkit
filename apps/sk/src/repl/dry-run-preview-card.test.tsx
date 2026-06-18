@@ -1,10 +1,9 @@
-// Bug C regression: the dry_run_workflow card showed only "Preview
-// complete · workflow · ok · 290ms / Ran 4 steps with no errors."
-// in session 86de186b — no preview output was rendered, so the
-// operator had to ask the LLM "display results" to actually see what
-// the workflow produced. Post-fix the card reads from `step_outputs`
-// (#22) and `last_step.output_preview` so the produced data is
-// always visible.
+// Regression: the dry_run_workflow card showed only "Preview
+// complete · workflow · ok · 290ms / Ran 4 steps with no errors." —
+// no preview output was rendered, so the operator had to ask the LLM
+// "display results" to actually see what the workflow produced. The
+// card reads from `step_outputs` and `last_step.output_preview` so the
+// produced data is always visible.
 
 import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";

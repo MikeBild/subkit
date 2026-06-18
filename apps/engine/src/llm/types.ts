@@ -166,9 +166,8 @@ export interface AssembleContextParams {
    * converse flow. When present, the assembler loads the last N
    * resolved elicitations (`conversation_elicitations` rows) and
    * renders them as an `interaction_log` section so the model can see
-   * what was tested vs. confirmed vs. declined this turn — mirroring
-   * the reference impl's `interactionLog` array. Without it the model
-   * re-asks for already-declined actions and double-acts on already-
+   * what was tested vs. confirmed vs. declined this turn. Without it the
+   * model re-asks for already-declined actions and double-acts on already-
    * confirmed ones.
    */
   conversation_id?: string;

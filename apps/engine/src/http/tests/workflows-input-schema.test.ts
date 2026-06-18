@@ -1,7 +1,6 @@
 // Integration tests for `GET /v1/workflows/:id/input-schema` and the
-// schema fields surfaced on `GET /v1/workflows/:id`. Reference impl
-// exposes `inputSchema` / `outputSchema` on `GET /tools/:id` directly;
-// subkit's MCP layer surfaced these but the bare HTTP route did not.
+// schema fields surfaced on `GET /v1/workflows/:id`. Subkit's MCP layer
+// surfaced these but the bare HTTP route did not.
 // These tests pin the public-facing shape so non-MCP HTTP callers can
 // discover a workflow's I/O without round-tripping through MCP.
 

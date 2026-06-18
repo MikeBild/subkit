@@ -1,6 +1,6 @@
 // Shared Zod schemas, helpers, and serializers for the connector-
-// templates REST surface. After the Phase 4 split (audit §4.4) every
-// per-sub-resource module imports from here.
+// templates REST surface. Every per-sub-resource module imports from
+// here.
 
 import { z } from "@hono/zod-openapi";
 import { policy } from "../../../auth/index.ts";
@@ -129,7 +129,7 @@ export const TemplateOAuthCredentialResponse = z
   .object({ id: z.string() })
   .openapi("TemplateOAuthCredentialResponse");
 
-// Workstream E1 — read-only recipe browse routes. Recipes are global
+// Read-only recipe browse routes. Recipes are global
 // catalog data (no tenant body), but the routes still RBAC-gate on
 // `connector:read` so portal tokens with read-only scope cannot
 // trivially exfiltrate the catalog roster of paying tenants without
@@ -147,7 +147,7 @@ export const RecipeSlugParam = z.object({
   recipe_slug: z.string().min(1),
 });
 
-// Workstream E2 — recipe packs (vertical groupings).
+// Recipe packs (vertical groupings).
 //
 // Packs are not stored anywhere; they are computed at request time from
 // recipe `category` + `tags`. Each pack matches recipes whose category
@@ -155,11 +155,9 @@ export const RecipeSlugParam = z.object({
 // the curated roster (slug-only references — operators read details
 // via the per-template recipe routes / inspect_recipe MCP tool).
 //
-// Per the enterprise-business-value-first memory rule, pack copy leads
-// with outcome ("revoke a departing employee's access in <60s"), not
-// the connector list. Pack names + outcome strings pass the
-// terminology gate (the banned-words list in
-// `scripts/terminology.banned.txt` enforces this).
+// Pack copy leads with outcome ("revoke a departing employee's access
+// in <60s"), not the connector list. Pack names + outcome strings use
+// the product's domain vocabulary ("connector" / "workflow").
 
 export const RECIPE_PACK_VERTICALS = [
   "revops",

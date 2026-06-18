@@ -4,7 +4,7 @@
 > **Audience:** Engineers integrating runtime, operators monitoring executions
 > **Strategy context:** developer view of [authoring-vs-execution split (R3)](./system-requirements.md#r3--separation-of-authoring-probabilistic-from-execution-controlled), [workflow as artefact (R4)](./system-requirements.md#r4--workflow-as-a-versioned-organisational-artefact), and [closed learning loop (R5)](./system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation) — see also [Git for operational organisational logic](./thesis.md#53-operational-knowledge-becomes-accumulable-versionable-inheritable--git-for-operational-organisational-logic) and the [new-middleware-layer section](./thesis.md#54-a-new-middleware-layer-emerges-historically--not-by-accident). Execution is deliberately not "intelligent"; the intelligence is concentrated and continuously improving in the authoring/repair loop ([positioning §2](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution)).
 
-Everything the AI builds in this reference implementation ends up here. The authoring layer is conversational and exploratory; the execution layer is the opposite — deterministic, immutable, and governed.
+Everything the AI builds in sk ends up here. The authoring layer is conversational and exploratory; the execution layer is the opposite — deterministic, immutable, and governed.
 
 This document explains how approved workflows run, what governance looks like at runtime, how the platform stays observable at scale, and how the self-healing subsystem keeps workflows healthy as the connected boundaries they depend on change over time.
 
@@ -12,7 +12,7 @@ This document explains how approved workflows run, what governance looks like at
 
 ## The Execution Model
 
-Execution in this reference implementation is deterministic. A Workflow is a DAG of Steps; the execution engine walks that DAG in order, following branching and parallel directives exactly as defined. The engine does not re-interpret, adapt, or infer at runtime. There is no AI in the execution path.
+Execution in sk is deterministic. A Workflow is a DAG of Steps; the execution engine walks that DAG in order, following branching and parallel directives exactly as defined. The engine does not re-interpret, adapt, or infer at runtime. There is no AI in the execution path.
 
 There is a single runtime entry point for manual execution: `POST /v1/executions`. Persisted workflows, inline draft definitions, and single-step previews all flow through this same route and the same execution engine. Inline runs complete synchronously by default. Queued background execution is explicit and reserved for persisted workflows, scheduler fires, webhook fan-out, and other detached cases.
 
@@ -28,7 +28,7 @@ An Execution is an immutable record. It captures the specific Workflow version t
 
 ## Step Kinds
 
-A Workflow is composed of Steps. The reference implementation ships eight Step kinds (`request`, `transform`, `call`, `wait`, `wait_for_event`, `branch`, `parallel`, `loop`), covering the range of patterns that enterprise workflows require. The discriminator field is `kind`; the schema source of truth is [`apps/engine/src/workflows/types.ts`](../apps/engine/src/workflows/types.ts) (`StepSchema`). 4.2.0 retired the `tool` kind (docker-based sandbox runner) — this is a data-workflow engine, not a container runtime.
+A Workflow is composed of Steps. sk ships eight Step kinds (`request`, `transform`, `call`, `wait`, `wait_for_event`, `branch`, `parallel`, `loop`), covering the range of patterns that enterprise workflows require. The discriminator field is `kind`; the schema source of truth is [`apps/engine/src/workflows/types.ts`](../apps/engine/src/workflows/types.ts) (`StepSchema`). 4.2.0 retired the `tool` kind (docker-based sandbox runner) — this is a data-workflow engine, not a container runtime.
 
 | `kind` | Required fields | Behaviour |
 |---|---|---|
@@ -95,7 +95,7 @@ Every change to a Workflow creates a new version. A version is a complete snapsh
 
 At any given time, exactly one version is designated "active." The active version is what runs when the workflow is triggered. Operators can inspect any prior version and promote it to active in a single action.
 
-This is the rollback story for this reference implementation. When a change introduces failures, the response is to promote the previous known-good version to active. No code changes are required, no deployment is needed, and the rollback is immediate. The audit log records the promotion decision — who made it, when, and from which version.
+This is the rollback story for sk. When a change introduces failures, the response is to promote the previous known-good version to active. No code changes are required, no deployment is needed, and the rollback is immediate. The audit log records the promotion decision — who made it, when, and from which version.
 
 ---
 
@@ -115,7 +115,7 @@ Pub/sub channels are **global, not per-tenant**. The `connector.oauth` channel �
 
 Connected boundaries change. The APIs a workflow depends on today may behave differently in six months. Schema fields are renamed, endpoints are moved, error codes change, pagination patterns evolve. Workflows that are not maintained will eventually fail.
 
-The reference implementation's self-healing subsystem is designed to catch these failures early and propose repairs before they cause sustained disruption.
+sk's self-healing subsystem is designed to catch these failures early and propose repairs before they cause sustained disruption.
 
 ```mermaid
 flowchart LR
@@ -264,6 +264,6 @@ The Audit Log records every execution trigger, every Step completion, every erro
 
 ## Further reading
 
-- [Security & governance](./07-security-governance.md) — RBAC, API keys, Before-Request Hooks, Audit Log guarantees, and the policy model that governs every surface in this reference implementation.
+- [Security & governance](./07-security-governance.md) — RBAC, API keys, Before-Request Hooks, Audit Log guarantees, and the policy model that governs every surface in sk.
 - [glossary — execution terms](./02-concepts.md#group-4-execution) — Workflow, Step, Execution, Execution Fixture, Schedule.
 - [authoring-vs-execution split (R3)](./system-requirements.md#r3--separation-of-authoring-probabilistic-from-execution-controlled) and [workflow as artefact (R4)](./system-requirements.md#r4--workflow-as-a-versioned-organisational-artefact) — the strategy-level requirements this layer realises.

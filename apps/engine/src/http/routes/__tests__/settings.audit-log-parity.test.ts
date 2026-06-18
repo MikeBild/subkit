@@ -148,9 +148,9 @@ describe("audit_log ↔ setting.applied bijection", () => {
 
   // Parametrised over a few invalid forms to widen the discriminator
   // regression net: hyphen vs underscore (sk-cli vs sk_cli — the right
-  // form), historical banned vocabulary (the v1 channel name retired
-  // in 4.0.x), empty string, mixed case, and not-in-allow-list values
-  // all must 400 before reaching the audit writer.
+  // form), a retired v1 channel name (removed in 4.0.x), empty string,
+  // mixed case, and not-in-allow-list values all must 400 before
+  // reaching the audit writer.
   //
   // Whitespace-only mutations (leading/trailing space) are NOT in
   // this list because Hono normalizes header values per HTTP semantics
@@ -158,7 +158,7 @@ describe("audit_log ↔ setting.applied bijection", () => {
   // those would belong on the operator's side (sk CLI sends without
   // whitespace already).
   const INVALID_AUDIT_SOURCES = [
-    "automation", // legacy v1 channel name (banned by terminology gate)
+    "automation", // retired v1 channel name, no longer a valid source
     "sk-cli", // hyphen instead of underscore — common operator typo
     "SK_CLI", // wrong case
     "", // empty string
@@ -246,8 +246,8 @@ describe("audit_log ↔ setting.applied bijection", () => {
   });
 
   test("metadata.reconfigure_failed=true lands in the audit row when reconfigureTracing throws", async () => {
-    // Closes the loop on the W1-from-round-3 promise: setConfigKey
-    // catches a reconfigure throw, sets reconfigureFailed=true, and
+    // setConfigKey catches a reconfigure throw, sets
+    // reconfigureFailed=true, and
     // the route stamps it on the audit row's metadata. Without this
     // test, a future refactor that drops the catch (or the metadata
     // stamp) would leave the operator-visible "live tracer is on the

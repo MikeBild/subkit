@@ -12,7 +12,7 @@ afterAll(async () => {
 });
 
 describe("GET /v1/health", () => {
-  test("returns 200 with the minimal liveness shape (issue #151 P0-1)", async () => {
+  test("returns 200 with the minimal liveness shape", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/health`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;

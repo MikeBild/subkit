@@ -109,8 +109,7 @@ function fileUri(id: string): string {
 
 /** Prefix set the subscribe handler accepts. Anything else is dropped at
  *  subscribe time so a misbehaving client can't grow `subscribed` with
- *  garbage (#178 review W-1). Keep this in sync with the URI helpers
- *  above. */
+ *  garbage. Keep this in sync with the URI helpers above. */
 const SUBSCRIBE_URI_PREFIXES: readonly string[] = [
   "connector://",
   "knowledge://",
@@ -336,7 +335,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       });
     }
 
-    // Workflows (active only, tenant-scoped). Issue #169.
+    // Workflows (active only, tenant-scoped).
     //
     // Portal-scoped principals carry `allowed_workflows`; we mirror the
     // connector-block filter above so a portal token narrowed to one
@@ -346,8 +345,8 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     // narrowing.
     //
     // Uses `listWorkflowSummaries` (not `listWorkflows`) so each row is
-    // a single Postgres-side projection — no `dag` parse per workflow
-    // (#178 W-2). The MCP list view only needs name / slug / version /
+    // a single Postgres-side projection — no `dag` parse per workflow.
+    // The MCP list view only needs name / slug / version /
     // step_count anyway.
     const { rows: workflowList } = await workflowSvc.listWorkflowSummaries(
       principal.tenant_id,

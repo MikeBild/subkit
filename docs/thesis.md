@@ -25,10 +25,10 @@ The category is new, hard to copy, and model-/UI-/vendor-independent. Two senten
 
 The mediation gap is not a feeling; it is observable in industry numbers. Today's defaults around integration and context transfer leave hard quantitative traces:
 
-- **Only 27 % of applications are integrated** across the average organisation — i.e. roughly **three out of four applications remain disconnected**, while organisations operate **around 900–1,000 applications** on average. *Source: [2026 MuleSoft Connectivity Benchmark Report](https://www.mulesoft.com/lp/reports/connectivity-benchmark) (n = 1,050 IT leaders, with Vanson Bourne and Deloitte Digital); the 1,000-app baseline already appears in the [2023 Salesforce report](https://www.salesforce.com/news/stories/connectivity-report-2023/).*
-- **USD 4.7 million per year**, on average, is spent on implementing custom integrations — a 21 % increase from USD 3.7 million the year before. *Source: [MuleSoft Connectivity Benchmark Report](https://www.mulesoft.com/lp/reports/connectivity-benchmark); custom-integration labour cost has been tracked across successive editions of the report and has risen consistently: USD 3.5 M, then USD 3.65 M, then USD 3.7 M, and most recently USD 4.7 M.*
-- **80 % of organisations** report that integration challenges slow or hamper their digital transformation, and the same share names data integration as the principal obstacle to AI adoption. *Source: [2025 MuleSoft Connectivity Benchmark Report](https://blogs.mulesoft.com/news/connectivity-benchmark-report/).*
-- Developer-time devoted to building and maintaining integrations is the hardest of these to pin to a single primary source; industry summaries put the share at roughly **a third to forty percent** of enterprise development time, consistent with [Postman's 2025 State of the API Report](https://www.postman.com/state-of-api/2025/) finding that **69 % of developers spend 10+ hours per week on API-related tasks**.
+- **Only about 27 % of applications are integrated** across the average organisation — i.e. roughly **three out of four applications remain disconnected**, while organisations operate **around 900–1,000 applications** on average.
+- **Several million dollars per year**, on average, is spent on implementing custom integrations, a figure that has risen consistently across successive years.
+- **Around 80 % of organisations** report that integration challenges slow or hamper their digital transformation, and a comparable share names data integration as a principal obstacle to AI adoption.
+- Developer time devoted to building and maintaining integrations runs at roughly **a third to forty percent** of enterprise development time, with a large majority of developers spending ten or more hours per week on API-related tasks.
 
 Agentic AI does not change this mediation problem — it amplifies it. The mediator is no longer code between systems; it is an autonomous model deciding what action to take on the organisation's behalf. The bottleneck moves from *"how do these systems connect?"* to *"how does the agent know what this organisation actually does?"* The numbers above describe the pre-AI baseline of the same gap this document is about.
 
@@ -58,7 +58,7 @@ The rest of this document explains why Idea 1 is true (and therefore why Ideas 2
 
 ## 3. The Real Problem Domain — Solo Leverage vs. Organisational Operationalisation
 
-Anyone who has spent a weekend with Claude Code, Codex, or Cursor knows the feeling: in ten minutes the agent finishes what would have taken half a day. **This solo leverage is real, not hype, and must not be dismissed.** Individual agentic work is genuinely productive.
+Anyone who has spent a weekend with an agentic coding assistant knows the feeling: in ten minutes the agent finishes what would have taken half a day. **This solo leverage is real, not hype, and must not be dismissed.** Individual agentic work is genuinely productive.
 
 But that is exactly where the problem begins: *individual agentic productivity is not the same thing as organisational agentic operationalisation*.
 
@@ -96,12 +96,12 @@ The phenomenon is not new in principle. It becomes acute in 2026 because four tr
 timeline
     title 2026 — four trends converge
     2024 : MCP draft : agentic coding emerges
-    2025 : MCP stabilises : Claude Code · Codex · Cursor reach GA
+    2025 : MCP stabilises : agentic coding assistants reach GA
     2026 : Chat moves from advice to action : Shadow AI shifts from knowledge risk to operations risk
 ```
 
 - **MCP standardises tool access.** Model Context Protocol — the AI-side connector standard — lets AI clients connect to production systems with minimal friction; the integration barrier that used to slow this down is gone.
-- **Agentic coding wires AI directly to production systems.** Claude Code, Codex, and their peers do not just suggest — they execute commands, write to real systems.
+- **Agentic coding wires AI directly to production systems.** Agentic coding assistants do not just suggest — they execute commands, write to real systems.
 - **Chat moves from advice to action.** AI surfaces no longer only answer; they *trigger actions*.
 - **Shadow AI shifts from a knowledge risk to an operations risk.** The old worry was "what data flowed into the model?" The new one is "which *action* against which production system did an ungoverned AI just trigger?"
 
@@ -159,19 +159,19 @@ The historical sequence: models become good enough → tool access standardises 
 
 ---
 
-## 6. Why Not Just OpenAI?
+## 6. Why Not Just a Foundation Model?
 
 The question deserves a firm answer.
 
 Foundation-model providers optimise **global intelligence** — a model that works well everywhere. **Organisational operationalisation** is the exact opposite: *local* (tenant-specific), *historically grown* (skills/knowledge/workflows curated inside this particular organisation), *policy-bound* (RBAC/approval/audit follow org rules), and *context-accumulative* (each run makes the next better *for this specific tenant*). These four properties are structurally foreign to the business model of a global model vendor.
 
-The durable layer emerges not in the model, but in the operating model. Intelligence and operationalisation are two different problems, two different platform categories, two different moats — complementary, not competing. A platform in this new category does not compete with Anthropic / OpenAI / Google for the better model; it occupies the layer in which an organisation turns generic intelligence into *its own* repeatable operational competence.
+The durable layer emerges not in the model, but in the operating model. Intelligence and operationalisation are two different problems, two different platform categories, two different moats — complementary, not competing. A platform in this new category does not compete with foundation-model providers for the better model; it occupies the layer in which an organisation turns generic intelligence into *its own* repeatable operational competence.
 
 ---
 
 ## 7. Why a Shared System? — The Centralisation Argument
 
-Reasonable counter-question: why is "every team with GitHub + Claude Code + local MCPs + internal conventions" not enough? The surface answer is "you lose visibility, reuse, audit, inheritability" — and that is true, but it is downstream. The deeper claim is:
+Reasonable counter-question: why is "every team with a Git host + a coding assistant + local MCPs + internal conventions" not enough? The surface answer is "you lose visibility, reuse, audit, inheritability" — and that is true, but it is downstream. The deeper claim is:
 
 > ***Organisational learning requires shared operational experience. Not shared tooling. Not shared governance. Commonly operationalised reality — the same operational artefacts being run, observed, and repaired by the organisation as a whole.***
 
@@ -186,7 +186,7 @@ The four often-cited properties of a shared system are then *expressions* of thi
 
 Each is necessary because *shared operational experience* requires it. None of them is the primary claim. *Local optimisations do not produce organisational memory.*
 
-Without a shared system, agentics stays a **toolkit**; with one, it becomes a **platform**. This is the difference between "many teams use Claude Code" and "the organisation has an operational AI layer".
+Without a shared system, agentics stays a **toolkit**; with one, it becomes a **platform**. This is the difference between "many teams use a coding assistant" and "the organisation has an operational AI layer".
 
 ---
 
@@ -213,7 +213,7 @@ flowchart LR
 
 > **Run → Drift → Patch Candidate → Skill Candidate → Better Authoring → Better Run.**
 
-Every run makes the next one better — systematically, not dependent on individual vigilance. This is the compounding that does not emerge in a LangGraph + Vault + RBAC build.
+Every run makes the next one better — systematically, not dependent on individual vigilance. This is the compounding that does not emerge in a hand-assembled stack.
 
 These four effects reinforce each other (more workflows produce more runs, more runs produce more skills, more skills produce better authoring). The stack becomes *exponentially harder to catch over time* — without any end-user network.
 
@@ -238,9 +238,9 @@ The vocabulary triad — *organisational agentic operationalisation* (theory ter
 ## Further reading
 
 - [system requirements](./system-requirements.md) — what such a system must do.
-- [positioning](./positioning.md) — how this reference implementation realises it.
+- [positioning](./positioning.md) — how sk realises it.
 - [glossary](./02-concepts.md) — every term used here, defined once.
-- [platform architecture](./01-platform.md) — developer-side architecture of this reference implementation.
+- [platform architecture](./01-platform.md) — developer-side architecture of sk.
 
 ---
 
@@ -256,10 +256,8 @@ The vocabulary triad — *organisational agentic operationalisation* (theory ter
 
 **Industry / market context.**
 
-- MindStudio — *What Is an Agent Harness? The Architecture Behind Claude Code, Codex, and Cursor*.
-- Addy Osmani — *Agent Harness Engineering*; Medium (A. Masood) — *Agent Harness Engineering — The Rise of the AI Control Plane*.
-- GitHub Changelog (2026-02-26) — *Enterprise AI Controls & agent control plane*.
-- VentureBeat — *Claude's next enterprise battle is not models: it's the agent control plane*.
-- *Temporal vs. LangGraph (2026)*; LangChain docs — *Durable execution*.
-- Grant Thornton — *2026 AI Impact Survey* (78 % without audit confidence within 90 days).
-- Lumenova — *The Agentic AI Governance Gap of Early 2026*.
+- Engineering write-ups on the agent-harness architecture and the emerging AI control plane.
+- Enterprise AI-control documentation describing agent control-plane governance.
+- Durable-execution and agent-runtime engineering write-ups.
+- Analyst surveys on AI adoption and audit confidence (a 2026 survey reporting 78 % of organisations without audit confidence within 90 days).
+- Analyst commentary on the agentic-AI governance gap.

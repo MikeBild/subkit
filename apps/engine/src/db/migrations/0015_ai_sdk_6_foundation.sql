@@ -1,4 +1,4 @@
--- AI SDK 6 / Tools Registry foundation tables (issue #166).
+-- AI SDK 6 / Tools Registry foundation tables.
 --
 -- Two additive tables, no existing-data migration:
 --
@@ -11,7 +11,7 @@
 --    update both ledgers in the same migration.
 --
 -- 2. mcp_servers — per-tenant configuration for external MCP servers
---    consumed by subkit's MCP client (issue #171). `namespace` is a
+--    consumed by subkit's MCP client. `namespace` is a
 --    URL-safe slug used as the tool-name prefix in the merged tool
 --    palette: `mcp_<namespace>__<remote_tool_name>`. `auth_config` is
 --    opaque jsonb because MCP auth_provider shapes (PKCE flows, dynamic

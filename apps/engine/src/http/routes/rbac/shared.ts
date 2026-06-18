@@ -1,6 +1,5 @@
-// Shared serializers + helpers for the RBAC HTTP surface. After the
-// Phase 4 split (audit §4.4) every per-resource module imports from
-// here.
+// Shared serializers + helpers for the RBAC HTTP surface. Every
+// per-resource module imports from here.
 
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";

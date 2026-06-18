@@ -1286,9 +1286,9 @@ export async function handleSlash(
     case "policy": {
       // /policy                              → list tools + current mode
       // /policy <tool> auto|ask|review|reset → pin per-conversation override
-      // Mirrors reference impl's `setToolPolicy` + AgentCapabilities panel
-      // in one slash. The "review" alias maps to confirm_after_execution
-      // (mirrors APPROVAL_LABELS["approval_after"] = "Review after run").
+      // Sets the per-conversation tool policy in one slash. The "review"
+      // alias maps to confirm_after_execution
+      // (APPROVAL_LABELS["approval_after"] = "Review after run").
       if (!ctx.session.conversationId) return "no active conversation";
       const args = rawArgs;
       // Map CLI shorthands → engine modes.
@@ -1813,8 +1813,8 @@ export async function handleSlash(
     }
     case "config":
     case "usage": {
-      // Deep-link into the SettingsModal on the matching tab — claude-code
-      // parity for `/config`, `/usage`. Status is the default landing,
+      // Deep-link into the SettingsModal on the matching tab for
+      // `/config`, `/usage`. Status is the default landing,
       // so `/settings` alone (handled in case "settings" below) also
       // works. The legacy `config-form` 4-field user-settings prompt
       // moved to `/config-form` so this slot can host the full Config

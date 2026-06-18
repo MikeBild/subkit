@@ -27,9 +27,8 @@
 //
 // Single global callback URL = operators add one entry to their OAuth
 // provider's allowlist (e.g. `https://subkit-api.mikebild.dev/v1/oauth/callback`)
-// and reuse it across every OAuth2 connector. Mirrors the reference
-// impl pattern where the callback is connector-agnostic and `state`
-// decodes back to the system_id.
+// and reuse it across every OAuth2 connector. The callback is
+// connector-agnostic and `state` decodes back to the connector id.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, gt } from "drizzle-orm";

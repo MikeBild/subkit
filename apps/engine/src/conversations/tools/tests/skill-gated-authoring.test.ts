@@ -1,12 +1,12 @@
-// Bug OO regression: build_workflow / propose_step / update_param /
+// build_workflow / propose_step / update_param /
 // inspect_workflow are gated on the `workflow-authoring` skill being
-// loaded. Mirrors reference impl's SKILL_LOADING_INSTRUCTIONS — the
+// loaded — the
 // model cannot author a workflow without first reading the contract.
 
 import { describe, expect, test } from "bun:test";
 import { filterBySkillGate, SKILL_GATED_TOOLS } from "../gated.ts";
 
-describe("skill-gated tool exposure (Bug OO)", () => {
+describe("skill-gated tool exposure", () => {
   test("build_workflow requires workflow-authoring", () => {
     expect(SKILL_GATED_TOOLS.build_workflow).toBe("workflow-authoring");
   });

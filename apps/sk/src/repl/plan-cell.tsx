@@ -1,10 +1,10 @@
-// Inline checkbox plan renderer — codex `PlanUpdateCell` parity.
+// Inline checkbox plan renderer.
 //
 // Triggered when a tool result payload has a recognisable step-list
 // shape: `{ steps: [{ id, name|step_id, status }], … }` — typically
 // from `dry_run_workflow` and `run_workflow` responses where each
 // step's outcome is meaningful. Renders one line per step with the
-// codex glyph set:
+// glyph set:
 //   ✔  succeeded   (green, dim)
 //   ⬢  in-progress / partial (cyan, bold)
 //   ☐  pending / unknown   (gray, dim)

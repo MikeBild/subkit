@@ -1,4 +1,4 @@
-// PR11/PR12 — auto-persist on confirmation.
+// Auto-persist on confirmation.
 //
 // When the LLM emits `ask_user_form` or `ask_user_confirm` with a
 // `commit_intent`, the harness applies the proposed write atomically

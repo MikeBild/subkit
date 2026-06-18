@@ -1,7 +1,5 @@
-// Identity matrix-completion tests — Phase 2 of the 2026-05
-// architecture audit. The audit doc §6.2 calls out three named gaps
-// in identity coverage that the existing 713-line service.test.ts
-// did not yet pin:
+// Identity matrix-completion tests. Three named gaps in identity
+// coverage that the existing 713-line service.test.ts did not yet pin:
 //
 //   1. Portal-token revocation propagation — once revokePortalToken
 //      flips revoked_at, a subsequent provider.resolve() must reject

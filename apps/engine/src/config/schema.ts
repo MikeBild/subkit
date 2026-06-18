@@ -957,7 +957,7 @@ const WebScraperSection = z
     optimization: WebScraperOptimization,
   })
   .prefault({})
-  .describe("Web-scraper connector tunables (#144). Every leaf has a useful default.");
+  .describe("Web-scraper connector tunables. Every leaf has a useful default.");
 
 const ConnectorsSection = z
   .object({

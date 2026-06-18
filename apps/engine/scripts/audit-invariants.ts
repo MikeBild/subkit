@@ -177,14 +177,14 @@ function checkJsonataLocality(): Result {
 }
 
 function checkRouteLayering(): Result {
-  // Heuristic for Phase 1: routes/<f>.ts may import from a subsystem's
-  // index.ts only — i.e. relative paths of the form `../../<sub>/index`
-  // or `../../<sub>` (resolved to index.ts) are OK; deeper paths into
-  // subsystem internals are flagged.
+  // routes/<f>.ts may import from a subsystem's index.ts only — i.e.
+  // relative paths of the form `../../<sub>/index` or `../../<sub>`
+  // (resolved to index.ts) are OK; deeper paths into subsystem
+  // internals are flagged.
   //
-  // PHASE 4 (week 6): replace this regex heuristic with an AST scan
-  // that resolves the import to a TS file and asserts it's the
-  // re-exported entry point. Tracked in audit-2026-05 issue.
+  // This regex heuristic could be hardened into an AST scan that
+  // resolves the import to a TS file and asserts it's the re-exported
+  // entry point.
   const routeFiles = listFiles(
     join(ENGINE_SRC, "http/routes"),
     (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"),
@@ -258,10 +258,9 @@ function checkInternalLayering(): Result {
   // `_internal/` directories are package-private. Same-package siblings
   // can reach in (e.g. `apps/engine/src/conversations/loop.ts` → `./_internal/abort-merge.ts`),
   // but a file outside the package must NOT import from another
-  // package's `_internal/` path. Per #147 review S-3 / round-5 S-4
-  // — the directory is the file-system enforcement of layering, this
-  // check makes the contract observable at PR time instead of after a
-  // refactor strands a comment that begged not to widen the surface.
+  // package's `_internal/` path. The directory is the file-system
+  // enforcement of layering; this check makes the contract observable
+  // at PR time instead of after a refactor widens the surface.
   const allFiles = listFiles(ENGINE_SRC, (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"));
   const violations: string[] = [];
   // Match both `from "…/_internal/…"` and `import("…/_internal/…")` forms.
@@ -350,11 +349,12 @@ function checkRouteSize(): Result {
       message: "no http/routes/**/*.ts > 600 LOC outside .size-allowlist.txt",
     };
   }
-  // Phase 1 lands the check as ADVISORY until Phase 4 splits route files.
+  // The check is currently ADVISORY: it reports oversized route files
+  // without failing the audit.
   return {
     id: "route_size",
     status: "PASS",
-    message: `ADVISORY (Phase 4 will flip to FAIL): ${violations.length} route files >600 LOC not allowlisted\n  ${violations.join("\n  ")}`,
+    message: `ADVISORY: ${violations.length} route files >600 LOC not allowlisted\n  ${violations.join("\n  ")}`,
   };
 }
 

@@ -1,5 +1,4 @@
-// Resource-grant CRUD tests — Phase 2 of the 2026-05 architecture
-// audit (issue #86, audit doc §6.2). The matrix test exercises the
+// Resource-grant CRUD tests. The matrix test exercises the
 // `grantResource` write path through the evaluator; this file covers
 // `revokeResource`, `listGrants`, `listGrantsForSubject`, the unique
 // constraint upsert, and the `permission_unknown` error path so the

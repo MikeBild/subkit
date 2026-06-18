@@ -1,8 +1,8 @@
-// CLI ↔ engine version-mismatch banner. Pre-fix (waves 5–9) the
-// engine container was running an older binary while sk-CLI shipped
-// fixes — symptoms like "loop_authoring_requires_inspect after a
-// successful probe" reproduced because the wave-8 probe-evidence
-// fix existed in source but not in the running container.
+// CLI ↔ engine version-mismatch banner. Without it, the engine
+// container can run an older binary while sk-CLI ships fixes —
+// symptoms like "loop_authoring_requires_inspect after a successful
+// probe" reproduce because a probe-evidence fix exists in source but
+// not in the running container.
 //
 // The banner runs the same comparison the operator would do
 // manually: `sk --version` vs. `GET /v1/status` -> `version`.
@@ -14,8 +14,8 @@
 //   ◦  CLI v0.0.0-dev (development build — version skew not enforced)
 //
 // We never block the session — the CLI is always usable — but the
-// hint short-circuits the "why are wave-N fixes not landing?"
-// triage 2-cycle that's bitten the operator twice.
+// hint short-circuits the "why are these fixes not landing?"
+// triage cycle.
 
 import { Box, Text } from "ink";
 import type React from "react";

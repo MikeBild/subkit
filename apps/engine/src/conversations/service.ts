@@ -1,7 +1,6 @@
 // Conversations service — public API used by REST + MCP.
 //
-// Thin barrel. After the Phase 4 split (audit §4.1) the implementation
-// lives in `service/`:
+// Thin barrel. The implementation lives in `service/`:
 //
 //   - `service/shared.ts`    — Executor type + permission-mode helpers
 //                               + rowToRecord + isAskUserToolName +

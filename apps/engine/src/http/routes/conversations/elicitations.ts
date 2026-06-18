@@ -49,8 +49,7 @@ const respondElicitationRoute = createRoute({
   },
 });
 
-// Resume by tool_call_id alias — mirrors the reference impl's
-// `resumeToolCallId` chat parameter. Looks up the active elicitation
+// Resume by tool_call_id alias. Looks up the active elicitation
 // linked to the given tool_call and resolves it with the same body
 // shape as the canonical `/elicitations/:elicitation_id/respond`
 // route. Lets clients that tracked the originating tool_call_id
@@ -205,8 +204,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
 
   // Resume-by-tool-call alias. Resolves tool_call_id → elicitation_id
   // by reading the active row, then delegates to the same service
-  // handler the canonical route uses. Mirrors the reference impl's
-  // `resumeToolCallId` chat parameter while keeping the
+  // handler the canonical route uses, keeping the
   // elicitation-id-based wire shape as the canonical resume key.
   app.openapi(respondByToolCallRoute, async (c) => {
     const principal = requireAuth(c);

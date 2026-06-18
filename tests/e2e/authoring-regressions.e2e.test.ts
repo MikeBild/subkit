@@ -439,7 +439,7 @@ describe("authoring regressions", () => {
     expect(detail.draft?.latest_preview?.summary.length).toBeGreaterThan(0);
   });
 
-  // SYNC-REGISTER CONTRACT (cancel-race e2e cover) — #146 / A4 + #147.
+  // SYNC-REGISTER CONTRACT (cancel-race e2e cover).
   //
   // The unit-level contract for the abort registry lives at
   // `apps/engine/src/conversations/abort.test.ts` ("SSE

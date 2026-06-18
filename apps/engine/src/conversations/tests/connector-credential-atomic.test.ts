@@ -192,7 +192,7 @@ describe("saveConnectorDraftTool — atomic credential save", () => {
   });
 
   test("save without credential on a bearer-auth draft returns the credential_required envelope", async () => {
-    // PR10/PR15 contract: a connector with `auth_type !== "none"` must
+    // Contract: a connector with `auth_type !== "none"` must
     // have a credential before it can be persisted. Calling
     // save_connector_draft without one returns a structured
     // `credential_required` envelope with `next_best_actions:

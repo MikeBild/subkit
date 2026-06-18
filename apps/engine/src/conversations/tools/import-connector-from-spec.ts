@@ -1,6 +1,6 @@
-// import_connector_from_spec — parse a Postman collection, HAR recording,
-// OpenAPI document, GraphQL SDL, GraphQL introspection JSON, or curl
-// command into a connector draft. If the detected base URL matches a
+// import_connector_from_spec — parse an API request collection, HAR
+// recording, OpenAPI document, GraphQL SDL, GraphQL introspection JSON,
+// or curl command into a connector draft. If the detected base URL matches a
 // built-in template via `matchTemplateByUrl`, we enrich from that
 // template; otherwise we fall back to a manual HTTP connector draft.
 
@@ -123,9 +123,9 @@ async function parseSource(args: z.infer<typeof inputSchema>): Promise<Parsed> {
 export const importConnectorFromSpecTool: ConversationTool = {
   name: "import_connector_from_spec",
   description:
-    "Import an API specification (Postman, HAR, OpenAPI inline or URL, GraphQL SDL, GraphQL introspection endpoint, or a curl command) into a connector draft. Auto-matches a built-in template when the base URL is recognised; otherwise produces a manual HTTP connector draft with the sampled endpoints attached.",
+    "Import an API specification (an API request collection, HAR, OpenAPI inline or URL, GraphQL SDL, GraphQL introspection endpoint, or a curl command) into a connector draft. Auto-matches a built-in template when the base URL is recognised; otherwise produces a manual HTTP connector draft with the sampled endpoints attached.",
   use_case:
-    "Use when the operator brings an existing API spec, Postman collection, curl command, or a GraphQL endpoint URL. Faster than manually describing the connector.",
+    "Use when the operator brings an existing API spec, request collection, curl command, or a GraphQL endpoint URL. Faster than manually describing the connector.",
   example_input: {
     source: "curl",
     content: "curl -H 'Authorization: Bearer sk_test_xxx' https://api.stripe.com/v1/customers",

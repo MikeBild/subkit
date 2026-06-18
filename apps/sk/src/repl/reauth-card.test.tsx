@@ -3,7 +3,7 @@
 // oauth2 authorization-code → "open in browser:" OSC 8 hyperlink line
 // + auto-open via the validated browser helper; client_credentials →
 // a short confirmation; errors / portal_setup → generic fallback.
-// Non-TTY test env, so OSC 8 is forced on (G11 discipline).
+// Non-TTY test env, so OSC 8 is forced on.
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetHyperlinkSupportCacheForTests } from "@chat-ui/index.ts";

@@ -1,4 +1,4 @@
-// W6 of PR #161 review (round 6): regression coverage for the
+// Regression coverage for the
 // Knowledge tab's path/size UX guard. The contract is "reject
 // OS-internal + credentials-root paths and oversized files
 // **before** readFile slurps them" — without this test a future

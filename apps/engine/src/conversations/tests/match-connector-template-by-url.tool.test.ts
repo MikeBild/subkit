@@ -192,8 +192,8 @@ describe("matchConnectorTemplateByUrlTool", () => {
   // driver + base_url_host + auth_type. Without this guard, a future
   // change that drops the `tenant_id` predicate inside `listConnectors`
   // (or replaces it with a hand-rolled select) would be silent.
-  // W2 (round-2 review): the LLM-facing contract for the new output
-  // fields lives in `important_notes`, not in a Zod outputSchema. To
+  // The LLM-facing contract for the output fields lives in
+  // `important_notes`, not in a Zod outputSchema. To
   // catch silent renames at the test layer, assert the LITERAL field
   // names appear in the result. A rename trips the test before it
   // ships.
@@ -282,7 +282,7 @@ describe("matchConnectorTemplateByUrlTool", () => {
     expect(byRec.get("rec-with-host-override")).toBe("reuse_with_host_override");
   });
 
-  // W1 (round-2 review): listConnectors' default limit is 100, not
+  // listConnectors' default limit is 100, not
   // 500 — Math.min(opts.limit ?? 100, 500). Seeding > 100 connectors
   // with the high-score row at the tail proves the explicit
   // `limit: 500` reaches deep enough to surface the match.

@@ -1,6 +1,5 @@
-// Tiny keyword-overlap scorer for the `find_*` family. Mirrors the
-// reference impl's `keywordFilterTools` shape: split the query into
-// keywords, count how many appear in each candidate's searchable
+// Tiny keyword-overlap scorer for the `find_*` family: split the query
+// into keywords, count how many appear in each candidate's searchable
 // text, return matches sorted by score (descending).
 //
 // Pure data — no embeddings, no LLM. The point is to give the LLM a

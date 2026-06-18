@@ -1,7 +1,6 @@
 // Conversations HTTP surface — entry point.
 //
-// Phase 4 of the 2026-05 architecture audit (#92). The former
-// http/routes/conversations.ts (1303 LOC) split into per-sub-resource
+// The former http/routes/conversations.ts split into per-sub-resource
 // modules; this barrel registers the shared per-path RBAC middleware
 // and delegates handler registration to each module. Public API
 // unchanged: server.ts still calls `registerConversationRoutes(app)`.

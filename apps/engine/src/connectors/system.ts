@@ -1,9 +1,7 @@
 // `ConnectorSystem` — single facade unifying connector + driver +
-// credentials + docs. Mirrors the reference impl's `SystemManager`
-// interface (`packages/core/systems/system-manager.ts`) so cross-
-// codebase mental model is consistent. Subkit-specific extensions:
-// `tenantId` and `schemaVersion` make tenant isolation and self-healing
-// drift tracking part of the type, not callable invariants.
+// credentials + docs. `tenantId` and `schemaVersion` make tenant
+// isolation and self-healing drift tracking part of the type, not
+// callable invariants.
 //
 // Use this for any code path that needs MORE THAN ONE of {driver,
 // credentials, documentation}. Single-purpose call sites (an OAuth

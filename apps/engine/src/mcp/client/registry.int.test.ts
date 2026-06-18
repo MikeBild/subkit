@@ -1,4 +1,4 @@
-// Registry integration tests for external MCP server CRUD + audit (#171).
+// Registry integration tests for external MCP server CRUD + audit.
 //
 // Uses a real Postgres database via createTestDb (no mocks). Verifies:
 //   - createMcpServer persists a row and emits mcp_server.registered audit.

@@ -54,9 +54,9 @@ function pickStringCandidate(leaf: ConfigLeaf, tag: string): string {
     `https://example.com/${tag.replaceAll("_", "-")}`,
     // 32-char hex-shaped value for min(32) refinements.
     tag.padEnd(32, "x").slice(0, 32),
-    // W2 of PR #161 review (round 4): HH:MM-shaped value for the
-    // notifications.push.quietHours* regex. Empty disables the
-    // window; the `00:00` candidate covers the populated case.
+    // HH:MM-shaped value for the notifications.push.quietHours* regex.
+    // Empty disables the window; the `00:00` candidate covers the
+    // populated case.
     "00:00",
     "",
   ];

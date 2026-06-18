@@ -1,4 +1,4 @@
-// H2: Knowledge Sources — persistent tenant-scoped knowledge from uploaded
+// Knowledge Sources — persistent tenant-scoped knowledge from uploaded
 // enterprise files (PDF, DOCX, CSV, Excel, Markdown, etc.).
 //
 // Two tables:

@@ -364,7 +364,7 @@ jobs:
           done > SHA256SUMS
           cat SHA256SUMS
 
-      # Issue #151 P0-3: sign the SHA256SUMS file with the project's
+      # Sign the SHA256SUMS file with the project's
       # Ed25519 release key. `updater.ts::performUpdate` refuses to
       # install any binary whose SHA256SUMS does not validate against
       # the embedded `RELEASE_PUBLIC_KEY`. Signature is uploaded as the

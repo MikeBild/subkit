@@ -3,19 +3,18 @@
 # Files listed here exceed the 1000-LOC ceiling. Each entry needs a
 # written reason. Adding to this list requires PR review.
 #
-# Phase 4 of the audit attempted to shrink every file below 800 LOC.
-# The three entries below are the audit's documented steady state: the
-# remaining concerns are tightly coupled and any further split would
-# produce barrel-only seams (the pattern Phase 4 explicitly rejected
-# after the first round of splits — see §4.2 outcome footnote in the
-# audit doc). Re-opening any of these requires a per-concern split that
-# survives the audit-loop §10.4 AST-export-equality check; do not list
-# new entries unless that gate is met.
+# The entries below are at a documented steady state: their remaining
+# concerns are tightly coupled and any further split would produce
+# barrel-only seams (a pattern previously tried and rejected — splitting
+# these produced barrels around one fat callee with zero domain value).
+# Re-opening any of these requires a per-concern split that survives an
+# AST-export-equality check; do not list new entries unless that gate is
+# met.
 #
 # Format: <relative path from repo root>  # reason
 # Comments and blank lines are ignored.
 
-apps/engine/src/conversations/loop.ts                  # steady state — chat-turn dispatch loop. Per-turn lifecycle (resume → tool-call → mutation → emit → abort) is one tightly-coupled state machine. Pure helpers were extracted to `loop/` (stop-conditions.ts, usage.ts, model-resolver.ts) but the orchestrator body holds a closure over event sink / abort controllers / draft snapshots that no further split can break without producing barrels-around-one-fat-callee. Re-opening requires a per-concern split that survives the audit-loop §10.4 AST-export-equality check.
+apps/engine/src/conversations/loop.ts                  # steady state — chat-turn dispatch loop. Per-turn lifecycle (resume → tool-call → mutation → emit → abort) is one tightly-coupled state machine. Pure helpers were extracted to `loop/` (stop-conditions.ts, usage.ts, model-resolver.ts) but the orchestrator body holds a closure over event sink / abort controllers / draft snapshots that no further split can break without producing barrels-around-one-fat-callee. Re-opening requires a per-concern split that survives an AST-export-equality check.
 apps/engine/src/conversations/tools/sdk-wrap/invoke.ts # steady state — agentic tool-invoke wrapper. policy-gate / dedupe / langfuse-instrumentation / response-handling all share the same call-site closure (request_id, signal, audit hooks); extracting them produces ≥3 helper modules that each take 12-15 args, worse than the inline form.
 apps/engine/src/execution/steps/request/dispatch.ts    # steady state — request-step dispatcher. Per-driver branches (graphql / s3 / postgres / http) share the retry / pagination / shape-coercion scaffolding; tried-and-rejected: drivers/*.ts files that re-import the same six helpers and a pagination.ts that has to call back into dispatch for shape coercion.
 apps/engine/src/http/routes/files.ts                   # steady state — unified files HTTP surface. The 10 routes (inline + presigned upload, finalize, list/get/download/delete, link, stats, local presign sink) share a tight closure over the HMAC presign helpers + objectStore + auditAwait + scanner. Splitting per-verb produces 10 sibling files that each re-import the same six helpers and one heavy types module; the per-verb seams add zero domain value and obscure the dedup-race + finalize + Range branches that span multiple handlers.

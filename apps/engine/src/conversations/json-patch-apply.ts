@@ -1,7 +1,6 @@
-// JSON Patch helpers for per-patch partial approval (Bug TT).
+// JSON Patch helpers for per-patch partial approval.
 //
-// Mirrors reference impl's `applyDiffsToConfig` from
-// `packages/web/src/lib/config-diff-utils.ts`. When a tool proposes a
+// When a tool proposes a
 // list of JSON-Patch operations and the operator approves only a
 // subset (via the per-patch DiffApprovalComponent equivalent), this
 // module applies the approved subset against the live config.
@@ -20,7 +19,7 @@ export type ToolDiff = jsonpatch.Operation;
  * Apply a list of JSON-Patch operations to a config object. Empty
  * `diffs` returns the config unchanged. Always operates on a deep
  * clone — the input is never mutated. Validates and bails on the
- * first illegal patch (matches reference impl's `applyPatch(_, _, true, true)`).
+ * first illegal patch.
  */
 export function applyDiffsToConfig<T extends object>(config: T, diffs: ToolDiff[]): T {
   if (!diffs?.length) return config;

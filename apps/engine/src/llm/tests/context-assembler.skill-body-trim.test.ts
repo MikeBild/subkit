@@ -1,4 +1,4 @@
-// Skill-body trim under context budget pressure (#27).
+// Skill-body trim under context budget pressure.
 //
 // Two layers protect the prompt:
 //  1. Render-time: ambient skills (global / connector / workflow

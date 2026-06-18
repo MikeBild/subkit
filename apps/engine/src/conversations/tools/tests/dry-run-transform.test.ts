@@ -430,7 +430,7 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
   });
 });
 
-// `dialect: "javascript"` (P-F part 2) — the SAME parity contract as
+// `dialect: "javascript"` — the SAME parity contract as
 // execution: the authored FUNCTION BODY runs in the QuickJS sandbox
 // against the production context shape `{ scope, input }` (one `input`
 // value; data at `input.scope.<step_id>.data…`, workflow input at

@@ -1,7 +1,6 @@
-// Audit subsystem contracts — Phase 2 of the 2026-05 architecture
-// audit (issue #87, audit doc §6.2). These integration tests pin five
-// invariants the audit log MUST hold for SOC2/ISO27001/GDPR evidence
-// to be trustworthy:
+// Audit subsystem contracts. These integration tests
+// pin five invariants the audit log MUST hold for SOC2/ISO27001/GDPR
+// evidence to be trustworthy:
 //
 //  1. Append-only API surface  — the audit module exports no update or
 //                                delete path. (Existing source-level
@@ -292,11 +291,10 @@ describe("redaction across every payload field", () => {
 describe("request-source attribution", () => {
   // Audit metadata is a free-form bag; the contract is only that when
   // a caller passes `request_source` in metadata, the row faithfully
-  // round-trips it. Today the engine does not REQUIRE request_source —
-  // hardening that contract is part of #88 (route boundary tests). The
-  // assertion below pins the round-trip property today; #88 enforces
-  // that every state-changing route handler actually populates the
-  // field on the way in.
+  // round-trips it. The engine does not REQUIRE request_source here;
+  // route-boundary tests enforce that every state-changing route handler
+  // actually populates the field on the way in. The assertion below pins
+  // the round-trip property.
   const SOURCES = ["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"] as const;
 
   for (const source of SOURCES) {

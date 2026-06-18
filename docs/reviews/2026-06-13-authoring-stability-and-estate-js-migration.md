@@ -1,6 +1,6 @@
 # Review Plan — Authoring-Loop Stability + Full Estate JS Migration (subkit 6.19.1 → 6.19.3)
 
-> **Audience:** an automated code/architecture reviewer (Codex / ChatGPT) with repo access but
+> **Audience:** an automated code/architecture reviewer with repo access but
 > **no conversation context**. This document is self-contained: it states what changed, why, the
 > contracts each change must honor, the residual risks, and an ordered review checklist with
 > concrete questions. Cite `file:line` in findings.
@@ -24,8 +24,8 @@ Three landed workstreams plus one data-only operation:
    the single-file binary. Switched to a base64-inlined singlefile variant; added a `--smoke`
    gate that fails the release if a JS transform can't run.
 2. **Authoring-loop stability (6.19.2, `7892cdfa`)** — `author_workflow` could stall for ~15 min
-   and emit ~19 tool calls. Four packets: per-call LLM timeout (P1), bounded repair fan-out (P2),
-   monotonic judge circuit-breaker + verdict memoization (P3), turn budget + no-progress stop (P4).
+   and emit ~19 tool calls. Four fixes: per-call LLM timeout, bounded repair fan-out,
+   monotonic judge circuit-breaker + verdict memoization, turn budget + no-progress stop.
 3. **base64 stdlib primitive (6.19.3, `b7fbcd73`)** — the QuickJS sandbox installs no host
    globals (`btoa`/`Buffer` absent), so JS transforms could not produce the base64 a Gmail `raw`
    field or a GitHub commit `content` needs. Added `sk.base64Encode` / `sk.base64UrlEncode`,
@@ -70,7 +70,7 @@ These are repo-wide rules; flag any change that violates them.
 
 ---
 
-## 2. Workstream A — WASM packaging fix (6.19.1, `4be64678`)
+## 2. WASM packaging fix (6.19.1, `4be64678`)
 
 **Files:** `apps/engine/src/sandboxes/quickjs/runtime.ts`, `apps/engine/src/index.ts`,
 `package.json`, `bun.lock`.
@@ -100,17 +100,17 @@ regression fails *before* deploy.
 
 ---
 
-## 3. Workstream B — Authoring-loop stability (6.19.2, `7892cdfa`)
+## 3. Authoring-loop stability (6.19.2, `7892cdfa`)
 
 **Symptom.** `author_workflow` (a one-shot pipeline: ground → generate → recorded-eval + bounded
 repair → emit draft, followed by the conversation loop's dry-run → judge → commit) could (a)
 **stall** ~15 min on wedged provider calls + unbounded repair fan-out, and (b) be **chatty**
 (~19 tool calls) because the judge/repair loop never converged or stopped.
 
-Four packets (P1–P4). Files below; **read each affected line** (the repo rule is: do not review
+Four fixes. Files below; **read each affected line** (the repo rule is: do not review
 expression/assembler/loop code from intuition).
 
-### P1 — Per-call LLM timeout
+### Per-call LLM timeout
 **Files:** `apps/engine/src/llm/core/ai-sdk-model.ts`, `invoke.ts`, `base-types.ts`.
 - `LLM_CALL_TIMEOUT_MS = 90_000`; `buildCallSignal(timeoutMs, callerSignal?)` =
   `AbortSignal.any([caller, AbortSignal.timeout(...)])`, applied in `callWithFallback` so the
@@ -123,7 +123,7 @@ expression/assembler/loop code from intuition).
   distinguishable downstream (telemetry, retry classification)? Confirm no `Date.now`/`setTimeout`
   crept into tests (`ai-sdk-model.test.ts` was rewritten to use `queueMicrotask` for determinism).
 
-### P2 — Bounded repair fan-out + pipeline deadline
+### Bounded repair fan-out + pipeline deadline
 **Files:** `authoring-pipeline.ts`, `recorded-eval.ts`, `transform-repair.ts`, `dry-run-repair.ts`.
 - `PIPELINE_DEADLINE_MS = 120_000` threaded into generate + recorded-eval; `GeneratedWorkflowSchema`
   steps `.max(25)` (was 50). `MAX_PIPELINE_REPAIRS = 3`, `MAX_REPAIR_FINDINGS = 3`; >3 findings ⇒
@@ -136,7 +136,7 @@ expression/assembler/loop code from intuition).
   persisted (so the user keeps progress) and is the note actionable? Does `repair_skipped`
   propagate to the envelope the model sees, or can the model loop unaware it was capped?
 
-### P3 — Judge circuit-breaker + verdict memoization
+### Judge circuit-breaker + verdict memoization
 **Files:** `preview-judge.ts`, `preview-judge-gate.ts`, `authoring-state.ts`,
 `authoring-state/normalize.ts`, `types.ts`, `dry-run-workflow.ts`.
 - Breaker state changed from `{fingerprint, blocks}` to **`{blocks_since_commit, last_verdict}`** —
@@ -147,7 +147,7 @@ expression/assembler/loop code from intuition).
   Memoization: an unchanged re-preview (same `workflowDefinitionFingerprint`) reuses
   `last_verdict` and **skips the judge LLM call**. `normalize.ts` tolerates the legacy
   `{fingerprint, blocks}` shape on read.
-- **Cross-goal safety (review finding F1 in the original work):** the breaker is cleared on goal
+- **Cross-goal safety:** the breaker is cleared on goal
   change (`applyWorkflowMutation`: `priorGoal !== nextGoal ⇒ state.judge_breaker = null`) and in
   `startNewWorkflowDraft`, so a pivoted goal can't inherit a stale breaker and advisory-commit a
   wrong first draft.
@@ -158,7 +158,7 @@ expression/assembler/loop code from intuition).
   `missing[]` to the user (governance: an advisory-committed wrong workflow must be visible)?
   Verify `normalize.ts` legacy tolerance can't silently zero a live counter.
 
-### P4 — Turn budget + no-progress stop
+### Turn budget + no-progress stop
 **Files:** `loop/model-resolver.ts` (+ test), `loop/stop-conditions.ts` (+ test), `loop.ts`.
 - `DEFAULT_BUDGET` 50 → **24** (per-turn SDK step cap). New `noProgressRepairStopCondition` +
   `MAX_STALLED_REPAIR_PREVIEWS = 3`: stops on 3 consecutive `dry_run_workflow` calls with an
@@ -176,18 +176,18 @@ benchmark — simple workflow 50s/8 calls, droplet-specs 68s/6 calls, no stall; 
 
 ---
 
-## 4. Workstream C — eval-validator alignment (`8aa19d0d`)
+## 4. eval-validator alignment (`8aa19d0d`)
 
 **Files:** `apps/engine/eval/validators/authoring-judge-gate.ts`,
 `apps/engine/eval/validators/authoring-judge-breaker.ts`.
 
-The CI-mode eval scenarios (run by `bun run verify:ai`) still asserted the **pre-P3** breaker shape
-(`judge_breaker.blocks`, and a "counter frozen at cap" expectation). P3 renamed the field to
+The CI-mode eval scenarios (run by `bun run verify:ai`) still asserted the **old** breaker shape
+(`judge_breaker.blocks`, and a "counter frozen at cap" expectation). The breaker fix renamed the field to
 `blocks_since_commit` and made the advisory auto-commit **reset** the breaker. Updated the
 validators: per-draft monotonic counter, and the post-cap advisory auto-commit clears the breaker
 (`judge_breaker === null`).
 
-**Questions.** Do these validators now pin the *actual* P3 contract (not just "make it pass")?
+**Questions.** Do these validators now pin the *actual* breaker contract (not just "make it pass")?
 Specifically: block 1 → `blocks_since_commit===1`, block 2 → `===2`, third identical preview →
 advisory + auto-commit + breaker reset to null. Is there a scenario that pins the *memoization*
 skip (no judge LLM call on unchanged re-preview) and the **goal-change reset**? If not, that's a
@@ -195,7 +195,7 @@ coverage gap to flag.
 
 ---
 
-## 5. Workstream D — base64 stdlib primitive (6.19.3, `b7fbcd73`)
+## 5. base64 stdlib primitive (6.19.3, `b7fbcd73`)
 
 **Files:** `apps/engine/src/sandboxes/quickjs/stdlib/stdlib.js` (+ `.d.ts`),
 `stdlib/tests/encoding.test.ts`, `stdlib/tests/drift.test.ts`.
@@ -334,11 +334,11 @@ as a final cross-cutting pass.
 1. **§2 WASM fix** — packaging correctness + `--smoke` gate reachability (highest blast radius:
    gates every deploy).
 2. **§5 base64 semantics** — the Latin-1-vs-UTF-8 decision + skill-doc sync (highest *design*-risk).
-3. **§3 P1 (timeout)** then **P2 (fan-out)** — the stall fix; verify the caps are sound and
+3. **§3 timeout** then **fan-out** — the stall fix; verify the caps are sound and
    per-call/aggregate as claimed.
-4. **§3 P3 (breaker)** + **§4 eval validators** — the chattiness fix + its CI signal; verify the
+4. **§3 breaker** + **§4 eval validators** — the chattiness fix + its CI signal; verify the
    monotonic/reset invariant and that the validators pin the real contract.
-5. **§3 P4 (budget/stop)** — convergence vs false-positive stops.
+5. **§3 budget/stop** — convergence vs false-positive stops.
 6. **§6 migration method** — verify the two transform-execution contexts (`engine.ts:~913` vs
    `transform.ts:~442`), `lastOutput` identity, trigger-preservation on PUT, and judge the
    "byte-identical transforms ⇒ faithful side-effecting workflow" argument.
@@ -346,7 +346,7 @@ as a final cross-cutting pass.
 
 ## 9. Quality gate status (reproduce, don't trust)
 
-`bun run verify` chains: lint → typecheck → terminology → invariants → drift checks → determinism →
+`bun run verify` chains: lint → typecheck → invariants → drift checks → determinism →
 `bun test apps/ packages/` → `verify:ai` → `build:sk` → `test:e2e`. Last local run: **10085 pass /
 1 fail**, the 1 fail being `apps/engine/src/credentials/oauth2/tests/wait.test.ts` — a 30s-timeout
 test that exceeds its budget under the run's concurrency and **passes 10/10 in isolation**
@@ -365,5 +365,5 @@ finding.
    (b) the **"transforms byte-identical ⇒ side-effecting workflow faithful"** argument for the two
    un-executed write workflows.
 3. Coverage-gap list (esp. judge memoization + goal-change reset pins; singleton-collapse edges).
-4. Confirmation (or refutation) that the four stability caps (P1 timeout, P2 fan-out, P3 breaker,
-   P4 budget/stop) each bound their stated failure mode without throttling a legitimate task.
+4. Confirmation (or refutation) that the four stability caps (timeout, fan-out, breaker,
+   budget/stop) each bound their stated failure mode without throttling a legitimate task.

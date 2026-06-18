@@ -11,8 +11,7 @@
 //      blocks so the provider can cache the head and recompute only the
 //      tail each turn.
 //
-// After the Phase 4 split (audit §4.2), the assembler is split across
-// `context-assembler/`:
+// The assembler is split across `context-assembler/`:
 //
 //   - `context-assembler/loaders.ts`      — DB-side loaders
 //                                            (interaction log, latest
@@ -479,7 +478,7 @@ export async function assembleEnhancedPrompt(
     );
   }
 
-  // Prior workflows — 5th authoring context source (#203). Compressed
+  // Prior workflows — 5th authoring context source. Compressed
   // reference cases from this tenant's most similar active workflows,
   // surfaced so the LLM grounds new drafts in patterns the team has
   // already used. Gated by `preEmbedCorpus`: the converse flow

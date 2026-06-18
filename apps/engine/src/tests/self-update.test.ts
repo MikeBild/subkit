@@ -1,7 +1,7 @@
 // Engine self-update + rollback unit tests.
 //
-// Issue #151 P0-2 / P0-4 turned `runSelfUpdate` and `runRollback` into
-// privileged mutations: every binary swap writes an audit row + a
+// `runSelfUpdate` and `runRollback` are privileged mutations: every
+// binary swap writes an audit row + a
 // structured log entry + a metric increment. The "already at latest"
 // no-op branch is the only DB-free path; the rest require DATABASE_URL
 // so the recorder can land its row. These tests stand up a disposable
@@ -243,8 +243,8 @@ describe("engine runRollback", () => {
     captureWrites();
     clearRetained();
     const before = new Date(getTestNow() - 1);
-    // Round-3 S1: throw so the CLI flag handler exits non-zero. The
-    // audit row says `result: error`; the process exit must match.
+    // Throw so the CLI flag handler exits non-zero. The audit row
+    // says `result: error`; the process exit must match.
     await expect(runRollback("previous", makeConfig())).rejects.toThrow(/no retained binaries/);
 
     const failedRows = await testDb.db

@@ -1,20 +1,20 @@
 # AI-Assisted Authoring
 
 > **Reading time:** ~18 min
-> **Audience:** Engineers integrating with the reference implementation's authoring, operators curating Skills & Knowledge
+> **Audience:** Engineers integrating with sk's authoring, operators curating Skills & Knowledge
 > **Strategy context:** developer view of contextualised AI authoring; the economic argument behind it (vs. classical builders / BPMN / low-code / engineering) lives in [§2 of positioning](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution), the system requirement is [context as authoring input (R2)](./system-requirements.md#r2--context-as-a-first-class-input-to-authoring).
 
 Traditional enterprise workflow tools put the burden of construction on the builder. You need to know the connector, understand the configuration syntax, and map it all onto a blank canvas. The result is a workflow that reflects what developers can build, not what the business actually needs.
 
-The reference implementation inverts that burden. The authoring layer is a conversational interface where a user describes a goal in natural language and the AI does the structural work: grounding the goal in connector evidence, generating the complete workflow in one `author_workflow` pass, previewing it with writes held, and repairing specific findings. The user's job is to review and approve — not to build.
+sk inverts that burden. The authoring layer is a conversational interface where a user describes a goal in natural language and the AI does the structural work: grounding the goal in connector evidence, generating the complete workflow in one `author_workflow` pass, previewing it with writes held, and repairing specific findings. The user's job is to review and approve — not to build.
 
-This is what separates this reference implementation from traditional workflow tools, and it is what this document explains: how Conversations produce governed, production-ready workflows, and why the human-in-the-loop model is the right architecture for enterprise AI.
+This is what separates sk from traditional workflow tools, and it is what this document explains: how Conversations produce governed, production-ready workflows, and why the human-in-the-loop model is the right architecture for enterprise AI.
 
 ---
 
 ## The Conversation Model
 
-A Conversation is the primary authoring interface in this reference implementation. When a user starts one, they describe what they want in natural language. The AI responds not with advice or summaries but with a structured proposal — a Draft workflow that can be inspected, modified, and eventually approved.
+A Conversation is the primary authoring interface in sk. When a user starts one, they describe what they want in natural language. The AI responds not with advice or summaries but with a structured proposal — a Draft workflow that can be inspected, modified, and eventually approved.
 
 Conversations are persistent and resumable. They survive page reloads, reconnects, and multi-day authoring sessions. A user can start a Conversation on Monday, return on Wednesday, and pick up exactly where they left off. The AI recalls the context, the draft state, and the pending questions.
 
@@ -77,7 +77,7 @@ When the user says they want to create a new workflow after inspecting or runnin
 
 ## The Human-in-the-Loop Approval Gate
 
-The most important architectural decision in this reference implementation is the approval gate.
+The most important architectural decision in sk is the approval gate.
 
 Nothing reaches the execution engine without an explicit human approval. When the AI finishes building a Draft, it does not automatically promote it to a live workflow. It pauses the authoring loop and presents the Draft for human review. The operator sees every Step, every connector reference, every parameter, and every branching condition. They can push back, ask for changes, and iterate. When they are satisfied, they explicitly approve.
 
@@ -196,7 +196,7 @@ This is one of the key reasons the authoring flow stays consistent across turns:
 
 ## Multi-AI Provider
 
-The reference implementation is not tied to a single AI model. It supports Claude (Anthropic), OpenAI GPT models, and Google Gemini. Providers are interchangeable: swapping models does not require changes to Connectors, workflows, or skills.
+sk is not tied to a single AI model. It supports Claude (Anthropic), OpenAI GPT models, and Google Gemini. Providers are interchangeable: swapping models does not require changes to Connectors, workflows, or skills.
 
 The platform routes to the best available provider based on operator configuration and task type. Token budgets are enforced per tenant and per Conversation to prevent runaway costs. An operator can set a monthly ceiling; the platform tracks consumption and surfaces usage in the audit log.
 
@@ -240,7 +240,7 @@ Skills are not auto-generated and not auto-promoted. The platform detects recurr
 
 ## Knowledge Sources: Enterprise Documents
 
-Skills are concise and curated. For richer, document-scale context — runbooks, API specifications, compliance frameworks, architecture diagrams — the reference implementation provides Knowledge Sources.
+Skills are concise and curated. For richer, document-scale context — runbooks, API specifications, compliance frameworks, architecture diagrams — sk provides Knowledge Sources.
 
 A Knowledge Source is a persistent document store. Operators upload PDFs, runbooks, API specs, compliance documents, and architecture diagrams. The platform chunks and indexes them for semantic search. During a Conversation, discovery pass, or diagnosis/repair loop, the AI searches Knowledge Sources to ground its proposals in organization-specific context. A workflow that correctly follows your GDPR compliance runbook is possible because the runbook is a Knowledge Source the AI can search.
 
@@ -288,7 +288,7 @@ Conversation replay is still bounded. Tool results are truncated before they are
 
 When a user mentions an external connector boundary — "pull data from our Salesforce instance" or "post a message to Slack" — the AI needs accurate, connector-specific knowledge to propose a useful integration. Generic HTTP knowledge is not enough.
 
-The reference implementation ships 105 Connector Templates covering the most common enterprise services. When a user mentions a connector target, the AI draws on the matching template to propose an accurate integration. Templates include the driver type, authentication configuration, documentation references, and setup guidance. The AI understands the target API, not just the idea of it.
+sk ships 105 Connector Templates covering the most common enterprise services. When a user mentions a connector target, the AI draws on the matching template to propose an accurate integration. Templates include the driver type, authentication configuration, documentation references, and setup guidance. The AI understands the target API, not just the idea of it.
 
 Documentation Ingestion is part of Connector setup. OpenAPI specs, GraphQL schemas, and HTML documentation are automatically indexed and become part of the AI's context for that Connector. The AI can refer to specific endpoints, parameters, and error codes because the documentation is available to it.
 
@@ -298,7 +298,7 @@ The central Credential Vault means users never handle raw secrets during authori
 
 ## Discovery: From Files to Proposals
 
-Discovery is how the reference implementation accelerates onboarding new systems. Rather than requiring an operator to manually configure every connector and skill for a new integration, Discovery starts with the documentation that already exists.
+Discovery is how sk accelerates onboarding new systems. Rather than requiring an operator to manually configure every connector and skill for a new integration, Discovery starts with the documentation that already exists.
 
 An operator uploads files — API specs, data dictionaries, architecture diagrams, runbooks — and sk analyzes them to produce a set of structured proposals. Each Discovery Artifact is a proposed Connector, Skill, or Knowledge Source, with a confidence score and links to the specific evidence in the uploaded files. The operator reviews each proposal and decides what to approve.
 
@@ -310,7 +310,7 @@ Discovery is designed for the scenarios enterprises actually encounter: a new ve
 
 ## How Authoring Improves Over Time
 
-The reference implementation's authoring layer is not static. It improves as the platform accumulates execution history and operator feedback.
+sk's authoring layer is not static. It improves as the platform accumulates execution history and operator feedback.
 
 Skill Candidates surface patterns from production. When the platform detects that certain Connectors or step sequences are used together frequently — and that those combinations tend to succeed — it proposes a new Skill. The proposal includes confidence scores and links to the executions that support it. Operators review and promote or reject.
 

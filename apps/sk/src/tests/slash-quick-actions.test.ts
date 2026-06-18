@@ -1,5 +1,5 @@
-// Quick-action slashes (M9 of #159) — /copy /rename /fork /mention.
-// /init, /draft, /export already existed pre-M9 and are exercised
+// Quick-action slashes — /copy /rename /fork /mention.
+// /init, /draft, /export are exercised
 // elsewhere; /mention here is just a hint string so the test asserts
 // shape only.
 
@@ -89,7 +89,7 @@ describe("/copy slash (M9)", () => {
     expect(out).toBe("/copy: last assistant message is empty");
   });
 
-  // S-3 of PR #161 review (round 3): the in-memory transcript may be
+  // The in-memory transcript may be
   // empty (resumed session, paged history scrolled past, REPL booted
   // straight into an existing conversation). In that case /copy falls
   // back to `client.getConversation`. The 3 tests below pin the
@@ -187,7 +187,7 @@ describe("/rename slash (M9)", () => {
   });
 });
 
-describe("/fork slash (M9 + W2 of PR #161 review round 2)", () => {
+describe("/fork slash", () => {
   test("calls forkConversationFromMessage with the most recent assistant id and switches sessionId", async () => {
     const forkConversationFromMessage = mock(async (sourceId: string, msgId: string) => ({
       conversation: { id: "11111111-1111-1111-1111-111111111111" } as unknown,

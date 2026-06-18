@@ -19,7 +19,7 @@ export const CredentialMode = z.enum([
   "basic",
   "oauth2",
   "aws_sigv4",
-  // #49 / A4 generalised non-OAuth2 username+password→JWT flows: Cognito
+  // Generalised non-OAuth2 username+password→JWT flows: Cognito
   // InitiateAuth, Firebase Auth REST signInWithPassword, generic POST
   // /login. Persists like oauth2 (cached access_token + optional
   // refresh_token + expires_at) but mints via a per-shape JSON / form /
@@ -61,7 +61,7 @@ export const OAuth2CredentialValue = z.object({
 });
 export type OAuth2CredentialValue = z.infer<typeof OAuth2CredentialValue>;
 
-// Token-mint credential (#49 / A4). Generalises Cognito InitiateAuth,
+// Token-mint credential. Generalises Cognito InitiateAuth,
 // Firebase Auth REST signInWithPassword, and generic POST /login flows
 // into a single shape with three request envelopes:
 //

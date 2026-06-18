@@ -13,8 +13,7 @@ import { spawnSync } from "node:child_process";
 //   - BEL  (`\x07`)               — universal fallback; some
 //     terminals visually flash, others ring a sound.
 //
-// The combination matches Codex's notification helper. No native OS
-// dependency; everything is stdout writes.
+// No native OS dependency; everything is stdout writes.
 //
 // Throttling + opt-in: `notify()` no-ops when:
 //   - the threshold has not been reached, OR

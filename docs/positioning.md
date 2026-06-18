@@ -8,7 +8,7 @@
 
 ## 1. Summary
 
-**sk is a reference implementation of the operational AI execution layer** — a shared system that turns individual agentic productivity into organisational agentic operationalisation (see the [thesis](./thesis.md) for the platform theory behind that sentence). It is not a chat product, not a replacement for general AI assistants, not a universal AI-governance layer for an entire enterprise. This document positions the reference implementation against the [system requirements](./system-requirements.md); any candidate system can be evaluated against the same standard.
+**sk is the operational AI execution layer** — a shared system that turns individual agentic productivity into organisational agentic operationalisation (see the [thesis](./thesis.md) for the platform theory behind that sentence). It is not a chat product, not a replacement for general AI assistants, not a universal AI-governance layer for an entire enterprise. This document positions sk against the [system requirements](./system-requirements.md); any candidate system can be evaluated against the same standard.
 
 The iconic short form, for conversations that need one sentence:
 
@@ -16,11 +16,11 @@ The iconic short form, for conversations that need one sentence:
 
 The strategic-management term *operating model* — until now a static description, a deck, a diagram — becomes executable software. The vocabulary triad is intentional: *organisational agentic operationalisation* (theory term), *operational AI execution layer* (market term), **The Operating Model** (iconic short term). See the [glossary](./02-concepts.md#group-0-strategy-vocabulary).
 
-**Scope decision (deliberate, GTM-critical).** The reference implementation addresses one sharp slice: the *governed execution of operationalised workflows* against production systems. Free exploration, IDE coding assistance, and employee chat stay outside — they are probabilistic by design and do not need execution governance. The reference implementation does *not* eliminate shadow AI; it draws the *operational* subset of AI usage into a governed lane.
+**Scope decision (deliberate, GTM-critical).** sk addresses one sharp slice: the *governed execution of operationalised workflows* against production systems. Free exploration, IDE coding assistance, and employee chat stay outside — they are probabilistic by design and do not need execution governance. sk does *not* eliminate shadow AI; it draws the *operational* subset of AI usage into a governed lane.
 
 ```mermaid
 flowchart TB
-    subgraph governed["Governed by the reference implementation"]
+    subgraph governed["Governed by sk"]
         Ops["Operational workflows<br/>against production systems"]
     end
     subgraph free["Intentionally outside scope"]
@@ -33,9 +33,9 @@ flowchart TB
     Bridge --> governed
 ```
 
-*What the reference implementation governs (governed operational workflows) vs. what stays outside (free exploration, IDE coding assistance, employee chat). The bridge between them is controlled operational delegation via the MCP OAuth endpoint.*
+*What sk governs (governed operational workflows) vs. what stays outside (free exploration, IDE coding assistance, employee chat). The bridge between them is controlled operational delegation via the MCP OAuth endpoint.*
 
-In one sentence: the reference implementation integrates three layers that organisations otherwise have to assemble themselves — **contextualised AI authoring**, **operational governance**, and **versioned, reproducible execution** — into one running system whose effect compounds per tenant over time. Context accumulation and the learning loop are the actual moat.
+In one sentence: sk integrates three layers that organisations otherwise have to assemble themselves — **contextualised AI authoring**, **operational governance**, and **versioned, reproducible execution** — into one running system whose effect compounds per tenant over time. Context accumulation and the learning loop are the actual moat.
 
 Two sentences that recur across the [thesis](./thesis.md) and ground this positioning:
 
@@ -52,7 +52,7 @@ The bold formulation, also carried from the thesis: *the next relevant software 
 
 ![sk architecture overview — the MCP OAuth bridge between outside-the-bridge AI clients and the governed engine, with all inbound surfaces, the six engine clusters (Tenant Context highlighted as the moat), and the four outbound system categories.](overview.png)
 
-*The full reference-implementation architecture. The mermaids in this document zoom into specific aspects — the bridge above, the three-layer integration in §2, the worked examples in §6. Source: [`overview.drawio`](overview.drawio).*
+*The full sk architecture. The mermaids in this document zoom into specific aspects — the bridge above, the three-layer integration in §2, the worked examples in §6. Source: [`overview.drawio`](overview.drawio).*
 
 ---
 
@@ -67,8 +67,8 @@ flowchart TB
         A1 --> A2 --> A3
     end
     subgraph diy["DIY — five tools, four seams"]
-        B1["IDE Copilot"] -. seam .-> B2["Prompt library"]
-        B2 -. seam .-> B3["LangGraph"]
+        B1["IDE assistant"] -. seam .-> B2["Prompt library"]
+        B2 -. seam .-> B3["Graph runtime"]
         B3 -. seam .-> B4["Vault + OAuth"]
         B4 -. seam .-> B5["Approval workflow"]
     end
@@ -78,7 +78,7 @@ flowchart TB
 
 *Three integrated layers as a single product, contrasted with a chain of five separate tools whose seams leak audit, identity, and context.*
 
-**What the reference implementation does in authoring.** It runs a *contextualised* AI assistant in the authoring phase — technically a domain-specialised "agent harness" in the sense of recent agent literature (the interleaved reasoning + acting pattern of ReAct — Reasoning + Acting — Yao et al. 2023; a means, not the headline). The difference from a generic coding assistant is the **grounding on the tenant**: the assistant decides not from training knowledge alone but from this organisation's own context — conceptually retrieval-augmented generation (RAG, Lewis et al. 2020).
+**What sk does in authoring.** It runs a *contextualised* AI assistant in the authoring phase — technically a domain-specialised "agent harness" in the sense of recent agent literature (the interleaved reasoning + acting pattern of ReAct — Reasoning + Acting — Yao et al. 2023; a means, not the headline). The difference from a generic coding assistant is the **grounding on the tenant**: the assistant decides not from training knowledge alone but from this organisation's own context — conceptually retrieval-augmented generation (RAG, Lewis et al. 2020).
 
 Five context sources ground the assistant — Skills, Knowledge, Connectors, Workflows, Operational feedback. The full specification of why each is required lives in [context as authoring input](./system-requirements.md#r2--context-as-a-first-class-input-to-authoring) (R2):
 
@@ -100,7 +100,7 @@ The same assistant behaves differently per organisation and per team, because it
 
 AI-assisted authoring grounded on tenant context hits the actual bottleneck. But: AI-assisted authoring is *creation help, not the output*. The result is the same explicit, formal, reviewable, versioned workflow artefact a classical workflow system would produce. The probabilistic part is confined to authoring and ends with human approval; AI-assisted authoring does not replace review — it gets faster to the thing that gets reviewed.
 
-**Why "AI-native" — and not just "Copilot for workflows"?** When the runtime is deliberately not intelligent, the fair question is: why does the architecture need to be AI-native at all? Because AI-native here does not mean "a generator bolted on the front". It means a **closed loop**: author → govern → execute → observe drift → propose repair → refine. Three things separate this fundamentally from a copilot sidecar:
+**Why "AI-native" — and not just "a copilot for workflows"?** When the runtime is deliberately not intelligent, the fair question is: why does the architecture need to be AI-native at all? Because AI-native here does not mean "a generator bolted on the front". It means a **closed loop**: author → govern → execute → observe drift → propose repair → refine. Three things separate this fundamentally from a copilot sidecar:
 
 - The assistant is contextualised on tenant-specific skills, knowledge, connectors, workflows — a generic copilot is not.
 - Drift detection and repair loops feed signals from *production* back into authoring — a one-shot generator does not.
@@ -114,19 +114,19 @@ The runtime being non-intelligent is *the point*: it makes execution auditable. 
 
 ## 3. The Build-It-Yourself Question, Tool by Tool
 
-The strongest sceptical attack: *"You are a workflow system with an LLM in front — I can build this from standard parts (LangGraph + Vault + OAuth + an approval workflow)."* The mechanic of this reference implementation really is buildable from standard parts. What is not buildable — and not trivially added on — is the actual moat:
+The strongest sceptical attack: *"You are a workflow system with an LLM in front — I can build this from standard parts (a graph runtime + a secret vault + OAuth + an approval workflow)."* The mechanic of sk really is buildable from standard parts. What is not buildable — and not trivially added on — is the actual moat:
 
 - **Organisational context accumulation.** Per tenant, a curated context grows over time: Skills, Knowledge, versioned Workflows as reference cases. The next authoring run is visibly better grounded than the previous one. A self-assembled stack does not have this accumulation as a first-class concept.
 - **Drift-assisted remediation as a closed loop.** Schema and behaviour drift detected in production flows back as operator-reviewed Patch and Skill Candidates into authoring. The system learns from *real* production runs rather than generic training knowledge.
 - **Reusable patterns and skills**, not ad-hoc knowledge in private chat histories. What worked once becomes visible, curated organisational knowledge inherited by other teams.
 - **Compounding.** The model improves because vendors ship better models; the *operating model* improves because the organisation learns. The second part is what the organisation actually controls.
 
-Tool by tool, what the build-it-yourself stack leaves open:
+Capability by capability, what the build-it-yourself stack leaves open:
 
-- **Temporal** solves durable execution (resilience), not contextualised authoring and not connector/credential governance. Workflows are written there as code by engineers.
-- **LangGraph Platform** keeps the model in the runtime loop; sk takes it out — the execution is a frozen, versioned artefact, which is what the loop is meant to improve over time.
-- **OpenAI Responses + internal RBAC (Role-Based Access Control)** produces no versioned execution artefact, no audit at the workflow-version level, no connector control plane.
-- **Retool Workflows + Copilot** separates authoring (Copilot, without org context) from execution (Retool); grounding and continuous governance across the seam are missing.
+- **Durable-execution engines** solve resilience, not contextualised authoring and not connector/credential governance. Workflows are written there as code by engineers.
+- **Agent-graph runtimes** keep the model in the runtime loop; sk takes it out — the execution is a frozen, versioned artefact, which is what the loop is meant to improve over time.
+- **A model API plus internal RBAC (Role-Based Access Control)** produces no versioned execution artefact, no audit at the workflow-version level, no connector control plane.
+- **A low-code builder bolted to a generic coding assistant** separates authoring (an assistant, without org context) from execution (the builder); grounding and continuous governance across the seam are missing.
 
 The irreducible core is not a single feature; it is the **integration**: contextualised operational AI authoring with end-to-end governed, versioned execution — as one product, not a self-assembled chain of five tools whose seams leak audit, identity, and context.
 
@@ -134,7 +134,7 @@ The irreducible core is not a single feature; it is the **integration**: context
 
 ---
 
-## 4. Part 1 — The Problem (how the reference implementation maps the symptoms)
+## 4. Part 1 — The Problem (how sk maps the symptoms)
 
 This is the compressed version; for the deeper framing of *why* ungoverned AI use becomes operational action, see the [Why Now? section](./thesis.md#4-why-now--the-urgency) and the [real-problem-domain section](./thesis.md#3-the-real-problem-domain--solo-leverage-vs-organisational-operationalisation) in the thesis.
 
@@ -156,7 +156,7 @@ The problem is not just account sprawl. Account sprawl is the *visible* symptom 
 
 The structural answer is not to rebuild what mature integration platforms already do well. It is to make organisation-specific context a **first-class authoring input** — the five sources defined by [R2](./system-requirements.md#r2--context-as-a-first-class-input-to-authoring) (Skills, Knowledge, Connectors, Workflows, Operational feedback) feeding every authoring run, every drift repair, every Skill Candidate. The mediation bottleneck dissolves the way every other bottleneck in software dissolved: when the input becomes versioned, inheritable, and reusable rather than re-derived from scratch each time.
 
-**4.5 What enterprise AI accounts already solve — and what stays open.** Honest differentiation: OpenAI Enterprise, Anthropic Enterprise, and the Microsoft Copilot stack are far beyond "just an account". They provide SSO (Single Sign-On) / SAML (Security Assertion Markup Language), central retention, partial DLP (Data Loss Prevention), audit logs of conversations, admin APIs, data residency, light RBAC, and connector governance.
+**4.5 What enterprise AI accounts already solve — and what stays open.** Honest differentiation: enterprise AI accounts are far beyond "just an account". They provide SSO (Single Sign-On) / SAML (Security Assertion Markup Language), central retention, partial DLP (Data Loss Prevention), audit logs of conversations, admin APIs, data residency, light RBAC, and connector governance.
 
 - **What they solve:** identity and billing — central login, seat management, cost bundling, coarse access control, conversation-grade compliance basics.
 - **What they structurally do not solve:** their audit log records what was said to the model, not which workflow version ran with which inputs against which production system, approved by whom. Execution stays agentic. RBAC stays coarse (seat / feature). Connector governance controls access, not the governed, versioned execution against the connected system.
@@ -174,7 +174,7 @@ Deliberately not a feature list. Feature lists kill momentum. Three short orient
 **Three orientation flows.**
 
 - **Flow A — From idea to approved workflow.** A user describes the goal in their preferred conversational surface — the sk CLI's conversational REPL with `/`-slashes and `@`-mentions, a chat workspace (Slack / Teams / Google Chat), or an MCP-connected AI client ("on every Stripe `charge.failed`, notify Slack"). The same contextualised authoring loop runs behind all three: it draws on the Stripe skill, the existing Slack connector, and a similar versioned workflow, and proposes a draft. The reviewer sees a structured diff and approves a version — via `/approve` in the CLI REPL, an approve button in chat, or `POST /v1/...` from a script. The probabilistic part ends here.
-- **Flow B — External AI client triggering an operational action.** An external client (a ChatGPT custom connector, Claude.ai, Cursor) wants to trigger the approved workflow on behalf of a user. It registers dynamically (standard OAuth 2.1, PKCE), receives a tightly scoped, expiring token, and can only trigger this one operational action. Each call is audited; access can be revoked at any moment — instead of a long-lived ungoverned API key in a client config.
+- **Flow B — External AI client triggering an operational action.** An external MCP-compatible AI client wants to trigger the approved workflow on behalf of a user. It registers dynamically (standard OAuth 2.1, PKCE), receives a tightly scoped, expiring token, and can only trigger this one operational action. Each call is audited; access can be revoked at any moment — instead of a long-lived ungoverned API key in a client config.
 - **Flow C — Drift in production, learning back into authoring.** Three weeks later Stripe changes the shape of `charge.failed` responses. Execution detects the drift, does *not* auto-repair, and instead presents the operator with a Patch Candidate including a diff and a dry-run against recorded fixtures. The operator can act on it from any surface they already work in: `sk patch-candidates get <id>` followed by `sk patch-candidates approve` in the terminal, the approve button in a chat notification, or a webhook receiver's own UI. After approval, the new version runs; the insight enters the tenant context as a Skill Candidate inherited by the next workflow that touches the same interface.
 
 ```mermaid
@@ -202,7 +202,7 @@ flowchart TB
 - **Authoring-vs-execution split.** The approved workflow runs as approved; the control flow is fixed at authoring time and is not re-decided by inference at runtime. Step outputs may vary; the path does not. Every run is recorded as an immutable execution record; rollback by version change. ([R3](./system-requirements.md#r3--separation-of-authoring-probabilistic-from-execution-controlled), [R4](./system-requirements.md#r4--workflow-as-a-versioned-organisational-artefact))
 - **Policy before every external call.** Possible via a sandboxed, fail-closed hook for maintenance windows, approval gates, and data-residency rules. State-changing steps run only after explicit approval; Patch Candidates are never auto-applied.
 - **Tenant isolation.** Tenant boundary enforced at storage, query, and response layers; covered by regression tests. Structurally enforced, not absolutely guaranteed. ([R9](./system-requirements.md#r9--multi-tenant-isolation-as-a-structural-property))
-- **Audit-grade evidence, not compliance.** The append-only action log provides evidence and building blocks for a SOC2 / ISO27001 / GDPR programme; the reference implementation is not a compliance solution — compliance requires processes, operations, incident handling, vendor management. ([R11](./system-requirements.md#r11--audit-grade-evidence-not-compliance))
+- **Audit-grade evidence, not compliance.** The append-only action log provides evidence and building blocks for a SOC2 / ISO27001 / GDPR programme; sk is not a compliance solution — compliance requires processes, operations, incident handling, vendor management. ([R11](./system-requirements.md#r11--audit-grade-evidence-not-compliance))
 
 **5.2 Cost — principles.**
 
@@ -287,7 +287,7 @@ This section deliberately avoids the interchangeable enterprise outcomes ("less 
 
 ## 8. Part 3 — What sk Still Lacks (Honestly)
 
-The most important structural residual first, because it is GTM-critical: **the reference implementation does not eliminate shadow AI.** It governs only what flows through its surfaces. What a developer does in Claude Code / Codex directly in the editor stays outside the reference implementation's audit boundary. A reader who expects an all-covering AI governance layer reads the wrong category into this document — the scope decision (operational execution layer, not universal governance layer) is deliberate. The honest answer is a clear category (the reference implementation is valuable for the *operational* part) plus the MCP OAuth endpoint that draws the operational portion of external AI clients into the governed lane. A story for raw coding assistance still needs to exist elsewhere in the organisation.
+The most important structural residual first, because it is GTM-critical: **sk does not eliminate shadow AI.** It governs only what flows through its surfaces. What a developer does in an editor-side coding assistant directly in the editor stays outside sk's audit boundary. A reader who expects an all-covering AI governance layer reads the wrong category into this document — the scope decision (operational execution layer, not universal governance layer) is deliberate. The honest answer is a clear category (sk is valuable for the *operational* part) plus the MCP OAuth endpoint that draws the operational portion of external AI clients into the governed lane. A story for raw coding assistance still needs to exist elsewhere in the organisation.
 
 **P0 — critical for the enterprise story (blocks buyers):**
 
@@ -317,7 +317,7 @@ The most important structural residual first, because it is GTM-critical: **the 
 
 A reader can validate this document against the plan and the codebase:
 
-- Every claim in [§4 (problem mapping)](#4-part-1--the-problem-how-the-reference-implementation-maps-the-symptoms) and [§5 (principles and flows)](#5-part-2--principles-and-flows-no-feature-inventory) maps to an R-number from the [system requirements](./system-requirements.md); every R-number traces to a thesis section in the [thesis](./thesis.md).
+- Every claim in [§4 (problem mapping)](#4-part-1--the-problem-how-sk-maps-the-symptoms) and [§5 (principles and flows)](#5-part-2--principles-and-flows-no-feature-inventory) maps to an R-number from the [system requirements](./system-requirements.md); every R-number traces to a thesis section in the [thesis](./thesis.md).
 - The compounding formula appears verbatim, exactly once: **Run → Drift → Patch Candidate → Skill Candidate → Better Authoring → Better Run** (visualised in [the closed learning loop](./system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation)).
 - The [central axiom](./02-concepts.md#group-0-strategy-vocabulary) appears verbatim wherever it is cited.
 - No implementation details (library names, file paths, branch names, table names, hosting details) appear outside the dual-vocabulary note in the [glossary](./02-concepts.md#group-0-strategy-vocabulary).
@@ -330,7 +330,7 @@ A reader can validate this document against the plan and the codebase:
 - [thesis](./thesis.md) — why this category exists.
 - [system requirements](./system-requirements.md) — what such a system must do.
 - [glossary](./02-concepts.md) — every term used here, defined once.
-- [platform architecture](./01-platform.md) — developer-side architecture of this reference implementation.
+- [platform architecture](./01-platform.md) — developer-side architecture of sk.
 - [agents contract](../AGENTS.md) — repository-wide developer contract.
 
 Bibliography is shared with [the thesis sources](./thesis.md#sources).

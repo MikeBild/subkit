@@ -173,7 +173,7 @@ describe("conversations/audit-trail", () => {
         ),
       )
       .orderBy(asc(auditLog.ts));
-    // Wave 4: every confirm_before_execution decision (e.g. save_workflow_draft)
+    // Every confirm_before_execution decision (e.g. save_workflow_draft)
     // lands a `tool_policy.confirmation_required` row tagged with the
     // conversation_id, so operators can audit policy decisions without
     // scraping debug logs. Filter that row out for the canonical
@@ -184,7 +184,7 @@ describe("conversations/audit-trail", () => {
       .map((a) => a.action)
       .filter((a) => a !== "tool_policy.confirmation_required");
     expect(lifecycleActions).toEqual(["conversation.created", "conversation.committed"]);
-    // The Wave 4 policy row is INCIDENTAL — it fires only when the LLM
+    // The policy row is INCIDENTAL — it fires only when the LLM
     // calls a `confirm_before_execution` tool directly. The canonical
     // path the LLM now takes is to emit
     // `ask_user_confirm{kind:save_workflow_draft}` itself (post save-workflow-draft

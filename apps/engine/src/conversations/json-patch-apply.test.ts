@@ -1,6 +1,5 @@
-// Bug TT regression: applyDiffsToConfig + partitionDiffs are pure
-// JSON-Patch helpers powering per-patch partial approval. Mirrors
-// reference impl's config-diff-utils.ts.
+// applyDiffsToConfig + partitionDiffs are pure
+// JSON-Patch helpers powering per-patch partial approval.
 
 import { describe, expect, test } from "bun:test";
 import {
@@ -85,7 +84,7 @@ describe("partitionDiffs", () => {
   });
 });
 
-describe("applyApprovedDiffs · end-to-end partial approval (Bug TT)", () => {
+describe("applyApprovedDiffs · end-to-end partial approval", () => {
   test("applies only the approved subset to the config", () => {
     const config = { a: 1, b: 2, c: 3 };
     const diffs: ToolDiff[] = [

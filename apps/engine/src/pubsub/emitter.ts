@@ -3,7 +3,7 @@
 // process register handlers via `pubsub.on(channel, handler)` and the
 // listener calls `dispatch(envelope)` once the row has been hydrated.
 //
-// Durability contract (audit doc §4.5):
+// Durability contract:
 //
 //   The emitter holds in-process subscriber state ONLY. It is intentionally
 //   not durable across process restarts — every consumer that needs to

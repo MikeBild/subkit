@@ -24,7 +24,7 @@ import { runWaitStep } from "./steps/wait.ts";
 import { runWaitForEventStep } from "./steps/wait-for-event.ts";
 import type { StepResult, StepRunContext } from "./types.ts";
 
-// Workstream #51: persistent workflow state — `state_read` binds a
+// Persistent workflow state — `state_read` binds a
 // tenant-encrypted value into the substitution scope under the chosen
 // `into_var`; `state_write` persists a dot-path slice of the step
 // result back to the same store after the step succeeds.
@@ -77,7 +77,7 @@ export interface RunStepOutcome {
   result_size_bytes?: number;
 }
 
-// Workstream A7: redact step output keys the recipe declared as
+// Redact step output keys the recipe declared as
 // `outputs[k].secret = true`. The marker matches the shared
 // `isAlreadyRedacted` regex so downstream scrubber passes leave it
 // alone. Only request steps carry the `outputs` declaration today
@@ -110,7 +110,7 @@ export async function runStep(
   const step = ctx.step;
   let result: StepResult;
 
-  // #51 state_read: bind a persistent value into substitution scope
+  // state_read: bind a persistent value into substitution scope
   // BEFORE the step runs. Defaults to `state_read.default_value`
   // (commonly `null`) when the row does not exist yet — the canonical
   // first-run case for cursor-based reverse-ETL.
@@ -321,7 +321,7 @@ export async function runStep(
     }
   }
 
-  // #51 state_write: persist a dot-path slice of the step result AFTER
+  // state_write: persist a dot-path slice of the step result AFTER
   // the step succeeds. Failures here propagate as a step failure so the
   // watermark and the side-effect cannot diverge silently — better to
   // re-run the workflow than to advance a watermark whose write was
@@ -433,7 +433,7 @@ export async function runStep(
     }
   }
 
-  // Workstream A7: scrub declared-secret outputs BEFORE offload + preview
+  // Scrub declared-secret outputs BEFORE offload + preview
   // so the redacted payload reaches downstream readers (offload storage,
   // step preview, audit log, structured logs). The recipe author marks
   // `outputs[k].secret = true` (e.g. on Cognito IdToken / OAuth2

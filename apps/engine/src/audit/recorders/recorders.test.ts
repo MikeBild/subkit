@@ -413,8 +413,7 @@ describe("recorder catalog — policy", () => {
 describe("recorder catalog — engine_update", () => {
   // Engine-update rows always land under SYSTEM_TENANT_ID; the recorder
   // hard-codes tenant + actor so the param shape can't drift into a
-  // remote-mutation surface (#151 §6 anti-goal). Tests assert exactly
-  // that contract.
+  // remote-mutation surface. Tests assert exactly that contract.
   const FIXED_HEX = "a".repeat(64);
 
   test("recordEngineUpdateInitiated lands under SYSTEM_TENANT_ID with the system actor", async () => {

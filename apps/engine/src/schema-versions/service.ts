@@ -279,9 +279,9 @@ export interface ShapeHistoryEntry {
 
 /**
  * Walk every recorded shape for an endpoint in chronological order.
- * Powers "how has this endpoint changed over time?" — the same
- * question the reference impl can't answer because it has no
- * versioning. Caller decides the depth (default 50).
+ * Powers "how has this endpoint changed over time?" — answerable only
+ * because every observed shape is versioned. Caller decides the depth
+ * (default 50).
  */
 export async function listShapeHistory(
   p: GetLatestShapeParams & { limit?: number },

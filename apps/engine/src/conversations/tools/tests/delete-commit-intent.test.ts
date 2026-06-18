@@ -17,8 +17,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// After the Phase 4 split (audit §4.2), the commit-intent helpers live
-// in `tools/sdk-wrap/policy-helpers.ts`.
+// The commit-intent helpers live in `tools/sdk-wrap/policy-helpers.ts`.
 const SRC = join(import.meta.dir, "..", "sdk-wrap", "policy-helpers.ts");
 
 describe("policy-gate commit-intent · policy-gated writes", () => {

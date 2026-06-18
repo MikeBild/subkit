@@ -6,7 +6,7 @@
 -- definition, not in operator-managed CRUD), and compliance dashboards
 -- want to filter the two without joining across the workflow def.
 --
--- Existing rows pre-#46 were all created via the direct-CRUD path
+-- Existing rows predating the trigger-binding path were all created via the direct-CRUD path
 -- (`POST /v1/webhooks/inbound`); the default of `'crud'` mirrors that.
 -- The reverse-bind helper (`bindFromWorkflow`) writes `'trigger'`.
 

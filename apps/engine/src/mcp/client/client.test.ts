@@ -1,4 +1,4 @@
-// Focused unit coverage for the external MCP CLIENT subsystem (#171).
+// Focused unit coverage for the external MCP CLIENT subsystem.
 //
 // These are pure, DB-free assertions over the validation + manifest
 // surface. The full integration suite (live handshake, drift, audit

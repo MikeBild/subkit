@@ -13,8 +13,7 @@
 //
 // `searchSlashCommands(query, persona)` runs a Fuse.js fuzzy match
 // against the visible-for-persona set, weighted so command names
-// dominate over help-string matches. Mirrors the pattern in
-// Claude Code's `src/components/PromptInput/commandSuggestions.ts`.
+// dominate over help-string matches.
 
 import Fuse from "fuse.js";
 import { z } from "zod";
@@ -648,8 +647,7 @@ export function findSlashCommand(raw: string): SlashCommand | undefined {
 /**
  * Fuzzy search the slash-command catalog for commands matching
  * `query`, restricted to the caller's persona. Returns ranked
- * suggestions with the best match first. Thresholds mirror
- * Claude Code's `commandSuggestions.ts`: name 3x weight,
+ * suggestions with the best match first. Thresholds: name 3x weight,
  * aliases 2x, help 0.5x, threshold 0.3.
  *
  * An empty query returns the whole visible catalog (useful for

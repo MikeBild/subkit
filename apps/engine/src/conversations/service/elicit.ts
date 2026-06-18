@@ -308,7 +308,7 @@ export async function respondElicitation(
     .set({ status: "active", updated_at: new Date() })
     .where(eq(conversations.id, p.conversation_id));
 
-  // Auto-persist hook (PR11/PR12) — when the resolved elicitation
+  // Auto-persist hook — when the resolved elicitation
   // carries a `commit_intent`, the harness applies the intended write
   // atomically BEFORE the next LLM turn. The dispatcher emits a
   // synthetic tool-call + tool-result the runLoop's

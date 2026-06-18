@@ -1,7 +1,6 @@
 // inspect_role — returns the full draft state of a role: name,
-// description, permissions list, members, built-in flag. Mirrors the
-// reference impl's `inspect_role` output shape so the LLM can read
-// the current configuration before proposing edits via edit_role.
+// description, permissions list, members, built-in flag, so the LLM can
+// read the current configuration before proposing edits via edit_role.
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";

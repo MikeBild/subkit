@@ -1,4 +1,4 @@
-// Workflow run state service (#51): tenant-encrypted read/write, AAD
+// Workflow run state service: tenant-encrypted read/write, AAD
 // binding, tenant-leakage isolation.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

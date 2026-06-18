@@ -1,4 +1,4 @@
-// Persistent per-workflow state for cross-run cursors / watermarks (#51).
+// Persistent per-workflow state for cross-run cursors / watermarks.
 //
 // The `workflow_run_state` table stores tenant-encrypted JSON values keyed
 // by `(tenant_id, workflow_id, key)`. Reverse-ETL workflows read a cursor

@@ -34,8 +34,8 @@ import { validateConnectorDraftTool } from "../validate-connector-draft.ts";
 
 let ctx: ConversationTestCtx;
 // Each test owns its own Bun.serve instance bound to a deterministic
-// high-port slot in the IANA ephemeral range (49152-65535). Round-1
-// used `port: 0` (OS-assigned) which flaked under parallel suite runs:
+// high-port slot in the IANA ephemeral range (49152-65535). An
+// earlier `port: 0` (OS-assigned) approach flaked under parallel suite runs:
 // the same freed port could be re-handed to a sibling test's server
 // after this suite released it, and the in-flight `fetch` of `/broken`
 // occasionally landed on the stranger's fixture (returning 200 instead

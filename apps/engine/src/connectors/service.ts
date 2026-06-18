@@ -146,9 +146,9 @@ export async function createConnector(
     // Upsert semantics on (tenant_id, environment, slug): when a
     // connector with the same slug already exists in the same
     // environment, treat the call as an update rather than letting the
-    // unique-constraint throw. Mirrors the reference impl's
-    // `upsertSystem ON CONFLICT (id, environment, org_id) DO UPDATE`.
-    // Pre-fix the LLM authoring flow looped here: re-running
+    // unique-constraint throw (an `ON CONFLICT ... DO UPDATE`
+    // equivalent on (tenant_id, environment, slug)). Without this the
+    // LLM authoring flow looped here: re-running
     // start_connector_from_description with the same URL produced the
     // same slug, the insert threw `duplicate key violates …
     // connectors_tenant_environment_slug_idx`, and the LLM started

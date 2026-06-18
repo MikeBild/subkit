@@ -60,7 +60,7 @@ function adminHeaders() {
 }
 
 describe("/v1/diagnostics/logs", () => {
-  test("paginated tail returns recent entries and writes a DIAGNOSTICS_LOGS_TAILED audit row (review R2-W3)", async () => {
+  test("paginated tail returns recent entries and writes a DIAGNOSTICS_LOGS_TAILED audit row", async () => {
     const beforeTs = Date.now(); // allow-wall-clock: bound for the live ring tail; not a determinism axis
     const auditCutoff = new Date();
     logger.warn({
@@ -94,7 +94,7 @@ describe("/v1/diagnostics/logs", () => {
     expect(body.size).toBeGreaterThan(0);
     expect(body.next_since_ms).toBeGreaterThanOrEqual(matching!.ts);
 
-    // R2-W3: assert the JSON-tail audit row landed.
+    // Assert the JSON-tail audit row landed.
     const rows = await srv.db
       .select()
       .from(auditLog)
@@ -123,32 +123,32 @@ describe("/v1/diagnostics/logs", () => {
     expect(res.status).toBe(403);
   });
 
-  test("rejects malformed `since` query (review W1)", async () => {
+  test("rejects malformed `since` query", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/logs?since=not-a-number`, {
       headers: adminHeaders(),
     });
     expect(res.status).toBe(400);
   });
 
-  test("audit:read is required for SSE — member gets 403 (review W4)", async () => {
+  test("audit:read is required for SSE — member gets 403", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/logs/stream`, {
       headers: { authorization: `Bearer ${memberKey}`, accept: "text/event-stream" },
     });
     expect(res.status).toBe(403);
   });
 
-  test("SSE rejects malformed query bag with 400 instead of opening stream (review W1)", async () => {
+  test("SSE rejects malformed query bag with 400 instead of opening stream", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/logs/stream?level=panic`, {
       headers: { authorization: `Bearer ${srv.apiKey}`, accept: "text/event-stream" },
     });
     expect(res.status).toBe(400);
   });
 
-  test("tail filters foreign-tenant entries before serving (review W2/W5)", async () => {
+  test("tail filters foreign-tenant entries before serving", async () => {
     const FOREIGN_TENANT = "00000000-0000-0000-0000-000000000fee";
     const before = Date.now(); // allow-wall-clock: ring window bound
-    // Emit one log line under a different tenant context — would have
-    // been visible to this admin without the W2 fix.
+    // Emit one log line under a different tenant context — must not be
+    // visible to this admin (tenant isolation on the log tail).
     await withContext(
       { trace_id: "tenant-leak-test", tenant_id: FOREIGN_TENANT, request_source: "api" },
       async () => {
@@ -192,7 +192,7 @@ describe("/v1/diagnostics/logs", () => {
     expect(sameBody.entries.map((e) => e.action)).toContain("same_emitted");
   });
 
-  test("system-scope entries (no tenant_id) remain visible to tenant admins (review W2)", async () => {
+  test("system-scope entries (no tenant_id) remain visible to tenant admins", async () => {
     const before = Date.now(); // allow-wall-clock: ring window bound
     // Emit without withContext — entry has no tenant_id field. Boot
     // logs and cross-tenant subsystem logs land here; tenant admins

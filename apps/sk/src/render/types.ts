@@ -2,7 +2,7 @@
 // touch the render module don't need to dip into `../repl/plan-cell.tsx`
 // for the structural shape. The actual runtime renderer (PlanCard) and
 // the heuristic detector still live with the REPL because they are
-// codex/Ink-specific.
+// Ink-specific.
 export type { PlanStep, PlanStepStatus } from "../repl/plan-cell.tsx";
 
 export type WorkflowTrigger =

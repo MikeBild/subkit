@@ -123,7 +123,7 @@ export const dryRunStepTool: ConversationTool = {
           step_id: runStep.step_key,
           kind: runStep.kind,
           status: runStep.status,
-          // Fingerprint stamping (Fix 5): bind this evidence to the
+          // Fingerprint stamping: bind this evidence to the
           // exact step definition it was recorded against so later
           // mutations drop it only when THIS step changes.
           ...(runStep.step_key === args.step_id ? { fingerprint: stepFingerprint(rawStep) } : {}),

@@ -188,7 +188,7 @@ export const updateConnectorDraftTool: ConversationTool = {
           matched_key_path: hitPath,
           // Value is intentionally NOT logged — only the path is safe to emit.
         });
-        // Wave 4: also land the rejection in the audit log so compliance
+        // Also land the rejection in the audit log so compliance
         // tooling that scans `audit_log` (rather than tailing structured
         // logs) sees the policy decision. Reason and metadata mirror the
         // structured log line; the value is NEVER recorded. Fire-and-

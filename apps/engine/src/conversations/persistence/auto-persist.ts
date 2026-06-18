@@ -1,4 +1,4 @@
-// Harness-side auto-persist dispatcher (PR11/PR12).
+// Harness-side auto-persist dispatcher.
 //
 // When an `ask_user_form` or `ask_user_confirm` carries a
 // `commit_intent`, the harness applies the proposed write atomically
@@ -26,8 +26,7 @@
 //          when `emitAutoPersistAudit: true` is passed — together that
 //          gives a full trail.)
 //
-// After the Phase 4 split (audit §4.1) the implementation lives in
-// `auto-persist/`:
+// The implementation lives in `auto-persist/`:
 //
 //   - `auto-persist/synthetic.ts`         — synthetic tool-result
 //                                            shapes + commit-intent

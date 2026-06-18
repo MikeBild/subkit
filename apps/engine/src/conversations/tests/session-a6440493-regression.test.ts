@@ -16,7 +16,7 @@
 // Fix #4 (confirmation transcript payload preview) is unit-tested in
 // apps/sk/src/tests/render-elicit-answer.test.ts.
 //
-// NOTE: Fixes #1, #3, and #21 covered runtime warnings emitted by the
+// NOTE: earlier fixes covered runtime warnings emitted by the
 // JSONata transform-evaluation path (`unresolved_identifier`,
 // `transform_empty_extraction`, `transform_dropped_fields`). Transforms
 // are now JavaScript-only — the JSONata evaluation path and those
@@ -273,7 +273,7 @@ test("regression suite did not persist workflows via gate paths", async () => {
 });
 
 // -----------------------------------------------------------------------
-// Fix #19 — inspect_execution_step tool
+// inspect_execution_step tool
 // -----------------------------------------------------------------------
 
 describe("inspect_execution_step", () => {

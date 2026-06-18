@@ -81,8 +81,8 @@ export async function applyTriggerBindings(
   // `trigger.kind = "request"`. Emit a warn + audit + counter so the
   // operator sees the regression. The regex output is OBSERVABILITY
   // ONLY — it never feeds back into cron construction. The fix path
-  // is in the seed skill (Phase 2): the LLM carries the schedule
-  // trigger inline with `build_workflow`.
+  // is in the seed skill: the LLM carries the schedule trigger inline
+  // with `build_workflow`.
   const phrase = detectSchedulePhrases({
     name: def.name,
     description: def.description ?? null,

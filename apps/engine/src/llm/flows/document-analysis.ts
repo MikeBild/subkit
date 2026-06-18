@@ -1,5 +1,5 @@
 // Document analysis flow: analyzes uploaded documents once at setup time.
-// Structured formats (OpenAPI, Postman, HAR, GraphQL) → deterministic parsers, NO LLM.
+// Structured formats (OpenAPI, API collections, HAR, GraphQL) → deterministic parsers, NO LLM.
 // Unstructured formats (PDF, image, markdown) → LLM vision.
 // Result: DocumentAnalysisResult with endpoints, auth, confidence.
 

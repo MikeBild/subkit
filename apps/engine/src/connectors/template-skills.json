@@ -1257,7 +1257,7 @@
       "GET /incident.do?WSDL — get the WSDL for the incident table"
     ],
     "best_practices": [
-      "Use the REST Table API (template #60) for new integrations — SOAP is legacy",
+      "Use the REST Table API for new integrations — SOAP is legacy",
       "Use getKeys + get for targeted record retrieval instead of getRecords for all"
     ],
     "pitfalls": [

@@ -1,6 +1,6 @@
 // Shared helpers + error types + lightweight result shapes used by
-// every per-operation module under `service/`. After the Phase 4
-// split (audit §4.1) every per-operation file imports from here.
+// every per-operation module under `service/`. Each per-operation file
+// imports from here.
 
 import type { Executor } from "../../db/client.ts";
 import type { conversations } from "../../db/schema/index.ts";

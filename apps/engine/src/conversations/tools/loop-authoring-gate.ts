@@ -87,9 +87,8 @@ function pickLoopSource(step: LoopLikeStep): string | null {
  *  during the current conversation. When the loop's referenced step
  *  is a `request` step routed through one of these connectors, the
  *  probe counts as shape evidence and the gate is exempted — even
- *  without a recorded workflow dry_run. Mirrors the reference impl's
- *  call_system → build_tool → run_tool flow, where probes are the
- *  primary shape-discovery surface. */
+ *  without a recorded workflow dry_run. Probes are the primary
+ *  shape-discovery surface. */
 export interface LoopAuthoringGateOptions {
   probedConnectorSlugs?: ReadonlySet<string>;
 }
@@ -137,9 +136,8 @@ export function evaluateLoopAuthoringGate(
    * probed-connector request step; a `loop → transform → request`
    * chain (the canonical reshape pattern) failed the gate because the
    * intermediate transform had no `connector_slug`. Transitively
-   * propagating the exemption matches the reference impl's flow where
-   * a probed system feeds an arbitrary number of derived transforms
-   * before driving a loop.
+   * propagating the exemption lets a probed connector feed an arbitrary
+   * number of derived transforms before driving a loop.
    */
   function transitivelyExempt(stepId: string, seen = new Set<string>()): boolean {
     if (seen.has(stepId) || seen.size > 16) return false;
@@ -205,7 +203,7 @@ export function evaluateLoopAuthoringGate(
         });
         continue;
       }
-      // Fingerprint-keyed evidence (Fix 5): a trace recorded against a
+      // Fingerprint-keyed evidence: a trace recorded against a
       // DIFFERENT definition of the referenced step is not evidence —
       // the upstream shape may have changed with it. Traces without a
       // fingerprint (fixtures, pre-fingerprint drafts) keep the legacy

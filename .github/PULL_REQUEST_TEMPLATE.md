@@ -18,14 +18,14 @@ Read AGENTS.md if any of the rules are unclear.
 
 ## Quality gate
 
-- [ ] `bun run verify` is green locally (lint + typecheck + terminology + audit:invariants + openapi-drift + determinism + test:unit + verify:ai + test:integration + build:sk + test:e2e).
+- [ ] `bun run verify` is green locally (lint + typecheck + audit:invariants + openapi-drift + determinism + test:unit + verify:ai + test:integration + build:sk + test:e2e).
 
 ## Boundary checklist (skip the rows that don't apply)
 
 - [ ] **Schema change?** Drizzle schema + new SQL migration, both committed.
 - [ ] **Route or MCP tool change?** Zod schemas updated, OpenAPI client regenerated (`bun run gen:openapi-client` — `check:openapi-drift` covers this in CI).
 - [ ] **Mutates tenant-visible state?** `audit_log` entry covers it with structured before/after diff.
-- [ ] **New env var?** `apps/engine/src/env.ts` updated, `.env.example` updated, `bun run check:terminology` green.
+- [ ] **New env var?** `apps/engine/src/env.ts` updated, `.env.example` updated.
 - [ ] **New connector / template?** Driver + template + auth-options are in `apps/engine/src/connectors/` and the template binding lints.
 - [ ] **AI prompt or context change?** `bun run verify:ai` green; updated eval fixtures committed.
 - [ ] **User-facing surface (CLI, sk, README)?** Leads with `sk`, not `subkit`.

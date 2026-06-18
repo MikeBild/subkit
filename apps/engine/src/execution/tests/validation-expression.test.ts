@@ -1,8 +1,7 @@
 // Workflow-level `validation_expression` — evaluates AFTER output_schema.
 // A falsy result trips finalStatus to "failed" and surfaces a typed
 // `validation_failed` error so the self-healing loop can produce a
-// `validation_failed` drift signal. Mirrors the reference impl's
-// optional `validationFunction`.
+// `validation_failed` drift signal.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runExecution } from "../engine.ts";

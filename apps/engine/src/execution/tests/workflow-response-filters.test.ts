@@ -1,11 +1,10 @@
 // Workflow-level response filter integration tests.
 //
-// Subkit historically applied `response_filters` only at the
-// `RequestStep` level (post-HTTP-response, mid-pipeline). For parity
-// with the reference impl, `response_filters` declared at the
-// `WorkflowDef` root run AFTER `output_transform` so the operator's
-// public-payload shape is filtered last, regardless of which step
-// produced the data.
+// Per-step `response_filters` apply at the `RequestStep` level
+// (post-HTTP-response, mid-pipeline). Workflow-level `response_filters`
+// declared at the `WorkflowDef` root run AFTER `output_transform` so the
+// operator's public-payload shape is filtered last, regardless of which
+// step produced the data.
 
 import { describe, expect, test } from "bun:test";
 import type { ResponseFilter } from "../../workflows/types.ts";

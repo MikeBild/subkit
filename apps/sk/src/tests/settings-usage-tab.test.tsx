@@ -1,4 +1,4 @@
-// Usage tab (M5 of #159, rewired in #160).
+// Usage tab.
 // Asserts the Usage tab renders month-to-date token usage sourced from
 // the tenant-scoped /v1/stats/llm endpoint (grouped by flow) plus the
 // monthly budget denominator from /v1/status. The former audit-log

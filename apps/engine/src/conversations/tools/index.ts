@@ -129,9 +129,8 @@ export interface ToolContext {
    * `edit_workflow_patch`, `update_param`, `save_connector_draft`) call
    * this with the canonical before/after JSON of the affected resource.
    * The conversation loop turns it into a `diff` TurnEvent the CLI
-   * renders inline as a unified-diff cell. Mirrors codex's
-   * `PatchHistoryCell` — operators see exactly what changed without
-   * scrolling back to the prior state.
+   * renders inline as a unified-diff cell — operators see exactly what
+   * changed without scrolling back to the prior state.
    *
    * Best-effort: emitter errors never block the tool. Tools that pass
    * undefined skip the diff cell entirely.
@@ -221,8 +220,8 @@ export type ToolResult =
       details?: unknown;
       /**
        * Ordered list of tool names the model should consider next.
-       * Wave 3 concern: the loop will fold these into the next turn's
-       * `prior_failures` automatically.
+       * The loop folds these into the next turn's `prior_failures`
+       * automatically.
        */
       next_best_actions?: string[];
       /** When set, the driver pauses the loop on a pending elicitation. */
@@ -423,7 +422,7 @@ import { restoreDraftSnapshotTool } from "./restore-draft-snapshot.ts";
 register(listDraftSnapshotsTool);
 register(restoreDraftSnapshotTool);
 
-// Auto-generated read tools covering every §5.10.1 domain:
+// Auto-generated read tools covering every read-surface domain:
 // workflows, connectors, executions, skills, skill-candidates,
 // patch-candidates, knowledge-sources, audit, metrics, identity
 // (whoami + users + api-keys + portal-tokens + system-accounts),

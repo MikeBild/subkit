@@ -1,5 +1,5 @@
-// Pin the cancel-race contract from #146 / A4 + the cross-tenant
-// isolation contract from #147 review C1: registration + cancel must
+// Pin the cancel-race contract + the cross-tenant
+// isolation contract: registration + cancel must
 // always meet via the same registry, AND a foreign tenant POSTing
 // against another tenant's conversation_id must not be able to
 // displace the legitimate registration.
@@ -91,7 +91,7 @@ describe("conversation abort registry", () => {
     expect(ctrl1.signal.aborted).toBe(false);
   });
 
-  // ---------- #147 review C1 — cross-tenant isolation -------------
+  // ---------- cross-tenant isolation -------------
 
   test("a foreign tenant cannot displace another tenant's registered controller", () => {
     // The pre-fix bug: the registry was keyed on conversation_id
@@ -149,7 +149,7 @@ describe("conversation abort registry", () => {
     expect(ctrlB.signal.aborted).toBe(true);
   });
 
-  // ---------- #147 review C-1 — SSE ownership-transfer ------------
+  // ---------- SSE ownership-transfer ------------
 
   test("SSE ownership-transfer: stale-handle unregister attempts must not zero the new live slot", () => {
     // The pre-fix bug surfaced only on the SSE path: Hono's

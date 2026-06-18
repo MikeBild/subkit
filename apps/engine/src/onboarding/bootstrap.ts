@@ -369,8 +369,8 @@ export async function consume(
   const payload = parsed.data;
 
   // Materialise the tenant + admin user + admin API key. The seed
-  // helper is call-driven now (#70 retired the `BOOTSTRAP_*` env-var
-  // path) — pass the operator payload directly. The transaction
+  // helper is call-driven — pass the operator payload directly rather
+  // than relying on `BOOTSTRAP_*` env vars. The transaction
   // guarantees no half-bootstrap state on partial failure.
   const result = await seedTenantBootstrap(db, rbacIds, {
     admin_email: payload.admin_email,

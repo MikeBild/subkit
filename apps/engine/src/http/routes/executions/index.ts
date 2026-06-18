@@ -1,7 +1,6 @@
 // Executions HTTP surface — entry point.
 //
-// Phase 4 of the 2026-05 architecture audit (#92). The former
-// http/routes/executions.ts (865 LOC) split into four sub-resource
+// The former http/routes/executions.ts split into four sub-resource
 // modules — list (read endpoints), run (POST /v1/executions),
 // transform (stateless POST /v1/executions/transform), cancel.
 // Public API unchanged: server.ts still calls

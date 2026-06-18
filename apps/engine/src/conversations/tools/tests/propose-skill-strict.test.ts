@@ -1,4 +1,4 @@
-// Property tests for the strict / inputExamples opt-in (issue #165).
+// Property tests for the strict / inputExamples opt-in.
 //
 // `proposeSkillTool` opts into provider-native strict mode because its
 // input schema is all concrete types. The two sibling authoring tools
@@ -48,7 +48,7 @@ const toJsonSchema = (schema: unknown) =>
   // biome-ignore lint/suspicious/noExplicitAny: zod v4 toJSONSchema surface
   (z as any).toJSONSchema(schema, { target: "jsonSchema7" }) as unknown;
 
-describe("issue #165 — strict + inputExamples opt-in", () => {
+describe("strict + inputExamples opt-in", () => {
   it("propose_skill opts into strict mode", () => {
     expect(proposeSkillTool.strict).toBe(true);
   });
@@ -73,7 +73,7 @@ describe("issue #165 — strict + inputExamples opt-in", () => {
   });
 
   // Structural invariant: prove the contrapositive of the strict-off
-  // decision (issue #165, review W5). If a future refactor tightens
+  // decision. If a future refactor tightens
   // build_workflow / propose_step to drop `z.record(z.unknown())`,
   // these tests fail and remind the next agent that strict mode is
   // now an option.

@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 //
-// check-coverage-floor — Phase 2 wrap-up of the 2026-05 architecture
-// audit. Runs `bun test <subsystem> --coverage` for each entry in
+// check-coverage-floor — runs `bun test <subsystem> --coverage` for each entry in
 // apps/engine/.coverage-floor.json and fails when the observed line
 // or branch coverage drops below the recorded floor.
 //
@@ -37,7 +36,7 @@ interface FloorEntry {
   line_min: number;
   branch_min: number;
   rationale?: string;
-  phase_2_observed?: { line?: number | null; branch?: number | null };
+  observed?: { line?: number | null; branch?: number | null };
 }
 
 interface FloorFile {

@@ -1,5 +1,5 @@
 // Barrel for the HTTP request step driver. The implementation lives
-// under `request/` after the Phase 4 split (audit §4.2):
+// under `request/`:
 //   - `request/errors.ts`   — typed RequestError
 //   - `request/retry.ts`    — backoff / 429 / idempotency policy
 //   - `request/shape.ts`    — schema-required + LLM-model + auth helpers

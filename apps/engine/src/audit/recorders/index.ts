@@ -1,6 +1,6 @@
 // Typed audit recorders — barrel export.
 //
-// Every Wave 1..3 state-changing path lands its audit row through one
+// Every state-changing path lands its audit row through one
 // of these helpers. The recorders are thin wrappers around
 // `auditAwait` that lock the metadata shape at compile time so a
 // schema drift in one call site cannot silently desynchronise the

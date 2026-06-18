@@ -208,7 +208,7 @@ export const proposeStepTool: ConversationTool = {
     const nextDraft = withWorkflowDraft(currentDraft, workflowDraft, "workflow_step_updated");
     await ctx.setDraft(nextDraft);
 
-    // Recorded-evaluation pass (Fix 9). The loop/transform authoring
+    // Recorded-evaluation pass. The loop/transform authoring
     // gates used to REFUSE a loop/transform step whose upstream shape
     // was never recorded — that bounced the mutation and drove the
     // build → blocked → dry-run → rebuild thrash (sessions ebd66982 /

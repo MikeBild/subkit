@@ -1,4 +1,4 @@
-// Inject a runtime signal into a wait-for-event step (#49).
+// Inject a runtime signal into a wait-for-event step.
 //
 //   POST /v1/executions/{id}/signals[?token=<hmac>]
 //   Body:  { event: string, payload?: Record<string, unknown> }

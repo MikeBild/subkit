@@ -1,4 +1,4 @@
-// Status tab — runtime snapshot + 5s MCP polling (M4 of #159).
+// Status tab — runtime snapshot + 5s MCP polling.
 // Asserts the tab renders identity rows from skBootstrap, MCP catalog
 // counts from listMcp* endpoints, and that the polling timer is
 // cleared when the tab unmounts (no-leak assertion).

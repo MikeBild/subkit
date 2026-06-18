@@ -1,6 +1,6 @@
 // Skill-gated palette regression tests.
 //
-// PR10/PR15 replaced state-gated visibility with a skill-gated palette.
+// The palette is skill-gated rather than state-gated.
 // Loading the canonical authoring skills (`connector-creation-guidance`,
 // `workflow-authoring`) exposes a fixed tool set; tools never silently
 // disappear once loaded. Wrong-state calls return a structured

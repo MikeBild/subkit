@@ -1,17 +1,15 @@
-# subkit vs. reference architecture — execution & authoring benchmark
+# subkit execution & authoring benchmark
 
-Comparison of the subkit engine + sk-CLI against the reference workflow-automation
-implementation, on **execution speed** and **authoring quality + latency**. The reference
-was read statically only — never built, started, or executed (it ships usage tracking). All
-subkit numbers are reproducible locally (see *How to reproduce*).
+Optimization report for the subkit engine + sk-CLI on **execution speed** and
+**authoring quality + latency**. All numbers are reproducible locally (see *How to
+reproduce*).
 
 ## TL;DR
 
-- **Intra-workflow parallelism was a tie, now a win.** Both engines ran `for_each`/loop
-  iterations strictly sequentially; the reference parallelizes only *between* workflows (a
-  fixed subprocess worker pool), never *within* one. subkit now fans out read-classified
-  `for_each` iterations with bounded concurrency: **5.8× faster** on a 24-item GET fan-out
-  (1442 ms → 249 ms), measured end-to-end through the real engine.
+- **Intra-workflow parallelism.** `for_each`/loop iterations used to run strictly
+  sequentially. subkit now fans out read-classified `for_each` iterations with bounded
+  concurrency: **5.8× faster** on a 24-item GET fan-out (1442 ms → 249 ms), measured
+  end-to-end through the real engine.
 - **Authoring quality is unchanged (the load-bearing guarantee).** The two authoring
   parallelizations are quality-neutral: the full eval gate (33 fixtures, incl. the
   one-shot-pipeline, for-each-pipeline, and repair-roundtrip authoring contracts) stays green
@@ -24,14 +22,14 @@ subkit numbers are reproducible locally (see *How to reproduce*).
 
 ### Speed
 
-| Axis | subkit (before) | subkit (after) | Reference | Winner |
-|---|---|---|---|---|
-| `for_each` / loop fan-out | sequential (1×) | bounded-parallel, auto-selected from read/write class | sequential within a workflow | **subkit** |
-| Between-workflow parallelism | pg-boss workers | unchanged | Deno subprocess pool (12) | tie |
-| GROUND docs (multi-connector) | N serial doc-searches | `Promise.all` (≈ slowest one) | lazy `search_documentation` tool | **subkit** (fewer round-trips) |
-| Repair fan-out | ≤3 serial LLM invokes | `Promise.all` (≤3 concurrent) | n/a | **subkit** |
-| HTTP connection reuse | Bun fetch pools by default | unchanged | keep-alive disabled by default | **subkit** |
-| Caching (dry-run / JSONata compile) | present | unchanged | docs cache only; no preview cache | **subkit** |
+| Axis | subkit (before) | subkit (after) |
+|---|---|---|
+| `for_each` / loop fan-out | sequential (1×) | bounded-parallel, auto-selected from read/write class |
+| Between-workflow parallelism | pg-boss workers | unchanged |
+| GROUND docs (multi-connector) | N serial doc-searches | `Promise.all` (≈ slowest one) |
+| Repair fan-out | ≤3 serial LLM invokes | `Promise.all` (≤3 concurrent) |
+| HTTP connection reuse | Bun fetch pools by default | unchanged |
+| Caching (dry-run / JSONata compile) | present | unchanged |
 
 Measured (`benchmarks/`, this machine):
 
@@ -47,12 +45,12 @@ fan-out, which is where I/O-bound workflows spend their wall-clock.
 
 ### Authoring quality
 
-| Axis | subkit | Reference | Notes |
-|---|---|---|---|
-| First-pass validity / one-shot draft | grounded one-shot pipeline (≤2 generate passes) | multi-pass agentic build | subkit minimizes round-trips by design (Fix A) |
-| Content-correct first preview | asserted by `eval:live` + judge | — | guardrail: must stay ≥ baseline |
-| Generated-transform correctness | recorded-eval + bounded verified repair | self-correcting loop, no patch-candidate store | subkit keeps a propose-only repair contract |
-| Quality regression from this change | **none** — 33/33 eval fixtures pass | n/a | parallelization is purely a scheduling change |
+| Axis | subkit | Notes |
+|---|---|---|
+| First-pass validity / one-shot draft | grounded one-shot pipeline (≤2 generate passes) | minimizes round-trips by design |
+| Content-correct first preview | asserted by `eval:live` + judge | guardrail: must stay ≥ baseline |
+| Generated-transform correctness | recorded-eval + bounded verified repair | propose-only repair contract |
+| Quality regression from this change | **none** — 33/33 eval fixtures pass | parallelization is purely a scheduling change |
 
 The quality bar for this change is **non-regression**: the two parallelizations must not alter
 *what* the pipeline produces, only *how fast*. Evidence: `bun run eval` → `Total: 33  Pass:
@@ -61,14 +59,14 @@ The quality bar for this change is **non-regression**: the two parallelizations 
 concurrently but reconstructs the prompt in deterministic connector order, so the generation
 prompt is byte-identical to the sequential version.
 
-### Architecture (read statically)
+### Architecture
 
-| Axis | subkit | Reference | Winner |
-|---|---|---|---|
-| Self-healing / patch candidates | drift detection + bounded repair + patch-candidate store | mentioned, not implemented in the read sources | **subkit** |
-| Transform model | JS + JSONata (selectors/when/output) | raw JS with `<<expr>>` interpolation | tie (different trade-offs) |
-| Grounding strategy | eager one-shot GROUND (samples + docs) | lazy on-demand doc-search tool | tie (round-trips vs. precision) |
-| Side-effect classification | one shared seam (HTTP/GraphQL/SQL/S3 + override) | per-strategy | tie — subkit reuses it to gate auto-parallelism |
+| Axis | subkit |
+|---|---|
+| Self-healing / patch candidates | drift detection + bounded repair + patch-candidate store |
+| Transform model | JS + JSONata (selectors/when/output) |
+| Grounding strategy | eager one-shot GROUND (samples + docs) |
+| Side-effect classification | one shared seam (HTTP/GraphQL/SQL/S3 + override), reused to gate auto-parallelism |
 
 ## What changed in this pass
 

@@ -1,4 +1,4 @@
-// Integration tests for reconcileMcpServersFromConfig (#171).
+// Integration tests for reconcileMcpServersFromConfig.
 //
 // Coverage:
 //   - first run inserts declared servers (inserted tally correct)

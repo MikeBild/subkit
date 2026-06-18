@@ -1,7 +1,7 @@
 // Locks the chat-first-repair contract for the conversation tool palette.
 //
-// Background — PR10/PR15 replaced state-gated visibility with a
-// skill-gated palette: loading the right skill exposes a fixed tool
+// Background: the palette is skill-gated rather than state-gated —
+// loading the right skill exposes a fixed tool
 // set, and tools never silently disappear once exposed. Wrong-state
 // calls return a structured `tool_unavailable_in_state` envelope from
 // `state-gate.ts` instead of vanishing from the palette. The tests

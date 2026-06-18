@@ -2,12 +2,12 @@
 //
 // Both `html-scrape` and `playwright-crawl` accumulate `text_corpus`
 // by concatenating raw HTML fragments. The LLM then has to read past
-// `<div class="…">` noise to find the actual prose. Reference impls
-// (and our own observability heuristics) consistently show 30-50%
-// token savings + better answer quality when the corpus is Markdown.
+// `<div class="…">` noise to find the actual prose. Our observability
+// heuristics consistently show 30-50% token savings + better answer
+// quality when the corpus is Markdown.
 //
-// `node-html-markdown` is the same library the reference impl uses —
-// ~50KB, no DOM dependency, fast (parse + emit in a single pass).
+// `node-html-markdown` — ~50KB, no DOM dependency, fast (parse + emit in
+// a single pass).
 
 import { NodeHtmlMarkdown } from "node-html-markdown";
 

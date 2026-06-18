@@ -11,8 +11,8 @@ export const MAX_TURN_LOOP_WARNINGS = 2;
 
 /**
  * Max consecutive failed tool calls before the wrapper short-circuits
- * with a structured "ask the user" envelope. Mirrors reference impl's
- * "no more than 5 failed tool calls in a row" prompt rule.
+ * with a structured "ask the user" envelope ("no more than 5 failed
+ * tool calls in a row").
  */
 export const MAX_CONSECUTIVE_FAILURES = 5;
 
@@ -112,9 +112,9 @@ export interface TurnSignals {
   toolLastErrorHash: Map<string, string>;
   /**
    * Per-tool consecutive-identical-args streak tracker for the
-   * adaptive loop-breaker. Reference impl uses a single global
-   * `stepCountIs(50)` and trusts the model; subkit's per-tool
-   * counters fired even on legitimate incremental authoring (e.g.
+   * adaptive loop-breaker. A single global step cap that trusts the
+   * model is too coarse; plain per-tool
+   * counters fire even on legitimate incremental authoring (e.g.
    * propose_step × 5 across a 5-step workflow). Adaptive shape:
    *   - reads / probes: NO per-tool cap (the model needs them)
    *   - writes: cap on consecutive IDENTICAL args, not total calls.
@@ -175,8 +175,8 @@ export interface TurnSignals {
    * with a structured envelope instructing the model to emit
    * `ask_user_choice` / `ask_user_text` instead of patching further.
    *
-   * The reference impl enforces "no more than 5 failed tool calls in a
-   * row" at the prompt level. Per-tool caps (toolInvocationCount above)
+   * The "no more than 5 failed tool calls in a row" rule is enforced
+   * here. Per-tool caps (toolInvocationCount above)
    * push the model to switch tool but keep looping; this global cap
    * forces a question to the user. Both layers are kept — the per-tool
    * cap protects against pathological retries on a single tool, the

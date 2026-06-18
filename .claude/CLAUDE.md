@@ -40,7 +40,7 @@ Thin slash-commands under `.claude/commands/`.
 
 | Command | What it does |
 |---|---|
-| `/verify` | Runs the local release gate: lint + typecheck + terminology + determinism + unit + eval + integration + build + e2e. |
+| `/verify` | Runs the local release gate: lint + typecheck + determinism + unit + eval + integration + build + e2e. |
 | `/review` | Structured code review of the current diff via `domain-architect`. |
 
 ## Skills

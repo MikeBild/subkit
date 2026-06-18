@@ -1,6 +1,6 @@
 // Atomic workflow commit — extracted from `tools/save-workflow-draft.ts` so
 // both the LLM-driven tool path AND the harness-driven auto-persist
-// path share one durability contract (PR11/PR12 — elicitation
+// path share one durability contract (via the elicitation
 // `commit_intent`).
 //
 // The prior-approval gate (`ask_user_confirm{kind:save_workflow_draft}`) is

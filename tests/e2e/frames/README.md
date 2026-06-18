@@ -1,9 +1,8 @@
 # sk CLI ANSI frame snapshots
 
 Captured against the live binary at `dist/sk` and a local engine at
-`http://localhost:3000`. These are the visual reference points the
-plan called for under "Visual diff: capture before/after ANSI frames
-for key screens" (gap #22).
+`http://localhost:3000`. These are the visual reference points for a
+before/after ANSI-frame diff of the key screens.
 
 ## How to refresh
 

@@ -1,6 +1,6 @@
 // Skill-gated tool palette.
 //
-// Replaces the old state-gated palette (PR10/PR15). The new design:
+// Replaces the old state-gated palette. The design:
 //
 //   1. Tools never silently disappear once a skill has been loaded.
 //   2. Loading the right skill exposes a fixed tool set; calling a

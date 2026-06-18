@@ -4,7 +4,7 @@
 // before issuing a tenant.* call. When set, they skip any self-authored
 // `ask_user_confirm` dance — the MCP policy gate will raise exactly one
 // elicitation on the first call. This removes the "two elicitations for
-// one delete" path the April 21 Codex session exposed.
+// one delete" path that a self-authored confirm prompt would otherwise hit.
 
 import { resolveToolMode } from "../../conversations/tool-policies.ts";
 import type { ToolCategory } from "../../conversations/tools/index.ts";

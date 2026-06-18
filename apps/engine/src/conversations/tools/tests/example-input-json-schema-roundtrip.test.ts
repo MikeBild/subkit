@@ -1,7 +1,7 @@
 // Regression guard for the v4.6.0 `tools.N.custom: Example at index 0
 // is invalid: False schema does not allow <value>` outage.
 //
-// Origin. Issue #165 began emitting each tool's `example_input` as the
+// Origin. Each tool's `example_input` is emitted on the
 // AI SDK `inputExamples` channel. AI SDK 6 strict-validates every entry
 // against the JSON-Schema projection of `inputSchema`. The projection
 // reflexively seals every object with `additionalProperties: false` —
@@ -55,7 +55,7 @@ function validateExample(
   }
 }
 
-describe("tool example_input ↔ inputSchema round-trip (regression #167+ post-incident guard)", () => {
+describe("tool example_input ↔ inputSchema round-trip (post-incident guard)", () => {
   it("every tool's example_input parses through its Zod inputSchema", () => {
     const failures: string[] = [];
     for (const t of listTools()) {
@@ -100,10 +100,10 @@ describe("tool example_input ↔ inputSchema round-trip (regression #167+ post-i
     // `z.record(...)`), flip the assertion to `toEqual([])` and
     // re-enable `toInputExamples()` in sdk-wrap/invoke.ts.
     //
-    // #178 W-3: replaces the prior `void incompatible` discard so a
+    // Replaces the prior `void incompatible` discard so a
     // NEW offender lights up CI instead of slipping through silently.
     //
-    // MAINTENANCE RULE (#178 round-3 W3): if you are tightening one
+    // MAINTENANCE RULE: if you are tightening one
     // of these tools' `example_input` or its `inputSchema` and the
     // snapshot test fails, REMOVE the corresponding entry from this
     // array. DO NOT append a new tool to make the test pass — the

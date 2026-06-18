@@ -1,7 +1,6 @@
 // Public registry: build the SDK `toolSet` for one `runLoop` invocation.
 //
-// After the Phase 4 split (audit §4.2), the wrapping logic lives in
-// `sdk-wrap/`:
+// The wrapping logic lives in `sdk-wrap/`:
 //
 //   - `sdk-wrap/state.ts`          — TurnSignals, WrappedToolOutput,
 //                                    constants, computeValidationFingerprint

@@ -465,12 +465,12 @@ export const dryRunWorkflowTool: ConversationTool = {
     // succeeded-step envelopes — failed steps would just confuse a
     // JSONata-only iteration loop.
     //
-    // Execution parity (Fix 6): the runtime scope addresses every step
+    // Execution parity: the runtime scope addresses every step
     // through the documented envelope — `$scope.<id>.data` is the
-    // payload, `$scope.<id>.status_code` the diagnostics. Pre-fix the
-    // store kept the RAW `output_preview` (no `data` wrapper), so the
-    // exact expression that works in a transform step returned `{}`
-    // here and the model concluded "scope doesn't work" (session
+    // payload, `$scope.<id>.status_code` the diagnostics. A store that
+    // keeps the RAW `output_preview` (no `data` wrapper) breaks this: the
+    // exact expression that works in a transform step returns `{}`
+    // here and the model concludes "scope doesn't work" (session
     // 784c1b02, ~10 wasted rewrite rounds). Wrap to the same envelope
     // the engine writes into `scope` (`engine/envelope.ts`).
     const previewScope: Record<string, unknown> = {};
@@ -605,7 +605,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     // compact view here (drop request_meta from the persisted
     // version — it's cheap to keep around in the response envelope
     // but not worth the token cost on every turn).
-    // Fingerprint stamping (Fix 5): each persisted trace carries the
+    // Fingerprint stamping: each persisted trace carries the
     // identity of the step definition it was recorded against, so
     // mutations drop evidence per changed step instead of wholesale and
     // the authoring gates can verify the evidence is still current.
@@ -700,8 +700,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     // (output_preview is already capped); the LLM sees enough shape
     // to author the next transform without burning the whole context.
     //
-    // Mirrors the reference implementation's `run_tool({
-    // includeStepResults: true })` envelope — gives the LLM a single
+    // Gives the LLM a single
     // structured trace it can scan to pinpoint the failing step plus
     // its driver-level metadata (status code, byte counts, connector
     // resolution).

@@ -1,5 +1,4 @@
-// approvePatchCandidate / rejectPatchCandidate tests — Phase 2 of the
-// 2026-05 architecture audit.
+// approvePatchCandidate / rejectPatchCandidate tests.
 //
 // The loop test covers the auto-apply happy path. The two reviewer
 // helpers (manual approve / manual reject) are routed via HTTP at

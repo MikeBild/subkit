@@ -1,6 +1,6 @@
 // Policy resolver coverage for external MCP tools (`mcp_<ns>__<tool>`).
 //
-// The #172 fold-in: external MCP tools are treated as dangerous (they leave
+// External MCP tools are treated as dangerous (they leave
 // the tenant perimeter to a third-party server) so they MUST resolve to
 // `confirm_before_execution` under all non-yolo permission modes. Only
 // `yolo` lifts the gate (consistent with other dangerous tools like

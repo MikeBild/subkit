@@ -128,8 +128,8 @@ Built-in templates: `appsync-iam` (GraphQL), `aws-apigw-iam` (REST).
 When the upstream needs a custom dance sk doesn't speak natively
 (SAML→JWT bridges, "POST creds to /login, then use cookie", legacy
 session tokens), author it as **two workflow steps**: one to mint the
-token, one to use it. This mirrors the pattern the reference
-implementation uses for every auth flow.
+token, one to use it. This is the standard pattern for every auth
+flow.
 
 ```json
 {

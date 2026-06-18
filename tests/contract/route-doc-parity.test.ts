@@ -60,9 +60,8 @@ function collectRoutesFromSource(files: string[]): Set<string> {
 }
 
 // Engine route source files that declare `/v1/...` paths via createRoute.
-// Some routes were split into per-sub-resource directories in Phase 4 of
-// the 2026-05 architecture audit (#92); we scan the directory's
-// constituent files rather than the now-removed top-level module.
+// Some routes are split into per-sub-resource directories; we scan the
+// directory's constituent files rather than a top-level module.
 const ENGINE_ROUTE_FILES = [
   "apps/engine/src/http/routes/conversations/collection.ts",
   "apps/engine/src/http/routes/conversations/messages.ts",

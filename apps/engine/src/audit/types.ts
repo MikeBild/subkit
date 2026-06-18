@@ -127,14 +127,14 @@ export const AuditAction = {
   // see that the previous engine instance crashed mid-flight.
   EXECUTION_CRASH_RECOVERED: "execution.crash_recovered",
 
-  // Persistent workflow run state (#51): cross-run watermark / cursor
+  // Persistent workflow run state: cross-run watermark / cursor
   // reads + writes, tenant-encrypted, scoped to a single workflow.
   // Emitted from the step-runner when a request step declares
   // `state_read` / `state_write`. Both pair with `metadata.key`.
   STATE_READ: "state.read",
   STATE_WRITE: "state.write",
 
-  // Step-level wait checkpoint (#48 SHRUNK). First step-level audit pair
+  // Step-level wait checkpoint. First step-level audit pair
   // in subkit — wait_started fires at step start with the configured
   // sleep_until_ts; wait_completed pairs at step end with `reason`
   // (`timer` for normal completion, `cancelled` for abort, or `recovered`
@@ -329,21 +329,21 @@ export const AuditAction = {
   // before becoming `portal`.
   ELICITATION_DEMOTED_TO_PORTAL: "elicitation.demoted_to_portal",
 
-  // H2: Knowledge Sources
+  // Knowledge Sources
   KNOWLEDGE_SOURCE_CREATED: "knowledge_source.created",
   KNOWLEDGE_SOURCE_UPDATED: "knowledge_source.updated",
   KNOWLEDGE_SOURCE_DELETED: "knowledge_source.deleted",
   KNOWLEDGE_SOURCE_INGESTED: "knowledge_source.ingested",
   KNOWLEDGE_SOURCE_REFRESHED: "knowledge_source.refreshed",
   KNOWLEDGE_SOURCE_ANALYZED: "knowledge_source.analyzed",
-  // Wave 2: synthesised connector endpoint candidates from a file (README,
+  // Synthesised connector endpoint candidates from a file (README,
   // architecture doc, code dump). Distinct from the regular
   // KNOWLEDGE_SOURCE_REFRESHED action — discovery from files is a
   // different reason code (`file_analysis`) and an LLM call sat behind
   // the row, so operators want to filter it separately.
   KNOWLEDGE_SOURCE_CANDIDATES_SYNTHESIZED: "knowledge_source.candidates_synthesized",
 
-  // H2.5: Discovery
+  // Discovery
   DISCOVERY_RUN_CREATED: "discovery.run_created",
   DISCOVERY_RUN_COMPLETED: "discovery.run_completed",
   DISCOVERY_RUN_FAILED: "discovery.run_failed",
@@ -351,7 +351,7 @@ export const AuditAction = {
   DISCOVERY_ARTIFACT_APPROVED: "discovery.artifact_approved",
   DISCOVERY_ARTIFACT_REJECTED: "discovery.artifact_rejected",
 
-  // H3: Self-Improving Skills
+  // Self-Improving Skills
   SKILL_CANDIDATE_PROPOSED: "skill_candidate.proposed",
   SKILL_CANDIDATE_UPDATED: "skill_candidate.updated",
   SKILL_CANDIDATE_APPROVED: "skill_candidate.approved",
@@ -396,11 +396,11 @@ export const AuditAction = {
   CONTENT_PART_SENT: "content_part.sent",
   CAPABILITY_FALLBACK: "capability.fallback",
 
-  // Wave 4: hardened audit surface for the conversation pipeline.
+  // Hardened audit surface for the conversation pipeline.
   //
   // - `connector.draft.credential_rejected` — the LLM tried to splice a
   //   credential into the connector draft via `update_connector_draft`.
-  //   Wave 2 emitted only a `log.connector.draft.credential_rejected`
+  //   Previously this emitted only a `log.connector.draft.credential_rejected`
   //   structured log; the audit row makes the rejection visible to
   //   compliance tooling that scans `audit_log`.
   // - `tool_policy.confirmation_required` — the per-turn policy
@@ -430,7 +430,7 @@ export const AuditAction = {
   // path (see `apps/engine/src/workflows/service.ts`) and reflect the
   // reverse binding into `webhooks_inbound` / `workflows_schedules`.
   // The `fired` / `failed_verification` events are emitted by the
-  // executor side (#46 webhook firing, #47 schedule firing) — the
+  // executor side (webhook firing and schedule firing) — the
   // enum values are pinned here so downstream filters can be
   // authored ahead of the executor landing.
   WEBHOOK_TRIGGER_BOUND: "webhook.trigger.bound",

@@ -242,8 +242,7 @@ Directory-local overrides:
 - **No ticket coupling in comments or docs.** Inline comments, `TODO`s, and docs must not
   reference PR numbers, issue IDs, `bug-N` labels, review-wave letters (`W1`, `S3`, `R2-W4`,
   `P0-1`), or round numbers. Either the invariant is permanent and belongs in code, or the
-  follow-up is real and belongs in the issue tracker — not in source. Enforced by
-  `bun run check:terminology`.
+  follow-up is real and belongs in the issue tracker — not in source.
 
 ## Validation And Testing
 
@@ -261,7 +260,7 @@ Three test layers (picked by subsystem and command):
 - E2E tests drive compiled CLIs — they will build them if missing.
 - CI currently runs lint, typecheck, migrations, `bun test apps/ packages/`, `build:all`, e2e,
   engine smoke, and compose validation. The local `bun run verify` gate is stricter: it also runs
-  terminology checks, determinism lint, and the AI/eval contract suite.
+  the determinism lint and the AI/eval contract suite.
 
 ## Quality Gate Before Done
 
@@ -269,13 +268,12 @@ Before marking any code task done, run (or have a reason not to):
 
 1. `bun run lint` — biome check, no warnings.
 2. `bun run typecheck` — tsc clean.
-3. `bun run check:terminology` — terminology drift clean.
-4. `bun run test:determinism` — determinism lint clean.
-5. `bun run test:unit` — unit tests green.
-6. `bun run verify:ai` — eval fixtures green when the change touches prompting, context,
+3. `bun run test:determinism` — determinism lint clean.
+4. `bun run test:unit` — unit tests green.
+5. `bun run verify:ai` — eval fixtures green when the change touches prompting, context,
    routing, authoring, or verification behavior.
-7. Integration/e2e where the change touches those layers (`test:integration`, `test:e2e`).
-8. Verify audit log + Zod schemas were updated if the change mutates state or hits a
+6. Integration/e2e where the change touches those layers (`test:integration`, `test:e2e`).
+7. Verify audit log + Zod schemas were updated if the change mutates state or hits a
    route.
 
 Or use the `/verify` command, which runs the full local release gate (`bun run verify`).

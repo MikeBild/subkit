@@ -1,6 +1,6 @@
-// Tests for the structural connector-overlap scorer (Adoption A).
+// Tests for the structural connector-overlap scorer.
 //
-// Design note (S5 round-2 review): every `existingConnector(...)` call
+// Design note: every `existingConnector(...)` call
 // builds the row from explicit fields, not by spreading `PROPOSED` as
 // a default. The earlier shape ("match everything by default, override
 // to differ") made it easy to write a regression where the helper's

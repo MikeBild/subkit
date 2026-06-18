@@ -1,4 +1,4 @@
-// /resume conversation rewind sub-mode (M10 + G10 of #159).
+// /resume conversation rewind sub-mode.
 // Asserts the ConversationBrowser's `t` toggle flips into the
 // rewind view, that an empty `currentTurns` shows the empty state,
 // that supplied turns render with selectable rows, and that Enter

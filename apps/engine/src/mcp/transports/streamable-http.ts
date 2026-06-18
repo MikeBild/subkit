@@ -16,9 +16,8 @@
 // buffers a single JSON envelope and closes the stream before the
 // nested request can be flushed — `server.elicitInput()` then hangs
 // until its timeout. The trade-off (an SSE frame for the initialize
-// response) is acceptable; modern clients (claude.ai, Cursor, Codex's
-// current rmcp adapter) all deserialize SSE-framed responses. The
-// stdio transport is unaffected and unchanged.
+// response) is acceptable; modern MCP clients all deserialize
+// SSE-framed responses. The stdio transport is unaffected and unchanged.
 //
 // Auth is handled by Hono's `authMiddleware` before this handler runs —
 // `requireAuth(c)` will throw a 401 if the principal is absent.

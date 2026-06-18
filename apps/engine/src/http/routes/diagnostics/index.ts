@@ -1,7 +1,6 @@
 // Engine self-diagnostics surface — entry point.
 //
-// Phase 4 §4.4 of the 2026-05 architecture audit (#92). The former
-// http/routes/diagnostics.ts (624 LOC) split into per-route modules;
+// The former http/routes/diagnostics.ts split into per-route modules;
 // this barrel registers shared per-path RBAC middleware and delegates
 // handler registration to each module. Public API unchanged: server.ts
 // still calls `registerDiagnosticsRoutes(app)`.

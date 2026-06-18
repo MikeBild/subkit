@@ -2982,7 +2982,7 @@ export interface paths {
         put?: never;
         /**
          * Execute a transform / filter pipeline against a payload (no run row)
-         * @description Stateless transform pipeline: apply `output_transform` (JSONata) or `output_transform_function` (JS) to `payload`, then run `response_filters`. Mirrors the reference impl's `POST /tools/transform/run`. Does not create an execution row — useful for CI smoke tests, transform debugging, and external probes.
+         * @description Stateless transform pipeline: apply `output_transform` (JSONata) or `output_transform_function` (JS) to `payload`, then run `response_filters`. Does not create an execution row — useful for CI smoke tests, transform debugging, and external probes.
          */
         post: {
             parameters: {
@@ -3303,7 +3303,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Import a connector draft from a Postman/HAR/OpenAPI/GraphQL/curl spec */
+        /** Import a connector draft from an API collection, HAR, OpenAPI/GraphQL spec, or curl command */
         post: {
             parameters: {
                 query?: never;
