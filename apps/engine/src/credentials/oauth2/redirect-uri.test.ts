@@ -61,25 +61,19 @@ describe("buildOAuthRedirectUri", () => {
       "x-forwarded-proto": "https",
       "x-forwarded-host": "subkit-api.example.com",
     });
-    expect(buildOAuthRedirectUri({ req })).toBe(
-      "https://subkit-api.example.com/v1/oauth/callback",
-    );
+    expect(buildOAuthRedirectUri({ req })).toBe("https://subkit-api.example.com/v1/oauth/callback");
   });
 
   it("falls back to the host header when x-forwarded-host is missing", () => {
     const req = makeReq("https://subkit-api.example.com/v1/connectors/abc/oauth/start", {
       host: "subkit-api.example.com",
     });
-    expect(buildOAuthRedirectUri({ req })).toBe(
-      "https://subkit-api.example.com/v1/oauth/callback",
-    );
+    expect(buildOAuthRedirectUri({ req })).toBe("https://subkit-api.example.com/v1/oauth/callback");
   });
 
   it("falls back to req.url.origin as last resort", () => {
     const req = makeReq("https://subkit-api.example.com/v1/connectors/abc/oauth/start");
-    expect(buildOAuthRedirectUri({ req })).toBe(
-      "https://subkit-api.example.com/v1/oauth/callback",
-    );
+    expect(buildOAuthRedirectUri({ req })).toBe("https://subkit-api.example.com/v1/oauth/callback");
   });
 
   it("constant path = /v1/oauth/callback (one URL per engine, not per connector)", async () => {

@@ -32,9 +32,7 @@ function existingConnector(row: ExistingRow): ExistingRow {
 
 describe("baseUrlHost", () => {
   it("returns lowercased host for a normal URL", () => {
-    expect(baseUrlHost("https://Acme.Atlassian.NET/wiki/api/v2")).toBe(
-      "acme.atlassian.net",
-    );
+    expect(baseUrlHost("https://Acme.Atlassian.NET/wiki/api/v2")).toBe("acme.atlassian.net");
   });
 
   it("returns empty string for null / empty / malformed input", () => {

@@ -103,7 +103,9 @@ describe("engine bind hostname — defense-in-depth", () => {
     });
 
     test("blank / whitespace / unset falls back to the loopback default", () => {
-      expect(resolveListenHostname({ ENGINE_LISTEN_HOST: "" })).toBe(DEFAULT_ENGINE_LISTEN_HOSTNAME);
+      expect(resolveListenHostname({ ENGINE_LISTEN_HOST: "" })).toBe(
+        DEFAULT_ENGINE_LISTEN_HOSTNAME,
+      );
       expect(resolveListenHostname({ ENGINE_LISTEN_HOST: "   " })).toBe(
         DEFAULT_ENGINE_LISTEN_HOSTNAME,
       );

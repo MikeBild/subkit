@@ -117,7 +117,10 @@
     "pitfalls": [
       "v1 API token goes as ?api_token= query param, not in the Authorization header — do not mix v1 and v2 auth patterns"
     ],
-    "doc_refs": ["https://developers.pipedrive.com/docs/api/v1", "https://pipedrive.readme.io/docs/pipedrive-api-v2"]
+    "doc_refs": [
+      "https://developers.pipedrive.com/docs/api/v1",
+      "https://pipedrive.readme.io/docs/pipedrive-api-v2"
+    ]
   },
   "zoho-crm-basics": {
     "title": "Zoho CRM API Basics",
@@ -889,7 +892,9 @@
     "pitfalls": [
       "MSSQL uses @param syntax for parameters (not $1) and TOP instead of LIMIT — PostgreSQL-style syntax will fail"
     ],
-    "doc_refs": ["https://learn.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-ver17"]
+    "doc_refs": [
+      "https://learn.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-ver17"
+    ]
   },
   "mysql-basics": {
     "title": "MySQL Database Basics",
@@ -1163,9 +1168,7 @@
     "pitfalls": [
       "Apple requires app-specific passwords — your regular Apple ID password will not work for CalDAV auth"
     ],
-    "doc_refs": [
-      "https://datatracker.ietf.org/doc/html/rfc6764"
-    ]
+    "doc_refs": ["https://datatracker.ietf.org/doc/html/rfc6764"]
   },
   "apple-icloud-contacts-basics": {
     "title": "Apple iCloud CardDAV Basics",
