@@ -34,7 +34,7 @@
 
 import { getConnector } from "../../connectors/service.ts";
 import { generateMainAgentSystemPrompt } from "../../conversations/agent/context.ts";
-import { getDb } from "../../db/client.ts";
+import { type Executor, getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { idHashesCapped } from "../../observability/id-hashes.ts";
 import {
@@ -75,7 +75,6 @@ import {
   trimPriorWorkflowsToBudget,
 } from "./context-assembler/formatters.ts";
 import {
-  type Executor,
   type InteractionLogEntry,
   type LatestPreviewEntry,
   loadChunks,
