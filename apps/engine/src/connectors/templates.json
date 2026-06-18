@@ -5007,7 +5007,7 @@
     "slug": "bamboohr",
     "name": "BambooHR",
     "driver": "http",
-    "base_url": "https://api.bamboohr.com/api/gateway.php/{companyDomain}/v1",
+    "base_url": "https://{companyDomain}.bamboohr.com/api/v1",
     "auth_type": "basic",
     "oauth": null,
     "default_skill": "bamboohr-basics",
@@ -5036,9 +5036,9 @@
           "use_pkce": false,
           "client_id": null,
           "extra_headers": {},
-          "issuer_url": "https://id.bamboohr.com",
-          "authorization_endpoint": "https://id.bamboohr.com/authorize",
-          "token_endpoint": "https://id.bamboohr.com/token",
+          "issuer_url": "https://{companyDomain}.bamboohr.com",
+          "authorization_endpoint": "https://{companyDomain}.bamboohr.com/authorize.php",
+          "token_endpoint": "https://{companyDomain}.bamboohr.com/token.php",
           "scopes": "openid offline_access"
         }
       }
@@ -5574,7 +5574,7 @@
       "issuer_url": "https://auth.atlassian.com",
       "authorization_endpoint": "https://auth.atlassian.com/authorize",
       "token_endpoint": "https://auth.atlassian.com/oauth/token",
-      "scopes": "read:confluence-content.all write:confluence-content offline_access",
+      "scopes": "read:page:confluence read:space:confluence write:page:confluence write:space:confluence offline_access",
       "grant_type": "authorization_code",
       "token_auth_method": "body",
       "token_content_type": "form",
@@ -5611,7 +5611,7 @@
           "issuer_url": "https://auth.atlassian.com",
           "authorization_endpoint": "https://auth.atlassian.com/authorize",
           "token_endpoint": "https://auth.atlassian.com/oauth/token",
-          "scopes": "read:confluence-content.all write:confluence-content offline_access"
+          "scopes": "read:page:confluence read:space:confluence write:page:confluence write:space:confluence offline_access"
         }
       }
     ],
@@ -5661,7 +5661,7 @@
     "description": "Crawl4AI self-hosted web scraping API",
     "category": "scraping",
     "tags": ["rest", "web-scraping", "llm-extraction", "docker", "python"],
-    "setup_instructions": "Self-hosted only: `docker run -d -p 11235:11235 --shm-size=1g unclecode/crawl4ai:latest`. OpenAPI docs at /docs. Optional JWT auth via POST /token.",
+    "setup_instructions": "Self-hosted only: set CRAWL4AI_API_TOKEN, then `docker run -d -p 11235:11235 --shm-size=1g unclecode/crawl4ai:latest`. OpenAPI docs at /docs (auth-gated). Auth is required; generate JWT via POST /token.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -5954,7 +5954,7 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase",
+      "scopes": "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/datastore",
       "grant_type": "authorization_code",
       "token_auth_method": "body",
       "token_content_type": "form",
@@ -6114,7 +6114,7 @@
     "oauth": null,
     "default_skill": "firecrawl-basics",
     "ingestion_source": "openapi",
-    "ingestion_url": "https://raw.githubusercontent.com/mendableai/firecrawl/main/apps/api/v1-openapi.json",
+    "ingestion_url": "https://raw.githubusercontent.com/mendableai/firecrawl/main/apps/api/openapi.json",
     "icon": "firecrawl.svg",
     "description": "Firecrawl web scraping and crawling API",
     "category": "scraping",
@@ -6290,7 +6290,7 @@
     "ingestion_source": "openapi",
     "ingestion_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
     "icon": "github.svg",
-    "description": "GitHub REST API v3 — best for write operations (issue creation, PR merge, file commits) where REST is more expressive than GraphQL.",
+    "description": "GitHub REST API (date-versioned: 2026-03-10 latest, 2022-11-28 default) — best for write operations (issue creation, PR merge, file commits) where REST is more expressive than GraphQL.",
     "category": "devops",
     "tags": ["rest", "webhooks", "git"],
     "setup_instructions": "Create a PAT at github.com/settings/tokens, or register an OAuth App under Developer Settings.",
@@ -9130,7 +9130,7 @@
     },
     "default_skill": "intercom-basics",
     "ingestion_source": "openapi",
-    "ingestion_url": "https://raw.githubusercontent.com/intercom/Intercom-OpenAPI/main/descriptions/2.11/api.intercom.io.yaml",
+    "ingestion_url": "https://raw.githubusercontent.com/intercom/Intercom-OpenAPI/main/descriptions/2.15/api.intercom.io.yaml",
     "icon": "intercom.svg",
     "description": "Intercom customer messaging API",
     "category": "enterprise",
@@ -12046,7 +12046,7 @@
     "description": "MySQL relational database",
     "category": "database",
     "tags": ["sql", "relational", "introspection", "mariadb"],
-    "setup_instructions": "Provide a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Works with MySQL 5.7+, MySQL 8.x, and MariaDB 10.x+.",
+    "setup_instructions": "Provide a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Works with MySQL 5.7+, MySQL 8.x, MySQL 9.x, and MariaDB 10.x+.",
     "auth_options": [],
     "url_pattern": "^$",
     "keywords": [],
@@ -13716,7 +13716,7 @@
     "inline_schema": null,
     "probe_endpoint": {
       "method": "GET",
-      "path": "/v1/identity/oauth2/userinfo",
+      "path": "/v1/identity/openidconnect/userinfo",
       "expected_status": [200, 401],
       "description": "Identity echo endpoint"
     },
@@ -13763,7 +13763,7 @@
     "slug": "pipedrive",
     "name": "Pipedrive",
     "driver": "http",
-    "base_url": "https://api.pipedrive.com/api/v2",
+    "base_url": "https://{companydomain}.pipedrive.com/api/v2",
     "auth_type": "bearer",
     "oauth": {
       "issuer_url": "https://oauth.pipedrive.com",
@@ -14409,7 +14409,7 @@
     "slug": "salesforce",
     "name": "Salesforce",
     "driver": "http",
-    "base_url": "https://{instance}.my.salesforce.com/services/data/v60.0",
+    "base_url": "https://{instance}.my.salesforce.com/services/data/v67.0",
     "auth_type": "oauth2",
     "oauth": {
       "issuer_url": "https://login.salesforce.com",
@@ -14494,7 +14494,7 @@
     "base_url_options": [
       {
         "environment": "sandbox",
-        "base_url": "https://test.salesforce.com",
+        "base_url": "https://test.salesforce.com/services/data/v67.0",
         "label": "Sandbox"
       },
       {
@@ -14612,7 +14612,7 @@
     "slug": "sendgrid",
     "name": "SendGrid",
     "driver": "http",
-    "base_url": "https://api.sendgrid.com",
+    "base_url": "https://api.sendgrid.com/v3",
     "auth_type": "bearer",
     "oauth": null,
     "default_skill": "sendgrid-basics",
@@ -15190,7 +15190,7 @@
     "slug": "shopify",
     "name": "Shopify",
     "driver": "http",
-    "base_url": "https://{shop}.myshopify.com/admin/api/2024-07",
+    "base_url": "https://{shop}.myshopify.com/admin/api/2026-04",
     "auth_type": "header",
     "oauth": null,
     "default_skill": "shopify-basics",
@@ -18382,7 +18382,7 @@
               "kind": "request",
               "id": "projects",
               "method": "GET",
-              "url": "${connector.vercel.base_url}/v9/projects"
+              "url": "${connector.vercel.base_url}/v10/projects"
             }
           ]
         }
@@ -18423,7 +18423,7 @@
               "kind": "request",
               "id": "deployments",
               "method": "GET",
-              "url": "${connector.vercel.base_url}/v6/deployments",
+              "url": "${connector.vercel.base_url}/v7/deployments",
               "query": {
                 "projectId": "${input.project_id}"
               }

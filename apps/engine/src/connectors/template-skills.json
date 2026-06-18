@@ -53,14 +53,14 @@
       "Use cursor-based pagination via the cursor param in list responses"
     ],
     "pitfalls": ["OAuth tokens expire in 30 days — implement refresh token rotation before expiry"],
-    "doc_refs": ["https://developer.squareup.com/docs/api/connect/v2"]
+    "doc_refs": ["https://docs.connect.squareup.com/"]
   },
   "shopify-basics": {
     "title": "Shopify Admin API Basics",
-    "body": "Authenticate with the X-Shopify-Access-Token header containing your Admin API access token. The base URL includes a versioned API date (e.g., /admin/api/2024-07). Shopify supports both REST and GraphQL Admin APIs. Rate limits are bucket-based (40 requests burst for REST).",
+    "body": "Authenticate with the X-Shopify-Access-Token header containing your Admin API access token. The base URL includes a versioned API date (e.g., /admin/api/2026-04). Shopify supports both REST and GraphQL Admin APIs. Rate limits are bucket-based (40 requests burst for REST).",
     "examples": [
-      "GET /admin/api/2024-07/products.json — list products",
-      "POST /admin/api/2024-07/orders.json — create an order"
+      "GET /admin/api/2026-04/products.json — list products",
+      "POST /admin/api/2026-04/orders.json — create an order"
     ],
     "best_practices": [
       "Use the GraphQL Admin API for complex queries to reduce call count",
@@ -73,7 +73,7 @@
   },
   "salesforce-basics": {
     "title": "Salesforce REST API Basics",
-    "body": "Authenticate via OAuth 2.0 Authorization Code flow using a Connected App. All requests go to https://{instance}.my.salesforce.com/services/data/v60.0. Query records using SOQL via the /query endpoint. Rate limits are org-wide and depend on edition.",
+    "body": "Authenticate via OAuth 2.0 Authorization Code flow using a Connected App. All requests go to https://{instance}.my.salesforce.com/services/data/v67.0. Query records using SOQL via the /query endpoint. Rate limits are org-wide and depend on edition.",
     "examples": [
       "GET /services/data/v60.0/query?q=SELECT+Id,Name+FROM+Account — run a SOQL query",
       "POST /services/data/v60.0/sobjects/Contact — create a contact"
@@ -101,7 +101,7 @@
     "pitfalls": [
       "Private app tokens have fixed scopes — changing scopes requires regenerating the token"
     ],
-    "doc_refs": ["https://developers.hubspot.com/docs/api/crm/contacts"]
+    "doc_refs": ["https://developers.hubspot.com/docs/guides/api/crm/objects/contacts"]
   },
   "pipedrive-basics": {
     "title": "Pipedrive CRM API Basics",
@@ -117,7 +117,7 @@
     "pitfalls": [
       "v1 API token goes as ?api_token= query param, not in the Authorization header — do not mix v1 and v2 auth patterns"
     ],
-    "doc_refs": ["https://developers.pipedrive.com/docs/api/v1"]
+    "doc_refs": ["https://developers.pipedrive.com/docs/api/v1", "https://pipedrive.readme.io/docs/pipedrive-api-v2"]
   },
   "zoho-crm-basics": {
     "title": "Zoho CRM API Basics",
@@ -168,7 +168,7 @@
       "Use webhook subscriptions for real-time updates instead of polling"
     ],
     "pitfalls": ["There is no REST API — all operations must use GraphQL mutations and queries"],
-    "doc_refs": ["https://developers.linear.app/docs/graphql/working-with-the-graphql-api"]
+    "doc_refs": ["https://linear.app/developers/graphql"]
   },
   "asana-basics": {
     "title": "Asana REST API Basics",
@@ -184,7 +184,7 @@
     "pitfalls": [
       "Search endpoint (/workspaces/{id}/tasks/search) has a stricter rate limit of 60 requests/min"
     ],
-    "doc_refs": ["https://developers.asana.com/docs/asana"]
+    "doc_refs": ["https://developers.asana.com/reference/rest-api-reference"]
   },
   "monday-basics": {
     "title": "Monday.com GraphQL API Basics",
@@ -220,7 +220,7 @@
   },
   "clickup-basics": {
     "title": "ClickUp REST API Basics",
-    "body": "Authenticate with a personal token (Authorization: {token}, no Bearer prefix) or OAuth token (Authorization: Bearer {token}). All requests go to https://api.clickup.com/api/v2. ClickUp has a workspace hierarchy: Workspace > Space > Folder > List > Task. Rate limits range from 100/min (free) to 10K/min (enterprise).",
+    "body": "Authenticate with a personal token (Authorization: pk_{token}, starting with pk_ prefix) or OAuth token (Authorization: Bearer {token}). All requests go to https://api.clickup.com/api/v2. ClickUp has a workspace hierarchy: Workspace > Space > Folder > List > Task. Rate limits range from 100/min (free) to 10K/min (enterprise).",
     "examples": [
       "GET /api/v2/team — list workspaces (teams)",
       "POST /api/v2/list/{list_id}/task — create a task in a list"
@@ -248,7 +248,7 @@
     "pitfalls": [
       "Slack API methods return HTTP 200 even on errors — always check the ok field in the response body"
     ],
-    "doc_refs": ["https://api.slack.com/methods"]
+    "doc_refs": ["https://docs.slack.dev/reference/methods/"]
   },
   "discord-basics": {
     "title": "Discord REST API Basics",
@@ -264,7 +264,7 @@
     "pitfalls": [
       "Bot tokens use 'Bot' prefix in Authorization header, not 'Bearer' — using Bearer will return 401"
     ],
-    "doc_refs": ["https://discord.com/developers/docs/reference"]
+    "doc_refs": ["https://docs.discord.com/developers/reference"]
   },
   "twilio-basics": {
     "title": "Twilio REST API Basics",
@@ -296,7 +296,7 @@
     "pitfalls": [
       "The Email Activity API has a much stricter rate limit (6/min) compared to other endpoints — avoid polling it frequently"
     ],
-    "doc_refs": ["https://docs.sendgrid.com/api-reference"]
+    "doc_refs": ["https://www.twilio.com/docs/sendgrid/api-reference"]
   },
   "mailchimp-basics": {
     "title": "Mailchimp Marketing API Basics",
@@ -316,7 +316,7 @@
   },
   "notion-basics": {
     "title": "Notion API Basics",
-    "body": "Authenticate with a Bearer token (internal integration token starting with ntn_). All requests go to https://api.notion.com/v1. You must include a Notion-Version header (e.g., 2022-06-28). Pages and databases must be explicitly shared with your integration to be accessible.",
+    "body": "Authenticate with a Bearer token (internal integration token starting with ntn_). All requests go to https://api.notion.com/v1. You must include a Notion-Version header (e.g., 2025-09-03). Pages and databases must be explicitly shared with your integration to be accessible.",
     "examples": [
       "POST /v1/databases/{id}/query — query a database with filters and sorts",
       "POST /v1/pages — create a page"
@@ -424,7 +424,7 @@
     "pitfalls": [
       "Sending email costs 100 quota units — hitting the limit blocks all sending, not just the current request"
     ],
-    "doc_refs": ["https://developers.google.com/gmail/api/reference/rest"]
+    "doc_refs": ["https://developers.google.com/workspace/gmail/api/reference/rest"]
   },
   "google-calendar-basics": {
     "title": "Google Calendar API Basics",
@@ -440,7 +440,7 @@
     "pitfalls": [
       "Recurring events return a single master event — use instances endpoint to get individual occurrences"
     ],
-    "doc_refs": ["https://developers.google.com/calendar/api/v3/reference"]
+    "doc_refs": ["https://developers.google.com/workspace/calendar/api/v3/reference"]
   },
   "google-drive-basics": {
     "title": "Google Drive API Basics",
@@ -456,7 +456,7 @@
     "pitfalls": [
       "drive.file scope only provides access to files created by your app — not the user's existing files"
     ],
-    "doc_refs": ["https://developers.google.com/drive/api/reference/rest/v3"]
+    "doc_refs": ["https://developers.google.com/workspace/drive/api/reference/rest/v3"]
   },
   "google-docs-basics": {
     "title": "Google Docs API Basics",
@@ -472,7 +472,7 @@
     "pitfalls": [
       "There is no documents.list endpoint — you must use the Drive API to search for documents"
     ],
-    "doc_refs": ["https://developers.google.com/docs/api/reference/rest"]
+    "doc_refs": ["https://developers.google.com/workspace/docs/api/reference/rest"]
   },
   "google-sheets-basics": {
     "title": "Google Sheets API Basics",
@@ -488,7 +488,7 @@
     "pitfalls": [
       "A1 notation is case-sensitive for sheet names — mismatched case returns 'range not found' errors"
     ],
-    "doc_refs": ["https://developers.google.com/sheets/api/reference/rest"]
+    "doc_refs": ["https://developers.google.com/workspace/sheets/api/reference/rest"]
   },
   "google-chat-basics": {
     "title": "Google Chat API Basics",
@@ -504,7 +504,7 @@
     "pitfalls": [
       "Google Chat API is only available for Google Workspace organizations — consumer Gmail accounts cannot use it"
     ],
-    "doc_refs": ["https://developers.google.com/chat/api/reference/rest"]
+    "doc_refs": ["https://developers.google.com/workspace/chat/api/reference/rest"]
   },
   "google-cloud-storage-basics": {
     "title": "Google Cloud Storage JSON API Basics",
@@ -520,7 +520,7 @@
     "pitfalls": [
       "Bucket names are globally unique — if creation fails, the name is likely taken by another GCP project"
     ],
-    "doc_refs": ["https://cloud.google.com/storage/docs/json_api/v1"]
+    "doc_refs": ["https://docs.cloud.google.com/storage/docs/json_api/v1"]
   },
   "microsoft-graph-basics": {
     "title": "Microsoft Graph API Basics",
@@ -650,7 +650,7 @@
     "pitfalls": [
       "PATs use the PRIVATE-TOKEN header (not Bearer/Authorization) — using Authorization: Bearer with a PAT will not work"
     ],
-    "doc_refs": ["https://docs.gitlab.com/ee/api/rest/"]
+    "doc_refs": ["https://docs.gitlab.com/api/rest/"]
   },
   "bitbucket-basics": {
     "title": "Bitbucket Cloud REST API Basics",
@@ -670,7 +670,7 @@
   },
   "circleci-basics": {
     "title": "CircleCI REST API Basics",
-    "body": "Authenticate with a Circle-Token header (not Authorization/Bearer). All requests go to https://circleci.com/api/v2. Pagination uses next_page_token/page-token params. The API covers pipelines, workflows, jobs, and project configuration.",
+    "body": "Authenticate with Bearer token (RFC 6750, recommended) or Circle-Token header. All requests go to https://circleci.com/api/v2. Pagination uses next_page_token/page-token params. The API covers pipelines, workflows, jobs, and project configuration.",
     "examples": [
       "GET /api/v2/project/{project-slug}/pipeline — list pipelines for a project",
       "POST /api/v2/project/{project-slug}/pipeline — trigger a new pipeline"
@@ -680,7 +680,7 @@
       "Use next_page_token from responses for pagination"
     ],
     "pitfalls": [
-      "Auth uses Circle-Token header, not Authorization — standard Bearer auth will return 401"
+      "Circle-Token query parameter is deprecated — use Bearer token or Circle-Token header instead"
     ],
     "doc_refs": ["https://circleci.com/docs/api/v2/"]
   },
@@ -688,7 +688,7 @@
     "title": "Vercel REST API Basics",
     "body": "Authenticate with a Bearer token. All requests go to https://api.vercel.com. API versions are per-endpoint (e.g., /v13/deployments). For team resources, append ?teamId={id} to every request. Rate limits vary by endpoint and plan.",
     "examples": [
-      "GET /v6/deployments?teamId={id}&limit=20 — list deployments",
+      "GET /v7/deployments?teamId={id}&limit=20 — list deployments",
       "POST /v13/deployments — create a new deployment"
     ],
     "best_practices": [
@@ -734,7 +734,7 @@
   },
   "aws-lambda-basics": {
     "title": "AWS Lambda API Basics",
-    "body": "Authenticate with AWS Signature Version 4. Invoke functions via POST /2015-03-31/functions/{name}/invocations. Control plane rate limit is 15 requests/s and GetFunction is 100/s. Payload limits are 6MB for synchronous and 256KB for asynchronous invocations.",
+    "body": "Authenticate with AWS Signature Version 4. Invoke functions via POST /2015-03-31/functions/{name}/invocations. Control plane rate limit is 15 requests/s and GetFunction is 100/s. Payload limits are 6MB for synchronous and 1MB for asynchronous invocations.",
     "examples": [
       "POST /2015-03-31/functions/{functionName}/invocations — invoke a function synchronously",
       "GET /2015-03-31/functions — list Lambda functions"
@@ -816,7 +816,7 @@
   },
   "azure-blob-storage-basics": {
     "title": "Azure Blob Storage REST API Basics",
-    "body": "Authenticate with Shared Key, SAS tokens, or Microsoft Entra ID Bearer token. All requests go to https://{account}.blob.core.windows.net. Rate limit is 20K requests/sec per storage account. Every request requires an x-ms-version header (e.g., 2023-11-03).",
+    "body": "Authenticate with Shared Key, SAS tokens, or Microsoft Entra ID Bearer token. All requests go to https://{account}.blob.core.windows.net. Rate limit is 20K requests/sec per storage account. Every request requires an x-ms-version header (e.g., 2026-06-06).",
     "examples": [
       "GET /{container}?restype=container&comp=list — list blobs in a container",
       "PUT /{container}/{blob} — upload a block blob"
@@ -832,10 +832,10 @@
   },
   "azure-functions-basics": {
     "title": "Azure Functions Management API Basics",
-    "body": "Authenticate via OAuth 2.0 with Microsoft Entra ID using the https://management.azure.com/.default scope. This is the ARM management API for provisioning and managing Function Apps. Rate limits are 12K reads/hr and 1.2K writes/hr per subscription. Version via ?api-version=2024-04-01.",
+    "body": "Authenticate via OAuth 2.0 with Microsoft Entra ID using the https://management.azure.com/.default scope. This is the ARM management API for provisioning and managing Function Apps. Rate limits are 12K reads/hr and 1.2K writes/hr per subscription. Version via ?api-version=2026-03-15.",
     "examples": [
-      "GET /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/{name}?api-version=2024-04-01 — get function app details",
-      "POST /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/{name}/functions/{func}/listkeys?api-version=2024-04-01 — get function keys"
+      "GET /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/{name}?api-version=2026-03-15 — get function app details",
+      "POST /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/{name}/functions/{func}/listkeys?api-version=2026-03-15 — get function keys"
     ],
     "best_practices": [
       "Use the ARM management API for provisioning and the function URL with function key for invocation",
@@ -861,7 +861,7 @@
   },
   "postgres-basics": {
     "title": "PostgreSQL Database Basics",
-    "body": "Connect using a PostgreSQL DSN: postgres://user:password@host:5432/database. The engine introspects tables, columns, and relationships via information_schema. Parameterized queries prevent SQL injection. Health check uses SELECT 1.",
+    "body": "Connect using a PostgreSQL DSN: postgres://user:password@host:5432/database or postgresql://user:password@host:5432/database. The engine introspects tables, columns, and relationships via information_schema. Parameterized queries prevent SQL injection. Health check uses SELECT 1.",
     "examples": [
       "SELECT * FROM users WHERE created_at > $1 LIMIT 50 — query with parameterized date filter",
       "INSERT INTO orders (customer_id, total) VALUES ($1, $2) RETURNING id — insert and return ID"
@@ -889,11 +889,11 @@
     "pitfalls": [
       "MSSQL uses @param syntax for parameters (not $1) and TOP instead of LIMIT — PostgreSQL-style syntax will fail"
     ],
-    "doc_refs": ["https://learn.microsoft.com/en-us/sql/t-sql/language-reference"]
+    "doc_refs": ["https://learn.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-ver17"]
   },
   "mysql-basics": {
     "title": "MySQL Database Basics",
-    "body": "Connect using a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Full information_schema support for introspection. Works with MySQL 5.7+, MySQL 8.x, and MariaDB 10.x+. Health check uses SELECT 1.",
+    "body": "Connect using a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Full information_schema support for introspection. Works with MySQL 5.7+, MySQL 8.x, MySQL 9.x, and MariaDB 10.x+. Health check uses SELECT 1.",
     "examples": [
       "SELECT * FROM products WHERE category = ? LIMIT 50 — parameterized query with LIMIT",
       "INSERT INTO orders (customer_id, total) VALUES (?, ?) — parameterized insert"
@@ -905,7 +905,7 @@
     "pitfalls": [
       "MySQL uses ? placeholders (not $1 or @param) — using the wrong syntax silently fails or causes injection vulnerabilities"
     ],
-    "doc_refs": ["https://dev.mysql.com/doc/refman/8.0/en/sql-statements.html"]
+    "doc_refs": ["https://dev.mysql.com/doc/refman/9.7/en/sql-statements.html"]
   },
   "cockroachdb-basics": {
     "title": "CockroachDB Database Basics",
@@ -1021,7 +1021,7 @@
   },
   "sentry-basics": {
     "title": "Sentry REST API Basics",
-    "body": "Authenticate with a Bearer token (scoped auth token). All requests go to https://sentry.io/api/0 (US) or de.sentry.io (EU). Pagination uses Link headers. Rate limits are per-organization and vary by endpoint.",
+    "body": "Authenticate with a Bearer token (scoped auth token). All requests go to https://sentry.io/api/0 (US) or https://de.sentry.io/api/0 (EU). Pagination uses Link headers. Rate limits are per-organization and vary by endpoint.",
     "examples": [
       "GET /api/0/organizations/{org}/issues/?query=is:unresolved — list unresolved issues",
       "POST /api/0/projects/{org}/{project}/events/ — retrieve events"
@@ -1050,7 +1050,7 @@
       "OAuth and Basic Auth endpoints are instance-specific ({instance}.service-now.com) — sharing credentials across instances will fail"
     ],
     "doc_refs": [
-      "https://docs.servicenow.com/bundle/tokyo-application-development/page/integrate/inbound-rest/concept/c_TableAPI.html"
+      "https://www.servicenow.com/docs/r/vancouver/api-reference/rest-apis/c_TableAPI.html"
     ]
   },
   "okta-basics": {
@@ -1164,7 +1164,7 @@
       "Apple requires app-specific passwords — your regular Apple ID password will not work for CalDAV auth"
     ],
     "doc_refs": [
-      "https://developer.apple.com/library/archive/documentation/DataManagement/Conceptual/CloudKitWebServicesReference/"
+      "https://datatracker.ietf.org/doc/html/rfc6764"
     ]
   },
   "apple-icloud-contacts-basics": {
@@ -1182,7 +1182,8 @@
       "Apple requires app-specific passwords — your regular Apple ID password will not work"
     ],
     "doc_refs": [
-      "https://developer.apple.com/library/archive/documentation/DataManagement/Conceptual/CloudKitWebServicesReference/"
+      "https://developer.apple.com/documentation/devicemanagement/carddav",
+      "https://www.rfc-editor.org/rfc/rfc6352.html"
     ]
   },
   "caldav-generic-basics": {
@@ -1215,7 +1216,7 @@
     "pitfalls": [
       "Not all WebDAV servers support all methods — check OPTIONS response before using LOCK, COPY, or MOVE"
     ],
-    "doc_refs": ["https://www.rfc-editor.org/rfc/rfc4918"]
+    "doc_refs": ["https://www.ietf.org/rfc/rfc4918.html"]
   },
   "soap-generic-basics": {
     "title": "SOAP Generic Web Service Basics",
@@ -1231,7 +1232,7 @@
     "pitfalls": [
       "SOAP faults return HTTP 500 with an XML body — always parse the fault detail element for the actual error message"
     ],
-    "doc_refs": ["https://www.w3.org/TR/soap12/"]
+    "doc_refs": ["https://www.w3.org/TR/soap12-part1/"]
   },
   "sap-soap-basics": {
     "title": "SAP SOAP Web Services Basics",
@@ -1264,7 +1265,7 @@
       "Each table has its own WSDL endpoint ({table}.do?WSDL) — there is no single unified WSDL for all tables"
     ],
     "doc_refs": [
-      "https://docs.servicenow.com/bundle/tokyo-application-development/page/integrate/inbound-soap/concept/c_SOAPIntegration.html"
+      "https://www.servicenow.com/docs/r/vancouver/api-reference/rest-apis/soap-integration.html"
     ]
   },
   "grpc-connect-basics": {
@@ -1329,7 +1330,7 @@
     "pitfalls": [
       "IMAP connections are stateful — the driver must manage connection pooling and handle dropped connections gracefully"
     ],
-    "doc_refs": ["https://www.rfc-editor.org/rfc/rfc9051"]
+    "doc_refs": ["https://datatracker.ietf.org/doc/html/rfc9051"]
   },
   "firecrawl-basics": {
     "title": "Firecrawl Web Scraping API Basics",
@@ -1349,7 +1350,7 @@
   },
   "crawl4ai-basics": {
     "title": "Crawl4AI Web Scraping API Basics",
-    "body": "Self-hosted only. Authenticate optionally with a JWT token via POST /token. FastAPI-based with auto-generated OpenAPI docs at /docs. Endpoints: POST /crawl (sync multi-URL), POST /crawl/stream (NDJSON streaming), POST /crawl/job (async), POST /md (markdown), POST /llm (LLM extraction).",
+    "body": "Self-hosted only. Authentication is now required by default. Generate a JWT token via POST /token with credentials. FastAPI-based with auto-generated OpenAPI docs at /docs. Endpoints: POST /crawl (sync multi-URL), POST /crawl/stream (NDJSON streaming), POST /crawl/job (async), POST /md (markdown), POST /llm (LLM extraction).",
     "examples": [
       "POST /crawl { \"urls\": [\"https://example.com\"] } — crawl URLs synchronously",
       "POST /llm { \"url\": \"https://example.com\", \"instruction\": \"Extract prices\" } — LLM-powered extraction"
@@ -1365,7 +1366,7 @@
     "title": "Apify Cloud Scraping API Basics",
     "body": "Authenticate with a Bearer token (API token). Apify runs 'Actors' (scrapers and automations) in the cloud. Start an actor run via POST, poll status via GET, and retrieve results from datasets. Rate limit is 250K requests/min globally. Offset pagination on dataset items. 1600+ pre-built actors available in the store.",
     "examples": [
-      "POST /v2/acts/{actorId}/runs — start an actor run",
+      "POST /v2/actors/{actorId}/runs — start an actor run",
       "GET /v2/datasets/{datasetId}/items?offset=0&limit=100 — fetch results from a dataset"
     ],
     "best_practices": [
@@ -1379,7 +1380,7 @@
   },
   "scrapingbee-basics": {
     "title": "ScrapingBee Web Scraping API Basics",
-    "body": "Authenticate via api_key query parameter. Single endpoint: GET /api/v1?api_key={key}&url={target}. Key features via params: render_js (browser rendering), extract_rules (CSS selector extraction), ai_query (AI extraction), screenshot, return_page_markdown. Credit-based pricing: 5 (standard), 25 (premium), 75 (stealth) per request.",
+    "body": "Authenticate via Authorization: Bearer {api_key} header (preferred) or deprecated api_key query parameter. Single endpoint: GET /api/v1?url={target}. Key features via params: render_js (browser rendering), extract_rules (CSS selector extraction), ai_query (AI extraction), screenshot, return_page_markdown. Credit-based pricing: 5 (standard), 25 (premium), 75 (stealth) per request.",
     "examples": [
       "GET /api/v1?api_key=KEY&url=https://example.com&render_js=false — scrape without JS rendering",
       "GET /api/v1?api_key=KEY&url=https://example.com&extract_rules={\"title\":\"h1\"} — extract with CSS selectors"
@@ -1434,12 +1435,12 @@
     ],
     "best_practices": [
       "Use async /datasets/v3/trigger for production workloads — sync endpoint times out at 1 minute",
-      "Browse the 660+ pre-built dataset scrapers before building custom solutions"
+      "Browse the 700+ pre-built dataset scrapers before building custom solutions"
     ],
     "pitfalls": [
       "The sync scrape endpoint has a hard 1-minute timeout — any scraping job taking longer will fail silently"
     ],
-    "doc_refs": ["https://docs.brightdata.com/scraping-automation/web-scraper-api/"]
+    "doc_refs": ["https://docs.brightdata.com/datasets/scrapers/overview.md"]
   },
   "ftp-basics": {
     "title": "FTP/FTPS Protocol Basics",
@@ -1455,7 +1456,7 @@
     "pitfalls": [
       "Plain FTP transmits passwords and files in cleartext — never use it over untrusted networks"
     ],
-    "doc_refs": ["https://www.rfc-editor.org/rfc/rfc959"]
+    "doc_refs": ["https://datatracker.ietf.org/doc/html/rfc959"]
   },
   "web-scraper-basics": {
     "title": "Web scraper basics",
