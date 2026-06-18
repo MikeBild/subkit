@@ -437,7 +437,7 @@ export function startNewWorkflowDraft(
   state.latest_execution = null;
   state.latest_diagnosis = null;
   // A fresh workflow target is a fresh judge subject — drop any blocks
-  // accumulated against the previous goal (P3 / round-5 Finding 1).
+  // accumulated against the previous goal (P3).
   state.judge_breaker = null;
   state.persisted_resources = state.persisted_resources.filter((item) => item.kind !== "workflow");
   delete state.checkpoints.workflow_inspected;

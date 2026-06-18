@@ -1,5 +1,5 @@
 // Pending interactive-OAuth (2.1) flow state for the external-MCP CLIENT
-// direction (#171 follow-up).
+// direction.
 //
 // NOTE: this is NOT the same concern as `mcp_oauth.ts`. That file holds
 // the tables for the MCP authorization SERVER subkit *hosts* (clients,

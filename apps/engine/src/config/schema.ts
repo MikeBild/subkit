@@ -807,7 +807,7 @@ const UiSection = z
   .prefault({})
   .describe("REPL chrome preferences");
 
-// Web-scraper #144 — every tunable the connector introduces lives here
+// Every tunable the web-scraper connector introduces lives here
 // with a useful default, so `sk connectors create web-scraper --slug=<x>`
 // is a zero-arg command. Operators tune via `sk settings set
 // connectors.web_scraper.<leaf> <value>` or the /settings → Config tab;
@@ -1051,7 +1051,7 @@ const TenantOverlaySchema = z
           .optional(),
       })
       .optional(),
-    // Web-scraper #144 — only the tenant-scoped leaves; the robots_cache.*
+    // Web-scraper connector — only the tenant-scoped leaves; the robots_cache.*
     // and optimization.scan_cron are global and may not appear here.
     connectors: z
       .object({
@@ -1085,7 +1085,7 @@ const TenantOverlaySchema = z
           .optional(),
       })
       .optional(),
-    // External MCP servers (#171) — tenant-scoped MCP leaves. A tenant
+    // External MCP servers — tenant-scoped MCP leaves. A tenant
     // overlay may declare its own external servers; the decl shape matches
     // `McpServerDeclSchema` (strict, non-secret auth only). Duplicate
     // namespaces within the overlay array are rejected at parse time. The

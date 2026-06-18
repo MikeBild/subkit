@@ -11,8 +11,7 @@
 // cf. `apps/sk/src/repl/slash/dispatcher.ts` — the dispatcher
 // classifies each slash by its `routing` field (local vs. engine)
 // before reaching this handler. This module owns only execution;
-// classification + RBAC routing live in the dispatcher (R2-S12
-// review fix).
+// classification + RBAC routing live in the dispatcher.
 
 import fs from "node:fs";
 import { homedir } from "node:os";
@@ -286,7 +285,7 @@ export interface SlashHandlerContext {
    * Ink host's `usePersona` hook. Lets `/status` surface
    * `fetchedAt + source` so an operator rotating an api_key can see
    * whether the slash menu reflects the current token (network) or
-   * a stale cache (cache, fallback). R7-S1.
+   * a stale cache (cache, fallback).
    */
   bootstrapSnapshot?: {
     fetchedAt: number;
@@ -565,7 +564,7 @@ export async function handleSlash(
   // Persist frequency for the autocomplete bias. Best-effort — a
   // write failure never blocks the dispatch.
   recordUsage(name);
-  // R3-W2 review fix: consume `classifySlash` so the dispatcher seam
+  // Consume `classifySlash` so the dispatcher seam
   // is real, not aspirational. The classification is logged via
   // `debugLog` for telemetry and used to short-circuit unknown
   // commands; it never silently bypasses a registered command. A
@@ -587,7 +586,7 @@ export async function handleSlash(
   } else {
     debugLog("dialog.elicitation_routing", { slash_name: name, routing: plan.routing }, {});
   }
-  // R5-W3 review fix: validate positional args against the per-
+  // Validate positional args against the per-
   // command Zod schema at the dispatcher boundary. Commands that
   // don't set `argsSchema` skip this check (default schema accepts
   // any string array). When validation fails, return a structured
@@ -614,7 +613,7 @@ export async function handleSlash(
   const dispatchName = plan.command?.name ?? name;
   switch (dispatchName) {
     case "status": {
-      // R3-S4: `/status` is local-only by design — same shape as
+      // `/status` is local-only by design — same shape as
       // `/cost`. Reads the Ink host's latest `/v1/status` snapshot
       // (refreshed every completed turn) without re-hitting the
       // engine. A "force refresh" path would belong on a separate
@@ -641,7 +640,7 @@ export async function handleSlash(
         ["budget · monthly", budget == null ? "∞" : `${budget.toLocaleString()} tok`],
         ["budget · remaining", remaining == null ? "∞" : `${remaining.toLocaleString()} tok`],
       ];
-      // R7-S1: surface the bootstrap snapshot's source + age so an
+      // Surface the bootstrap snapshot's source + age so an
       // operator who just rotated an api_key can tell whether the
       // slash menu reflects the current token or a stale cache. The
       // `loadBootstrap` cache TTL is 6h.
@@ -811,7 +810,7 @@ export async function handleSlash(
       return null;
     }
     case "cost": {
-      // R3-S4: `/cost` is local-only by design — it reads
+      // `/cost` is local-only by design — it reads
       // `ctx.statusSnapshot` (cached) and `ctx.session.usage` (in-
       // memory). The snapshot is refreshed by the Ink host after
       // every completed turn, so values are at-most one-turn stale;
@@ -1667,7 +1666,7 @@ export async function handleSlash(
       await ctx.client.patchConversation(ctx.session.conversationId, { model });
       return `model switched to ${model}`;
     }
-    // /skills, /mcp, /permissions, /audit moved to handlers/inspect.ts (R7-S2)
+    // /skills, /mcp, /permissions, /audit moved to handlers/inspect.ts
     case "logs": {
       // /logs [limit] [trace_id?]
       //
@@ -1762,7 +1761,7 @@ export async function handleSlash(
     case "init": {
       const cwd = process.cwd();
       const path = join(cwd, "SK.md");
-      // R8-W4 review fix: defend against TOCTOU + symlink races.
+      // Defend against TOCTOU + symlink races.
       //   1. `lstatSync` (not stat) so a symlinked SK.md doesn't
       //      mask the existence check.
       //   2. Use `wx` flag on writeFileSync so the create is atomic
@@ -1951,10 +1950,10 @@ export async function handleSlash(
       lines.push("/profile <name> to switch · /profile add to create");
       return lines.join("\n");
     }
-    // /login, /logout, /tenant moved to handlers/auth-redirects.ts (R7-S2)
-    // /knowledge moved to handlers/inspect.ts (R7-S2)
+    // /login, /logout, /tenant moved to handlers/auth-redirects.ts
+    // /knowledge moved to handlers/inspect.ts
     default: {
-      // R7-S2: per-category dispatchers extracted into
+      // Per-category dispatchers extracted into
       // `apps/sk/src/repl/slash/handlers/`. The main switch above
       // owns interactive / multi-step commands; the sub-dispatchers
       // own the long tail of list-and-render commands and the

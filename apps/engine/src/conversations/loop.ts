@@ -220,7 +220,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const events: TurnEvent[] = sink.asArrayProxy();
   const budget = p.step_budget ?? DEFAULT_BUDGET;
   // Caller registers + unregisters on their synchronous-accept frame
-  // (#146 / A4 + #148). The loop only consumes the signal here;
+  // (A4). The loop only consumes the signal here;
   // re-registering inside this body would re-open the cancel race.
   const turnAbortCtrl = p.turn_abort_ctrl;
 

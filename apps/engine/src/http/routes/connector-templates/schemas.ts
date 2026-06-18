@@ -51,7 +51,7 @@ export const ConnectorResponseSchema = z
     template_source: z.enum(["builtin", "tenant"]).nullable(),
     template_version: z.number().int().nullable(),
     // See connectors/schemas.ts for the rationale — public surface is
-    // intentionally un-narrowed. Per #147 review S4.
+    // intentionally un-narrowed.
     template_snapshot: z.record(z.string(), z.unknown()).nullable(),
     created_at: z.string(),
     updated_at: z.string(),

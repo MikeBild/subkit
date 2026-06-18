@@ -223,7 +223,7 @@ async function runServer(): Promise<void> {
   await bootPhase("boot_dependencies", () => validateBootDependencies(db));
 
   // Apply embedded migrations BEFORE any subsystem touches a table.
-  // Issue #149: this used to be a separate `migrate` compose container
+  // This used to be a separate `migrate` compose container
   // that could ship a different lineage than the engine binary, which
   // is exactly how prod ended up with 27 unknown migration rows. The
   // migration set is now compiled into this binary via the
@@ -445,7 +445,7 @@ async function runServer(): Promise<void> {
   // Failure is non-fatal: a transient DB blip might keep auth in a
   // degraded state, but the next boot retries. Migrations have already
   // run by this point, so the schema is guaranteed to match the seed
-  // queries — the #149 "skill upsert vs. schema mismatch" path is gone.
+  // queries — the "skill upsert vs. schema mismatch" path is gone.
   try {
     const seedResult = await seedAtBoot(db);
     for (const key of seedResult.issued_keys) {
@@ -523,7 +523,7 @@ async function runServer(): Promise<void> {
     })();
   }
 
-  // External MCP server reconcile (#171). Converges the `mcp_servers` table
+  // External MCP server reconcile. Converges the `mcp_servers` table
   // to the `mcp.servers` config declarations for every tenant. Zero-conf:
   // with no declarations this is a no-op. Idempotent + non-fatal — a bad
   // decl is logged and never blocks serving the first request.
@@ -661,8 +661,8 @@ async function runServer(): Promise<void> {
  * argv-only paths don't trigger the lazy `EnvSchema` parse that fires
  * on first property access. `logging/logger.ts` is dynamic for the
  * same reason — the configured level/format only matters once
- * config is loaded. (Review R2-S2: hoisted out of the per-flag
- * helpers so the dynamic-import pattern lives in one place.)
+ * config is loaded. Hoisted out of the per-flag helpers so the
+ * dynamic-import pattern lives in one place.
  */
 async function loadConfigAndReconfigureLogger(): Promise<void> {
   const { loadConfig, getConfig } = await import("./config/loader.ts");

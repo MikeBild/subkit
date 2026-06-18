@@ -1,4 +1,4 @@
-// Web-scraper transform languages (#144). Three static-import branches
+// Web-scraper transform languages. Three static-import branches
 // invoked from `runTransformStep`. Each returns a typed JSON envelope:
 //   - readability       → ReadabilityOutput
 //   - html-to-markdown  → MarkdownOutput

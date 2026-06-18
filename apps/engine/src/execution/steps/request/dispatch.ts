@@ -1409,7 +1409,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     }
   } catch (err) {
     clearTimeout(timer);
-    // Web-scraper #144 — preserve the typed code for robots / egress
+    // Web-scraper — preserve the typed code for robots / egress
     // failures emitted by buildRequestPlan. Otherwise these surface as
     // a generic `request_setup_error` and the operator can't
     // distinguish "robots.txt blocked you" from "the URL is malformed".

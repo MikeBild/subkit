@@ -48,13 +48,13 @@ export function usePersona(
   const cacheDir = opts?.cacheDir;
   const cacheTtlMs = opts?.cacheTtlMs;
   const forceRefresh = opts?.forceRefresh;
-  // R6-S2: stash the `now` callback in a ref so an inline lambda
+  // Stash the `now` callback in a ref so an inline lambda
   // from a parent doesn't re-fire the bootstrap effect every render.
   // The closed-over `nowRef.current` is read fresh inside the effect.
   const nowRef = useRef(opts?.now);
   nowRef.current = opts?.now;
 
-  // R5-W2: depend on a stable bootstrap KEY rather than the
+  // Depend on a stable bootstrap KEY rather than the
   // `client` / `profile` *references*. A parent that re-creates
   // EngineClient (e.g. on token rotation, or a remount) used to
   // re-fire the effect with no token-fingerprint check at the hook
@@ -62,7 +62,7 @@ export function usePersona(
   // true and the persona-aware UI grayed out for a frame. The key
   // is identical whenever (engine_url, tenant, fingerprint(api_key))
   // matches — same identity that drives `bootstrapCachePath`.
-  // R8-S1: hash via the shared `fingerprintApiKey` helper so this
+  // Hash via the shared `fingerprintApiKey` helper so this
   // hook and `bootstrapCachePath` agree on what counts as the same
   // principal. A future bump (8 → 16 → 24 hex) lands in one place.
   const bootstrapKey = `${profile.engine_url}|${profile.active_tenant_id ?? ""}|${fingerprintApiKey(profile.api_key)}`;
@@ -95,7 +95,7 @@ export function usePersona(
     // primitive opts. `client`, `profile`, and `now` are read fresh
     // from the latest render via closure / ref so a parent that
     // re-creates EngineClient or passes an inline `now` lambda
-    // doesn't re-fire the effect (R5-W2 + R6-S2).
+    // doesn't re-fire the effect.
     // identity. `client` and `profile` are still read inside the
     // effect — they're closed over fresh from the latest render.
     // eslint-disable-next-line react-hooks/exhaustive-deps

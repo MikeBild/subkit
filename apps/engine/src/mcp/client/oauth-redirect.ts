@@ -1,5 +1,5 @@
 // Canonical redirect URI for the interactive external-MCP-client OAuth 2.1
-// flow (#171 follow-up).
+// flow.
 //
 // CRITICAL: the redirect_uri the pool's non-interactive DCR handshake
 // registers MUST be byte-identical to the one the interactive authorize

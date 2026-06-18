@@ -86,7 +86,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, elicitation_id } = c.req.valid("param");
     const body = c.req.valid("json");
-    // #146 / A4 + #148: register synchronously on request-accept so
+    // Register synchronously on request-accept so
     // a cancel arriving in the first ~40ms always finds a controller.
     // SSE branch transfers ownership to its inner `finally` (Hono's
     // `streamSSE` does not await its callback); non-SSE branch keeps
@@ -220,8 +220,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!elicit) {
       throw new NotFoundError("elicitation_for_tool_call");
     }
-    // #146 / A4 + #148 — same sync-register pattern as the canonical
-    // route above.
+    // Same sync-register pattern as the canonical route above.
     const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
     let ownershipTransferred = false;
     try {

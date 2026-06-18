@@ -61,7 +61,7 @@ export interface ConnectorSystem {
    */
   getCredentials(): Promise<{
     // `connector_id` is nullable on the shared credentials row (an MCP
-    // server may own a row instead — see #171), but this facade ONLY ever
+    // server may own a row instead), but this facade ONLY ever
     // resolves connector-owned rows via `getCredentialForConnector`. We
     // re-narrow to non-null at the facade boundary (fail-fast in the impl
     // if the resolved row ever lacks a connector_id) so callers never see

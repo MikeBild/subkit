@@ -154,7 +154,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       onEvent?: (ev: TurnEvent) => void,
     ): Promise<svc.ConversationTurnOutcome> => {
       // Register the AbortController on the synchronous frame right
-      // after the row insert (#148); unregister in `finally` so the
+      // after the row insert; unregister in `finally` so the
       // registry slot is released on every code path.
       const turnAbortCtrl = registerConversationAbort(principal.tenant_id, created.conversation.id);
       try {

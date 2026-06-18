@@ -463,7 +463,7 @@ export const AuditAction = {
   // entries to the principal's tenant + system-scope, but the read
   // itself is still privilege-sensitive (the ring carries every log
   // line including connector probes and step traces). Audit rows let
-  // compliance see who tailed logs and when.  Issue #149 / W2.
+  // compliance see who tailed logs and when.
   DIAGNOSTICS_LOGS_TAILED: "diagnostics.logs_tailed",
   // `/v1/diagnostics/drift` — emitted on every drift-report read.
   // The report exposes migration hashes from `drizzle.__drizzle_migrations`
@@ -515,7 +515,7 @@ export const AuditAction = {
   // operator isn't left with only a transient log line.
   MCP_EXTERNAL_TOOL_PALETTE_ASSEMBLY_FAILED: "mcp_external_tool.palette_assembly_failed",
   // Interactive browser OAuth 2.1 onboarding for an OAuth-only external
-  // MCP server (#171 follow-up). `authorization_started` is emitted when
+  // MCP server. `authorization_started` is emitted when
   // a pending `mcp_oauth_states` flow row is created; `authorized` on a
   // successful callback + token write; `authorization_failed` when the
   // callback is rejected (bad state, issuer mismatch, exchange error).
@@ -704,7 +704,7 @@ export type DiagnosticsDriftReadMetadata = z.infer<typeof DiagnosticsDriftReadMe
 /** `diagnostics.version_read` metadata. Emitted on every read of
  *  `/v1/diagnostics/version`. The response holds engine version + the
  *  cached "latest from GitHub" pair, so compliance wants the same
- *  observability window as drift reads. Issue #151. */
+ *  observability window as drift reads. */
 export const DiagnosticsVersionReadMetadataSchema = z.object({
   /** Engine binary version that served the request. */
   engine_version: z.string(),
@@ -907,7 +907,7 @@ export type ContentPartSentMetadata = z.infer<typeof ContentPartSentMetadataSche
 
 /** `engine.update.*` metadata. Shared by initiated/completed/failed/
  *  rolled_back. The binary swap is the prototypical privileged action:
- *  there is no HTTP context, so the row is the audit story. Issue #151. */
+ *  there is no HTTP context, so the row is the audit story. */
 export const EngineUpdateMetadataSchema = z.object({
   /** Version the engine was running at the start of the operation.
    *  Deliberately a bare `z.string()` (rather than a semver regex) so

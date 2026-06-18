@@ -1,7 +1,7 @@
 // Internal helpers extracted from `workflows/types.ts` so that file
 // stays under the 1000-LOC audit ceiling. Pure functions only — Zod
 // schemas remain in `types.ts` (or in `types-web-scraper.ts` for
-// #144).
+// the web-scraper connector).
 
 /** RFC 7230 header-name token: pre-validate `Name:` before handing the
  *  string to `new Headers()` so JSON-shaped strings don't slip through

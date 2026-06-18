@@ -45,7 +45,7 @@ export interface MigrationReport {
  * Single source of truth for the drift report wire shape — the
  * `/v1/diagnostics/drift` route imports this schema rather than
  * redeclaring the columns. Keeps the runtime + the OpenAPI surface
- * locked together (review W3).
+ * locked together.
  */
 export const UnknownInDbRowSchema = z.object({
   row_id: z.number().int(),
@@ -62,7 +62,7 @@ export const MissingInDbRowSchema = z.object({
 export const DriftReportSchema = z.object({
   /** Rows present in `drizzle.__drizzle_migrations` whose hash is not
    *  in this binary's embedded set. Indicates the DB was migrated by a
-   *  different binary lineage — actionable signal for #149. */
+   *  different binary lineage — an actionable signal. */
   unknown_in_db: z.array(UnknownInDbRowSchema),
   /** Embedded migrations whose hash is not in the DB. Informational —
    *  `runMigrations` would apply these on the same boot. */
@@ -240,12 +240,12 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
  * this binary's embedded set.
  *
  * `unknown_in_db.length > 0` means the DB carries migration rows from
- * a binary lineage this engine doesn't recognise. That is the #149
+ * a binary lineage this engine doesn't recognise. That is the
  * symptom: prod had 27 such rows and three subsystems failed because
  * the schema state didn't match the engine's expectations. Operators
  * should treat this as a deploy-time alarm.
  *
- * Side effect (review R2-S5): the function calls `ensureMigrationsTable`
+ * Side effect: the function calls `ensureMigrationsTable`
  * before reading, which `CREATE EXTENSION IF NOT EXISTS pgcrypto`,
  * `CREATE SCHEMA IF NOT EXISTS drizzle`, and creates the journal table
  * if missing. On every boot path migrations run first, so this is a

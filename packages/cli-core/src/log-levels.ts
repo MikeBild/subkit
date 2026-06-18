@@ -1,8 +1,7 @@
 // Single source of truth for the engine's six log levels and their
 // pretty-print colors. Both the engine logger (server-side stdout)
 // and the `sk logs` pretty renderer (operator side) consume these
-// so a level rename or color tweak only touches one place
-// (review S6).
+// so a level rename or color tweak only touches one place.
 
 import pc from "picocolors";
 

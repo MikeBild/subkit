@@ -9,8 +9,8 @@
 //   GET /v1/diagnostics/errors        — tail the in-memory error ring
 //   GET /v1/diagnostics/llm           — resolved LLM provider snapshot
 //   GET /v1/diagnostics/setup         — operator-facing setup validation
-//   GET /v1/diagnostics/drift         — schema-drift report (#149)
-//   GET /v1/diagnostics/version       — engine version + update posture (#151)
+//   GET /v1/diagnostics/drift         — schema-drift report
+//   GET /v1/diagnostics/version       — engine version + update posture
 //   GET /v1/diagnostics/integrations  — connector/workflow health rollup
 //   GET /v1/diagnostics/logs          — paginated log tail
 //   GET /v1/diagnostics/logs/stream   — SSE live log tail

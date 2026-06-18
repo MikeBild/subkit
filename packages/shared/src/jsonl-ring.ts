@@ -9,11 +9,9 @@
 //
 // Each implementation drifted slightly (only the session store
 // applied `mode: 0o600`, only the history store dedup'd against the
-// tail). The reviewer flagged this as suggestion R5-S6 and again as
-// R6-S6 ("extract now while the diff is small"). The shared helper
-// owns: the atomic write-then-rename, the explicit file mode, and
-// the "keep tail of N" trim. Callers still own their dedup and
-// schema concerns.
+// tail). The shared helper owns: the atomic write-then-rename, the
+// explicit file mode, and the "keep tail of N" trim. Callers still
+// own their dedup and schema concerns.
 //
 // The helper reads the entire file once during trim. Callers should
 // debounce the trim (e.g. only call when `statSync(path).size`

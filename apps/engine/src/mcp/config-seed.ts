@@ -1,4 +1,4 @@
-// External MCP server boot reconcile (#171).
+// External MCP server boot reconcile.
 //
 // Zero-conf by default: with no `mcp.servers` config the engine boots and
 // this reconcile is a no-op for every tenant. When an operator declares

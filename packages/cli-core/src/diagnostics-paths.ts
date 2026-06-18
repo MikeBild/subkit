@@ -2,8 +2,8 @@
 //
 // Imported by both the engine route registration and the `sk`
 // client so a path rename in either place breaks typecheck on the
-// other (review W6 — the SSE stream is not modeled by the OpenAPI
-// generator, so we need this string in one place).
+// other (the SSE stream is not modeled by the OpenAPI generator, so
+// we need this string in one place).
 
 export const DIAGNOSTICS_LOG_STREAM_PATH = "/v1/diagnostics/logs/stream" as const;
 

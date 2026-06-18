@@ -9,7 +9,7 @@
 // decides whether to show suggestions for the current keystroke.
 //
 // Both the slash-name character predicate (`SLASH_NAME_CHAR_RE`) come
-// from `apps/sk/src/slash.ts` (R1-S6 review fix), so the registry
+// from `apps/sk/src/slash.ts`, so the registry
 // and this cursor-aware scanner can never disagree on what counts as
 // a legal command-name character.
 

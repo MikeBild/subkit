@@ -20,7 +20,7 @@ export type {
   ReadabilityOutput,
   StructuredDataOutput,
 } from "./types-web-scraper.ts";
-// Re-export the three web-scraper envelope schemas (#144) so existing
+// Re-export the three web-scraper envelope schemas so existing
 // `import … from "./workflows/types.ts"` call sites keep working. The
 // definitions live in `./types-web-scraper.ts` to keep this file under
 // the 1000-LOC audit ceiling.
@@ -630,7 +630,7 @@ export const RequestStepSchema = z
   })
   .openapi("RequestStep");
 
-// Web-scraper #144 — the three config + three output Zod schemas live
+// Web-scraper connector — the three config + three output Zod schemas live
 // in `./types-web-scraper.ts` (imported above). The TransformStep
 // schema below references them inline; the language enum keeps the new
 // values in this file so the discriminated-union shape is visible at a
@@ -653,11 +653,11 @@ export const TransformStepSchema = z
     language: z
       .enum(["javascript", "readability", "html-to-markdown", "structured-data"])
       .optional(),
-    /** Web-scraper #144 — Readability extraction config. */
+    /** Web-scraper Readability extraction config. */
     readability: ReadabilityConfigSchema.optional(),
-    /** Web-scraper #144 — html→markdown serialisation config. */
+    /** Web-scraper html→markdown serialisation config. */
     markdown: MarkdownConfigSchema.optional(),
-    /** Web-scraper #144 — JSON-LD / OpenGraph / microdata extraction config. */
+    /** Web-scraper JSON-LD / OpenGraph / microdata extraction config. */
     structured_data: StructuredDataConfigSchema.optional(),
     input_schema: z.record(z.string(), z.unknown()).optional(),
     output_schema: z.record(z.string(), z.unknown()).optional(),

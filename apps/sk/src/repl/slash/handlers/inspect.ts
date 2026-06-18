@@ -1,8 +1,8 @@
 // Read-only inspection slashes: `/skills`, `/mcp`, `/knowledge`,
 // `/permissions`, `/audit`. Each is a thin `client.listX() →
 // render → panify` shape, the same pattern as `admin-lists.ts`
-// but for the non-admin tier. Extracted from handler.ts (R7-S2
-// review fix) so the main switch keeps focus on stateful /
+// but for the non-admin tier. Extracted from handler.ts
+// so the main switch keeps focus on stateful /
 // interactive cases.
 //
 // Returns:

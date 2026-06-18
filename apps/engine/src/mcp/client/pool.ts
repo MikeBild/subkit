@@ -1,4 +1,4 @@
-// Per-tenant external MCP Client pool (#171).
+// Per-tenant external MCP Client pool.
 //
 // subkit's conversation loop merges the tools of every active external
 // MCP server a tenant registered into the LLM's tool palette. This module

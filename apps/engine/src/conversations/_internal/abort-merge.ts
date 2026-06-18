@@ -3,8 +3,8 @@
 // call. The file lives under `_internal/` (not at the package root)
 // so the conversations barrel at `../index.ts` cannot accidentally
 // re-export it; cross-package consumers must reach across an
-// explicit "internal" path or import directly. Per #147 review S-3
-// — file-system enforcement of the layering instead of a comment
+// explicit "internal" path or import directly. This is file-system
+// enforcement of the layering instead of a comment
 // that an "organize imports" tool could quietly drop.
 
 export function mergeAbortSignals(signals: AbortSignal[]): AbortSignal {

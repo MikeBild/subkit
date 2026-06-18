@@ -149,7 +149,7 @@ const analyzeRoute = createRoute({
   },
 });
 
-// Web-scraper #144 — JSON inline ingestion. The legacy
+// Web-scraper — JSON inline ingestion. The legacy
 // POST /v1/knowledge-sources stays on multipart/form-data (file
 // uploads); recipes that produce extracted markdown POST to this
 // route instead so the OpenAPI surface advertises the JSON contract
@@ -325,7 +325,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ deleted: true }, 200);
   });
 
-  // JSON inline path (#144) — separate OpenAPI route so Zod validates
+  // JSON inline path — separate OpenAPI route so Zod validates
   // the body up-front and the spec advertises the JSON contract.
   // 422 is the documented validation-failure status on `createInlineRoute`.
   // Without this `defaultHook`, Hono's zod-openapi returns 400 on Zod

@@ -1,4 +1,4 @@
-// Tenant-scoped runtime stats surface (#160). Four read-only routes,
+// Tenant-scoped runtime stats surface. Four read-only routes,
 // all gated by the single `stats:read` permission, all returning three
 // rollup levels in one response. The data is aggregated at read time
 // from `executions` / `audit_log` / `llm_usage` — no new persistence.

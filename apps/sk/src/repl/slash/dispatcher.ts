@@ -26,7 +26,7 @@ export interface SlashDispatchPlan {
   command: SlashCommand | undefined;
 }
 
-// R11-S4 review fix: `INK_INTERCEPTED_LOCAL_SLASHES` moved to
+// `INK_INTERCEPTED_LOCAL_SLASHES` moved to
 // `apps/sk/src/slash.ts` (next to `SLASH_COMMANDS`) because it's
 // metadata about the registry, not about dispatch. Re-exported
 // here for the dispatcher contract test that imports from this

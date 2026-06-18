@@ -524,7 +524,7 @@ export async function runAuthoringPipeline(
     { repair: { tenant_id: ctx.tenant_id, db: ctx.db, signal: deadlineSignal } },
   );
   // A deadline hit DURING the repair fan-out (not only during generation)
-  // must also surface the time-budget note (round-5 Finding 3) — else the
+  // must also surface the time-budget note — else the
   // model gets findings with no signal that time ran out mid-repair.
   if (deadlineSignal.aborted) deadlineExceeded = true;
 

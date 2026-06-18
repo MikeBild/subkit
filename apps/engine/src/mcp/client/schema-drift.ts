@@ -1,4 +1,4 @@
-// External MCP server schema-drift tracker (#171).
+// External MCP server schema-drift tracker.
 //
 // A remote MCP server can change its tool manifest at any time — add a
 // tool, drop one, change an input schema. We fingerprint the manifest as

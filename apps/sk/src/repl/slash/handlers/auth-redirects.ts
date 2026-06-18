@@ -1,6 +1,6 @@
 // Auth-tier slashes that redirect to the out-of-REPL `sk login` /
 // `sk logout` / `sk tenants` CLI commands. Extracted from
-// handler.ts (R7-S2 review fix) to keep the main switch focused
+// handler.ts to keep the main switch focused
 // on interactive multi-step flows.
 //
 // `/profile` is intentionally NOT here — it has live in-REPL behavior

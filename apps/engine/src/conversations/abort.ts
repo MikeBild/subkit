@@ -4,7 +4,7 @@
 // long-running previews and the surrounding streamText call stop
 // promptly.
 //
-// **Tenant scoping (#147 review C1).** The registry key carries the
+// **Tenant scoping.** The registry key carries the
 // tenant id alongside the conversation id. Without it, a foreign
 // tenant POSTing /v1/conversations/{id}/messages with another
 // tenant's UUID would overwrite the legitimate registration: the auth
@@ -14,7 +14,7 @@
 // a cross-tenant probe lives in its own slot and cannot displace the
 // rightful turn's controller.
 //
-// **Synchronous registration (#147 / A4).** The route handler must
+// **Synchronous registration (A4).** The route handler must
 // call `registerConversationAbort` on the synchronous frame of
 // request-accept, before any await. Registering inside the loop body
 // (the pre-A4 location) re-opens the race the cancel route silently
@@ -101,12 +101,12 @@ export function cancelConversationAbort(
     //     hit a different pod than the turn (see header note).
     // Either way, the DB row write in cancelConversation runs
     // tenant-scoped and is the source of truth for the conversation
-    // status. Logged at `info` (#147 review W-4) because both legitimate
+    // status. Logged at `info` because both legitimate
     // paths fire it on every cancel: a `warn` would create false-alarm
     // SRE noise the moment a deployment scales horizontally without
     // sticky routing.
     //
-    // Per-(tenant, conv) sampling at 5s windows (#147 round-5 S-3):
+    // Per-(tenant, conv) sampling at 5s windows:
     // a UI that retries cancel rapidly, or a multi-replica fan-out
     // where every cancel-arriving-on-the-wrong-pod fires the same
     // line, otherwise produces correlated log spam without adding
@@ -194,4 +194,4 @@ export function __hasConversationAbort(tenantId: string, conversationId: string)
 
 // `mergeAbortSignals` lives in `./_internal/abort-merge.ts` so the
 // conversations barrel at `./index.ts` cannot accidentally re-export
-// it. Loop.ts imports it directly. Per #147 review S-3.
+// it. Loop.ts imports it directly.

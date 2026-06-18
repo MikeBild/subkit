@@ -1,5 +1,5 @@
 // Interactive browser OAuth 2.1 + PKCE onboarding for OAuth-only external
-// MCP servers (#171 follow-up).
+// MCP servers.
 //
 //   POST /v1/mcp-servers/{id}/authorize    — authenticated, gated
 //                                            `mcp_server:manage`. Runs RFC

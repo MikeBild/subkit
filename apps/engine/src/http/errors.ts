@@ -30,7 +30,6 @@ export interface HttpErrorOptions {
  *
  * The symbol now lives in `./_internal.ts` so the public `errors.ts`
  * module no longer ships it through OpenAPI / IDE autocomplete.
- * R5-S5.
  */
 import { ENVELOPE_BRAND } from "./_internal.ts";
 
@@ -52,7 +51,7 @@ export class HttpError extends Error {
    * `details` bag verbatim, which is what the 50+ existing throw
    * sites depend on.
    *
-   * Trust model (R5-S5 / R6-S4 / R11-S5): the brand symbol is
+   * Trust model: the brand symbol is
    * `Symbol.for("sk.HttpErrorOptions")` (in
    * `apps/engine/src/http/_internal.ts`), which lives in the global
    * symbol registry. This is acceptable for in-process trust — the
@@ -110,7 +109,7 @@ export class HttpError extends Error {
   }
 }
 
-// R5-S5: the brand symbol lives in `./_internal.ts`. Middleware
+// The brand symbol lives in `./_internal.ts`. Middleware
 // imports it directly from there now; this module no longer
 // re-exports it. The `_ENVELOPE_BRAND_FOR_TESTS` re-export was
 // previously the only consumer outside this file — middleware

@@ -1,5 +1,5 @@
 // DB-backed `OAuthClientProvider` for the external-MCP CLIENT direction
-// (#171 follow-up — interactive OAuth 2.1 + PKCE against an OAuth-only
+// (interactive OAuth 2.1 + PKCE against an OAuth-only
 // external MCP server).
 //
 // subkit acts as an OAuth *client* against an external MCP server. The

@@ -1,8 +1,8 @@
 // Admin-tier list slashes — each is a near-identical
 // `client.listX() → render rows → panify` pattern. Extracted from
-// the main `handler.ts` switch (R7-S2 review fix).
+// the main `handler.ts` switch.
 //
-// R9-W1 review fix: row shapes are typed from
+// Row shapes are typed from
 // `components["schemas"]["…"]` in the generated OpenAPI client,
 // not via ad-hoc `Record<string, unknown>` casts. A future
 // wire-shape rename now fails the build instead of rendering

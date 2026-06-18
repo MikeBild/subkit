@@ -1,4 +1,4 @@
-// Synthetic `mcp_<ns>__<tool>` tools for the chat palette (#171).
+// Synthetic `mcp_<ns>__<tool>` tools for the chat palette.
 //
 // Every active external MCP server a tenant registered has its tools
 // merged into the chat LLM's palette so a user message that names a
