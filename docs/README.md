@@ -38,6 +38,16 @@ Nine architecture-level documents, read in order or by concern.
 | [08-operations.md](08-operations.md) | Deployment topology, configuration, metrics, structured logging, execution inspection, resource limits, drift-assisted repair, and backup. |
 | [09-notifications.md](09-notifications.md) | Notification rules, channels (Slack / Teams / Google Chat / webhook), rate limits, circuit breaker, RBAC, and the synthetic-test endpoint. |
 
+### Deep-dive companions
+
+Focused references that expand a single concept doc.
+
+| Doc | Expands | What it covers |
+|---|---|---|
+| [04a-conversational-flow-replay.md](04a-conversational-flow-replay.md) | 04-authoring | Canonical happy-path authoring transcripts that pin the auto-persist contract. |
+| [05a-recipe-authoring.md](05a-recipe-authoring.md) | 05-connectors | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |
+| [10-tool-palette.md](10-tool-palette.md) | 03-input-surfaces | The unified tool palette and dispatcher: registry, naming, and policy gates. |
+
 ---
 
 ## Quickstarts
