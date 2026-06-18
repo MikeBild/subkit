@@ -212,21 +212,19 @@ The catalogue ships three layers of validation:
 
 - **Layer 1 — structural lint.** `apps/engine/src/connectors/templates.test.ts` runs at every PR: every template must parse `ConnectorTemplateSchema`, slugs are globally unique, recipes pass `WorkflowDefSchema`, etc. No network.
 - **Layer 2 — cross-reference invariants.** Same test file: every `default_skill` resolves to a known entry in `template-skills.json`, recipe placeholders are bound, no credential-shaped literals leak into recipe workflows. No network.
-- **Layer 3 — vendor-drift sweep.** `scripts/audit/template-vendor-sweep.ts` HEADs every `base_url`, calls every declared `probe_endpoint`, and fetches `<oauth.issuer_url>/.well-known/openid-configuration` for OAuth templates. Writes `apps/engine/src/connectors/template-audit-report.json`. **Never runs in CI** — it is gated by `RUN_TEMPLATE_AUDIT=1` so a careless pipeline can't hammer vendors.
+- **Layer 3 — vendor-drift sweep.** A network sweep HEADs every `base_url`, calls every declared `probe_endpoint`, and fetches `<oauth.issuer_url>/.well-known/openid-configuration` for OAuth templates, stamping `verified_at` per template. It **never runs in CI** — gated by `RUN_TEMPLATE_AUDIT=1` so a careless pipeline can't hammer vendors. The sweep tooling is maintained in the **`subkit-do`** repo (`scripts/audit/template-vendor-sweep.ts`), run on an operator-chosen cadence against this repo's `templates.json`.
 
 ### Running the sweep
 
+The sweep lives in the `subkit-do` repo. With this repo checked out as a sibling, run it from there (gated by `RUN_TEMPLATE_AUDIT=1`):
+
 ```bash
-# Full sweep — concurrency=3, 1s/host backoff, identifies as
-# subkit-template-audit/<engine version>. Takes a few minutes.
+# Full sweep — concurrency=3, 1s/host backoff. Takes a few minutes.
 RUN_TEMPLATE_AUDIT=1 bun run scripts/audit/template-vendor-sweep.ts
 
-# Smoke-test a single template before the full run.
+# Smoke-test a single template; or --update-templates to stamp
+# verified_at on every template that came back OK or auth_required.
 RUN_TEMPLATE_AUDIT=1 bun run scripts/audit/template-vendor-sweep.ts --only=stripe
-
-# Stamp `verified_at` on every template that came back OK or
-# auth_required. Off by default so the operator can review the report
-# before mutating templates.json.
 RUN_TEMPLATE_AUDIT=1 bun run scripts/audit/template-vendor-sweep.ts --update-templates
 ```
 
@@ -248,7 +246,7 @@ The Layer-1 test emits a `console.warn` (it does **not** fail the suite) when a 
 
 ```
 [connector-templates] vendor-drift sweep stale on 105/105 templates.
-Run: RUN_TEMPLATE_AUDIT=1 bun run scripts/audit/template-vendor-sweep.ts --update-templates
+Run the Layer-3 vendor-drift sweep (RUN_TEMPLATE_AUDIT=1, maintained in the subkit-do repo) to refresh verified_at.
   - airtable (verified_at=null, never swept)
   - apify (verified_at=null, never swept)
   …

@@ -22,29 +22,28 @@ The standard deployment model is straightforward: one engine service and one Pos
 ```mermaid
 flowchart TB
     Internet(("Internet"))
-    Caddy["Caddy<br/>(apt; Let's Encrypt TLS)"]
-    Engine["engine binary<br/>/usr/local/bin/engine<br/>(systemd: subkit-engine.service)"]
-    PG[("PostgreSQL 16<br/>apt package<br/>127.0.0.1:5432")]
+    Proxy["TLS reverse proxy / LB<br/>(your choice)"]
+    Engine["engine container<br/>mikebild/subkit"]
+    PG[("PostgreSQL 16")]
     LLM[("LLM Provider<br/>Anthropic / OpenAI / Google")]
     S3[("S3 (optional)<br/>step-result spillover")]
 
-    Internet -- :443 --> Caddy
-    Caddy -- :3000 --> Engine
+    Internet -- :443 --> Proxy
+    Proxy -- :3000 --> Engine
     Engine --> PG
     Engine -. outbound .-> LLM
     Engine -. outbound .-> S3
 ```
 
-*Single host, three apt-installed system services. No message broker, no distributed queue — pg-boss + outbox in PostgreSQL cover scheduling, queueing, and pub/sub. Horizontal scaling is multiple engine instances behind a load balancer against the same PostgreSQL.*
+*The engine is a single container. No message broker, no distributed queue — pg-boss + outbox in PostgreSQL cover scheduling, queueing, and pub/sub. Horizontal scaling is multiple engine containers behind a load balancer against the same PostgreSQL.*
 
-4.2.0 retired the docker-compose production deploy. The engine is now a single `bun build --compile` binary deployed under systemd; postgres + caddy are apt-installed system services on the host.
+sk ships an **all-in-one Docker image** (`mikebild/subkit`) that bundles the engine + PostgreSQL for the simplest production onramp:
 
-- **Engine** — `/usr/local/bin/engine` managed by `subkit-engine.service` (see [`deploy/systemd/subkit-engine.service`](../deploy/systemd/subkit-engine.service)).
-- **Postgres** — `postgresql-16` apt package, native systemd unit, listening on `127.0.0.1:5432`.
-- **Caddy** — apt package, fronts the engine with always-on Let's Encrypt TLS (see [`deploy/caddy/Caddyfile`](../deploy/caddy/Caddyfile); upstreams `127.0.0.1:3000`).
-- **Local dev** — the repo's `docker-compose.yml` brings up postgres only (and an optional MinIO under `--profile storage`); `bun run dev` runs the engine on the host.
+```bash
+docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:latest
+```
 
-On the host (`scripts/do-bootstrap.sh` provisions the layout), `scripts/release/deploy-body.sh` performs an atomic-binary swap: scp `engine.next` into `/usr/local/bin/`, rename over `engine`, `systemctl restart subkit-engine.service`, poll `/v1/health` for the new version, roll back to `engine.prev` on timeout. The laptop `scripts/deploy.sh` orchestrator pipes the same body file into `bash -s` over SSH so the two paths cannot drift.
+For larger deployments, run the engine container against an **external PostgreSQL** and front it with your own TLS-terminating reverse proxy / load balancer. See [docs/operations/docker.md](operations/docker.md) for the full guide: quick start, admin-key onboarding, LLM wiring, external-DB mode, persistence, and resource limits. For local development, the repo's `docker-compose.yml` brings up postgres only (plus an optional MinIO under `--profile storage`); `bun run dev` runs the engine on the host.
 
 ---
 
@@ -235,36 +234,6 @@ Workflow versioning provides application-level recovery. Every workflow change c
 
 ---
 
-## Upgrading an existing database to the v3 baseline
-
-The 2.x line shipped 41 incremental Drizzle migrations. The first official v3 release replaces them with a single `0000_v3_baseline.sql` covering the full schema. Existing deployments must mark the baseline as already applied; a fresh deployment just runs `bun run db:migrate` and gets the baseline.
-
-The path is one short script per database, run before deploying the v3 engine binaries.
-
-```bash
-# 1. Take a verified backup. Mandatory — the upgrade script refuses
-#    without it, so this isn't optional.
-DUMP=/backups/subkit-pre-v3-$(date +%Y%m%d-%H%M%S).sql
-pg_dump "$DATABASE_URL" --no-owner --no-privileges > "$DUMP"
-
-# 2. Diagnose the current state.
-#    Outputs JSON: { state: FRESH | PRE_UPGRADE | BASELINED | UNEXPECTED, rows, ... }
-DATABASE_URL=... bun run scripts/db/verify-baseline.ts
-
-# 3. Run the upgrade. Exits zero on success or no-op (already baselined).
-DATABASE_URL=... scripts/db/upgrade-to-v3-baseline.sh "$DUMP"
-
-# 4. Re-verify. State must be BASELINED.
-DATABASE_URL=... bun run scripts/db/verify-baseline.ts
-
-# 5. Deploy the v3 engine binary. `bun run db:migrate` is now a no-op.
-```
-
-The upgrade script wraps everything in a single transaction. If anything inside fails, the bookkeeping table is left untouched — the operator can investigate and retry. The script refuses to proceed if the bookkeeping table contains an unexpected row count (anything other than 41, 42 from a pre-upgrade DB, or 1 from an already-baselined DB).
-
-`scripts/db/upgrade-to-v3-baseline.sh` requires a working `psql` on the host and `jq` for reading the journal `when` value.
-
----
 
 ## Self-update + release signing
 

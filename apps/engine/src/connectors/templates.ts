@@ -436,10 +436,10 @@ export const ConnectorTemplateSchema = z
      * means the template has never been swept (a fresh authoring entry,
      * or the script has not been run since the field landed). The
      * Layer-1 lint emits a `console.warn` (not a failure) when this is
-     * `null` or older than 90 days; the operator runs
-     * `scripts/audit/template-vendor-sweep.ts` (gated by
-     * `RUN_TEMPLATE_AUDIT=1`) to refresh it. See
-     * `docs/05-connectors.md` → "Vendor-drift sweep" for the lifecycle.
+     * `null` or older than 90 days; the Layer-3 vendor-drift sweep
+     * (gated by `RUN_TEMPLATE_AUDIT=1`, maintained in the `subkit-do`
+     * repo) refreshes it. See `docs/05-connectors.md` →
+     * "Vendor-drift sweep" for the lifecycle.
      */
     verified_at: z.string().datetime().nullable().default(null),
     /**

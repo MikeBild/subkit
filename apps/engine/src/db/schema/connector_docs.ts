@@ -9,6 +9,7 @@
 // We enforce the "10 MB / 3 MB / 20 links" budgets at the service layer —
 // the schema just stores what made it through the pipeline.
 
+import { sql } from "drizzle-orm";
 import {
   customType,
   index,
@@ -83,7 +84,9 @@ export const connectorDocumentChunks = pgTable(
     content: text("content").notNull(),
     byte_size: integer("byte_size").notNull(),
     fingerprint: text("fingerprint").notNull(),
-    tsv: tsvector("tsv"),
+    tsv: tsvector("tsv").generatedAlwaysAs(
+      sql`to_tsvector('english', (((COALESCE(title, '') || ' ') || COALESCE(path, '')) || ' ') || content)`,
+    ),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
@@ -92,5 +95,6 @@ export const connectorDocumentChunks = pgTable(
       t.connector_id,
       t.ordinal,
     ),
+    index("connector_document_chunks_tsv_idx").using("gin", t.tsv),
   ],
 );

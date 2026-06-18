@@ -110,6 +110,7 @@ export const connectors = pgTable(
     uniqueIndex("connectors_tenant_slug_env_key")
       .on(t.tenant_id, t.slug, t.environment)
       .where(sql`${t.deleted_at} IS NULL`),
+    index("connectors_needs_reauth_idx").on(t.tenant_id).where(sql`${t.needs_reauth} = true`),
   ],
 );
 
@@ -148,6 +149,9 @@ export const connectorOauthStartGrants = pgTable(
   "connector_oauth_start_grants",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    // tenant_id is NOT NULL here (matches code, which always binds it). The
+    // pre-consolidation migration left it nullable, but the runtime never
+    // writes null — the v6 baseline tightens it to NOT NULL deliberately.
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     connector_id: uuid("connector_id")
       .notNull()

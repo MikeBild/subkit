@@ -1,10 +1,9 @@
 # Local development backend services for the subkit engine.
 #
-# 4.2.0: this compose file is **dev-only**. Production deploys are
-# systemd-native (see deploy/systemd/subkit-engine.service); the engine
-# itself is no longer containerised. For local dev we still bring up
-# postgres in docker for convenience (single command, no host install,
-# isolated volume).
+# This compose file is **dev-only**: it brings up postgres for local
+# development while `bun run dev` runs the engine on the host. For a
+# self-contained production engine use the all-in-one image
+# (`mikebild/subkit`) — see docs/operations/docker.md.
 #
 # Quick start (from repo root):
 #   docker compose up -d              # postgres only

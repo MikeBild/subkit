@@ -119,7 +119,9 @@ export const knowledgeChunks = pgTable(
     content: text("content").notNull(),
     byte_size: integer("byte_size").notNull(),
     fingerprint: text("fingerprint").notNull(),
-    tsv: tsvector("tsv"),
+    tsv: tsvector("tsv").generatedAlwaysAs(
+      sql`to_tsvector('english', (COALESCE(title, '') || ' ') || content)`,
+    ),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
@@ -128,5 +130,6 @@ export const knowledgeChunks = pgTable(
       t.knowledge_source_id,
       t.ordinal,
     ),
+    index("knowledge_chunks_tsv_idx").using("gin", t.tsv),
   ],
 );

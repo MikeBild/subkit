@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -79,6 +80,12 @@ export const skills = pgTable(
     index("skills_tenant_scope_connector_idx").on(t.tenant_id, t.scope, t.connector_id),
     index("skills_tenant_scope_workflow_idx").on(t.tenant_id, t.scope, t.workflow_id),
     uniqueIndex("skills_tenant_slug_uq").on(t.tenant_id, t.slug).where(sql`${t.slug} IS NOT NULL`),
+    check("skills_idempotency_chk", sql`${t.idempotency} IN ('none','naturally','key_required')`),
+    check("skills_maturity_chk", sql`${t.maturity} IN ('experimental','stable')`),
+    check(
+      "skills_side_effects_chk",
+      sql`${t.side_effects} IN ('none','read','write','destructive')`,
+    ),
   ],
 );
 

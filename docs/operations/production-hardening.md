@@ -136,7 +136,7 @@ warn  config  override.active   override_keys=["storage.files.dir"]
 | File AV scan | `NoopScanner` (always clean) | ❌ wire clamd before untrusted uploads | `files/scanner.ts` |
 | `storage.files.dir` | empty → ephemeral tmpdir | ✅ set to a persistent path (done via `SK_OVERRIDE_*`) | `config/loader.ts`, `index.ts` |
 | `MASTER_KEY` | required | ✅ set; rotate per `master-key-rotation.md` | `docs/operations/master-key-rotation.md` |
-| Postgres + Caddy | apt-installed system services | ✅ provisioned by `do-bootstrap.sh` | `docs/operations/deploy.md` |
+| PostgreSQL | bundled in the all-in-one image | ✅ for scale, point at an external managed Postgres | `docs/operations/docker.md` |
 
-See also: [`deploy.md`](./deploy.md) · [`configuration.md`](./configuration.md) ·
+See also: [`docker.md`](./docker.md) · [`configuration.md`](./configuration.md) ·
 [`settings-reference.md`](./settings-reference.md).

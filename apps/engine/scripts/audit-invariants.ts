@@ -531,54 +531,6 @@ function checkRegressionIsolation(): Result {
   };
 }
 
-function checkSystemdUnitJitFriendly(): Result {
-  // Bun's JIT mints W+X memory pages. The systemd unit must NOT
-  // enable MemoryDenyWriteExecute=yes — doing so silently breaks
-  // the engine on first JIT-compiled function, with no log line
-  // pointing at the unit setting. We accept either an explicit
-  // `MemoryDenyWriteExecute=false` (the current shape) or the
-  // setting being absent entirely (systemd default = false).
-  // A future "let's harden the unit" PR that flips this to `yes`
-  // trips here.
-  const unitPath = "deploy/systemd/subkit-engine.service";
-  let raw: string;
-  try {
-    raw = readFileSync(unitPath, "utf8");
-  } catch (err) {
-    return {
-      id: "systemd_unit_jit_friendly",
-      status: "FAIL",
-      message: `${unitPath} unreadable: ${(err as Error).message}`,
-    };
-  }
-  // Match the directive case-sensitive (systemd is case-sensitive
-  // on directives) and reject only the dangerous values.
-  const re = /^\s*MemoryDenyWriteExecute\s*=\s*(\S+)/m;
-  const m = raw.match(re);
-  if (!m) {
-    return {
-      id: "systemd_unit_jit_friendly",
-      status: "PASS",
-      message: "MemoryDenyWriteExecute absent (systemd default = false); JIT safe",
-    };
-  }
-  const value = (m[1] ?? "").toLowerCase();
-  // systemd accepts these as truthy: yes, true, on, 1
-  const TRUTHY = new Set(["yes", "true", "on", "1"]);
-  if (TRUTHY.has(value)) {
-    return {
-      id: "systemd_unit_jit_friendly",
-      status: "FAIL",
-      message: `${unitPath} sets MemoryDenyWriteExecute=${value} — Bun JIT requires W+X pages and will crash on first jitted function`,
-    };
-  }
-  return {
-    id: "systemd_unit_jit_friendly",
-    status: "PASS",
-    message: `MemoryDenyWriteExecute=${value} (JIT safe)`,
-  };
-}
-
 function checkTestSeamsGated(): Result {
   // Underscore-prefixed test-only exports must be imported through
   // the corresponding `test-helpers/<x>.ts` re-export shim, never
@@ -831,7 +783,6 @@ const CHECKS: Array<() => Result> = [
   checkNoLiveLlm,
   checkCoverageFloor,
   checkRegressionIsolation,
-  checkSystemdUnitJitFriendly,
   checkTestSeamsGated,
   checkEngineHomedirAbsence,
   checkNoGlobalFetchStubInTests,

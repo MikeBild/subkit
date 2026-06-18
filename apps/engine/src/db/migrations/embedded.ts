@@ -17,57 +17,7 @@
 // added but not registered here.
 
 import { createHash } from "node:crypto";
-import sql0000V3Baseline from "./0000_v3_baseline.sql" with { type: "text" };
-import sql0001Settings from "./0001_settings.sql" with { type: "text" };
-import sql0002ConnectorsPartialUniqueSlug from "./0002_connectors_partial_unique_slug.sql" with { type: "text" };
-import sql0003WorkflowVersionsScopeIndex from "./0003_workflow_versions_scope_index.sql" with { type: "text" };
-import sql0004CredentialModeAwsSigv4 from "./0004_credential_mode_aws_sigv4.sql" with { type: "text" };
-import sql0005EnablePromptCacheDefaultTrue from "./0005_enable_prompt_cache_default_true.sql" with { type: "text" };
-import sql0006SkillMetadataOverhaul from "./0006_skill_metadata_overhaul.sql" with { type: "text" };
-import sql0007WebhooksInboundOrigin from "./0007_webhooks_inbound_origin.sql" with { type: "text" };
-import sql0008DropChatLinkTokens from "./0008_drop_chat_link_tokens.sql" with { type: "text" };
-import sql0009DropTenantSettings from "./0009_drop_tenant_settings.sql" with { type: "text" };
-import sql0010WorkflowRunState from "./0010_workflow_run_state.sql" with { type: "text" };
-import sql0011WorkflowWaits from "./0011_workflow_waits.sql" with { type: "text" };
-import sql0012WorkflowSignals from "./0012_workflow_signals.sql" with { type: "text" };
-import sql0013CredentialModeTokenMint from "./0013_credential_mode_token_mint.sql" with { type: "text" };
-import sql0014DropTunnels from "./0014_drop_tunnels.sql" with { type: "text" };
-import sql0015AiSdk6Foundation from "./0015_ai_sdk_6_foundation.sql" with { type: "text" };
-import sql0016ExternalCallMeteringProviderSlug from "./0016_external_call_metering_provider_slug.sql" with { type: "text" };
-import sql0017DropConnectorOauthRedirectUri from "./0017_drop_connector_oauth_redirect_uri.sql" with { type: "text" };
-import sql0018ProactiveDriftScans from "./0018_proactive_drift_scans.sql" with { type: "text" };
-import sql0019FilesUnify from "./0019_files_unify.sql" with { type: "text" };
-import sql0020FilesDedupCounter from "./0020_files_dedup_counter.sql" with { type: "text" };
-import sql0021TenantTimezone from "./0021_tenant_timezone.sql" with { type: "text" };
-import sql0022CredentialModeOauth2Client from "./0022_credential_mode_oauth2_client.sql" with { type: "text" };
-import sql0023CredentialsUniquePerMode from "./0023_credentials_unique_per_mode.sql" with { type: "text" };
-import sql0024McpOauth from "./0024_mcp_oauth.sql" with { type: "text" };
-import sql0025ElicitationProtocolNative from "./0025_elicitation_protocol_native.sql" with { type: "text" };
-import sql0026McpTasks from "./0026_mcp_tasks.sql" with { type: "text" };
-import sql0027ChatEventsSeen from "./0027_chat_events_seen.sql" with { type: "text" };
-import sql0028ChatWorkspacesGlobalUnique from "./0028_chat_workspaces_global_unique.sql" with { type: "text" };
-import sql0029OauthScopeTracking from "./0029_oauth_scope_tracking.sql" with { type: "text" };
-import sql0030WorkflowsLastExecutedAt from "./0030_workflows_last_executed_at.sql" with { type: "text" };
-import sql0031WorkflowsCatalogLruIndex from "./0031_workflows_catalog_lru_index.sql" with { type: "text" };
-import sql0032WorkflowsDescription from "./0032_workflows_description.sql" with { type: "text" };
-import sql0033AddStatsReadPermission from "./0033_add_stats_read_permission.sql" with { type: "text" };
-import sql0034ExecutionsTenantStatusStartedIdx from "./0034_executions_tenant_status_started_idx.sql" with { type: "text" };
-import sql0035AuditLogTenantActionTsIdx from "./0035_audit_log_tenant_action_ts_idx.sql" with { type: "text" };
-import sql0036PatchCandidatesTenantStatusCreatedIdx from "./0036_patch_candidates_tenant_status_created_idx.sql" with { type: "text" };
-import sql0037SupersedeWorkflowScopeRepairCandidates from "./0037_supersede_workflow_scope_repair_candidates.sql" with { type: "text" };
-import sql0038TenantsLastSkillCandidateAnalyzeAt from "./0038_tenants_last_skill_candidate_analyze_at.sql" with { type: "text" };
-import sql0039SkillCandidatesEndpointKey from "./0039_skill_candidates_endpoint_key.sql" with { type: "text" };
-import sql0040KnowledgeTags from "./0040_knowledge_tags.sql" with { type: "text" };
-import sql0041ConnectorReauth from "./0041_connector_reauth.sql" with { type: "text" };
-import sql0042CliNotificationInbox from "./0042_cli_notification_inbox.sql" with { type: "text" };
-import sql0043CredentialsMcpServerOwner from "./0043_credentials_mcp_server_owner.sql" with { type: "text" };
-import sql0044McpOauthStates from "./0044_mcp_oauth_states.sql" with { type: "text" };
-import sql0045ConnectorHealthState from "./0045_connector_health_state.sql" with { type: "text" };
-import sql0046KnowledgeSourceLastError from "./0046_knowledge_source_last_error.sql" with { type: "text" };
-import sql0047ExecutionsInput from "./0047_executions_input.sql" with { type: "text" };
-import sql0048ConnectorOauthStartGrants from "./0048_connector_oauth_start_grants.sql" with { type: "text" };
-import sql0049DataMigrations from "./0049_data_migrations.sql" with { type: "text" };
-import sql0050PatchCandidatesEndpointKey from "./0050_patch_candidates_endpoint_key.sql" with { type: "text" };
+import sql0000V6Baseline from "./0000_v6_baseline.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -92,57 +42,7 @@ export interface EmbeddedMigration {
 }
 
 const SQL_BY_TAG: Record<string, string> = {
-  "0000_v3_baseline": sql0000V3Baseline,
-  "0001_settings": sql0001Settings,
-  "0002_connectors_partial_unique_slug": sql0002ConnectorsPartialUniqueSlug,
-  "0003_workflow_versions_scope_index": sql0003WorkflowVersionsScopeIndex,
-  "0004_credential_mode_aws_sigv4": sql0004CredentialModeAwsSigv4,
-  "0005_enable_prompt_cache_default_true": sql0005EnablePromptCacheDefaultTrue,
-  "0006_skill_metadata_overhaul": sql0006SkillMetadataOverhaul,
-  "0007_webhooks_inbound_origin": sql0007WebhooksInboundOrigin,
-  "0008_drop_chat_link_tokens": sql0008DropChatLinkTokens,
-  "0009_drop_tenant_settings": sql0009DropTenantSettings,
-  "0010_workflow_run_state": sql0010WorkflowRunState,
-  "0011_workflow_waits": sql0011WorkflowWaits,
-  "0012_workflow_signals": sql0012WorkflowSignals,
-  "0013_credential_mode_token_mint": sql0013CredentialModeTokenMint,
-  "0014_drop_tunnels": sql0014DropTunnels,
-  "0015_ai_sdk_6_foundation": sql0015AiSdk6Foundation,
-  "0016_external_call_metering_provider_slug": sql0016ExternalCallMeteringProviderSlug,
-  "0017_drop_connector_oauth_redirect_uri": sql0017DropConnectorOauthRedirectUri,
-  "0018_proactive_drift_scans": sql0018ProactiveDriftScans,
-  "0019_files_unify": sql0019FilesUnify,
-  "0020_files_dedup_counter": sql0020FilesDedupCounter,
-  "0021_tenant_timezone": sql0021TenantTimezone,
-  "0022_credential_mode_oauth2_client": sql0022CredentialModeOauth2Client,
-  "0023_credentials_unique_per_mode": sql0023CredentialsUniquePerMode,
-  "0024_mcp_oauth": sql0024McpOauth,
-  "0025_elicitation_protocol_native": sql0025ElicitationProtocolNative,
-  "0026_mcp_tasks": sql0026McpTasks,
-  "0027_chat_events_seen": sql0027ChatEventsSeen,
-  "0028_chat_workspaces_global_unique": sql0028ChatWorkspacesGlobalUnique,
-  "0029_oauth_scope_tracking": sql0029OauthScopeTracking,
-  "0030_workflows_last_executed_at": sql0030WorkflowsLastExecutedAt,
-  "0031_workflows_catalog_lru_index": sql0031WorkflowsCatalogLruIndex,
-  "0032_workflows_description": sql0032WorkflowsDescription,
-  "0033_add_stats_read_permission": sql0033AddStatsReadPermission,
-  "0034_executions_tenant_status_started_idx": sql0034ExecutionsTenantStatusStartedIdx,
-  "0035_audit_log_tenant_action_ts_idx": sql0035AuditLogTenantActionTsIdx,
-  "0036_patch_candidates_tenant_status_created_idx": sql0036PatchCandidatesTenantStatusCreatedIdx,
-  "0037_supersede_workflow_scope_repair_candidates": sql0037SupersedeWorkflowScopeRepairCandidates,
-  "0038_tenants_last_skill_candidate_analyze_at": sql0038TenantsLastSkillCandidateAnalyzeAt,
-  "0039_skill_candidates_endpoint_key": sql0039SkillCandidatesEndpointKey,
-  "0040_knowledge_tags": sql0040KnowledgeTags,
-  "0041_connector_reauth": sql0041ConnectorReauth,
-  "0042_cli_notification_inbox": sql0042CliNotificationInbox,
-  "0043_credentials_mcp_server_owner": sql0043CredentialsMcpServerOwner,
-  "0044_mcp_oauth_states": sql0044McpOauthStates,
-  "0045_connector_health_state": sql0045ConnectorHealthState,
-  "0046_knowledge_source_last_error": sql0046KnowledgeSourceLastError,
-  "0047_executions_input": sql0047ExecutionsInput,
-  "0048_connector_oauth_start_grants": sql0048ConnectorOauthStartGrants,
-  "0049_data_migrations": sql0049DataMigrations,
-  "0050_patch_candidates_endpoint_key": sql0050PatchCandidatesEndpointKey,
+  "0000_v6_baseline": sql0000V6Baseline,
 };
 
 const journal = journalMeta as unknown as Journal;

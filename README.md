@@ -137,7 +137,7 @@ Full conceptual documentation in [`docs/`](docs/):
 | [Workflow Execution](docs/06-execution.md) | Engine, step kinds, scheduling, drift-assisted repair |
 | [Security & Governance](docs/07-security-governance.md) | Identity, RBAC, audit, compliance |
 | [Deployment & Operations](docs/08-operations.md) | Installation, observability, resource limits |
-| [Deploy a sk engine](docs/operations/deploy.md) | Step-by-step systemd-native host bootstrap + release flow |
+| [Run with Docker](docs/operations/docker.md) | All-in-one image: quick start, onboarding, external-DB mode, persistence |
 
 ---
 

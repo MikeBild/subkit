@@ -481,5 +481,3 @@ Before opening a PR:
 - `docs/05-connectors.md` — connector templates (parent surface).
 - `apps/engine/src/connectors/AGENTS.md` — connector subsystem rules.
 - `scripts/lint-recipes.ts` — quality lint source.
-- `scripts/migrate-recipe-schema-v2.ts` — F1 migration script
-  (archival, runs once).

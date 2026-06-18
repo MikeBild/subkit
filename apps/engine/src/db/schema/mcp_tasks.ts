@@ -19,7 +19,8 @@
 // turn runs on so concurrent turns can't race on MAX(created_at).
 // `id` IS the MCP `taskId` surfaced to the client.
 
-import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
 import { conversationMessages, conversations } from "./conversations.ts";
 import { tenants, users } from "./identity.ts";
@@ -66,5 +67,6 @@ export const mcpTasks = pgTable(
   (t) => [
     index("mcp_tasks_conv_turn_idx").on(t.tenant_id, t.conversation_id, t.turn_seq),
     index("mcp_tasks_tenant_created_idx").on(t.tenant_id, t.created_at),
+    check("mcp_tasks_kind_check", sql`${t.kind} IN ('start','append','respond_elicitation')`),
   ],
 );

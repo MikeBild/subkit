@@ -1,8 +1,8 @@
 # Quickstart — Operator
 
-You run sk for your team. Goal: engine up on a real host, one admin key minted, one connector registered. 15 minutes.
+You run sk for your team. Goal: engine up in production, one admin key minted, one connector registered. 15 minutes.
 
-> **Just kicking the tires?** The local-dev path (docker compose, no host) is in [docs/quickstart/developer.md](./developer.md). This page assumes you're standing up an actual production host.
+> **Just kicking the tires?** The local-dev path (postgres-only compose + `bun run dev`) is in [docs/quickstart/developer.md](./developer.md). This page stands up a production engine with the all-in-one Docker image.
 
 ## 1. Install the `sk` CLI
 
@@ -12,44 +12,45 @@ curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/instal
 
 See [docs/03-input-surfaces.md](../03-input-surfaces.md) for Windows and manual platform installs. The install script may place a `subkit` compatibility alias on disk; the canonical command surface is `sk`.
 
-## 2. Provision the host (4.2.0 systemd-native)
+## 2. Run the engine (Docker)
 
-The engine is a single `bun build --compile` binary deployed under systemd; postgres + caddy are apt-installed. No docker required on the host. The bootstrap script handles everything — DNS, firewall, postgres-16, caddy, the `subkit` system user, the systemd unit. Full guide: [docs/operations/deploy.md](../operations/deploy.md).
+sk ships an all-in-one image (`mikebild/subkit`) that bundles the engine + PostgreSQL:
 
 ```bash
-git clone https://github.com/mikebild/subkit && cd subkit
-# .env.deploy contains DEPLOY_HOST, SSH_KEY_PATH, optional BOOTSTRAP_LLM_*
-bash scripts/do-bootstrap.sh   # provisions the host
-bash scripts/deploy.sh patch   # builds + ships the engine binary
+docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:latest
 ```
 
-The engine binds 127.0.0.1 only; caddy fronts the public TLS endpoint. Verify:
+On first boot it initializes Postgres, persists a `MASTER_KEY`, runs migrations, and serves the API on `:3000`. The `subkit-data` volume holds all state. Verify:
 
 ```bash
-curl -s https://${DEPLOY_HOST_FQDN}/v1/health | jq
+curl -s http://localhost:3000/v1/health | jq
 ```
 
-## 3. Mint an admin API key
+Full guide (external-DB mode, TLS-fronting, persistence, resource limits): [docs/operations/docker.md](../operations/docker.md).
 
-The first deploy applies migrations on boot but doesn't seed an admin key (no dev-seed in production mode). One-shot mint over SSH:
+## 3. Create the first tenant + admin key
+
+A fresh engine has no tenants. It prints a one-time bootstrap token to the logs:
 
 ```bash
-ssh -i ${SSH_KEY_PATH} root@${DEPLOY_HOST} \
-  "sudo -u subkit -H bash -c 'set -a; . /etc/subkit/.env; set +a; cd /etc/subkit && /usr/local/bin/engine --issue-admin-key'"
+docker logs subkit 2>&1 | grep 'sk init --token'
 ```
 
-The `-H` + sourced `.env` + `cd /etc/subkit` are required so the CLI finds `DATABASE_URL` / `MASTER_KEY` and persists `subkit.config.json` under `/etc/subkit`, not `/root`. The key is printed exactly once.
+Complete setup with `sk init` — creates the tenant, mints the admin key, and wires the LLM provider in one shot (the bundled CLI runs inside the container):
 
 ```bash
-sk login --engine-url https://${DEPLOY_HOST_FQDN} --api-key <wf_live_…>
+docker exec subkit sk init --token <token> \
+  --admin-email you@example.com \
+  --tenant-name "My Org" \
+  --llm-provider anthropic \
+  --llm-api-key sk-ant-…
 ```
 
-Bootstrap LLM provider in one settings write (skip if you set `BOOTSTRAP_LLM_*` in `.env.deploy` — the deploy already PUT them):
+To get a full admin key you can paste into a `sk` CLI on your host (tenant slug is the kebab-cased name, e.g. `My Org` → `my-org`):
 
 ```bash
-sk settings set llm.provider '"anthropic"'
-sk settings set llm.providers.anthropic.api_key '"sk-ant-…"'
-sk settings set llm.providers.anthropic.model '"claude-sonnet-4-6"'
+docker exec subkit engine --issue-admin-key --tenant my-org   # printed once
+sk login --engine-url http://localhost:3000 --api-key wf_live_…
 ```
 
 ## 4. Register your first connector

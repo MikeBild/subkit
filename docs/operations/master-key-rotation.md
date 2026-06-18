@@ -56,7 +56,7 @@ decrypt also fails after rotation**. There is no key-rotation envelope today.
    pool you're rotating. New encrypts under the old key during the
    transition will be lost.
    ```sh
-   ssh ${HOST} 'systemctl stop subkit-engine.service'
+   docker stop subkit
    ```
 
 2. **Take a database snapshot.** This is the only path back if rotation
@@ -118,8 +118,8 @@ decrypt also fails after rotation**. There is no key-rotation envelope today.
    (`apps/engine/src/crypto/aes-gcm.ts:48-53`) and exits non-zero if the
    key is malformed.
    ```sh
-   ssh ${HOST} 'systemctl start subkit-engine.service'
-   ssh ${HOST} 'journalctl -u subkit-engine.service --since "1 minute ago" -n 50'
+   docker start subkit
+   docker logs --since 1m subkit
    ```
    `/v1/health` should return `db_connected: true` within 30s.
 
@@ -146,9 +146,9 @@ decrypt also fails after rotation**. There is no key-rotation envelope today.
    leaf. CLI: `sk settings set auth.oidc.client_secret '"…"'` and
    per-tenant `llm.api_key`.
 
-10. **Verify.** Run `scripts/smoke.sh https://${HOST}` and the
-    tenant-scoped integration smoke; expect zero `decrypt_failed`
-    `CryptoError` entries in the structured log.
+10. **Verify.** Hit `${ENGINE_URL}/v1/health` and run the tenant-scoped
+    integration smoke; expect zero `decrypt_failed` `CryptoError` entries
+    in the structured log.
 
 ## Downtime window
 
