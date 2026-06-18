@@ -303,7 +303,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
     connectors: ["digitalocean", "gmail"],
     expect_judge_block: false,
     content_checks: [
-      { name: "recipient present", pattern: "mike@mikebild\\.com" },
+      { name: "recipient present", pattern: "user@example\\.com" },
       { name: "project names non-empty", pattern: '"name"\\s*:\\s*"[^"]+"' },
       { name: "cpu spec present", pattern: "vcpu|cpu", flags: "i" },
       { name: "memory spec present", pattern: "memory|ram|_gb|gb\\b", flags: "i" },

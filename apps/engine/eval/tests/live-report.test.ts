@@ -25,7 +25,7 @@ const SPEC: LiveScenarioSpec = {
   connectors: ["digitalocean", "gmail"],
   expect_judge_block: false,
   content_checks: [
-    { name: "recipient", pattern: "mike@mikebild\\.com" },
+    { name: "recipient", pattern: "user@example\\.com" },
     { name: "specs", pattern: "vcpu", flags: "i" },
   ],
 };
