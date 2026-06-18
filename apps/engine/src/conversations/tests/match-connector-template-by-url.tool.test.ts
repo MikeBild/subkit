@@ -106,7 +106,7 @@ describe("matchConnectorTemplateByUrlTool", () => {
   test("Atlassian tinyui URL surfaces resolved_resource with decoded page_id", async () => {
     const toolCtx = await createToolCtx();
     const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
-      url: "https://si-emobility.atlassian.net/wiki/x/y4ozBQ",
+      url: "https://acme.atlassian.net/wiki/x/y4ozBQ",
       limit: 3,
     });
     expect(result.ok).toBe(true);
@@ -200,7 +200,7 @@ describe("matchConnectorTemplateByUrlTool", () => {
   test("preserves the literal top-level field name 'resolved_resource' for an Atlassian URL", async () => {
     const toolCtx = await createToolCtx();
     const result = await matchConnectorTemplateByUrlTool.execute(toolCtx, {
-      url: "https://si-emobility.atlassian.net/wiki/x/y4ozBQ",
+      url: "https://acme.atlassian.net/wiki/x/y4ozBQ",
       limit: 3,
     });
     expect(result.ok).toBe(true);

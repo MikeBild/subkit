@@ -100,7 +100,7 @@ describe("synthesizeFallbackMessage · run_workflow describe (bug E / 86de186b)"
         resource_id: null,
         latest_probe: { ok: true, status_code: 200 },
         next_best_actions: ["save_connector_draft"],
-        next_prompt: "Saving si-emobility-jira connector",
+        next_prompt: "Saving acme-jira connector",
       }),
     ];
     const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
@@ -109,7 +109,7 @@ describe("synthesizeFallbackMessage · run_workflow describe (bug E / 86de186b)"
     // Never-silent guard surfaces `next_prompt` directly as the
     // assistant text when the model emits nothing — that's the
     // actionable one-liner the user actually needs.
-    expect(msg).toBe("Saving si-emobility-jira connector");
+    expect(msg).toBe("Saving acme-jira connector");
   });
 
   test("lifecycle envelope (workflow committed) renders verb + next action", () => {

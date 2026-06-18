@@ -11,7 +11,7 @@
 > `4be64678` (6.19.1) → `7892cdfa` + `8aa19d0d` (6.19.2) → `b7fbcd73` (6.19.3).
 > **Runtime fact:** the engine ships as a single binary via `bun build --compile` (no
 > `node_modules` at runtime) and is deployed to a DigitalOcean droplet behind
-> `subkit-api.mikebild.dev`.
+> `subkit-api.example.com`.
 
 ---
 

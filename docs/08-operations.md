@@ -2,7 +2,6 @@
 
 > **Reading time:** ~16 min
 > **Audience:** SREs, platform engineers, operators running sk in production
-> **Strategy context:** developer view of [cost attribution (R10)](./system-requirements.md#r10--cost-attribution-and-per-tenant-budget), [one governance gate (R12)](./system-requirements.md#r12--multiple-entry-surfaces-one-governance-point), and the drift-assisted-repair side of the [closed learning loop (R5)](./system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation). For the structural changes operators can expect, see [structural changes in positioning](./positioning.md#7-part-2b--structural-changes-sk-specific-not-generic-outcomes).
 
 sk is designed for enterprise deployment. That means it has to be reliable enough to run unattended, observable enough to diagnose problems quickly, and self-correcting enough to handle the inevitable drift that comes from running in a changing environment.
 
@@ -382,5 +381,3 @@ key — back it up, rotate after operator handover.
 
 - [AGENTS contract](../AGENTS.md) — canonical repo-wide contract for contributors: subsystem map, quality gates, and non-negotiables.
 - [Operator quickstart](./quickstart/operator.md) — step-by-step: engine up, admin key minted, first connector registered, in 10 minutes.
-- [cost attribution (R10)](./system-requirements.md#r10--cost-attribution-and-per-tenant-budget) — strategy-level requirement this operations layer realises.
-- [structural changes (positioning §7)](./positioning.md#7-part-2b--structural-changes-sk-specific-not-generic-outcomes) — what operators concretely experience after sk is in place.

@@ -5,27 +5,27 @@ import { urlScanner } from "../scanners/url.ts";
 
 describe("urlScanner", () => {
   it("passes when the emitted URL matches engine_url", () => {
-    const vs = urlScanner.scan("Hit https://subkit-api.mikebild.dev/mcp now.", {
-      engine_url: "https://subkit-api.mikebild.dev",
+    const vs = urlScanner.scan("Hit https://subkit-api.example.com/mcp now.", {
+      engine_url: "https://subkit-api.example.com",
     });
     expect(vs).toEqual([]);
   });
 
   it("flags a subkit-shaped URL whose origin differs from engine_url", () => {
     const vs = urlScanner.scan("Hit https://subkit-api.other.dev/mcp now.", {
-      engine_url: "https://subkit-api.mikebild.dev",
+      engine_url: "https://subkit-api.example.com",
     });
     expect(vs).toHaveLength(1);
     expect(vs[0]?.kind).toBe("url.unknown_origin");
     expect(vs[0]?.details).toMatchObject({
       emitted_origin: "https://subkit-api.other.dev",
-      engine_url_origin: "https://subkit-api.mikebild.dev",
+      engine_url_origin: "https://subkit-api.example.com",
     });
   });
 
   it("ignores foreign hosts (github, anthropic, vendor docs)", () => {
     const vs = urlScanner.scan("See https://github.com/anthropics or https://docs.anthropic.com.", {
-      engine_url: "https://subkit-api.mikebild.dev",
+      engine_url: "https://subkit-api.example.com",
     });
     expect(vs).toEqual([]);
   });
@@ -48,7 +48,7 @@ describe("urlScanner", () => {
   it("handles multiple URLs in one block", () => {
     const text =
       "Try https://subkit-api.first.dev/mcp or https://subkit-api.second.dev/mcp or even https://github.com.";
-    const vs = urlScanner.scan(text, { engine_url: "https://subkit-api.mikebild.dev" });
+    const vs = urlScanner.scan(text, { engine_url: "https://subkit-api.example.com" });
     expect(vs.map((v) => v.details?.emitted_origin)).toEqual([
       "https://subkit-api.first.dev",
       "https://subkit-api.second.dev",
@@ -56,7 +56,7 @@ describe("urlScanner", () => {
   });
 
   it("does not panic on malformed URLs", () => {
-    const vs = urlScanner.scan("https://", { engine_url: "https://subkit-api.mikebild.dev" });
+    const vs = urlScanner.scan("https://", { engine_url: "https://subkit-api.example.com" });
     expect(vs).toEqual([]);
   });
 
@@ -68,20 +68,20 @@ describe("urlScanner", () => {
 
   it("attaches a `repair` URL that coerces the emitted origin to the grounded one", () => {
     const vs = urlScanner.scan("Hit https://subkit-api.other.dev/mcp now.", {
-      engine_url: "http://subkit-api.mikebild.dev",
+      engine_url: "http://subkit-api.example.com",
     });
     expect(vs).toHaveLength(1);
     // Scheme and host are coerced; path is preserved.
-    expect(vs[0]?.repair).toBe("http://subkit-api.mikebild.dev/mcp");
-    expect(vs[0]?.details?.repaired_to).toBe("http://subkit-api.mikebild.dev/mcp");
+    expect(vs[0]?.repair).toBe("http://subkit-api.example.com/mcp");
+    expect(vs[0]?.details?.repaired_to).toBe("http://subkit-api.example.com/mcp");
   });
 
   it("repairs a scheme-only mismatch (https vs http) to the grounded scheme", () => {
-    const vs = urlScanner.scan("https://subkit-api.mikebild.dev/mcp", {
-      engine_url: "http://subkit-api.mikebild.dev",
+    const vs = urlScanner.scan("https://subkit-api.example.com/mcp", {
+      engine_url: "http://subkit-api.example.com",
     });
     expect(vs).toHaveLength(1);
-    expect(vs[0]?.repair).toBe("http://subkit-api.mikebild.dev/mcp");
+    expect(vs[0]?.repair).toBe("http://subkit-api.example.com/mcp");
   });
 
   it("omits `repair` when no engine_url is in context", () => {

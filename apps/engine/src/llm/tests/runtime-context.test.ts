@@ -10,8 +10,8 @@ describe("renderRuntimeContextBlock", () => {
   });
 
   it("renders engine_url verbatim and forbids placeholder hosts", () => {
-    const block = renderRuntimeContextBlock({ engine_url: "https://subkit-api.mikebild.dev" });
-    expect(block).toContain("- engine_url: https://subkit-api.mikebild.dev");
+    const block = renderRuntimeContextBlock({ engine_url: "https://subkit-api.example.com" });
+    expect(block).toContain("- engine_url: https://subkit-api.example.com");
     expect(block).toContain("never paraphrase");
     expect(block).toContain("your-subkit-instance.com");
     expect(block).toContain("cannot_help");
@@ -51,8 +51,8 @@ describe("renderRuntimeContextBlock", () => {
 
 describe("resolveEngineUrl", () => {
   it("returns the request's origin when present", () => {
-    const url = resolveEngineUrl({ url: "https://subkit-api.mikebild.dev/v1/conversations" });
-    expect(url).toBe("https://subkit-api.mikebild.dev");
+    const url = resolveEngineUrl({ url: "https://subkit-api.example.com/v1/conversations" });
+    expect(url).toBe("https://subkit-api.example.com");
   });
 
   it("strips path, query and hash", () => {

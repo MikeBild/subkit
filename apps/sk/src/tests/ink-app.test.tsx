@@ -1063,7 +1063,7 @@ describe("ink-app: journey 12 — modal panes", () => {
           title: "status",
           subtitle: "journey",
           rows: [
-            ["user", "mike@mikebild.com"],
+            ["user", "user@example.com"],
             ["tenant", "tenant-alpha"],
             ["connectors", 7],
             ["tokens · today", 128],
@@ -1078,7 +1078,7 @@ describe("ink-app: journey 12 — modal panes", () => {
     await tick(60);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("status");
-    expect(frame).toContain("mike@mikebild.com");
+    expect(frame).toContain("user@example.com");
     expect(frame).toContain("tenant-alpha");
     expect(frame).toContain("connectors");
     expect(frame).toContain("128");

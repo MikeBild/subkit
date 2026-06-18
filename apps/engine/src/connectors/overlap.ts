@@ -23,7 +23,7 @@
 export interface ConnectorOverlapInput {
   /** Driver slug (e.g. "http", "graphql", "postgres"). */
   driver: string;
-  /** Base URL string (e.g. "https://si-emobility.atlassian.net"). */
+  /** Base URL string (e.g. "https://acme.atlassian.net"). */
   base_url: string | null;
   /** Credential mode (e.g. "basic", "oauth2_authorization_code"). */
   auth_type: string;

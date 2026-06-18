@@ -6,19 +6,6 @@
 This document maps common agent tasks to the relevant concept doc plus the
 subsystem directory that owns them. For a full subsystem table, see `AGENTS.md`.
 
-## Strategy & positioning (start here for *why*)
-
-When the task involves product framing, vocabulary, category claims, or "why this
-matters" — not just *how* to change code — read these three first:
-
-| Document | What it covers |
-|---|---|
-| `docs/thesis.md` | *Why this category exists.* Theory of organisational agentic operationalisation. |
-| `docs/system-requirements.md` | *What such a system must do.* Twelve vendor-agnostic requirements. |
-| `docs/positioning.md` | *How sk realises it.* Principles, worked examples, structural changes, honest gaps. |
-
-The task tables below cover *how* to change behaviour inside sk.
-
 ## "I want to…"
 
 ### Add an external integration

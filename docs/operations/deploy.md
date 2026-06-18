@@ -29,10 +29,10 @@ Prerequisites:
 - A DNS zone you control on DO nameservers (the script creates a `subkit-api.<zone>` A record).
 
 ```bash
-SSH_KEY_NAME=mikebild-local \
+SSH_KEY_NAME=subkit-deploy \
 SSH_KEY_PATH=$HOME/.ssh/id_rsa \
 DROPLET_NAME=subkit-engine \
-DOMAIN_ROOT=mikebild.dev \
+DOMAIN_ROOT=example.com \
 bash scripts/do-bootstrap.sh
 ```
 
@@ -57,7 +57,7 @@ What it does, step by step:
 DEPLOY_HOST=46.101.236.142 \
 DEPLOY_USER=root \
 SSH_KEY_PATH=$HOME/.ssh/id_rsa \
-DEPLOY_URL=https://subkit-api.mikebild.dev \
+DEPLOY_URL=https://subkit-api.example.com \
 bash scripts/deploy.sh patch
 ```
 
@@ -111,7 +111,7 @@ Blockers exit 1 with a `boot.dependency.<name>.fail` log; non-blockers continue 
 
 **`apt update` fails with `NO_PUBKEY ABA1F9B8875A6661`** — caddy's GPG key was dearmored to the wrong path in older bootstrap runs. Fix: `cp /etc/apt/keyrings/caddy.gpg /usr/share/keyrings/caddy-stable-archive-keyring.gpg && apt-get update` (the current `do-bootstrap.sh` writes to the right path; older invocations need this one-shot fixup).
 
-**Caddy fails to reload with `wrong argument count after 'email'`** — `CADDY_ACME_EMAIL` env was unset and the older Caddyfile referenced it without a default. The current Caddyfile uses `email {$CADDY_ACME_EMAIL:mike@mikebild.com}`; sync with `scp deploy/caddy/Caddyfile root@$HOST:/etc/caddy/Caddyfile && ssh root@$HOST systemctl reload caddy`.
+**Caddy fails to reload with `wrong argument count after 'email'`** — `CADDY_ACME_EMAIL` env was unset and the older Caddyfile referenced it without a default. The current Caddyfile uses `email {$CADDY_ACME_EMAIL:admin@example.com}`; sync with `scp deploy/caddy/Caddyfile root@$HOST:/etc/caddy/Caddyfile && ssh root@$HOST systemctl reload caddy`.
 
 **`/v1/diagnostics/llm` reports `inferred_provider: mock`** — the engine boots fine but no LLM key is wired. Set:
 

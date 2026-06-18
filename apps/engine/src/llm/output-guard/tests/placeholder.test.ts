@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { placeholderScanner } from "../scanners/placeholder.ts";
 
-const ctx = { engine_url: "https://subkit-api.mikebild.dev" };
+const ctx = { engine_url: "https://subkit-api.example.com" };
 
 describe("placeholderScanner", () => {
   it("flags `your-subkit-instance.com`", () => {
@@ -42,7 +42,7 @@ describe("placeholderScanner", () => {
 
   it("returns no violations on clean text", () => {
     const vs = placeholderScanner.scan(
-      "Use https://subkit-api.mikebild.dev/mcp with the key the create_api_key tool returned.",
+      "Use https://subkit-api.example.com/mcp with the key the create_api_key tool returned.",
       ctx,
     );
     expect(vs).toEqual([]);
@@ -73,8 +73,8 @@ describe("placeholderScanner", () => {
     const vs = placeholderScanner.scan("Use https://your-subkit-instance.com/mcp", ctx);
     expect(vs).toHaveLength(1);
     expect(vs[0]?.kind).toBe("placeholder.host");
-    expect(vs[0]?.repair).toBe("subkit-api.mikebild.dev");
-    expect(vs[0]?.details?.repaired_to).toBe("subkit-api.mikebild.dev");
+    expect(vs[0]?.repair).toBe("subkit-api.example.com");
+    expect(vs[0]?.details?.repaired_to).toBe("subkit-api.example.com");
   });
 
   it("omits `repair` when no engine_url is exposed (falls back to the guard marker)", () => {

@@ -2,7 +2,6 @@
 
 > **Reading time:** ~12 min
 > **Audience:** Security engineers, compliance reviewers, operators wiring access
-> **Strategy context:** developer view of [delegated AI action (R6)](./system-requirements.md#r6--delegated-ai-action-with-scoped-time-bound-revocable-audited-authority), [action-level identity (R7)](./system-requirements.md#r7--fine-grained-action-level-identity-and-authorisation), [secrets isolation (R8)](./system-requirements.md#r8--secrets-isolation-from-the-ai-context), [tenant isolation (R9)](./system-requirements.md#r9--multi-tenant-isolation-as-a-structural-property), and [audit-grade evidence (R11)](./system-requirements.md#r11--audit-grade-evidence-not-compliance) — explicitly **not** compliance itself. The principles live in [§5.1 of positioning](./positioning.md#51-security-and-governance--principles).
 
 Enterprise AI requires enterprise-grade security from the start. A platform that touches production integrations, sensitive credentials, and automated business processes cannot treat security as a layer added later. It has to be the foundation.
 
@@ -150,4 +149,3 @@ The `authenticate_oauth` flow surfaces an authorization URL that the sk CLI auto
 
 - [Deployment & operations](./08-operations.md) — how sk is deployed, how operators monitor it in production, and how it handles failure gracefully.
 - [glossary — governance terms](./02-concepts.md#group-5-governance) — Audit Log, RBAC, Before-Request Hook, Self-Healing, Patch Candidate.
-- [audit-grade evidence (R11)](./system-requirements.md#r11--audit-grade-evidence-not-compliance) — why audit is evidence, not compliance.

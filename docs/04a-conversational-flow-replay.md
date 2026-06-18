@@ -18,25 +18,25 @@ the harness auto-persist (audit reason `auto_persist_on_confirmation`).
 ## Flow A — Bearer connector creation (Jira, GitHub, custom HTTP API)
 
 ```
-› you   create a new workflow that loads my jira tickets from si-emobility.atlassian.net
+› you   create a new workflow that loads my jira tickets from acme.atlassian.net
 
-• sk    Setting up a Jira connector for si-emobility.atlassian.net first.
+• sk    Setting up a Jira connector for acme.atlassian.net first.
 
-✓ Connector draft ready · si-emobility-jira · http · dev · auth=basic
+✓ Connector draft ready · acme-jira · http · dev · auth=basic
   Need: Atlassian email + API token (https://id.atlassian.com/manage-profile/security/api-tokens)
 
 › you   email=mike.bild@siemens.com, token=***
 
 ✓ Endpoint check complete · GET /rest/api/3/myself · dev · HTTP 200 · 739ms
-✓ Connector saved · si-emobility-jira (audit reason: auto_persist_on_green_probe)
+✓ Connector saved · acme-jira (audit reason: auto_persist_on_green_probe)
 
-• sk    si-emobility-jira saved. Which issues should the workflow load?
+• sk    acme-jira saved. Which issues should the workflow load?
         - all tickets assigned to me
         - open tickets in a specific project
         - a custom JQL query
 ```
 
-What changed vs. the old flow: the `approve · Save SI eMobility Jira
+What changed vs. the old flow: the `approve · Save Acme Jira
 connector` step is gone. The probe envelope returns the saved-connector
 shape directly, the lifecycle line reads "saved", and the next prompt
 points the operator at the next decision (workflow scope) without a

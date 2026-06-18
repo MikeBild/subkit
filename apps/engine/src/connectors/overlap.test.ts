@@ -14,7 +14,7 @@ import { baseUrlHost, compareConnectorOverlap, scoreConnectorOverlap } from "./o
 
 const PROPOSED = {
   driver: "http",
-  base_url: "https://si-emobility.atlassian.net/wiki/api/v2",
+  base_url: "https://acme.atlassian.net/wiki/api/v2",
   auth_type: "basic",
 };
 
@@ -32,8 +32,8 @@ function existingConnector(row: ExistingRow): ExistingRow {
 
 describe("baseUrlHost", () => {
   it("returns lowercased host for a normal URL", () => {
-    expect(baseUrlHost("https://Si-EMobility.Atlassian.NET/wiki/api/v2")).toBe(
-      "si-emobility.atlassian.net",
+    expect(baseUrlHost("https://Acme.Atlassian.NET/wiki/api/v2")).toBe(
+      "acme.atlassian.net",
     );
   });
 
@@ -51,7 +51,7 @@ describe("scoreConnectorOverlap", () => {
       existingConnector({
         id: "c1",
         driver: "http",
-        base_url: "https://si-emobility.atlassian.net",
+        base_url: "https://acme.atlassian.net",
         auth_type: "basic",
       }),
       PROPOSED,
@@ -65,7 +65,7 @@ describe("scoreConnectorOverlap", () => {
       existingConnector({
         id: "c2",
         driver: "http",
-        base_url: "https://si-emobility.atlassian.net",
+        base_url: "https://acme.atlassian.net",
         auth_type: "oauth2_authorization_code",
       }),
       PROPOSED,
@@ -145,14 +145,14 @@ describe("compareConnectorOverlap", () => {
         existingConnector({
           id: "auth-mismatch",
           driver: "http",
-          base_url: "https://si-emobility.atlassian.net",
+          base_url: "https://acme.atlassian.net",
           auth_type: "oauth2_authorization_code",
         }),
         // Score 3 — full match.
         existingConnector({
           id: "exact",
           driver: "http",
-          base_url: "https://si-emobility.atlassian.net",
+          base_url: "https://acme.atlassian.net",
           auth_type: "basic",
         }),
       ],
@@ -188,7 +188,7 @@ describe("compareConnectorOverlap", () => {
         existingConnector({
           id: "near",
           driver: "http",
-          base_url: "https://si-emobility.atlassian.net",
+          base_url: "https://acme.atlassian.net",
           auth_type: "oauth2_authorization_code",
         }),
       ],

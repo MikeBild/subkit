@@ -20,9 +20,9 @@ import { applyRuntimeTemplate } from "../context-assembler.ts";
 describe("applyRuntimeTemplate", () => {
   it("substitutes ${engine_url} with the runtime value", () => {
     const out = applyRuntimeTemplate("Hit ${engine_url}/mcp with a Bearer header.", {
-      engine_url: "http://subkit-api.mikebild.dev",
+      engine_url: "http://subkit-api.example.com",
     });
-    expect(out).toBe("Hit http://subkit-api.mikebild.dev/mcp with a Bearer header.");
+    expect(out).toBe("Hit http://subkit-api.example.com/mcp with a Bearer header.");
   });
 
   it("substitutes multiple whitelisted tokens in a single pass", () => {

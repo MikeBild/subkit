@@ -14,7 +14,7 @@ const INPUT: StatusLineInput = {
   schema_version: 1,
   profile: "default",
   persona: "member",
-  user: "mike@mikebild.com",
+  user: "user@example.com",
   auth_status: "signed_in",
   tenant: "t-1",
   engine_url: "http://localhost:8080",
@@ -37,7 +37,7 @@ describe("sk status line", () => {
       "{user}{@tenant} · {model} · {turn_tokens}t / {remaining_tokens} · {unknown}",
       INPUT,
     );
-    expect(out).toBe("mike@mikebild.com@t-1 · claude-sonnet-4-6 · 42t / 9958");
+    expect(out).toBe("user@example.com@t-1 · claude-sonnet-4-6 · 42t / 9958");
   });
 
   test("renderTemplate collapses empty values and their surrounding separators", () => {

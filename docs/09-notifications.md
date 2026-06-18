@@ -192,8 +192,7 @@ operator can decide without opening logs:
    dry-run outcome against recorded fixtures, and the operator
    actions: **approve**, **reject**, **escalate to human**.
 
-A concrete delivery body for the wholesaler example from
-`docs/positioning.md §6.3` — same shape across every surface:
+A concrete delivery body — the same shape across every surface:
 
 ```json
 {

@@ -3,6 +3,17 @@
   "version": "6.20.11",
   "private": true,
   "type": "module",
+  "description": "A self-hostable, multi-tenant engine for governed, versioned, AI-assisted workflow execution against connected systems.",
+  "license": "MIT",
+  "author": "Mike Bild",
+  "homepage": "https://github.com/mikebild/subkit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikebild/subkit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mikebild/subkit/issues"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"

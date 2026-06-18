@@ -1,31 +1,25 @@
 # The Platform
 
-> *For the structural framing of the category sk occupies — why this layer is emerging
-> in enterprise software — read [`thesis.md`](thesis.md). For the requirements that
-> follow from that framing, see [`system-requirements.md`](system-requirements.md). For
-> the full positioning, see [`positioning.md`](positioning.md). This document is the
-> architectural view for developers and operators.*
+sk is a self-hostable, multi-tenant engine for **governed, versioned, AI-assisted
+workflow execution** against the systems an organisation already runs. It uses AI grounded
+on the organisation's own context to lower the cost of *authoring* a workflow, while keeping
+*execution* deterministic and auditable.
 
-sk is an **operational AI execution layer** — the shared system in which an organisation
-turns individual agentic productivity into organisational agentic operationalisation. The
-problem it addresses is the one named in the thesis:
+The problem it addresses: models, agents, and integration platforms are all mature, but
+turning an organisation's specific structure, knowledge, and ways of working into
+repeatable, reviewable automation still happens ad-hoc — in private scripts and chat
+histories that do not compose across teams.
 
-> *Models are mature. Agents are mature. Workflow and integration platforms are mature.
-> The bottleneck sits between them — in the mediation of an organisation's specific
-> structure, culture, knowledge, priorities, and ways of working to those mature layers,
-> and in the daily improvement and application of that knowledge.*
+Concretely, sk produces a versioned, reviewable workflow artefact in the authoring phase,
+then governs and runs it deterministically in production — with a closed feedback loop
+(drift detection → operator-reviewed Patch and Skill Candidates → improved next authoring
+run). The contextual grounding lowers the cost of authoring; the engine guarantees that what
+runs in production is exactly what a human approved; the learning loop makes each subsequent
+run better-grounded than the last.
 
-Concretely, sk uses **AI grounded on the organisation's own context** as that mediator:
-it produces a versioned, reviewable workflow artefact in the authoring phase, then
-governs and runs it deterministically in production — with a closed feedback loop
-(drift detection → operator-reviewed Patch and Skill Candidates → improved next
-authoring run). The contextual grounding is what lowers the cost of authoring; the
-platform guarantees that what runs in production is exactly what a human approved; the
-learning loop is what makes the operating model improve over time.
+![sk architecture overview — inbound surfaces, the MCP OAuth bridge, the six engine clusters, and the four outbound system categories.](overview.png)
 
-![sk architecture overview — inbound surfaces, the MCP OAuth bridge, the six engine clusters (with Tenant Context highlighted as the moat), and the four outbound system categories.](overview.png)
-
-*The full architecture at a glance. Inbound surfaces (Chat · CLI · HTTP REST API · Inbound Webhooks · Scheduler) reach the engine directly; external AI clients cross the **MCP OAuth bridge** (yellow, dashed). The engine groups into six clusters: Authoring + Conversations, **Tenant Context — the moat** (green), Governance, Workflows + Execution, Connectors, Infrastructure. Source: [`overview.drawio`](overview.drawio).*
+*The full architecture at a glance. Inbound surfaces (Chat · CLI · HTTP REST API · Inbound Webhooks · Scheduler) reach the engine directly; external AI clients cross the **MCP OAuth bridge** (yellow, dashed). The engine groups into six clusters: Authoring + Conversations, Tenant Context, Governance, Workflows + Execution, Connectors, Infrastructure. Source: [`overview.drawio`](overview.drawio).*
 
 ---
 

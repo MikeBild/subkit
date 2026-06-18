@@ -12,7 +12,7 @@ import { LlmOutputViolation } from "../../errors.ts";
 import { runOutputGuard } from "../index.ts";
 import { createStreamScrubber } from "../stream-scrub.ts";
 
-const ctx = { engine_url: "https://subkit-api.mikebild.dev" };
+const ctx = { engine_url: "https://subkit-api.example.com" };
 
 // Obviously fake, regex-shaped fixture (Atlassian ATATT pat).
 const FAKE_TOKEN = "ATATTexampleexampleexample123Aa456";
@@ -59,7 +59,7 @@ describe("runOutputGuard — secret pre-pass (hard mode)", () => {
   });
 
   it("leaves clean text untouched and does not throw", () => {
-    const text = "Use https://subkit-api.mikebild.dev/mcp";
+    const text = "Use https://subkit-api.example.com/mcp";
     expect(runOutputGuard(text, ctx, { mode: "hard" }).text).toBe(text);
   });
 });

@@ -2,7 +2,6 @@
 
 > **Reading time:** ~12 min
 > **Audience:** Engineers integrating with sk, operators configuring surfaces
-> **Strategy context:** developer view of [one governance gate (R12)](./system-requirements.md#r12--multiple-entry-surfaces-one-governance-point) and [delegated AI action (R6)](./system-requirements.md#r6--delegated-ai-action-with-scoped-time-bound-revocable-audited-authority); the principles for what flows across these surfaces live in [security and governance principles](./positioning.md#51-security-and-governance--principles).
 
 Automation that only works from one place does not fit how enterprise teams actually operate. A developer may prefer a terminal. An analyst may live in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant should be able to call a workflow directly.
 
@@ -245,4 +244,3 @@ Not every workflow starts with a human. Scheduled triggers and inbound webhooks 
 
 - [AI-assisted authoring](./04-authoring.md) — how Conversations work, how the AI assembles Workflows, and how the approval gate turns a Draft into a committed, executable Workflow.
 - [glossary](./02-concepts.md#group-6-surfaces) — definitions for sk CLI, MCP Server, Chat Adapter, Notification Rule, Service Metadata.
-- [positioning §5](./positioning.md#5-part-2--principles-and-flows-no-feature-inventory) — the strategy-level principles every surface implements.

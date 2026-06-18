@@ -723,7 +723,7 @@ export async function processDriftSignal(
     classification: decision.classification,
     decision: auto_applied ? "auto_applied" : "parked",
   });
-  // Opening edge of the Run → Drift → Patch → Skill loop (positioning.md §6):
+  // Opening edge of the Run → Drift → Patch → Skill loop (docs/06-execution.md):
   // a drift signal just became a Patch Candidate. Tenant-scoped sibling of the
   // tenant-less patch_candidates_total above.
   recordLoopDriftToPatchCandidate({

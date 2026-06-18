@@ -6,51 +6,21 @@ This file is the authoritative glossary for sk. Every term used across all other
 
 Terms are grouped by concern. Read the groups in order for a complete mental model, or jump to a specific group when you need a definition.
 
-For the structural framing of the category, see [`thesis.md`](thesis.md);
-for the system requirements that follow, see [`system-requirements.md`](system-requirements.md);
-for how sk realises the requirements, see [`positioning.md`](positioning.md).
-
 ---
 
-## Group 0: Strategy Vocabulary
+## Group 0: Naming & Acronyms
 
-These terms come from the three strategy documents and recur throughout this stack. They are kept stable across all documents.
+A few names in the codebase differ from the phrasing used in the prose docs, and several acronyms recur across every group. Both are collected here so every reader shares the same vocabulary.
 
-The vocabulary for this category is a **triad** — three terms that say the same thing at three levels and are deliberately *not* mixed inside a single sentence:
+**Contextual learning loop** — *Run → Drift → Patch Candidate → Skill Candidate → Better Authoring → Better Run.* The mechanism by which a tenant's authoring context improves over time: every run can surface drift, a drift can produce an operator-reviewed Patch Candidate, a recurring pattern can produce an operator-promoted Skill Candidate, and both feed back into the next authoring run. See [`06-execution.md`](06-execution.md) and the self-healing subsystem.
 
-**Organisational agentic operationalisation** — *theory term.* Used in [`thesis.md`](thesis.md) and theory passages of [`system-requirements.md`](system-requirements.md). Precise but long; not oral-stable.
+**Drift-assisted repair suggestion** — the prose phrasing for the codebase's *self-healing* subsystem (also called *operator-reviewed remediation* in governance contexts). Same concept, different audience.
 
-**Operational AI execution layer** — *market term.* The shared system in which an organisation governs, executes, and learns from operational AI work. Used in [`positioning.md`](positioning.md) and in product-side discussion. Enterprise-compatible and accurate; not yet memetic.
+> **Naming note.** The prose docs say "drift-assisted repair"; the codebase keeps stable technical identifiers (`apps/engine/src/self-healing/`, `rbac/`, `credentials/`, etc.). These names must not be renamed for vocabulary alignment — they are referenced by modules, logs, and tests.
 
-**The Operating Model** — *iconic short term.* Deliberately reuses an existing strategic-management term and **reframes it as software**: the operating model used to live in PowerPoint as a static description of how the company runs; sk makes it executable, versioned, audited, and actually running. Used as the punchline alongside the longer terms.
+### Acronyms
 
-> ***Your operating model used to live in PowerPoint. Now it runs.***
-
-**Central axiom** — recurs verbatim across all strategy documents:
-
-> ***The operating model improves because the organisation learns — and that is the part the organisation can actually control.***
-
-**The three core ideas:**
-
-- *Idea 1 — Problem.* Agentic productivity does not automatically scale organisationally.
-- *Idea 2 — Category.* The bottleneck is not intelligence (supplied externally by model vendors) and not workflow execution (supplied by mature platforms) — it is the **mediation of organisation-specific context** to those mature components; operationalisation is the form this mediation takes.
-- *Idea 3 — Moat.* The moat emerges from organisational context accumulation, not from any single feature.
-
-**Mediation bottleneck** — the gap that defines the category. Between mature models, mature agents, and mature workflow/integration platforms sits the question of *how organisation-specific structure, culture, knowledge, priorities, and ways of working reach those mature layers* — and how that knowledge is improved and applied daily. The numbers in [§1 of the thesis](thesis.md#the-mediation-bottleneck-is-operationally-measurable) describe its operational footprint; operationalisation is the form in which the bottleneck dissolves.
-
-**Contextual learning loop** — also known as the *compounding loop*. *Run → Drift → Patch Candidate → Skill Candidate → Better Authoring → Better Run.* The mechanism by which the operating model improves over time. See [Git for operational organisational logic](thesis.md#53-operational-knowledge-becomes-accumulable-versionable-inheritable--git-for-operational-organisational-logic) and the [four platform effects](thesis.md#8-four-platform-effects--over-context-not-over-users) in the thesis, plus [closed learning loop](system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation) in the requirements.
-
-**Scaling cliff** — the point at which solo agentic productivity stops aggregating into organisational operationalisation without a shared system. *More solo actors means more variation, not more coherence.* See [the real problem domain](thesis.md#3-the-real-problem-domain--solo-leverage-vs-organisational-operationalisation) in the thesis.
-
-**Shadow AI scope decision** — sk does not eliminate shadow AI; it provides a governed lane for the operational subset that touches production systems. The rest stays free and that is the deliberate scope choice. See [scope decision](positioning.md#1-summary) and [what sk still lacks](positioning.md#8-part-3--what-sk-still-lacks-honestly) in positioning.
-
-**Drift-assisted repair suggestion** — the external phrasing for the codebase's *self-healing* subsystem (also known as *operator-reviewed remediation* in governance contexts). Same concept, different audience.
-
-> **Dual-vocabulary note.** Strategy and external surfaces (`README.md`, `docs/thesis.md`, `docs/positioning.md`, public-facing docs) use the external phrasing above. The codebase keeps technical names (`apps/engine/src/self-healing/`, `rbac/`, `credentials/`, etc.) — those names are stable identifiers and must not be renamed for vocabulary alignment.
-
-### Acronyms used in the strategy stack
-
-These appear across the strategy docs. Listed here so every reader has the same expansion at hand.
+Collected so every reader has the same expansion at hand.
 
 | Acronym | Expansion | One-line definition |
 |---|---|---|
@@ -72,25 +42,6 @@ These appear across the strategy docs. Listed here so every reader has the same 
 | SAML | Security Assertion Markup Language | Enterprise SSO standard, alternative to OIDC. |
 | SCIM | System for Cross-domain Identity Management | Standard for automated user provisioning and deprovisioning. |
 | SSO | Single Sign-On | One login session unlocks multiple applications. |
-
-### Requirement aliases (R1–R12)
-
-[`system-requirements.md`](system-requirements.md) numbers its twelve requirements R1–R12. The aliases below are the plain-language handle that the strategy docs use in running text; the R-number stays as a parenthetical anchor. **Single source of truth — if the alias changes, change it here first.**
-
-| R | Alias used in running text | One-line meaning | Full spec |
-|---|---|---|---|
-| R1 | shared substrate | One shared execution and review system per organisation, not n parallel installs. | [R1 in spec](system-requirements.md#r1--a-shared-operational-execution-layer) |
-| R2 | context as authoring input | Five tenant-curated context sources ground every authoring action. | [R2 in spec](system-requirements.md#r2--context-as-a-first-class-input-to-authoring) |
-| R3 | authoring-vs-execution split | Authoring may be probabilistic; execution is policy- and version-bound. | [R3 in spec](system-requirements.md#r3--separation-of-authoring-probabilistic-from-execution-controlled) |
-| R4 | workflow as artefact | The approved workflow is a formal, reviewable, diffable, rollbackable artefact. | [R4 in spec](system-requirements.md#r4--workflow-as-a-versioned-organisational-artefact) |
-| R5 | closed learning loop | Operator-reviewed drift repair plus skill promotion compound back into authoring. | [R5 in spec](system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation) |
-| R6 | delegated AI action | External AI clients act through scoped, time-bound, revocable, audited authority. | [R6 in spec](system-requirements.md#r6--delegated-ai-action-with-scoped-time-bound-revocable-audited-authority) |
-| R7 | action-level identity | Authorisation per resource and per action, uniformly across every entry surface. | [R7 in spec](system-requirements.md#r7--fine-grained-action-level-identity-and-authorisation) |
-| R8 | secrets isolation | Credentials AEAD-encrypted, tenant-bound, never in the model context, audited on access. | [R8 in spec](system-requirements.md#r8--secrets-isolation-from-the-ai-context) |
-| R9 | tenant isolation | Multi-tenancy as a structural property: storage, query, response — regression-tested. | [R9 in spec](system-requirements.md#r9--multi-tenant-isolation-as-a-structural-property) |
-| R10 | cost attribution | Per-tenant ceiling, per-flow attribution, invoice-matching usage ledger. | [R10 in spec](system-requirements.md#r10--cost-attribution-and-per-tenant-budget) |
-| R11 | audit-grade evidence | Append-only action log sufficient to feed a SOC2 / ISO27001 / GDPR programme. | [R11 in spec](system-requirements.md#r11--audit-grade-evidence-not-compliance) |
-| R12 | one governance gate | Same approval gate and audit trail behind every surface — CLI, API, MCP, chat. | [R12 in spec](system-requirements.md#r12--multiple-entry-surfaces-one-governance-point) |
 
 ---
 

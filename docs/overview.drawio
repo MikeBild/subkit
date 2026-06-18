@@ -4,7 +4,7 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=18;fontStyle=0;" value="The Operating Model that runs" vertex="1">
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=18;fontStyle=0;" value="subkit — governed, versioned AI execution" vertex="1">
           <mxGeometry height="40" width="1040" x="79" y="120" as="geometry" />
         </mxCell>
         <mxCell id="outside-zone" parent="1" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=center;verticalAlign=top;" value="&lt;b&gt;Outside the bridge&lt;/b&gt; — ungoverned, by design" vertex="1">
@@ -50,7 +50,7 @@
         <mxCell id="authoring" parent="engine" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=11;" value="&lt;b&gt;Authoring + Conversations&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 10px&quot;&gt;multi-provider LLM · prompt assembly · drafts · attachments · agentic tool palette&lt;/font&gt;" vertex="1">
           <mxGeometry height="140" width="320" x="20" y="60" as="geometry" />
         </mxCell>
-        <mxCell id="tenant-context" parent="engine" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=11;" value="&lt;b&gt;Tenant Context — the moat&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 10px&quot;&gt;Skills · Knowledge · Discovery&lt;br&gt;Skill Candidates · Patch Candidates&lt;br&gt;&lt;i&gt;drift-assisted repair, operator-reviewed&lt;/i&gt;&lt;/font&gt;" vertex="1">
+        <mxCell id="tenant-context" parent="engine" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=11;" value="&lt;b&gt;Tenant Context&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 10px&quot;&gt;Skills · Knowledge · Discovery&lt;br&gt;Skill Candidates · Patch Candidates&lt;br&gt;&lt;i&gt;drift-assisted repair, operator-reviewed&lt;/i&gt;&lt;/font&gt;" vertex="1">
           <mxGeometry height="140" width="360" x="360" y="60" as="geometry" />
         </mxCell>
         <mxCell id="governance" parent="engine" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=11;" value="&lt;b&gt;Governance&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 10px&quot;&gt;RBAC · Identity · Credentials&lt;br&gt;API keys · Portal tokens · Audit&lt;/font&gt;" vertex="1">
@@ -135,7 +135,7 @@
         <mxCell id="caption-outbound" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontStyle=2;fontColor=#666666;" value="~100 vendor templates total · governed via the Connector control plane (RBAC, audit, per-tenant credentials)" vertex="1">
           <mxGeometry height="20" width="1040" x="79" y="1330" as="geometry" />
         </mxCell>
-        <mxCell id="legend" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" value="&lt;b&gt;Legend&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 10px&quot;&gt;&lt;span style=&quot;color:#6c8ebf&quot;&gt;■&lt;/span&gt; inbound surface · &lt;span style=&quot;color:#d6b656&quot;&gt;■&lt;/span&gt; MCP OAuth bridge (the &quot;bridge&quot; in the docs) · &lt;span style=&quot;color:#9673a6&quot;&gt;■&lt;/span&gt; engine subsystem · &lt;span style=&quot;color:#82b366&quot;&gt;■&lt;/span&gt; tenant context / moat · &lt;span style=&quot;color:#b46504&quot;&gt;■&lt;/span&gt; outbound system&lt;/font&gt;" vertex="1">
+        <mxCell id="legend" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" value="&lt;b&gt;Legend&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 10px&quot;&gt;&lt;span style=&quot;color:#6c8ebf&quot;&gt;■&lt;/span&gt; inbound surface · &lt;span style=&quot;color:#d6b656&quot;&gt;■&lt;/span&gt; MCP OAuth bridge (the &quot;bridge&quot; in the docs) · &lt;span style=&quot;color:#9673a6&quot;&gt;■&lt;/span&gt; engine subsystem · &lt;span style=&quot;color:#82b366&quot;&gt;■&lt;/span&gt; tenant context · &lt;span style=&quot;color:#b46504&quot;&gt;■&lt;/span&gt; outbound system&lt;/font&gt;" vertex="1">
           <mxGeometry height="50" width="1040" x="79" y="1360" as="geometry" />
         </mxCell>
       </root>

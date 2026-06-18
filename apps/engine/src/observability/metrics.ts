@@ -297,7 +297,7 @@ const HTTP_DURATION_BUCKETS_MS = [5, 25, 100, 500, 2500, 10000] as const;
 
 // Drift→skill-promotion lag, in SECONDS (not ms): the loop spans human-review
 // latency, so buckets stretch from 1 min to 1 week — 1m / 5m / 30m / 1h / 6h /
-// 1d / 1w. Surfaces the positioning.md §6 "compounding becomes measurable" claim.
+// 1d / 1w. Surfaces the compounding learning loop (docs/06-execution.md).
 const LOOP_LAG_BUCKETS_SECONDS = [60, 300, 1800, 3600, 21600, 86400, 604800] as const;
 
 export const METRIC_NAMES = {
@@ -553,7 +553,7 @@ export const METRIC_NAMES = {
    * `subkit_docs_binary_parse_total{result="success"}`.
    */
   DOCS_BINARY_PARSE_INPUT_BYTES_TOTAL: "subkit_docs_binary_parse_input_bytes_total",
-  // ----- Run → Drift → Patch → Skill loop closure (positioning.md §6) -----
+  // ----- Run → Drift → Patch → Skill loop closure (docs/06-execution.md) -----
   // The self-improvement loop runs today but emitted no metric proving it
   // compounds. These four counters + one histogram instrument each stage so
   // "each drift makes the next workflow better" becomes concretely measurable.

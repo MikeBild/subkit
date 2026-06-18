@@ -2,7 +2,6 @@
 
 > **Reading time:** ~14 min
 > **Audience:** Engineers wiring sk to external systems, operators curating the catalogue
-> **Strategy context:** developer view of connectors as a governed integration layer ([positioning §5.3](./positioning.md#53-organisation--principles)) and [secrets isolation (R8)](./system-requirements.md#r8--secrets-isolation-from-the-ai-context). The point is not the *number* of templates but the integration behaviour: credentials isolated from the AI context, versioned per-endpoint behaviour, per-endpoint drift detection.
 
 Automation is only as valuable as the connectors it can reach. An AI that can propose a perfect workflow but cannot connect to your CRM, your billing platform, or your internal database is not useful to an enterprise.
 
@@ -264,4 +263,3 @@ The deliberate non-fail-on-stale design lets the catalogue ship even when the sw
 - [Recipe authoring contract](./05a-recipe-authoring.md) — schema, conventions, multi-connector binding, quality gate, promotion checklist for pre-built workflows shipped on every connector template.
 - [Workflow execution](./06-execution.md) — how workflows that use Connectors actually run: the execution model, step kinds, triggers, versioning, and self-healing.
 - [glossary — integration terms](./02-concepts.md#group-3-integration) — Connector, Connector Template, Driver, Credential.
-- [secrets isolation (R8)](./system-requirements.md#r8--secrets-isolation-from-the-ai-context) — the requirement this layer realises.

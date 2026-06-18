@@ -75,7 +75,7 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
       },
       { project: { id: "p2", name: "subkit", environment: "Production" }, resources: [{}, {}] },
       { project: { id: "p3", name: "delete-me", environment: "Development" }, resources: [] },
-      { project: { id: "p4", name: "fleexstack", environment: null }, resources: [] },
+      { project: { id: "p4", name: "acme", environment: null }, resources: [] },
     ];
     const lines = previewLines(arr, 20, 100);
     expect(lines[0]).toMatch(/^1\. CodeCommission — 4 resources/);
@@ -84,7 +84,7 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
     const fourthItemLine = lines.find((l) => l.startsWith("4."));
     expect(secondItemLine).toMatch(/^2\. subkit — 2 resources/);
     expect(thirdItemLine).toMatch(/^3\. delete-me/);
-    expect(fourthItemLine).toMatch(/^4\. fleexstack/);
+    expect(fourthItemLine).toMatch(/^4\. acme/);
     // No "item N" placeholder anywhere — the regression we are guarding
     // against.
     expect(lines.find((l) => /^\d+\. item /.test(l))).toBeUndefined();

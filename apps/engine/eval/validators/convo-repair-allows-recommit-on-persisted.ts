@@ -6,7 +6,7 @@
 // return a structured `tool_unavailable_in_state` envelope from
 // `state-gate.ts` rather than disappearing from the palette.
 //
-// Session 95ccaa35 (2026-04-25, mike@mikebild.com) — the original bug
+// Session 95ccaa35 (2026-04-25, user@example.com) — the original bug
 // where the repair flow ended up with the agent suggesting a CLI
 // fallback because save_workflow_draft was hidden by a stale checkpoint.
 

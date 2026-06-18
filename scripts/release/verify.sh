@@ -12,7 +12,7 @@
 #
 # Env:
 #   VERSION      — semver to verify (default: current_version from manifest)
-#   DEPLOY_URL   — base URL (default: https://subkit-api.mikebild.dev)
+#   DEPLOY_URL   — base URL (default: https://subkit-api.example.com)
 #   VERIFY_API_KEY — bearer token for diagnostics + authenticated smoke
 #   SSH_HOST      — optional direct SSH target; preferred when set
 #   DROPLET_NAME  — doctl fallback target for log tail
@@ -29,7 +29,7 @@ source "$_SCRIPT_DIR/version.sh"
 REPO_ROOT=$(cd "$_SCRIPT_DIR/../.." && pwd)
 
 VERSION="${VERSION:-$(current_version)}"
-DEPLOY_URL="${DEPLOY_URL:-https://subkit-api.mikebild.dev}"
+DEPLOY_URL="${DEPLOY_URL:-https://subkit-api.example.com}"
 HEALTH_TIMEOUT_SECS="${HEALTH_TIMEOUT_SECS:-90}"
 DROPLET_NAME="${DROPLET_NAME:-subkit-engine}"
 VERIFY_API_KEY="${VERIFY_API_KEY:-}"

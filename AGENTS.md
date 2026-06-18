@@ -4,42 +4,28 @@ Canonical repo-wide instructions for coding agents working in this project.
 Use this file as the default contract. `.claude/CLAUDE.md`, `SKILLS.md`, and tool-specific
 instruction files are compatibility layers or indexes — not competing sources of truth.
 
-## Product Boundaries
+## Scope & invariants
 
-- **subkit is the operational AI execution layer — a shared system for organisational
-  agentic operationalisation.** It is not a chat product, not an LLM provider, and not a
-  general workflow-automation tool. It owns: identity & access (RBAC/ABAC, encrypted
-  credentials, portal tokens, API keys), unified data/tool interfaces (9 typed drivers,
-  105 connector templates), governed execution (immutable audit log, human-in-the-loop
-  approvals, versioned workflows with full snapshots), observability (Prometheus,
-  structured logs, drift detection), and multi-tenant conversation-first surfaces (CLI,
-  `sk`, Slack, Teams, Google Chat, MCP).
-- For the full strategic framing of this category — the theory of organisational
-  agentic operationalisation, the requirements it imposes, and sk's realisation — see
-  `docs/thesis.md`, `docs/system-requirements.md`, `docs/positioning.md` (in that
-  order). These are the canonical source for *product framing*; this file remains the
-  canonical source for the *dev contract*.
+- **subkit is a self-hostable, multi-tenant engine for governed, versioned, AI-assisted
+  workflow execution.** It is not a chat product, not an LLM provider, and not a general
+  workflow-automation tool. It owns: identity & access (RBAC/ABAC, encrypted credentials,
+  portal tokens, API keys), unified data/tool interfaces (9 typed drivers, 105 connector
+  templates), governed execution (immutable audit log, human-in-the-loop approvals,
+  versioned workflows with full snapshots), observability (Prometheus, structured logs,
+  drift detection), and multi-tenant conversation-first surfaces (CLI, `sk`, Slack, Teams,
+  Google Chat, MCP).
 - Every piece of state is **tenant-scoped**. Every row carries `tenant_id`. Do not add
   globals or cross-tenant reads without explicit RBAC + audit plumbing.
 - **Audit everything that changes state.** Workflow commits, credential writes, approvals,
   skill promotions, schedule fires — all must produce an immutable `audit_log` entry.
 - **Skills are human-approved only.** Skill Candidates are proposed from execution patterns;
   they become Skills only through explicit operator action. Do not auto-promote.
-- **Dual vocabulary, intentional.** In strategy and external surfaces (README,
-  `docs/thesis.md`, `docs/positioning.md`, public docs) use *drift-assisted repair
-  suggestions* / *operator-reviewed remediation*. In the codebase, the technical name
-  *self-healing* (directory `apps/engine/src/self-healing/`, module identifiers, log
-  events) is preserved and must not be renamed. Same applies to `apps/engine/src/rbac/`
-  vs. external "fine-grained action-level identity" phrasing — same concept, different
-  audience.
-- **Category-vocabulary triad** (for product framing, see `docs/02-concepts.md` Group
-  0). The category sk occupies has three official names, used at three levels and never
-  mixed inside one sentence: *organisational agentic operationalisation* (theory term,
-  `docs/thesis.md`); *operational AI execution layer* (market term, `docs/positioning.md`
-  and most product copy); **The Operating Model** (iconic short term, the reframed
-  strategic-management phrase — *"your operating model used to live in PowerPoint. Now
-  it runs."*). All three are canonical; do not invent a fourth.
-- Keep public / marketing / documentation surfaces separate from authenticated engine routes.
+- **Naming.** The prose docs describe the drift-repair subsystem as *drift-assisted repair*;
+  the codebase keeps the technical name *self-healing* (directory
+  `apps/engine/src/self-healing/`, module identifiers, log events) — do not rename it for
+  vocabulary alignment. The same applies to `apps/engine/src/rbac/` and other stable
+  identifiers.
+- Keep public / documentation surfaces separate from authenticated engine routes.
 
 ## Canonical Sources
 
@@ -55,10 +41,6 @@ High-value references (by task type):
 
 - **Project shape & build** — `package.json`, `biome.json`, `tsconfig.json`, `docker-compose.yml`,
   `.github/workflows/ci.yml`, `release-please-config.json`, `.commitlintrc.json`
-- **Strategy & product framing** — `docs/thesis.md` (Document A, theory),
-  `docs/system-requirements.md` (Document B, vendor-agnostic requirements),
-  `docs/positioning.md` (Document C, how sk realises them). Read in that order when you
-  need to reason about positioning, vocabulary, or category claims.
 - **Platform & concepts** — `docs/01-platform.md`, `docs/02-concepts.md`
 - **Input surfaces** — `docs/03-input-surfaces.md`. The sk REPL exposes a 5-tab
   `/settings` palette (`Status · Config · Usage · Skills · Knowledge`) embedded

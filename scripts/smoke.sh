@@ -3,7 +3,7 @@
 # E2E smoke test for a deployed subkit-engine.
 #
 # Usage:
-#   scripts/smoke.sh https://subkit-api.mikebild.dev 0.1.0   # with version check
+#   scripts/smoke.sh https://subkit-api.example.com 0.1.0   # with version check
 #   scripts/smoke.sh http://localhost:3000                     # local, skip version
 #
 # Checks:

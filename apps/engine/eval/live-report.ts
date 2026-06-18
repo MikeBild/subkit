@@ -297,7 +297,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
   {
     slug: "droplet-specs-email",
     goal:
-      "Author a workflow that emails mike@mikebild.com a report of my DigitalOcean projects: " +
+      "Author a workflow that emails user@example.com a report of my DigitalOcean projects: " +
       "for every project list its name and the specs of every droplet in it (vCPUs, memory, disk). " +
       "Use the digitalocean and gmail connectors, preview it, and save it when the preview is correct.",
     connectors: ["digitalocean", "gmail"],

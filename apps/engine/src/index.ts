@@ -559,8 +559,9 @@ async function runServer(): Promise<void> {
   logger.info({
     module: "engine",
     action: "ready",
-    msg: `engine listening on http://127.0.0.1:${port}`,
+    msg: `engine listening on http://${opts.hostname}:${port}`,
     port,
+    hostname: opts.hostname,
     public_base_url: getConfig().server.public_base_url || null,
     rss_mb: Math.round((process.memoryUsage().rss / (1024 * 1024)) * 10) / 10,
   });

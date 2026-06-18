@@ -32,7 +32,7 @@
 #   DEPLOY_HOST    IP/hostname of the host (DROPLET_NAME alt)
 #   DEPLOY_USER    SSH user (default: root)
 #   SSH_KEY_PATH    path to the private key (default: ~/.ssh/id_rsa)
-#   DEPLOY_URL      base URL for smoke (default: https://subkit-api.mikebild.dev)
+#   DEPLOY_URL      base URL for smoke (default: https://subkit-api.example.com)
 #   VERIFY_API_KEY  admin API key for authenticated diagnostics smoke
 #                   (Stage 6). Mint on the host:
 #                     ssh <host> '/usr/local/bin/engine --issue-admin-key'
@@ -94,7 +94,7 @@ DEPLOY_HOST="${DEPLOY_HOST:-${DROPLET_HOST:-}}"
 DEPLOY_USER="${DEPLOY_USER:-${DROPLET_USER:-root}}"
 DROPLET_NAME="${DROPLET_NAME:-subkit-engine}"
 SSH_KEY_PATH="${SSH_KEY_PATH:-${DROPLET_SSH_KEY_PATH:-$HOME/.ssh/id_rsa}}"
-DEPLOY_URL="${DEPLOY_URL:-https://subkit-api.mikebild.dev}"
+DEPLOY_URL="${DEPLOY_URL:-https://subkit-api.example.com}"
 
 # Shared ssh/scp options for every Stage 5 transfer. ConnectTimeout
 # fails fast when the host is unreachable; ServerAliveInterval +

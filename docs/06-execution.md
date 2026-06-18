@@ -2,7 +2,6 @@
 
 > **Reading time:** ~16 min
 > **Audience:** Engineers integrating runtime, operators monitoring executions
-> **Strategy context:** developer view of [authoring-vs-execution split (R3)](./system-requirements.md#r3--separation-of-authoring-probabilistic-from-execution-controlled), [workflow as artefact (R4)](./system-requirements.md#r4--workflow-as-a-versioned-organisational-artefact), and [closed learning loop (R5)](./system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation) — see also [Git for operational organisational logic](./thesis.md#53-operational-knowledge-becomes-accumulable-versionable-inheritable--git-for-operational-organisational-logic) and the [new-middleware-layer section](./thesis.md#54-a-new-middleware-layer-emerges-historically--not-by-accident). Execution is deliberately not "intelligent"; the intelligence is concentrated and continuously improving in the authoring/repair loop ([positioning §2](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution)).
 
 Everything the AI builds in sk ends up here. The authoring layer is conversational and exploratory; the execution layer is the opposite — deterministic, immutable, and governed.
 
@@ -134,7 +133,7 @@ flowchart LR
     NewVer -. next run .-> Run
 ```
 
-*No autonomous repair in production. The loop runs through a human gate. The compounding effect — each run improving the next — is the moat, described as a strategy claim in the [closed learning loop (R5)](./system-requirements.md#r5--closed-learning-loop-with-operator-reviewed-remediation).*
+*No autonomous repair in production. The loop runs through a human gate. The compounding effect — each run improving the next — comes from operator-reviewed drift repair feeding back into authoring.*
 
 The engine monitors active Connectors for schema drift. Drift is detected from execution results — when a Step receives a response that does not match the recorded schema for that endpoint, the engine classifies it as drift and initiates the repair process. Detection is passive: no polling, no scheduled checks, just observation of what actually runs.
 
@@ -266,4 +265,3 @@ The Audit Log records every execution trigger, every Step completion, every erro
 
 - [Security & governance](./07-security-governance.md) — RBAC, API keys, Before-Request Hooks, Audit Log guarantees, and the policy model that governs every surface in sk.
 - [glossary — execution terms](./02-concepts.md#group-4-execution) — Workflow, Step, Execution, Execution Fixture, Schedule.
-- [authoring-vs-execution split (R3)](./system-requirements.md#r3--separation-of-authoring-probabilistic-from-execution-controlled) and [workflow as artefact (R4)](./system-requirements.md#r4--workflow-as-a-versioned-organisational-artefact) — the strategy-level requirements this layer realises.

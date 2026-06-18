@@ -2,7 +2,6 @@
 
 > **Reading time:** ~18 min
 > **Audience:** Engineers integrating with sk's authoring, operators curating Skills & Knowledge
-> **Strategy context:** developer view of contextualised AI authoring; the economic argument behind it (vs. classical builders / BPMN / low-code / engineering) lives in [§2 of positioning](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution), the system requirement is [context as authoring input (R2)](./system-requirements.md#r2--context-as-a-first-class-input-to-authoring).
 
 Traditional enterprise workflow tools put the burden of construction on the builder. You need to know the connector, understand the configuration syntax, and map it all onto a blank canvas. The result is a workflow that reflects what developers can build, not what the business actually needs.
 
@@ -337,4 +336,3 @@ The conversational authoring layer is aware of the stdlib and proposes `sk.*` fo
 - [Connectors & integration](./05-connectors.md) — how Connectors, Drivers, and Credentials form the integration fabric that authoring draws on.
 - [Workflow execution](./06-execution.md) — how approved workflows run deterministically, what governance looks like at execution time, and how self-healing keeps workflows healthy.
 - [glossary — authoring terms](./02-concepts.md#group-2-authoring) — Conversation, Draft, Skill, Skill Candidate, Knowledge Source, Discovery.
-- [positioning §2](./positioning.md#2-the-core-contextualised-operational-ai-authoring--governed-execution) — the economic argument for AI-assisted authoring.

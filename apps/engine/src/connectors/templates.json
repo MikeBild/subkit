@@ -18989,7 +18989,7 @@
     "description": "LinkedIn API — member identity (OpenID Connect) and posting (UGC Posts).",
     "category": "communication",
     "tags": ["rest", "linkedin", "social", "oauth2", "openid"],
-    "setup_instructions": "Create an app at linkedin.com/developers. Add the 'Sign In with LinkedIn using OpenID Connect' and 'Share on LinkedIn' products. Under Auth, add the redirect URL https://subkit-api.mikebild.dev/v1/oauth/callback (exact match, no trailing slash). Copy the Client ID and Client Secret.",
+    "setup_instructions": "Create an app at linkedin.com/developers. Add the 'Sign In with LinkedIn using OpenID Connect' and 'Share on LinkedIn' products. Under Auth, add the redirect URL https://subkit-api.example.com/v1/oauth/callback (exact match, no trailing slash). Copy the Client ID and Client Secret.",
     "auth_options": [],
     "url_pattern": "^https://api\\.linkedin\\.com(\\/|$)",
     "keywords": ["linkedin", "post", "share", "social", "userinfo", "ugc"],

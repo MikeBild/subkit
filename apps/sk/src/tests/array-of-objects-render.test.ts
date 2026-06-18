@@ -19,12 +19,12 @@ describe("array-of-objects renderer (chat surface)", () => {
       {
         project_id: "d6742174",
         project_name: "CodeCommission",
-        resources: [{ urn: "do:domain:fleexstack.com" }, { urn: "do:domain:mikebild.info" }],
+        resources: [{ urn: "do:domain:acme.example.com" }, { urn: "do:domain:mikebild.info" }],
       },
       {
         project_id: "11dde76a",
         project_name: "subkit",
-        resources: [{ urn: "do:droplet:565211530" }, { urn: "do:domain:mikebild.dev" }],
+        resources: [{ urn: "do:droplet:565211530" }, { urn: "do:domain:example.com" }],
       },
     ]);
     const joined = lines.join("\n");
