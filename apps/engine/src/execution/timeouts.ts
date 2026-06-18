@@ -28,8 +28,13 @@ export const WORKFLOW_TIMEOUT_DEFAULT_MS = 6 * 60 * 60_000;
 export const STEP_TIMEOUT_DEFAULT_MS = 60 * 60_000;
 
 /** Default ceiling for `transform` steps (user JS in the QuickJS sandbox).
- *  A transform that takes longer than this is almost certainly looping. */
-export const TRANSFORM_TIMEOUT_DEFAULT_MS = 10 * 60_000;
+ *  QuickJS runs synchronously and blocks the worker for the whole call, so
+ *  this is deliberately short — a transform that needs longer should chunk
+ *  via `for_each` or push compute into request steps rather than raise this.
+ *  Overridable per step via `timeout_ms` and globally via
+ *  `sandbox.transform_wall_ms`; a transform that hits this is almost
+ *  certainly looping. */
+export const TRANSFORM_TIMEOUT_DEFAULT_MS = 60_000;
 
 // --- Recursion / pagination guards ------------------------------------
 
@@ -98,7 +103,8 @@ export const LLM_TOOL_RESULT_SAMPLE_DEPTH = 3;
 /** Hard Wasm heap cap for a single sandbox call. */
 export const SANDBOX_MEMORY_LIMIT_BYTES = 128 * 1024 * 1024;
 
-/** Wall-clock cap for a sandbox call. Mirrors
- *  `TRANSFORM_TIMEOUT_DEFAULT_MS` for transform steps; isolated here so
- *  before-request hooks can opt into a tighter budget. */
+/** Wall-clock cap for a generic sandbox call. Mirrors
+ *  `DEFAULT_LIMITS.wall_ms` (validation / output-transform functions);
+ *  transform steps use the shorter `TRANSFORM_TIMEOUT_DEFAULT_MS` and
+ *  before-request hooks opt into a tighter budget still. */
 export const SANDBOX_WALL_MS_DEFAULT = 30_000;

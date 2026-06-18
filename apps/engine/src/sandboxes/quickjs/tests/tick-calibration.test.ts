@@ -1,17 +1,17 @@
-// Tick-calibration tests. The interrupt handler fires between basic
-// blocks, not per opcode, so the "opcode_budget" is really a tick
-// budget. These tests exercise workloads of known structure and
-// assert that:
+// Tick-calibration tests. QuickJS fires the interrupt handler on an
+// internal counter at loop back-edges and function calls (not per
+// opcode), so `tick_budget` is a coarse tick count, not an instruction
+// count. These tests exercise workloads of known structure and assert
+// that:
 //
 //   1. Tick counts scale with workload size (monotonicity).
 //   2. Realistic user workloads complete well below the
-//      DEFAULT_LIMITS.opcode_budget, i.e. the default is not so
-//      tight that normal code trips it.
+//      DEFAULT_LIMITS.tick_budget, i.e. the default is not so tight
+//      that normal code trips it.
 //
-// Numbers printed via `stats.opcode_ticks` are informational: if the
-// interrupt cadence of QuickJS changes in a future version, this test
-// makes the shift visible and tells us whether `TICKS_PER_OPCODE_BATCH`
-// needs to be retuned.
+// Numbers printed via `stats.ticks` are informational: if the interrupt
+// cadence of QuickJS changes in a future version, this test makes the
+// shift visible.
 
 import { describe, expect, test } from "bun:test";
 import { runJs } from "../runtime.ts";
@@ -19,7 +19,7 @@ import { DEFAULT_LIMITS } from "../types.ts";
 
 async function ticksFor(code: string): Promise<number> {
   const { stats } = await runJs({ code, input: null });
-  return stats.opcode_ticks;
+  return stats.ticks;
 }
 
 describe("opcode-tick calibration", () => {
@@ -46,15 +46,15 @@ describe("opcode-tick calibration", () => {
   test("realistic transform workload fits inside the default budget", async () => {
     // 500 object allocations + a reduce — representative of a
     // transform step. Must consume a small fraction of the default
-    // opcode_budget (10M). If this starts failing, the interrupt
-    // cadence has tightened and TICKS_PER_OPCODE_BATCH needs to drop.
+    // tick_budget (10M). If this starts failing, the interrupt
+    // cadence has tightened.
     const ticks = await ticksFor(`
       var arr = [];
       for (var i = 0; i < 500; i++) arr.push({ i: i, label: 'row-' + i });
       var total = arr.reduce(function (acc, x) { return acc + x.i; }, 0);
       return total;
     `);
-    expect(ticks).toBeLessThan(DEFAULT_LIMITS.opcode_budget / 10);
+    expect(ticks).toBeLessThan(DEFAULT_LIMITS.tick_budget / 10);
   });
 
   test("default budget safely exceeds a realistic hook workload", async () => {
@@ -70,9 +70,9 @@ describe("opcode-tick calibration", () => {
         return { allow: true };
       `,
       input: { request: { method: "POST" } },
-      limits: { opcode_budget: 100_000, wall_ms: 2_000 },
+      limits: { tick_budget: 100_000, wall_ms: 2_000 },
     });
     // Realistic hook runs should come in well under 1 % of the hook budget.
-    expect(stats.opcode_ticks).toBeLessThan(100_000 / 100);
+    expect(stats.ticks).toBeLessThan(100_000 / 100);
   });
 });

@@ -634,6 +634,59 @@ const TokensSection = z
   .prefault({})
   .describe("Token budget");
 
+// QuickJS sandbox limits for user-authored JavaScript (transforms,
+// validation/output-transform functions, loop/for_each selectors). These
+// are the GENERAL-tier defaults; before-request hooks keep their own
+// tighter, security-fixed limits in auth/hooks.ts and do NOT track these.
+//
+// `tick_budget` is an interrupt-tick budget, NOT an opcode count: QuickJS
+// fires the interrupt handler on an internal counter at loop back-edges and
+// function calls, so this is a coarse runaway backstop — the wall-clock and
+// memory caps are the real guards. See sandboxes/quickjs/QUICKJS.md.
+const SandboxSection = z
+  .object({
+    memory_bytes: z
+      .number()
+      .int()
+      .positive()
+      .default(128 * 1024 * 1024)
+      .describe("Hard WASM heap cap for a JS sandbox run, in bytes. Default 128 MB.")
+      .meta(global()),
+    tick_budget: z
+      .number()
+      .int()
+      .positive()
+      .default(10_000_000)
+      .describe("Interrupt-tick budget (coarse runaway backstop, not an opcode count).")
+      .meta(global()),
+    wall_ms: z
+      .number()
+      .int()
+      .positive()
+      .default(30_000)
+      .describe("Default wall-clock cap for a JS sandbox run, in ms. Default 30 s.")
+      .meta(global()),
+    stack_bytes: z
+      .number()
+      .int()
+      .positive()
+      .default(2 * 1024 * 1024)
+      .describe("Max stack size for a JS sandbox run, in bytes. Default 2 MB.")
+      .meta(global()),
+    transform_wall_ms: z
+      .number()
+      .int()
+      .positive()
+      .default(60_000)
+      .describe(
+        "Wall-clock cap for transform steps, in ms (overridable per step via timeout_ms). " +
+          "Long synchronous transforms block the worker — chunk via for_each instead of raising. Default 60 s.",
+      )
+      .meta(global()),
+  })
+  .prefault({})
+  .describe("QuickJS JS sandbox limits");
+
 // sk REPL session preferences. Tenant-scoped so each operator picks a
 // default permission mode that the next REPL run honors at startup.
 // The four-value union mirrors PermissionMode in the CLI; the
@@ -1067,6 +1120,7 @@ export const ConfigSchema = z
     spec: SpecSection,
     queue: QueueSection,
     tokens: TokensSection,
+    sandbox: SandboxSection,
     repl: ReplSection,
     ui: UiSection,
     notifications: NotificationsSection,
@@ -1110,6 +1164,7 @@ export const SECTION_ORDER = [
   "spec",
   "queue",
   "tokens",
+  "sandbox",
   "repl",
   "ui",
   "notifications",

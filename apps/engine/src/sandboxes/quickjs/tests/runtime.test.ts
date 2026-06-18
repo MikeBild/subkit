@@ -9,7 +9,7 @@ describe("quickjs runtime", () => {
       input: { a: 2, b: 3 },
     });
     expect(output).toBe(5);
-    expect(stats.opcode_ticks).toBeGreaterThan(0);
+    expect(stats.ticks).toBeGreaterThan(0);
   });
 
   test("returns a structured object back to the host", async () => {
@@ -49,7 +49,7 @@ describe("quickjs runtime", () => {
       await runJs({
         code: "let i = 0; while (true) { i += 1; }",
         input: null,
-        limits: { opcode_budget: 1_000_000, wall_ms: 3_000 },
+        limits: { tick_budget: 1_000_000, wall_ms: 3_000 },
       });
     } catch (err) {
       threw = err;

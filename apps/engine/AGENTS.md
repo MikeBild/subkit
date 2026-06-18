@@ -45,7 +45,10 @@ responsibilities.
   may use console output; engine never does.
 - **Untrusted JS runs in `sandboxes/` only.** Before-request hooks, transforms,
   self-healing repair proposals — all through `quickjs-emscripten` with
-  interrupt budgets.
+  wall-clock + memory + tick budgets. Capabilities and what each limit really
+  enforces (and why `tick_budget` is not an opcode count) live in
+  [`sandboxes/quickjs/QUICKJS.md`](src/sandboxes/quickjs/QUICKJS.md); limits are
+  operator-tunable under `sandbox.*`.
 - **Encrypted credentials only.** Secrets go through `credentials/` + `crypto/`
   (AES-256-GCM). Never write raw secrets to `audit_log` or logs.
 - **No cross-subsystem reach-arounds.** If `http/routes/foo.ts` needs

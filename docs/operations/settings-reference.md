@@ -188,6 +188,17 @@ Token budget
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `tokens.monthly_budget` | number | `0` | tenant | no | no | Hard cap on tokens consumed per calendar month. 0 = unlimited. |
 
+## sandbox
+QuickJS JS sandbox limits
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `sandbox.memory_bytes` | number | `134217728` | global | no | no | Hard WASM heap cap for a JS sandbox run, in bytes. Default 128 MB. |
+| `sandbox.stack_bytes` | number | `2097152` | global | no | no | Max stack size for a JS sandbox run, in bytes. Default 2 MB. |
+| `sandbox.tick_budget` | number | `10000000` | global | no | no | Interrupt-tick budget (coarse runaway backstop, not an opcode count). |
+| `sandbox.transform_wall_ms` | number | `60000` | global | no | no | Wall-clock cap for transform steps, in ms (overridable per step via timeout_ms). Long synchronous transforms block the worker — chunk via for_each instead of raising. Default 60 s. |
+| `sandbox.wall_ms` | number | `30000` | global | no | no | Default wall-clock cap for a JS sandbox run, in ms. Default 30 s. |
+
 ## repl
 sk REPL session preferences
 

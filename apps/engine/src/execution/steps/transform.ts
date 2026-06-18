@@ -10,10 +10,14 @@
 // `structured-data`) read the upstream HTML body via `input` and emit a
 // typed JSON envelope; they carry no `expression`.
 //
-// The transform timeout tier (default 10 minutes) applies to every
-// language — the JS body races against the QuickJS wall-clock budget plus
-// the execution abort signal so external cancels still land.
+// The transform timeout tier (default `sandbox.transform_wall_ms`, 60 s)
+// applies to every language — the JS body races against the QuickJS
+// wall-clock budget plus the execution abort signal so external cancels
+// still land. QuickJS runs synchronously and blocks the worker for the
+// whole call, so this tier is deliberately short; chunk via `for_each`
+// rather than raising it.
 
+import { getConfig } from "../../config/loader.ts";
 import { logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
@@ -37,6 +41,17 @@ export interface RunTransformParams {
   input: unknown;
 }
 
+// Effective transform wall-clock: the operator-tunable
+// `sandbox.transform_wall_ms` when config is loaded, else the static
+// fallback. A per-step `timeout_ms` still overrides this upstream.
+function configuredTransformWallMs(): number {
+  try {
+    return getConfig().sandbox.transform_wall_ms;
+  } catch {
+    return TRANSFORM_TIMEOUT_DEFAULT_MS;
+  }
+}
+
 export async function runTransformStep(p: RunTransformParams): Promise<StepResult> {
   // Wrap the whole transform run in a single rss-delta sample. Transforms
   // are the dominant memory hog in the executor: a large projection over
@@ -53,7 +68,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
 
 async function runTransformStepInner(p: RunTransformParams): Promise<StepResult> {
   const start = Date.now();
-  const timeoutMs = p.step.timeout_ms ?? TRANSFORM_TIMEOUT_DEFAULT_MS;
+  const timeoutMs = p.step.timeout_ms ?? configuredTransformWallMs();
   const timeoutCtrl = new AbortController();
   const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
   const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);

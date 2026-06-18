@@ -43,7 +43,7 @@ export interface HookDecision {
 
 const HOOK_LIMITS = {
   memory_bytes: 32 * 1024 * 1024,
-  opcode_budget: 100_000,
+  tick_budget: 100_000,
   wall_ms: 2_000,
 } as const;
 
@@ -198,7 +198,7 @@ export async function lintHookSource(
     await runJs({
       code: source,
       input: { lint: true },
-      limits: { opcode_budget: 50_000, wall_ms: 1_000, memory_bytes: 16 * 1024 * 1024 },
+      limits: { tick_budget: 50_000, wall_ms: 1_000, memory_bytes: 16 * 1024 * 1024 },
     });
     return { ok: true };
   } catch (err) {

@@ -3,17 +3,23 @@
 export interface SandboxLimits {
   /** Hard WASM heap cap, in bytes. Default 128 MB. */
   memory_bytes?: number;
-  /** Interrupt budget as a rough opcode count. Default 10_000_000. */
-  opcode_budget?: number;
-  /** Wall-clock cap as a safety net. Default 30_000 ms. */
+  /**
+   * Interrupt-tick budget — a coarse runaway backstop, NOT an opcode
+   * count. QuickJS fires the interrupt handler on an internal counter at
+   * loop back-edges and function calls (not per opcode), so tight inner
+   * loops can elide it entirely; the wall-clock and memory caps are the
+   * real guards. Default 10_000_000.
+   */
+  tick_budget?: number;
+  /** Wall-clock cap, the primary runaway guard. Default 30_000 ms. */
   wall_ms?: number;
-  /** Max stack size, in bytes. Default 1 MB. */
+  /** Max stack size, in bytes. Default 2 MB. */
   stack_bytes?: number;
 }
 
 export interface SandboxStats {
-  /** Number of interrupt ticks consumed by the call. */
-  opcode_ticks: number;
+  /** Number of interrupt ticks consumed by the call (see tick_budget). */
+  ticks: number;
   /** Wall-clock time spent inside the VM, in milliseconds. */
   duration_ms: number;
   /** Peak WASM memory reported by the runtime, in bytes, or null if unknown. */
@@ -58,7 +64,7 @@ export class SandboxMemoryError extends SandboxError {
 }
 
 export class SandboxInterruptError extends SandboxError {
-  constructor(message = "sandbox opcode budget exhausted", stats?: SandboxStats) {
+  constructor(message = "sandbox tick budget exhausted", stats?: SandboxStats) {
     super(message, "interrupt", stats);
     this.name = "SandboxInterruptError";
   }
@@ -85,9 +91,13 @@ export class SandboxRuntimeError extends SandboxError {
   }
 }
 
+// Static fallback limits. The effective defaults are sourced from the
+// engine config (`sandbox.*`) at call time; these values are the schema
+// defaults and the fallback used before `loadConfig()` has run (e.g. unit
+// tests that call `runJs` directly). See `resolveDefaultLimits` in runtime.ts.
 export const DEFAULT_LIMITS: Required<SandboxLimits> = {
   memory_bytes: 128 * 1024 * 1024,
-  opcode_budget: 10_000_000,
+  tick_budget: 10_000_000,
   wall_ms: 30_000,
-  stack_bytes: 1 * 1024 * 1024,
+  stack_bytes: 2 * 1024 * 1024,
 };

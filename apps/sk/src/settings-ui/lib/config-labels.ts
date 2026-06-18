@@ -144,6 +144,13 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "queue.concurrency": "Worker concurrency",
   "tokens.monthly_budget": "Monthly token budget",
 
+  // ── JS sandbox (QuickJS) ───────────────────────────────────────
+  "sandbox.memory_bytes": "JS sandbox memory cap (bytes)",
+  "sandbox.tick_budget": "JS sandbox tick budget",
+  "sandbox.wall_ms": "JS sandbox wall-clock cap (ms)",
+  "sandbox.stack_bytes": "JS sandbox stack cap (bytes)",
+  "sandbox.transform_wall_ms": "Transform wall-clock cap (ms)",
+
   // ── REPL session preferences ───────────────────────────────────
   "repl.permissionMode": "Permission mode",
   "repl.portalTokenTtlMin": "Portal token TTL (minutes)",
@@ -200,6 +207,7 @@ export const SECTION_LABEL: Readonly<Record<string, string>> = {
   spec: "API specs",
   queue: "Queue worker",
   tokens: "Token budgets",
+  sandbox: "JS sandbox",
   repl: "REPL session",
   ui: "REPL chrome",
   notifications: "Notifications",

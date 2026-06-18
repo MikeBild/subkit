@@ -8,11 +8,14 @@
 //     them).
 //   - Memory capped to `limits.memory_bytes` (default 128 MB) via
 //     `runtime.setMemoryLimit`.
-//   - Opcode budget enforced via `setInterruptHandler`, which QuickJS
-//     calls periodically between basic blocks. We count ticks and abort
-//     the VM once the budget is exhausted.
-//   - A wall-clock safety net aborts long-running calls even if they
-//     somehow evade the interrupt handler.
+//   - A coarse `tick_budget` enforced via `setInterruptHandler`, which
+//     QuickJS calls on an internal counter at loop back-edges and function
+//     calls (NOT per opcode). We count those ticks and abort once the
+//     budget is exhausted. This is a runaway backstop only — tight inner
+//     loops can elide the handler, so the wall-clock cap below is the
+//     primary guard.
+//   - A wall-clock cap aborts long-running calls (the real limit for
+//     compute-heavy code that evades the tick handler).
 //
 // The runtime returns `SandboxRunResult<T>` on success and throws a
 // `SandboxError` subclass on every failure mode.
@@ -30,6 +33,7 @@ import {
   type QuickJSHandle,
   type QuickJSWASMModule,
 } from "quickjs-emscripten-core";
+import { getConfig } from "../../config/loader.ts";
 import { STDLIB_SOURCE } from "./stdlib/index.ts";
 import {
   DEFAULT_LIMITS,
@@ -51,11 +55,28 @@ import {
 // capturing spikes above 2k-tick budgets.
 const MEMORY_SAMPLE_EVERY_TICKS = 512;
 
-// Interrupt-tick to QuickJS-opcode ratio, derived from the
-// `tick-calibration.test.ts` microbenchmark. One tick covers roughly
-// this many underlying opcodes; we treat `opcode_budget` as an upper
-// bound on ticks divided by this ratio.
-const TICKS_PER_OPCODE_BATCH = 8;
+// Floor on the tick budget so even a tiny configured budget still lets
+// trivial code finish a few interrupt boundaries before aborting.
+const MIN_TICK_CAP = 2_000;
+
+// Effective default limits: sourced from engine config (`sandbox.*`) when
+// available, falling back to the static DEFAULT_LIMITS before
+// `loadConfig()` has run (e.g. unit tests calling `runJs` directly). Per-
+// call `opts.limits` still override these. Hooks keep their own tighter,
+// security-fixed tiers in auth/hooks.ts and do not flow through here.
+function resolveDefaultLimits(): Required<SandboxLimits> {
+  try {
+    const s = getConfig().sandbox;
+    return {
+      memory_bytes: s.memory_bytes,
+      tick_budget: s.tick_budget,
+      wall_ms: s.wall_ms,
+      stack_bytes: s.stack_bytes,
+    };
+  } catch {
+    return DEFAULT_LIMITS;
+  }
+}
 
 let _mod: QuickJSWASMModule | null = null;
 
@@ -103,7 +124,7 @@ export interface RunJsOptions {
  * `return`). Host globals are NOT available — the VM starts clean.
  */
 export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRunResult<T>> {
-  const limits = { ...DEFAULT_LIMITS, ...opts.limits };
+  const limits = { ...resolveDefaultLimits(), ...opts.limits };
   const mod = await loadModule();
 
   const runtime = mod.newRuntime();
@@ -142,23 +163,19 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
     }
   };
 
-  // QuickJS fires the handler between basic blocks. Each tick covers a
-  // chunk of bytecode (see TICKS_PER_OPCODE_BATCH). The wall-clock
-  // check and the periodic memory sample are both piggy-backed onto
-  // the interrupt callback so we do not need a separate timer.
+  // QuickJS fires the handler on an internal counter at loop back-edges
+  // and function calls (not per opcode), so one tick covers an
+  // unpredictable amount of work. We count ticks against `tick_budget`
+  // (floored at MIN_TICK_CAP so a tiny budget still finishes trivial
+  // code) as a coarse runaway backstop. The wall-clock check is the
+  // primary guard; the periodic memory sample is piggy-backed here so we
+  // do not need a separate timer.
+  const tick_cap = Math.max(MIN_TICK_CAP, limits.tick_budget);
   runtime.setInterruptHandler(() => {
     ticks += 1;
     if (ticks % MEMORY_SAMPLE_EVERY_TICKS === 0) {
       samplePeakMemory();
     }
-    // Treat opcode_budget as an upper bound on ticks and cap it at 2k
-    // ticks minimum so even a "1M-opcode" budget terminates within a
-    // few hundred ms. Dividing by TICKS_PER_OPCODE_BATCH translates
-    // the user-facing "opcode" budget into a tick budget.
-    const tick_cap = Math.min(
-      limits.opcode_budget,
-      Math.max(2_000, limits.opcode_budget / TICKS_PER_OPCODE_BATCH),
-    );
     if (ticks >= tick_cap) {
       interrupted = true;
       return true;
@@ -172,7 +189,7 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
   });
 
   const makeStats = (): SandboxStats => ({
-    opcode_ticks: ticks,
+    ticks,
     duration_ms: Date.now() - started,
     peak_memory_bytes: peakMemory > 0 ? peakMemory : null,
   });
