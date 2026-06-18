@@ -3,7 +3,7 @@
 // empty array and the assembled prompt simply omits the section.
 
 import { and, desc, eq } from "drizzle-orm";
-import type { Db } from "../../../db/client.ts";
+import type { Executor } from "../../../db/client.ts";
 import { connectors, conversationElicitations, conversations } from "../../../db/schema/index.ts";
 import { searchDocs } from "../../../docs-ingestion/service.ts";
 import { searchKnowledge } from "../../../knowledge/service.ts";
@@ -34,7 +34,7 @@ import {
   SKILL_CANDIDATES_SECTION_CAP,
 } from "./formatters.ts";
 
-export type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+export type { Executor };
 
 export interface InteractionLogEntry {
   tool_name: string;

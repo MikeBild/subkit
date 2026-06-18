@@ -17,10 +17,10 @@
 // shape and embeds whatever the call site passes via narrow typed
 // helpers. The shape is locked at compile time.
 
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import type { AuditActorType, AuditEntry, AuditResult } from "../types.ts";
 
-export type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+export type { Executor };
 
 /** Shared base fields every recorder accepts. */
 export interface RecorderBase {

@@ -7,10 +7,8 @@
 // `POST /v1/workflows` was producing (raw insert error in the runtime logs).
 
 import { and, eq, isNull } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Conflict shape returned alongside a slug-conflict error. */
 export interface SlugConflict {

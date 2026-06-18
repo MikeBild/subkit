@@ -3,13 +3,11 @@
 // module does not delete rows.
 
 import { writeAudit } from "../db/audit.ts";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { getContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";
 import { scrubSecrets } from "../logging/scrub-secrets.ts";
 import type { AuditEntry } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /**
  * Write an immutable audit log entry.

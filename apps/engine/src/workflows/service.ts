@@ -7,7 +7,7 @@ import { and, asc, desc, eq, isNull, like, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { skills as skillsTable, workflows, workflowVersions } from "../db/schema/index.ts";
@@ -22,11 +22,11 @@ import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 
-export type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+export type { Executor };
 
 /**
  * Emit a `workflow.lifecycle` outbox event after Zod-validating the
- * payload (#178 round-3 S1). Every state-changing entry point in this
+ * payload. Every state-changing entry point in this
  * file flows through this helper so the channel can't drift into
  * untyped object literals over time. The schema lives in
  * `pubsub/types.ts` so subscribers (today: the MCP forwarder) can

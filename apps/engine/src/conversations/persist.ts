@@ -10,7 +10,7 @@
 import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
 import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { fileLinks } from "../db/schema/files.ts";
 import {
   conversationElicitations,
@@ -35,7 +35,6 @@ import {
 } from "./tool-output-elision.ts";
 import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
 
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 const MAX_REPLAY_MESSAGES = 24;
 const MAX_REPLAY_TOKENS = 12_000;
 const REPLAY_TAIL_MESSAGES = 16;

@@ -9,11 +9,9 @@
 
 import { and, desc, eq } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { schemaVersions } from "../db/schema/index.ts";
 import type { SchemaShape } from "../self-healing/types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /**
  * Derive a SchemaShape from an arbitrary JSON value. The result is a

@@ -12,11 +12,9 @@
 // their prior one-shot behaviour.
 
 import { and, eq, isNull } from "drizzle-orm";
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import { totalOverWindow } from "../../db/list-result.ts";
 import { connectors, workflows } from "../../db/schema/index.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface TenantSummary {
   workflows: ReadonlyArray<{

@@ -11,15 +11,13 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import {
   conversationElicitations,
   conversations,
   conversationToolCalls,
 } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export type ElicitationStatus = "pending" | "resolved" | "cancelled" | "timeout";
 

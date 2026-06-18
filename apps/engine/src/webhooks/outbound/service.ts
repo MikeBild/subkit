@@ -12,10 +12,8 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../../crypto/aes-gcm.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema/index.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function aadFor(tenant_id: string, id: string): string {
   return `subscription:${tenant_id}:${id}`;

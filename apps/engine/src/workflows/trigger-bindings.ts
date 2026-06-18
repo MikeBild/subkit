@@ -6,7 +6,7 @@
 // so the split preserves the package's export surface.
 
 import { recordWorkflowScheduleNotBound as recordWorkflowScheduleNotBoundAudit } from "../audit/recorders/index.ts";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import {
   recordWorkflowScheduleNotBound,
@@ -16,8 +16,6 @@ import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
 import { detectSchedulePhrases } from "./schedule-phrase-detector.ts";
 import type { WorkflowDef } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /**
  * Apply the discriminated `trigger` block from a workflow def to its

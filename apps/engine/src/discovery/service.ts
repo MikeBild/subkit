@@ -9,7 +9,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Db, type Executor, getDb } from "../db/client.ts";
 import { discoveryArtifacts, discoveryFiles, discoveryRuns } from "../db/schema/discovery.ts";
 import { detectFormat, parseFileToChunks } from "../knowledge/parsers.ts";
 import { logger } from "../logging/logger.ts";
@@ -20,8 +20,6 @@ import type {
   ListDiscoveryArtifactsParams,
   ListDiscoveryRunsParams,
 } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 // ---------------------------------------------------------------------------
 // Helpers

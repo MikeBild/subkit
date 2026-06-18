@@ -10,9 +10,7 @@
 // dispatch (Slack retries up to 3× on x-slack-retry-num).
 
 import { sql } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+import type { Executor } from "../db/client.ts";
 
 export interface MarkChatEventSeenInput {
   tenant_id: string;

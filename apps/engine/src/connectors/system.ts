@@ -13,12 +13,10 @@
 
 import { getCredentialForConnector } from "../credentials/service.ts";
 import type { DecryptedCredential } from "../credentials/types.ts";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { listDocs as listConnectorDocs } from "../docs-ingestion/service.ts";
 import { getConnectorForEnvironment } from "./service.ts";
 import type { ConnectorView, DriverName, Environment } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface ConnectorDocumentSummary {
   id: string;

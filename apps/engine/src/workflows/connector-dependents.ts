@@ -6,10 +6,8 @@
 // workflow at its next run.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface WorkflowConnectorDependent {
   id: string;

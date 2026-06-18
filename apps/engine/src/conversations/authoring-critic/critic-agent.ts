@@ -18,14 +18,12 @@
 // affects every flow — or leave the critic off until a per-flow knob
 // lands.
 
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import { invoke } from "../../llm/core/invoke.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordCriticRun } from "../../observability/instrumentation.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
 import { type AuthoringCriticVerdict, AuthoringCriticVerdictSchema } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Hard cap on the rendered draft string. Anthropic counts ~4 chars/token,
  *  so 4 KB ≈ 1 KTok of pure draft content — enough for ~30 medium steps

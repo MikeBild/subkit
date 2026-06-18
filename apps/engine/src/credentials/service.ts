@@ -14,7 +14,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { credentials } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 
@@ -33,8 +33,6 @@ import type {
   TokenMintCredentialValue,
   TokenMintShape,
 } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface CredentialRow {
   id: string;

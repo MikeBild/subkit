@@ -18,12 +18,10 @@
 
 import { and, eq } from "drizzle-orm";
 import { recordMcpServerConfigUpdated } from "../../audit/recorders/index.ts";
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import { mcpServers } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface ReconcileManifestHashInput {
   db: Executor;

@@ -12,13 +12,11 @@
 // signals into PatchCandidate rows.
 
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { requestHooks } from "../db/schema/request_hooks.ts";
 import { workflows, workflowVersions } from "../db/schema/workflows.ts";
 import { detectStdlibDrift } from "../sandboxes/quickjs/stdlib/drift.ts";
 import type { DriftSignal } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 interface WorkflowDagRuntime {
   stdlib_version?: unknown;

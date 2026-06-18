@@ -3,13 +3,11 @@
 // (candidate-review.ts).
 
 import { and, eq } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { executionSteps } from "../db/schema/index.ts";
 import { RequestMetaSchema } from "../execution/request-meta-schema.ts";
 import type { FailingStepSnapshot } from "./drift-detector.ts";
 import type { DryRunStep } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export function buildDryRunStep(snapshot: FailingStepSnapshot): DryRunStep {
   // `data_selector` / `response_filters` / `expression` come from the

@@ -8,10 +8,8 @@ import { sql } from "drizzle-orm";
 import type { AuditEntry } from "../audit/types.ts";
 import { logger } from "../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
-import { type Db, getDb } from "./client.ts";
+import { type Executor, getDb } from "./client.ts";
 import { auditLog } from "./schema/audit.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /**
  * Persist an AuditEntry to `audit_log`. Accepts any drizzle executor

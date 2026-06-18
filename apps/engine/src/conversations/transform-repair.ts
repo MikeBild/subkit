@@ -29,7 +29,7 @@
 // — a repair must never make the surrounding tool call fail.
 
 import { z } from "zod";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { buildJsonataBindings } from "../execution/jsonata-bindings.ts";
 import {
   compile as compileJsonata,
@@ -39,8 +39,6 @@ import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
 import { checkJsBodySyntax, evaluateJsBody } from "./js-transform-eval.ts";
 import { truncateForLlm } from "./tools/truncate.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Hard attempt bound — the whole point of "bounded" repair. */
 export const MAX_REPAIR_ATTEMPTS = 2;

@@ -5,14 +5,12 @@
 // operators can audit every LLM interaction against the budget.
 
 import { and, eq, sql } from "drizzle-orm";
-import { type Db, getDb } from "../../db/client.ts";
+import { type Executor, getDb } from "../../db/client.ts";
 import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { LlmQuotaExhausted } from "../errors.ts";
 import { weightedTotalTokens } from "../pricing.ts";
 import type { LlmCallLogEntry } from "../types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export function currentMonthBucket(d: Date = new Date()): number {
   return d.getUTCFullYear() * 100 + (d.getUTCMonth() + 1);
