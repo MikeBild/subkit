@@ -788,6 +788,33 @@ function checkCompileBuildsKeepNodeEnvDynamic(): Result {
   };
 }
 
+function checkExecutorCanonical(): Result {
+  // The DB `Executor` type has ONE canonical definition in db/client.ts.
+  // It was previously redeclared in ~53 files; a structural re-declaration
+  // typechecks fine, so a future copy would silently re-introduce the
+  // drift class. Ban any `type Executor =` outside the canonical file.
+  const allowed = "apps/engine/src/db/client.ts";
+  const DECL = /(?:^|\n)\s*(?:export\s+)?type\s+Executor\s*=/;
+  const violations: string[] = [];
+  for (const f of listFiles(ENGINE_SRC, (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"))) {
+    const rel = relative(REPO, f);
+    if (rel === allowed) continue;
+    if (DECL.test(readFileSync(f, "utf8"))) violations.push(rel);
+  }
+  if (violations.length === 0) {
+    return {
+      id: "executor_canonical",
+      status: "PASS",
+      message: `the DB Executor type is declared only in ${allowed} (no local re-declarations)`,
+    };
+  }
+  return {
+    id: "executor_canonical",
+    status: "FAIL",
+    message: `local \`type Executor =\` re-declarations (import from db/client.ts instead):\n  ${violations.join("\n  ")}`,
+  };
+}
+
 // ---------- driver ----------
 
 const CHECKS: Array<() => Result> = [
@@ -809,6 +836,7 @@ const CHECKS: Array<() => Result> = [
   checkEngineHomedirAbsence,
   checkNoGlobalFetchStubInTests,
   checkCompileBuildsKeepNodeEnvDynamic,
+  checkExecutorCanonical,
 ];
 
 const results: Result[] = [];

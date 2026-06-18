@@ -111,5 +111,21 @@ describe("engine bind hostname — defense-in-depth", () => {
       );
       expect(resolveListenHostname(NO_OVERRIDE)).toBe(DEFAULT_ENGINE_LISTEN_HOSTNAME);
     });
+
+    test("accepts well-formed hosts (IPv4, IPv6, hostname)", () => {
+      for (const host of ["0.0.0.0", "127.0.0.1", "::", "::1", "localhost"]) {
+        expect(resolveListenHostname({ ENGINE_LISTEN_HOST: host })).toBe(host);
+      }
+    });
+
+    test("a non-empty but malformed value fails fast instead of binding the wrong interface", () => {
+      // Empty labels (`0.0.0..1`) and illegal characters (spaces, `;`)
+      // are operator typos — surface them at boot, don't silently bind.
+      for (const bad of ["0.0.0..1", "not a host", "10.0.0.1;rm"]) {
+        expect(() => resolveListenHostname({ ENGINE_LISTEN_HOST: bad })).toThrow(
+          /not a valid bind host/,
+        );
+      }
+    });
   });
 });

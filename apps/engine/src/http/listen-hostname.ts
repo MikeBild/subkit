@@ -28,9 +28,31 @@ export const DEFAULT_ENGINE_LISTEN_HOSTNAME = "127.0.0.1" as const;
 /** Back-compat alias — the historical export name for the default. */
 export const ENGINE_LISTEN_HOSTNAME = DEFAULT_ENGINE_LISTEN_HOSTNAME;
 
+/** A bind host the platform listener can accept: an IPv4/IPv6 address
+ *  or a DNS hostname. Rejects typos with empty labels (`0.0.0..1`) or
+ *  stray characters so a malformed override fails fast at boot instead
+ *  of silently binding the wrong interface. */
+function isValidListenHost(host: string): boolean {
+  // IPv6 (incl. "::", "::1", full forms): hex groups + colons only.
+  if (host.includes(":")) return /^[0-9a-fA-F:]+$/.test(host);
+  // IPv4 / DNS hostname: dot-separated non-empty `[A-Za-z0-9-]` labels.
+  return host.split(".").every((label) => /^[A-Za-z0-9-]+$/.test(label));
+}
+
 export function resolveListenHostname(env: NodeJS.ProcessEnv = process.env): string {
+  // Unset/blank/whitespace means "use the default" — the production
+  // contract. A non-empty but malformed value is an operator typo:
+  // fail loudly rather than fall back to a silently-unreachable bind.
   const override = env.ENGINE_LISTEN_HOST?.trim();
-  return override ? override : DEFAULT_ENGINE_LISTEN_HOSTNAME;
+  if (!override) return DEFAULT_ENGINE_LISTEN_HOSTNAME;
+  if (!isValidListenHost(override)) {
+    throw new Error(
+      `ENGINE_LISTEN_HOST="${override}" is not a valid bind host — ` +
+        `expected an IPv4/IPv6 address or hostname. Unset it to use the ` +
+        `${DEFAULT_ENGINE_LISTEN_HOSTNAME} default, or set 0.0.0.0 for all interfaces.`,
+    );
+  }
+  return override;
 }
 
 export function engineServeOptions(

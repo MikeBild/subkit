@@ -17,7 +17,9 @@ cd "$REPO_ROOT"
 IMAGE="${IMAGE:-mikebild/subkit}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 PUSH="${PUSH:-1}"
-VERSION="$(node -p 'require("./package.json").version' 2>/dev/null || echo "0.0.0-dev")"
+# Mirror the Dockerfile's version read (bun, not node) so the publish
+# script runs in the same bun-only toolchain as the build.
+VERSION="${VERSION:-$(bun -e 'console.log(require("./package.json").version)')}"
 
 echo "[publish] image=$IMAGE version=$VERSION platforms=$PLATFORMS push=$PUSH"
 
