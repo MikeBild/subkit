@@ -29,7 +29,7 @@ const OAuthPollResponseSchema = z.object({
 export type OAuthPollResponse = z.infer<typeof OAuthPollResponseSchema>;
 export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
 
-// R5-W4 review fix: validate `authUrl` itself before launching it
+// Validate `authUrl` itself before launching it
 // via `spawn(bin, [authUrl])`. The `spawn(..., { shell: false })`
 // guard prevents shell-injection but it does NOT prevent URL-scheme
 // abuse — `xdg-open file:///etc/passwd` would still launch a file
@@ -83,7 +83,7 @@ export function OAuthWaitView({
   const tokens = useTheme();
   // Validate the URL up-front. A malformed or unsupported-scheme URL
   // lands the view in the "manual" phase with an error rather than
-  // launching `xdg-open file:///etc/passwd` or similar. R5-W4.
+  // launching `xdg-open file:///etc/passwd` or similar.
   const urlCheck = AuthUrlSchema.safeParse(authUrl);
   const [phase, setPhase] = useState<"launching" | "waiting" | "manual">(
     urlCheck.success ? "launching" : "manual",

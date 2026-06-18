@@ -181,10 +181,6 @@ function checkRouteLayering(): Result {
   // relative paths of the form `../../<sub>/index` or `../../<sub>`
   // (resolved to index.ts) are OK; deeper paths into subsystem
   // internals are flagged.
-  //
-  // This regex heuristic could be hardened into an AST scan that
-  // resolves the import to a TS file and asserts it's the re-exported
-  // entry point.
   const routeFiles = listFiles(
     join(ENGINE_SRC, "http/routes"),
     (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"),

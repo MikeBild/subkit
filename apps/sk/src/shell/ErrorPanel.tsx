@@ -315,7 +315,7 @@ function GenericPanel({ payload }: { payload: GenericPayload }): React.ReactElem
 
 /**
  * Classify a top-level error into a panel kind. This is intentionally
- * a *different axis* from `classifyEngineError` (R1-S4 review note):
+ * a *different axis* from `classifyEngineError`:
  *
  * - `errorToPanel` switches on **transport / status** — `429` →
  *   rate-limit panel, `401/403` → auth panel, transport errors →

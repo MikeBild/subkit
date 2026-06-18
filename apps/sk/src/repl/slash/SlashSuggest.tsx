@@ -45,7 +45,7 @@ export function SlashSuggest({
 }: SlashSuggestProps): React.ReactElement | null {
   const tokens = useTheme();
 
-  // R6-W1 review fix: rules-of-hooks. Both `useMemo` calls below
+  // Rules-of-hooks. Both `useMemo` calls below
   // were originally placed AFTER the `buffer.length === 0` early
   // return, which meant the hook count jumped from 1 to 3 when the
   // user typed the first character — corrupting React's hook table.
