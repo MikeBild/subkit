@@ -141,7 +141,7 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
         ok: true,
         step_id: "fetch",
         summary: "Ran 1 step",
-        preview: { projects: [{ id: "p1", name: "CodeCommission" }] },
+        preview: { projects: [{ id: "p1", name: "Acme" }] },
         step_traces: [
           {
             step_id: "fetch",

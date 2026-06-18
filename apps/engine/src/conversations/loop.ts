@@ -537,7 +537,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ].filter((id): id is string => typeof id === "string" && id.length > 0),
     ),
   ];
-  // Run-verb bias: a message like "run emobxp-jira-test-plans" or
+  // Run-verb bias: a message like "run acme-jira-test-plans" or
   // "starte foo" tilts the prompt's authoring_hint.mode to `execution`
   // even when no draft summary exists yet, so EXECUTION_PERSONA fires
   // for that turn and the tenant snapshot's HARD RULE about

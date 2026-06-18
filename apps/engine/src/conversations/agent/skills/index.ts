@@ -105,7 +105,7 @@ export const ALL_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = AGENT_SKILL_NAMES
  *   - `placeholder-rules` — `${cred|connector|input|scope.*}` grammar;
  *      only relevant when authoring (drafts) or repairing (diagnosis).
  *
- * Trimming the latter two from execution-mode turns ("run emobxp-jira-
+ * Trimming the latter two from execution-mode turns ("run acme-jira-
  * test-plans") saves ~750 tokens. Execution-mode turns reach for
  * `wf_<slug>` / `run_workflow` directly; there is no step proposal to
  * guard. Authoring-mode and connector-mode and diagnosis-mode turns

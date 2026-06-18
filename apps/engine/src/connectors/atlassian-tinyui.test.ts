@@ -65,8 +65,8 @@ describe("parseAtlassianCloudResourceUrl", () => {
   });
 
   it("resolves a Jira issue URL", () => {
-    const r = parseAtlassianCloudResourceUrl("https://acme.atlassian.net/browse/EMOB-22926");
-    expect(r).toEqual({ kind: "jira_issue", key: "EMOB-22926" });
+    const r = parseAtlassianCloudResourceUrl("https://acme.atlassian.net/browse/ACME-22926");
+    expect(r).toEqual({ kind: "jira_issue", key: "ACME-22926" });
   });
 
   it("returns null for non-Atlassian hosts", () => {

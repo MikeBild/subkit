@@ -163,7 +163,7 @@ const DIAGNOSIS_TOOLS: ReadonlySet<string> = new Set(["diagnose_latest_execution
 /**
  * Execution-tier tools that are always visible regardless of skill load
  * state. `run_workflow` lives here so a fresh conversation that names a
- * saved workflow ("run emobxp-jira-test-plans") can dispatch it on the
+ * saved workflow ("run acme-jira-test-plans") can dispatch it on the
  * first LLM turn without first loading `workflow-authoring`. Same
  * treatment `delete_workflow` already has in ALWAYS_AVAILABLE_CLEANUP.
  * The tool's input contract still resolves the slug against the live

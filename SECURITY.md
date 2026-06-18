@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Email **mike@mikebild.com** with details. Do not open a public issue or PR. Allow up to **5 working days** for an initial response and **90 days** for a coordinated disclosure window before any public discussion.
+Report a vulnerability privately via GitHub's **"Report a vulnerability"** button under the repository's **Security** tab (Security Advisories). Do not open a public issue or PR. Allow up to **5 working days** for an initial response and **90 days** for a coordinated disclosure window before any public discussion.
 
 Include in your report:
 
@@ -29,7 +29,7 @@ Only the latest released minor on the current major line receives security fixes
 - Reports against third-party dependencies that have a published CVE — please report those upstream.
 - Vulnerabilities that require a privileged operator account on the engine host (root, the engine's database role, or `MASTER_KEY` access).
 - Findings against demo seed data, sample workflows, or fixture connectors.
-- Social-engineering, phishing, or denial-of-service against the public mike@mikebild.com inbox.
+- Social-engineering, phishing, or denial-of-service against the maintainers or the reporting channel.
 
 ## Responsible disclosure
 

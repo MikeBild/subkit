@@ -75,7 +75,7 @@ tool now returns three signals you must read before proposing a draft:
   - `{ kind: "confluence_tinyui", short: "y4ozBQ", page_id: 87263947 }` →
     use `page_id` (not the short) when building the page-fetch request.
   - `{ kind: "confluence_page", page_id: 83907824 }` → direct page URL.
-  - `{ kind: "jira_issue", key: "EMOB-22926" }` → drop the key into the
+  - `{ kind: "jira_issue", key: "ACME-22926" }` → drop the key into the
     Jira request path.
   Decoding the resource id at match time saves 3+ probe round-trips —
   do NOT call the API to discover an id the matcher already gave you.

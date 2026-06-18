@@ -18,7 +18,7 @@ describe("array-of-objects renderer (chat surface)", () => {
     const lines = previewLines([
       {
         project_id: "d6742174",
-        project_name: "CodeCommission",
+        project_name: "Acme",
         resources: [{ urn: "do:domain:acme.example.com" }, { urn: "do:domain:mikebild.info" }],
       },
       {
@@ -29,7 +29,7 @@ describe("array-of-objects renderer (chat surface)", () => {
     ]);
     const joined = lines.join("\n");
     // Title key heuristic picks project_name (over project_id).
-    expect(joined).toContain("CodeCommission");
+    expect(joined).toContain("Acme");
     expect(joined).toContain("subkit");
     // Resource arrays render as <N items> placeholder, not as
     // truncated JSON.

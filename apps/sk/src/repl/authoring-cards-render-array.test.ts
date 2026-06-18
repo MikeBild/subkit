@@ -4,7 +4,7 @@
 // <4 items>" because it only checked top-level title keys. The fixed
 // renderer walks one level deep into nested objects to find a
 // title-shaped string field, then prints the array count suffix
-// inline so the operator sees "1. CodeCommission — 4 resources".
+// inline so the operator sees "1. Acme — 4 resources".
 
 import { describe, expect, test } from "bun:test";
 import { __testHooks } from "./authoring-cards.tsx";
@@ -14,11 +14,11 @@ const { renderArrayOfObjects, previewLines } = __testHooks;
 describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
   test("uses nested project.name when top-level has no title", () => {
     const arr = [
-      { project: { id: "p1", name: "CodeCommission" }, resources: [{ id: "r1" }, { id: "r2" }] },
+      { project: { id: "p1", name: "Acme" }, resources: [{ id: "r1" }, { id: "r2" }] },
       { project: { id: "p2", name: "subkit" }, resources: [{ id: "r3" }] },
     ];
     const lines = renderArrayOfObjects(arr, 20, 100);
-    expect(lines[0]).toMatch(/^1\. CodeCommission/);
+    expect(lines[0]).toMatch(/^1\. Acme/);
     expect(lines[0]).toMatch(/2 resources$/);
     // Find the second item — it might be at index 2 or 3 depending on
     // how many fields render under the first.
@@ -43,7 +43,7 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
   });
 
   test("does not consume nested title key — it stays visible as a bullet so the operator can see the full record", () => {
-    const arr = [{ project: { id: "p1", name: "CodeCommission" }, resources: [{ id: "r1" }] }];
+    const arr = [{ project: { id: "p1", name: "Acme" }, resources: [{ id: "r1" }] }];
     const lines = renderArrayOfObjects(arr, 10, 100);
     // The headline shows the nested title; the project field is still
     // listed as a bullet (so the user sees there is a `project` object).
@@ -70,7 +70,7 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
     // project names with their resource counts inline.
     const arr = [
       {
-        project: { id: "p1", name: "CodeCommission", environment: "Production" },
+        project: { id: "p1", name: "Acme", environment: "Production" },
         resources: [{}, {}, {}, {}],
       },
       { project: { id: "p2", name: "subkit", environment: "Production" }, resources: [{}, {}] },
@@ -78,7 +78,7 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
       { project: { id: "p4", name: "acme", environment: null }, resources: [] },
     ];
     const lines = previewLines(arr, 20, 100);
-    expect(lines[0]).toMatch(/^1\. CodeCommission — 4 resources/);
+    expect(lines[0]).toMatch(/^1\. Acme — 4 resources/);
     const secondItemLine = lines.find((l) => l.startsWith("2."));
     const thirdItemLine = lines.find((l) => l.startsWith("3."));
     const fourthItemLine = lines.find((l) => l.startsWith("4."));

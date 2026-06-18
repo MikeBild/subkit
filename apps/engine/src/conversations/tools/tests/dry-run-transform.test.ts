@@ -204,8 +204,8 @@ describe("dry_run_transform — scope reference resolution", () => {
         fetch_issues: {
           data: {
             issues: [
-              { key: "EMOBXP-1", fields: { assignee: { displayName: "Ada" } } },
-              { key: "EMOBXP-2", fields: { assignee: null } },
+              { key: "ACME-1", fields: { assignee: { displayName: "Ada" } } },
+              { key: "ACME-2", fields: { assignee: null } },
             ],
           },
           status_code: 200,
@@ -229,8 +229,8 @@ describe("dry_run_transform — scope reference resolution", () => {
     // the second row carries only `key` — `$exists(...)` still prevents
     // the whole row from collapsing, which is the session-fb930dcb fix.
     expect(data.value).toHaveLength(2);
-    expect(data.value[0]).toEqual({ key: "EMOBXP-1", assignee: "Ada" });
-    expect(data.value[1]?.key).toBe("EMOBXP-2");
+    expect(data.value[0]).toEqual({ key: "ACME-1", assignee: "Ada" });
+    expect(data.value[1]?.key).toBe("ACME-2");
     expect(data.metadata.resolved_from_preview).toBe("$scope.fetch_issues");
   });
 

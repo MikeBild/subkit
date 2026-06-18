@@ -34,7 +34,7 @@ interface Span {
 /** Walks a piece of source text and records the byte-spans of every
  *  `'…'` and `"…"` string literal. Backslash escapes are honoured.
  *  Used to suppress bare-path validation inside string literals — the
- *  validator's regex would otherwise flag `mikebild.com` or
+ *  validator's regex would otherwise flag `example.com` or
  *  `application.json` as candidate step references. */
 function computeStringLiteralSpans(text: string): Span[] {
   const out: Span[] = [];
@@ -273,7 +273,7 @@ function collectBarePathReferences(
   }
   // Pre-compute string-literal spans so the bare-path scan skips
   // anything inside `'...'` or `"..."`. Pre-fix the validator flagged
-  // domain names (`mikebild.com`, `codecommission.de`) and content-
+  // domain names (`example.com`, `example.org`) and content-
   // type strings (`application/json`) when they appeared inside string
   // literals in JSONata expressions. Author code routinely contains
   // these and they are not step references.
