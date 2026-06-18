@@ -66,7 +66,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("chat-first parity", () => {
+describe("chat-first UX", () => {
   test("first paint shows the compact welcome card, composer, and footer", async () => {
     const instance = renderApp();
     await tick();

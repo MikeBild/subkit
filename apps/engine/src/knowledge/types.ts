@@ -67,7 +67,7 @@ export const CreateKnowledgeSourceSchema = z
 export type CreateKnowledgeSourceInput = z.infer<typeof CreateKnowledgeSourceSchema>;
 
 /**
- * Web-scraper #144 — inline JSON body for POST /v1/knowledge-sources.
+ * Web-scraper — inline JSON body for POST /v1/knowledge-sources.
  *
  * Recipes (most notably `crawl-sitemap-to-knowledge`) post a single
  * page's extracted markdown directly, without a multipart upload. The
@@ -141,7 +141,7 @@ export interface CreateKnowledgeSourceParams {
     mime?: string;
   };
   actor_id: string | null;
-  /** Web-scraper #144 — when the source comes from an inline JSON body
+  /** Web-scraper — when the source comes from an inline JSON body
    *  rather than a file upload, the route stamps these on the row so
    *  later refreshes know where the content originated. Defaults to
    *  `"file_upload"` + `upload.filename` for back-compat. */

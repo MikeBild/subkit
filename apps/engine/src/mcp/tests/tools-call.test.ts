@@ -57,7 +57,7 @@ describe("mcp tools/call", () => {
   // `resource_link` content block so MCP clients can auto-fetch the
   // body via `resources/read`. The previous text-encoded JSON envelope
   // forced LLM agents to parse a URI out of a string field, which they
-  // rarely did — codex got the offloaded Confluence page back as an
+  // rarely did — an agent would get an offloaded large page back as an
   // unreachable pointer until this contract was fixed.
   test("offloads large results as a resource_link content block (not a text envelope)", async () => {
     // Build a payload that will reliably exceed MCP_OFFLOAD_CHAR_CAP (20 KB).

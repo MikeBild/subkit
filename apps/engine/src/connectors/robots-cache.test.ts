@@ -1,4 +1,4 @@
-// Web-scraper #144 — robots-cache unit tests.
+// Robots-cache unit tests.
 //
 // Covers:
 //   - allow / disallow / user-agent specific rules

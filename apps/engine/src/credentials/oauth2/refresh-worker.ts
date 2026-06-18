@@ -57,7 +57,7 @@ export async function refreshIfStale(
 ): Promise<DecryptedCredential> {
   // oauth2 access tokens refreshed here are always connector-owned. A
   // null connector_id means the row belongs to an external MCP server
-  // (#171) whose refresh path lives in the MCP client subsystem — skip.
+  // whose refresh path lives in the MCP client subsystem — skip.
   const connectorId = credRow.connector_id;
   if (connectorId == null) return decrypted;
   // For grant types that don't issue a refresh_token (client_credentials_json
@@ -328,7 +328,7 @@ async function handleRefreshJob(db: Db, data: RefreshOAuthJob): Promise<void> {
   if (!row) return;
   if (!row.oauth2_refresh_ciphertext) return;
   // This refresh job only services connector-owned oauth2 credentials.
-  // MCP-server credentials (#171) carry a null connector_id and are
+  // MCP-server credentials carry a null connector_id and are
   // refreshed elsewhere.
   if (row.connector_id == null) return;
   // Decrypt via the service to keep AAD logic in one place. Lazy import

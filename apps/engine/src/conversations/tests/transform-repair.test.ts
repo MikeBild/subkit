@@ -174,7 +174,7 @@ describe("build_workflow — repair proposals are PROPOSE-only", () => {
     };
     const badExpression = "return input.scope.fetch.data.wrong_field;";
     // Seed the conversation draft with fingerprint-valid recorded
-    // evidence for `fetch`, so the rebuilt draft retains it (Fix 5)
+    // evidence for `fetch`, so the rebuilt draft retains it
     // and the recorded-eval pass can actually evaluate the transform.
     const seeded = {
       workflow: { name: "Seed", slug: "repair-propose", steps: [fetch] },

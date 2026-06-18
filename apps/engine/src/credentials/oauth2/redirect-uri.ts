@@ -26,10 +26,9 @@
 // author the `redirect_uri` on the connector config. The LLM almost
 // always got it wrong (`http://` instead of `https://`, wrong path
 // segment); operators also had to copy a per-connector UUID into
-// their OAuth provider's allowlist — neither is workable. The
-// reference impl uses a single global `/api/auth/callback` with the
-// `state` carrying everything needed; this module brings subkit to
-// the same shape.
+// their OAuth provider's allowlist — neither is workable. This module
+// uses a single global callback route with the `state` parameter
+// carrying everything needed to resolve the connector.
 
 import { getConfig } from "../../config/loader.ts";
 

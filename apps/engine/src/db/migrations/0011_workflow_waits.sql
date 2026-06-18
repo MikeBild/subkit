@@ -1,4 +1,4 @@
--- In-flight wait checkpoints (#48 SHRUNK). One row per active wait
+-- In-flight wait checkpoints. One row per active wait
 -- step. Written at step start, deleted at step completion. Restart
 -- safety: engine boot reads this table to resume waits whose process
 -- died mid-setTimeout (rows in the past resume immediately; future

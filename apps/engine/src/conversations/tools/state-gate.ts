@@ -1,7 +1,7 @@
 // State-gate helpers — return a structured "tool_unavailable_in_state"
 // envelope when a tool is invoked at the wrong authoring stage.
 //
-// The palette no longer hides tools by state (PR10/PR15). Loading a
+// The palette no longer hides tools by state. Loading a
 // skill exposes a fixed tool set; calling a tool against the wrong
 // state returns the structured envelope below so the LLM has an
 // explicit signal — and a `next_best_actions` list — instead of a

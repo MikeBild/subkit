@@ -195,7 +195,7 @@ export interface RecordConnectorSavedOverrideParams extends RecorderBase {
   probe_failure_code?: string | null;
   /**
    * Override the metadata `kind` tag. Defaults to "force_save_override"
-   * (the canonical Wave 4 marker). The tool path passes "probe_override"
+   * (the canonical marker). The tool path passes "probe_override"
    * when the row is the tool's secondary audit alongside the atomic
    * helper's force_save_override row, so operators can tell the two
    * paths apart.

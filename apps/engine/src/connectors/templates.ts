@@ -443,7 +443,7 @@ export const ConnectorTemplateSchema = z
      */
     verified_at: z.string().datetime().nullable().default(null),
     /**
-     * Web-scraper #144 — opts the template into robots.txt enforcement
+     * Opts the web-scraper template into robots.txt enforcement
      * inside `drivers/http.ts buildRequestPlan`. This field GATES the
      * cascade; once gated, the tenant-overlay
      * `connectors.web_scraper.runtime.respect_robots` toggle (and the

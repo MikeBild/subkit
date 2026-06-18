@@ -9,12 +9,10 @@
 // This keeps the feedback loop honest without retaining data forever.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { getDb } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 

@@ -194,7 +194,7 @@ export function localWeekdayInTz(now: Date, tz: string): number {
 
 /**
  * Calendar-gate decision used by the workflow-schedule fan-out. Encodes
- * the issue-#47 contract:
+ * the calendar-gate contract:
  *   - `business_days_only: true` skips Sat (6) + Sun (0) in `tz`.
  *   - `skip_dates` (YYYY-MM-DD) skips the explicit list in `tz`.
  *

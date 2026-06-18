@@ -9,11 +9,9 @@
 // filter surface cannot drift between them.
 
 import { and, desc, eq, sql } from "drizzle-orm";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { executions } from "../db/schema/index.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export type ExecutionRow = typeof executions.$inferSelect;
 

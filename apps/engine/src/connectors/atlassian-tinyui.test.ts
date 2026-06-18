@@ -49,7 +49,7 @@ describe("decodeAtlassianTinyui", () => {
 
 describe("parseAtlassianCloudResourceUrl", () => {
   it("resolves the session-0498925e Confluence Cloud tinyui URL", () => {
-    const r = parseAtlassianCloudResourceUrl("https://si-emobility.atlassian.net/wiki/x/y4ozBQ");
+    const r = parseAtlassianCloudResourceUrl("https://acme.atlassian.net/wiki/x/y4ozBQ");
     expect(r).toEqual({
       kind: "confluence_tinyui",
       short: "y4ozBQ",
@@ -59,16 +59,14 @@ describe("parseAtlassianCloudResourceUrl", () => {
 
   it("resolves a direct Confluence page URL (numeric id in path)", () => {
     const r = parseAtlassianCloudResourceUrl(
-      "https://si-emobility.atlassian.net/wiki/spaces/PROD/pages/83907824/Sifinity+Control",
+      "https://acme.atlassian.net/wiki/spaces/PROD/pages/83907824/Sifinity+Control",
     );
     expect(r).toEqual({ kind: "confluence_page", page_id: 83907824 });
   });
 
   it("resolves a Jira issue URL", () => {
-    const r = parseAtlassianCloudResourceUrl(
-      "https://si-emobility.atlassian.net/browse/EMOB-22926",
-    );
-    expect(r).toEqual({ kind: "jira_issue", key: "EMOB-22926" });
+    const r = parseAtlassianCloudResourceUrl("https://acme.atlassian.net/browse/ACME-22926");
+    expect(r).toEqual({ kind: "jira_issue", key: "ACME-22926" });
   });
 
   it("returns null for non-Atlassian hosts", () => {
@@ -76,8 +74,8 @@ describe("parseAtlassianCloudResourceUrl", () => {
   });
 
   it("returns null for unrecognised Atlassian paths", () => {
-    expect(parseAtlassianCloudResourceUrl("https://si-emobility.atlassian.net/")).toBe(null);
-    expect(parseAtlassianCloudResourceUrl("https://si-emobility.atlassian.net/wiki/")).toBe(null);
+    expect(parseAtlassianCloudResourceUrl("https://acme.atlassian.net/")).toBe(null);
+    expect(parseAtlassianCloudResourceUrl("https://acme.atlassian.net/wiki/")).toBe(null);
   });
 
   it("returns null for malformed URLs", () => {

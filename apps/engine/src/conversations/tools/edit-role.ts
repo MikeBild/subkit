@@ -1,5 +1,5 @@
 // edit_role — patch a role's metadata + permission set in a single
-// call. Mirrors the reference impl's `edit_role`. Built-in roles are
+// call. Built-in roles are
 // rejected with `builtin_immutable` (the underlying service throws).
 //
 // Confirmation: this is a `tenant_write` tool — the gate is enforced

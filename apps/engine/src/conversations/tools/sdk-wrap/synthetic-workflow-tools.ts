@@ -2,7 +2,7 @@
 //
 // MCP exposes per-tenant saved workflows as first-class `tools/list`
 // entries (`wf_<slug>`). The chat LLM needs the same catalog so a
-// user message that names a workflow ("run emobxp-jira-test-plans")
+// user message that names a workflow ("run acme-jira-test-plans")
 // dispatches in ONE tool call instead of bouncing through
 // find_workflow → get_workflow → run_workflow.
 //

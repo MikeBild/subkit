@@ -1,4 +1,4 @@
-// #48 SHRUNK: wait checkpoint + audit pair regression tests.
+// Wait checkpoint + audit pair regression tests.
 //
 // Pins the contract: a wait step writes a row to `workflow_waits`
 // before sleeping, deletes the row on completion, and emits both
@@ -83,7 +83,7 @@ function buildCtx(executionId: string, ac: AbortController): StepRunContext {
   };
 }
 
-describe("#48 wait checkpoint contract", () => {
+describe("wait checkpoint contract", () => {
   test("successful wait writes a checkpoint row, then deletes it on completion", async () => {
     executionId = await freshExecution();
     const ac = new AbortController();

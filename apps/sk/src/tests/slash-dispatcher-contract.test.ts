@@ -1,6 +1,6 @@
-// Slash-dispatcher contract test (G11 closure of #159 M13).
+// Slash-dispatcher contract test.
 //
-// This is the parity gate the issue asks for: every entry in the
+// This is the dispatcher parity gate: every entry in the
 // removed-slash guidance map MUST NOT also appear as a registered
 // command (otherwise the guidance would shadow a working command),
 // and every registered command MUST resolve to a routing other than
@@ -10,7 +10,7 @@ import { describe, expect, test } from "bun:test";
 import { classifySlash, REMOVED_SLASH_GUIDANCE } from "../repl/slash/dispatcher.ts";
 import { SLASH_COMMANDS } from "../slash.ts";
 
-describe("slash dispatcher contract (G11)", () => {
+describe("slash dispatcher contract", () => {
   test("every registered command resolves to a routing other than unknown", () => {
     for (const cmd of SLASH_COMMANDS) {
       const plan = classifySlash(cmd.name);
@@ -55,7 +55,7 @@ describe("slash dispatcher contract (G11)", () => {
     }
   });
 
-  test("the M13 install-* per-service slashes are gone", () => {
+  test("the install-* per-service slashes are gone", () => {
     const removed = [
       "install-slack",
       "install-teams",
@@ -75,7 +75,7 @@ describe("slash dispatcher contract (G11)", () => {
   test("the unified `/install` slash is registered and opens the onboarding wizard", () => {
     const plan = classifySlash("install");
     expect(plan.routing).not.toBe("unknown");
-    // S3 of PR #161 review round 2: `/install` is now an alias of
+    // `/install` is an alias of
     // `/onboard` rather than a duplicate registry entry, so the
     // resolved command is `/onboard` and its help text is the
     // single source of truth for the wizard description. The

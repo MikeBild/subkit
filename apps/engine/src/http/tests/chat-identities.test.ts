@@ -1,7 +1,7 @@
 // HTTP integration tests for /v1/chat/identities — the admin route
-// that links a chat-platform user to a subkit user. Covers PR #206
-// review C-2 (unlink emits the right audit action) and W-2 (link
-// rejects a body.user_id that belongs to another tenant).
+// that links a chat-platform user to a subkit user. Covers that unlink
+// emits the right audit action and that link rejects a body.user_id
+// that belongs to another tenant.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";

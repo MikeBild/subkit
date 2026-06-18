@@ -1,4 +1,4 @@
-// Web-scraper #144 — post-execution optimisation analyzer.
+// Post-execution optimisation analyzer for the web-scraper connector.
 //
 // Pure functions that classify recent runs of a web-scraper workflow
 // and emit optimization-candidate proposals. The pg-boss scheduler

@@ -1,9 +1,7 @@
 // `ConnectorSystem` — single facade unifying connector + driver +
-// credentials + docs. Mirrors the reference impl's `SystemManager`
-// interface (`packages/core/systems/system-manager.ts`) so cross-
-// codebase mental model is consistent. Subkit-specific extensions:
-// `tenantId` and `schemaVersion` make tenant isolation and self-healing
-// drift tracking part of the type, not callable invariants.
+// credentials + docs. `tenantId` and `schemaVersion` make tenant
+// isolation and self-healing drift tracking part of the type, not
+// callable invariants.
 //
 // Use this for any code path that needs MORE THAN ONE of {driver,
 // credentials, documentation}. Single-purpose call sites (an OAuth
@@ -13,12 +11,10 @@
 
 import { getCredentialForConnector } from "../credentials/service.ts";
 import type { DecryptedCredential } from "../credentials/types.ts";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { listDocs as listConnectorDocs } from "../docs-ingestion/service.ts";
 import { getConnectorForEnvironment } from "./service.ts";
 import type { ConnectorView, DriverName, Environment } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface ConnectorDocumentSummary {
   id: string;
@@ -61,7 +57,7 @@ export interface ConnectorSystem {
    */
   getCredentials(): Promise<{
     // `connector_id` is nullable on the shared credentials row (an MCP
-    // server may own a row instead — see #171), but this facade ONLY ever
+    // server may own a row instead), but this facade ONLY ever
     // resolves connector-owned rows via `getCredentialForConnector`. We
     // re-narrow to non-null at the facade boundary (fail-fast in the impl
     // if the resolved row ever lacks a connector_id) so callers never see

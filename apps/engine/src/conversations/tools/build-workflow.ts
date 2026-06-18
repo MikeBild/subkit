@@ -159,8 +159,7 @@ function buildWorkflowSuccessPayload(
         last_step_id: typeof lastStep?.id === "string" ? lastStep.id : null,
         step_type: typeof lastStep?.kind === "string" ? lastStep.kind : null,
         // build_workflow never auto-saves — the result is always a
-        // draft. Surfacing the persistence state explicitly mirrors
-        // the reference impl's `build_tool` contract so the LLM
+        // draft. Surfacing the persistence state explicitly so the LLM
         // never assumes the workflow is committed.
         persistence: "draft_only" as const,
         next_step: "save_workflow_draft" as const,
@@ -715,8 +714,8 @@ export const buildWorkflowTool: ConversationTool = {
       }
     }
 
-    // Pre-mutation snapshot for the inline diff cell (codex pattern):
-    // emit a unified diff of the workflow DAG so the operator sees
+    // Pre-mutation snapshot for the inline diff cell: emit a unified
+    // diff of the workflow DAG so the operator sees
     // exactly what changed structurally vs. the previous draft state.
     const beforeJson = canonicalJson(currentDraft.workflow ?? null);
     const nextDraft = withWorkflowDraft(currentDraft, workflowDraft, "workflow_built");
@@ -757,11 +756,11 @@ export const buildWorkflowTool: ConversationTool = {
       ...verdict.warnings.map((warning) => `${warning.code}:${warning.path}`),
     ];
 
-    // Recorded-evaluation pass (Fix 9) — the loop/transform gates are
+    // Recorded-evaluation pass — the loop/transform gates are
     // OUTCOMES on the accepted draft, not preconditions. The model gets
     // generate → evaluate → repair in one round trip: compile errors
     // with caret pointers, scope-ref resolution against the
-    // fingerprint-valid evidence that survived the mutation (Fix 5),
+    // fingerprint-valid evidence that survived the mutation,
     // transform evaluation against recorded scope, and the gate
     // verdicts — all without a single live HTTP call.
     const lastPreview = getLastPreview({

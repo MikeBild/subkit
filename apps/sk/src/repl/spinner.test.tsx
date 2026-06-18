@@ -59,7 +59,7 @@ describe("Spinner · live tool-call progress", () => {
     r.unmount();
   });
 
-  // Bug HH regression — pre-fix sessions dcdcf246 / 86de186b: when
+  // Regression — pre-fix sessions dcdcf246 / 86de186b: when
   // every tool had returned but the LLM was still composing the
   // human-readable answer, the spinner cycled through verbs
   // ("considering" / "composing" / "reviewing") with no signal that

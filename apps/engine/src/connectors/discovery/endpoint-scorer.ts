@@ -1,6 +1,6 @@
 // Keyword-scored endpoint suggestions.
 //
-// Wave 2 follow-up to discovery: the operator's most recent message often
+// Discovery refinement: the operator's most recent message often
 // signals which of the (sometimes hundreds of) discovered endpoints they
 // actually care about. A BM25-lite score over `summary + description +
 // path + operation_id + parameters[].name` lets the conversation tool

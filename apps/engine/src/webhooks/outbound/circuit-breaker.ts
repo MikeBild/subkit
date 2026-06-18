@@ -8,7 +8,7 @@
 // letter without an HTTP call.
 
 import { eq, sql } from "drizzle-orm";
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 
@@ -19,8 +19,6 @@ interface BreakerState {
   consecutive_failures: number;
   open_until: number; // epoch ms, 0 when closed
 }
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const state: Map<string, BreakerState> = new Map();
 

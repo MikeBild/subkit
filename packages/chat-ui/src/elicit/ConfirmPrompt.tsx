@@ -11,9 +11,9 @@
 // component. When the reason panel is open, printable chars /
 // Backspace route into `reason`; Tab closes the panel; Enter commits
 // the reason and closes the panel (it does NOT submit the form — the
-// user must then press 1, 3, or arrow+Enter to decide). This matches
-// the claude-code single-owner pattern and avoids the bug where the
-// embedded `@inkjs/ui` TextInput would swallow Tab and treat Enter as
+// user must then press 1, 3, or arrow+Enter to decide). The
+// single-owner input model avoids the bug where the embedded
+// `@inkjs/ui` TextInput would swallow Tab and treat Enter as
 // "submit the whole form".
 
 import { Box, Text, useInput } from "ink";

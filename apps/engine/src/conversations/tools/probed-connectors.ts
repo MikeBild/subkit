@@ -4,8 +4,7 @@
 // step routes through an already-probed connector, the probe
 // counts as proof of shape and the gate skips it.
 //
-// Mirrors the reference impl's `call_system → build_tool` flow:
-// probes ARE the shape-discovery surface. Pre-fix subkit's gate
+// Probes ARE the shape-discovery surface. Pre-fix subkit's gate
 // required an EXTRA `dry_run_workflow` between the probe and the
 // build, even when the LLM had just successfully exercised the
 // exact same endpoint via `probe_connector` (session 0a01c5f3
@@ -25,7 +24,7 @@ import type { ToolContext } from "./index.ts";
  */
 /**
  * Walk a step's serialized JSON for `${connector.<slug>.*}` placeholder
- * references. The reference impl AND legacy subkit workflows bind a
+ * references. Workflows bind a
  * step to a connector either via an explicit `connector_id` field OR
  * via URL / header / body placeholders that name the connector slug.
  * Both bindings are equally valid at runtime; the gate's exemption
@@ -57,8 +56,8 @@ export async function collectProbedConnectorSlugs(
   //      form used by `request` / `graphql` steps authored through
   //      `propose_step`.
   //   2. `${connector.<slug>.*}` placeholders anywhere in the step
-  //      config (URL, headers, body, queries) — the alternative form
-  //      legacy + reference-impl-style workflows use. Walking these
+  //      config (URL, headers, body, queries) — the alternative
+  //      binding form. Walking these
   //      gives the gate the same probe-evidence exemption regardless
   //      of which binding style the LLM picked.
   const slugCandidates = new Set<string>();

@@ -216,28 +216,6 @@ elicitations" must therefore filter on `action` / `decision_reason`, not
 on `elicitation_transport` — equating transport success with approval
 double-counts every declined-but-delivered prompt.
 
-## Reference implementation comparison
-
-A peer integration platform was audited during the design phase.
-Subkit wins on every axis; headline differences:
-
-- Subkit is **Zod-first end-to-end**; ref-impl converts JSON Schema →
-  Zod at MCP registration.
-- Subkit's confirmation is **backend-driven** (returns a structured
-  `ConfirmEnvelope` to every surface); ref-impl decides on the frontend
-  and has no backend protocol for headless clients.
-- Subkit emits **structured `error_code`s with `next_best_actions`**;
-  ref-impl returns free-text error strings.
-- Subkit **audits every confirm-gated MCP call** (`APPROVAL_REQUESTED`,
-  `APPROVAL_APPROVED` correlated by `tool_call_id`) plus per-tool
-  domain audits like `connector.invoked` from inside `test_connector`;
-  ref-impl's MCP server has no audit trail (only chat runs persist).
-  Read-only MCP calls produce a structured `tool.dispatch.invoke` log
-  line, not an audit row — adding `MCP_TOOL_INVOKED` is a future
-  enhancement when SOC2 evidence demands it.
-- Subkit's RBAC is **per-permission via `can()`**; ref-impl uses
-  skill-loading + role→toolId arrays.
-
 ## Layout
 
 ```

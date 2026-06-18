@@ -110,7 +110,7 @@ describe("ConfigTab — flat search across sections", () => {
     }
   });
 
-  test("filter on the human label matches (claude-code parity)", async () => {
+  test("filter on the human label matches", async () => {
     const ui = renderInk(<ConfigTab fields={MULTI_SECTION_FIELDS} client={stubClient()} />);
     try {
       await ui.waitFor((t) => t.includes("Type to filter"));

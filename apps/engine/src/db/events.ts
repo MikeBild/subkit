@@ -3,10 +3,8 @@
 
 import { sql } from "drizzle-orm";
 import { logger } from "../logging/logger.ts";
-import type { Db } from "./client.ts";
+import type { Executor } from "./client.ts";
 import { events } from "./schema/events.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export type OutboxChannel =
   | "execution.status"

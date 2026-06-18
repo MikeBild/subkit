@@ -131,8 +131,8 @@ const DEFAULT_ROW_LIMIT = 100;
 const SQL_SUMMARY_MAX = 100;
 
 // Postgres mutation guard: leading-keyword check after stripping comments
-// and whitespace. The list mirrors what the reference Round-2 PR uses;
-// we lean on the side of "if it isn't obviously a SELECT/WITH, reject".
+// and whitespace. We lean on the side of "if it isn't obviously a
+// SELECT/WITH, reject".
 const FORBIDDEN_SQL_LEADING_RE =
   /^\s*(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|GRANT|REVOKE|VACUUM|REINDEX|CLUSTER|EXECUTE|CALL)\b/i;
 const ALLOWED_SQL_LEADING_RE = /^\s*(SELECT|WITH|EXPLAIN|SHOW)\b/i;

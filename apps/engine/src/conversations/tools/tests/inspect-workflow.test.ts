@@ -1,6 +1,6 @@
-// Bug MM regression: inspect_workflow returns config + captured run
-// result for every requested step in one call (mirrors reference impl's
-// inspect_tool API). This is the schema-first preflight that lets the
+// inspect_workflow returns config + captured run
+// result for every requested step in one call. This is the schema-first
+// preflight that lets the
 // LLM author the next patch against the actual scope shape instead of
 // guessing — closes the gap that drove the 30-iteration update_param
 // loops.
@@ -141,7 +141,7 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
         ok: true,
         step_id: "fetch",
         summary: "Ran 1 step",
-        preview: { projects: [{ id: "p1", name: "CodeCommission" }] },
+        preview: { projects: [{ id: "p1", name: "Acme" }] },
         step_traces: [
           {
             step_id: "fetch",
@@ -188,8 +188,8 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     expect(data.output_behavior).toBe("last_step_passthrough");
   });
 
-  // W2 (round-2 review): the output_transform section's `output_behavior`
-  // field lives in `important_notes` documentation, not a Zod schema.
+  // The output_transform section's `output_behavior` field lives in
+  // `important_notes` documentation, not a Zod schema.
   // Assert the literal field name + literal enum members so a silent
   // rename trips a test before shipping.
   test("output_transform section keeps the literal field name 'output_behavior'", async () => {

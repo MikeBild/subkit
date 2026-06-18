@@ -681,7 +681,7 @@ export async function seedAtBoot(db: Db): Promise<SeedResult> {
  * @param opts.source  Provenance tag rendered in the banner so an
  *   operator running `engine --seed | tee` (or grepping container
  *   logs) can distinguish a CLI-driven mint from a regular boot
- *   (review S4). Omit / leave empty to keep the historical banner.
+ *   Omit / leave empty to keep the historical banner.
  */
 export function printIssuedKey(
   { label, plaintext, tenant, usage }: IssuedKey,

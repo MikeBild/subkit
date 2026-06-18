@@ -1,6 +1,6 @@
 // Workflow audit recorders.
 //
-// Wave 3 paths:
+// Paths:
 //   - commitWorkflowAtomic / save_workflow_draft → recordWorkflowCreated /
 //     recordWorkflowUpdated (depending on whether the conversation had
 //     a target_workflow_id pinned)
@@ -159,7 +159,7 @@ export interface RecordWorkflowCommittedParams extends RecorderBase {
   tool?: string;
   /**
    * Override the metadata `kind` tag. Defaults to "force_save_override"
-   * (the Wave 4 canonical marker). The tool path passes
+   * (the canonical marker). The tool path passes
    * "preview_override" so the audit trail mirrors the existing
    * tooling vocabulary.
    */

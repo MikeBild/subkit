@@ -7,8 +7,7 @@
 //
 // Why JSONL: append-only, line-by-line readable, durable on partial
 // writes (the tail can be a partial line and we just skip it on read),
-// and easy to diff / grep without a parser. Mirrors the Claude Code
-// session-persistence shape so power users have one mental model.
+// and easy to diff / grep without a parser.
 //
 // The store is intentionally narrow — it only knows about *events*
 // (turn boundaries, text deltas, tool calls, errors). The conversation
@@ -24,7 +23,7 @@ import { detectSecretShape } from "../../lib/secret-shape.ts";
 /** Maximum events retained per session JSONL log. After this many
  *  events the file is trimmed to the most recent half via
  *  write-then-rename — the same shape `MAX_PROMPT_HISTORY` uses for
- *  the prompt ring. R5-W5 review fix: prevents an unbounded session
+ *  the prompt ring. Prevents an unbounded session
  *  from filling the disk in long-running CI runs.
  *
  *  Sized for "a marathon debugging session" — average event size
@@ -50,11 +49,11 @@ export interface TurnEvent {
   ts: string;
   /** Event family. */
   kind: TurnEventKind;
-  /** Owning tenant slug or id. Required on every write (R4-W5).
+  /** Owning tenant slug or id. Required on every write.
    *  Persisted alongside each event so a single pasted line still
    *  carries its tenant context. Optional in the type to allow
-   *  loading legacy flat-layout files written before R4-W5; new
-   *  writes always populate it. */
+   *  loading legacy flat-layout files written before the tenant
+   *  field became required; new writes always populate it. */
   tenant?: string;
   /** Free-form payload — every kind defines its own shape. */
   data: Record<string, unknown>;
@@ -91,7 +90,7 @@ export interface AppendOptions {
   dir?: string;
   /** Tenant slug or id — namespaces the on-disk path so a forensic
    *  reader can immediately tell which tenant owns the JSONL even
-   *  if conversation IDs collide. R4-W5: now REQUIRED on every
+   *  if conversation IDs collide. Now REQUIRED on every
    *  write so that a caller forgetting to pass it fails the
    *  typecheck rather than silently landing on the legacy flat
    *  `~/.sk/sessions/{conv}.jsonl` path. `loadEvents` keeps it
@@ -137,7 +136,7 @@ export function appendEvent(
   ev: Omit<TurnEvent, "ts">,
   opts: AppendOptions,
 ): void {
-  // R8-S4: runtime guard for the typecheck-required `tenant` field.
+  // Runtime guard for the typecheck-required `tenant` field.
   // The empty string would survive the type check but land sessions
   // under `~/.sk/sessions/_/{conv}.jsonl` (the path sanitiser maps
   // empty input to `_`). Reject loud at the boundary.
@@ -164,7 +163,7 @@ export function appendEvent(
   try {
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, `${JSON.stringify(event)}\n`, { encoding: "utf8", mode: 0o600 });
-    // R5-W5 + R6-S1: trigger the trim when the file is plausibly
+    // Trigger the trim when the file is plausibly
     // over the documented cap. Average event size ~250 B → 5,000
     // events ≈ 1.25 MB. Multiplier `* 256` gives a 1.28 MB
     // threshold so the trim fires close to the stated cap rather
@@ -175,7 +174,7 @@ export function appendEvent(
       maybeTrimJsonl(path, MAX_EVENTS_PER_SESSION);
     }
   } catch (err) {
-    // R7-S3: best-effort write, but surface the failure via debugLog
+    // Best-effort write, but surface the failure via debugLog
     // so a read-only `~/.sk` (CI runner, container with mounted
     // tmpfs) doesn't silently drop every event. Pairs with
     // `bootstrap.cache_write_failed`.
@@ -187,7 +186,7 @@ export function appendEvent(
  *  `keep / 2` events. Delegates the atomic write-then-rename to the
  *  shared helper at `@shared/jsonl-ring`. The trim halves rather
  *  than truncates-to-keep so the next size check has headroom
- *  before firing again. R6-S6 (helper extraction). */
+ *  before firing again. */
 function maybeTrimJsonl(path: string, keep: number): void {
   let content: string;
   try {
@@ -202,8 +201,8 @@ function maybeTrimJsonl(path: string, keep: number): void {
  * Read every event from the conversation's JSONL log. Skips truncated
  * trailing lines. Returns events in the order they were written.
  *
- * R11-W3 review fix: `tenant` is now required, mirroring the
- * `appendEvent` write-side contract (R8-S4). Reading the legacy
+ * `tenant` is now required, mirroring the
+ * `appendEvent` write-side contract. Reading the legacy
  * flat path requires the explicit `loadLegacyFlatEvents` helper
  * below — a caller that forgets the tenant on a load can't
  * silently target the wrong file.
@@ -219,7 +218,7 @@ export function loadEvents(
   return readJsonlEvents(sessionEventsPath(conversationId, dir, tenant));
 }
 
-/** Delete the JSONL log for a conversation. Best-effort. R11-W3:
+/** Delete the JSONL log for a conversation. Best-effort.
  *  `tenant` is required for the same reason as `loadEvents`. */
 export function deleteEvents(
   conversationId: string,
@@ -237,17 +236,17 @@ export function deleteEvents(
 }
 
 /**
- * R11-W3: explicit reader for the legacy flat-layout path
+ * Explicit reader for the legacy flat-layout path
  * (`~/.sk/sessions/{conv}.jsonl` — no tenant namespace, written
- * before R4-W5). Use this only when explicitly migrating or
- * inspecting pre-R4-W5 files; the modern read path is
+ * before the tenant namespace existed). Use this only when explicitly
+ * migrating or inspecting legacy flat-layout files; the modern read path is
  * `loadEvents(conv, dir, tenant)`.
  */
 export function loadLegacyFlatEvents(conversationId: string, dir?: string): TurnEvent[] {
   return readJsonlEvents(sessionEventsPath(conversationId, dir));
 }
 
-/** R11-W3: matching delete for legacy flat-layout files. */
+/** Matching delete for legacy flat-layout files. */
 export function deleteLegacyFlatEvents(conversationId: string, dir?: string): void {
   try {
     unlinkSync(sessionEventsPath(conversationId, dir));

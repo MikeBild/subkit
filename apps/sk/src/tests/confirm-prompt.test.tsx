@@ -195,7 +195,7 @@ describe("ConfirmPrompt — decision metadata", () => {
   });
 });
 
-describe("ConfirmPrompt — URL hyperlinks in summary (G11)", () => {
+describe("ConfirmPrompt — URL hyperlinks in summary", () => {
   // Hyperlink emission is now terminal-support-aware; the test env is
   // non-TTY so force OSC 8 on to exercise the supported path. (The plain
   // fallback path is covered in packages/chat-ui/src/tests/hyperlink.test.ts.)

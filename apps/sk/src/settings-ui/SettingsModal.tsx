@@ -1,13 +1,12 @@
-// Settings palette — outer 5-tab shell. Matches the claude-code
-// `/config` shape (Status / Config / Usage) and adds subkit's two
-// AI-pipeline surfaces (Skills / Knowledge) at the same depth.
+// Settings palette — outer 5-tab shell. Status / Config / Usage plus
+// subkit's two AI-pipeline surfaces (Skills / Knowledge) at the same depth.
 //
 // Operator surfaces (`Permissions`, `Profile`, `Admin`) are not tabs
 // here — each is its own slash command mounted via SinglePane:
 // `/permissions`, `/profile`, `/admin`. The activity heatmap that
 // used to live in a `Stats` tab is now embedded in `Status`.
 //
-// Esc semantics (two-step, claude-code `ownsEsc` pattern):
+// Esc semantics (two-step, `ownsEsc` pattern):
 //   1. If the active tab "owns Esc" — i.e. has an inner state that
 //      should be cleared first (search, editor, confirm prompt) —
 //      that tab fires its own Esc handler and reports the active

@@ -7,12 +7,10 @@
 // re-issue route through it.
 
 import { and, eq } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import type { WorkflowDef } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Per-step authoring metadata persisted alongside a workflow version
  *  (scope-shape hints from the last preview). Structurally identical to

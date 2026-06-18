@@ -1,6 +1,6 @@
 // Mode-aware agent skill loading helper. Three behaviour bodies are
 // mode-specific: `conversational-authoring` (the ideal-flow narrative),
-// `workflow-step-kinds` (the anti-Zapier-namespace step kind floor),
+// `workflow-step-kinds` (the no-invented-dotted-namespace step kind floor),
 // `placeholder-rules` (the `${cred|connector|input|scope.*}` grammar).
 // Execution-mode turns ("run <slug>") reach for `wf_<slug>` /
 // `run_workflow` and never propose steps, so trimming the latter two

@@ -7,8 +7,8 @@
 //   - apply updates body + gates_tools + bumps version when hash differs
 //   - per-tenant isolation: two tenants each get their own row
 //
-// After the #149 refactor the loader no longer reads from disk — every
-// test feeds synthetic seed content via `loadSkillSeedsFromContent`.
+// The loader no longer reads from disk — every test feeds synthetic
+// seed content via `loadSkillSeedsFromContent`.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";

@@ -6,7 +6,7 @@ import type { OutboxChannel } from "../db/events.ts";
 export type { OutboxChannel };
 
 /**
- * Payload contract for the `workflow.lifecycle` channel (#178 round-3 S1).
+ * Payload contract for the `workflow.lifecycle` channel.
  *
  * Every state-changing entry point in `workflows/service.ts` emits via
  * `writeEvent(tx, { channel: "workflow.lifecycle", type, payload })` and
@@ -123,7 +123,7 @@ export type ConnectorOauthCallbackFailedPayload = z.infer<
  * list is `satisfies`-typed against `readonly OutboxChannel[]` so the
  * compiler rejects any drift from the union in `db/events.ts` — a
  * channel added there but missing here (or vice versa) is a compile
- * error, not a silent runtime gap. Mirrors #178 review S-2.
+ * error, not a silent runtime gap.
  */
 export const LISTENER_CHANNELS = [
   "execution.status",

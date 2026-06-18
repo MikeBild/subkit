@@ -670,8 +670,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           });
           // MCP `resource_link` content block (2025-03 spec). The previous
           // text-encoded JSON envelope forced clients to parse a string
-          // field to discover the fixture URI; LLM agents (e.g. codex)
-          // rarely follow such pointers without explicit instruction.
+          // field to discover the fixture URI; LLM agents rarely follow
+          // such pointers without explicit instruction.
           // `resource_link` is the native protocol affordance: compliant
           // clients can auto-fetch, surface to the user, or expose the
           // URI as a follow-up call. Pairs with the `fixture://` reader

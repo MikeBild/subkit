@@ -241,7 +241,7 @@ describe.skipIf(skip)("supersede endpoint isolation", () => {
 
     // The original kind's candidate must remain PROPOSED — a different repair
     // kind on the same endpoint is a distinct, still-valid convention and must
-    // not be superseded (that was the data-loss class #202 introduced). Assert
+    // not be superseded (a data-loss class connector-scoping can introduce). Assert
     // status, not just existence (a superseded row also "exists").
     const oldCandidate = forTenant.find((r) => r.fingerprint === oldFingerprint);
     expect(oldCandidate).toBeDefined();

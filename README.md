@@ -1,53 +1,28 @@
 # sk
 
-**sk — reference implementation of the operational AI execution layer.** A shared system that turns individual agentic productivity into organisational agentic operationalisation.
+**A self-hostable engine for governed, versioned, AI-assisted workflow execution.**
 
-> ***Your operating model used to live in PowerPoint. Now it runs.***
+sk lets a team describe automation in natural language, review and approve what the AI
+proposes, and then run it deterministically against the systems they already use — with
+multi-tenancy, RBAC, encrypted credentials, and an immutable audit trail throughout. AI
+assists with *authoring*; *execution* is fixed at approval time and never re-decided at
+runtime.
 
-> *Agentic productivity does not automatically scale organisationally. The bottleneck is
-> not model quality or workflow execution; it is the organisation's ability to make
-> operational AI work repeatable, reviewable, and learnable. This reference implementation
-> integrates three otherwise separately assembled layers — contextualised AI authoring,
-> operational governance, versioned reproducible execution — into one running system whose
-> effect compounds per tenant over time.*
+It is open source and built to be run inside an organisation: every workflow is a
+versioned, reviewable artefact, every state change is audited, and no workflow reaches
+production without an explicit human approval step.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
----
-
-## Strategy & positioning
-
-Three short documents plus the glossary. In reading order:
-
-| Document | What it covers | Reading time |
-|----------|----------------|--------------|
-| [The Thesis](docs/thesis.md) | *Why this category exists.* Theory of organisational agentic operationalisation. | ~15 min |
-| [System Requirements](docs/system-requirements.md) | *What such a system must do.* Twelve vendor-agnostic requirements. | ~18 min |
-| [Positioning](docs/positioning.md) | *How this reference implementation realises it.* Worked examples, principles, honest gaps. | ~20 min |
-| [Glossary](docs/02-concepts.md) | Every term used across the stack, defined once. | reference |
-
-```mermaid
-flowchart LR
-    Thesis["thesis.md<br/>Why this category exists"]
-    Reqs["system-requirements.md<br/>What such a system must do"]
-    Pos["positioning.md<br/>How this reference implementation realises it"]
-    Concepts["02-concepts.md<br/>Glossary"]
-
-    Thesis --> Reqs --> Pos
-    Concepts -. cited by .- Thesis
-    Concepts -. cited by .- Reqs
-    Concepts -. cited by .- Pos
-```
-
-For developers, the platform/architecture entry point is
-[`docs/01-platform.md`](docs/01-platform.md); the canonical contract for coding agents
-is [`AGENTS.md`](AGENTS.md).
+For the architecture and concepts, start with [`docs/01-platform.md`](docs/01-platform.md)
+and the [glossary](docs/02-concepts.md). The canonical contract for contributors is
+[`AGENTS.md`](AGENTS.md).
 
 ---
 
 ## How It Works
 
-![sk architecture at a glance — outside-the-bridge AI clients cross via the MCP OAuth bridge into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding moat.](docs/overview.png)
+![sk architecture at a glance — outside-the-bridge AI clients cross via the MCP OAuth bridge into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding learning loop.](docs/overview.png)
 
 *Outside-the-bridge clients (IDE assistants, employee chat) reach governed workflows only through the **MCP OAuth bridge**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`docs/overview.drawio`](docs/overview.drawio).*
 
@@ -60,13 +35,13 @@ the control flow of an approved workflow is fixed; runtime does not re-decide it
 
 ## Input Surfaces
 
-The reference implementation meets users and systems where they already are.
+sk meets users and systems where they already are.
 
 | Surface | Who uses it | What it enables |
 |---------|-------------|-----------------|
 | **sk CLI** | End users, operators | Conversational REPL — describe what you need, review and approve what the AI builds |
 | **REST API / OpenAPI** | Services, CI/CD, SDKs | Full programmatic control over every platform resource |
-| **MCP Integration** | AI coding tools | Claude Code, Codex, Copilot, Gemini get governed access to every connected system |
+| **MCP Integration** | AI coding tools | Any MCP-compatible AI client gets governed access to every connected system |
 | **Chat Systems** | Teams and individuals | Same conversation loop in Slack, Teams, and Google Chat — approval buttons included |
 | **Webhooks & Schedules** | Systems and cron | Trigger workflows on external events or on a schedule without writing orchestration code |
 
@@ -81,9 +56,9 @@ Conversations are the primary authoring interface. A user describes a goal in na
 language; the AI proposes a workflow, explains each step, and waits for approval before
 anything is committed.
 
-**What makes this enterprise-ready:**
+**Capabilities:**
 
-- **Multi-AI provider** — Claude, OpenAI, and Gemini are all supported. The platform
+- **Multi-AI provider** — Claude, OpenAI, and Gemini are all supported. The engine
   routes to the best model for the task; swap providers without changing workflows.
 
 - **Connector Catalog** — 105 pre-built connector templates for Stripe, Salesforce,
@@ -125,12 +100,12 @@ rollback is a version change.
 - **Versioning** — every workflow change creates a new version with a full DAG snapshot.
   Roll back to any prior version in seconds.
 
-- **Drift-assisted repair (operator-reviewed remediation)** — the platform detects
+- **Drift-assisted repair (operator-reviewed remediation)** — the engine detects
   connector drift (changed schemas, new error shapes, moved endpoints) and proposes the
   smallest safe repair as a Patch Candidate. Repairs are dry-run validated against
   recorded fixtures and require operator approval before they apply; nothing is changed
   autonomously in production. The codebase keeps the technical name *self-healing*
-  ([`docs/02-concepts.md`](docs/02-concepts.md) explains the dual vocabulary).
+  ([`docs/02-concepts.md`](docs/02-concepts.md) explains the naming).
 
 - **Scheduling and triggers** — workflows run on a cron schedule, in response to inbound
   webhooks, via the API, or through MCP tool calls. The trigger source is recorded in
@@ -154,7 +129,7 @@ Full conceptual documentation in [`docs/`](docs/):
 
 | Document | What it covers |
 |----------|---------------|
-| [The Platform](docs/01-platform.md) | Purpose, design principles, what this reference implementation is and is not |
+| [The Platform](docs/01-platform.md) | Purpose, design principles, what sk is and is not |
 | [Concepts](docs/02-concepts.md) | Authoritative glossary for every domain term |
 | [Input Surfaces](docs/03-input-surfaces.md) | CLI, API, MCP, Chat, Webhooks — in depth |
 | [AI-Assisted Authoring](docs/04-authoring.md) | Conversations, skills, knowledge, multi-provider |
@@ -168,7 +143,7 @@ Full conceptual documentation in [`docs/`](docs/):
 
 ## For Coding Agents
 
-This reference implementation is designed for agentic coding environments. Start with [`AGENTS.md`](AGENTS.md) —
+sk is designed for agentic coding environments. Start with [`AGENTS.md`](AGENTS.md) —
 the canonical repo-wide contract, subsystem map, and quality gate. See [`SKILLS.md`](SKILLS.md)
 for the skill index.
 

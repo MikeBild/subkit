@@ -1,4 +1,4 @@
-// Tenant-scoped CRUD for external MCP servers (#171).
+// Tenant-scoped CRUD for external MCP servers.
 //
 // The inverse direction from subkit's own MCP server: tenants register
 // external MCP servers whose tools the conversation loop's LLM can invoke.

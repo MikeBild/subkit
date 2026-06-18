@@ -1,5 +1,4 @@
-// Route-boundary contract tests — Phase 2 of the 2026-05 architecture
-// audit (issue #88, audit doc §6.2).
+// Route-boundary contract tests.
 //
 // Every state-changing HTTP boundary must obey four invariants:
 //
@@ -13,8 +12,7 @@
 // Today this file seeds four representative routes from the most
 // security-sensitive surfaces (api-keys lifecycle, workflows lifecycle).
 // The harness is deliberately reusable — adding a route is one
-// `RouteSpec` entry. Phase 4 fills the remainder of the manifest from
-// the route catalogue. New endpoints inherit the contract test by
+// `RouteSpec` entry. New endpoints inherit the contract test by
 // adding themselves to ROUTE_SPECS.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

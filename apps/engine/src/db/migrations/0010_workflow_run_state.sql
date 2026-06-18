@@ -1,4 +1,4 @@
--- Persistent per-workflow state (#51). Cross-run watermarks / cursors,
+-- Persistent per-workflow state. Cross-run watermarks / cursors,
 -- tenant-encrypted, scoped to a single workflow.
 --
 -- Reverse-ETL workflows (or any incremental-sync pattern) read a cursor

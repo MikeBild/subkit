@@ -1,4 +1,4 @@
-// Pure-function tests for the token-mint client (A4). Mocks fetch so
+// Pure-function tests for the token-mint client. Mocks fetch so
 // the three shape envelopes can be asserted independently of any real
 // IdP.
 

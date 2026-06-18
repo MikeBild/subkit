@@ -2,10 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { connectorTemplateCredentials } from "../db/schema/index.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function aadFor(tenant_id: string, template_slug: string): string {
   return `connector-template-credential:${tenant_id}:${template_slug}`;

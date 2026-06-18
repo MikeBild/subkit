@@ -144,14 +144,14 @@ describe("parseDeprecation", () => {
 
 describe("connectorHealthHint", () => {
   test("ok → null (nothing attached on the healthy path)", () => {
-    expect(connectorHealthHint("ok", "si-emobility-jira")).toBeNull();
+    expect(connectorHealthHint("ok", "acme-jira")).toBeNull();
   });
 
   test("auth_failed names the connector and points at credential setup", () => {
-    const hint = connectorHealthHint("auth_failed", "si-emobility-jira");
+    const hint = connectorHealthHint("auth_failed", "acme-jira");
     expect(hint).not.toBeNull();
     expect(hint?.error_code).toBe("auth_rejected");
-    expect(hint?.suggestion).toContain("si-emobility-jira");
+    expect(hint?.suggestion).toContain("acme-jira");
     expect(hint?.next_best_actions).toContain("setup_connector_credentials");
   });
 

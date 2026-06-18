@@ -238,8 +238,8 @@ export function wrapOne(
           };
         }
 
-        // Global consecutive-failures cap (mirrors reference impl's
-        // "no more than 5 failed tool calls in a row" rule). Checked
+        // Global consecutive-failures cap ("no more than 5 failed tool
+        // calls in a row"). Checked
         // before the per-tool cap because it overrides — when the
         // model has hit the cap on ANY mix of tools, the next dispatch
         // returns a structured "ask the user" envelope instead of
@@ -401,9 +401,9 @@ export function wrapOne(
           };
         }
 
-        // Adaptive loop-breaker. Reference impl uses a single global
-        // `stepCountIs(50)` and trusts the model — no per-tool cap.
-        // Subkit's per-tool counters fired even on legitimate
+        // Adaptive loop-breaker. A single global step cap that trusts
+        // the model is too coarse — but plain per-tool counters fire
+        // even on legitimate
         // incremental authoring (session a128deba 15:13:16:
         // propose_step capped mid-build of a 4-step workflow).
         //
@@ -683,7 +683,7 @@ export function wrapOne(
           // Inline diff emitter — tools that mutate the draft call this
           // with canonical before/after JSON; we compute the unified
           // line-diff once on the engine side and ship pre-built hunks
-          // over the wire. Mirrors codex's `PatchHistoryCell` pattern.
+          // over the wire.
           emitDiff: ({ title, language, before, after }) => {
             try {
               const hunks = computeLineDiff(before, after, { context: 3 });
@@ -1005,9 +1005,8 @@ export function wrapOne(
           // operator what they're about to approve. For `run_workflow`,
           // include the workflow's display name + the last preview's
           // step count + summary so the operator sees concrete
-          // context, not just the policy mode. Mirrors the reference
-          // impl's `run_tool` confirm UX which surfaces the test
-          // payload + last output.
+          // context, not just the policy mode — the confirm UX
+          // surfaces the test payload + last output.
           const buildPolicyGateSummary = (): string => {
             if (inner.name === "run_workflow") {
               const draft = ctx.getDraft();
@@ -1412,8 +1411,8 @@ export function wrapOne(
         });
         // Activity ticker: tool ended → switch to idle so the CLI
         // ticker stops showing the tool name. `last_completed` lets
-        // the operator see what just finished (codex pattern: prefer
-        // visibility over silence) even after the call card scrolls.
+        // the operator see what just finished (prefer visibility over
+        // silence) even after the call card scrolls.
         const completedDurationMs = Date.now() - startedAt;
         events.push({
           type: "activity",
@@ -1648,8 +1647,8 @@ export function wrapOne(
           signals.committed = { workflow_id: result.committed_workflow_id };
         }
 
-        // Post-execution review pause (mirrors reference impl's
-        // `confirm_after_execution`). When the resolved mode says the
+        // Post-execution review pause (`confirm_after_execution`).
+        // When the resolved mode says the
         // tool's RESULT must be reviewed before the loop continues,
         // and the tool body succeeded (ok=true) and didn't already
         // emit its own pause, synthesise an `ask_user_confirm`

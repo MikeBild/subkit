@@ -1,4 +1,4 @@
-// Inbound runtime signals for wait-for-event steps (#49). HITL approval
+// Inbound runtime signals for wait-for-event steps. HITL approval
 // and other signal-driven workflows POST to /v1/runs/{id}/signals; the
 // route writes a row here, and the step-runner's wait-for-event poller
 // matches it against the active step's `event_name` + dot-notation

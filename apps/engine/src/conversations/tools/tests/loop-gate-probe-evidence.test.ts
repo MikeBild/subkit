@@ -3,7 +3,7 @@
 // loop's referenced upstream step is a `request` step routed through
 // a connector the operator has already successfully probed in this
 // conversation, the probe counts as shape evidence and the gate
-// skips. Mirrors the reference impl's call_system → build_tool flow.
+// skips.
 //
 // Pre-fix (session 0a01c5f3 16:18:26): the LLM successfully probed
 // the DigitalOcean connector twice (200 OK on /v2/projects and
@@ -84,7 +84,7 @@ describe("evaluateLoopAuthoringGate · probe-evidence exemption", () => {
     expect(result.blocks[0]?.reason).toBe("no_dry_run_yet");
   });
 
-  test("fingerprint-valid recorded evidence satisfies the gate (Fix 5)", () => {
+  test("fingerprint-valid recorded evidence satisfies the gate", () => {
     const fetch = {
       id: "fetch",
       kind: "request",
@@ -123,7 +123,7 @@ describe("evaluateLoopAuthoringGate · probe-evidence exemption", () => {
     expect(result.ok).toBe(true);
   });
 
-  test("STALE evidence (fingerprint recorded against a different definition) blocks (Fix 5)", () => {
+  test("STALE evidence (fingerprint recorded against a different definition) blocks", () => {
     const fetch = {
       id: "fetch",
       kind: "request",

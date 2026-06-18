@@ -1,5 +1,4 @@
-// Driver unit tests — Phase 2 of the 2026-05 architecture audit
-// (issue #65). Covers the parts of every driver that don't need a
+// Driver unit tests. Covers the parts of every driver that don't need a
 // live service: DSN scheme/shape parsing, argument validation, the
 // "missing DSN" guard, and the probe-against-unreachable-endpoint
 // failure shape.
@@ -73,8 +72,8 @@ describe("redis driver — units", () => {
     // The redis driver opens the client BEFORE arg validation, so the
     // missing-dsn case fires first. Arg-validation paths
     // (SET requires 'value', PUBLISH requires 'channel', EXPIRE
-    // requires 'ttl_seconds') are exercised by the integration test
-    // tracked in the driver-integration follow-up issue.
+    // requires 'ttl_seconds') are exercised by the driver-integration
+    // tests against a live endpoint.
     const c = fakeConnector({ driver: "redis", dsn: null });
     await expect(
       executeRedisCommand({ connector: c, command: "SET", key: "k", value: "v" }),
@@ -175,9 +174,9 @@ describe("smb driver — units", () => {
     expect(probe.detail).toBe("missing dsn");
   });
 
-  // The DOMAIN;user split is exercised by the integration test once
-  // the testcontainers / docker-in-docker setup is wired up — see the
-  // follow-up issue. Pinning it here without a live SMB endpoint is
+  // The DOMAIN;user split is exercised by the integration test against
+  // a live SMB endpoint via testcontainers. Pinning it here without a
+  // live SMB endpoint is
   // not possible (the driver opens the network connection before
   // returning), and Promise.race against setTimeout trips the
   // determinism gate.

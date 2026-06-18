@@ -403,9 +403,9 @@ const StepPreviewCard: React.FC<CardProps> = memo(({ call }) => {
     ? judge.missing.filter((m): m is string => typeof m === "string")
     : [];
   // step_outputs[] is the per-step preview array dry_run_workflow
-  // emits (#22). When present we surface the LAST step's preview as
-  // the "what did the workflow produce" line — pre-fix the dry-run
-  // card stopped at the summary and the user had to ask the LLM to
+  // emits. When present we surface the LAST step's preview as
+  // the "what did the workflow produce" line — without it the dry-run
+  // card stops at the summary and the user has to ask the LLM to
   // show the data (session 86de186b).
   const stepOutputs = Array.isArray(d?.step_outputs) ? (d?.step_outputs as unknown[]) : null;
   const lastStepFromOutputs =

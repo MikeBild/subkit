@@ -1,6 +1,6 @@
 // Guards the WORKFLOW STEP KINDS behaviour skill body + the cleanup /
 // product-help skill body. Without the kind enumeration the model
-// invents Zapier-style namespaces (`trigger.manual` / `flow.approval`)
+// invents dotted step namespaces (`trigger.manual` / `flow.approval`)
 // that propose_step rejects, causing self-reinforcing tool failures.
 // Without the cleanup section the model falls back to "this isn't
 // supported" prose for delete_workflow / revoke_api_key requests.
@@ -98,7 +98,7 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
 
   it("converse prompt (diagnosis mode) still loads BOTH step-kinds AND placeholder-rules", async () => {
     // Diagnosis-mode turns can still propose / patch steps in response
-    // to an execution failure — the anti-Zapier-namespace floor must
+    // to an execution failure — the dotted-namespace guardrail must
     // stay loaded so the model never invents `type` / `trigger.*`.
     const p = await basePromptFor("converse", "sk_interactive", {
       mode: "diagnosis",

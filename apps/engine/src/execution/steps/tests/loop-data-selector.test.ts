@@ -1,6 +1,5 @@
-// Bug NN regression: loop steps may declare `data_selector` (a JS
-// expression body) as the source-array selector, mirroring the
-// reference impl's pattern. Failures throw real exceptions
+// Loop steps may declare `data_selector` (a JS expression body) as the
+// source-array selector. Failures throw real exceptions
 // (`Data selector failed: <real msg>`) instead of the opaque
 // `loop_over_unresolved` warning that path-style `over` produces. The
 // schema requires exactly one of `over` or `data_selector` to be set.

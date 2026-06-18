@@ -2,12 +2,10 @@
 // don't burn context-window tokens for every turn. Different providers
 // expose different endpoints; this module unifies them behind one shape.
 //
-// Reference impl parallels: the reference codebase ships document
-// ingestion + S3-backed filestore (`packages/core/files/`,
-// `packages/core/filestore/`). Subkit's filestore role is filled by
+// Subkit's filestore role is filled by
 // `apps/engine/src/storage/object-store.ts` for tenant blobs; this
-// module covers the LLM-provider side: upload to Anthropic / OpenAI /
-// Gemini Files API and return a `file_id` the conversation context
+// module covers the LLM-provider side: upload to the provider's
+// Files API and return a `file_id` the conversation context
 // assembler can paste into a prompt as a `<file>` reference rather
 // than as inline base64.
 //

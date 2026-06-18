@@ -55,8 +55,8 @@ export interface CapturedLog {
  *   - `SYSTEM_TENANT_ID` ("00000000-0000-0000-0000-000000000000"):
  *     the canonical UUID used by `audit/types.ts` for system-scope
  *     audit writes AND by the engine boot path's `withContext` wrapper
- *     (`apps/engine/src/index.ts`). Standardized on the UUID by
- *     review R2-W6.
+ *     (`apps/engine/src/index.ts`). Standardized on the UUID rather
+ *     than the legacy `"system"` literal.
  *   - `""`:  empty string — defensively treat as missing.
  *   - `"system"`:  legacy literal kept as a defensive fallback for
  *     out-of-tree forks that may still emit it; the in-tree boot path
@@ -110,8 +110,7 @@ export interface LogRing {
 }
 
 // Single source: re-export the cli-core helper so the engine logger,
-// the diagnostics route, and the `sk logs` CLI all read the same map
-// (review R2-S1).
+// the diagnostics route, and the `sk logs` CLI all read the same map.
 export { logLevelWeight as levelWeight } from "@cli-core/log-levels.ts";
 
 import { logLevelWeight } from "@cli-core/log-levels.ts";

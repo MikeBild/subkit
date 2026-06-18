@@ -36,7 +36,7 @@ export const MAX_HISTORY = 500;
  *  history. Rotates at this many entries via the same write-then-
  *  rename trim path.
  *
- *  Disk-space note (R1-S7 review): a typical prompt averages ~100 B
+ *  Disk-space note: a typical prompt averages ~100 B
  *  including the JSONL framing, so the bound on `~/.sk/history.jsonl`
  *  is ~1 MB — 20× the legacy cap, but still trivial on any modern
  *  filesystem. The trim is incremental (`writeFile + rename`), so the
@@ -129,11 +129,11 @@ export function appendHistory(
     return;
   }
 
-  // R6-S6: trim via the shared `trimJsonlFile` helper. Build the
+  // Trim via the shared `trimJsonlFile` helper. Build the
   // post-trim content (existing + new entry, capped at the ring
   // size) by appending to the file first, then asking the helper to
   // collapse it. The helper handles atomic write-then-rename + the
-  // explicit 0o600 mode (R6-W1).
+  // explicit 0o600 mode.
   try {
     appendFileSync(path, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
     const after = readFileSync(path, "utf8");
@@ -161,14 +161,14 @@ export function loadPromptRing(
   opts: { tenant?: string | null; limit?: number } = {},
 ): string[] {
   const entries = loadHistory(path);
-  // R9-W3 review fix: when a tenant filter is active, ONLY return
+  // When a tenant filter is active, ONLY return
   // rows tagged with that exact tenant. The previous
   // `e.tenant == null || e.tenant === opts.tenant` filter let
-  // legacy untagged rows (written before R4-W5 made tenant
+  // legacy untagged rows (written before tenant became
   // mandatory on session writes) leak across tenants on any
   // operator who switches profiles. Rows without a tenant tag are
   // dropped silently — they're at most a few hundred entries from
-  // pre-R4-W5 sessions and the operator can clear them with
+  // legacy untagged sessions and the operator can clear them with
   // `/history clear`. When no tenant filter is set (e.g. headless
   // /history dump), all rows are returned including untagged
   // legacy.
@@ -220,7 +220,7 @@ export function appendSlashHistory(
     }
     return;
   }
-  // R6-S6: same shared-helper pattern as the prompt ring above.
+  // Same shared-helper pattern as the prompt ring above.
   try {
     appendFileSync(path, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
     const after = readFileSync(path, "utf8");
@@ -256,7 +256,7 @@ export function loadSlashRing(
   opts: { tenant?: string | null; limit?: number } = {},
 ): string[] {
   const entries = loadSlashHistory(path);
-  // R10-W1 review fix: mirror the R9-W3 strict filter on the
+  // Mirror the strict filter on the
   // prompt ring — when a tenant filter is active, untagged legacy
   // rows are dropped (no cross-tenant leak via Ctrl+R fuzzy
   // search). Without a tenant filter, all rows are returned.

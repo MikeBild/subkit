@@ -1,6 +1,6 @@
-// H7 closure of #159 — connectors-parity test.
+// connectors-parity test.
 //
-// The issue's acceptance criterion: `/connectors list` (REPL slash) and
+// Acceptance criterion: `/connectors list` (REPL slash) and
 // `sk connectors list` (CLI) must produce identical payloads + identical
 // audit entries.
 //
@@ -37,7 +37,7 @@ function makeCtx(client: EngineClient): SlashHandlerContext {
   };
 }
 
-describe("connectors parity (H7) — slash and CLI hit listConnectors with the same args", () => {
+describe("connectors parity — slash and CLI hit listConnectors with the same args", () => {
   test("/connectors slash invokes client.listConnectors({ limit: 20 })", async () => {
     const listConnectors = mock(async () => ({
       items: [

@@ -1,4 +1,4 @@
-// Knowledge + Profile tabs (M7 of #159).
+// Knowledge + Profile tabs.
 
 import { describe, expect, mock, test } from "bun:test";
 import type React from "react";

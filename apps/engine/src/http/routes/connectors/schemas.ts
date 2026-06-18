@@ -1,6 +1,5 @@
-// Shared Zod schemas + helpers for the connectors REST surface. After
-// the Phase 4 split (audit §4.4) every per-sub-resource module imports
-// from here.
+// Shared Zod schemas + helpers for the connectors REST surface. Every
+// per-sub-resource module imports from here.
 
 import { z } from "@hono/zod-openapi";
 import {
@@ -36,7 +35,7 @@ export const ConnectorSchema = z
     // OpenAPI clients pinned against this contract. The producer
     // (`buildTemplateBindingFields` in connectors/template-resolver.ts)
     // is internally typed; callers that need the narrower shape
-    // re-validate via `parseTemplateSnapshot`. Per #147 review S4.
+    // re-validate via `parseTemplateSnapshot`.
     template_snapshot: z.record(z.string(), z.unknown()).nullable(),
     // Re-auth health. `needs_reauth` flips true when the connector's
     // credential goes stale (OAuth refresh revoked, API key rotated, login

@@ -1,4 +1,4 @@
-// Workflow MCP resource subscribe (issue #169).
+// Workflow MCP resource subscribe.
 //
 // Asserts the three contracts that close the tenant-leak risk called
 // out in the issue:
@@ -30,7 +30,7 @@ afterAll(async () => {
   await suite.cleanup();
 });
 
-describe("issue #169 — mcp resources/subscribe workflow:// updates", () => {
+describe("mcp resources/subscribe workflow:// updates", () => {
   test("subscribed client receives workflow.lifecycle notifications", async () => {
     const { id } = await suite.seedWorkflow({
       slug: "w169-probe",

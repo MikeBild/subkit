@@ -1,4 +1,4 @@
-// Wait-for-event step (#49). Signal-driven HITL pause. Polls the
+// Wait-for-event step. Signal-driven HITL pause. Polls the
 // `workflow_signals` table at a 1s cadence until a matching row arrives
 // (status: succeeded with `output: { event, payload }`) or the
 // per-step `timeout_ms` elapses (status: succeeded with
@@ -6,7 +6,7 @@
 //
 // The step honors `signal.aborted` for graceful engine shutdown. On
 // abort the row in `workflow_waits` is cleaned up and the result is
-// `aborted` — same contract as #48 wait.
+// `aborted` — same contract as the wait step.
 //
 // Restart safety: the same `workflow_waits` table tracks an inflight
 // wait-for-event. Engine boot's reaper resumes the poll for any row

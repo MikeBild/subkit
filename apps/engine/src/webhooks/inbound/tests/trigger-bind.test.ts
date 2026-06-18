@@ -1,8 +1,8 @@
 // Reverse-bind helpers — `bindFromWorkflow` / `unbindFromWorkflow`.
 //
-// These exercise the schema-foundation portion of issue #67. Executor
-// logic for webhook firing lands in #46; here we only confirm that
-// saving a workflow with a `webhook` trigger produces an idempotent
+// These exercise the schema-foundation portion of reverse-bind.
+// Executor logic for webhook firing lives elsewhere; here we only
+// confirm that saving a workflow with a `webhook` trigger produces an idempotent
 // `webhooks_inbound` row keyed on `(tenant_id, workflow_id)`, that
 // repeated saves are no-ops, and that unbind tears the row down with
 // the right audit signal.

@@ -6,13 +6,11 @@
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import type { ListResult } from "../db/list-result.ts";
 import { workflows, workflowsSchedules } from "../db/schema/index.ts";
 import type { ScheduleTrigger } from "../workflows/types.ts";
 import { parseCronExpression } from "./cron.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 // Postgres jsonb returns object keys in storage order (length, then
 // lex), not insertion order. JSON.stringify on the round-tripped

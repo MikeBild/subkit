@@ -30,7 +30,7 @@
 
 ### Bug Fixes
 
-* **skill-candidates:** connector-scoped repair Skill Candidates were clobbering each other — `upsertFromSignal`'s supersede keyed only on `(scope, pattern_kind, connector_id)`, so a second endpoint's proposal superseded the first on every 6h analysis pass (data loss of valid, evidence-backed candidates introduced by the #202 connector-scoping). Root cause: the candidate row carried no endpoint identity. Adds `skill_candidates.endpoint_key` (migration 0039) on the row + `PatternSignal` + `SkillCandidateView` + the Zod/OpenAPI schema; the repair detector now emits it. Endpoint-scoped repair patterns are identified fully by their fingerprint (`repair:connector:endpoint:kind`), so they no longer cross-supersede — distinct endpoints **and** distinct repair kinds on one endpoint coexist as `proposed`; non-endpoint patterns keep the coarse-entity supersede, guarded by `isNull(endpoint_key)`.
+* **skill-candidates:** connector-scoped repair Skill Candidates were clobbering each other — `upsertFromSignal`'s supersede keyed only on `(scope, pattern_kind, connector_id)`, so a second endpoint's proposal superseded the first on every 6h analysis pass (data loss of valid, evidence-backed candidates introduced by connector-scoping). Root cause: the candidate row carried no endpoint identity. Adds `skill_candidates.endpoint_key` (migration 0039) on the row + `PatternSignal` + `SkillCandidateView` + the Zod/OpenAPI schema; the repair detector now emits it. Endpoint-scoped repair patterns are identified fully by their fingerprint (`repair:connector:endpoint:kind`), so they no longer cross-supersede — distinct endpoints **and** distinct repair kinds on one endpoint coexist as `proposed`; non-endpoint patterns keep the coarse-entity supersede, guarded by `isNull(endpoint_key)`.
 * **skill-candidates:** `failure-pattern` and `success-pattern` detectors read time through the `now()` clock seam instead of `Date.now()`, making the 30-day lookback boundary testable under a frozen clock. Adds integration coverage for both detectors (incl. the boundary), a supersede-coexistence regression test, a skill-candidate exactly-once race test, and stats `aggregate-executions`/`aggregate-llm` unit tests; tightens journey 32 to exact assertions.
 
 ## [6.8.3](https://github.com/MikeBild/subkit/compare/subkit-v6.8.2...subkit-v6.8.3)
@@ -59,14 +59,14 @@
 
 ### Features
 
-* **scheduler:** fire `skill-candidate.analyze` per tenant on a 6h cadence. The repair/failure/success detectors run inside that pg-boss job, but nothing enqueued it — the worker was registered yet never fired, so the detectors never ran in normal operation (the dormant-trigger gap behind #202). Adds a reconciler sweep (extracted to `skill-candidate-analyze-runner.ts` to keep `reconciler.ts` under the LOC ceiling) with a per-tenant compare-and-set stamp `tenants.last_skill_candidate_analyze_at` (migration 0038) for exactly-once firing per cadence across multi-instance deployments. Detectors stay proposers only; promotion to a Skill remains behind the operator-approval gate.
+* **scheduler:** fire `skill-candidate.analyze` per tenant on a 6h cadence. The repair/failure/success detectors run inside that pg-boss job, but nothing enqueued it — the worker was registered yet never fired, so the detectors never ran in normal operation (the dormant-trigger gap behind connector-scoped repair). Adds a reconciler sweep (extracted to `skill-candidate-analyze-runner.ts` to keep `reconciler.ts` under the LOC ceiling) with a per-tenant compare-and-set stamp `tenants.last_skill_candidate_analyze_at` (migration 0038) for exactly-once firing per cadence across multi-instance deployments. Detectors stay proposers only; promotion to a Skill remains behind the operator-approval gate.
 
 ## [6.7.0](https://github.com/MikeBild/subkit/compare/subkit-v6.6.1...subkit-v6.7.0)
 
 
 ### Features
 
-* **self-healing:** auto-promote recurring Patch Candidates to connector-scoped Skill Candidates (R5) ([#202](https://github.com/MikeBild/subkit/issues/202)). Reworks the previously-dead `repair-pattern` detector: it read a non-existent top-level diff shape (`diff.kind`/`diff.path`) and grouped per-workflow, so it emitted zero signals and could never deliver the "a skill that applies to all workflows on the same interface" promise. It now reads `diff.proposal.kind`, joins `execution_fixtures` (tenant-scoped) for connector + endpoint context, groups by `(connector_id, endpoint_key, kind)`, and emits **connector-scoped** Skill Candidate signals — so a repair recurring across the same interface accumulates into one reviewable proposal. Adds index migration 0036 (`patch_candidates(tenant_id, status, created_at)`) and a one-shot audited rescope cleanup migration 0037.
+* **self-healing:** auto-promote recurring Patch Candidates to connector-scoped Skill Candidates. Reworks the previously-dead `repair-pattern` detector: it read a non-existent top-level diff shape (`diff.kind`/`diff.path`) and grouped per-workflow, so it emitted zero signals and could never deliver the "a skill that applies to all workflows on the same interface" promise. It now reads `diff.proposal.kind`, joins `execution_fixtures` (tenant-scoped) for connector + endpoint context, groups by `(connector_id, endpoint_key, kind)`, and emits **connector-scoped** Skill Candidate signals — so a repair recurring across the same interface accumulates into one reviewable proposal. Adds index migration 0036 (`patch_candidates(tenant_id, status, created_at)`) and a one-shot audited rescope cleanup migration 0037.
 
 ## [6.6.1](https://github.com/MikeBild/subkit/compare/subkit-v6.6.0...subkit-v6.6.1)
 
@@ -87,7 +87,7 @@
 
 ### Features
 
-* **authoring:** close R5 loop — recipe bodies + skill candidates in prompt ([#204](https://github.com/MikeBild/subkit/issues/204), [#201](https://github.com/MikeBild/subkit/issues/201)) ([#211](https://github.com/MikeBild/subkit/issues/211)) ([7dbdc3a](https://github.com/MikeBild/subkit/commit/7dbdc3a357b1b63b1d87ee2b2204ffdda682bbae))
+* **authoring:** close the authoring loop — recipe bodies + skill candidates in prompt ([7dbdc3a](https://github.com/MikeBild/subkit/commit/7dbdc3a357b1b63b1d87ee2b2204ffdda682bbae))
 
 ## [6.1.1](https://github.com/MikeBild/subkit/compare/subkit-v6.1.0...subkit-v6.1.1) (2026-05-25)
 
@@ -118,7 +118,7 @@
 * embed overview architecture diagram in README and key docs ([e3a6118](https://github.com/MikeBild/subkit/commit/e3a6118f4041bd836b48bee0a8b12c791ee68b58))
 * more docs ([e74d2b2](https://github.com/MikeBild/subkit/commit/e74d2b22d01d7cc443b7888cd79bc6385563f2ac))
 * **reference:** human-readable pass on docs/03–08 — frontmatter + inline mermaid ([9dfbb47](https://github.com/MikeBild/subkit/commit/9dfbb4790a143572f98ef8e82169cdde168689b4))
-* reframe sk-as-product as reference implementation across all docs ([a4a974e](https://github.com/MikeBild/subkit/commit/a4a974e0279cc8ea6dc9b5fc74e00072cc92b57f))
+* reframe sk as the product across all docs ([a4a974e](https://github.com/MikeBild/subkit/commit/a4a974e0279cc8ea6dc9b5fc74e00072cc92b57f))
 * **strategy:** claim hierarchy, deeper shared-system, accumulation implications, two-layer R-spec ([e019cad](https://github.com/MikeBild/subkit/commit/e019cadd105eb9a11e18cac08cafcbc886525f96))
 * **strategy:** human-readable pass — inline mermaid, drop document-codes, R-aliases in glossary ([bd99aac](https://github.com/MikeBild/subkit/commit/bd99aac298ea70668b60e13544b08c30fc999794))
 * **strategy:** introduce "The Operating Model" as iconic short term ([742affe](https://github.com/MikeBild/subkit/commit/742affe3376fb02eaf37b8083f245614ef628c8e))
@@ -194,12 +194,12 @@
 * add direct automation workflow surface ([caa4449](https://github.com/MikeBild/subkit/commit/caa4449bd7b3926645667cded669c79e8bc4c2ec))
 * **ai-sdk-6:** authoring critic — second-stage LLM verifier ([#170](https://github.com/MikeBild/subkit/issues/170)) ([#179](https://github.com/MikeBild/subkit/issues/179)) ([1ebc4ce](https://github.com/MikeBild/subkit/commit/1ebc4ce309b7f39d20b6cd17391c90698e67c4e9))
 * **ai-sdk-6:** foundation ([#163](https://github.com/MikeBild/subkit/issues/163), [#164](https://github.com/MikeBild/subkit/issues/164), [#165](https://github.com/MikeBild/subkit/issues/165), [#166](https://github.com/MikeBild/subkit/issues/166)) ([#176](https://github.com/MikeBild/subkit/issues/176)) ([878b730](https://github.com/MikeBild/subkit/commit/878b730d20f0d748d43ee838c6eb490f37ac7e75))
-* **ai-sdk-6:** workflow MCP resources ([#169](https://github.com/MikeBild/subkit/issues/169)) + inputExamples fix ([#177](https://github.com/MikeBild/subkit/issues/177)) + close API-key issues [skip-review] ([#178](https://github.com/MikeBild/subkit/issues/178)) ([b55f59d](https://github.com/MikeBild/subkit/commit/b55f59dcbc63047f1ef3943645fcfa92e8393974))
+* **ai-sdk-6:** workflow MCP resources + inputExamples fix + close API-key issues [skip-review] ([b55f59d](https://github.com/MikeBild/subkit/commit/b55f59dcbc63047f1ef3943645fcfa92e8393974))
 * align runtime with documented envelope + surface drift feedback ([d3775b1](https://github.com/MikeBild/subkit/commit/d3775b193435942c93d8fefb598b3b815a60653a))
-* **authoring,llm,sk:** schema-first authoring redesign — KK→QQ + reference-aligned discipline ([f01d3a7](https://github.com/MikeBild/subkit/commit/f01d3a79bac464a8db631089becbd63e31e73100))
-* **authoring,sk,chat-ui:** close residual reference-impl gaps — RR→UU ([e65af7a](https://github.com/MikeBild/subkit/commit/e65af7a17b92e9e1da0365147e8ab95afe1d47cd))
+* **authoring,llm,sk:** schema-first authoring redesign — schema-aligned discipline ([f01d3a7](https://github.com/MikeBild/subkit/commit/f01d3a79bac464a8db631089becbd63e31e73100))
+* **authoring,sk,chat-ui:** close residual authoring and chat-ui gaps ([e65af7a](https://github.com/MikeBild/subkit/commit/e65af7a17b92e9e1da0365147e8ab95afe1d47cd))
 * **authoring,sk,llm,observability:** close root-cause UX + observability gaps from sessions f00b8d1c/820c1664/80eec7c8 ([c0b72df](https://github.com/MikeBild/subkit/commit/c0b72dfa6f936b99a31dbae931b2adfd7df3e5f1))
-* **authoring:** close remaining FOLLOWUP gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
+* **authoring:** close remaining follow-up gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
 * **authoring:** harden guided state, palette, and prompt flow ([6e5eed1](https://github.com/MikeBild/subkit/commit/6e5eed14c717a2d9a67b895f18d02304679bad54))
 * **authoring:** inline $item.&lt;field&gt; + validation state into authoring context ([02d9b75](https://github.com/MikeBild/subkit/commit/02d9b753fb57062112253b6dee021735b7c9cd96))
 * **authoring:** masked secrets + 3 more cards + route-doc parity gate ([af1ca67](https://github.com/MikeBild/subkit/commit/af1ca673d32acc857684c052c3e017fea47b1db6))
@@ -209,8 +209,8 @@
 * complete guided authoring and operator verification ([41ad42e](https://github.com/MikeBild/subkit/commit/41ad42ee9f058940a1e1fd2f710bff716c9afcfe))
 * **connectors,credentials:** cognito/jwt-bearer/device-code/sigv4 auth flows + GraphQL type-preserving resolver ([738c0fc](https://github.com/MikeBild/subkit/commit/738c0fceb7687ca9b6208df0288edf008f507a0d))
 * **connectors,discovery:** GraphQL connector save auto-runs introspection discovery ([175d6d6](https://github.com/MikeBild/subkit/commit/175d6d6c50d3028088e52b68deb22d9a94b37f2d))
-* **connectors,docs:** A3 + A8 — auth-chain + Schedule+State recipe few-shot examples ([f4298d8](https://github.com/MikeBild/subkit/commit/f4298d8fd65af8555520be6972e3378c8ead1d18))
-* **connectors,llm,mcp,discovery,events:** close 4 behavioral gaps via reference-project audit ([c5218c5](https://github.com/MikeBild/subkit/commit/c5218c5cb0430f19479abd92dd700a9f7f7e81da))
+* **connectors,docs:** auth-chain + Schedule+State recipe few-shot examples ([f4298d8](https://github.com/MikeBild/subkit/commit/f4298d8fd65af8555520be6972e3378c8ead1d18))
+* **connectors,llm,mcp,discovery,events:** close 4 behavioral gaps via subsystem audit ([c5218c5](https://github.com/MikeBild/subkit/commit/c5218c5cb0430f19479abd92dd700a9f7f7e81da))
 * **connectors,scripts:** Layer-3 vendor-drift sweep + verified_at stamp ([#63](https://github.com/MikeBild/subkit/issues/63)) ([d950a79](https://github.com/MikeBild/subkit/commit/d950a796f29fd938870f30f2de5ab9d3525b757f))
 * **connectors:** add redis, mssql, ftp, sftp, smb drivers ([50f416e](https://github.com/MikeBild/subkit/commit/50f416e34f260add631228ce612dff3c4d5a2f03))
 * **connectors:** enrich template model with URL matching, smart probes, OAuth2 details, and spec import ([78742ba](https://github.com/MikeBild/subkit/commit/78742ba3e45eaaefabf46866e553f753f10d70ab))
@@ -235,14 +235,14 @@
 * **conversations:** static verifier + onboarding hint ([a4adc9c](https://github.com/MikeBild/subkit/commit/a4adc9c735e663b55f39bd1295ad9cedbd7e879d))
 * **conversations:** wire interaction_log events through elicitation flow ([8fbd6a3](https://github.com/MikeBild/subkit/commit/8fbd6a3474df2376b2364ee803e3ad4aeb1315a9))
 * **conversations:** wire transform-authoring gate into build_workflow and update_param ([61bbf27](https://github.com/MikeBild/subkit/commit/61bbf27c3bc3af7e363256e813f8f38788d1e5ea))
-* **credentials,connectors:** A4 token_mint mode + Salesforce OAuth2 password grant ([a35b4fe](https://github.com/MikeBild/subkit/commit/a35b4fe21d6a45e0bb686865e2b58db123d0e8c5))
+* **credentials,connectors:** token_mint mode + Salesforce OAuth2 password grant ([a35b4fe](https://github.com/MikeBild/subkit/commit/a35b4fe21d6a45e0bb686865e2b58db123d0e8c5))
 * **db:** migration 0028 convo-quality — skills seed, attachments, DLP, drafts ([7d3cf97](https://github.com/MikeBild/subkit/commit/7d3cf9703bdd0a7ad8f6a3ab2041a4c5edd7f342))
 * **deploy:** switch production engine to engine-with-cli + sync prod compose per release ([9ecdf7d](https://github.com/MikeBild/subkit/commit/9ecdf7d329e0095d8606e667da08be9467974604))
 * **discovery:** codebase archive upload + extractor ([b6c4a0a](https://github.com/MikeBild/subkit/commit/b6c4a0af7f2f90f414d23d32158dd325f1020c67))
 * **discovery:** postgres+mssql introspection, SDL corpus, html→markdown, swaggerhub /apis-docs ([cd4fcae](https://github.com/MikeBild/subkit/commit/cd4fcae46618f4b87eb834c71d6652bb4a1489d7))
 * **docs-ingestion:** knowledge-ingress cascade orchestrator ([e95c018](https://github.com/MikeBild/subkit/commit/e95c018763906d32c778ad9c0219a6cd79a74435))
 * **docs-ingestion:** PDF/DOCX/XLSX/PPTX binary parsers end-to-end [skip-review] ([#194](https://github.com/MikeBild/subkit/issues/194)) ([7a3987c](https://github.com/MikeBild/subkit/commit/7a3987c4e13fac3a40a6971d6fa13cc820dc4f11))
-* **docs,knowledge:** close 8 documentation+knowledge gaps to reach reference parity ([c0b8ddf](https://github.com/MikeBild/subkit/commit/c0b8ddf42c2c0b3fec208fef1b1256913bd1d1c1))
+* **docs,knowledge:** close 8 documentation+knowledge gaps ([c0b8ddf](https://github.com/MikeBild/subkit/commit/c0b8ddf42c2c0b3fec208fef1b1256913bd1d1c1))
 * **e2e+engine:** real-LLM E2E suite + diagnostics endpoint + provider routing fix ([83f6b09](https://github.com/MikeBild/subkit/commit/83f6b09722f64a3bcb6a05a4a3bfa4c523d3987b))
 * **engine,connectors:** add CloudWatch + STS + EventBridge + OAuth2 templates with recipes ([d06dcf6](https://github.com/MikeBild/subkit/commit/d06dcf62c2641f8efea89265ad915ed22879c8b9))
 * **engine,connectors:** widen save_connector_draft credential union with cognito_user_password + aws_sigv4 ([2158bba](https://github.com/MikeBild/subkit/commit/2158bba067dc925a593da9b1cb503c16f06830a1))
@@ -273,7 +273,7 @@
 * **http,mcp,self-healing:** expose URL match and spec import, rate-limit classifier, inline_schema indexer ([693c2ea](https://github.com/MikeBild/subkit/commit/693c2eae1dab9a48186b6cd0e87960b54422721b))
 * **http,sk:** /v1/settings routes + sk settings command ([600e33c](https://github.com/MikeBild/subkit/commit/600e33cd2b949768093195b9558a2da3a32537de))
 * **http:** GET /install route serves a sk install script (Tailscale pattern) ([9477535](https://github.com/MikeBild/subkit/commit/947753566dc63209dbac3dfe6ad2999b0c6b3139))
-* **install:** bundle sk + tunnel-agent binaries inside engine image (closes [#64](https://github.com/MikeBild/subkit/issues/64)) ([31f2280](https://github.com/MikeBild/subkit/commit/31f22804e2521ed3c6461a3768cce34bc5b55a61))
+* **install:** bundle sk + tunnel-agent binaries inside engine image ([31f2280](https://github.com/MikeBild/subkit/commit/31f22804e2521ed3c6461a3768cce34bc5b55a61))
 * **llm:** extended converse prompt + five pseudo-message builders ([68ef177](https://github.com/MikeBild/subkit/commit/68ef17792c19fc3648eab47a00957bf00aacb8d4))
 * **llm:** per-flow env provider/model overrides ([a8b143c](https://github.com/MikeBild/subkit/commit/a8b143c4d614b91e7f1e9e12602984d23884c861))
 * **llm:** per-tenant vendor-recipe overrides ([057ff88](https://github.com/MikeBild/subkit/commit/057ff881d875feab787445195dec38c3297ba6a6))
@@ -293,10 +293,10 @@
 * **scheduler,recipes,sk:** schedule trigger end-to-end (cron+tz+skip) ([#47](https://github.com/MikeBild/subkit/issues/47)) ([c17265f](https://github.com/MikeBild/subkit/commit/c17265f1eec44afb8358f5b206eded1a9c8a209e))
 * **security,execution,discovery,sk:** conversational creation rebuild round 2 — SSRF guard, pagination resume, GraphQL+llms.txt+playwright discovery, multi-driver call_connector, sk CLI ergonomics ([d9125c7](https://github.com/MikeBild/subkit/commit/d9125c7ae214ec02fccf9f96c2288fcb6e8e0459))
 * **self-healing:** proactive drift scan + admin HTTP/MCP/sk surfaces ([acb1837](https://github.com/MikeBild/subkit/commit/acb183768c5a36c4e861c391546d459fb223d308))
-* **self-update:** harden audit, signing, rollback, /v1/health ([#151](https://github.com/MikeBild/subkit/issues/151) P0) ([#158](https://github.com/MikeBild/subkit/issues/158)) ([fc87016](https://github.com/MikeBild/subkit/commit/fc87016acf9d77887869823a9771b1eaf7cffafa))
+* **self-update:** harden audit, signing, rollback, /v1/health ([fc87016](https://github.com/MikeBild/subkit/commit/fc87016acf9d77887869823a9771b1eaf7cffafa))
 * sk ctx gauge + engine context-window safety fixes ([#74](https://github.com/MikeBild/subkit/issues/74)) ([a7edb1d](https://github.com/MikeBild/subkit/commit/a7edb1dd44bfb026599a00a4218223c89e999fcb))
 * **sk,approval:** describeApprovalTarget helper + richer external-write card ([35c0f06](https://github.com/MikeBild/subkit/commit/35c0f06cfcdd49ac8612169dac22df553558f044))
-* **sk:** /settings 10-tab palette + connector hub + fork-from-message ([#159](https://github.com/MikeBild/subkit/issues/159)) ([#161](https://github.com/MikeBild/subkit/issues/161)) ([3b1ad61](https://github.com/MikeBild/subkit/commit/3b1ad61347b26bf277eff8210b8f1392d4cdce52))
+* **sk:** /settings 10-tab palette + connector hub + fork-from-message ([3b1ad61](https://github.com/MikeBild/subkit/commit/3b1ad61347b26bf277eff8210b8f1392d4cdce52))
 * **sk:** add full debug trace logging ([236d978](https://github.com/MikeBild/subkit/commit/236d978c13d90f7aaf2b2ad8f268b4a81abd4b9e))
 * **sk:** add setup diagnostics UX ([5ba0c73](https://github.com/MikeBild/subkit/commit/5ba0c7308f611efc39a9f2baabb9176959cefc68))
 * **sk:** consolidate subkit admin CLI into unified sk binary ([13f38cc](https://github.com/MikeBild/subkit/commit/13f38cc0f93f42a9d499f8420682b37396221dde))
@@ -307,7 +307,7 @@
 * **skills,tools:** 10 Markdown skills + seed loader + description compiler ([0bb0f27](https://github.com/MikeBild/subkit/commit/0bb0f2741ec2215ae79989aba30242c7672ec485))
 * **sk:** next-command preview — ghost-text suggestion after every turn ([#162](https://github.com/MikeBild/subkit/issues/162)) ([4e7582b](https://github.com/MikeBild/subkit/commit/4e7582bbc1541c293e3696e80d472f356d18ff40))
 * **sk:** run command supports saved/draft/step sources, new sk auth ([6775c0f](https://github.com/MikeBild/subkit/commit/6775c0f4c301aa9727f3bf5d3265402c13ecd1f8))
-* **sk:** shift+enter and backslash-enter for newline (codex parity) ([3413aed](https://github.com/MikeBild/subkit/commit/3413aedc41efd82670e1b7170fbba2c9b6ccd586))
+* **sk:** shift+enter and backslash-enter for newline ([3413aed](https://github.com/MikeBild/subkit/commit/3413aedc41efd82670e1b7170fbba2c9b6ccd586))
 * **sk:** unify guided action UX ([bade164](https://github.com/MikeBild/subkit/commit/bade1642fcc234357c727472dd671eee0c6fe3ff))
 * **tools:** add inspect_execution — surface-agnostic whole-execution read ([0f38b85](https://github.com/MikeBild/subkit/commit/0f38b8537db5b702508f05b497ec195e86f0a980))
 * **tunnels:** add TCP passthrough for multi-protocol routing ([3d0db26](https://github.com/MikeBild/subkit/commit/3d0db2651d71988897d34d8d1ffe71e0f3887d88))
@@ -316,10 +316,10 @@
 * **webhooks,recipes,sk:** webhook trigger end-to-end Stripe → Slack ([#46](https://github.com/MikeBild/subkit/issues/46)) ([7ca43e4](https://github.com/MikeBild/subkit/commit/7ca43e449348d3ab861c34202032448d3e5877cd))
 * **webhooks:** failure classification, dead-letter, payload-reconstructing replay ([aa31f7b](https://github.com/MikeBild/subkit/commit/aa31f7ba274aac9e2332e65b89c3333045eb8481))
 * **workflows,audit,webhooks,scheduler:** WorkflowDef.trigger + reverse bind/unbind + AuditAction sweep ([#67](https://github.com/MikeBild/subkit/issues/67)) ([504fce4](https://github.com/MikeBild/subkit/commit/504fce495e2482620709030d4ebb59eb9f49e80f))
-* **workflows,execution,audit:** [#48](https://github.com/MikeBild/subkit/issues/48) wait restart-safety + 24h cap + step-level audit pair ([3f92edb](https://github.com/MikeBild/subkit/commit/3f92edba14eed575860617f58319ec351dba5f08))
+* **workflows,execution,audit:** wait restart-safety + 24h cap + step-level audit pair ([3f92edb](https://github.com/MikeBild/subkit/commit/3f92edba14eed575860617f58319ec351dba5f08))
 * **workflows,execution,audit:** per-run LLM token budget + external_write audit ([#53](https://github.com/MikeBild/subkit/issues/53)) ([1d126ff](https://github.com/MikeBild/subkit/commit/1d126ffb262e89cde26ffef8a26c4aa6e0a16729))
-* **workflows,execution,http:** [#49](https://github.com/MikeBild/subkit/issues/49) wait-for-event with HMAC-signed approval URL ([98bb081](https://github.com/MikeBild/subkit/commit/98bb0813722c63214a6367be96eebc98fc2ac8de))
-* **workflows,execution,llm:** [#51](https://github.com/MikeBild/subkit/issues/51) persistent per-workflow state for cross-run cursors ([49163cc](https://github.com/MikeBild/subkit/commit/49163cc5cc0504e64a98d66483b6c44a6d09540d))
+* **workflows,execution,http:** wait-for-event with HMAC-signed approval URL ([98bb081](https://github.com/MikeBild/subkit/commit/98bb0813722c63214a6367be96eebc98fc2ac8de))
+* **workflows,execution,llm:** persistent per-workflow state for cross-run cursors ([49163cc](https://github.com/MikeBild/subkit/commit/49163cc5cc0504e64a98d66483b6c44a6d09540d))
 
 
 ### Bug Fixes
@@ -403,7 +403,7 @@
 * **engine,conversations:** identity-gate commit_draft on draft slug pivot ([717a666](https://github.com/MikeBild/subkit/commit/717a666418966a3cb3b28d18c007bf39b87cd5be))
 * **engine,conversations:** tighten commit-draft elicitation + extract credential-from-form helper ([4c1f409](https://github.com/MikeBild/subkit/commit/4c1f4098a0d1bc7eb61ad3922209d2a7d32145fb))
 * **engine,http,tests:** unblock release CI on stale tests + missing aws_sigv4 route schema ([4f4fdef](https://github.com/MikeBild/subkit/commit/4f4fdef8992e6a20584e770109d2278511b4f9e8))
-* **engine,sk,llm,docs:** close audit gaps + lock leads vs reference impl ([cfecc86](https://github.com/MikeBild/subkit/commit/cfecc86cc4d4a0023ab823a65a001471a1de6880))
+* **engine,sk,llm,docs:** close audit gaps ([cfecc86](https://github.com/MikeBild/subkit/commit/cfecc86cc4d4a0023ab823a65a001471a1de6880))
 * **engine,tests:** unblock pre-push gate — refresh 3 stale test assertions ([7e7b863](https://github.com/MikeBild/subkit/commit/7e7b86346c652f4de12602ef4572138fa082b7b1))
 * **engine,workflows:** reject Authorization header on connector_id request steps ([5ddb16c](https://github.com/MikeBild/subkit/commit/5ddb16cccbcbfe4d83f55b6f87f094e7fee8194d))
 * **engine:** close Approach 2 wiring gaps + 3 journey-test regressions ([b7148e7](https://github.com/MikeBild/subkit/commit/b7148e7db931f471eecb4537f3ab7bc4d9c7d266))
@@ -420,7 +420,7 @@
 * **http:** import oauth callback event schema via pubsub/index, not pubsub/types ([f41be42](https://github.com/MikeBild/subkit/commit/f41be4267611f1f67df34a6bc33c86d136be9615))
 * **install:** align port + sk command surface in docs ↔ code ([#124](https://github.com/MikeBild/subkit/issues/124)) ([6b6894e](https://github.com/MikeBild/subkit/commit/6b6894ee0918a60014a0aee31a9fcccee718cd11))
 * **install:** release tag prefix + sk init --token follow-up ([#125](https://github.com/MikeBild/subkit/issues/125)) ([73e58da](https://github.com/MikeBild/subkit/commit/73e58da186ab8700116d30b036c2daffc7851f7f))
-* **journeys:** per-hook 60s timeout + named teardown stack (closes [#98](https://github.com/MikeBild/subkit/issues/98)) ([#133](https://github.com/MikeBild/subkit/issues/133)) ([9094baa](https://github.com/MikeBild/subkit/commit/9094baa586cff3e88188bb7172fc4e02111778eb))
+* **journeys:** per-hook 60s timeout + named teardown stack ([9094baa](https://github.com/MikeBild/subkit/commit/9094baa586cff3e88188bb7172fc4e02111778eb))
 * **llm:** collapse to Vercel AI Gateway — root cause of v1.10.0 prod 500 cluster ([0a00705](https://github.com/MikeBild/subkit/commit/0a0070557f4129aa7330bebf10fab880a6521f51))
 * **llm:** model-init tests tolerate @ai-sdk/anthropic not hoisted on CI ([82885bc](https://github.com/MikeBild/subkit/commit/82885bcaaa03a6721f13853ab5f275901c204d17))
 * **mcp:** await audit.policy_denied write before returning MCP deny ([f5dfeff](https://github.com/MikeBild/subkit/commit/f5dfeff67749fdcdead9d3f16a29c2de30f164a8))
@@ -441,11 +441,11 @@
 * **release:** align workflow + deploy.sh to DROPLET_* secret names ([4daf817](https://github.com/MikeBild/subkit/commit/4daf81725e2313744ee9c384534fa733ee644032))
 * **release:** retry transient registry auth during deploy ([2458c79](https://github.com/MikeBild/subkit/commit/2458c793ff3deda43e1b0d155a6fd18b7d90f50d))
 * **release:** tag_name emits v&lt;VERSION&gt;, not subkit-v&lt;VERSION&gt; ([#126](https://github.com/MikeBild/subkit/issues/126)) ([01a32a9](https://github.com/MikeBild/subkit/commit/01a32a9190519e3760eff020d0c87a9b54d2a393))
-* **review:** close all PR [#152](https://github.com/MikeBild/subkit/issues/152) review WARN/SUGG (round 9) ([#153](https://github.com/MikeBild/subkit/issues/153)) ([7cded86](https://github.com/MikeBild/subkit/commit/7cded86bbda62cf768c5787d49194e450faeb3bb))
+* **review:** close all review WARN/SUGG on the docker-retire change ([7cded86](https://github.com/MikeBild/subkit/commit/7cded86bbda62cf768c5787d49194e450faeb3bb))
 * **sandboxes:** embed sk-stdlib.js into compiled engine binary ([2c02125](https://github.com/MikeBild/subkit/commit/2c021255551704182c53dcb2f9b163521b2b17b0))
 * **scheduler:** close two-engine race in reconcileWorkflowSchedules with CAS ([#103](https://github.com/MikeBild/subkit/issues/103)) ([7be268e](https://github.com/MikeBild/subkit/commit/7be268efa7f26bbfe8d3bd0b5c3e9365a34afc1d))
 * **scheduler:** make scheduled-run failures succeed and surface ([cf0a5f3](https://github.com/MikeBild/subkit/commit/cf0a5f32c8c72329cf5c1c0ab81eb4cf4a9197bc))
-* **scheduler:** pg-boss queue + PR-187 follow-up review fixes ([#189](https://github.com/MikeBild/subkit/issues/189)) ([186ca73](https://github.com/MikeBild/subkit/commit/186ca739fe58e7462318645b80cf6016912c9749))
+* **scheduler:** pg-boss queue + follow-up review fixes ([186ca73](https://github.com/MikeBild/subkit/commit/186ca739fe58e7462318645b80cf6016912c9749))
 * **scheduler:** remove colon from per-workflow queue name ([#190](https://github.com/MikeBild/subkit/issues/190)) ([a3d3bef](https://github.com/MikeBild/subkit/commit/a3d3bef9089bb649c9cdde78ca3fa95586a3117c))
 * **scripts,ci:** pin openapi.json info.version to "0.0.0-dev" in gen output ([cf7cb44](https://github.com/MikeBild/subkit/commit/cf7cb448bc20ca1ee39b01a8ce8cce86018350c9))
 * **scripts,tests:** stamp ENGINE_VERSION on .env, swap test.skip for test.skipIf in live e2es ([2743b83](https://github.com/MikeBild/subkit/commit/2743b8351161a4a4693ff7b4178acc9c76f22385))
@@ -472,7 +472,7 @@
 * **tests:** rename SUBKIT.md → SK.md in memory-pipeline journey ([c6e5757](https://github.com/MikeBild/subkit/commit/c6e5757dbea36b0b352ac1f4a00f015ad28f491b))
 * **tests:** use real Date.now() for TEST_NOW_MS instead of fixed Nov-2023 timestamp ([764c35c](https://github.com/MikeBild/subkit/commit/764c35ca6e6e2967b513910f3df323c42d427e2a))
 * **tests:** use skipIf+env flag instead of test.skip (determinism gate) ([4b0ff08](https://github.com/MikeBild/subkit/commit/4b0ff0875cd577c68e1ac23011fc98641c348ad8))
-* **v3.5:** audit pass 6 — coverage matrix, structured logs, env retire cleanup ([#137](https://github.com/MikeBild/subkit/issues/137)) ([c5900c8](https://github.com/MikeBild/subkit/commit/c5900c8122fec03349adc0e80db88236344e816c))
+* **v3.5:** coverage matrix, structured logs, env retire cleanup ([c5900c8](https://github.com/MikeBild/subkit/commit/c5900c8122fec03349adc0e80db88236344e816c))
 * **v3.5:** reset config state in process.env-driven LLM provider tests ([#135](https://github.com/MikeBild/subkit/issues/135)) ([b846a0b](https://github.com/MikeBild/subkit/commit/b846a0bebd29968d723549c87712fc101d073369))
 * **workflows:** skip redundant version rotation when the def is unchanged ([1736df8](https://github.com/MikeBild/subkit/commit/1736df89d60f596841640b1016bcdb48735409d4))
 
@@ -483,14 +483,14 @@
 * **cli-core:** drop transcript-cell layer, replay turn events directly ([c448631](https://github.com/MikeBild/subkit/commit/c44863122dee0c90f58cb32b8501244ae1afb02b))
 * **conversations,llm:** agent-registry + skill-driven prompts ([5446d43](https://github.com/MikeBild/subkit/commit/5446d43b6f78c69f8542a6ed2ef1ac7f5f3d1109))
 * **conversations:** split authoring-state.ts into normalize + summary modules ([#113](https://github.com/MikeBild/subkit/issues/113)) ([c6cd9a2](https://github.com/MikeBild/subkit/commit/c6cd9a2d53893b4aba4dc9efcfefcf2bd562231d))
-* **conversations:** split sdk-wrap.ts (1803 LOC) per audit §4.2 ([#112](https://github.com/MikeBild/subkit/issues/112)) ([61d8ce7](https://github.com/MikeBild/subkit/commit/61d8ce7c6ff538236ff86808b45c87ce07ee1f62))
+* **conversations:** split sdk-wrap.ts (1803 LOC) into per-concern modules ([61d8ce7](https://github.com/MikeBild/subkit/commit/61d8ce7c6ff538236ff86808b45c87ce07ee1f62))
 * **conversations:** split service.ts into per-operation modules ([#123](https://github.com/MikeBild/subkit/issues/123)) ([1bb1ac9](https://github.com/MikeBild/subkit/commit/1bb1ac94ae2f51ea928f56e3368884ea7beb67cf))
 * drop stale 'reserved for a future' comments and an unused enum value ([#131](https://github.com/MikeBild/subkit/issues/131)) ([75e8b91](https://github.com/MikeBild/subkit/commit/75e8b910ccc1042bae257364f6b033937ad1f3cb))
 * **engine,db:** retire BOOTSTRAP_* env vars (now driven by /v1/setup) ([#70](https://github.com/MikeBild/subkit/issues/70)) ([bf37875](https://github.com/MikeBild/subkit/commit/bf37875fc1c9c77d2b3cd8b7051cbc6db1cdc016))
 * **engine,llm:** replace per-skill summary blocks with per-scope index ([7873fa9](https://github.com/MikeBild/subkit/commit/7873fa9d855bc77cf2a20a145c739a79229112dc))
 * **engine,sk,docs:** rename commit_draft → save_workflow_draft repo-wide ([1d0996a](https://github.com/MikeBild/subkit/commit/1d0996a03e9a901821f9ab76361ed98c2ccf43f7))
 * **execution:** extract engine helpers into engine/ subdir ([#121](https://github.com/MikeBild/subkit/issues/121)) ([8f4913b](https://github.com/MikeBild/subkit/commit/8f4913bbdb7b56042328d29bcc6c805611b6d6cf))
-* **execution:** split request.ts (1804 LOC) per audit §4.2 ([#111](https://github.com/MikeBild/subkit/issues/111)) ([74e897e](https://github.com/MikeBild/subkit/commit/74e897e6617a2ce26ac3b4e1a92dc022ed7a60c6))
+* **execution:** split request.ts (1804 LOC) into per-concern modules ([74e897e](https://github.com/MikeBild/subkit/commit/74e897e6617a2ce26ac3b4e1a92dc022ed7a60c6))
 * **http:** split connector-templates route god-file into per-sub-resource modules ([#116](https://github.com/MikeBild/subkit/issues/116)) ([3a48260](https://github.com/MikeBild/subkit/commit/3a48260883a473168fbcbcb619a9c4783b50ddf9))
 * **http:** split connectors route god-file into per-sub-resource modules ([#117](https://github.com/MikeBild/subkit/issues/117)) ([d7b1774](https://github.com/MikeBild/subkit/commit/d7b17741d2ea38ec9e94ae598ffbd6dc48209259))
 * **http:** split conversations route god-file into per-sub-resource modules ([#115](https://github.com/MikeBild/subkit/issues/115)) ([1654e76](https://github.com/MikeBild/subkit/commit/1654e76ab5ad6f634450f830a244db4efe7afc1e))
@@ -504,7 +504,7 @@
 * **persistence:** split auto-persist.ts into per-concern modules ([#122](https://github.com/MikeBild/subkit/issues/122)) ([b6d453b](https://github.com/MikeBild/subkit/commit/b6d453b6aa7878c17eb572c14165b0f80d24172e))
 * remove three more half-implemented features ([#130](https://github.com/MikeBild/subkit/issues/130)) ([0cd9cde](https://github.com/MikeBild/subkit/commit/0cd9cdedb936c653aeb487d79c2e1b19e9b579b5))
 * **shared:** extract redaction + scrub-secrets to packages/shared ([06757d3](https://github.com/MikeBild/subkit/commit/06757d302d833cfdd380bc2a85123dce08e98069))
-* **sk-cli:** /settings 5-tab palette + claude-code shape ([6f394ff](https://github.com/MikeBild/subkit/commit/6f394ff850c426c7c88ddfac068629e0442fe257))
+* **sk-cli:** /settings 5-tab palette shape ([6f394ff](https://github.com/MikeBild/subkit/commit/6f394ff850c426c7c88ddfac068629e0442fe257))
 * **sk:** extract persona-probe to shared module, tier-gate the probe set ([32d7be5](https://github.com/MikeBild/subkit/commit/32d7be5859e76fbdba0633d42aef5b5109e338f9))
 * **tunnels,pubsub:** bound TunnelRegistry + document pubsub restart contract ([#107](https://github.com/MikeBild/subkit/issues/107)) ([17e3ea3](https://github.com/MikeBild/subkit/commit/17e3ea3b9fdf63f6ba60aaf006f0d37db0f1714d))
 * **tunnels:** remove tunnel-agent subsystem [skip-review] ([#155](https://github.com/MikeBild/subkit/issues/155)) ([8c1351e](https://github.com/MikeBild/subkit/commit/8c1351e5dfac7e7220b0e1003a0b85710963a1ae))
@@ -516,7 +516,7 @@
 
 * align authoring + connector docs with inline auto-persist contract ([f13e2c5](https://github.com/MikeBild/subkit/commit/f13e2c5afe1cdcc7d58300770d79f3f8f27d55c9))
 * align terminology — 'automation' → 'workflow', 'integration' → 'connector' ([039b384](https://github.com/MikeBild/subkit/commit/039b384f187bf7a004b545f94792ec9fad0517a8))
-* **audit:** record actual phase 4 outcome; pin allowlist as steady state ([#128](https://github.com/MikeBild/subkit/issues/128)) ([5f80e4a](https://github.com/MikeBild/subkit/commit/5f80e4a57d360fde7c9373661dad18e915ec88ba))
+* **audit:** record the route-split outcome; pin allowlist as steady state ([5f80e4a](https://github.com/MikeBild/subkit/commit/5f80e4a57d360fde7c9373661dad18e915ec88ba))
 * **changelog:** seed 4.4.1 (unreleased) entry for the release-pipeline fix ([fa51fc9](https://github.com/MikeBild/subkit/commit/fa51fc9fcc54fbd280764ddaff524cdd2336309a))
 * cleanup ([4b41b3f](https://github.com/MikeBild/subkit/commit/4b41b3f438c9c376d97d96219a128dfa065d912e))
 * drop the orphan German end-to-end sequences doc ([2c3edfe](https://github.com/MikeBild/subkit/commit/2c3edfe69f6f24923447b9303da052c32d0c1ce2))
@@ -529,20 +529,20 @@
 * **recipes:** add authoring guide ([8c0123e](https://github.com/MikeBild/subkit/commit/8c0123e619d0978a222ba983095ab8abac2e2bd6))
 * **skills:** document transform gate + auto-surfaced validation across the skill stack ([a5acadd](https://github.com/MikeBild/subkit/commit/a5acadd9899840ee4546d3be132c6d9bf91a4334))
 * **skills:** mssql/redis/file-transport connector skills + postgres introspection note ([805642e](https://github.com/MikeBild/subkit/commit/805642e26b8a7b5210777d13028024900ef2ca13))
-* **slash,executions:** close pre-existing route-doc parity drift ([#106](https://github.com/MikeBild/subkit/issues/106)) ([29de17f](https://github.com/MikeBild/subkit/commit/29de17f827ddb8b1a14d547405510b0489e85cfb))
+* **slash,executions:** close pre-existing route-doc parity drift ([29de17f](https://github.com/MikeBild/subkit/commit/29de17f827ddb8b1a14d547405510b0489e85cfb))
 
 
 ### Miscellaneous
 
-* **audit:** land Phase 1 stabilisation — guard tests + canonical doc ([#94](https://github.com/MikeBild/subkit/issues/94)) ([5420291](https://github.com/MikeBild/subkit/commit/5420291acecd860f54e2dbba5e8d711658215008))
-* **audit:** phase 2 wrap-up — populate coverage-floor.json + enforce coverage_floor ([#104](https://github.com/MikeBild/subkit/issues/104)) ([84ff8dc](https://github.com/MikeBild/subkit/commit/84ff8dc2bb6ed5cf00449cb74d967d9b58b0bb6e))
+* **audit:** land audit-log stabilisation — guard tests + canonical doc ([5420291](https://github.com/MikeBild/subkit/commit/5420291acecd860f54e2dbba5e8d711658215008))
+* **audit:** populate coverage-floor.json + enforce coverage_floor ([84ff8dc](https://github.com/MikeBild/subkit/commit/84ff8dc2bb6ed5cf00449cb74d967d9b58b0bb6e))
 * ci + docs follow-up to stabilization ([#142](https://github.com/MikeBild/subkit/issues/142)) ([95cfde5](https://github.com/MikeBild/subkit/commit/95cfde5f79021bd0441410825d4c693e90e10014))
 * **ci:** release-please runs on workflow_dispatch only ([2898a16](https://github.com/MikeBild/subkit/commit/2898a16dcdcc2c0dae7ffe53fb512e8b99692259))
 * **cli-core:** regenerate OpenAPI client to match current engine surface ([d3c0c0e](https://github.com/MikeBild/subkit/commit/d3c0c0eb4f97fa2b5cfe0daafd4f6b675c88882f))
 * **deps:** sync bun.lock with package.json (graphql, playwright) ([980dcce](https://github.com/MikeBild/subkit/commit/980dcced97ba58be3705c3b6ee4f365985e705f3))
 * **determinism:** add baseline ratchet for warning-level rules ([#77](https://github.com/MikeBild/subkit/issues/77)) ([3253b11](https://github.com/MikeBild/subkit/commit/3253b11511b96e2e4ff96d7c76cd92fde2cf6fa7))
 * **docs:** tighten inline comments + add ticket-coupling gate ([3f8959c](https://github.com/MikeBild/subkit/commit/3f8959ccfc8ba15700df1edf7a8f05758497fa1e))
-* **engine,shared:** full reference-impl parity audit + cleanup loop ([f073888](https://github.com/MikeBild/subkit/commit/f073888a13cd91a2ad661d65467118f4db952ab0))
+* **engine,shared:** full audit + cleanup loop ([f073888](https://github.com/MikeBild/subkit/commit/f073888a13cd91a2ad661d65467118f4db952ab0))
 * **engine:** tidy biome noTemplateCurlyInString suppressions ([3ac25e4](https://github.com/MikeBild/subkit/commit/3ac25e4f78ab81b130ca6fb88938a9754e03bb0a))
 * **eval:** untrack eval/out runtime artifacts ([77d2521](https://github.com/MikeBild/subkit/commit/77d2521ac39c4c2a900d42403648c42a31702f03))
 * **githooks:** trim pre-push gate to lint+typecheck+build ([59aa1a1](https://github.com/MikeBild/subkit/commit/59aa1a10132bc856a862aa473d4cd44467afca55))
@@ -669,12 +669,12 @@
 * add direct automation workflow surface ([caa4449](https://github.com/MikeBild/subkit/commit/caa4449bd7b3926645667cded669c79e8bc4c2ec))
 * **ai-sdk-6:** authoring critic — second-stage LLM verifier ([#170](https://github.com/MikeBild/subkit/issues/170)) ([#179](https://github.com/MikeBild/subkit/issues/179)) ([1ebc4ce](https://github.com/MikeBild/subkit/commit/1ebc4ce309b7f39d20b6cd17391c90698e67c4e9))
 * **ai-sdk-6:** foundation ([#163](https://github.com/MikeBild/subkit/issues/163), [#164](https://github.com/MikeBild/subkit/issues/164), [#165](https://github.com/MikeBild/subkit/issues/165), [#166](https://github.com/MikeBild/subkit/issues/166)) ([#176](https://github.com/MikeBild/subkit/issues/176)) ([878b730](https://github.com/MikeBild/subkit/commit/878b730d20f0d748d43ee838c6eb490f37ac7e75))
-* **ai-sdk-6:** workflow MCP resources ([#169](https://github.com/MikeBild/subkit/issues/169)) + inputExamples fix ([#177](https://github.com/MikeBild/subkit/issues/177)) + close API-key issues [skip-review] ([#178](https://github.com/MikeBild/subkit/issues/178)) ([b55f59d](https://github.com/MikeBild/subkit/commit/b55f59dcbc63047f1ef3943645fcfa92e8393974))
+* **ai-sdk-6:** workflow MCP resources + inputExamples fix + close API-key issues [skip-review] ([b55f59d](https://github.com/MikeBild/subkit/commit/b55f59dcbc63047f1ef3943645fcfa92e8393974))
 * align runtime with documented envelope + surface drift feedback ([d3775b1](https://github.com/MikeBild/subkit/commit/d3775b193435942c93d8fefb598b3b815a60653a))
-* **authoring,llm,sk:** schema-first authoring redesign — KK→QQ + reference-aligned discipline ([f01d3a7](https://github.com/MikeBild/subkit/commit/f01d3a79bac464a8db631089becbd63e31e73100))
-* **authoring,sk,chat-ui:** close residual reference-impl gaps — RR→UU ([e65af7a](https://github.com/MikeBild/subkit/commit/e65af7a17b92e9e1da0365147e8ab95afe1d47cd))
+* **authoring,llm,sk:** schema-first authoring redesign — schema-aligned discipline ([f01d3a7](https://github.com/MikeBild/subkit/commit/f01d3a79bac464a8db631089becbd63e31e73100))
+* **authoring,sk,chat-ui:** close residual authoring and chat-ui gaps ([e65af7a](https://github.com/MikeBild/subkit/commit/e65af7a17b92e9e1da0365147e8ab95afe1d47cd))
 * **authoring,sk,llm,observability:** close root-cause UX + observability gaps from sessions f00b8d1c/820c1664/80eec7c8 ([c0b72df](https://github.com/MikeBild/subkit/commit/c0b72dfa6f936b99a31dbae931b2adfd7df3e5f1))
-* **authoring:** close remaining FOLLOWUP gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
+* **authoring:** close remaining follow-up gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
 * **authoring:** harden guided state, palette, and prompt flow ([6e5eed1](https://github.com/MikeBild/subkit/commit/6e5eed14c717a2d9a67b895f18d02304679bad54))
 * **authoring:** inline $item.&lt;field&gt; + validation state into authoring context ([02d9b75](https://github.com/MikeBild/subkit/commit/02d9b753fb57062112253b6dee021735b7c9cd96))
 * **authoring:** masked secrets + 3 more cards + route-doc parity gate ([af1ca67](https://github.com/MikeBild/subkit/commit/af1ca673d32acc857684c052c3e017fea47b1db6))
@@ -686,8 +686,8 @@
 * complete guided authoring and operator verification ([41ad42e](https://github.com/MikeBild/subkit/commit/41ad42ee9f058940a1e1fd2f710bff716c9afcfe))
 * **connectors,credentials:** cognito/jwt-bearer/device-code/sigv4 auth flows + GraphQL type-preserving resolver ([738c0fc](https://github.com/MikeBild/subkit/commit/738c0fceb7687ca9b6208df0288edf008f507a0d))
 * **connectors,discovery:** GraphQL connector save auto-runs introspection discovery ([175d6d6](https://github.com/MikeBild/subkit/commit/175d6d6c50d3028088e52b68deb22d9a94b37f2d))
-* **connectors,docs:** A3 + A8 — auth-chain + Schedule+State recipe few-shot examples ([f4298d8](https://github.com/MikeBild/subkit/commit/f4298d8fd65af8555520be6972e3378c8ead1d18))
-* **connectors,llm,mcp,discovery,events:** close 4 behavioral gaps via reference-project audit ([c5218c5](https://github.com/MikeBild/subkit/commit/c5218c5cb0430f19479abd92dd700a9f7f7e81da))
+* **connectors,docs:** auth-chain + Schedule+State recipe few-shot examples ([f4298d8](https://github.com/MikeBild/subkit/commit/f4298d8fd65af8555520be6972e3378c8ead1d18))
+* **connectors,llm,mcp,discovery,events:** close 4 behavioral gaps via subsystem audit ([c5218c5](https://github.com/MikeBild/subkit/commit/c5218c5cb0430f19479abd92dd700a9f7f7e81da))
 * **connectors,scripts:** Layer-3 vendor-drift sweep + verified_at stamp ([#63](https://github.com/MikeBild/subkit/issues/63)) ([d950a79](https://github.com/MikeBild/subkit/commit/d950a796f29fd938870f30f2de5ab9d3525b757f))
 * **connectors:** add redis, mssql, ftp, sftp, smb drivers ([50f416e](https://github.com/MikeBild/subkit/commit/50f416e34f260add631228ce612dff3c4d5a2f03))
 * **connectors:** enrich template model with URL matching, smart probes, OAuth2 details, and spec import ([78742ba](https://github.com/MikeBild/subkit/commit/78742ba3e45eaaefabf46866e553f753f10d70ab))
@@ -713,14 +713,14 @@
 * **conversations:** static verifier + onboarding hint ([a4adc9c](https://github.com/MikeBild/subkit/commit/a4adc9c735e663b55f39bd1295ad9cedbd7e879d))
 * **conversations:** wire interaction_log events through elicitation flow ([8fbd6a3](https://github.com/MikeBild/subkit/commit/8fbd6a3474df2376b2364ee803e3ad4aeb1315a9))
 * **conversations:** wire transform-authoring gate into build_workflow and update_param ([61bbf27](https://github.com/MikeBild/subkit/commit/61bbf27c3bc3af7e363256e813f8f38788d1e5ea))
-* **credentials,connectors:** A4 token_mint mode + Salesforce OAuth2 password grant ([a35b4fe](https://github.com/MikeBild/subkit/commit/a35b4fe21d6a45e0bb686865e2b58db123d0e8c5))
+* **credentials,connectors:** token_mint mode + Salesforce OAuth2 password grant ([a35b4fe](https://github.com/MikeBild/subkit/commit/a35b4fe21d6a45e0bb686865e2b58db123d0e8c5))
 * **db:** migration 0028 convo-quality — skills seed, attachments, DLP, drafts ([7d3cf97](https://github.com/MikeBild/subkit/commit/7d3cf9703bdd0a7ad8f6a3ab2041a4c5edd7f342))
 * **deploy:** consolidate local + CI deploy into one versioned pipeline ([f18e76b](https://github.com/MikeBild/subkit/commit/f18e76bf930758412b917bfe1bf4838f541deb13))
 * **deploy:** switch production engine to engine-with-cli + sync prod compose per release ([9ecdf7d](https://github.com/MikeBild/subkit/commit/9ecdf7d329e0095d8606e667da08be9467974604))
 * **discovery:** codebase archive upload + extractor ([b6c4a0a](https://github.com/MikeBild/subkit/commit/b6c4a0af7f2f90f414d23d32158dd325f1020c67))
 * **discovery:** postgres+mssql introspection, SDL corpus, html→markdown, swaggerhub /apis-docs ([cd4fcae](https://github.com/MikeBild/subkit/commit/cd4fcae46618f4b87eb834c71d6652bb4a1489d7))
 * **docs-ingestion:** knowledge-ingress cascade orchestrator ([e95c018](https://github.com/MikeBild/subkit/commit/e95c018763906d32c778ad9c0219a6cd79a74435))
-* **docs,knowledge:** close 8 documentation+knowledge gaps to reach reference parity ([c0b8ddf](https://github.com/MikeBild/subkit/commit/c0b8ddf42c2c0b3fec208fef1b1256913bd1d1c1))
+* **docs,knowledge:** close 8 documentation+knowledge gaps ([c0b8ddf](https://github.com/MikeBild/subkit/commit/c0b8ddf42c2c0b3fec208fef1b1256913bd1d1c1))
 * **e2e+engine:** real-LLM E2E suite + diagnostics endpoint + provider routing fix ([83f6b09](https://github.com/MikeBild/subkit/commit/83f6b09722f64a3bcb6a05a4a3bfa4c523d3987b))
 * **engine,connectors:** add CloudWatch + STS + EventBridge + OAuth2 templates with recipes ([d06dcf6](https://github.com/MikeBild/subkit/commit/d06dcf62c2641f8efea89265ad915ed22879c8b9))
 * **engine,connectors:** widen save_connector_draft credential union with cognito_user_password + aws_sigv4 ([2158bba](https://github.com/MikeBild/subkit/commit/2158bba067dc925a593da9b1cb503c16f06830a1))
@@ -752,7 +752,7 @@
 * **http,mcp,self-healing:** expose URL match and spec import, rate-limit classifier, inline_schema indexer ([693c2ea](https://github.com/MikeBild/subkit/commit/693c2eae1dab9a48186b6cd0e87960b54422721b))
 * **http,sk:** /v1/settings routes + sk settings command ([600e33c](https://github.com/MikeBild/subkit/commit/600e33cd2b949768093195b9558a2da3a32537de))
 * **http:** GET /install route serves a sk install script (Tailscale pattern) ([9477535](https://github.com/MikeBild/subkit/commit/947753566dc63209dbac3dfe6ad2999b0c6b3139))
-* **install:** bundle sk + tunnel-agent binaries inside engine image (closes [#64](https://github.com/MikeBild/subkit/issues/64)) ([31f2280](https://github.com/MikeBild/subkit/commit/31f22804e2521ed3c6461a3768cce34bc5b55a61))
+* **install:** bundle sk + tunnel-agent binaries inside engine image ([31f2280](https://github.com/MikeBild/subkit/commit/31f22804e2521ed3c6461a3768cce34bc5b55a61))
 * **llm+conversation:** parity wiring — core, tools, policies, confirmation, streaming, eval ([6fa9794](https://github.com/MikeBild/subkit/commit/6fa9794107432cb1098faa5bd9b8ad5583bbeead))
 * **llm:** extended converse prompt + five pseudo-message builders ([68ef177](https://github.com/MikeBild/subkit/commit/68ef17792c19fc3648eab47a00957bf00aacb8d4))
 * **llm:** generateObject + prompt caching + provider registry ([b8928cb](https://github.com/MikeBild/subkit/commit/b8928cbb86f04db481b5ea790e093b22f4256dcf))
@@ -768,16 +768,16 @@
 * **onboarding,http,sk:** first-run bootstrap thin-slice + POST /v1/setup + sk init ([#60](https://github.com/MikeBild/subkit/issues/60)) ([11789dd](https://github.com/MikeBild/subkit/commit/11789dd64d782ac1202825f8bf5c5692e1cef33a))
 * **onboarding:** demo-seed workflows + expertise tone hint ([db86d77](https://github.com/MikeBild/subkit/commit/db86d77228417e2da7eead43c73865a805004bfa))
 * **output-guard:** chat-first scanner — runtime gate for curl/shell suggestions ([5b9abfd](https://github.com/MikeBild/subkit/commit/5b9abfdc4dc9018131a5df8b59f8dd02a576c442))
-* P11 elicitations and Claude Code UX for sk ([1e7e89c](https://github.com/MikeBild/subkit/commit/1e7e89cb0a12139401d5fdfcf0f3fe59d6cd4861))
+* elicitations and conversational REPL UX for sk ([1e7e89c](https://github.com/MikeBild/subkit/commit/1e7e89cb0a12139401d5fdfcf0f3fe59d6cd4861))
 * **release/version.sh:** current_version = max(manifest, package.json) ([51c2f15](https://github.com/MikeBild/subkit/commit/51c2f153f60290e8a9844fd98857c76511b261fc))
 * **sandbox:** sk-stdlib with version tracking and drift detection ([2d5fe5f](https://github.com/MikeBild/subkit/commit/2d5fe5f5449fcdffce6f2cd5bb0c40bcc7beaba3))
 * **scheduler,recipes,sk:** schedule trigger end-to-end (cron+tz+skip) ([#47](https://github.com/MikeBild/subkit/issues/47)) ([c17265f](https://github.com/MikeBild/subkit/commit/c17265f1eec44afb8358f5b206eded1a9c8a209e))
 * **security,execution,discovery,sk:** conversational creation rebuild round 2 — SSRF guard, pagination resume, GraphQL+llms.txt+playwright discovery, multi-driver call_connector, sk CLI ergonomics ([d9125c7](https://github.com/MikeBild/subkit/commit/d9125c7ae214ec02fccf9f96c2288fcb6e8e0459))
 * **self-healing:** proactive drift scan + admin HTTP/MCP/sk surfaces ([acb1837](https://github.com/MikeBild/subkit/commit/acb183768c5a36c4e861c391546d459fb223d308))
-* **self-update:** harden audit, signing, rollback, /v1/health ([#151](https://github.com/MikeBild/subkit/issues/151) P0) ([#158](https://github.com/MikeBild/subkit/issues/158)) ([fc87016](https://github.com/MikeBild/subkit/commit/fc87016acf9d77887869823a9771b1eaf7cffafa))
+* **self-update:** harden audit, signing, rollback, /v1/health ([fc87016](https://github.com/MikeBild/subkit/commit/fc87016acf9d77887869823a9771b1eaf7cffafa))
 * sk ctx gauge + engine context-window safety fixes ([#74](https://github.com/MikeBild/subkit/issues/74)) ([a7edb1d](https://github.com/MikeBild/subkit/commit/a7edb1dd44bfb026599a00a4218223c89e999fcb))
 * **sk,approval:** describeApprovalTarget helper + richer external-write card ([35c0f06](https://github.com/MikeBild/subkit/commit/35c0f06cfcdd49ac8612169dac22df553558f044))
-* **sk:** /settings 10-tab palette + connector hub + fork-from-message ([#159](https://github.com/MikeBild/subkit/issues/159)) ([#161](https://github.com/MikeBild/subkit/issues/161)) ([3b1ad61](https://github.com/MikeBild/subkit/commit/3b1ad61347b26bf277eff8210b8f1392d4cdce52))
+* **sk:** /settings 10-tab palette + connector hub + fork-from-message ([3b1ad61](https://github.com/MikeBild/subkit/commit/3b1ad61347b26bf277eff8210b8f1392d4cdce52))
 * **sk:** add full debug trace logging ([236d978](https://github.com/MikeBild/subkit/commit/236d978c13d90f7aaf2b2ad8f268b4a81abd4b9e))
 * **sk:** add setup diagnostics UX ([5ba0c73](https://github.com/MikeBild/subkit/commit/5ba0c7308f611efc39a9f2baabb9176959cefc68))
 * **sk:** consolidate subkit admin CLI into unified sk binary ([13f38cc](https://github.com/MikeBild/subkit/commit/13f38cc0f93f42a9d499f8420682b37396221dde))
@@ -788,7 +788,7 @@
 * **skills,tools:** 10 Markdown skills + seed loader + description compiler ([0bb0f27](https://github.com/MikeBild/subkit/commit/0bb0f2741ec2215ae79989aba30242c7672ec485))
 * **sk:** next-command preview — ghost-text suggestion after every turn ([#162](https://github.com/MikeBild/subkit/issues/162)) ([4e7582b](https://github.com/MikeBild/subkit/commit/4e7582bbc1541c293e3696e80d472f356d18ff40))
 * **sk:** run command supports saved/draft/step sources, new sk auth ([6775c0f](https://github.com/MikeBild/subkit/commit/6775c0f4c301aa9727f3bf5d3265402c13ecd1f8))
-* **sk:** shift+enter and backslash-enter for newline (codex parity) ([3413aed](https://github.com/MikeBild/subkit/commit/3413aedc41efd82670e1b7170fbba2c9b6ccd586))
+* **sk:** shift+enter and backslash-enter for newline ([3413aed](https://github.com/MikeBild/subkit/commit/3413aedc41efd82670e1b7170fbba2c9b6ccd586))
 * **sk:** unify guided action UX ([bade164](https://github.com/MikeBild/subkit/commit/bade1642fcc234357c727472dd671eee0c6fe3ff))
 * **tunnels:** add TCP passthrough for multi-protocol routing ([3d0db26](https://github.com/MikeBild/subkit/commit/3d0db2651d71988897d34d8d1ffe71e0f3887d88))
 * unified files resource (sk-cli + engine + workflows + LLM context) ([#186](https://github.com/MikeBild/subkit/issues/186)) ([9c37da0](https://github.com/MikeBild/subkit/commit/9c37da0101c4c0beaceb70f6282f61b56bbf70bb))
@@ -796,10 +796,10 @@
 * **webhooks,recipes,sk:** webhook trigger end-to-end Stripe → Slack ([#46](https://github.com/MikeBild/subkit/issues/46)) ([7ca43e4](https://github.com/MikeBild/subkit/commit/7ca43e449348d3ab861c34202032448d3e5877cd))
 * **webhooks:** failure classification, dead-letter, payload-reconstructing replay ([aa31f7b](https://github.com/MikeBild/subkit/commit/aa31f7ba274aac9e2332e65b89c3333045eb8481))
 * **workflows,audit,webhooks,scheduler:** WorkflowDef.trigger + reverse bind/unbind + AuditAction sweep ([#67](https://github.com/MikeBild/subkit/issues/67)) ([504fce4](https://github.com/MikeBild/subkit/commit/504fce495e2482620709030d4ebb59eb9f49e80f))
-* **workflows,execution,audit:** [#48](https://github.com/MikeBild/subkit/issues/48) wait restart-safety + 24h cap + step-level audit pair ([3f92edb](https://github.com/MikeBild/subkit/commit/3f92edba14eed575860617f58319ec351dba5f08))
+* **workflows,execution,audit:** wait restart-safety + 24h cap + step-level audit pair ([3f92edb](https://github.com/MikeBild/subkit/commit/3f92edba14eed575860617f58319ec351dba5f08))
 * **workflows,execution,audit:** per-run LLM token budget + external_write audit ([#53](https://github.com/MikeBild/subkit/issues/53)) ([1d126ff](https://github.com/MikeBild/subkit/commit/1d126ffb262e89cde26ffef8a26c4aa6e0a16729))
-* **workflows,execution,http:** [#49](https://github.com/MikeBild/subkit/issues/49) wait-for-event with HMAC-signed approval URL ([98bb081](https://github.com/MikeBild/subkit/commit/98bb0813722c63214a6367be96eebc98fc2ac8de))
-* **workflows,execution,llm:** [#51](https://github.com/MikeBild/subkit/issues/51) persistent per-workflow state for cross-run cursors ([49163cc](https://github.com/MikeBild/subkit/commit/49163cc5cc0504e64a98d66483b6c44a6d09540d))
+* **workflows,execution,http:** wait-for-event with HMAC-signed approval URL ([98bb081](https://github.com/MikeBild/subkit/commit/98bb0813722c63214a6367be96eebc98fc2ac8de))
+* **workflows,execution,llm:** persistent per-workflow state for cross-run cursors ([49163cc](https://github.com/MikeBild/subkit/commit/49163cc5cc0504e64a98d66483b6c44a6d09540d))
 
 
 ### Bug Fixes
@@ -889,7 +889,7 @@
 * **engine,conversations:** identity-gate commit_draft on draft slug pivot ([717a666](https://github.com/MikeBild/subkit/commit/717a666418966a3cb3b28d18c007bf39b87cd5be))
 * **engine,conversations:** tighten commit-draft elicitation + extract credential-from-form helper ([4c1f409](https://github.com/MikeBild/subkit/commit/4c1f4098a0d1bc7eb61ad3922209d2a7d32145fb))
 * **engine,http,tests:** unblock release CI on stale tests + missing aws_sigv4 route schema ([4f4fdef](https://github.com/MikeBild/subkit/commit/4f4fdef8992e6a20584e770109d2278511b4f9e8))
-* **engine,sk,llm,docs:** close audit gaps + lock leads vs reference impl ([cfecc86](https://github.com/MikeBild/subkit/commit/cfecc86cc4d4a0023ab823a65a001471a1de6880))
+* **engine,sk,llm,docs:** close audit gaps ([cfecc86](https://github.com/MikeBild/subkit/commit/cfecc86cc4d4a0023ab823a65a001471a1de6880))
 * **engine,tests:** unblock pre-push gate — refresh 3 stale test assertions ([7e7b863](https://github.com/MikeBild/subkit/commit/7e7b86346c652f4de12602ef4572138fa082b7b1))
 * **engine,workflows:** reject Authorization header on connector_id request steps ([5ddb16c](https://github.com/MikeBild/subkit/commit/5ddb16cccbcbfe4d83f55b6f87f094e7fee8194d))
 * **engine:** /v1/status version from OPENAPI_INFO, not env ([1a231c0](https://github.com/MikeBild/subkit/commit/1a231c010cdf8459575973c9cbb668a471ed2f4c))
@@ -905,7 +905,7 @@
 * **http:** import oauth callback event schema via pubsub/index, not pubsub/types ([f41be42](https://github.com/MikeBild/subkit/commit/f41be4267611f1f67df34a6bc33c86d136be9615))
 * **install:** align port + sk command surface in docs ↔ code ([#124](https://github.com/MikeBild/subkit/issues/124)) ([6b6894e](https://github.com/MikeBild/subkit/commit/6b6894ee0918a60014a0aee31a9fcccee718cd11))
 * **install:** release tag prefix + sk init --token follow-up ([#125](https://github.com/MikeBild/subkit/issues/125)) ([73e58da](https://github.com/MikeBild/subkit/commit/73e58da186ab8700116d30b036c2daffc7851f7f))
-* **journeys:** per-hook 60s timeout + named teardown stack (closes [#98](https://github.com/MikeBild/subkit/issues/98)) ([#133](https://github.com/MikeBild/subkit/issues/133)) ([9094baa](https://github.com/MikeBild/subkit/commit/9094baa586cff3e88188bb7172fc4e02111778eb))
+* **journeys:** per-hook 60s timeout + named teardown stack ([9094baa](https://github.com/MikeBild/subkit/commit/9094baa586cff3e88188bb7172fc4e02111778eb))
 * **llm:** collapse to Vercel AI Gateway — root cause of v1.10.0 prod 500 cluster ([0a00705](https://github.com/MikeBild/subkit/commit/0a0070557f4129aa7330bebf10fab880a6521f51))
 * **llm:** model-init tests tolerate @ai-sdk/anthropic not hoisted on CI ([82885bc](https://github.com/MikeBild/subkit/commit/82885bcaaa03a6721f13853ab5f275901c204d17))
 * **mcp:** await audit.policy_denied write before returning MCP deny ([f5dfeff](https://github.com/MikeBild/subkit/commit/f5dfeff67749fdcdead9d3f16a29c2de30f164a8))
@@ -922,10 +922,10 @@
 * **release:** align workflow + deploy.sh to DROPLET_* secret names ([4daf817](https://github.com/MikeBild/subkit/commit/4daf81725e2313744ee9c384534fa733ee644032))
 * **release:** retry transient registry auth during deploy ([2458c79](https://github.com/MikeBild/subkit/commit/2458c793ff3deda43e1b0d155a6fd18b7d90f50d))
 * **release:** tag_name emits v&lt;VERSION&gt;, not subkit-v&lt;VERSION&gt; ([#126](https://github.com/MikeBild/subkit/issues/126)) ([01a32a9](https://github.com/MikeBild/subkit/commit/01a32a9190519e3760eff020d0c87a9b54d2a393))
-* **review:** close all PR [#152](https://github.com/MikeBild/subkit/issues/152) review WARN/SUGG (round 9) ([#153](https://github.com/MikeBild/subkit/issues/153)) ([7cded86](https://github.com/MikeBild/subkit/commit/7cded86bbda62cf768c5787d49194e450faeb3bb))
+* **review:** close all review WARN/SUGG on the docker-retire change ([7cded86](https://github.com/MikeBild/subkit/commit/7cded86bbda62cf768c5787d49194e450faeb3bb))
 * **sandboxes:** embed sk-stdlib.js into compiled engine binary ([2c02125](https://github.com/MikeBild/subkit/commit/2c021255551704182c53dcb2f9b163521b2b17b0))
 * **scheduler:** close two-engine race in reconcileWorkflowSchedules with CAS ([#103](https://github.com/MikeBild/subkit/issues/103)) ([7be268e](https://github.com/MikeBild/subkit/commit/7be268efa7f26bbfe8d3bd0b5c3e9365a34afc1d))
-* **scheduler:** pg-boss queue + PR-187 follow-up review fixes ([#189](https://github.com/MikeBild/subkit/issues/189)) ([186ca73](https://github.com/MikeBild/subkit/commit/186ca739fe58e7462318645b80cf6016912c9749))
+* **scheduler:** pg-boss queue + follow-up review fixes ([186ca73](https://github.com/MikeBild/subkit/commit/186ca739fe58e7462318645b80cf6016912c9749))
 * **scheduler:** remove colon from per-workflow queue name ([#190](https://github.com/MikeBild/subkit/issues/190)) ([a3d3bef](https://github.com/MikeBild/subkit/commit/a3d3bef9089bb649c9cdde78ca3fa95586a3117c))
 * **scheduler:** stabilise isCronDue test with fixed clocks ([7ee5070](https://github.com/MikeBild/subkit/commit/7ee5070d2e440d1e15cfb210be878041c365bafd))
 * **scripts,ci:** pin openapi.json info.version to "0.0.0-dev" in gen output ([cf7cb44](https://github.com/MikeBild/subkit/commit/cf7cb448bc20ca1ee39b01a8ce8cce86018350c9))
@@ -956,7 +956,7 @@
 * **tests:** rename SUBKIT.md → SK.md in memory-pipeline journey ([c6e5757](https://github.com/MikeBild/subkit/commit/c6e5757dbea36b0b352ac1f4a00f015ad28f491b))
 * **tests:** use real Date.now() for TEST_NOW_MS instead of fixed Nov-2023 timestamp ([764c35c](https://github.com/MikeBild/subkit/commit/764c35ca6e6e2967b513910f3df323c42d427e2a))
 * **tests:** use skipIf+env flag instead of test.skip (determinism gate) ([4b0ff08](https://github.com/MikeBild/subkit/commit/4b0ff0875cd577c68e1ac23011fc98641c348ad8))
-* **v3.5:** audit pass 6 — coverage matrix, structured logs, env retire cleanup ([#137](https://github.com/MikeBild/subkit/issues/137)) ([c5900c8](https://github.com/MikeBild/subkit/commit/c5900c8122fec03349adc0e80db88236344e816c))
+* **v3.5:** coverage matrix, structured logs, env retire cleanup ([c5900c8](https://github.com/MikeBild/subkit/commit/c5900c8122fec03349adc0e80db88236344e816c))
 * **v3.5:** reset config state in process.env-driven LLM provider tests ([#135](https://github.com/MikeBild/subkit/issues/135)) ([b846a0b](https://github.com/MikeBild/subkit/commit/b846a0bebd29968d723549c87712fc101d073369))
 
 
@@ -966,14 +966,14 @@
 * **cli-core:** drop transcript-cell layer, replay turn events directly ([c448631](https://github.com/MikeBild/subkit/commit/c44863122dee0c90f58cb32b8501244ae1afb02b))
 * **conversations,llm:** agent-registry + skill-driven prompts ([5446d43](https://github.com/MikeBild/subkit/commit/5446d43b6f78c69f8542a6ed2ef1ac7f5f3d1109))
 * **conversations:** split authoring-state.ts into normalize + summary modules ([#113](https://github.com/MikeBild/subkit/issues/113)) ([c6cd9a2](https://github.com/MikeBild/subkit/commit/c6cd9a2d53893b4aba4dc9efcfefcf2bd562231d))
-* **conversations:** split sdk-wrap.ts (1803 LOC) per audit §4.2 ([#112](https://github.com/MikeBild/subkit/issues/112)) ([61d8ce7](https://github.com/MikeBild/subkit/commit/61d8ce7c6ff538236ff86808b45c87ce07ee1f62))
+* **conversations:** split sdk-wrap.ts (1803 LOC) into per-concern modules ([61d8ce7](https://github.com/MikeBild/subkit/commit/61d8ce7c6ff538236ff86808b45c87ce07ee1f62))
 * **conversations:** split service.ts into per-operation modules ([#123](https://github.com/MikeBild/subkit/issues/123)) ([1bb1ac9](https://github.com/MikeBild/subkit/commit/1bb1ac94ae2f51ea928f56e3368884ea7beb67cf))
 * drop stale 'reserved for a future' comments and an unused enum value ([#131](https://github.com/MikeBild/subkit/issues/131)) ([75e8b91](https://github.com/MikeBild/subkit/commit/75e8b910ccc1042bae257364f6b033937ad1f3cb))
 * **engine,db:** retire BOOTSTRAP_* env vars (now driven by /v1/setup) ([#70](https://github.com/MikeBild/subkit/issues/70)) ([bf37875](https://github.com/MikeBild/subkit/commit/bf37875fc1c9c77d2b3cd8b7051cbc6db1cdc016))
 * **engine,llm:** replace per-skill summary blocks with per-scope index ([7873fa9](https://github.com/MikeBild/subkit/commit/7873fa9d855bc77cf2a20a145c739a79229112dc))
 * **engine,sk,docs:** rename commit_draft → save_workflow_draft repo-wide ([1d0996a](https://github.com/MikeBild/subkit/commit/1d0996a03e9a901821f9ab76361ed98c2ccf43f7))
 * **execution:** extract engine helpers into engine/ subdir ([#121](https://github.com/MikeBild/subkit/issues/121)) ([8f4913b](https://github.com/MikeBild/subkit/commit/8f4913bbdb7b56042328d29bcc6c805611b6d6cf))
-* **execution:** split request.ts (1804 LOC) per audit §4.2 ([#111](https://github.com/MikeBild/subkit/issues/111)) ([74e897e](https://github.com/MikeBild/subkit/commit/74e897e6617a2ce26ac3b4e1a92dc022ed7a60c6))
+* **execution:** split request.ts (1804 LOC) into per-concern modules ([74e897e](https://github.com/MikeBild/subkit/commit/74e897e6617a2ce26ac3b4e1a92dc022ed7a60c6))
 * **http:** split connector-templates route god-file into per-sub-resource modules ([#116](https://github.com/MikeBild/subkit/issues/116)) ([3a48260](https://github.com/MikeBild/subkit/commit/3a48260883a473168fbcbcb619a9c4783b50ddf9))
 * **http:** split connectors route god-file into per-sub-resource modules ([#117](https://github.com/MikeBild/subkit/issues/117)) ([d7b1774](https://github.com/MikeBild/subkit/commit/d7b17741d2ea38ec9e94ae598ffbd6dc48209259))
 * **http:** split conversations route god-file into per-sub-resource modules ([#115](https://github.com/MikeBild/subkit/issues/115)) ([1654e76](https://github.com/MikeBild/subkit/commit/1654e76ab5ad6f634450f830a244db4efe7afc1e))
@@ -987,7 +987,7 @@
 * **persistence:** split auto-persist.ts into per-concern modules ([#122](https://github.com/MikeBild/subkit/issues/122)) ([b6d453b](https://github.com/MikeBild/subkit/commit/b6d453b6aa7878c17eb572c14165b0f80d24172e))
 * remove three more half-implemented features ([#130](https://github.com/MikeBild/subkit/issues/130)) ([0cd9cde](https://github.com/MikeBild/subkit/commit/0cd9cdedb936c653aeb487d79c2e1b19e9b579b5))
 * **shared:** extract redaction + scrub-secrets to packages/shared ([06757d3](https://github.com/MikeBild/subkit/commit/06757d302d833cfdd380bc2a85123dce08e98069))
-* **sk-cli:** /settings 5-tab palette + claude-code shape ([6f394ff](https://github.com/MikeBild/subkit/commit/6f394ff850c426c7c88ddfac068629e0442fe257))
+* **sk-cli:** /settings 5-tab palette shape ([6f394ff](https://github.com/MikeBild/subkit/commit/6f394ff850c426c7c88ddfac068629e0442fe257))
 * **sk:** extract persona-probe to shared module, tier-gate the probe set ([32d7be5](https://github.com/MikeBild/subkit/commit/32d7be5859e76fbdba0633d42aef5b5109e338f9))
 * **tunnels,pubsub:** bound TunnelRegistry + document pubsub restart contract ([#107](https://github.com/MikeBild/subkit/issues/107)) ([17e3ea3](https://github.com/MikeBild/subkit/commit/17e3ea3b9fdf63f6ba60aaf006f0d37db0f1714d))
 * **tunnels:** remove tunnel-agent subsystem [skip-review] ([#155](https://github.com/MikeBild/subkit/issues/155)) ([8c1351e](https://github.com/MikeBild/subkit/commit/8c1351e5dfac7e7220b0e1003a0b85710963a1ae))
@@ -997,10 +997,10 @@
 
 ### Documentation
 
-* add agent-facing guidance for Claude Code ([55bd3cd](https://github.com/MikeBild/subkit/commit/55bd3cdb02382911a77f0a9b2c347901994c8de2))
+* add agent-facing guidance for MCP clients ([55bd3cd](https://github.com/MikeBild/subkit/commit/55bd3cdb02382911a77f0a9b2c347901994c8de2))
 * align authoring + connector docs with inline auto-persist contract ([f13e2c5](https://github.com/MikeBild/subkit/commit/f13e2c5afe1cdcc7d58300770d79f3f8f27d55c9))
 * align terminology — 'automation' → 'workflow', 'integration' → 'connector' ([039b384](https://github.com/MikeBild/subkit/commit/039b384f187bf7a004b545f94792ec9fad0517a8))
-* **audit:** record actual phase 4 outcome; pin allowlist as steady state ([#128](https://github.com/MikeBild/subkit/issues/128)) ([5f80e4a](https://github.com/MikeBild/subkit/commit/5f80e4a57d360fde7c9373661dad18e915ec88ba))
+* **audit:** record the route-split outcome; pin allowlist as steady state ([5f80e4a](https://github.com/MikeBild/subkit/commit/5f80e4a57d360fde7c9373661dad18e915ec88ba))
 * **changelog:** seed 4.4.1 (unreleased) entry for the release-pipeline fix ([fa51fc9](https://github.com/MikeBild/subkit/commit/fa51fc9fcc54fbd280764ddaff524cdd2336309a))
 * cleanup ([4b41b3f](https://github.com/MikeBild/subkit/commit/4b41b3f438c9c376d97d96219a128dfa065d912e))
 * **deployment:** document bun run release + scripts/release/* pipeline ([a2f38fc](https://github.com/MikeBild/subkit/commit/a2f38fc3ae821bd91ed0b16b84dcf6e5a6ca6bb8))
@@ -1014,20 +1014,20 @@
 * **recipes:** add authoring guide ([8c0123e](https://github.com/MikeBild/subkit/commit/8c0123e619d0978a222ba983095ab8abac2e2bd6))
 * **skills:** document transform gate + auto-surfaced validation across the skill stack ([a5acadd](https://github.com/MikeBild/subkit/commit/a5acadd9899840ee4546d3be132c6d9bf91a4334))
 * **skills:** mssql/redis/file-transport connector skills + postgres introspection note ([805642e](https://github.com/MikeBild/subkit/commit/805642e26b8a7b5210777d13028024900ef2ca13))
-* **slash,executions:** close pre-existing route-doc parity drift ([#106](https://github.com/MikeBild/subkit/issues/106)) ([29de17f](https://github.com/MikeBild/subkit/commit/29de17f827ddb8b1a14d547405510b0489e85cfb))
+* **slash,executions:** close pre-existing route-doc parity drift ([29de17f](https://github.com/MikeBild/subkit/commit/29de17f827ddb8b1a14d547405510b0489e85cfb))
 
 
 ### Miscellaneous
 
-* **audit:** land Phase 1 stabilisation — guard tests + canonical doc ([#94](https://github.com/MikeBild/subkit/issues/94)) ([5420291](https://github.com/MikeBild/subkit/commit/5420291acecd860f54e2dbba5e8d711658215008))
-* **audit:** phase 2 wrap-up — populate coverage-floor.json + enforce coverage_floor ([#104](https://github.com/MikeBild/subkit/issues/104)) ([84ff8dc](https://github.com/MikeBild/subkit/commit/84ff8dc2bb6ed5cf00449cb74d967d9b58b0bb6e))
+* **audit:** land audit-log stabilisation — guard tests + canonical doc ([5420291](https://github.com/MikeBild/subkit/commit/5420291acecd860f54e2dbba5e8d711658215008))
+* **audit:** populate coverage-floor.json + enforce coverage_floor ([84ff8dc](https://github.com/MikeBild/subkit/commit/84ff8dc2bb6ed5cf00449cb74d967d9b58b0bb6e))
 * ci + docs follow-up to stabilization ([#142](https://github.com/MikeBild/subkit/issues/142)) ([95cfde5](https://github.com/MikeBild/subkit/commit/95cfde5f79021bd0441410825d4c693e90e10014))
 * **ci:** release-please runs on workflow_dispatch only ([2898a16](https://github.com/MikeBild/subkit/commit/2898a16dcdcc2c0dae7ffe53fb512e8b99692259))
 * **cli-core:** regenerate OpenAPI client to match current engine surface ([d3c0c0e](https://github.com/MikeBild/subkit/commit/d3c0c0eb4f97fa2b5cfe0daafd4f6b675c88882f))
 * **deps:** sync bun.lock with package.json (graphql, playwright) ([980dcce](https://github.com/MikeBild/subkit/commit/980dcced97ba58be3705c3b6ee4f365985e705f3))
 * **determinism:** add baseline ratchet for warning-level rules ([#77](https://github.com/MikeBild/subkit/issues/77)) ([3253b11](https://github.com/MikeBild/subkit/commit/3253b11511b96e2e4ff96d7c76cd92fde2cf6fa7))
 * **docs:** tighten inline comments + add ticket-coupling gate ([3f8959c](https://github.com/MikeBild/subkit/commit/3f8959ccfc8ba15700df1edf7a8f05758497fa1e))
-* **engine,shared:** full reference-impl parity audit + cleanup loop ([f073888](https://github.com/MikeBild/subkit/commit/f073888a13cd91a2ad661d65467118f4db952ab0))
+* **engine,shared:** full audit + cleanup loop ([f073888](https://github.com/MikeBild/subkit/commit/f073888a13cd91a2ad661d65467118f4db952ab0))
 * **engine:** tidy biome noTemplateCurlyInString suppressions ([3ac25e4](https://github.com/MikeBild/subkit/commit/3ac25e4f78ab81b130ca6fb88938a9754e03bb0a))
 * **eval:** untrack eval/out runtime artifacts ([77d2521](https://github.com/MikeBild/subkit/commit/77d2521ac39c4c2a900d42403648c42a31702f03))
 * **githooks:** trim pre-push gate to lint+typecheck+build ([59aa1a1](https://github.com/MikeBild/subkit/commit/59aa1a10132bc856a862aa473d4cd44467afca55))
@@ -1232,7 +1232,7 @@
 
 ### Changed
 
-- **`sk settings` reshaped to a 5-tab palette matching claude-code's
+- **`sk settings` reshaped to a 5-tab palette with a
   Status/Config/Usage shape**, plus subkit's two AI-pipeline surfaces
   (`Skills`, `Knowledge`) at the same depth — down from 10 outer tabs
   + 17 engine-section sub-tabs. The activity heatmap merges into
@@ -1249,7 +1249,7 @@
   probing `skBootstrap` for an in-pane "no admin permissions"
   message for non-admins (server RBAC still enforces every mutation
   independently).
-- **Two-step Esc adopts claude-code's `ownsEsc` pattern**
+- **Two-step Esc contract via an `ownsEsc` pattern**
   (generalised as `onInnerEscape`): every Esc-consuming tab + sub-tab
   + form (`ConfigTab`, `KnowledgeTab`, `SkillsTab`, `ProfileTab`,
   `AdminTab` → `GenericListSubTab` / `ApiKeysSubTab` /
@@ -1321,7 +1321,7 @@
   transform-gate) and `collectProbedConnectorSlugs` previously only
   looked at `step.connector_id` / `step.connector_slug`. They now also
   walk for `${connector.<slug>.*}` placeholders in any string leaf of
-  the step config, which is how reference-impl-style and legacy
+  the step config, which is how both modern and legacy
   workflows bind a step to a connector. Without this, the v4.8.0 CI
   fixtures (and a dozen `build_workflow + authoring-critic` tests) all
   failed the moment the new transform gate started firing.
@@ -1458,15 +1458,15 @@
 
 ### Added
 
-- **AI SDK 6 / Tools Registry foundation (PR #176)** — three landing
+- **AI SDK 6 / Tools Registry foundation** — three landing
   zones, all additive, no breaking changes.
-  - **DB schema** (issue #166): two new tables shipped in migration
+  - **DB schema**: two new tables shipped in migration
     `0015_ai_sdk_6_foundation.sql`. `external_call_metering` mirrors
     `llm_usage` for non-LLM provider costs (Cohere rerank, Firecrawl,
     Exa, Browserbase, …): append-only, per-tenant, month-bucketed for
     cheap `sum(...)` budget rollups. `mcp_servers` holds per-tenant
     configuration for external MCP servers the conversation loop will
-    consume (issue #171 writer): `namespace` is unique per tenant and
+    consume: `namespace` is unique per tenant and
     used as the tool-name prefix in the merged palette
     (`mcp_<namespace>__<remote_tool_name>`). Both tables carry
     `tenant_id` cascades, tenant-prefixed indexes, and server-side
@@ -1476,11 +1476,10 @@
     `client_secret`, `password`, `api_key`, `access_token`,
     `refresh_token`, … — writers MUST reference the `credentials`
     table). Nine `mcp_server.*` / `external_provider.*` audit-action
-    constants reserved ahead of the writers landing in #167 / #168 /
-    #171 / #174; presence-asserted by
+    constants reserved ahead of the writers landing later; presence-asserted by
     `audit/tests/mcp-writer-audit-contract.test.ts` with `it.todo`
     slots for the future integration tests.
-  - **DevTools wrap** (issue #164): `LanguageModel` is wrapped with
+  - **DevTools wrap**: `LanguageModel` is wrapped with
     `@ai-sdk/devtools` middleware when `NODE_ENV !== "production"`.
     Composition order `[scrubAuthHeaders, devtools]` redacts
     `Authorization` / `x-api-key` / `api-key` / `x-auth-token` /
@@ -1491,7 +1490,7 @@
     middleware itself plus a middleware-order regression test that
     fails fast if a future SDK bump flips `wrapLanguageModel`'s
     `reverse().reduce(...)` contract.
-  - **Strict-mode tool opt-in** (issue #165): adds an opt-in
+  - **Strict-mode tool opt-in**: adds an opt-in
     `strict?: boolean` field on `ConversationTool` and threads it
     (plus `example_input` → `inputExamples`) through to AI SDK's
     `tool()` factory. `propose_skill` opts in because its input
@@ -1537,7 +1536,7 @@
   (≤30 completion tokens, no skills, no knowledge — the suggestion
   flow has its own `assembleSuggestionPrompt` so it cannot route
   through the heavy converse assembler). Filtered through a 13-rule
-  port of Claude Code's `shouldFilterSuggestion` so meta-text,
+  suggestion-filter port so meta-text,
   evaluative phrasing, and assistant-voice never reach the operator.
   Telemetry: `sk_suggest_next_total{tenant_id, outcome, kind}` covers
   generation outcomes (generated / suppressed / budget_pressure /
@@ -1546,7 +1545,7 @@
   route. Operators can disable globally via
   `nextCommandPreviewEnabled: false` in `~/.sk/settings.json`; the
   `client_suppress` request flag covers per-conversation opt-out.
-  Wins on three axes vs. Claude Code: zero extra round-trip (single
+  Wins on three axes: zero extra round-trip (single
   SSE stream), ~60% of turns produce a zero-token suggestion via
   offer-parse, and skill-aware suggestions resolve to one-keypress
   slash invocations.
@@ -1572,37 +1571,35 @@
 
 ## [4.4.0] (2026-05-10)
 
-> Closes [#159](https://github.com/MikeBild/subkit/issues/159) — the full
-> 13-milestone sk-cli surface consolidation. `v4.3.0` was tagged before the
-> #159 merge, so this entry is the first release that ships the work.
-> All M1–M13 deliverables, the G-series follow-ups (G1–G11), and PR #161
-> review rounds 1–6 land here.
+> The full 13-milestone sk-cli surface consolidation. `v4.3.0` was tagged
+> before this work merged, so this entry is the first release that ships it.
+> All deliverables, the follow-ups, and the review rounds land here.
 
 ### Added
 
-- **sk-cli welcome banner (M1 of #159)**: new "what's new" headline row pulled from `SK_WHATS_NEW_URL` (default `https://updates.subkit.dev/whats-new.json`) with a 24h on-disk cache at `~/.sk/whats-new-cache.json`. Async — never blocks first paint. Three-step fallback when the remote is unreachable: (1) last-good cached headline if any, (2) head of the bundled `CHANGELOG.md` (build-time embedded via Bun's text-import so the binary carries it), (3) `null` (banner row hidden) only if even the bundled changelog has no version header — which the typecheck never lets happen.
-- **sk-cli welcome banner (M1 of #159)**: `signedIn` prop — when false, replaces the persona/tenant slot with a `not signed in · /profile to sign in` hint.
-- **sk-cli /settings 10-tab palette skeleton (M2 of #159)**: replaces the dynamic-from-engine-section tab list in `SettingsModal` with a fixed 10-tab outer shell — `Settings · Status · Config · Usage · Stats · Skills · Permissions · Knowledge · Profile · Admin`. Existing engine-section sub-tab navigation (tab/shift+tab over `llm`, `notifications`, etc.) is preserved inside the `Settings` tab. Outer tabs cycle with leftarrow/rightarrow or `[` / `]`. The Admin tab is hidden unless the principal holds at least one admin-scoped permission (`rbac:read`, `api_key:read`, `audit:read`, `identity:read`, `portal_token:read`); server-side RBAC remains the security source of truth. Two-step Esc: outer Esc closes the modal unless an inner tab's search is active (in which case the inner clears it first).
-- **sk-cli /settings → Config tab (M3 of #159)**: flat searchable list of every setting leaf across all engine sections. `/` focuses the filter; typing narrows by path or description; Enter opens the existing FieldEditor for inline editing; first Esc clears the filter, second Esc closes the modal. Reuses `SettingItem`, `FieldEditor`, `ConfirmModal`, `SearchInput` from `settings-ui/components/`.
-- **sk-cli /settings → Status tab (M4 of #159)**: runtime snapshot — CLI version, cwd, **session id, session name, login email, tenant, role, engine base URL, active model, permission mode, session token count, week token count**, MCP catalog counts (tools / prompts / resources), and aggregated setting-source diagnostics. MCP catalog refreshes every 5s while the tab is foreground; the polling interval is cancelled on tab switch and modal close (no-leak verified by test). REPL-state rows are populated when the modal is opened from the REPL via `/settings`, and fall back to `—` for the standalone `sk settings` CLI.
-- **sk-cli /settings slash + SettingsPane (G2 of #159 follow-up)**: new `/settings` slash (alias `/preferences`) opens the 10-tab palette **inside the REPL** (not as a child Ink instance) via a new `kind: "settings"` PaneSpec. Plumbs `sessionId`, `permissionMode`, `sessionTokens`, `weekTokens` from `InkAppProps` through `SettingsPane` to `StatusTab`. New `engineClient` prop on `InkApp` carries the active client to the embedded modal.
-- **sk-cli /settings → Usage tab (M5 + G6 of #159)**: top-5 flows by total tokens, sourced from the existing `llm.invocation` audit events (engine already emits these from `apps/engine/src/llm/core/invoke.ts:619` with `prompt_tokens` + `completion_tokens` + `flow` in metadata). UsageTab now calls `tailAuditLog({ action: "llm.invocation" })` and aggregates by `metadata.flow`, rendering totals (prompt + completion = grand) plus per-flow horizontal bars. `r` refreshes; non-`llm.invocation` rows are filtered out.
-- **sk-cli /settings → Stats tab (M5 of #159)**: ASCII activity heatmap of recent audit events grouped by day; toggle window with `1` (Last 7), `2` (Last 30), `3` (All time). Renders totals and a current-day streak counter. No new dependency — the heatmap is built from five glyphs based on count quintiles.
-- **sk-cli /settings → Skills tab (M6 of #159)**: lists all skills (active, draft, archived) with status checkbox; `space` or Enter toggles between `active` and `archived` via the existing per-skill `/activate` and `/archive` engine routes. `/` opens an inline filter; toggle errors render inline without flipping the row state. RBAC is enforced server-side (no client gate beyond the Admin tab visibility check).
-- **sk-cli /settings → Permissions tab (M6 + G4 of #159)**: radio over `Default / Auto-review / Plan only / Full Access` mapping to the REPL permission modes `ask / auto / plan / yolo`. Persists via the new engine setting `repl.permissionMode` (tenant-scoped, default `ask`). PermissionsTab calls `client.setSetting("repl.permissionMode", mode, { tenant })` on Enter; success/error rendered inline. Tab hydrates current value from `listSettings` on mount.
-- **engine `repl.permissionMode` setting (G4 closure of #159 M6)**: new `repl` config section, tenant-scoped, four-value enum (`ask | auto | plan | yolo`), surfaced in `skBootstrap.prefs` so the CLI's startup picks it up alongside `theme`, `personality`, `title.format`, `statusline.format`. OpenAPI types regenerated.
-- **sk-cli ConsentPrompt component (M6 of #159)**: generic `1. Yes · 2. Not now` numbered consent at `apps/sk/src/repl/components/ConsentPrompt.tsx`. Pressing `1` confirms; `2` or Esc cancels. Designed to be reused from `/memory`, `/install`, and the Permissions selector.
-- **sk-cli /settings → Knowledge tab (M7 + G8 of #159)**: list of tenant knowledge sources from `/v1/knowledge-sources` with status + last-indexed timestamp; `↑/↓` navigate, `/` filter, `d` delete (uses `ConsentPrompt`), `r` refresh, **`i` ingest** opens an inline path prompt that reads the file from disk (absolute path or relative to cwd), guesses MIME by extension, and POSTs via `createKnowledgeSource`. Errors render inline; success refreshes the list automatically.
-- **sk-cli /settings → Profile tab (M7 + G7 of #159)**: identity card from `skBootstrap` plus an inline action menu — `n` start a new session (clears session.conversationId in the host), `t` switch tenant (loads `listIdentityTenants`, persists via `saveProfile()`, surfaces a "restart sk to apply" notice), `s` sign out (clears `api_key` in config, emits sign-out action, host exits the REPL). The new `onProfileAction` callback chain plumbs from `ProfileTab` → `SettingsModal` → `SettingsPane` → ink-app's `setSession` / `onExit`.
-- **sk-cli /settings → Admin tab (M8 + G9 of #159)**: 7 sub-tabs over admin resources — `RBAC`, `Subscriptions`, `API Keys`, `System Accounts`, `Hooks`, `Notifications`, `Portal Tokens`. `1`–`7` jump directly to a sub-tab. The Admin tab is hidden unless the principal holds an admin-scoped permission (UX gate; server enforces independently). **Inline create + revoke flows for every sub-tab**: a generic `AdminCreateForm` component renders multi-field text inputs that POST to the matching engine route (`createRole`, `createSubscription`, `issueApiKey`, `createSystemAccount`, `createHookInbound`, `createNotificationChannel`, `issuePortalToken`); revocation flows reuse `ConsentPrompt`. API key + portal token issuance render the plaintext secret exactly once in a yellow-bordered panel with a `y to copy` shortcut wired to OSC 52, then clear it. Every mutation hits an existing engine route that already writes a tenant-scoped audit entry.
-- **sk-cli quick-action slashes (M9 of #159)**: `/copy` writes the last assistant message to the clipboard via OSC 52 (with a clean fallback message on non-TTY); `/rename <title>` renames the active conversation via `patchConversation`; `/fork` detaches the current session locally so the next prompt starts a fresh conversation while the original stays resumable on the server; `/mention` returns a discoverability hint pointing at the existing `@`-prefix composer picker. `/init`, `/draft`, `/export` were already in the registry and are unchanged here.
-- **sk-cli /resume rewind toggle (M10 + G10 of #159)**: ConversationBrowser responds to `t` by switching into a real assistant-turn timeline (sourced from `session.messages`); `↑/↓` navigate, Enter calls `onForkFromTurn(message_id)` which posts `POST /v1/conversations/{id}/fork-from-message/{message_id}` and switches the active conversation to the new fork. Empty state ("no assistant turns") rendered when the session has no assistant messages yet.
-- **engine fork-from-message route (G10 closure of #159 M10)**: new `POST /v1/conversations/{id}/fork-from-message/{message_id}` route + `forkConversation` service in `apps/engine/src/conversations/service/fork.ts`. Inserts a new conversation row copying connector/workflow/draft/memory/model from the source, then copies every message with `created_at <= anchor.created_at` from `conversation_messages` into the new conversation. Tool-calls and elicitations are intentionally NOT copied — re-running them would duplicate side effects. Audit row carries `forked_from`, `anchor_message_id`, `copied_message_count` metadata. OpenAPI types regenerated.
-- **sk-cli value pickers (M11 + G5 of #159)**: stand-alone Ink pickers at `apps/sk/src/settings-ui/components/ValuePickers.tsx` for `Theme`, `Personality`, `Title format`, and `Status line`. The Theme picker renders side-by-side live preview at terminal width ≥ 120 cols and falls back to single-column below. Enter commits, Esc cancels and restores the snapshot. **Surfaced from the Config tab**: a `PICKER_PATHS` set maps `ui.theme`, `ui.personality`, `ui.title.format`, `ui.statusline.format` to their respective pickers; pressing Enter on those rows opens the matching picker instead of the generic FieldEditor and persists via the same setSetting call.
-- **engine `ui.*` settings (G5 closure of #159 M11)**: new `ui` config section with tenant-scoped enums for `theme` (auto/light/dark/high-contrast), `personality` (concise/balanced/verbose), `title.format` (session-id / tenant-session / model-tenant-session), `statusline.format` (minimal/compact/detailed). Surfaced in `skBootstrap.prefs` so the CLI's first paint matches the operator's configured chrome.
-- **sk-cli push notifications module (M12 of #159)**: `apps/sk/src/repl/notifications/index.ts` exports `notify(title, body, elapsedMs, opts)` which emits OSC 9 (iTerm2 / WezTerm / modern terminals) followed by a BEL fallback when the elapsed time crosses `thresholdMs` (default 30 s) and the operator has opted in. Quiet hours are honored via a caller-supplied predicate. **Wired into `applyEventStream` in ink-app.tsx**: every turn's elapsed wall-clock is measured; on stream completion `notify()` is called with the last assistant message as the body. Opt-in via `SK_PUSH_NOTIFY=1`; threshold via `SK_PUSH_NOTIFY_THRESHOLD_MS` (defaults to 30 s). Engine-side `notifications.push.*` settings will replace the env-var read once they land in a follow-up.
-- **sk-cli /session slash (M12 of #159)**: mints a 15-minute portal token via `client.issuePortalToken` scoped to a single workflow id (the engine requires `allowed_workflows.length >= 1`) and renders a terminal QR code via `qrcode-terminal` (new dependency, Apache-2.0). Usage `/session <workflow-id>`. Audit entry written by the engine on token mint; the token is single-use and tenant-scoped. The slash requires the `portal_token:read` permission.
-- **sk-cli removed-slash guidance + destructive M13 pass (M13 + G11 of #159)**: `apps/sk/src/repl/slash/dispatcher.ts` exports `REMOVED_SLASH_GUIDANCE` + `removedSlashGuidance(name)`. The destructive delete pass shipped with G11: per-service install slashes (`/install-slack`, `/install-teams`, `/install-github`, `/install-google-workspace`, `/install-salesforce`, `/install-jira`, `/install-hubspot`) are removed from `SLASH_COMMANDS`; their handler file `apps/sk/src/repl/slash/handlers/install-wizards.ts` is deleted; the unified `/install` slash is registered in their place. Two cohorts in the guidance map: (a) **deleted in M13** — the seven install-* shims, redirecting to `/install`; (b) **agentic-coding slashes that subkit intentionally never ships** (`/agents`, `/fast`, `/plan`, `/diff`, `/output-style`, `/rewind`) — guidance is permanent. New parity test `apps/sk/src/tests/slash-dispatcher-contract.test.ts` enforces (i) every registered slash + alias resolves to a non-`unknown` routing, (ii) no entry in `REMOVED_SLASH_GUIDANCE` overlaps a registered command, (iii) the seven install-* shims are gone, (iv) `/install` is registered. Wider CLI-group consolidation (`apps/sk/src/commands/` → 10 scripted verbs) is intentionally deferred — the engine routes those CLI verbs target are still the operator's primary scripting surface, and removing them at the same time as the slash UI work would broaden the regression surface beyond what one PR series can stabilize. `apps/sk/AGENTS.md` updated to document the consolidation + the embeddable `SettingsPane`.
+- **sk-cli welcome banner**: new "what's new" headline row pulled from `SK_WHATS_NEW_URL` (default `https://updates.subkit.dev/whats-new.json`) with a 24h on-disk cache at `~/.sk/whats-new-cache.json`. Async — never blocks first paint. Three-step fallback when the remote is unreachable: (1) last-good cached headline if any, (2) head of the bundled `CHANGELOG.md` (build-time embedded via Bun's text-import so the binary carries it), (3) `null` (banner row hidden) only if even the bundled changelog has no version header — which the typecheck never lets happen.
+- **sk-cli welcome banner**: `signedIn` prop — when false, replaces the persona/tenant slot with a `not signed in · /profile to sign in` hint.
+- **sk-cli /settings 10-tab palette skeleton**: replaces the dynamic-from-engine-section tab list in `SettingsModal` with a fixed 10-tab outer shell — `Settings · Status · Config · Usage · Stats · Skills · Permissions · Knowledge · Profile · Admin`. Existing engine-section sub-tab navigation (tab/shift+tab over `llm`, `notifications`, etc.) is preserved inside the `Settings` tab. Outer tabs cycle with leftarrow/rightarrow or `[` / `]`. The Admin tab is hidden unless the principal holds at least one admin-scoped permission (`rbac:read`, `api_key:read`, `audit:read`, `identity:read`, `portal_token:read`); server-side RBAC remains the security source of truth. Two-step Esc: outer Esc closes the modal unless an inner tab's search is active (in which case the inner clears it first).
+- **sk-cli /settings → Config tab**: flat searchable list of every setting leaf across all engine sections. `/` focuses the filter; typing narrows by path or description; Enter opens the existing FieldEditor for inline editing; first Esc clears the filter, second Esc closes the modal. Reuses `SettingItem`, `FieldEditor`, `ConfirmModal`, `SearchInput` from `settings-ui/components/`.
+- **sk-cli /settings → Status tab**: runtime snapshot — CLI version, cwd, **session id, session name, login email, tenant, role, engine base URL, active model, permission mode, session token count, week token count**, MCP catalog counts (tools / prompts / resources), and aggregated setting-source diagnostics. MCP catalog refreshes every 5s while the tab is foreground; the polling interval is cancelled on tab switch and modal close (no-leak verified by test). REPL-state rows are populated when the modal is opened from the REPL via `/settings`, and fall back to `—` for the standalone `sk settings` CLI.
+- **sk-cli /settings slash + SettingsPane**: new `/settings` slash (alias `/preferences`) opens the 10-tab palette **inside the REPL** (not as a child Ink instance) via a new `kind: "settings"` PaneSpec. Plumbs `sessionId`, `permissionMode`, `sessionTokens`, `weekTokens` from `InkAppProps` through `SettingsPane` to `StatusTab`. New `engineClient` prop on `InkApp` carries the active client to the embedded modal.
+- **sk-cli /settings → Usage tab**: top-5 flows by total tokens, sourced from the existing `llm.invocation` audit events (engine already emits these from `apps/engine/src/llm/core/invoke.ts:619` with `prompt_tokens` + `completion_tokens` + `flow` in metadata). UsageTab now calls `tailAuditLog({ action: "llm.invocation" })` and aggregates by `metadata.flow`, rendering totals (prompt + completion = grand) plus per-flow horizontal bars. `r` refreshes; non-`llm.invocation` rows are filtered out.
+- **sk-cli /settings → Stats tab**: ASCII activity heatmap of recent audit events grouped by day; toggle window with `1` (Last 7), `2` (Last 30), `3` (All time). Renders totals and a current-day streak counter. No new dependency — the heatmap is built from five glyphs based on count quintiles.
+- **sk-cli /settings → Skills tab**: lists all skills (active, draft, archived) with status checkbox; `space` or Enter toggles between `active` and `archived` via the existing per-skill `/activate` and `/archive` engine routes. `/` opens an inline filter; toggle errors render inline without flipping the row state. RBAC is enforced server-side (no client gate beyond the Admin tab visibility check).
+- **sk-cli /settings → Permissions tab**: radio over `Default / Auto-review / Plan only / Full Access` mapping to the REPL permission modes `ask / auto / plan / yolo`. Persists via the new engine setting `repl.permissionMode` (tenant-scoped, default `ask`). PermissionsTab calls `client.setSetting("repl.permissionMode", mode, { tenant })` on Enter; success/error rendered inline. Tab hydrates current value from `listSettings` on mount.
+- **engine `repl.permissionMode` setting**: new `repl` config section, tenant-scoped, four-value enum (`ask | auto | plan | yolo`), surfaced in `skBootstrap.prefs` so the CLI's startup picks it up alongside `theme`, `personality`, `title.format`, `statusline.format`. OpenAPI types regenerated.
+- **sk-cli ConsentPrompt component**: generic `1. Yes · 2. Not now` numbered consent at `apps/sk/src/repl/components/ConsentPrompt.tsx`. Pressing `1` confirms; `2` or Esc cancels. Designed to be reused from `/memory`, `/install`, and the Permissions selector.
+- **sk-cli /settings → Knowledge tab**: list of tenant knowledge sources from `/v1/knowledge-sources` with status + last-indexed timestamp; `↑/↓` navigate, `/` filter, `d` delete (uses `ConsentPrompt`), `r` refresh, **`i` ingest** opens an inline path prompt that reads the file from disk (absolute path or relative to cwd), guesses MIME by extension, and POSTs via `createKnowledgeSource`. Errors render inline; success refreshes the list automatically.
+- **sk-cli /settings → Profile tab**: identity card from `skBootstrap` plus an inline action menu — `n` start a new session (clears session.conversationId in the host), `t` switch tenant (loads `listIdentityTenants`, persists via `saveProfile()`, surfaces a "restart sk to apply" notice), `s` sign out (clears `api_key` in config, emits sign-out action, host exits the REPL). The new `onProfileAction` callback chain plumbs from `ProfileTab` → `SettingsModal` → `SettingsPane` → ink-app's `setSession` / `onExit`.
+- **sk-cli /settings → Admin tab**: 7 sub-tabs over admin resources — `RBAC`, `Subscriptions`, `API Keys`, `System Accounts`, `Hooks`, `Notifications`, `Portal Tokens`. `1`–`7` jump directly to a sub-tab. The Admin tab is hidden unless the principal holds an admin-scoped permission (UX gate; server enforces independently). **Inline create + revoke flows for every sub-tab**: a generic `AdminCreateForm` component renders multi-field text inputs that POST to the matching engine route (`createRole`, `createSubscription`, `issueApiKey`, `createSystemAccount`, `createHookInbound`, `createNotificationChannel`, `issuePortalToken`); revocation flows reuse `ConsentPrompt`. API key + portal token issuance render the plaintext secret exactly once in a yellow-bordered panel with a `y to copy` shortcut wired to OSC 52, then clear it. Every mutation hits an existing engine route that already writes a tenant-scoped audit entry.
+- **sk-cli quick-action slashes**: `/copy` writes the last assistant message to the clipboard via OSC 52 (with a clean fallback message on non-TTY); `/rename <title>` renames the active conversation via `patchConversation`; `/fork` detaches the current session locally so the next prompt starts a fresh conversation while the original stays resumable on the server; `/mention` returns a discoverability hint pointing at the existing `@`-prefix composer picker. `/init`, `/draft`, `/export` were already in the registry and are unchanged here.
+- **sk-cli /resume rewind toggle**: ConversationBrowser responds to `t` by switching into a real assistant-turn timeline (sourced from `session.messages`); `↑/↓` navigate, Enter calls `onForkFromTurn(message_id)` which posts `POST /v1/conversations/{id}/fork-from-message/{message_id}` and switches the active conversation to the new fork. Empty state ("no assistant turns") rendered when the session has no assistant messages yet.
+- **engine fork-from-message route**: new `POST /v1/conversations/{id}/fork-from-message/{message_id}` route + `forkConversation` service in `apps/engine/src/conversations/service/fork.ts`. Inserts a new conversation row copying connector/workflow/draft/memory/model from the source, then copies every message with `created_at <= anchor.created_at` from `conversation_messages` into the new conversation. Tool-calls and elicitations are intentionally NOT copied — re-running them would duplicate side effects. Audit row carries `forked_from`, `anchor_message_id`, `copied_message_count` metadata. OpenAPI types regenerated.
+- **sk-cli value pickers**: stand-alone Ink pickers at `apps/sk/src/settings-ui/components/ValuePickers.tsx` for `Theme`, `Personality`, `Title format`, and `Status line`. The Theme picker renders side-by-side live preview at terminal width ≥ 120 cols and falls back to single-column below. Enter commits, Esc cancels and restores the snapshot. **Surfaced from the Config tab**: a `PICKER_PATHS` set maps `ui.theme`, `ui.personality`, `ui.title.format`, `ui.statusline.format` to their respective pickers; pressing Enter on those rows opens the matching picker instead of the generic FieldEditor and persists via the same setSetting call.
+- **engine `ui.*` settings**: new `ui` config section with tenant-scoped enums for `theme` (auto/light/dark/high-contrast), `personality` (concise/balanced/verbose), `title.format` (session-id / tenant-session / model-tenant-session), `statusline.format` (minimal/compact/detailed). Surfaced in `skBootstrap.prefs` so the CLI's first paint matches the operator's configured chrome.
+- **sk-cli push notifications module**: `apps/sk/src/repl/notifications/index.ts` exports `notify(title, body, elapsedMs, opts)` which emits OSC 9 (iTerm2 / WezTerm / modern terminals) followed by a BEL fallback when the elapsed time crosses `thresholdMs` (default 30 s) and the operator has opted in. Quiet hours are honored via a caller-supplied predicate. **Wired into `applyEventStream` in ink-app.tsx**: every turn's elapsed wall-clock is measured; on stream completion `notify()` is called with the last assistant message as the body. Opt-in via `SK_PUSH_NOTIFY=1`; threshold via `SK_PUSH_NOTIFY_THRESHOLD_MS` (defaults to 30 s). Engine-side `notifications.push.*` settings will replace the env-var read once they land in a follow-up.
+- **sk-cli /session slash**: mints a 15-minute portal token via `client.issuePortalToken` scoped to a single workflow id (the engine requires `allowed_workflows.length >= 1`) and renders a terminal QR code via `qrcode-terminal` (new dependency, Apache-2.0). Usage `/session <workflow-id>`. Audit entry written by the engine on token mint; the token is single-use and tenant-scoped. The slash requires the `portal_token:read` permission.
+- **sk-cli removed-slash guidance + destructive slash-cleanup pass**: `apps/sk/src/repl/slash/dispatcher.ts` exports `REMOVED_SLASH_GUIDANCE` + `removedSlashGuidance(name)`. The destructive delete pass removed the per-service install slashes (`/install-slack`, `/install-teams`, `/install-github`, `/install-google-workspace`, `/install-salesforce`, `/install-jira`, `/install-hubspot`) are removed from `SLASH_COMMANDS`; their handler file `apps/sk/src/repl/slash/handlers/install-wizards.ts` is deleted; the unified `/install` slash is registered in their place. Two cohorts in the guidance map: (a) **deleted shims** — the seven install-* shims, redirecting to `/install`; (b) **agentic-coding slashes that subkit intentionally never ships** (`/agents`, `/fast`, `/plan`, `/diff`, `/output-style`, `/rewind`) — guidance is permanent. New parity test `apps/sk/src/tests/slash-dispatcher-contract.test.ts` enforces (i) every registered slash + alias resolves to a non-`unknown` routing, (ii) no entry in `REMOVED_SLASH_GUIDANCE` overlaps a registered command, (iii) the seven install-* shims are gone, (iv) `/install` is registered. Wider CLI-group consolidation (`apps/sk/src/commands/` → 10 scripted verbs) is intentionally deferred — the engine routes those CLI verbs target are still the operator's primary scripting surface, and removing them at the same time as the slash UI work would broaden the regression surface beyond what one PR series can stabilize. `apps/sk/AGENTS.md` updated to document the consolidation + the embeddable `SettingsPane`.
 
 ### Removed
 
@@ -1622,10 +1619,10 @@
 * add cleanup conversation write tools ([6d73d6a](https://github.com/MikeBild/subkit/commit/6d73d6a5653a1ee8b0484ddd815917886ad23d39))
 * add direct automation workflow surface ([caa4449](https://github.com/MikeBild/subkit/commit/caa4449bd7b3926645667cded669c79e8bc4c2ec))
 * align runtime with documented envelope + surface drift feedback ([d3775b1](https://github.com/MikeBild/subkit/commit/d3775b193435942c93d8fefb598b3b815a60653a))
-* **authoring,llm,sk:** schema-first authoring redesign — KK→QQ + reference-aligned discipline ([f01d3a7](https://github.com/MikeBild/subkit/commit/f01d3a79bac464a8db631089becbd63e31e73100))
-* **authoring,sk,chat-ui:** close residual reference-impl gaps — RR→UU ([e65af7a](https://github.com/MikeBild/subkit/commit/e65af7a17b92e9e1da0365147e8ab95afe1d47cd))
+* **authoring,llm,sk:** schema-first authoring redesign — schema-aligned discipline ([f01d3a7](https://github.com/MikeBild/subkit/commit/f01d3a79bac464a8db631089becbd63e31e73100))
+* **authoring,sk,chat-ui:** close residual authoring and chat-ui gaps ([e65af7a](https://github.com/MikeBild/subkit/commit/e65af7a17b92e9e1da0365147e8ab95afe1d47cd))
 * **authoring,sk,llm,observability:** close root-cause UX + observability gaps from sessions f00b8d1c/820c1664/80eec7c8 ([c0b72df](https://github.com/MikeBild/subkit/commit/c0b72dfa6f936b99a31dbae931b2adfd7df3e5f1))
-* **authoring:** close remaining FOLLOWUP gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
+* **authoring:** close remaining follow-up gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
 * **authoring:** harden guided state, palette, and prompt flow ([6e5eed1](https://github.com/MikeBild/subkit/commit/6e5eed14c717a2d9a67b895f18d02304679bad54))
 * **authoring:** masked secrets + 3 more cards + route-doc parity gate ([af1ca67](https://github.com/MikeBild/subkit/commit/af1ca673d32acc857684c052c3e017fea47b1db6))
 * CLI commands, MCP resources, scheduler, edge case + journey tests ([a944ba8](https://github.com/MikeBild/subkit/commit/a944ba88f2cc5cbf933dff32d422f2e8ddd942e6))
@@ -1635,8 +1632,8 @@
 * complete guided authoring and operator verification ([41ad42e](https://github.com/MikeBild/subkit/commit/41ad42ee9f058940a1e1fd2f710bff716c9afcfe))
 * **connectors,credentials:** cognito/jwt-bearer/device-code/sigv4 auth flows + GraphQL type-preserving resolver ([738c0fc](https://github.com/MikeBild/subkit/commit/738c0fceb7687ca9b6208df0288edf008f507a0d))
 * **connectors,discovery:** GraphQL connector save auto-runs introspection discovery ([175d6d6](https://github.com/MikeBild/subkit/commit/175d6d6c50d3028088e52b68deb22d9a94b37f2d))
-* **connectors,docs:** A3 + A8 — auth-chain + Schedule+State recipe few-shot examples ([f4298d8](https://github.com/MikeBild/subkit/commit/f4298d8fd65af8555520be6972e3378c8ead1d18))
-* **connectors,llm,mcp,discovery,events:** close 4 behavioral gaps via reference-project audit ([c5218c5](https://github.com/MikeBild/subkit/commit/c5218c5cb0430f19479abd92dd700a9f7f7e81da))
+* **connectors,docs:** auth-chain + Schedule+State recipe few-shot examples ([f4298d8](https://github.com/MikeBild/subkit/commit/f4298d8fd65af8555520be6972e3378c8ead1d18))
+* **connectors,llm,mcp,discovery,events:** close 4 behavioral gaps via subsystem audit ([c5218c5](https://github.com/MikeBild/subkit/commit/c5218c5cb0430f19479abd92dd700a9f7f7e81da))
 * **connectors,scripts:** Layer-3 vendor-drift sweep + verified_at stamp ([#63](https://github.com/MikeBild/subkit/issues/63)) ([d950a79](https://github.com/MikeBild/subkit/commit/d950a796f29fd938870f30f2de5ab9d3525b757f))
 * **connectors:** add redis, mssql, ftp, sftp, smb drivers ([50f416e](https://github.com/MikeBild/subkit/commit/50f416e34f260add631228ce612dff3c4d5a2f03))
 * **connectors:** enrich template model with URL matching, smart probes, OAuth2 details, and spec import ([78742ba](https://github.com/MikeBild/subkit/commit/78742ba3e45eaaefabf46866e553f753f10d70ab))
@@ -1657,14 +1654,14 @@
 * **conversations:** SDK tool-calling loop with streamText + fallback (A5) ([a2670a2](https://github.com/MikeBild/subkit/commit/a2670a27e5a20a73b50e91b0f3a76fd8f0d29a8b))
 * **conversations:** static verifier + onboarding hint ([a4adc9c](https://github.com/MikeBild/subkit/commit/a4adc9c735e663b55f39bd1295ad9cedbd7e879d))
 * **conversations:** wire interaction_log events through elicitation flow ([8fbd6a3](https://github.com/MikeBild/subkit/commit/8fbd6a3474df2376b2364ee803e3ad4aeb1315a9))
-* **credentials,connectors:** A4 token_mint mode + Salesforce OAuth2 password grant ([a35b4fe](https://github.com/MikeBild/subkit/commit/a35b4fe21d6a45e0bb686865e2b58db123d0e8c5))
+* **credentials,connectors:** token_mint mode + Salesforce OAuth2 password grant ([a35b4fe](https://github.com/MikeBild/subkit/commit/a35b4fe21d6a45e0bb686865e2b58db123d0e8c5))
 * **db:** migration 0028 convo-quality — skills seed, attachments, DLP, drafts ([7d3cf97](https://github.com/MikeBild/subkit/commit/7d3cf9703bdd0a7ad8f6a3ab2041a4c5edd7f342))
 * **deploy:** consolidate local + CI deploy into one versioned pipeline ([f18e76b](https://github.com/MikeBild/subkit/commit/f18e76bf930758412b917bfe1bf4838f541deb13))
 * **deploy:** switch production engine to engine-with-cli + sync prod compose per release ([9ecdf7d](https://github.com/MikeBild/subkit/commit/9ecdf7d329e0095d8606e667da08be9467974604))
 * **discovery:** codebase archive upload + extractor ([b6c4a0a](https://github.com/MikeBild/subkit/commit/b6c4a0af7f2f90f414d23d32158dd325f1020c67))
 * **discovery:** postgres+mssql introspection, SDL corpus, html→markdown, swaggerhub /apis-docs ([cd4fcae](https://github.com/MikeBild/subkit/commit/cd4fcae46618f4b87eb834c71d6652bb4a1489d7))
 * **docs-ingestion:** knowledge-ingress cascade orchestrator ([e95c018](https://github.com/MikeBild/subkit/commit/e95c018763906d32c778ad9c0219a6cd79a74435))
-* **docs,knowledge:** close 8 documentation+knowledge gaps to reach reference parity ([c0b8ddf](https://github.com/MikeBild/subkit/commit/c0b8ddf42c2c0b3fec208fef1b1256913bd1d1c1))
+* **docs,knowledge:** close 8 documentation+knowledge gaps ([c0b8ddf](https://github.com/MikeBild/subkit/commit/c0b8ddf42c2c0b3fec208fef1b1256913bd1d1c1))
 * **e2e+engine:** real-LLM E2E suite + diagnostics endpoint + provider routing fix ([83f6b09](https://github.com/MikeBild/subkit/commit/83f6b09722f64a3bcb6a05a4a3bfa4c523d3987b))
 * **engine,connectors:** add CloudWatch + STS + EventBridge + OAuth2 templates with recipes ([d06dcf6](https://github.com/MikeBild/subkit/commit/d06dcf62c2641f8efea89265ad915ed22879c8b9))
 * **engine,connectors:** widen save_connector_draft credential union with cognito_user_password + aws_sigv4 ([2158bba](https://github.com/MikeBild/subkit/commit/2158bba067dc925a593da9b1cb503c16f06830a1))
@@ -1692,12 +1689,12 @@
 * **execution:** surface request_meta and connector_resolutions in run result ([5aa1708](https://github.com/MikeBild/subkit/commit/5aa170886859dc2297b5e018d134384d0fd5c83d))
 * **execution:** tenant DLP layer — response-filters with defaults ([4ce6c1f](https://github.com/MikeBild/subkit/commit/4ce6c1f3b24ea65e4499d3050282c95a046a01d8))
 * expand connector template catalog to 89 production-quality templates ([ae257d5](https://github.com/MikeBild/subkit/commit/ae257d5bf7155e87328cefba5165cffc3c93661f))
-* H2 Knowledge Sources, H2.5 Discovery, H3 Self-Improving Skills ([249320c](https://github.com/MikeBild/subkit/commit/249320c8a2566fcd309987dc06fbcf687ba4de17))
+* Knowledge Sources, Discovery, Self-Improving Skills ([249320c](https://github.com/MikeBild/subkit/commit/249320c8a2566fcd309987dc06fbcf687ba4de17))
 * **http,mcp,self-healing:** expose URL match and spec import, rate-limit classifier, inline_schema indexer ([693c2ea](https://github.com/MikeBild/subkit/commit/693c2eae1dab9a48186b6cd0e87960b54422721b))
 * **http,sk:** /v1/settings routes + sk settings command ([600e33c](https://github.com/MikeBild/subkit/commit/600e33cd2b949768093195b9558a2da3a32537de))
 * **http:** GET /install route serves a sk install script (Tailscale pattern) ([9477535](https://github.com/MikeBild/subkit/commit/947753566dc63209dbac3dfe6ad2999b0c6b3139))
 * initial commit — subkit workflow engine ([befda15](https://github.com/MikeBild/subkit/commit/befda15e261f74bf0efe64e069522c9c89912182))
-* **install:** bundle sk + tunnel-agent binaries inside engine image (closes [#64](https://github.com/MikeBild/subkit/issues/64)) ([31f2280](https://github.com/MikeBild/subkit/commit/31f22804e2521ed3c6461a3768cce34bc5b55a61))
+* **install:** bundle sk + tunnel-agent binaries inside engine image ([31f2280](https://github.com/MikeBild/subkit/commit/31f22804e2521ed3c6461a3768cce34bc5b55a61))
 * **llm+conversation:** parity wiring — core, tools, policies, confirmation, streaming, eval ([6fa9794](https://github.com/MikeBild/subkit/commit/6fa9794107432cb1098faa5bd9b8ad5583bbeead))
 * **llm:** extended converse prompt + five pseudo-message builders ([68ef177](https://github.com/MikeBild/subkit/commit/68ef17792c19fc3648eab47a00957bf00aacb8d4))
 * **llm:** generateObject + prompt caching + provider registry ([b8928cb](https://github.com/MikeBild/subkit/commit/b8928cbb86f04db481b5ea790e093b22f4256dcf))
@@ -1712,7 +1709,7 @@
 * **onboarding:** demo-seed workflows + expertise tone hint ([db86d77](https://github.com/MikeBild/subkit/commit/db86d77228417e2da7eead43c73865a805004bfa))
 * OTA auto-update system for all binaries with comprehensive tests ([a019f26](https://github.com/MikeBild/subkit/commit/a019f2605767c78a18a8c93956e486ce9f02f67d))
 * **output-guard:** chat-first scanner — runtime gate for curl/shell suggestions ([5b9abfd](https://github.com/MikeBild/subkit/commit/5b9abfdc4dc9018131a5df8b59f8dd02a576c442))
-* P11 elicitations and Claude Code UX for sk ([1e7e89c](https://github.com/MikeBild/subkit/commit/1e7e89cb0a12139401d5fdfcf0f3fe59d6cd4861))
+* elicitations and conversational REPL UX for sk ([1e7e89c](https://github.com/MikeBild/subkit/commit/1e7e89cb0a12139401d5fdfcf0f3fe59d6cd4861))
 * **release/version.sh:** current_version = max(manifest, package.json) ([51c2f15](https://github.com/MikeBild/subkit/commit/51c2f153f60290e8a9844fd98857c76511b261fc))
 * **sandbox:** sk-stdlib with version tracking and drift detection ([2d5fe5f](https://github.com/MikeBild/subkit/commit/2d5fe5f5449fcdffce6f2cd5bb0c40bcc7beaba3))
 * **scheduler,recipes,sk:** schedule trigger end-to-end (cron+tz+skip) ([#47](https://github.com/MikeBild/subkit/issues/47)) ([c17265f](https://github.com/MikeBild/subkit/commit/c17265f1eec44afb8358f5b206eded1a9c8a209e))
@@ -1727,17 +1724,17 @@
 * **skills,connectors,llm:** A1 + A5 + A6 — recipe-coverage gate, step_kind activation, recipe budget cap ([766fcbf](https://github.com/MikeBild/subkit/commit/766fcbfab81b3ad9103803c7eecce10ea75ef44f))
 * **skills,tools:** 10 Markdown skills + seed loader + description compiler ([0bb0f27](https://github.com/MikeBild/subkit/commit/0bb0f2741ec2215ae79989aba30242c7672ec485))
 * **sk:** run command supports saved/draft/step sources, new sk auth ([6775c0f](https://github.com/MikeBild/subkit/commit/6775c0f4c301aa9727f3bf5d3265402c13ecd1f8))
-* **sk:** shift+enter and backslash-enter for newline (codex parity) ([3413aed](https://github.com/MikeBild/subkit/commit/3413aedc41efd82670e1b7170fbba2c9b6ccd586))
+* **sk:** shift+enter and backslash-enter for newline ([3413aed](https://github.com/MikeBild/subkit/commit/3413aedc41efd82670e1b7170fbba2c9b6ccd586))
 * **sk:** unify guided action UX ([bade164](https://github.com/MikeBild/subkit/commit/bade1642fcc234357c727472dd671eee0c6fe3ff))
 * **tunnels:** add TCP passthrough for multi-protocol routing ([3d0db26](https://github.com/MikeBild/subkit/commit/3d0db2651d71988897d34d8d1ffe71e0f3887d88))
 * v3.0.0 release prep — gates, baseline, settings, type-safety, OSS surface ([790f3f7](https://github.com/MikeBild/subkit/commit/790f3f7a74ba8b5f148717701a35affaeff45081))
 * **webhooks,recipes,sk:** webhook trigger end-to-end Stripe → Slack ([#46](https://github.com/MikeBild/subkit/issues/46)) ([7ca43e4](https://github.com/MikeBild/subkit/commit/7ca43e449348d3ab861c34202032448d3e5877cd))
 * **webhooks:** failure classification, dead-letter, payload-reconstructing replay ([aa31f7b](https://github.com/MikeBild/subkit/commit/aa31f7ba274aac9e2332e65b89c3333045eb8481))
 * **workflows,audit,webhooks,scheduler:** WorkflowDef.trigger + reverse bind/unbind + AuditAction sweep ([#67](https://github.com/MikeBild/subkit/issues/67)) ([504fce4](https://github.com/MikeBild/subkit/commit/504fce495e2482620709030d4ebb59eb9f49e80f))
-* **workflows,execution,audit:** [#48](https://github.com/MikeBild/subkit/issues/48) wait restart-safety + 24h cap + step-level audit pair ([3f92edb](https://github.com/MikeBild/subkit/commit/3f92edba14eed575860617f58319ec351dba5f08))
+* **workflows,execution,audit:** wait restart-safety + 24h cap + step-level audit pair ([3f92edb](https://github.com/MikeBild/subkit/commit/3f92edba14eed575860617f58319ec351dba5f08))
 * **workflows,execution,audit:** per-run LLM token budget + external_write audit ([#53](https://github.com/MikeBild/subkit/issues/53)) ([1d126ff](https://github.com/MikeBild/subkit/commit/1d126ffb262e89cde26ffef8a26c4aa6e0a16729))
-* **workflows,execution,http:** [#49](https://github.com/MikeBild/subkit/issues/49) wait-for-event with HMAC-signed approval URL ([98bb081](https://github.com/MikeBild/subkit/commit/98bb0813722c63214a6367be96eebc98fc2ac8de))
-* **workflows,execution,llm:** [#51](https://github.com/MikeBild/subkit/issues/51) persistent per-workflow state for cross-run cursors ([49163cc](https://github.com/MikeBild/subkit/commit/49163cc5cc0504e64a98d66483b6c44a6d09540d))
+* **workflows,execution,http:** wait-for-event with HMAC-signed approval URL ([98bb081](https://github.com/MikeBild/subkit/commit/98bb0813722c63214a6367be96eebc98fc2ac8de))
+* **workflows,execution,llm:** persistent per-workflow state for cross-run cursors ([49163cc](https://github.com/MikeBild/subkit/commit/49163cc5cc0504e64a98d66483b6c44a6d09540d))
 
 
 ### Bug Fixes
@@ -1808,7 +1805,7 @@
 * **engine,conversations:** identity-gate commit_draft on draft slug pivot ([717a666](https://github.com/MikeBild/subkit/commit/717a666418966a3cb3b28d18c007bf39b87cd5be))
 * **engine,conversations:** tighten commit-draft elicitation + extract credential-from-form helper ([4c1f409](https://github.com/MikeBild/subkit/commit/4c1f4098a0d1bc7eb61ad3922209d2a7d32145fb))
 * **engine,http,tests:** unblock release CI on stale tests + missing aws_sigv4 route schema ([4f4fdef](https://github.com/MikeBild/subkit/commit/4f4fdef8992e6a20584e770109d2278511b4f9e8))
-* **engine,sk,llm,docs:** close audit gaps + lock leads vs reference impl ([cfecc86](https://github.com/MikeBild/subkit/commit/cfecc86cc4d4a0023ab823a65a001471a1de6880))
+* **engine,sk,llm,docs:** close audit gaps ([cfecc86](https://github.com/MikeBild/subkit/commit/cfecc86cc4d4a0023ab823a65a001471a1de6880))
 * **engine,tests:** unblock pre-push gate — refresh 3 stale test assertions ([7e7b863](https://github.com/MikeBild/subkit/commit/7e7b86346c652f4de12602ef4572138fa082b7b1))
 * **engine,workflows:** reject Authorization header on connector_id request steps ([5ddb16c](https://github.com/MikeBild/subkit/commit/5ddb16cccbcbfe4d83f55b6f87f094e7fee8194d))
 * **engine:** /v1/status version from OPENAPI_INFO, not env ([1a231c0](https://github.com/MikeBild/subkit/commit/1a231c010cdf8459575973c9cbb668a471ed2f4c))
@@ -1824,7 +1821,7 @@
 * **hooks:** widen e2e test timeout to 60s ([d9f980a](https://github.com/MikeBild/subkit/commit/d9f980a2e89f296383b3f5c04a7de31168fcf479))
 * **install:** align port + sk command surface in docs ↔ code ([#124](https://github.com/MikeBild/subkit/issues/124)) ([6b6894e](https://github.com/MikeBild/subkit/commit/6b6894ee0918a60014a0aee31a9fcccee718cd11))
 * **install:** release tag prefix + sk init --token follow-up ([#125](https://github.com/MikeBild/subkit/issues/125)) ([73e58da](https://github.com/MikeBild/subkit/commit/73e58da186ab8700116d30b036c2daffc7851f7f))
-* **journeys:** per-hook 60s timeout + named teardown stack (closes [#98](https://github.com/MikeBild/subkit/issues/98)) ([#133](https://github.com/MikeBild/subkit/issues/133)) ([9094baa](https://github.com/MikeBild/subkit/commit/9094baa586cff3e88188bb7172fc4e02111778eb))
+* **journeys:** per-hook 60s timeout + named teardown stack ([9094baa](https://github.com/MikeBild/subkit/commit/9094baa586cff3e88188bb7172fc4e02111778eb))
 * **llm:** collapse to Vercel AI Gateway — root cause of v1.10.0 prod 500 cluster ([0a00705](https://github.com/MikeBild/subkit/commit/0a0070557f4129aa7330bebf10fab880a6521f51))
 * **llm:** model-init tests tolerate @ai-sdk/anthropic not hoisted on CI ([82885bc](https://github.com/MikeBild/subkit/commit/82885bcaaa03a6721f13853ab5f275901c204d17))
 * make URL reachability tests opt-in (CHECK_URLS=1) ([e1b2747](https://github.com/MikeBild/subkit/commit/e1b2747bc1073e826c9d6b0290a1b3d865b72562))
@@ -1871,7 +1868,7 @@
 * **tests:** rename SUBKIT.md → SK.md in memory-pipeline journey ([c6e5757](https://github.com/MikeBild/subkit/commit/c6e5757dbea36b0b352ac1f4a00f015ad28f491b))
 * **tests:** use real Date.now() for TEST_NOW_MS instead of fixed Nov-2023 timestamp ([764c35c](https://github.com/MikeBild/subkit/commit/764c35ca6e6e2967b513910f3df323c42d427e2a))
 * **tests:** use skipIf+env flag instead of test.skip (determinism gate) ([4b0ff08](https://github.com/MikeBild/subkit/commit/4b0ff0875cd577c68e1ac23011fc98641c348ad8))
-* **v3.5:** audit pass 6 — coverage matrix, structured logs, env retire cleanup ([#137](https://github.com/MikeBild/subkit/issues/137)) ([c5900c8](https://github.com/MikeBild/subkit/commit/c5900c8122fec03349adc0e80db88236344e816c))
+* **v3.5:** coverage matrix, structured logs, env retire cleanup ([c5900c8](https://github.com/MikeBild/subkit/commit/c5900c8122fec03349adc0e80db88236344e816c))
 * **v3.5:** reset config state in process.env-driven LLM provider tests ([#135](https://github.com/MikeBild/subkit/issues/135)) ([b846a0b](https://github.com/MikeBild/subkit/commit/b846a0bebd29968d723549c87712fc101d073369))
 
 
@@ -1881,14 +1878,14 @@
 * **cli-core:** drop transcript-cell layer, replay turn events directly ([c448631](https://github.com/MikeBild/subkit/commit/c44863122dee0c90f58cb32b8501244ae1afb02b))
 * **conversations,llm:** agent-registry + skill-driven prompts ([5446d43](https://github.com/MikeBild/subkit/commit/5446d43b6f78c69f8542a6ed2ef1ac7f5f3d1109))
 * **conversations:** split authoring-state.ts into normalize + summary modules ([#113](https://github.com/MikeBild/subkit/issues/113)) ([c6cd9a2](https://github.com/MikeBild/subkit/commit/c6cd9a2d53893b4aba4dc9efcfefcf2bd562231d))
-* **conversations:** split sdk-wrap.ts (1803 LOC) per audit §4.2 ([#112](https://github.com/MikeBild/subkit/issues/112)) ([61d8ce7](https://github.com/MikeBild/subkit/commit/61d8ce7c6ff538236ff86808b45c87ce07ee1f62))
+* **conversations:** split sdk-wrap.ts (1803 LOC) into per-concern modules ([61d8ce7](https://github.com/MikeBild/subkit/commit/61d8ce7c6ff538236ff86808b45c87ce07ee1f62))
 * **conversations:** split service.ts into per-operation modules ([#123](https://github.com/MikeBild/subkit/issues/123)) ([1bb1ac9](https://github.com/MikeBild/subkit/commit/1bb1ac94ae2f51ea928f56e3368884ea7beb67cf))
 * drop stale 'reserved for a future' comments and an unused enum value ([#131](https://github.com/MikeBild/subkit/issues/131)) ([75e8b91](https://github.com/MikeBild/subkit/commit/75e8b910ccc1042bae257364f6b033937ad1f3cb))
 * **engine,db:** retire BOOTSTRAP_* env vars (now driven by /v1/setup) ([#70](https://github.com/MikeBild/subkit/issues/70)) ([bf37875](https://github.com/MikeBild/subkit/commit/bf37875fc1c9c77d2b3cd8b7051cbc6db1cdc016))
 * **engine,llm:** replace per-skill summary blocks with per-scope index ([7873fa9](https://github.com/MikeBild/subkit/commit/7873fa9d855bc77cf2a20a145c739a79229112dc))
 * **engine,sk,docs:** rename commit_draft → save_workflow_draft repo-wide ([1d0996a](https://github.com/MikeBild/subkit/commit/1d0996a03e9a901821f9ab76361ed98c2ccf43f7))
 * **execution:** extract engine helpers into engine/ subdir ([#121](https://github.com/MikeBild/subkit/issues/121)) ([8f4913b](https://github.com/MikeBild/subkit/commit/8f4913bbdb7b56042328d29bcc6c805611b6d6cf))
-* **execution:** split request.ts (1804 LOC) per audit §4.2 ([#111](https://github.com/MikeBild/subkit/issues/111)) ([74e897e](https://github.com/MikeBild/subkit/commit/74e897e6617a2ce26ac3b4e1a92dc022ed7a60c6))
+* **execution:** split request.ts (1804 LOC) into per-concern modules ([74e897e](https://github.com/MikeBild/subkit/commit/74e897e6617a2ce26ac3b4e1a92dc022ed7a60c6))
 * **http:** split connector-templates route god-file into per-sub-resource modules ([#116](https://github.com/MikeBild/subkit/issues/116)) ([3a48260](https://github.com/MikeBild/subkit/commit/3a48260883a473168fbcbcb619a9c4783b50ddf9))
 * **http:** split connectors route god-file into per-sub-resource modules ([#117](https://github.com/MikeBild/subkit/issues/117)) ([d7b1774](https://github.com/MikeBild/subkit/commit/d7b17741d2ea38ec9e94ae598ffbd6dc48209259))
 * **http:** split conversations route god-file into per-sub-resource modules ([#115](https://github.com/MikeBild/subkit/issues/115)) ([1654e76](https://github.com/MikeBild/subkit/commit/1654e76ab5ad6f634450f830a244db4efe7afc1e))
@@ -1909,9 +1906,9 @@
 
 ### Documentation
 
-* add agent-facing guidance for Claude Code ([55bd3cd](https://github.com/MikeBild/subkit/commit/55bd3cdb02382911a77f0a9b2c347901994c8de2))
+* add agent-facing guidance for MCP clients ([55bd3cd](https://github.com/MikeBild/subkit/commit/55bd3cdb02382911a77f0a9b2c347901994c8de2))
 * align terminology — 'automation' → 'workflow', 'integration' → 'connector' ([039b384](https://github.com/MikeBild/subkit/commit/039b384f187bf7a004b545f94792ec9fad0517a8))
-* **audit:** record actual phase 4 outcome; pin allowlist as steady state ([#128](https://github.com/MikeBild/subkit/issues/128)) ([5f80e4a](https://github.com/MikeBild/subkit/commit/5f80e4a57d360fde7c9373661dad18e915ec88ba))
+* **audit:** record the route-split outcome; pin allowlist as steady state ([5f80e4a](https://github.com/MikeBild/subkit/commit/5f80e4a57d360fde7c9373661dad18e915ec88ba))
 * cleanup ([4b41b3f](https://github.com/MikeBild/subkit/commit/4b41b3f438c9c376d97d96219a128dfa065d912e))
 * **deployment:** document bun run release + scripts/release/* pipeline ([a2f38fc](https://github.com/MikeBild/subkit/commit/a2f38fc3ae821bd91ed0b16b84dcf6e5a6ca6bb8))
 * drop the orphan German end-to-end sequences doc ([2c3edfe](https://github.com/MikeBild/subkit/commit/2c3edfe69f6f24923447b9303da052c32d0c1ce2))
@@ -1924,18 +1921,18 @@
 * **quickstart/operator:** match what compose:up actually does ([#127](https://github.com/MikeBild/subkit/issues/127)) ([ca72f92](https://github.com/MikeBild/subkit/commit/ca72f92425fbda4405f3d23e6d43078868ad6a0c))
 * **recipes:** add authoring guide ([8c0123e](https://github.com/MikeBild/subkit/commit/8c0123e619d0978a222ba983095ab8abac2e2bd6))
 * **skills:** mssql/redis/file-transport connector skills + postgres introspection note ([805642e](https://github.com/MikeBild/subkit/commit/805642e26b8a7b5210777d13028024900ef2ca13))
-* **slash,executions:** close pre-existing route-doc parity drift ([#106](https://github.com/MikeBild/subkit/issues/106)) ([29de17f](https://github.com/MikeBild/subkit/commit/29de17f827ddb8b1a14d547405510b0489e85cfb))
+* **slash,executions:** close pre-existing route-doc parity drift ([29de17f](https://github.com/MikeBild/subkit/commit/29de17f827ddb8b1a14d547405510b0489e85cfb))
 
 
 ### Miscellaneous
 
-* **audit:** land Phase 1 stabilisation — guard tests + canonical doc ([#94](https://github.com/MikeBild/subkit/issues/94)) ([5420291](https://github.com/MikeBild/subkit/commit/5420291acecd860f54e2dbba5e8d711658215008))
-* **audit:** phase 2 wrap-up — populate coverage-floor.json + enforce coverage_floor ([#104](https://github.com/MikeBild/subkit/issues/104)) ([84ff8dc](https://github.com/MikeBild/subkit/commit/84ff8dc2bb6ed5cf00449cb74d967d9b58b0bb6e))
+* **audit:** land audit-log stabilisation — guard tests + canonical doc ([5420291](https://github.com/MikeBild/subkit/commit/5420291acecd860f54e2dbba5e8d711658215008))
+* **audit:** populate coverage-floor.json + enforce coverage_floor ([84ff8dc](https://github.com/MikeBild/subkit/commit/84ff8dc2bb6ed5cf00449cb74d967d9b58b0bb6e))
 * **ci:** release-please runs on workflow_dispatch only ([2898a16](https://github.com/MikeBild/subkit/commit/2898a16dcdcc2c0dae7ffe53fb512e8b99692259))
 * **cli-core:** regenerate OpenAPI client to match current engine surface ([d3c0c0e](https://github.com/MikeBild/subkit/commit/d3c0c0eb4f97fa2b5cfe0daafd4f6b675c88882f))
 * **deps:** sync bun.lock with package.json (graphql, playwright) ([980dcce](https://github.com/MikeBild/subkit/commit/980dcced97ba58be3705c3b6ee4f365985e705f3))
 * **determinism:** add baseline ratchet for warning-level rules ([#77](https://github.com/MikeBild/subkit/issues/77)) ([3253b11](https://github.com/MikeBild/subkit/commit/3253b11511b96e2e4ff96d7c76cd92fde2cf6fa7))
-* **engine,shared:** full reference-impl parity audit + cleanup loop ([f073888](https://github.com/MikeBild/subkit/commit/f073888a13cd91a2ad661d65467118f4db952ab0))
+* **engine,shared:** full audit + cleanup loop ([f073888](https://github.com/MikeBild/subkit/commit/f073888a13cd91a2ad661d65467118f4db952ab0))
 * **engine:** tidy biome noTemplateCurlyInString suppressions ([3ac25e4](https://github.com/MikeBild/subkit/commit/3ac25e4f78ab81b130ca6fb88938a9754e03bb0a))
 * **eval:** untrack eval/out runtime artifacts ([77d2521](https://github.com/MikeBild/subkit/commit/77d2521ac39c4c2a900d42403648c42a31702f03))
 * **githooks:** trim pre-push gate to lint+typecheck+build ([59aa1a1](https://github.com/MikeBild/subkit/commit/59aa1a10132bc856a862aa473d4cd44467afca55))
@@ -2018,7 +2015,7 @@
 
 ### Features
 
-* **install:** bundle sk + tunnel-agent binaries inside engine image — new `engine-with-cli` variant serves them at `/install/sk-:platform-:arch`, `/install/agent-:platform-:arch`, `/install/sha256sums` so `curl … /install | bash` works without GitHub egress. Closes [#64](https://github.com/MikeBild/subkit/issues/64) ([31f2280](https://github.com/MikeBild/subkit/commit/31f22804e2521ed3c6461a3768cce34bc5b55a61))
+* **install:** bundle sk + tunnel-agent binaries inside engine image — new `engine-with-cli` variant serves them at `/install/sk-:platform-:arch`, `/install/agent-:platform-:arch`, `/install/sha256sums` so `curl … /install | bash` works without GitHub egress ([31f2280](https://github.com/MikeBild/subkit/commit/31f22804e2521ed3c6461a3768cce34bc5b55a61))
 * **sk:** `sk ctx` token gauge + engine context-window safety fixes ([#74](https://github.com/MikeBild/subkit/pull/74)) ([a7edb1d](https://github.com/MikeBild/subkit/commit/a7edb1dd44bfb026599a00a4218223c89e999fcb))
 * **connectors:** Layer-3 vendor-drift sweep + `verified_at` stamp ([#63](https://github.com/MikeBild/subkit/pull/63)) ([d950a79](https://github.com/MikeBild/subkit/commit/d950a796f29fd938870f30f2de5ab9d3525b757f))
 * **onboarding,http,sk:** first-run bootstrap thin-slice + POST /v1/setup + `sk init` ([#60](https://github.com/MikeBild/subkit/pull/60)) ([11789dd](https://github.com/MikeBild/subkit/commit/11789dd64d782ac1202825f8bf5c5692e1cef33a))
@@ -2034,7 +2031,7 @@
 * **engine:** make env validation lazy so `--smoke` / `--version` / `--check-update` / `--self-update` run on an unconfigured binary ([8d02102](https://github.com/MikeBild/subkit/commit/8d02102956c267a4f713640bffb877b3f533332c))
 * **agent:** handle `--version` / `-v` before `parseArgs` ([8f4e58a](https://github.com/MikeBild/subkit/commit/8f4e58acc6899ab2ebecaef496ef7f888c4d1f4e))
 * **docker:** split `engine-with-cli` into a separate Dockerfile so BuildKit's whole-graph COPY pre-resolution doesn't break the slim build ([742e09b](https://github.com/MikeBild/subkit/commit/742e09b29f306b808f2dbdf53be95f6da8cad758))
-* **journeys:** per-hook 60s timeout + named teardown stack. Closes [#98](https://github.com/MikeBild/subkit/issues/98) ([9094baa](https://github.com/MikeBild/subkit/commit/9094baa586cff3e88188bb7172fc4e02111778eb))
+* **journeys:** per-hook 60s timeout + named teardown stack ([9094baa](https://github.com/MikeBild/subkit/commit/9094baa586cff3e88188bb7172fc4e02111778eb))
 * **release:** `tag_name` emits `v<VERSION>`, not `subkit-v<VERSION>` ([#126](https://github.com/MikeBild/subkit/pull/126)) ([01a32a9](https://github.com/MikeBild/subkit/commit/01a32a9190519e3760eff020d0c87a9b54d2a393))
 * **install:** release tag prefix + `sk init --token` follow-up ([#125](https://github.com/MikeBild/subkit/pull/125)) ([73e58da](https://github.com/MikeBild/subkit/commit/73e58da186ab8700116d30b036c2daffc7851f7f))
 * **install:** align port + sk command surface in docs ↔ code ([#124](https://github.com/MikeBild/subkit/pull/124)) ([6b6894e](https://github.com/MikeBild/subkit/commit/6b6894ee0918a60014a0aee31a9fcccee718cd11))
@@ -2049,9 +2046,9 @@
 * remove three more half-implemented features ([#130](https://github.com/MikeBild/subkit/pull/130)) ([0cd9cde](https://github.com/MikeBild/subkit/commit/0cd9cdedb936c653aeb487d79c2e1b19e9b579b5))
 * **chat:** remove unused link-token feature ([#129](https://github.com/MikeBild/subkit/pull/129)) ([255e431](https://github.com/MikeBild/subkit/commit/255e4318185e3bd984c8cb5358b75a8a4512a6be))
 * **engine,db:** retire `BOOTSTRAP_*` env vars (now driven by /v1/setup) ([#70](https://github.com/MikeBild/subkit/pull/70)) ([bf37875](https://github.com/MikeBild/subkit/commit/bf37875fc1c9c77d2b3cd8b7051cbc6db1cdc016))
-* **http:** split god-file route modules per audit §4.2 — connectors, connector-templates, conversations, executions, notifications, rbac, diagnostics ([#108](https://github.com/MikeBild/subkit/pull/108), [#109](https://github.com/MikeBild/subkit/pull/109), [#115](https://github.com/MikeBild/subkit/pull/115), [#116](https://github.com/MikeBild/subkit/pull/116), [#117](https://github.com/MikeBild/subkit/pull/117), [#118](https://github.com/MikeBild/subkit/pull/118), [#119](https://github.com/MikeBild/subkit/pull/119))
+* **http:** split god-file route modules — connectors, connector-templates, conversations, executions, notifications, rbac, diagnostics
 * **conversations:** split `service.ts`, `sdk-wrap.ts`, `authoring-state.ts`, `auto-persist.ts` into per-concern modules ([#112](https://github.com/MikeBild/subkit/pull/112), [#113](https://github.com/MikeBild/subkit/pull/113), [#122](https://github.com/MikeBild/subkit/pull/122), [#123](https://github.com/MikeBild/subkit/pull/123))
-* **execution:** split `request.ts` (1804 LOC) per audit §4.2 + extract engine helpers ([#111](https://github.com/MikeBild/subkit/pull/111), [#121](https://github.com/MikeBild/subkit/pull/121))
+* **execution:** split `request.ts` (1804 LOC) into per-concern modules + extract engine helpers
 * **llm:** consolidate token/budget accounting into `llm/accounting/`; split `context-assembler.ts` into formatters/loaders/skill-picker ([#105](https://github.com/MikeBild/subkit/pull/105), [#114](https://github.com/MikeBild/subkit/pull/114))
 * **tunnels,pubsub:** bound `TunnelRegistry` + document pubsub restart contract ([#107](https://github.com/MikeBild/subkit/pull/107))
 
@@ -2095,8 +2092,8 @@
 
 ### Features
 
-* **connectors,llm,mcp,discovery,events:** close 4 behavioral gaps via reference-project audit ([c5218c5](https://github.com/MikeBild/subkit/commit/c5218c5cb0430f19479abd92dd700a9f7f7e81da))
-* **docs,knowledge:** close 8 documentation+knowledge gaps to reach reference parity ([c0b8ddf](https://github.com/MikeBild/subkit/commit/c0b8ddf42c2c0b3fec208fef1b1256913bd1d1c1))
+* **connectors,llm,mcp,discovery,events:** close 4 behavioral gaps via subsystem audit ([c5218c5](https://github.com/MikeBild/subkit/commit/c5218c5cb0430f19479abd92dd700a9f7f7e81da))
+* **docs,knowledge:** close 8 documentation+knowledge gaps ([c0b8ddf](https://github.com/MikeBild/subkit/commit/c0b8ddf42c2c0b3fec208fef1b1256913bd1d1c1))
 
 
 ### Bug Fixes
@@ -2124,7 +2121,7 @@
 * **conversations,sk:** tool-policy hooks (credentialFields, prerequisites, buildPendingOutput) + setup-validation in /v1/status ([984aeb0](https://github.com/MikeBild/subkit/commit/984aeb04efb6fb6dabebd535f3620d8e01f86779))
 * **conversations:** generic update_&lt;resource&gt; tools across all CRUD-shaped resources ([d5cc559](https://github.com/MikeBild/subkit/commit/d5cc559657e027837c574a09eef52846e1b28cd4))
 * **output-guard:** chat-first scanner — runtime gate for curl/shell suggestions ([5b9abfd](https://github.com/MikeBild/subkit/commit/5b9abfdc4dc9018131a5df8b59f8dd02a576c442))
-* **sk:** shift+enter and backslash-enter for newline (codex parity) ([3413aed](https://github.com/MikeBild/subkit/commit/3413aedc41efd82670e1b7170fbba2c9b6ccd586))
+* **sk:** shift+enter and backslash-enter for newline ([3413aed](https://github.com/MikeBild/subkit/commit/3413aedc41efd82670e1b7170fbba2c9b6ccd586))
 
 
 ### Bug Fixes
@@ -2267,7 +2264,7 @@
 
 * add cleanup conversation write tools ([6d73d6a](https://github.com/MikeBild/subkit/commit/6d73d6a5653a1ee8b0484ddd815917886ad23d39))
 * align runtime with documented envelope + surface drift feedback ([d3775b1](https://github.com/MikeBild/subkit/commit/d3775b193435942c93d8fefb598b3b815a60653a))
-* **authoring:** close remaining FOLLOWUP gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
+* **authoring:** close remaining follow-up gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
 * **authoring:** masked secrets + 3 more cards + route-doc parity gate ([af1ca67](https://github.com/MikeBild/subkit/commit/af1ca673d32acc857684c052c3e017fea47b1db6))
 * CLI commands, MCP resources, scheduler, edge case + journey tests ([a944ba8](https://github.com/MikeBild/subkit/commit/a944ba88f2cc5cbf933dff32d422f2e8ddd942e6))
 * **cli-core:** generated engine API client from OpenAPI (B1) ([5b937e6](https://github.com/MikeBild/subkit/commit/5b937e686c70709e314b72fefdb75bc5f12d5af0))
@@ -2301,7 +2298,7 @@
 * **execution:** S3-backed large-payload offload ([f1d6fae](https://github.com/MikeBild/subkit/commit/f1d6faed060adade199e78e0118d8876ecb16830))
 * **execution:** tenant DLP layer — response-filters with defaults ([4ce6c1f](https://github.com/MikeBild/subkit/commit/4ce6c1f3b24ea65e4499d3050282c95a046a01d8))
 * expand connector template catalog to 89 production-quality templates ([ae257d5](https://github.com/MikeBild/subkit/commit/ae257d5bf7155e87328cefba5165cffc3c93661f))
-* H2 Knowledge Sources, H2.5 Discovery, H3 Self-Improving Skills ([249320c](https://github.com/MikeBild/subkit/commit/249320c8a2566fcd309987dc06fbcf687ba4de17))
+* Knowledge Sources, Discovery, Self-Improving Skills ([249320c](https://github.com/MikeBild/subkit/commit/249320c8a2566fcd309987dc06fbcf687ba4de17))
 * initial commit — subkit workflow engine ([befda15](https://github.com/MikeBild/subkit/commit/befda15e261f74bf0efe64e069522c9c89912182))
 * **llm+conversation:** parity wiring — core, tools, policies, confirmation, streaming, eval ([6fa9794](https://github.com/MikeBild/subkit/commit/6fa9794107432cb1098faa5bd9b8ad5583bbeead))
 * **llm:** extended converse prompt + five pseudo-message builders ([68ef177](https://github.com/MikeBild/subkit/commit/68ef17792c19fc3648eab47a00957bf00aacb8d4))
@@ -2314,7 +2311,7 @@
 * **observability:** OpenTelemetry tracer bootstrap with Langfuse (A6) ([c7e53d5](https://github.com/MikeBild/subkit/commit/c7e53d5790f97a32bd31cf85741a4353607dc76d))
 * **onboarding:** demo-seed workflows + expertise tone hint ([db86d77](https://github.com/MikeBild/subkit/commit/db86d77228417e2da7eead43c73865a805004bfa))
 * OTA auto-update system for all binaries with comprehensive tests ([a019f26](https://github.com/MikeBild/subkit/commit/a019f2605767c78a18a8c93956e486ce9f02f67d))
-* P11 elicitations and Claude Code UX for sk ([1e7e89c](https://github.com/MikeBild/subkit/commit/1e7e89cb0a12139401d5fdfcf0f3fe59d6cd4861))
+* elicitations and conversational REPL UX for sk ([1e7e89c](https://github.com/MikeBild/subkit/commit/1e7e89cb0a12139401d5fdfcf0f3fe59d6cd4861))
 * **release/version.sh:** current_version = max(manifest, package.json) ([51c2f15](https://github.com/MikeBild/subkit/commit/51c2f153f60290e8a9844fd98857c76511b261fc))
 * **sk:** add setup diagnostics UX ([5ba0c73](https://github.com/MikeBild/subkit/commit/5ba0c7308f611efc39a9f2baabb9176959cefc68))
 * **sk:** consolidate subkit admin CLI into unified sk binary ([13f38cc](https://github.com/MikeBild/subkit/commit/13f38cc0f93f42a9d499f8420682b37396221dde))
@@ -2383,7 +2380,7 @@
 
 ### Documentation
 
-* add agent-facing guidance for Claude Code ([55bd3cd](https://github.com/MikeBild/subkit/commit/55bd3cdb02382911a77f0a9b2c347901994c8de2))
+* add agent-facing guidance for MCP clients ([55bd3cd](https://github.com/MikeBild/subkit/commit/55bd3cdb02382911a77f0a9b2c347901994c8de2))
 * **deployment:** document bun run release + scripts/release/* pipeline ([a2f38fc](https://github.com/MikeBild/subkit/commit/a2f38fc3ae821bd91ed0b16b84dcf6e5a6ca6bb8))
 * **followup:** record 1.10.0 landings (masked secrets, 3 cards, route-doc parity gate) ([f6c806e](https://github.com/MikeBild/subkit/commit/f6c806e7942b1c712f4c4e2e8d2ff1dbae446a01))
 * **followup:** record second-pass landings (preview parity, credentials, structured panes, richer snapshot, draft-dedup) ([e388453](https://github.com/MikeBild/subkit/commit/e388453c08acbb94dd5de341bae09b610776dba8))
@@ -2559,7 +2556,7 @@
 
 ### Features
 
-* **authoring:** close remaining FOLLOWUP gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
+* **authoring:** close remaining follow-up gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
 
 
 ### Documentation
@@ -2631,7 +2628,7 @@
 
 ### Features
 
-* P11 elicitations and Claude Code UX for sk ([1e7e89c](https://github.com/MikeBild/subkit/commit/1e7e89cb0a12139401d5fdfcf0f3fe59d6cd4861))
+* elicitations and conversational REPL UX for sk ([1e7e89c](https://github.com/MikeBild/subkit/commit/1e7e89cb0a12139401d5fdfcf0f3fe59d6cd4861))
 
 
 ### Bug Fixes
@@ -2684,7 +2681,7 @@
 * **cli:** skills delete, --show-source, scaffolders, persona docs ([aa7a0a4](https://github.com/MikeBild/subkit/commit/aa7a0a44c6b324f05bac3129fee10b645127a61a))
 * **engine:** shared schema spine + observability + audit coverage ([603c7ec](https://github.com/MikeBild/subkit/commit/603c7ecdeb2a02c4f2a84170c90e469500e82fcf))
 * expand connector template catalog to 89 production-quality templates ([ae257d5](https://github.com/MikeBild/subkit/commit/ae257d5bf7155e87328cefba5165cffc3c93661f))
-* H2 Knowledge Sources, H2.5 Discovery, H3 Self-Improving Skills ([249320c](https://github.com/MikeBild/subkit/commit/249320c8a2566fcd309987dc06fbcf687ba4de17))
+* Knowledge Sources, Discovery, Self-Improving Skills ([249320c](https://github.com/MikeBild/subkit/commit/249320c8a2566fcd309987dc06fbcf687ba4de17))
 * initial commit — subkit workflow engine ([befda15](https://github.com/MikeBild/subkit/commit/befda15e261f74bf0efe64e069522c9c89912182))
 * OTA auto-update system for all binaries with comprehensive tests ([a019f26](https://github.com/MikeBild/subkit/commit/a019f2605767c78a18a8c93956e486ce9f02f67d))
 
@@ -2711,7 +2708,7 @@
 
 ### Documentation
 
-* add agent-facing guidance for Claude Code ([55bd3cd](https://github.com/MikeBild/subkit/commit/55bd3cdb02382911a77f0a9b2c347901994c8de2))
+* add agent-facing guidance for MCP clients ([55bd3cd](https://github.com/MikeBild/subkit/commit/55bd3cdb02382911a77f0a9b2c347901994c8de2))
 * full documentation overhaul — problem-led README, mermaid-first format, missing features ([dfdc0c1](https://github.com/MikeBild/subkit/commit/dfdc0c16c6755472c935a2d932e18b763c3539e4))
 
 
@@ -2741,7 +2738,7 @@
 
 ### Documentation
 
-* add agent-facing guidance for Claude Code ([55bd3cd](https://github.com/MikeBild/subkit/commit/55bd3cdb02382911a77f0a9b2c347901994c8de2))
+* add agent-facing guidance for MCP clients ([55bd3cd](https://github.com/MikeBild/subkit/commit/55bd3cdb02382911a77f0a9b2c347901994c8de2))
 
 
 ### Miscellaneous
@@ -2767,7 +2764,7 @@
 
 * CLI commands, MCP resources, scheduler, edge case + journey tests ([a944ba8](https://github.com/MikeBild/subkit/commit/a944ba88f2cc5cbf933dff32d422f2e8ddd942e6))
 * expand connector template catalog to 89 production-quality templates ([ae257d5](https://github.com/MikeBild/subkit/commit/ae257d5bf7155e87328cefba5165cffc3c93661f))
-* H2 Knowledge Sources, H2.5 Discovery, H3 Self-Improving Skills ([249320c](https://github.com/MikeBild/subkit/commit/249320c8a2566fcd309987dc06fbcf687ba4de17))
+* Knowledge Sources, Discovery, Self-Improving Skills ([249320c](https://github.com/MikeBild/subkit/commit/249320c8a2566fcd309987dc06fbcf687ba4de17))
 
 
 ### Bug Fixes

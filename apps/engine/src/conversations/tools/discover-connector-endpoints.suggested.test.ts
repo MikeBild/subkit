@@ -1,6 +1,6 @@
 // Suggested-endpoints surface for `discover_connector_endpoints`.
 //
-// Verifies the Wave 2 contract: when the operator's most recent user
+// Verifies the suggested-endpoints contract: when the operator's most recent user
 // message is in scope, the result includes `data.suggested_endpoints`
 // — a top-3 list ranked against the message via the BM25-lite scorer
 // in `connectors/discovery/endpoint-scorer.ts`. Without the message,

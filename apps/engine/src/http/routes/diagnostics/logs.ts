@@ -6,10 +6,10 @@
 // Both backed by the in-memory `logRing` populated by every
 // `logger.*` call. Exists so an operator running `sk logs --follow`
 // can correlate sk-side errors with engine-side log lines without
-// SSH-ing into the engine container. Issue #149 — operator
+// SSH-ing into the engine container — operator
 // observability of migrate / seed / drift events specifically.
 //
-// Tenant scoping (review W2): the ring is process-wide but every read
+// Tenant scoping: the ring is process-wide but every read
 // here filters entries to the principal's tenant + system-scope only,
 // so a tenant-scoped admin cannot tail another tenant's request log.
 // Each tail also writes a `DIAGNOSTICS_LOGS_TAILED` audit row.
@@ -48,7 +48,7 @@ const LogEntrySchema = z
   .openapi("LogRingEntry");
 
 /** Shared query schema — applied to both the JSON tail and the SSE
- *  stream so the two surfaces validate identically (review W1). */
+ *  stream so the two surfaces validate identically. */
 const LogTailQuery = z
   .object({
     since: z.coerce.number().int().nonnegative().optional(),
@@ -121,9 +121,9 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
     const entries = logRing.tail(opts);
     const lastTs = entries.length > 0 ? entries[entries.length - 1]!.ts : (q.since ?? 0);
 
-    // W1 (review #2): metadata is parsed through the Zod schema so a
+    // Metadata is parsed through the Zod schema so a
     // future field rename / type change in `audit/types.ts` fails at
-    // the route, not in production. W2: `auditAwait` blocks the
+    // the route, not in production. `auditAwait` blocks the
     // response until the row is durable — diagnostics tails finish in
     // microseconds, so the latency cost is negligible compared with the
     // compliance benefit of guaranteeing the row.
@@ -182,7 +182,7 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
       level: c.req.query("level"),
     });
     if (!parsed.success) {
-      // S3 (review #2): match the shared `ErrorSchema` envelope so the
+      // Match the shared `ErrorSchema` envelope so the
       // CLI / MCP error adapters parse this 400 the same way they parse
       // every other engine error response.
       return c.json(
@@ -203,7 +203,7 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
     const tailOpts = buildTailOpts(q, principal.tenant_id, { limit: 1000 });
     const minLevelWeight = q.level ? levelWeight(q.level) : 0;
 
-    // W1 + W2 (review #2) — parse metadata through the schema, then
+    // Parse metadata through the schema, then
     // await the audit row before opening the stream.
     const metadata = DiagnosticsLogsTailedMetadataSchema.parse({
       mode: "stream",

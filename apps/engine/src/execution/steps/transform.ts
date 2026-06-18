@@ -82,7 +82,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
   // (the resolved copy is fresh). A re-hydration failure throws and fails
   // this step.
   p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope, p.ctx.signal);
-  // Web-scraper #144 — three static-import branches that operate on the
+  // Web-scraper — three static-import branches that operate on the
   // upstream HTML body and emit a typed JSON envelope. These do not race
   // against the abort signal because each is synchronous and bounded by its
   // own max_chars cap.

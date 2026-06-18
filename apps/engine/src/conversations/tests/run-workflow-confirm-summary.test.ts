@@ -13,8 +13,8 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// After the Phase 4 split (audit §4.2), the buildPolicyGateSummary
-// closure lives in `conversations/tools/sdk-wrap/invoke.ts`.
+// The buildPolicyGateSummary closure lives in
+// `conversations/tools/sdk-wrap/invoke.ts`.
 const SRC = join(import.meta.dir, "..", "tools", "sdk-wrap", "invoke.ts");
 
 describe("policy-gate confirm summary · run_workflow", () => {

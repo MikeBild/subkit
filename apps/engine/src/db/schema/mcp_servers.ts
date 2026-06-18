@@ -1,7 +1,7 @@
 // External MCP servers consumed by subkit's MCP client. Per-tenant.
 //
 // subkit hosts its own MCP server (apps/engine/src/mcp/server.ts) for
-// external agents (Claude Code, Cursor, Codex) to call into. This table
+// external MCP clients to call into. This table
 // is the inverse direction: tenants register external MCP servers
 // (Notion-MCP, GitHub-MCP, Vercel-MCP, ...) whose tools the LLM in the
 // conversation loop can invoke.

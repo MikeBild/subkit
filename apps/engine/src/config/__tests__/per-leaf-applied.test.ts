@@ -91,8 +91,7 @@ function pickStringCandidate(leaf: ConfigLeaf, tag: string): string {
     tag,
     `https://example.com/${tag.replaceAll("_", "-")}`,
     tag.padEnd(32, "x").slice(0, 32),
-    // W2 of PR #161 review (round 4): HH:MM-shaped value for the
-    // notifications.push.quietHours* regex.
+    // HH:MM-shaped value for the notifications.push.quietHours* regex.
     "00:00",
     "",
   ];

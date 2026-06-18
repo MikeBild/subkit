@@ -7,14 +7,14 @@ import { LlmOutputViolation } from "../../errors.ts";
 import { runOutputGuard } from "../index.ts";
 import type { Scanner, Violation } from "../types.ts";
 
-const ctx = { engine_url: "https://subkit-api.mikebild.dev" };
+const ctx = { engine_url: "https://subkit-api.acme.dev" };
 
 describe("runOutputGuard — soft mode", () => {
   it("returns text unchanged when no scanner finds anything", () => {
-    const r = runOutputGuard("Hello, https://subkit-api.mikebild.dev is the host.", ctx, {
+    const r = runOutputGuard("Hello, https://subkit-api.acme.dev is the host.", ctx, {
       mode: "soft",
     });
-    expect(r.text).toBe("Hello, https://subkit-api.mikebild.dev is the host.");
+    expect(r.text).toBe("Hello, https://subkit-api.acme.dev is the host.");
     expect(r.violations).toEqual([]);
     expect(r.mode).toBe("soft");
   });
@@ -24,7 +24,7 @@ describe("runOutputGuard — soft mode", () => {
     // Repair replaces the placeholder host with the grounded host from
     // engine_url so the user gets a usable config on the first turn.
     // The violation is still recorded for observability.
-    expect(r.text).toContain("subkit-api.mikebild.dev");
+    expect(r.text).toContain("subkit-api.acme.dev");
     expect(r.text).not.toContain("your-subkit-instance.com");
     expect(r.text).not.toContain("[guard:placeholder.host]");
     expect(r.violations.map((v) => v.kind)).toContain("placeholder.host");
@@ -51,7 +51,7 @@ describe("runOutputGuard — soft mode", () => {
     // Hosts are repaired in-place; angle placeholders have no grounded
     // substitute and are stripped. Nothing leaks a guard marker into
     // the user-visible transcript.
-    expect(r.text).toContain("subkit-api.mikebild.dev");
+    expect(r.text).toContain("subkit-api.acme.dev");
     expect(r.text).not.toContain("[guard:");
     expect(r.text).not.toContain("your-subkit-instance.com");
     expect(r.text).not.toContain("example.com");
@@ -88,7 +88,7 @@ describe("runOutputGuard — hard mode", () => {
 
   it("does NOT throw on clean text", () => {
     expect(() =>
-      runOutputGuard("Use https://subkit-api.mikebild.dev/mcp", ctx, { mode: "hard" }),
+      runOutputGuard("Use https://subkit-api.acme.dev/mcp", ctx, { mode: "hard" }),
     ).not.toThrow();
   });
 });

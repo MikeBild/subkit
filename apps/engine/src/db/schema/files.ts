@@ -9,7 +9,7 @@
 //
 // Provider Files API ids (Anthropic / OpenAI / Gemini) and their expiries
 // live on the row so the LLM context layer can avoid re-uploading the same
-// bytes per turn. The reference shape is `{ "$file": "fid_<uuid>" }`;
+// bytes per turn. The canonical shape is `{ "$file": "fid_<uuid>" }`;
 // `subkit-file://<fid>` is the public locator.
 //
 // `file_links` is a thin polymorphic join. `resource_type` enumerates the

@@ -105,7 +105,7 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
           break;
         case "number": {
           // Walk a candidate ladder for leaves with higher min() bounds
-          // (web-scraper #144 max_chars_*, robots_cache.ttl_ms) or
+          // (web-scraper max_chars_*, robots_cache.ttl_ms) or
           // tight max() bounds (min_runs_before_proposing max 50).
           const tagN = salt++;
           const candidatesN = [
@@ -126,9 +126,9 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
           break;
         }
         case "string": {
-          // W2 of PR #161 review (round 4): walk a candidate list so
-          // regex-restricted leaves (e.g. notifications.push.quietHours*)
-          // pass without baking path knowledge into this test.
+          // Walk a candidate list so regex-restricted leaves (e.g.
+          // notifications.push.quietHours*) pass without baking path
+          // knowledge into this test.
           const tag = `tenant-${salt++}`;
           const candidates = [tag, "00:00", ""];
           value = tag;

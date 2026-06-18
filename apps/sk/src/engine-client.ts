@@ -4,7 +4,7 @@
 // engine's `AppType` through Hono drags the entire server module
 // graph in.
 //
-// Naming convention (R5-S4 review note): wire-shape fields stay
+// Naming convention: wire-shape fields stay
 // snake_case to match the engine's OpenAPI surface — `tenant_id`,
 // `tenant_slug`, `retry_after`, `trace_id`. Local-only fields use
 // camelCase. This means TS callers occasionally see `err.retry_after`
@@ -123,7 +123,7 @@ export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promis
 // Mirror `apps/engine/src/api/files-schemas.ts`. Kept structural (not
 // Zod) here so the CLI's tsc graph doesn't pull in @hono/zod-openapi.
 
-// ---------- Stats wire types (#160) ----------
+// ---------- Stats wire types ----------
 // Mirror apps/engine/src/http/routes/stats/schemas.ts. Kept structural
 // (not Zod) so the CLI tsc graph doesn't pull in @hono/zod-openapi.
 
@@ -1124,7 +1124,7 @@ export class EngineClient {
     return this.request("GET", "/v1/status");
   }
 
-  // --------------------------- Runtime stats (#160) ---------------------------
+  // --------------------------- Runtime stats ---------------------------
   // Tenant-scoped, time-bucketed read-only aggregates. Gated by the
   // `stats:read` permission server-side. Multi-value filters are passed
   // as comma-joined strings; the engine's CsvOrArray schema splits them.
@@ -1196,8 +1196,8 @@ export class EngineClient {
   skBootstrap(): Promise<components["schemas"]["SkBootstrap"]> {
     // Return type is the generated OpenAPI schema — single source of
     // truth shared with `apps/sk/src/lib/bootstrap.ts`. Replaces a
-    // 19-line hand-rolled inline type that the previous review (R4-W1
-    // / R4-S5) flagged as a typo-drift hazard.
+    // 19-line hand-rolled inline type that was previously flagged as
+    // a typo-drift hazard.
     return this.request("GET", "/v1/sk/bootstrap");
   }
 
@@ -1954,7 +1954,7 @@ export class EngineClient {
     return this.request("DELETE", `/v1/credentials/${encodeURIComponent(credentialId)}`);
   }
 
-  // -------------------- External MCP servers (#171) --------------------
+  // -------------------- External MCP servers --------------------
   // Inverse of sk's own MCP server: tenants register external MCP servers
   // whose tools the conversation loop can call. The auth secret (token /
   // refresh_token) is a write-only create/patch field stored encrypted in

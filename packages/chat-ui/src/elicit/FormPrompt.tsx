@@ -1,7 +1,6 @@
 // askUser.form prompt — vertical stack of typed fields. All input
-// flows through a single `useInput` hook owned by this component,
-// mirroring the claude-code single-owner pattern. No child component
-// registers its own input handler, so Tab/Shift+Tab/Enter cannot be
+// flows through a single `useInput` hook owned by this component. No
+// child component registers its own input handler, so Tab/Shift+Tab/Enter cannot be
 // swallowed by a nested input (the exact bug `@inkjs/ui`'s TextInput
 // produced here prior to this rewrite).
 //

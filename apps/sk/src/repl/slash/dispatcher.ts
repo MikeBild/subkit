@@ -26,7 +26,7 @@ export interface SlashDispatchPlan {
   command: SlashCommand | undefined;
 }
 
-// R11-S4 review fix: `INK_INTERCEPTED_LOCAL_SLASHES` moved to
+// `INK_INTERCEPTED_LOCAL_SLASHES` moved to
 // `apps/sk/src/slash.ts` (next to `SLASH_COMMANDS`) because it's
 // metadata about the registry, not about dispatch. Re-exported
 // here for the dispatcher contract test that imports from this
@@ -53,7 +53,7 @@ export function classifySlash(name: string): SlashDispatchPlan {
  *
  * The guidance map covers two cohorts:
  *
- *  1. **Removed in the consolidation pass** — slashes that pre-M13 had
+ *  1. **Removed in the consolidation pass** — slashes that once had
  *     a registered command but were collapsed into a hub (e.g. `/health`
  *     → `/audit`, `/install-slack` → `/install`). Once one minor
  *     release has shipped with the guidance, the entries are deleted —
@@ -65,7 +65,7 @@ export function classifySlash(name: string): SlashDispatchPlan {
  *     permanent because the question keeps coming up.
  */
 export const REMOVED_SLASH_GUIDANCE: Readonly<Record<string, string>> = Object.freeze({
-  // G11 cohort — actually removed in the M13 destructive pass.
+  // Removed in the consolidation pass.
   "install-slack": "moved into `/install`",
   "install-teams": "moved into `/install`",
   "install-github": "moved into `/install`",
@@ -82,8 +82,7 @@ export const REMOVED_SLASH_GUIDANCE: Readonly<Record<string, string>> = Object.f
   diff: "subkit does not edit user code; patch-candidate diffs render inside `/approvals`",
   "output-style":
     "subkit output is conversational, not code-generative; theme + status line are in `/settings → Config`",
-  rewind:
-    "term collides with `workflows restore`; conversation rewind is `/resume → press t` (M10)",
+  rewind: "term collides with `workflows restore`; conversation rewind is `/resume → press t`",
 });
 
 export function removedSlashGuidance(name: string): string | null {
@@ -93,7 +92,7 @@ export function removedSlashGuidance(name: string): string | null {
 
 /** Test-only: snapshot of the local-only set, derived from the
  *  registry. Used by the dispatcher tests so accidental additions
- *  surface in PR review. */
+ *  are caught. */
 export function _localOnlySnapshot(): readonly string[] {
   return SLASH_COMMANDS.filter((c) => c.routing === "local").map((c) => c.name);
 }

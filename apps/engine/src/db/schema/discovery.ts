@@ -1,4 +1,4 @@
-// H2.5: Discovery — one-shot LLM-powered analysis of uploaded enterprise files.
+// Discovery — one-shot LLM-powered analysis of uploaded enterprise files.
 //
 // Three tables:
 //   - discovery_runs: one row per analysis batch (created implicitly when files

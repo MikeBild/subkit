@@ -1,12 +1,11 @@
-// sk block-mark mascot — the first thing a user sees in the REPL. Mirrors
-// the role Claude Code's Clawd plays in its welcome banner: a 3-row glyph
-// on the left with a meta panel (name + version, model, cwd) on the right.
+// sk block-mark mascot — the first thing a user sees in the REPL: a 3-row
+// glyph on the left with a meta panel (name + version, model, cwd) on the
+// right.
 //
 // Rendering notes:
 //   - Glyph uses `theme.role.assistant` so it picks up the host palette.
 //   - Apple Terminal does NOT render vertical whitespace between block
-//     characters consistently, so we fall back to a background-fill row
-//     (same trick claude-code/src/components/LogoV2/Clawd.tsx uses).
+//     characters consistently, so we fall back to a background-fill row.
 //   - Keep the column spacing inside the glyph strings (two spaces after
 //     each row) so the right-side meta panel aligns flush across rows.
 

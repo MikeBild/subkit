@@ -1,4 +1,4 @@
-// External MCP server schema-drift tracker (#171).
+// External MCP server schema-drift tracker.
 //
 // A remote MCP server can change its tool manifest at any time — add a
 // tool, drop one, change an input schema. We fingerprint the manifest as
@@ -18,12 +18,10 @@
 
 import { and, eq } from "drizzle-orm";
 import { recordMcpServerConfigUpdated } from "../../audit/recorders/index.ts";
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import { mcpServers } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface ReconcileManifestHashInput {
   db: Executor;

@@ -1,6 +1,6 @@
 // Unit tests for `registerResourcesCapability` portal-scope handling.
 //
-// PR #178 review C1 / W2. The lifecycle dispatcher and the
+// The lifecycle dispatcher and the
 // ListResources handler must both honour the `allowed_workflows`
 // narrowing on a portal-scoped principal — narrowing only at read
 // time leaks workflow names / slugs via list, and not re-checking RBAC
@@ -130,8 +130,8 @@ function portalPrincipal(allowedWorkflows: string[] | "all"): ResolvedPrincipal 
 
 /**
  * Principal with a built-in role that does NOT include `workflow:read`.
- * Used to prove the round-3 W1 fix: lifecycle dispatcher must
- * re-check RBAC even for non-portal principals, because a tenant can
+ * Proves the lifecycle dispatcher re-checks RBAC even for non-portal
+ * principals, because a tenant can
  * mint a role that omits workflow:read and observe lifecycle timing
  * out of the URI alone.
  */
@@ -145,7 +145,7 @@ function nonPortalPrincipalWithoutWorkflowRead(): ResolvedPrincipal {
   };
 }
 
-describe("PR #178 C1 — listResources filters by allowed_workflows", () => {
+describe("listResources filters by allowed_workflows", () => {
   it("portal token narrowed to one workflow does NOT see the other in listResources", async () => {
     const stub = newStubServer();
     const emitter = new PubSubEmitter();
@@ -189,7 +189,7 @@ describe("PR #178 C1 — listResources filters by allowed_workflows", () => {
   });
 });
 
-describe("PR #178 W2 — lifecycle dispatcher re-checks RBAC", () => {
+describe("lifecycle dispatcher re-checks RBAC", () => {
   it("does NOT forward workflow.lifecycle notifications when allowed_workflows excludes the id", async () => {
     const stub = newStubServer();
     const emitter = new PubSubEmitter();
@@ -257,7 +257,7 @@ describe("PR #178 W2 — lifecycle dispatcher re-checks RBAC", () => {
   });
 });
 
-describe("PR #178 round-3 W1 — RBAC re-check runs for non-portal principals too", () => {
+describe("RBAC re-check runs for non-portal principals too", () => {
   it("custom-role principal lacking workflow:read does NOT receive lifecycle pings", async () => {
     const stub = newStubServer();
     const emitter = new PubSubEmitter();
@@ -265,8 +265,8 @@ describe("PR #178 round-3 W1 — RBAC re-check runs for non-portal principals to
       server: stub as unknown as Parameters<typeof registerResourcesCapability>[0]["server"],
       db: testDb.db as unknown as Db,
       // metrics_scraper is a built-in role with `metrics:read` only —
-      // explicitly lacks `workflow:read`. Per round-3 W1 the lifecycle
-      // dispatcher must still re-check `can()` even though this
+      // explicitly lacks `workflow:read`. The lifecycle dispatcher must
+      // still re-check `can()` even though this
       // principal has NO `allowed_workflows` array — otherwise it
       // would observe timing of every workflow state change.
       principal: nonPortalPrincipalWithoutWorkflowRead(),

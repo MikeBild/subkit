@@ -1,4 +1,4 @@
-// Reference-aligned retry telemetry. Every retry attempt emits the
+// Uniform retry telemetry. Every retry attempt emits the
 // same shape: attempt_no, total_attempts, delay_ms, next_attempt_at,
 // reason. Pre-fix the log fields were `attempt` / `wait_ms` and
 // missing `total_attempts` — operators couldn't reconstruct the
@@ -12,9 +12,8 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// After the Phase 4 split (audit §4.2), the retry-telemetry log calls
-// live in `request/dispatch.ts`; the top-level `request.ts` is now a
-// barrel re-exporter only.
+// The retry-telemetry log calls live in `request/dispatch.ts`; the
+// top-level `request.ts` is a barrel re-exporter only.
 const SRC = join(import.meta.dir, "..", "steps", "request", "dispatch.ts");
 
 describe("request driver · retry telemetry shape", () => {

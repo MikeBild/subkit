@@ -658,7 +658,7 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
   let outcome: RunLoopResult;
   if (existing) {
     conversation_id = existing.conversation_id;
-    // #148 — every turn caller threads a controller. Chat dispatch is
+    // Every turn caller threads a controller. Chat dispatch is
     // the same shape as the HTTP messages route: we know the
     // conversation_id from the lookup above, register synchronously,
     // unregister in `finally`. The append + turn split: `appendUserMessage`

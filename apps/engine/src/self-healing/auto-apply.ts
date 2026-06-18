@@ -8,11 +8,9 @@
 // can import it without an import cycle.
 
 import { and, eq, sql } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { patchCandidates, workflows, workflowVersions } from "../db/schema/index.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /**
  * Auto-apply a safe patch by writing a new workflow version whose `dag`

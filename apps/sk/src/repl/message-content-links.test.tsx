@@ -2,8 +2,8 @@
 // prose must be clickable in sk. MessageContent pipes text parts (and
 // the no-parts fallback) through the shared OSC 8 helper; code blocks
 // and tables stay byte-exact. The test env is non-TTY, so OSC 8 is
-// forced on (same discipline as the ConfirmPrompt G11 tests) and the
-// cache reset keeps detection deterministic.
+// forced on (same discipline as the ConfirmPrompt hyperlink tests) and
+// the cache reset keeps detection deterministic.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetHyperlinkSupportCacheForTests } from "@chat-ui/index.ts";

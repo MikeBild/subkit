@@ -1,7 +1,6 @@
 // dry_run_workflow + run_workflow envelope must include a structured
 // `step_trace` array per step so the LLM can pinpoint the failing
-// step without paging through the run's full output. Mirrors the
-// reference impl's `run_tool({ includeStepResults: true })`.
+// step without paging through the run's full output.
 //
 // On dry-run we always include `step_trace` (one row per step) with
 // step_id / kind / status / duration_ms / output_preview / error /

@@ -337,7 +337,7 @@ function activeToolsForStage(
   const dropPersistedRequired = !hasPersistedWorkflow;
   const keep = (predicate: (t: ConversationTool) => boolean): string[] => {
     const kept = names.filter((n) => {
-      // Forced-tool invariant (round-10): the turn-level
+      // Forced-tool invariant: the turn-level
       // `toolChoice: { type: "tool", toolName }` is validated against
       // every step's activeTools by the AI SDK. If the operator
       // explicitly forced `run_workflow` we must keep it in the

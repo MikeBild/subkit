@@ -1,7 +1,7 @@
 // Minimal line-by-line unified diff. Used by mutation tools
 // (build_workflow, update_param, edit_workflow_patch, save_connector)
 // to emit structural-change visualisations the CLI renders inline as
-// codex-style patch cells.
+// patch cells.
 //
 // Algorithm: O(n*m) longest-common-subsequence — fine for our payloads
 // (workflow DAGs are <1000 lines). No external dependency, no syntax
@@ -49,8 +49,8 @@ export function computeLineDiff(
   while (j < n) raw.push({ kind: "+", text: b[j++] ?? "" });
 
   // Context elision: keep `context` lines around each change run, drop
-  // long unchanged stretches with a `…` placeholder. Mirrors codex's
-  // collapse-large-runs behaviour. Default 3 lines of context.
+  // long unchanged stretches with a `…` placeholder. Default 3 lines of
+  // context.
   const context = options.context ?? 3;
   const compact: DiffHunk[] = [];
   // Loop bounds (k < raw.length, p < runEnd, etc.) prove every raw[<idx>]

@@ -1,7 +1,6 @@
 // RBAC management API — entry point.
 //
-// Phase 4 §4.4 of the 2026-05 architecture audit (#92). The former
-// http/routes/rbac.ts (636 LOC) split into per-resource modules; this
+// The former http/routes/rbac.ts split into per-resource modules; this
 // barrel registers each. Public API unchanged: server.ts still calls
 // `registerRbacRoutes(app)`.
 //

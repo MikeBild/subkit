@@ -1,4 +1,4 @@
-// Integration test for /v1/diagnostics/version (issue #151 P0-1).
+// Integration test for /v1/diagnostics/version.
 //
 // Replaces the test surface that lived in `health-update.test.ts` —
 // those fields moved off the public `/v1/health` and now require

@@ -12,13 +12,11 @@
 // `llm/budgets.ts` — it does not replace budget math, it just makes sure
 // the row written reflects the SDK's numbers, not the tiktoken estimate.
 
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../core/base-types.ts";
 import { recordUsage } from "./budget.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface AccountParams {
   tenant_id: string;

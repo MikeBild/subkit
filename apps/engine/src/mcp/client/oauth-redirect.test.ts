@@ -1,6 +1,6 @@
 // Tests for the canonical interactive-MCP-OAuth redirect URI synthesizer.
 //
-// CRITICAL invariant (fix #1): the redirect_uri the pool's DCR handshake
+// CRITICAL invariant: the redirect_uri the pool's DCR handshake
 // registers MUST equal the one the authorize route hands the browser. Both
 // paths call `buildMcpOAuthRedirectUri`, so these tests pin that the value
 // is the connector origin resolution with the MCP callback path swapped in —

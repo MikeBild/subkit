@@ -9,11 +9,9 @@
 
 import { and, desc, eq } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { schemaVersions } from "../db/schema/index.ts";
 import type { SchemaShape } from "../self-healing/types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /**
  * Derive a SchemaShape from an arbitrary JSON value. The result is a
@@ -281,9 +279,9 @@ export interface ShapeHistoryEntry {
 
 /**
  * Walk every recorded shape for an endpoint in chronological order.
- * Powers "how has this endpoint changed over time?" — the same
- * question the reference impl can't answer because it has no
- * versioning. Caller decides the depth (default 50).
+ * Powers "how has this endpoint changed over time?" — answerable only
+ * because every observed shape is versioned. Caller decides the depth
+ * (default 50).
  */
 export async function listShapeHistory(
   p: GetLatestShapeParams & { limit?: number },

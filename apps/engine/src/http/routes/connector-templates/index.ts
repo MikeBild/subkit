@@ -1,7 +1,6 @@
 // Connector-templates HTTP surface — entry point.
 //
-// Phase 4 §4.4 of the 2026-05 architecture audit (#92). The former
-// http/routes/connector-templates.ts (949 LOC) split into per-sub-
+// The former http/routes/connector-templates.ts split into per-sub-
 // resource modules; this barrel registers shared per-path RBAC
 // middleware and delegates handler registration to each module.
 // Public API unchanged: server.ts still calls

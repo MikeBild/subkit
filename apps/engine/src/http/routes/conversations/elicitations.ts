@@ -49,8 +49,7 @@ const respondElicitationRoute = createRoute({
   },
 });
 
-// Resume by tool_call_id alias — mirrors the reference impl's
-// `resumeToolCallId` chat parameter. Looks up the active elicitation
+// Resume by tool_call_id alias. Looks up the active elicitation
 // linked to the given tool_call and resolves it with the same body
 // shape as the canonical `/elicitations/:elicitation_id/respond`
 // route. Lets clients that tracked the originating tool_call_id
@@ -86,7 +85,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, elicitation_id } = c.req.valid("param");
     const body = c.req.valid("json");
-    // #146 / A4 + #148: register synchronously on request-accept so
+    // Register synchronously on request-accept so
     // a cancel arriving in the first ~40ms always finds a controller.
     // SSE branch transfers ownership to its inner `finally` (Hono's
     // `streamSSE` does not await its callback); non-SSE branch keeps
@@ -205,8 +204,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
 
   // Resume-by-tool-call alias. Resolves tool_call_id → elicitation_id
   // by reading the active row, then delegates to the same service
-  // handler the canonical route uses. Mirrors the reference impl's
-  // `resumeToolCallId` chat parameter while keeping the
+  // handler the canonical route uses, keeping the
   // elicitation-id-based wire shape as the canonical resume key.
   app.openapi(respondByToolCallRoute, async (c) => {
     const principal = requireAuth(c);
@@ -220,8 +218,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!elicit) {
       throw new NotFoundError("elicitation_for_tool_call");
     }
-    // #146 / A4 + #148 — same sync-register pattern as the canonical
-    // route above.
+    // Same sync-register pattern as the canonical route above.
     const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
     let ownershipTransferred = false;
     try {

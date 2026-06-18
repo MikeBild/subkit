@@ -226,7 +226,7 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(result.error_code).toBe("connector_bindings_required");
   });
 
-  // #146 / Part D — recipe-coverage tests for the three step kinds that
+  // Recipe-coverage tests for the three step kinds that
   // were KNOWN_UNCOVERED until this change. Each test goes end-to-end
   // through `start_workflow_from_recipe`, mirroring the postgres /
   // stripe coverage above, so the new GitHub recipes are exercised by
@@ -269,7 +269,7 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(wait?.event_name).toBe("pr_approved");
     expect(wait?.timeout_ms).toBe(86_400_000);
 
-    // #147 review W2: WaitForEventStep.on_timeout is declared in the
+    // WaitForEventStep.on_timeout is declared in the
     // schema but the runner does NOT honour it for routing — the
     // workflow must branch explicitly on `timed_out`. The recipe
     // models that pattern with a `branch` step gating merge vs

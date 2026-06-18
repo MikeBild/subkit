@@ -185,7 +185,7 @@ describe("Footer connection chip layout", () => {
   // back to a compact chip in this case so neither line wraps.
   test("long reconnect reason at moderate width falls back to compact chip", () => {
     const layout = layoutFooterLines({
-      user: "mike@mikebild.com",
+      user: "user@example.com",
       tenant: "default",
       engineUrl: "http://localhost:3000",
       sessionId: "f00b8d1c-d453-482e-8aa3-27b35a1cb5aa",
@@ -203,7 +203,7 @@ describe("Footer connection chip layout", () => {
 
   test("wide terminal keeps the full chip with reason", () => {
     const layout = layoutFooterLines({
-      user: "mike@mikebild.com",
+      user: "user@example.com",
       tenant: "default",
       engineUrl: "http://localhost:3000",
       sessionId: "f00b8d1c",
@@ -218,7 +218,7 @@ describe("Footer connection chip layout", () => {
 
   test("identity collapses BEFORE the chip drops to none — chip is non-negotiable when state is bad", () => {
     const layout = layoutFooterLines({
-      user: "mike@mikebild.com",
+      user: "user@example.com",
       tenant: "default",
       engineUrl: "http://localhost:3000",
       sessionId: "f00b8d1c",

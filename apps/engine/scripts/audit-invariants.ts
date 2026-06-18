@@ -177,14 +177,10 @@ function checkJsonataLocality(): Result {
 }
 
 function checkRouteLayering(): Result {
-  // Heuristic for Phase 1: routes/<f>.ts may import from a subsystem's
-  // index.ts only — i.e. relative paths of the form `../../<sub>/index`
-  // or `../../<sub>` (resolved to index.ts) are OK; deeper paths into
-  // subsystem internals are flagged.
-  //
-  // PHASE 4 (week 6): replace this regex heuristic with an AST scan
-  // that resolves the import to a TS file and asserts it's the
-  // re-exported entry point. Tracked in audit-2026-05 issue.
+  // routes/<f>.ts may import from a subsystem's index.ts only — i.e.
+  // relative paths of the form `../../<sub>/index` or `../../<sub>`
+  // (resolved to index.ts) are OK; deeper paths into subsystem
+  // internals are flagged.
   const routeFiles = listFiles(
     join(ENGINE_SRC, "http/routes"),
     (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"),
@@ -258,10 +254,9 @@ function checkInternalLayering(): Result {
   // `_internal/` directories are package-private. Same-package siblings
   // can reach in (e.g. `apps/engine/src/conversations/loop.ts` → `./_internal/abort-merge.ts`),
   // but a file outside the package must NOT import from another
-  // package's `_internal/` path. Per #147 review S-3 / round-5 S-4
-  // — the directory is the file-system enforcement of layering, this
-  // check makes the contract observable at PR time instead of after a
-  // refactor strands a comment that begged not to widen the surface.
+  // package's `_internal/` path. The directory is the file-system
+  // enforcement of layering; this check makes the contract observable
+  // at PR time instead of after a refactor widens the surface.
   const allFiles = listFiles(ENGINE_SRC, (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"));
   const violations: string[] = [];
   // Match both `from "…/_internal/…"` and `import("…/_internal/…")` forms.
@@ -350,11 +345,12 @@ function checkRouteSize(): Result {
       message: "no http/routes/**/*.ts > 600 LOC outside .size-allowlist.txt",
     };
   }
-  // Phase 1 lands the check as ADVISORY until Phase 4 splits route files.
+  // The check is currently ADVISORY: it reports oversized route files
+  // without failing the audit.
   return {
     id: "route_size",
     status: "PASS",
-    message: `ADVISORY (Phase 4 will flip to FAIL): ${violations.length} route files >600 LOC not allowlisted\n  ${violations.join("\n  ")}`,
+    message: `ADVISORY: ${violations.length} route files >600 LOC not allowlisted\n  ${violations.join("\n  ")}`,
   };
 }
 
@@ -792,6 +788,33 @@ function checkCompileBuildsKeepNodeEnvDynamic(): Result {
   };
 }
 
+function checkExecutorCanonical(): Result {
+  // The DB `Executor` type has ONE canonical definition in db/client.ts.
+  // It was previously redeclared in ~53 files; a structural re-declaration
+  // typechecks fine, so a future copy would silently re-introduce the
+  // drift class. Ban any `type Executor =` outside the canonical file.
+  const allowed = "apps/engine/src/db/client.ts";
+  const DECL = /(?:^|\n)\s*(?:export\s+)?type\s+Executor\s*=/;
+  const violations: string[] = [];
+  for (const f of listFiles(ENGINE_SRC, (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"))) {
+    const rel = relative(REPO, f);
+    if (rel === allowed) continue;
+    if (DECL.test(readFileSync(f, "utf8"))) violations.push(rel);
+  }
+  if (violations.length === 0) {
+    return {
+      id: "executor_canonical",
+      status: "PASS",
+      message: `the DB Executor type is declared only in ${allowed} (no local re-declarations)`,
+    };
+  }
+  return {
+    id: "executor_canonical",
+    status: "FAIL",
+    message: `local \`type Executor =\` re-declarations (import from db/client.ts instead):\n  ${violations.join("\n  ")}`,
+  };
+}
+
 // ---------- driver ----------
 
 const CHECKS: Array<() => Result> = [
@@ -813,6 +836,7 @@ const CHECKS: Array<() => Result> = [
   checkEngineHomedirAbsence,
   checkNoGlobalFetchStubInTests,
   checkCompileBuildsKeepNodeEnvDynamic,
+  checkExecutorCanonical,
 ];
 
 const results: Result[] = [];

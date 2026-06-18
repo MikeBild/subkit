@@ -9,7 +9,7 @@ import { z } from "zod";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Db, type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
@@ -34,8 +34,6 @@ import type {
   SearchKnowledgeParams,
   UpdateKnowledgeSourceParams,
 } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 // ---------------------------------------------------------------------------
 // Helpers

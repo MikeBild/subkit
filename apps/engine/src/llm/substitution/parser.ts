@@ -9,7 +9,7 @@
 //     ${input.<pointer>}                         — workflow / tool input
 //     ${scope.<step_id>.<pointer>}               — previous step's data envelope
 //     ${item.<pointer>}                          — current loop iteration item
-//     ${state.<into_var>}                        — persistent workflow state (#51)
+//     ${state.<into_var>}                        — persistent workflow state
 //     ${state.<into_var>.<pointer>}              — nested path into a JSON value
 //
 // Escapes:

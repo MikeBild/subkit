@@ -5,8 +5,8 @@
 //
 // Why: every new migration needs a corresponding `import sqlNNNN ...`
 // + `SQL_BY_TAG` entry. A drizzle-kit run produces the .sql file but
-// not the manifest, so the manual update is a regression magnet
-// (review S5). This script regenerates the manifest from the journal
+// not the manifest, so the manual update is a regression magnet.
+// This script regenerates the manifest from the journal
 // and is wired into:
 //
 //   * `bun run db:gen-embedded` — manual regenerate

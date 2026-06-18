@@ -22,7 +22,7 @@ import { skills as skillsTable } from "../../db/schema/index.ts";
 
 /** Hard-coded baseline gates.
  *
- * Mirrors the reference impl's `SKILL_LOADING_INSTRUCTIONS`: tools that
+ * Tools that
  * mutate or author tenant-visible artifacts are not exposed until the
  * matching skill is in context. Forces the model to read the skill
  * (envelope contract, JSONata cheatsheet, recipe) before authoring,

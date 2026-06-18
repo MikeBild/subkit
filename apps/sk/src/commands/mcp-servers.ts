@@ -1,4 +1,4 @@
-// `sk mcp-servers` — manage external MCP servers (#171).
+// `sk mcp-servers` — manage external MCP servers.
 //
 // The inverse direction from sk's own MCP server: tenants register
 // external MCP servers whose tools the conversation loop's LLM can

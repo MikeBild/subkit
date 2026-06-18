@@ -129,8 +129,8 @@ function serializeWorkflow(w: svc.WorkflowView) {
     // SDK clients, external orchestrators). MCP exposes them via the
     // tool-definition surface; the bare HTTP GET previously omitted
     // them, forcing callers to round-trip through MCP just to learn
-    // a workflow's input shape. Reference impl `GET /tools/:id` exposes
-    // `inputSchema` / `outputSchema` directly.
+    // a workflow's input shape. The HTTP GET exposes
+    // `input_schema` / `output_schema` directly.
     input_schema: w.definition.input_schema ?? null,
     output_schema: w.definition.output_schema ?? null,
     output_transform: w.definition.output_transform ?? null,

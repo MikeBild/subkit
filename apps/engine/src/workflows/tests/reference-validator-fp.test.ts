@@ -2,7 +2,7 @@
 // Regression tests for bare-path validator false positives.
 //
 // Pre-fix the BARE_PATH_RE flagged any dotted identifier as a candidate
-// step reference: `links.self`, `mikebild.com`, `application.json`.
+// step reference: `links.self`, `example.com`, `application.json`.
 // The false positives made the LLM rewrite valid transforms in
 // session f00b8d1c. These cases must stay green.
 
@@ -43,11 +43,11 @@ describe("reference-validator · false-positive guards", () => {
           id: "shape",
           kind: "transform",
           language: "javascript",
-          // `mikebild.com` and `codecommission.de` are inside string
+          // `example.com` and `example.org` are inside string
           // literals — the validator must not extract the prefixes
-          // (`mikebild`, `codecommission`) as candidate step refs.
+          // (`mikebild`, `example`) as candidate step refs.
           expression:
-            "return { primary: 'mikebild.com', secondary: \"codecommission.de\", from: input.scope.fetch.data };",
+            "return { primary: 'example.com', secondary: \"example.org\", from: input.scope.fetch.data };",
         },
       ],
     };

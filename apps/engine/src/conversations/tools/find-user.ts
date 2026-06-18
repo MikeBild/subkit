@@ -1,5 +1,5 @@
 // find_user — fuzzy lookup over the tenant's users. Returns email,
-// name, role assignments. Mirrors the reference impl's `find_user`.
+// name, role assignments.
 
 import { z } from "@hono/zod-openapi";
 import { eq, inArray } from "drizzle-orm";

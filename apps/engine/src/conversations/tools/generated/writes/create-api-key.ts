@@ -3,10 +3,10 @@
 // plaintext token exactly once together with a paste-ready MCP JSON
 // config block.
 //
-// Closes the original "how do I use subkit in codex as an MCP server?"
-// transcript: instead of suggesting a CLI command and a half-key
-// placeholder, the assistant calls this tool, gets a real key, and
-// embeds it inside a config that uses the runtime engine_url.
+// Closes the "how do I connect an MCP client to sk?" path: instead of
+// suggesting a CLI command and a half-key placeholder, the assistant
+// calls this tool, gets a real key, and embeds it inside a config that
+// uses the runtime engine_url.
 //
 // Permission: api_key:write. When the caller is a non-admin user the
 // owner is forced to themselves; admins may target any tenant member
@@ -67,14 +67,14 @@ export const createApiKeyTool: ConversationTool = {
   inputSchema,
   category: "tenant_write",
   use_case:
-    "Use AFTER the user explicitly confirms they want a new API key minted (for a Codex/Claude-Desktop MCP integration, an SDK quickstart, or a one-off script). Pair with `revoke_api_key` for rotation.",
+    "Use AFTER the user explicitly confirms they want a new API key minted (for an MCP-client integration, an SDK quickstart, or a one-off script). Pair with `revoke_api_key` for rotation.",
   important_notes: [
     "The plaintext key is returned ONCE. Surface it verbatim in the same turn; the user has no way to retrieve it later.",
     "Default scope is ['*']. Prefer narrower scopes (e.g. ['workflow:read']) for production integrations.",
     "When the caller is not admin, owner_kind/owner_id are forced to the calling user — admin-only flags are ignored gracefully.",
   ],
   example_input: {
-    name: "Codex MCP",
+    name: "MCP client",
     scopes: ["workflow:read", "workflow:invoke"],
   },
   async execute(ctx, rawArgs): Promise<ToolResult> {

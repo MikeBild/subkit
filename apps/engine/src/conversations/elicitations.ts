@@ -11,15 +11,13 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import {
   conversationElicitations,
   conversations,
   conversationToolCalls,
 } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export type ElicitationStatus = "pending" | "resolved" | "cancelled" | "timeout";
 
@@ -294,9 +292,9 @@ export async function getElicitation(
 }
 
 /**
- * Lookup the active (pending) elicitation tied to a tool_call. Mirrors
- * the reference impl's `resumeToolCallId` resume key — clients that
- * tracked the originating tool_call_id can resolve the elicitation
+ * Lookup the active (pending) elicitation tied to a tool_call. Keyed by
+ * the originating tool_call_id — clients that
+ * tracked it can resolve the elicitation
  * without first reading the elicitation_id from the SSE stream.
  *
  * Returns the most recent matching row when multiple elicitations

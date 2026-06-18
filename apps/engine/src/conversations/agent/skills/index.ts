@@ -5,7 +5,7 @@
 // see; preloaded by the agent registry, with a typed name union so
 // the registry's `preloadedSkills` field is type-safe.
 //
-// Pattern mirrors the reference codebase: a `SkillName` union, a
+// Structure: a `SkillName` union, a
 // `SKILL_INDEX` description map (used by tools that surface what's
 // available), and a `loadSkills(names)` helper that concatenates the
 // selected bodies into the prompt segment. Bodies are imported as
@@ -99,12 +99,13 @@ export const ALL_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = AGENT_SKILL_NAMES
  * Three bodies are mode-specific:
  *   - `conversational-authoring` (~7.3KB / ~1.8k tokens) — the ideal-flow
  *      narrative + stage signals, only relevant when actively authoring.
- *   - `workflow-step-kinds` — anti-Zapier-namespace guardrails for the
- *      eight step kinds; only relevant when proposing / editing steps.
+ *   - `workflow-step-kinds` — guardrails against invented dotted step
+ *      namespaces for the eight step kinds; only relevant when proposing
+ *      / editing steps.
  *   - `placeholder-rules` — `${cred|connector|input|scope.*}` grammar;
  *      only relevant when authoring (drafts) or repairing (diagnosis).
  *
- * Trimming the latter two from execution-mode turns ("run emobxp-jira-
+ * Trimming the latter two from execution-mode turns ("run acme-jira-
  * test-plans") saves ~750 tokens. Execution-mode turns reach for
  * `wf_<slug>` / `run_workflow` directly; there is no step proposal to
  * guard. Authoring-mode and connector-mode and diagnosis-mode turns

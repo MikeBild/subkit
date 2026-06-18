@@ -369,7 +369,7 @@ describe("preview judge · goal stash round-trip", () => {
     });
   });
 
-  test("a goal change resets blocks_since_commit (round-5 Finding 1: no carry-over across goals)", () => {
+  test("a goal change resets blocks_since_commit (no carry-over across goals)", () => {
     // A draft accumulated 2 blocks against goal A (now at advisory).
     const atCap = normalizeDraftDocument({
       workflow: { name: "A", slug: "a", goal: "goal A", steps: [] },

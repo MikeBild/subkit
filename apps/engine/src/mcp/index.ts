@@ -3,7 +3,7 @@
 // than reaching into internal files — enforced by the `route_layering`
 // audit invariant (apps/engine/scripts/audit-invariants.ts).
 //
-// The MCP *client* (subkit consuming external MCP servers, #171) lives under
+// The MCP *client* (subkit consuming external MCP servers) lives under
 // `./client/`; its registry / pool / schema-drift surface is re-exported here.
 // The MCP *server* side (server.ts, adapter.ts, …) is consumed via its own
 // explicit imports and is not aggregated here to keep the barrel light.

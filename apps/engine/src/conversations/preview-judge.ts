@@ -48,13 +48,11 @@
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
 import { canonicalJson } from "./text-line-diff.ts";
 import { truncateStepPreviewForLlm } from "./tools/truncate.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Max consecutive judge blocks since the last commit before the
  *  verdict degrades to advisory (auto-commit proceeds). Counted

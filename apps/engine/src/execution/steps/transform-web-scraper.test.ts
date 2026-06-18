@@ -1,4 +1,4 @@
-// Web-scraper #144 — unit tests for the three transform languages.
+// Web-scraper — unit tests for the three transform languages.
 // Pure: no DB, no network. The executor branches operate on bare
 // HTML strings or envelope objects and return typed StepResult.
 //

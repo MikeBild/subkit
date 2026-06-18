@@ -6,7 +6,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { connectors } from "../db/schema/index.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
@@ -20,8 +20,6 @@ import {
   HttpConnectorConfig,
   type UpdateConnectorInput,
 } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function slugify(name: string): string {
   return (
@@ -148,9 +146,9 @@ export async function createConnector(
     // Upsert semantics on (tenant_id, environment, slug): when a
     // connector with the same slug already exists in the same
     // environment, treat the call as an update rather than letting the
-    // unique-constraint throw. Mirrors the reference impl's
-    // `upsertSystem ON CONFLICT (id, environment, org_id) DO UPDATE`.
-    // Pre-fix the LLM authoring flow looped here: re-running
+    // unique-constraint throw (an `ON CONFLICT ... DO UPDATE`
+    // equivalent on (tenant_id, environment, slug)). Without this the
+    // LLM authoring flow looped here: re-running
     // start_connector_from_description with the same URL produced the
     // same slug, the insert threw `duplicate key violates …
     // connectors_tenant_environment_slug_idx`, and the LLM started

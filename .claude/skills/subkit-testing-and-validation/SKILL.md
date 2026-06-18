@@ -54,17 +54,16 @@ Always, in order:
 
 1. `bun run lint` — biome check clean.
 2. `bun run typecheck` — tsc clean.
-3. `bun run check:terminology` — canonical wording and banned terminology clean.
-4. `bun run test:determinism` — deterministic test contract clean.
-5. `bun run test:unit` — unit green.
-6. If the change touches prompting/context/authoring/runtime contract: `bun run verify:ai`.
-7. If the change touches db/queue/http/webhooks: `bun run test:integration`.
-8. If the change touches CLI binaries or cross-binary behavior: `bun run test:e2e`.
+3. `bun run test:determinism` — deterministic test contract clean.
+4. `bun run test:unit` — unit green.
+5. If the change touches prompting/context/authoring/runtime contract: `bun run verify:ai`.
+6. If the change touches db/queue/http/webhooks: `bun run test:integration`.
+7. If the change touches CLI binaries or cross-binary behavior: `bun run test:e2e`.
 
 Or use the `/verify` slash-command, which runs `bun run verify`.
 
 ## CI expectations
 
-`.github/workflows/ci.yml` runs 1–4 on every PR against main. E2E runs on success. If
+`.github/workflows/ci.yml` runs lint, typecheck, determinism, and unit on every PR against main. E2E runs on success. If
 any step fails, fix the root cause — do not disable hooks (`--no-verify` is blocked by
 `.claude/hooks/pre-bash-dispatch.sh`).

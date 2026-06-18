@@ -1,9 +1,9 @@
 // Pure detector for cadence phrasing in workflow names + descriptions.
 //
-// Defence-in-depth for Root A: when a workflow's name or description
-// mentions a recurring cadence ("daily at 9", "every Monday morning",
-// "täglich um 18 Uhr") but `trigger.kind === "request"` survives the
-// commit, we want a loud audit row. The seed skill (Phase 2)
+// Defence-in-depth for unbound-schedule drift: when a workflow's name
+// or description mentions a recurring cadence ("daily at 9", "every
+// Monday morning", "täglich um 18 Uhr") but `trigger.kind === "request"`
+// survives the commit, we want a loud audit row. The seed skill
 // instructs the LLM to bind a schedule trigger in this case; this
 // detector is the observability signal that proves whether the
 // teaching works in production.

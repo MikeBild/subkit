@@ -1,10 +1,8 @@
 // Default keybindings for the settings-ui surfaces.
 //
 // Operator overrides are not yet wired in — the loader call site
-// pulls from this map directly. When we add `~/.sk/keybindings.json`
-// (mirroring claude-code's pattern), `useKeybinding` will merge the
-// operator's overlay over these defaults the same way claude-code's
-// `loadBindings` does.
+// pulls from this map directly. When we add `~/.sk/keybindings.json`,
+// `useKeybinding` will merge the operator's overlay over these defaults.
 //
 // Only contexts that have a live consumer are listed — `resolveAction`
 // is called from ConfigTab + SkillsTab (Settings, Search), FieldEditor

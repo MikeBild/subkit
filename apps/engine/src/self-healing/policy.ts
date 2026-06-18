@@ -23,11 +23,9 @@
 //       auto-apply) since the gate IS the fixture pass.
 
 import { and, eq } from "drizzle-orm";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { workflowAutohealPolicies } from "../db/schema/workflows.ts";
 import { log } from "../logging/logger.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export type AutohealPolicy = "safe-patches" | "never-auto" | "dry-run-gate";
 

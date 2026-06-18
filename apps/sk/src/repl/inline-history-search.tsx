@@ -1,4 +1,4 @@
-// Inline history-search — Claude-Code-style Ctrl-R experience.
+// Inline history-search — Ctrl-R reverse-i-search experience.
 //
 // Unlike the modal `<HistorySearch>` pane (which takes over the
 // screen), this widget renders as a compact one-line input directly

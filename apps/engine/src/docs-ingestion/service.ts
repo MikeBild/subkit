@@ -20,7 +20,7 @@ import { sanitizeForAudit } from "../audit/sanitize.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { connectorDocumentChunks, connectorDocuments, connectors } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
@@ -44,8 +44,6 @@ import { chunkOpenAPI, ingestOpenAPIUrl } from "./sources/openapi.ts";
 import { ingestPostgresInformationSchema } from "./sources/postgres.ts";
 import type { DocSourceType, IngestResult, IngestSourceInput, RawChunk } from "./types.ts";
 import { NotImplementedError } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface IngestParams {
   tenant_id: string;

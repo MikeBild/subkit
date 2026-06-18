@@ -1,4 +1,4 @@
-// H9 closure of #159 — snapshot tests for key rendered components.
+// Snapshot tests for key rendered components.
 // Asserts that the critical strings remain visible across the full
 // matrix of states. ink-testing-library doesn't expose a column
 // override directly, but the rendered text for fixed-Box layouts is

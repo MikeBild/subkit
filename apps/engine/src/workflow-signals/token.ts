@@ -1,4 +1,4 @@
-// HMAC-signed approval token for #49 wait-for-event signal links.
+// HMAC-signed approval token for wait-for-event signal links.
 //
 // Use case: the wait-for-event step mints a one-shot approval URL when
 // it starts. The URL is delivered out-of-band (Slack button, email)

@@ -1,13 +1,12 @@
 // Detect when the LLM denies a tool that IS in the resolved palette.
 //
-// Background — Root D in the 2026-05-16 forensics. When the schema
-// repair loop failed (root B), the model occasionally responded with
-// prose like "the tools to create or update schedules
-// (create_schedule, update_schedule) are not available in this
-// conversation interface" — although both tools were in
-// `ALWAYS_AVAILABLE_CLEANUP` (apps/engine/src/conversations/tools/
-// authoring-palette.ts:84-98). The seed skill (Phase 2 fix) now
-// instructs the LLM never to claim a tool is unavailable without
+// Background: the model occasionally responds with prose like "the
+// tools to create or update schedules (create_schedule,
+// update_schedule) are not available in this conversation interface"
+// — although both tools are in `ALWAYS_AVAILABLE_CLEANUP`
+// (apps/engine/src/conversations/tools/authoring-palette.ts:84-98).
+// The seed skill now instructs the LLM never to claim a tool is
+// unavailable without
 // quoting the structured envelope; this guard is defence-in-depth
 // that surfaces the regression to observability if it ever recurs.
 //

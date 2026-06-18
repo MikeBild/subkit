@@ -1,8 +1,8 @@
 // MCP tenant surface E2E.
 //
 // Confirms that a live engine's MCP endpoint advertises the tenant_*
-// tools (Gap #5) with populated input schemas (Gap #P0) and that the
-// `conversation_*` helper set is still present.
+// tools with populated input schemas and that the `conversation_*`
+// helper set is still present.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
@@ -86,7 +86,7 @@ describe("MCP tenant tool surface", () => {
     expect(tenantReads).toBeGreaterThan(3);
 
     // Input schema conversion is real — list_workflows has populated
-    // properties post-fix (Gap #P0 zodToMcpSchema).
+    // properties via zodToMcpSchema.
     const listWorkflows = result.tools.find((t) => t.name === "tenant_list_workflows");
     expect(listWorkflows).toBeDefined();
     const schema = listWorkflows?.inputSchema as {

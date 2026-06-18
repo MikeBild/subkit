@@ -1,6 +1,6 @@
 // Shared Zod schemas, types, and SSE-frame helpers for the
-// conversations REST surface. After the Phase 4 split (audit §4.4),
-// every per-sub-resource module imports from here.
+// conversations REST surface. Every per-sub-resource module imports
+// from here.
 
 import { z } from "@hono/zod-openapi";
 import { SUGGEST_NEXT_KINDS, SUGGEST_NEXT_REASONS } from "@shared/suggest-next-reasons.ts";

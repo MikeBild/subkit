@@ -323,7 +323,7 @@ describe("authoring slash panes", () => {
     const result = await handleSlash("status", [], {
       ...ctx,
       statusSnapshot: {
-        user: { id: "u1", email: "mike@mikebild.com", kind: "user" },
+        user: { id: "u1", email: "user@example.com", kind: "user" },
         tenant: { id: "tenant-1", slug: "tenant-alpha" },
         connectors_count: 2,
         skills_count: 3,

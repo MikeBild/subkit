@@ -1,12 +1,10 @@
 // Animated thinking spinner with rotating verbs, elapsed timer,
-// and optional token counter — modeled after Claude Code's
-// SpinnerWithVerb component. Visible only while a turn is
+// and optional token counter. Visible only while a turn is
 // streaming; hidden when the REPL is idle or awaiting approval.
 //
 // The component intentionally keeps its own interval state
-// (no animation ref tricks) because sk's update volume is small
-// compared to claude-code's streaming frames. The spinner only
-// re-renders four times per second at most.
+// (no animation ref tricks) because sk's update volume is small.
+// The spinner only re-renders four times per second at most.
 
 import { Box, Text } from "ink";
 import type React from "react";
@@ -58,7 +56,7 @@ export interface SpinnerProps {
    * progress instead of just "thinking…" for 1m+. Pre-fix session
    * 86de186b: the engine ran build_workflow → validate_draft →
    * dry_run_workflow over 1m20s while the CLI showed only
-   * "thinking… 1m16s". Mirrors reference impl's per-tool ticker.
+   * "thinking… 1m16s". A per-tool ticker keeps the line honest.
    */
   currentTool?: string | null;
   /**

@@ -5,7 +5,7 @@
 // Surfaces the structured drift report so `sk doctor` can show the
 // operator the rows that don't belong in this engine's lineage. Read
 // from `drizzle.__drizzle_migrations` and compared against the
-// migrations embedded in the binary at compile time. Issue #149.
+// migrations embedded in the binary at compile time.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -20,8 +20,8 @@ import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { OPENAPI_INFO } from "../../openapi.ts";
 
-// Reuse the runtime schema as the wire shape — single source of truth
-// (review W3). The route adds three derived fields (engine_version,
+// Reuse the runtime schema as the wire shape — single source of truth.
+// The route adds three derived fields (engine_version,
 // embedded_migration_count, db_migration_count) so the operator
 // dashboard can render counts without summing client-side.
 const DriftResponse = DriftReportSchema.extend({
@@ -57,7 +57,7 @@ export function registerDriftRoute(app: OpenAPIHono<AppEnv>): void {
     const db_migration_count =
       embedded.length - report.missing_in_db.length + report.unknown_in_db.length;
 
-    // W1 + W2 (review #2) — parse metadata through the schema, then
+    // Parse metadata through the schema, then
     // await the audit row before returning. Drift reads are
     // privilege-sensitive; the cost of a guaranteed compliance row
     // exceeds the negligible latency add.

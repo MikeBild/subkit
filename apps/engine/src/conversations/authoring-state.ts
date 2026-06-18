@@ -1,7 +1,6 @@
 // Authoring-state mutations + the public `with*` API.
 //
-// After the Phase 4 split (audit §4.2), the heavy compute / parsing
-// logic lives in `authoring-state/`:
+// The heavy compute / parsing logic lives in `authoring-state/`:
 //
 //   - `authoring-state/normalize.ts` — pure validators that coerce
 //                                       `unknown` payloads into typed
@@ -437,7 +436,7 @@ export function startNewWorkflowDraft(
   state.latest_execution = null;
   state.latest_diagnosis = null;
   // A fresh workflow target is a fresh judge subject — drop any blocks
-  // accumulated against the previous goal (P3 / round-5 Finding 1).
+  // accumulated against the previous goal (P3).
   state.judge_breaker = null;
   state.persisted_resources = state.persisted_resources.filter((item) => item.kind !== "workflow");
   delete state.checkpoints.workflow_inspected;
@@ -493,7 +492,7 @@ export function withLatestPreview(
   last_action: string | null = "workflow_previewed",
 ): DraftDocument {
   const normalized = normalizeDraftDocument(draft);
-  // Fingerprint-keyed evidence merge (Fix 5). The incoming preview only
+  // Fingerprint-keyed evidence merge. The incoming preview only
   // carries traces for the steps the new walk actually touched — a
   // single-step `dry_run_step`, or a refused dry-run ("Preview blocked
   // until the workflow draft validates cleanly") that carries NO traces

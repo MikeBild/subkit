@@ -63,12 +63,12 @@ interface ResolvedPersona {
   tenant: string | null;
   /** Email or sub returned by whoami — nice to show in the status line. */
   email: string | null;
-  /** Wall-clock time the bootstrap snapshot was produced (ms). R7-S1
-   *  surfaces this in /status so an operator can see whether the
+  /** Wall-clock time the bootstrap snapshot was produced (ms).
+   *  Surfaced in /status so an operator can see whether the
    *  cached allow-set is fresh or stale. */
   fetchedAt: number;
   /** Where the snapshot came from: network, disk cache, or the
-   *  legacy tiered fallback. R7-S1. */
+   *  legacy tiered fallback. */
   source: "network" | "cache" | "fallback";
   /** Engine-resolved REPL/UI/notification prefs. */
   prefs: SkBootstrapSnapshot["prefs"];
@@ -797,7 +797,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         switchProfile: switchProfileFn,
         statusSnapshot,
         setupSnapshot,
-        // R7-S1: pass the bootstrap snapshot so /status surfaces
+        // Pass the bootstrap snapshot so /status surfaces
         // source + age. `currentPersona` is the materialised
         // SkBootstrapSnapshot resolved on REPL startup.
         bootstrapSnapshot: currentPersona

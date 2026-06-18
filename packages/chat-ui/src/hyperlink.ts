@@ -12,8 +12,8 @@
 // rendered OSC 8 since macOS 15, and for kitty/ghostty in some setups).
 // Gating solely on it would REGRESS the previously always-on ConfirmPrompt
 // link path to plain text. We OR it with an explicit modern-terminal
-// allowlist (mirrors claude-code's approach) so clickability stays broad,
-// while non-TTY / unknown terminals still get a clean copyable URL.
+// allowlist so clickability stays broad, while non-TTY / unknown
+// terminals still get a clean copyable URL.
 
 import terminalLink from "terminal-link";
 

@@ -2,7 +2,7 @@
 slug: document-analysis-guidance
 scope: global
 title: Document Analysis Guidance
-description: Guides the LLM when analyzing uploaded API specification files (OpenAPI, Postman, HAR, GraphQL, PDF, image).
+description: Guides the LLM when analyzing uploaded API specification files (OpenAPI, an API request collection, HAR, GraphQL, PDF, image).
 activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"openapi"},{"kind":"intent_keyword","word":"swagger"},{"kind":"intent_keyword","word":"yaml"},{"kind":"intent_keyword","word":"postman"},{"kind":"intent_keyword","word":"har"},{"kind":"intent_keyword","word":"graphql"},{"kind":"intent_keyword","word":"pdf"},{"kind":"intent_keyword","word":"image"},{"kind":"intent_keyword","word":"screenshot"},{"kind":"intent_keyword","word":"upload"},{"kind":"intent_keyword","word":"specification"},{"kind":"intent_keyword","word":"spec"},{"kind":"intent_keyword","word":"api-doc"}]
 side_effects: read
 idempotency: none
@@ -17,7 +17,7 @@ When a user uploads an API specification file, follow this structured process be
 
 ## Step 1: Identify and confirm the document type
 
-State what format was detected (OpenAPI, Postman Collection, HAR, GraphQL SDL, PDF, image) and the confidence score. For AI-extracted documents (PDF, image, markdown) show the confidence:
+State what format was detected (OpenAPI, an API request collection, HAR, GraphQL SDL, PDF, image) and the confidence score. For AI-extracted documents (PDF, image, markdown) show the confidence:
 - ≥ 90%: proceed with extraction
 - 70–89%: proceed but flag uncertain fields
 - < 70%: ask the user to verify the extracted endpoints before continuing

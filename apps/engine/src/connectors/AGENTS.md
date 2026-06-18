@@ -30,15 +30,12 @@ conversation tools and execution steps that orchestrate all three should
 use the facade so the tenant + environment fall-back invariants are
 enforced in one place.
 
-This mirrors the reference impl's `SystemManager`
-(`packages/core/systems/system-manager.ts`) on the read side — same method
-names, semantics adapted to subkit's multi-tenant model. Write-side
-enrichment (the reference impl's `enrichFromTemplate`) intentionally
-stays out of the facade — template merging is a write-time concern
-handled by `template-enrichment.ts` at connector-creation time. The
-facade type is named `ConnectorSystem` (not `System`) so subkit's
-domain vocabulary stays consistent (Connector / Workflow / Skill /
-Execution).
+The facade covers the read side (driver, creds, docs). Write-side
+enrichment intentionally stays out of it — template merging is a
+write-time concern handled by `template-enrichment.ts` at
+connector-creation time. The facade type is named `ConnectorSystem`
+(not `System`) so subkit's domain vocabulary stays consistent
+(Connector / Workflow / Skill / Execution).
 
 ## Templates vs connectors
 
@@ -69,5 +66,5 @@ observability + self-healing can react without parsing free-form messages.
 ## Discovery
 
 `discovery/` runs at conversation time when the agent needs to enumerate
-endpoints for a connector that wasn't pre-templated. Strategy parity vs
-the reference impl is documented in `discovery/types.ts`.
+endpoints for a connector that wasn't pre-templated. The strategy
+inventory is documented in `discovery/types.ts`.

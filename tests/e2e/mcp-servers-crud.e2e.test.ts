@@ -1,4 +1,4 @@
-// E2E journey: external MCP server registration (#171).
+// E2E journey: external MCP server registration.
 //
 // Boots a real engine (Hono + pg-boss + disposable Postgres) and drives the
 // /v1/mcp-servers REST surface from end to end:

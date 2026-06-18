@@ -3,11 +3,8 @@
 // Source-level invariant: every discovery strategy that issues an
 // HTTP fetch MUST first call `assertEgressAllowed(url)` so that
 // SSRF attempts via spec URLs (private ranges, localhost,
-// link-local) get the same RFC1918 reject as runtime drivers. The
-// reference impl historically lacked this guard on the
-// documentation-fetching path; subkit closes it here, and this
-// test pins the coverage so a new strategy can't slip in
-// unguarded.
+// link-local) get the same RFC1918 reject as runtime drivers. This
+// test pins the coverage so a new strategy can't slip in unguarded.
 
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";

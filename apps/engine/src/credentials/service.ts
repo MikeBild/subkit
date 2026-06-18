@@ -14,7 +14,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { credentials } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 
@@ -33,8 +33,6 @@ import type {
   TokenMintCredentialValue,
   TokenMintShape,
 } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface CredentialRow {
   id: string;
@@ -212,7 +210,7 @@ export interface UpsertCredentialInput {
   /**
    * Owning resource — pass EXACTLY ONE of `connector_id` or
    * `mcp_server_id`. Connector credentials set `connector_id`;
-   * external-MCP-server credentials (#171) set `mcp_server_id`. The XOR is
+   * external-MCP-server credentials set `mcp_server_id`. The XOR is
    * asserted here and DB-enforced by `credentials_owner_xor_check`.
    */
   connector_id?: string;
@@ -541,7 +539,7 @@ export async function getCredentialForConnector(
 }
 
 /**
- * Resolve the primary auth material for an external MCP server (#171).
+ * Resolve the primary auth material for an external MCP server.
  * Mirrors `getCredentialForConnector`: same AAD derivation
  * (`credential:{tenant}:{credential_id}`, keyed on the row id, so it is
  * independent of which resource owns the row), same decrypt path, same
@@ -655,8 +653,8 @@ export async function getOAuth2ClientCredential(
   return { client_id: value.client_id, client_secret: value.client_secret };
 }
 
-/** Load the `oauth2_client` credential for an external MCP server (#171
- *  follow-up) — i.e. the client_id (+ optional client_secret) issued by
+/** Load the `oauth2_client` credential for an external MCP server
+ *  — i.e. the client_id (+ optional client_secret) issued by
  *  the server's IdP, either pre-provisioned or via RFC 7591 dynamic
  *  client registration. Mirrors `getOAuth2ClientCredential` (the
  *  connector variant) but scopes the row by `mcp_server_id`. Returns null

@@ -1,5 +1,5 @@
 // Integration test for the drift→skill lag computation inside
-// `approveSkillCandidate` (Issue #205, the loop's promotion edge). This is the
+// `approveSkillCandidate` (the loop's promotion edge). This is the
 // one new emit site whose correctness lives in DB behaviour the unit test
 // (observability/tests/loop-closure-metrics.test.ts) cannot exercise:
 //   * the two-hop join skill_candidate_evidence → patch_candidates,

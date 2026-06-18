@@ -431,8 +431,8 @@ describe("tools/dispatcher — RBAC denial path", () => {
 
 describe("tools/dispatcher — APPROVAL_APPROVED orphan-row prevention", () => {
   test("sk_confirm:true WITHOUT sk_confirm_id → ok + NO APPROVAL_APPROVED row", async () => {
-    // Locks the W3 fix from the round-2 review: a legacy MCP client
-    // that re-issues a previously paused call WITHOUT carrying the
+    // A legacy MCP client that re-issues a previously paused call
+    // WITHOUT carrying the
     // original tool_call_id back must not produce an orphan
     // APPROVAL_APPROVED row that no APPROVAL_REQUESTED could ever
     // join. The dispatcher proceeds to execute (the client did

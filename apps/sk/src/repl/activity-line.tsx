@@ -9,7 +9,7 @@
 // a tool. The activity line keeps the ticker accurate even when the
 // tool-call card has scrolled out of view.
 //
-// Codex pattern (researched at /Users/mikebild/Projects/AI/codex):
+// Layout:
 //   - One fixed-position line, distinct from the transcript.
 //   - Phase strings are dynamic, not a closed enum (we keep three
 //     coarse phases — tool / composing / idle — but render the
@@ -87,7 +87,7 @@ const ActivityLineImpl: React.FC<ActivityLineProps> = ({ activity, active }) => 
   if (!active || !throttled) return null;
   const glyph = PHASE_GLYPH[throttled.phase];
   const color = PHASE_COLOR[throttled.phase];
-  // Codex pattern: include compact elapsed time in the same line so
+  // Include compact elapsed time in the same line so
   // the operator can tell at a glance whether the engine is making
   // progress or has gone quiet.
   const elapsedMs = Math.max(0, Date.now() - throttled.updated_at);
@@ -95,7 +95,7 @@ const ActivityLineImpl: React.FC<ActivityLineProps> = ({ activity, active }) => 
     throttled.phase === "composing" && elapsedMs >= 2000
       ? ` · ${(elapsedMs / 1000).toFixed(1)}s`
       : "";
-  // Esc-to-interrupt affordance — codex `StatusIndicatorWidget` renders
+  // Esc-to-interrupt affordance — render
   // "(esc to interrupt)" for any phase that's been active long enough
   // that a stuck operator would want to bail. Show after 5s, suppress
   // when `phase: "idle"` (the engine isn't actively spinning then).

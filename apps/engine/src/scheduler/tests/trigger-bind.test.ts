@@ -1,10 +1,10 @@
 // Reverse-bind helpers — `bindFromWorkflow` / `unbindFromWorkflow`
 // for the schedule trigger variant.
 //
-// Schema-foundation portion of issue #67. Executor logic for the
-// schedule firing path lands in #47; here we only verify the table
-// is upserted idempotently and that delete emits the right audit
-// signal.
+// Schema-foundation portion of the schedule trigger. Executor logic
+// for the schedule firing path lives in the reconciler; here we only
+// verify the table is upserted idempotently and that delete emits the
+// right audit signal.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";

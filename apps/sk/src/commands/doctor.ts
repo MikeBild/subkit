@@ -232,7 +232,7 @@ export const doctorCommand = defineCommand({
             hint:
               unknown > 0
                 ? "DB carries migration rows from a different engine lineage. " +
-                  "Issue #149 — pick a resolution path: (a) port the missing migration " +
+                  "Pick a resolution path: (a) port the missing migration " +
                   "files into this binary's source and ship a new release, or " +
                   "(b) reset the DB from the embedded set during a maintenance window."
                 : // missing_in_db > 0 with the engine running means the
@@ -258,7 +258,7 @@ export const doctorCommand = defineCommand({
             name: "schema_drift",
             status: "warn",
             detail: "engine does not expose /v1/diagnostics/drift",
-            hint: "upgrade the engine to a build that includes the #149 fix",
+            hint: "upgrade the engine to a build that exposes the drift endpoint",
           });
         } else if (isEngineError(err) && err.status === 403) {
           results.push({

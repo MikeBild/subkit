@@ -189,7 +189,7 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
                 projects: [
                   {
                     id: "d6742174",
-                    name: "CodeCommission",
+                    name: "Acme",
                     owner_uuid: "0e489f44",
                     purpose: "Service or API",
                   },

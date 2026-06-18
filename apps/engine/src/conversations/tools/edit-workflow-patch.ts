@@ -1,5 +1,5 @@
 // edit_workflow_patch — RFC 6902 JSON Patch over the entire workflow
-// draft in one call. Mirrors the reference impl's `edit_tool` payload.
+// draft in one call.
 // `update_param` already supports a single-field write; this tool is
 // for coordinated multi-edits (rename a step + retarget every
 // reference + change one URL) where N round-trips would be wasteful.
@@ -238,7 +238,7 @@ export const editWorkflowPatchTool: ConversationTool = {
     // does not change the step's recorded shape — only its address.
     // Remap the trace's `step_id` AND recompute its fingerprint against
     // the renamed definition so the fingerprint-keyed pruning in
-    // `withWorkflowDraft` (Fix 5) keeps the evidence: an atomic
+    // `withWorkflowDraft` keeps the evidence: an atomic
     // rename + retarget must not cost a redundant dry-run. If the patch
     // also changed other fields of the renamed step, the recomputed
     // fingerprint won't match the patched step and the evidence drops —
@@ -296,7 +296,7 @@ export const editWorkflowPatchTool: ConversationTool = {
       });
     }
 
-    // Recorded-evaluation pass (Fix 9). The loop/transform authoring
+    // Recorded-evaluation pass. The loop/transform authoring
     // gates used to refuse a patch that INTRODUCED an un-previewed
     // scope reference; the patch is accepted now and the same gate
     // verdicts — plus compile caret errors and evaluation against

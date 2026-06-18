@@ -463,7 +463,7 @@ export async function buildRequestPlan(
   };
   // SSRF guard: block private/loopback/link-local targets.
   assertEgressAllowed(url, { tenant_id: p.tenant_id });
-  // Web-scraper #144 — robots.txt gate. The template opts in via the
+  // Web-scraper connector robots.txt gate. The template opts in via the
   // `respects_robots` field on its JSON entry, mirrored into
   // `template_snapshot` at draft mint time. Other templates (Stripe,
   // GitHub, etc.) leave it false (the schema default) and are exempt

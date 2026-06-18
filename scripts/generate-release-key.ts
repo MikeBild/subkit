@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Generate (or rotate) the Ed25519 keypair used to sign `SHA256SUMS`
-// in releases. Issue #151 P0-3.
+// in releases.
 //
 // Outputs:
 //   1. Overwrites `packages/cli-core/src/release-public-key.ts` with

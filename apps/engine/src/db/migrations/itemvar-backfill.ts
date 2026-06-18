@@ -34,7 +34,7 @@ import { logger } from "../../logging/logger.ts";
 import { rewriteWorkflowItemVars } from "../../workflows/itemvar-rewrite.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { rotateWorkflowVersionInternal } from "../../workflows/version-rotate.ts";
-import type { Db } from "../client.ts";
+import type { Db, Executor } from "../client.ts";
 import {
   dataMigrations,
   workflows,
@@ -52,8 +52,6 @@ export interface ItemvarBackfillReport {
   migrated: number;
   needs_review: number;
 }
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 async function scheduleRowCount(
   exec: Executor,

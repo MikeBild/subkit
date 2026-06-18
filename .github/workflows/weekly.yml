@@ -62,7 +62,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-      # Migrations run in-process on engine boot (issue #149); integration
+      # Migrations run in-process on engine boot; integration
       # tests use the embedded runner via the test-setup helper.
       - name: Connector template ingestion URLs
         run: bun test apps/engine/src/connectors/tests/template-urls.test.ts

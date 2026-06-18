@@ -3,7 +3,7 @@
 // only the per-agent persona, the cross-agent GENERAL_RULES, and the
 // SKILL_LOADING_INSTRUCTIONS that explain when to call `load_skill`.
 //
-// Mirrors the reference codebase's per-surface prompt split: AUTHORING
+// Per-surface prompt split: AUTHORING
 // (drafts in flight), EXECUTION (run analysis), DIAGNOSIS (the
 // diagnose → edit → preview → commit loop), and CLI_HEADLESS (terse,
 // parsable output for sk-CLI's non-interactive mode). All four share

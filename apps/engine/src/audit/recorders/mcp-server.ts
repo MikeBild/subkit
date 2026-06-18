@@ -1,6 +1,6 @@
 // External MCP server audit recorders.
 //
-// Used by the external-MCP-client registry + client pool (#171) to log
+// Used by the external-MCP-client registry + client pool to log
 // the lifecycle of a registered external MCP server alongside every
 // state change. The audit row is the only tenant-visible evidence that
 // a privileged change (a new outbound MCP target, an auth_config edit,
@@ -352,7 +352,7 @@ export async function recordMcpExternalToolPaletteAssemblyFailed(
   );
 }
 
-// ── interactive browser OAuth 2.1 onboarding (#171 follow-up) ─────────────
+// ── interactive browser OAuth 2.1 onboarding ─────────────
 //
 // Lifecycle of authorizing an OAuth-only external MCP server. SECRET-BY-
 // REFERENCE: `issuer` is reduced to its HOST via `urlHost` before storage

@@ -1,4 +1,4 @@
-// Per-tenant robots.txt cache with bounded size + TTL (#144).
+// Per-tenant robots.txt cache with bounded size + TTL.
 //
 // Module-level Map keyed by `${tenant_id}::${origin}`. Each entry holds:
 //   - parsed: result of `robots-parser(robotsTxt, robotsUrl)` (or null

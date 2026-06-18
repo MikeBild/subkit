@@ -3,8 +3,8 @@
 // Every fenced ```json block in seed/skills/*.md teaches the LLM the
 // canonical authoring shape. If the example drifts from the live Zod
 // schema, the LLM faithfully copies the wrong shape and produces invalid
-// drafts — exactly the failure mode the reference implementation
-// avoided by keeping examples literal. This test pins the contract.
+// drafts. Keeping examples literal avoids that failure mode; this test
+// pins the contract.
 //
 // Two layers:
 //

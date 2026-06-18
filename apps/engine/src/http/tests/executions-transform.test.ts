@@ -1,7 +1,6 @@
 // Integration tests for `POST /v1/executions/transform`.
 //
-// Mirrors the reference impl's `POST /tools/transform/run` —
-// stateless transform + filter pipeline, no `executions` row. The
+// A stateless transform + filter pipeline, no `executions` row. The
 // route shape, RBAC (`workflow:run`), audit (`EXECUTION_COMPLETED`
 // with `source_kind: "transform"`), and error semantics
 // (`output_transform_failed`, `response_filter_failed`,

@@ -1,6 +1,6 @@
 // Atomic connector + credential save — extracted from
 // `tools/save-connector-draft.ts` so both the LLM-driven tool path AND
-// the harness-driven auto-persist path (PR11/PR12 — elicitation
+// the harness-driven auto-persist path (via the elicitation
 // `commit_intent`) share one durability contract.
 //
 // One-place rule: any change to the upsert sequence (connector first →

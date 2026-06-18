@@ -2,8 +2,8 @@
 //
 // Drives a real engine, plants synthetic rows in
 // `drizzle.__drizzle_migrations`, and confirms the route surfaces them
-// to operator clients. Issue #149 — without this surface, drift is
-// invisible until a downstream subsystem fails.
+// to operator clients. Without this surface, drift is invisible until
+// a downstream subsystem fails.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";

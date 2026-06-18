@@ -340,7 +340,7 @@ export const dryRunTransformTool: ConversationTool = {
       inputValue = (sampleInput as Record<string, unknown>).input ?? null;
     }
 
-    // Loop-body emulation (Fix 6): when the target draft step lives in
+    // Loop-body emulation: when the target draft step lives in
     // a loop body, execution binds `$item` and `$loop_index` into a
     // per-iteration childScope — plus the bare `item_var` name ONLY
     // when the definition declares the retired field (legacy stored
@@ -428,7 +428,7 @@ export const dryRunTransformTool: ConversationTool = {
       }
     }
 
-    // Execution-parity bindings (Fix 6): the exact surface the engine's
+    // Execution-parity bindings: the exact surface the engine's
     // transform driver builds — `$input`, `$scope`, `$steps`, plus every
     // `$`-prefixed scope key (`$item`, `$loop_index`, …) unpacked.
     if (args.dialect === "jsonata" && scopeRecord) {

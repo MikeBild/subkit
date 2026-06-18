@@ -1,6 +1,5 @@
-// edit_workflow_patch — RFC 6902 over the workflow draft. Mirrors the
-// reference impl's `edit_tool` payload. The applied patch must
-// produce a draft that still validates against WorkflowDef Zod;
+// edit_workflow_patch — RFC 6902 over the workflow draft. The applied
+// patch must produce a draft that still validates against WorkflowDef Zod;
 // partial application is never persisted.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

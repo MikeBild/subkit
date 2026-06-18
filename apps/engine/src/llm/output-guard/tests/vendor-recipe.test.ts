@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { vendorRecipeScanner } from "../scanners/vendor-recipe.ts";
 
-const ctx = { engine_url: "https://subkit-api.mikebild.dev" };
+const ctx = { engine_url: "https://subkit-api.example.com" };
 
 function block(json: unknown): string {
   return ["Here is the config:", "```json", JSON.stringify(json, null, 2), "```", "Done."].join(
@@ -16,7 +16,7 @@ describe("vendorRecipeScanner", () => {
     const text = block({
       mcpServers: {
         subkit: {
-          url: "https://subkit-api.mikebild.dev/mcp",
+          url: "https://subkit-api.example.com/mcp",
           transport: "streamable-http",
           headers: { Authorization: "Bearer wf_live_abcdef0123456789abcdef0123456789" },
         },
@@ -43,7 +43,7 @@ describe("vendorRecipeScanner", () => {
     const text = block({
       mcpServers: {
         subkit: {
-          url: "https://subkit-api.mikebild.dev/v1/mcp-but-wrong",
+          url: "https://subkit-api.example.com/v1/mcp-but-wrong",
           transport: "streamable-http",
           headers: { Authorization: "Bearer wf_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
         },
@@ -57,7 +57,7 @@ describe("vendorRecipeScanner", () => {
     const text = block({
       mcpServers: {
         subkit: {
-          url: "https://subkit-api.mikebild.dev/mcp",
+          url: "https://subkit-api.example.com/mcp",
           transport: "streamable-http",
           headers: { Authorization: "Bearer <YOUR_API_KEY>" },
         },

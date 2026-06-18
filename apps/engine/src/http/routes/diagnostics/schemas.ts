@@ -1,6 +1,5 @@
 // Shared Zod schemas + types for the engine self-diagnostics surface.
-// After the Phase 4 split (audit §4.4) every per-route module imports
-// from here.
+// Every per-route module imports from here.
 
 import { z } from "@hono/zod-openapi";
 

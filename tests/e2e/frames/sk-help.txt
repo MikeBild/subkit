@@ -1,4 +1,4 @@
-[90mEnd-user CLI for subkit-backend (Claude Code / Codex CLI style) (sk v4.0.0)[39m
+[90mEnd-user CLI for subkit-backend (chat-first terminal) (sk v4.0.0)[39m
 
 [4m[1mUSAGE[22m[24m [36msk [OPTIONS] [PROMPT] login|logout|profile|status|tenants|mcp|update|sessions|ls|show|rename|rm|health|doctor|settings|extract|init[39m
 

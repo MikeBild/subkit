@@ -9,12 +9,9 @@
 // (catalog precedence: column → DAG → name). It is metadata: setting it
 // does NOT roll a new version. Sending an empty string clears it.
 //
-// Reference parity: the reference codebase exposes rename + lifecycle
-// only as HTTP datastore ops (`POST /tools/:toolId/rename`,
-// /lifecycle endpoints). Subkit's chat-first contract requires the
-// same op be reachable as a chat tool — collapsing rename and
-// lifecycle into one generic patch matches the reference's
-// `edit_tool` shape (one tool, several fields).
+// Subkit's chat-first contract requires rename + lifecycle ops to be
+// reachable as a chat tool, not only as HTTP datastore ops — collapsing
+// rename and lifecycle into one generic patch (one tool, several fields).
 //
 // Audit shape uses the existing WORKFLOW_UPDATED action with
 // `metadata.kind: "metadata"` plus before/after snapshots — never a

@@ -91,7 +91,7 @@ interface PersonaSnapshot {
   label: string;
   allowed: Set<string>;
   probe: PersonaProbe;
-  /** R7-S1: surface bootstrap freshness in /status. */
+  /** Surface bootstrap freshness in /status. */
   fetchedAt: number;
   source: "network" | "cache" | "fallback";
 }
@@ -742,7 +742,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         allowedPermissions: Array.from(persona.allowed),
         statusSnapshot: await client.statusSummary().catch(() => null),
         setupSnapshot: canReadSetup ? await client.setupValidation().catch(() => null) : null,
-        // R7-S1: pass bootstrap freshness through so /status surfaces it.
+        // Pass bootstrap freshness through so /status surfaces it.
         bootstrapSnapshot: {
           fetchedAt: persona.fetchedAt,
           source: persona.source,

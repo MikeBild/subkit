@@ -11,8 +11,8 @@
 // (rows), defaulting to the rest of the terminal minus a reserved
 // composer/status band. Arrow keys / PgUp / PgDn / Home / End move the
 // window; any new content auto-pins to the bottom unless the user has
-// scrolled up. Inspired by Claude Code's `ScrollBox` + `VirtualMessageList`,
-// simplified for the Ink 7 surface.
+// scrolled up. A windowed virtual-list approach simplified for the
+// Ink 7 surface.
 
 import { Box, Text, useInput, useStdout } from "ink";
 import type React from "react";

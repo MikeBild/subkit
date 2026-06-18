@@ -1,7 +1,6 @@
-// Bug TT regression: PartialApprovalPrompt renders one Approve/Reject
+// Regression: PartialApprovalPrompt renders one Approve/Reject
 // row per diff (default-approved), tracks per-row state on space, and
-// emits `{ confirmed, partial?, approved_indices }` on Enter. Mirrors
-// reference impl's DiffApprovalComponent contract.
+// emits `{ confirmed, partial?, approved_indices }` on Enter.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";

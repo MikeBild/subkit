@@ -1,4 +1,4 @@
-// Web-scraper #144 — optimization analyzer unit tests.
+// Web-scraper optimization analyzer unit tests.
 //
 // Pure function tests — no DB, no clock, no I/O.
 

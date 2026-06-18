@@ -1,4 +1,4 @@
-// PR11/PR12 — refactor sanity check.
+// Persistence refactor sanity check.
 //
 // `saveConnectorAtomic` (in persistence/save-connector.ts) and the
 // `save_connector_draft` tool wrapper must produce the same DB state

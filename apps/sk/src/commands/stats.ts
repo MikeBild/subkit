@@ -1,5 +1,5 @@
 // `sk stats <executions|connectors|events|llm>` — scripted-only verb
-// over the tenant-scoped runtime stats surface (#160). Zero-config: each
+// over the tenant-scoped runtime stats surface. Zero-config: each
 // subcommand has a sensible default bucket + window so it "just works"
 // with no flags. Human ASCII table + sparkline by default; `--json`
 // emits the raw, stable engine response for cron/CI/ETL.

@@ -167,7 +167,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "notifications.push.quietHoursStart": "Quiet hours start (HH:MM)",
   "notifications.push.quietHoursEnd": "Quiet hours end (HH:MM)",
 
-  // ── Connectors / web-scraper (#144) ─────────────────────────────
+  // ── Connectors / web-scraper ─────────────────────────────
   "connectors.web_scraper.runtime.respect_robots": "Respect robots.txt",
   "connectors.web_scraper.runtime.user_agent": "User-Agent header",
   "connectors.web_scraper.runtime.max_pages": "Crawl page cap (per run)",

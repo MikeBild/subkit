@@ -1,5 +1,4 @@
-// Recipe-quality lint. Runs in `bun run verify` between
-// `check:terminology` and `test:determinism`.
+// Recipe-quality lint. Runs in `bun run verify` before `test:determinism`.
 //
 // Catches authoring mistakes that the Zod parser accepts but the LLM
 // or operator UI cannot rank against:
@@ -15,9 +14,7 @@
 //   4. Per-step coverage of `WorkflowDefSchema` primitives — every
 //      step kind (`request`, `transform`, `call`, `wait`, `branch`,
 //      `parallel`, `loop`) should have at least one recipe
-//      demonstrating it. Pre-F1 only `request` + `transform` were
-//      exercised; CI fails on regressions in this coverage as new
-//      demonstration recipes (Workstream D) land.
+//      demonstrating it. CI fails on regressions in this coverage.
 //   5. `category` membership in `RecipeCategoryEnum` (the Zod parser
 //      already enforces this; lint surfaces it before parse for a
 //      better error message).
@@ -25,8 +22,7 @@
 // Exit 0 = green, exit 1 = at least one violation.
 //
 // Per `bun run verify` convention: prints a one-line "OK" on success
-// and structured per-recipe errors on failure (matching
-// `check-terminology.sh`'s output shape so CI logs stay scannable).
+// and structured per-recipe errors on failure, so CI logs stay scannable.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -55,7 +51,7 @@ type Recipe = {
      * Optional per-run LLM token budget. Recipes that call an LLM step
      * declare a positive cap so the engine token meter aborts a runaway
      * run before it overspends. Tracked as the `budgeted-llm` primitive
-     * in the coverage map so #69 stays a regression net.
+     * in the coverage map so it stays a regression net.
      */
     max_llm_tokens_per_run?: number;
   };
@@ -99,10 +95,10 @@ const STEP_KINDS = ["request", "transform", "call", "wait", "branch", "parallel"
  *   - `schedule`      — `workflow.trigger.kind === "schedule"`
  *   - `budgeted-llm`  — `workflow.max_llm_tokens_per_run > 0`
  *
- * Issue #69 introduced these primitives via the Stripe charge-failed
- * webhook recipe (#46), the Stripe daily-charges-digest schedule
- * recipe (#47), and the OpenAI structured-extraction budgeted recipe
- * (#53). The baseline below pins each at >=1.
+ * These primitives are demonstrated by the Stripe charge-failed
+ * webhook recipe, the Stripe daily-charges-digest schedule recipe,
+ * and the structured-extraction budgeted recipe. The baseline below
+ * pins each at >=1.
  */
 const WORKFLOW_FEATURE_KINDS = ["webhook", "schedule", "budgeted-llm"] as const;
 
@@ -281,30 +277,28 @@ function buildPrimitiveCoverage(templates: Template[]): Record<string, number> {
 }
 
 function lintPrimitiveCoverage(templates: Template[]): Violation[] {
-  // Tracking-only baseline: pre-F1 only `request` and `transform` are
-  // exercised. Workstream D (demonstration recipes) backfills the
-  // remaining six. Once a primitive crosses zero, lint pins it at
-  // ≥1 to catch regressions. For now: log coverage to stdout, fail
-  // CI only if a previously-covered primitive drops to zero.
+  // Demonstration recipes backfill each step primitive. Once a
+  // primitive crosses zero, lint pins it at ≥1 to catch regressions.
+  // Coverage is logged to stdout; CI fails only when a previously-covered
+  // primitive drops to zero.
   const counts = buildPrimitiveCoverage(templates);
   const out: Violation[] = [];
-  // The starting baseline. As Workstream D ships demonstration
-  // recipes for new primitives, raise this map (e.g. `branch: 1`) so
-  // CI catches accidental removal.
+  // The starting baseline. As demonstration recipes for new primitives
+  // ship, raise this map (e.g. `branch: 1`) so CI catches accidental
+  // removal.
   const baseline: Record<string, number> = {
     request: 1,
     transform: 1,
-    // Workstream D bumped these to ≥1 via demonstration recipes.
-    // Subsequent D iterations will lift `call` once the relevant
-    // executor wiring lands. Never drop a primitive below its prior
-    // baseline — CI fails on regression.
+    // Demonstration recipes bumped these to ≥1. `call` is lifted once
+    // the relevant executor wiring lands. Never drop a primitive below
+    // its prior baseline — CI fails on regression.
     branch: 1,
     parallel: 1,
     wait: 1,
     loop: 1,
     call: 0,
-    // v1.0 phase 1 + 2 primitives (#46/#47/#53). Each kind has at
-    // least one shipped recipe — the eval suite under
+    // Workflow-level feature primitives. Each kind has at least one
+    // shipped recipe — the eval suite under
     // `apps/engine/eval/fixtures/recipe-*.json` pins those recipes
     // to their declared shape, this baseline pins the catalog count.
     webhook: 1,

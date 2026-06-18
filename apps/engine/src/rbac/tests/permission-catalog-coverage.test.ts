@@ -7,7 +7,7 @@
 //      `apps/engine/src/rbac/permissions.json`. Without this, a
 //      bearer-auth caller of the route gets a permanent 403 because
 //      no role can grant a permission that isn't in the catalog —
-//      the actual #147 review S-4 finding for `execution:signal`.
+//      e.g. a missing `execution:signal` slug.
 //
 //   2. NO `requirePermission(...)` call site uses a non-literal first
 //      arg. Dynamic slugs would silently bypass invariant #1; an
@@ -23,10 +23,10 @@
 //   4. Every literal `permission: "slug"` site outside the HTTP
 //      route surface (MCP capabilities, conversation tools, queue
 //      handlers — anywhere that calls `can(...)` with an inline
-//      object) must also reference a catalog slug. Per #147 review
-//      W-2: the `requirePermission` regex above is HTTP-only; MCP
-//      uses the lower-level `can(db, { permission: ... })` shape and
-//      the original test silently passed any drift there.
+//      object) must also reference a catalog slug. The
+//      `requirePermission` regex above is HTTP-only; MCP uses the
+//      lower-level `can(db, { permission: ... })` shape, so a separate
+//      gate is needed to catch drift there.
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
@@ -38,9 +38,8 @@ import { ALL_PERMISSION_NAMES } from "../catalog.ts";
 // Repo root resolution. `SUBKIT_REPO_ROOT` env override wins (CI runners
 // with non-standard layouts can pin it); otherwise resolve statically
 // from this file's location and assert at module load that the resolved
-// root contains `apps/engine`. Per #147 review W-5 (rename from the
-// brittle hard-coded `../../../../..`) and S-2 (cheap structural check
-// instead of a parent-walk on every test invocation).
+// root contains `apps/engine`. A cheap structural check is preferred
+// over a parent-walk on every test invocation.
 function resolveRepoRoot(): string {
   const fromEnv = process.env.SUBKIT_REPO_ROOT;
   if (fromEnv && existsSync(resolve(fromEnv, "package.json"))) return fromEnv;
@@ -109,7 +108,7 @@ describe("RBAC permission catalog coverage", () => {
     // The literal-string check above is only honest if every call
     // site actually has a literal. A dynamic slug
     // (`requirePermission(mySlug, ...)`) would silently bypass the
-    // catalog-coverage gate, defeating the purpose of #147 review S-4.
+    // catalog-coverage gate, defeating its purpose.
     // If a future feature legitimately needs a dynamic slug, add it
     // to the explicit `DYNAMIC_ALLOW` set with a comment naming the
     // RBAC reasoning.
@@ -161,8 +160,8 @@ describe("RBAC permission catalog coverage", () => {
     // MCP capabilities, conversation tools, and any queue handler
     // that performs an explicit RBAC check. The HTTP `requirePermission`
     // regex above doesn't see these sites — without this gate, an
-    // MCP equivalent of the #147 / S-4 `execution:signal` miss would
-    // surface only at first runtime call.
+    // MCP equivalent of the `execution:signal` miss would surface only
+    // at first runtime call.
     const globs = [
       "apps/engine/src/mcp/**/*.ts",
       "apps/engine/src/conversations/tools/**/*.ts",
@@ -203,8 +202,8 @@ describe("RBAC permission catalog coverage", () => {
     }
   });
 
-  test("execution:signal is in the catalog (#147 review S-4 + recipe prerequisite)", () => {
-    // Surface the specific finding from PR #147 / review S-4 directly
+  test("execution:signal is in the catalog (recipe prerequisite + signals route)", () => {
+    // Surface this slug directly
     // — the `merge-pr-after-approval` recipe's prose names this slug,
     // and the signals route gates bearer auth on it. Pre-fix the slug
     // was missing from the catalog so any non-HMAC caller saw 403.

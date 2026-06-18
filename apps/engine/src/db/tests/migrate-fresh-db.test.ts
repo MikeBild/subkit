@@ -1,9 +1,9 @@
 // End-to-end check that a fresh database, given only `runMigrations(db)`,
 // reaches the schema state the rest of the engine expects.
 //
-// Issue #149 was a "schema mismatch the engine quietly logs and keeps
-// going" story; this test fails loudly if a future refactor breaks the
-// embedded-bundle path on a clean DB.
+// A "schema mismatch the engine quietly logs and keeps going" is the
+// failure this guards against; the test fails loudly if a future
+// refactor breaks the embedded-bundle path on a clean DB.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
@@ -37,7 +37,7 @@ async function tableExists(name: string): Promise<boolean> {
 }
 
 describe("runMigrations on a fresh database", () => {
-  test("creates the workflow_waits table that #149 reported missing", async () => {
+  test("creates the workflow_waits table", async () => {
     expect(await tableExists("workflow_waits")).toBe(true);
   });
 
@@ -79,10 +79,10 @@ describe("runMigrations on a fresh database", () => {
     expect(after.rows?.[0]?.n).toBe(before.rows?.[0]?.n);
   });
 
-  // Issue #166 review (3rd pass) W1 — secret-by-reference CHECK guard.
-  // Insert a minimal tenant, then assert auth_config inserts that put
-  // canonical secret keys at the root are rejected.
-  test("mcp_servers rejects inline secrets in auth_config (W1 CHECK)", async () => {
+  // Secret-by-reference CHECK guard. Insert a minimal tenant, then
+  // assert auth_config inserts that put canonical secret keys at the
+  // root are rejected.
+  test("mcp_servers rejects inline secrets in auth_config", async () => {
     const tenant = (await ctx.db.execute(
       sql`INSERT INTO tenants (id, slug, display_name) VALUES (gen_random_uuid(), 'mcp-secret-check', 'mcp secret check') RETURNING id::text AS id`,
     )) as unknown as { rows: Array<{ id: string }> };
@@ -133,9 +133,9 @@ describe("runMigrations on a fresh database", () => {
     }
   });
 
-  // Issue #166 review (3rd pass) S2 — namespace shape CHECK guard.
-  // Forbid `__` runs and leading/trailing punctuation.
-  test("mcp_servers rejects malformed namespaces (S2 CHECK)", async () => {
+  // Namespace shape CHECK guard. Forbid `__` runs and leading/trailing
+  // punctuation.
+  test("mcp_servers rejects malformed namespaces", async () => {
     const tenant = (await ctx.db.execute(
       sql`INSERT INTO tenants (id, slug, display_name) VALUES (gen_random_uuid(), 'mcp-namespace-check', 'mcp namespace check') RETURNING id::text AS id`,
     )) as unknown as { rows: Array<{ id: string }> };

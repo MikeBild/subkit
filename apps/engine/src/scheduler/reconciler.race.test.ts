@@ -1,5 +1,4 @@
-// Reconciler exactly-once-under-two-engines test — Phase 2 of the
-// 2026-05 architecture audit.
+// Reconciler exactly-once-under-two-engines test.
 //
 // The existing dedup test covers single-engine bookkeeping. This file
 // pins the harder property: when two reconcilers run

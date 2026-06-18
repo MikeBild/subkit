@@ -194,7 +194,7 @@ export function defaultModeForCategory(
  *   user's permission_mode. Catches the "auto-mode silently persists
  *   a connector with an inline api_key" hazard.
  * - `prerequisites` — slugs of skills that must be loaded before this
- *   tool may dispatch. Mirrors the reference repo's load_skill gate.
+ *   tool may dispatch (the load_skill gate).
  *   Resolved against `conversation.metadata.loaded_skills`.
  * - `buildPendingOutput` — when a confirm step fires, this hook turns
  *   the raw input into a structured "what will happen" preview that
@@ -423,7 +423,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   // identity provider". Pending output surfaces the connector_id; the
   // authorization_url is only visible after confirmation lands.
   authenticate_oauth: {
-    // Mirrors reference impl: post-execution confirmation. The OAuth
+    // Post-execution confirmation. The OAuth
     // flow runs end-to-end, the staged credential is recorded, and
     // the operator reviews the captured scopes / expiry / token kind
     // BEFORE the loop continues. Pre-fix this was confirm_before_execution
@@ -534,8 +534,7 @@ export function resolveToolMode(args: {
 }
 
 /**
- * Approval-mode badge for the discoverable `/policy` panel. Mirrors
- * reference impl's `getApprovalMode` + `APPROVAL_LABELS`. Distinct
+ * Approval-mode badge for the discoverable `/policy` panel. Distinct
  * from `resolveToolMode` (which reads runtime state); this one is a
  * pure static signal: "what does the policy SAY about this tool's
  * default behaviour, ignoring per-conversation overrides and current

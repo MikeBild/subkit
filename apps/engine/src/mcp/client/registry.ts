@@ -28,13 +28,12 @@ import {
 } from "../../audit/recorders/mcp-server.ts";
 import type { RecorderBase } from "../../audit/recorders/types.ts";
 import { assertEgressAllowed } from "../../connectors/egress-guard.ts";
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import { mcpServers } from "../../db/schema/index.ts";
 import type { McpServerStatus, McpServerTransport } from "../../db/schema/mcp_servers.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 
 /** Drizzle executor — a `Db` or an open transaction. */
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /**
  * The single environment every MCP-server credential is written under and

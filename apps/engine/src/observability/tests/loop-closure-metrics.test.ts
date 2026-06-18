@@ -1,5 +1,5 @@
 // Unit tests for the Run → Drift → Patch → Skill loop-closure metric
-// instrumentation (Issue #205). Calls the four wrappers directly — no DB,
+// instrumentation. Calls the four wrappers directly — no DB,
 // no Docker, no LLM. Each test resets the registry so samples don't bleed
 // across cases.
 //

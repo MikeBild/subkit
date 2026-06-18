@@ -20,7 +20,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// After the Phase 4 split (audit §4.2), the assembler is split across
+// The assembler is split across
 // `core/context-assembler.ts` (orchestrator) and
 // `core/context-assembler/{formatters,loaders,skill-picker}.ts`. The
 // `formatSkillIndex` helper lives in `formatters.ts`; the routing

@@ -6,8 +6,7 @@ import { redact } from "./redact.ts";
 
 // Re-export under the engine's historical name so callers don't churn.
 // The map itself lives in `@cli-core/log-levels` so the engine logger,
-// the in-memory ring, and `sk logs` all read the same six entries
-// (review R2-S1).
+// the in-memory ring, and `sk logs` all read the same six entries.
 export type LogLevel = LogLevelName;
 
 const LEVEL_WEIGHT = LOG_LEVEL_WEIGHT;
@@ -131,7 +130,7 @@ function recordToRing(level: LogLevel, fields: LogFields): void {
   // tail can serve it. Strip module/action/msg for the bag; redact the
   // rest so sensitive headers don't leak into the diagnostics surface.
   //
-  // Field precedence (review R2-W5): explicit fields the caller passed
+  // Field precedence: explicit fields the caller passed
   // win over the request-context bag. The previous order assigned
   // context AFTER `rest`, which silently downgraded an explicit
   // `logger.info({ tenant_id: "<X>" })` to whatever the surrounding
@@ -156,7 +155,7 @@ function emit(level: LogLevel, fields: LogFields): void {
   if (!shouldLog(level)) return;
   if (MODE === "pretty") emitPretty(level, fields);
   else emitNdjson(level, fields);
-  // Suppress the audit-mirror line from the ring (review R2-W4).
+  // Suppress the audit-mirror line from the ring.
   // `audit/audit.ts` calls `logger.info({ module: "audit", action,
   // ... })` for every persisted audit row. Without this filter, every
   // /v1/diagnostics/logs tail produces an `audit.diagnostics.logs_tailed`

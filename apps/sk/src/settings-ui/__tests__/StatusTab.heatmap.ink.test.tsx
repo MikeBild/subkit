@@ -1,6 +1,6 @@
 // Verifies the activity heatmap is embedded inside the Status tab
 // (formerly a standalone Stats tab) and is sourced from the tenant-scoped
-// /v1/stats/executions endpoint (#160) rather than the audit log. Also
+// /v1/stats/executions endpoint rather than the audit log. Also
 // checks the 1/2/3 window toggles still work after the merge.
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";

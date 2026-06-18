@@ -1,7 +1,7 @@
 // inspect_workflow — read multiple sections + per-step config and
 // captured results from the current draft in one call.
 //
-// API shape mirrors the reference impl's inspect_tool:
+// API shape:
 //   sections: ["instruction" | "input_schema" | "output_schema" |
 //              "output_transform" | "payload" | "response_filters"]
 //   steps:    [{ stepId, include: ["config" | "result" |

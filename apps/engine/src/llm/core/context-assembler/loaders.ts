@@ -3,7 +3,7 @@
 // empty array and the assembled prompt simply omits the section.
 
 import { and, desc, eq } from "drizzle-orm";
-import type { Db } from "../../../db/client.ts";
+import type { Executor } from "../../../db/client.ts";
 import { connectors, conversationElicitations, conversations } from "../../../db/schema/index.ts";
 import { searchDocs } from "../../../docs-ingestion/service.ts";
 import { searchKnowledge } from "../../../knowledge/service.ts";
@@ -33,8 +33,6 @@ import {
   renderRecipeBody,
   SKILL_CANDIDATES_SECTION_CAP,
 } from "./formatters.ts";
-
-export type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface InteractionLogEntry {
   tool_name: string;
@@ -744,7 +742,7 @@ export function trimCandidatesToBudget(candidates: SkillCandidateView[]): {
 }
 
 // ---------------------------------------------------------------------------
-// Prior workflows — 5th authoring context source (#203)
+// Prior workflows — 5th authoring context source
 // ---------------------------------------------------------------------------
 
 /** Build the ranking query string for `loadPriorWorkflows` from the

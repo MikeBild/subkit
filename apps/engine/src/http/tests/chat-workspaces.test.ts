@@ -1,9 +1,9 @@
 // HTTP integration tests for /v1/chat/workspaces.
 //
-// Covers the gaps called out in PR #206 review W-4:
+// Covers:
 //   * GET is tenant-scoped (no cross-tenant leak in the list).
 //   * DELETE on a workspace that belongs to another tenant returns 404.
-//   * The installer-link-conflict path (W-3) returns 409 and rolls back
+//   * The installer-link-conflict path returns 409 and rolls back
 //     the whole install — no chat_workspaces row, no audit row.
 //   * Idempotent reinstall of the same operator emits an install_noop
 //     audit, not a misleading kind:install.

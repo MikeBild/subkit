@@ -52,8 +52,8 @@ export async function proposeDryRunRepairs(opts: {
 }): Promise<DryRunRepairProposal[]> {
   const { steps, runWarnings, runError, previewScope, input, tenant_id, db, signal } = opts;
   const proposals: DryRunRepairProposal[] = [];
-  // Same aggregate fan-out bound as the pipeline path (P2 symmetry,
-  // round-5 Finding 2): repair at most MAX_PIPELINE_REPAIRS sites per
+  // Same aggregate fan-out bound as the pipeline path (P2 symmetry):
+  // repair at most MAX_PIPELINE_REPAIRS sites per
   // dry-run, regardless of how many warnings fired.
   let repairBudget = MAX_PIPELINE_REPAIRS;
 

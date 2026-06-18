@@ -385,7 +385,7 @@ describe("prepareStep — pre-persistence stages drop tools requiring a persiste
     expect(decision?.activeTools).toBeUndefined();
   });
 
-  it("forced run_workflow SURVIVES the requires_persisted_workflow drop (round-10 invariant)", () => {
+  it("forced run_workflow SURVIVES the requires_persisted_workflow drop", () => {
     // The two invariants coexist: the drop pass governs the default
     // authoring palette; the forced-tool path is an explicit operator
     // override that the AI SDK validates against the per-step

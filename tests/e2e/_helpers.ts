@@ -51,8 +51,8 @@ export interface HealthResponse {
 }
 
 /** Poll `${BASE_URL}/v1/health` until status=ok + db_connected=true.
- *  Issue #151 P0-1: the public health response is intentionally minimal
- *  (no operational posture fields). For drift / version data, hit
+ *  The public health response is intentionally minimal (no operational
+ *  posture fields). For drift / version data, hit
  *  `/v1/diagnostics/version` with an `audit:read` token. */
 export async function waitForHealth(timeoutMs = 120_000): Promise<HealthResponse> {
   const deadline = Date.now() + timeoutMs;
@@ -74,8 +74,8 @@ export async function waitForHealth(timeoutMs = 120_000): Promise<HealthResponse
 /**
  * Resolve the dev admin API key.
  *
- * After issue #149 the migrate + seed compose services are gone — the
- * engine binary runs both in-process on every boot, including the dev
+ * The migrate + seed compose services are gone — the engine binary
+ * runs both in-process on every boot, including the dev
  * fixtures seed in non-prod (which prints a one-time admin key for
  * tenant `default`). Grab it from the engine container's logs.
  *

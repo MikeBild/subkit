@@ -1,8 +1,7 @@
-// Bug UU regression: tools whose policy declares
-// `confirm_after_execution` MUST pause after a successful run with a
-// synthetic `ask_user_confirm{kind:"review_after_execution"}`
-// elicitation carrying the captured tool result. Mirrors reference
-// impl's confirm_after_execution semantics.
+// Regression: tools whose policy declares `confirm_after_execution`
+// MUST pause after a successful run with a synthetic
+// `ask_user_confirm{kind:"review_after_execution"}` elicitation
+// carrying the captured tool result.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -67,7 +66,7 @@ function makeToolCtx(): ToolContext {
   };
 }
 
-describe("post-execution review pause (Bug UU)", () => {
+describe("post-execution review pause", () => {
   test("authenticate_oauth declares confirm_after_execution as defaultMode", async () => {
     const { TOOL_POLICIES } = await import("../../tool-policies.ts");
     expect(TOOL_POLICIES.authenticate_oauth?.defaultMode).toBe("confirm_after_execution");

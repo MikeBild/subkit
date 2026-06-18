@@ -36,7 +36,7 @@ export interface IntegrationPickerProps {
 
 // CATEGORY_ICON moved to ./category-icons.ts so both surfaces (the
 // fuzzy picker here and the onboarding wizard at
-// `apps/sk/src/repl/onboarding-wizard.tsx`) share the same map. R3-S2.
+// `apps/sk/src/repl/onboarding-wizard.tsx`) share the same map.
 import { categoryIconFor } from "./category-icons.ts";
 
 function iconFor(template: ConnectorTemplate): string {

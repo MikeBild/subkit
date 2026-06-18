@@ -1,7 +1,6 @@
 // Interaction log section — surfaces the last ~10 resolved
 // elicitations so the model can see "what was tested vs. confirmed
-// vs. declined this turn", mirroring the reference impl's
-// `interactionLog` array. Failure mode without this: the model
+// vs. declined this turn". Failure mode without this: the model
 // re-asks for already-declined actions or treats partial approvals
 // as full.
 //

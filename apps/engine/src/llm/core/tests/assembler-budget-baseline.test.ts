@@ -1,7 +1,7 @@
 // Budget-baseline + four-guard regression test.
 // Uses a real Postgres database and the pre-captured fixture file.
 //
-// Four guards (from plan §5 decision 5):
+// Four guards:
 //  G1: per-fixture cost regression — new_total_tokens ≤ baseline_total_tokens × 1.15
 //  G2: absolute ceiling — max(total_tokens) across fixtures ≤ cap × 0.85
 //  G3: aggregate cost — Σ new_total_tokens ≤ Σ baseline_total_tokens × 1.15

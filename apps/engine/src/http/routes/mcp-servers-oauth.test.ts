@@ -1,5 +1,4 @@
-// Integration tests for the interactive MCP-client OAuth routes (#171
-// follow-up):
+// Integration tests for the interactive MCP-client OAuth routes:
 //   POST /v1/mcp-servers/{id}/authorize
 //   GET  /v1/mcp-servers/oauth/callback
 //

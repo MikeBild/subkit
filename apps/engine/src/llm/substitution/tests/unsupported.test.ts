@@ -95,7 +95,7 @@ describe("findUnsupportedPlaceholders", () => {
     expect(found.map((m) => m.code)).toEqual(["mustache", "loop_alias", "bad_kind"]);
   });
 
-  test("rewrite handles currentItem (reference impl idiom)", () => {
+  test("rewrite handles currentItem (foreign loop-alias idiom)", () => {
     const found = findUnsupportedPlaceholders("/x/{{ currentItem.id }}");
     expect(found[0]?.did_you_mean).toBe("${item.id}");
   });

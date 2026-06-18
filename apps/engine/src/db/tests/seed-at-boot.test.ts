@@ -2,7 +2,7 @@
 //
 // Tests the new `seedAtBoot(db)` path that the engine binary calls
 // after `runMigrations(db)`. This is the in-process replacement for
-// the deleted `bun run db:seed` script (issue #149).
+// the former `bun run db:seed` script.
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { eq, isNull, like } from "drizzle-orm";

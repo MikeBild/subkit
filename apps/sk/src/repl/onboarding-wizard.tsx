@@ -44,7 +44,7 @@ import { useState } from "react";
  * Category → unicode-glyph map borrowed from IntegrationPicker so the
  * pick step in this wizard renders the same badges users see in the
  * standalone connector picker. Now lives in a shared module so a
- * glyph swap or category addition lands in one place. R3-S2.
+ * glyph swap or category addition lands in one place.
  */
 import { categoryIconFor } from "../domain/connectors/category-icons.ts";
 

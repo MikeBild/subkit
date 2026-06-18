@@ -9,8 +9,8 @@
 // JSONata path. The tool reads `output_preview` from the
 // `execution_steps` row plus the offloaded payload from
 // `execution_fixtures` when present, so the LLM can author the next
-// transform iteration against the REAL shape — mirroring the
-// reference impl's post-execution introspection pattern.
+// transform iteration against the REAL shape — post-execution
+// introspection.
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";

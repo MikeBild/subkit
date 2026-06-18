@@ -24,7 +24,7 @@ import { type ZodType, z } from "zod";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";
-import { type Db, getDb } from "../../db/client.ts";
+import { type Executor, getDb } from "../../db/client.ts";
 import { tenantLlmSettings, tenants } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import {
@@ -82,8 +82,6 @@ function zodToJson(schema: ZodType): Record<string, unknown> {
   // biome-ignore lint/suspicious/noExplicitAny: zod v4 type surface
   return (z as any).toJSONSchema(schema, { target: "jsonSchema7" });
 }
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const DEFAULT_PRIMARY = "claude-sonnet-4-6";
 // Fallback must itself be authoring-capable: a converse turn that

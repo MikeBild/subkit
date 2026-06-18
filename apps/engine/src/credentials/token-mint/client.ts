@@ -1,4 +1,4 @@
-// Token-mint client (A4). One function: `runTokenMintGrant` — issues a
+// Token-mint client. One function: `runTokenMintGrant` — issues a
 // shape-specific POST to the mint endpoint and normalises the response
 // into an `OAuth2TokenBundle`-compatible record so the rest of the
 // credential lifecycle (refreshIfStale, applyAuthMaterial, audit) can

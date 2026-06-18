@@ -2,7 +2,7 @@
 // Remote production engine smoke probe.
 //
 // Drives the public surfaces against a live DEPLOY_URL (default:
-// https://subkit-api.mikebild.dev). The first batch is unauthenticated
+// https://subkit-api.example.com). The first batch is unauthenticated
 // — health, OpenAPI, the auth gate on /metrics. The second batch
 // proves the LLM dispatch path actually works end-to-end by creating a
 // conversation with a real prompt; that batch needs SK_SMOKE_API_KEY
@@ -23,7 +23,7 @@ interface ReadProbe {
   expect: { status: number; bodyContains?: string[] };
 }
 
-const BASE = process.env.DEPLOY_URL ?? "https://subkit-api.mikebild.dev";
+const BASE = process.env.DEPLOY_URL ?? "https://subkit-api.example.com";
 const SMOKE_KEY = process.env.SK_SMOKE_API_KEY ?? "";
 
 const READ_PROBES: ReadProbe[] = [

@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { cliScanner } from "../scanners/cli.ts";
 
-const ctx = { engine_url: "https://subkit-api.mikebild.dev" };
+const ctx = { engine_url: "https://subkit-api.example.com" };
 
 function bash(...lines: string[]): string {
   return ["```bash", ...lines, "```"].join("\n");

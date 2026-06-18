@@ -1,5 +1,4 @@
-// RBAC permission-matrix tests — Phase 2 of the 2026-05 architecture
-// audit (issue #86, audit doc §6.2).
+// RBAC permission-matrix tests.
 //
 // Purpose: prove that for every (role × permission) pair the evaluator
 // produces the decision the seed.ts permission-set declares, and that
@@ -579,8 +578,8 @@ describe("rbac matrix", () => {
       // current behaviour AND documents the expected hardening:
       // route handlers must reject the request before reaching the
       // evaluator when principal.tenant_id !== requested tenant. A
-      // route-level test in #88 enforces this; here we just record
-      // that the evaluator alone is NOT a tenant boundary.
+      // route-level test enforces this; here we just record that the
+      // evaluator alone is NOT a tenant boundary.
       const decision = await can(db, {
         tenant_id: tenantA,
         principal: memberB,

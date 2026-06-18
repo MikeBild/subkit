@@ -1,8 +1,8 @@
 // Shared helpers + error types + lightweight result shapes used by
-// every per-operation module under `service/`. After the Phase 4
-// split (audit §4.1) every per-operation file imports from here.
+// every per-operation module under `service/`. Each per-operation file
+// imports from here.
 
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import type { conversations } from "../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { appendSnapshot } from "../draft.ts";
@@ -13,8 +13,6 @@ import type {
   ConversationStatus,
   DraftDocument,
 } from "../types.ts";
-
-export type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export function normalizePermissionMode(value: unknown): ConversationPermissionMode | null {
   return value === "auto" || value === "ask" || value === "plan" || value === "yolo" ? value : null;

@@ -5,15 +5,6 @@ Each skill is a self-contained guide that can be invoked via `/<slug>` or refere
 by an agent. See `AGENTS.md` for the canonical repo-wide contract and
 `.claude/CLAUDE.md` for the Claude Code bootstrap.
 
-## Strategy & positioning (read for *why*, before changing framing)
-
-When the task touches product framing, vocabulary, category claims, or "why this
-matters" — not only how to change code — read the three strategy documents in order:
-
-- [`docs/thesis.md`](docs/thesis.md) — *Why this category exists.*
-- [`docs/system-requirements.md`](docs/system-requirements.md) — *What such a system must do.*
-- [`docs/positioning.md`](docs/positioning.md) — *How sk realises it.*
-
 ## Guardrail / routing
 
 - [`subkit-operating-model`](.claude/skills/subkit-operating-model/SKILL.md) —
@@ -43,7 +34,7 @@ matters" — not only how to change code — read the three strategy documents i
   Drift detection, bounded repair loop, Execution Fixture dry-runs, Patch Candidates.
   Never auto-apply.
 
-## sk REPL surface (consolidated in #159)
+## sk REPL surface
 
 - `/settings` opens a 5-tab palette in-process: `Status · Config · Usage · Skills ·
   Knowledge`. Operator surfaces are separate slash commands (`/permissions`,

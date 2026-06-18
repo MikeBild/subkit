@@ -50,23 +50,23 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    // #146 / A4 + #147 review C1: register the AbortController on the
+    // Register the AbortController on the
     // synchronous frame of request-accept so a cancel arriving in the
     // first ~40ms always finds a controller. The registry key carries
     // the principal's tenant id, so a foreign tenant probing another
     // tenant's UUID lives in its own slot and cannot displace the
     // legitimate registration. Registering inside `runLoop` (the
-    // pre-A4 location) re-opens the race the cancel route silently
+    // earlier location) re-opens the race the cancel route silently
     // lost.
     const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
-    // #147 review C-1: ownership of the registered controller transfers
+    // Ownership of the registered controller transfers
     // to the SSE callback's own `finally` because Hono's `streamSSE`
     // does NOT await the callback — it kicks the callback off
     // fire-and-forget and returns a Response synchronously. An outer
     // `try { … } finally { unregister(...) }` would fire its `finally`
     // immediately after `streamSSE` returns and unregister the
     // controller while the SSE callback is still running, re-opening
-    // the cancel race A4 set out to close.
+    // the cancel race the synchronous registration set out to close.
     //
     // The `ownershipTransferred` flag is the seam: set true once
     // streamSSE has accepted ownership; the outer `finally` skips
@@ -267,7 +267,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         ? `${message}\n\n[Attached ${ingestedSources.length} file(s) as knowledge sources]`
         : message;
 
-    // #146 / A4 + #148: register synchronously and unregister in
+    // Register synchronously and unregister in
     // `finally` (non-SSE branch only — this route returns JSON, so the
     // single outer try/finally is sufficient).
     const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);

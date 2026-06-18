@@ -1,7 +1,7 @@
 // Workflow definition zod schemas. The shape is the user-authored DAG that
 // gets persisted into `workflow_versions.dag` and consumed by the execution
-// engine. P3 ships the core step kinds: request, transform, call, wait,
-// branch, parallel, loop. Future phases extend with additional kinds.
+// engine. The core step kinds are: request, transform, call, wait,
+// branch, parallel, loop.
 
 import { z } from "@hono/zod-openapi";
 
@@ -20,7 +20,7 @@ export type {
   ReadabilityOutput,
   StructuredDataOutput,
 } from "./types-web-scraper.ts";
-// Re-export the three web-scraper envelope schemas (#144) so existing
+// Re-export the three web-scraper envelope schemas so existing
 // `import … from "./workflows/types.ts"` call sites keep working. The
 // definitions live in `./types-web-scraper.ts` to keep this file under
 // the 1000-LOC audit ceiling.
@@ -444,7 +444,7 @@ export const RequestStepSchema = z
      *  (Cognito IdToken, OAuth2 access_token / refresh_token). */
     outputs: z.record(z.string().min(1), z.object({ secret: z.boolean().optional() })).optional(),
     /** Read a tenant-encrypted persistent state value before the step
-     *  runs (#51). Bound into the substitution scope under
+     *  runs. Bound into the substitution scope under
      *  `${state.<into_var>}` for use in `query`, `body`, headers, etc.
      *  When the row does not exist on the first run, `default_value`
      *  is used (typically `null` for cursor-based reverse-ETL). */
@@ -456,7 +456,7 @@ export const RequestStepSchema = z
       })
       .optional(),
     /** Write a tenant-encrypted persistent state value after the step
-     *  succeeds (#51). `value_path` is dot-notation against the step
+     *  succeeds. `value_path` is dot-notation against the step
      *  result envelope (e.g. `body.last_id` or `data[last].updated_at`).
      *  Persisted in the same transaction as the step's output —
      *  a crash between cannot leave the watermark and side-effect
@@ -630,7 +630,7 @@ export const RequestStepSchema = z
   })
   .openapi("RequestStep");
 
-// Web-scraper #144 — the three config + three output Zod schemas live
+// Web-scraper connector — the three config + three output Zod schemas live
 // in `./types-web-scraper.ts` (imported above). The TransformStep
 // schema below references them inline; the language enum keeps the new
 // values in this file so the discriminated-union shape is visible at a
@@ -653,11 +653,11 @@ export const TransformStepSchema = z
     language: z
       .enum(["javascript", "readability", "html-to-markdown", "structured-data"])
       .optional(),
-    /** Web-scraper #144 — Readability extraction config. */
+    /** Web-scraper Readability extraction config. */
     readability: ReadabilityConfigSchema.optional(),
-    /** Web-scraper #144 — html→markdown serialisation config. */
+    /** Web-scraper html→markdown serialisation config. */
     markdown: MarkdownConfigSchema.optional(),
-    /** Web-scraper #144 — JSON-LD / OpenGraph / microdata extraction config. */
+    /** Web-scraper JSON-LD / OpenGraph / microdata extraction config. */
     structured_data: StructuredDataConfigSchema.optional(),
     input_schema: z.record(z.string(), z.unknown()).optional(),
     output_schema: z.record(z.string(), z.unknown()).optional(),
@@ -747,11 +747,11 @@ export const CallStepSchema = z
   })
   .openapi("CallStep");
 
-// Wait step (#48 SHRUNK). Same-day in-process pause with restart-safe
-// resumption via the `workflow_waits` checkpoint table. Cap raised from
-// 6h to 24h. NOT multi-day — that pattern moves to the Schedule + State
-// recipe (#51 + A8). NOT signal-driven — that's a separate primitive
-// (#49 wait-for-event).
+// Wait step. Same-day in-process pause with restart-safe
+// resumption via the `workflow_waits` checkpoint table. Cap is 24h.
+// NOT multi-day — that pattern moves to the Schedule + State
+// recipe. NOT signal-driven — that's a separate primitive
+// (the wait-for-event step).
 export const WaitStepSchema = z
   .object({
     kind: z.literal("wait"),
@@ -764,7 +764,7 @@ export const WaitStepSchema = z
   })
   .openapi("WaitStep");
 
-// Wait-for-event step (#49). Signal-driven HITL pause with an HMAC-signed
+// Wait-for-event step. Signal-driven HITL pause with an HMAC-signed
 // approval URL. The step blocks until a row in `workflow_signals` arrives
 // with the matching `event_name` and (optionally) a payload that matches
 // the dot-notation predicate, OR until `timeout_ms` elapses. On timeout
@@ -826,10 +826,9 @@ export const LoopStepSchema = z
     ...baseStep,
     over: z.string().optional(),
     /**
-     * JS expression form of the source-array selector — modeled on the
-     * reference impl's `dataSelector`. The expression body receives a
-     * single `sourceData` argument bound to the full execution scope
-     * and must return an array. Example:
+     * JS expression form of the source-array selector. The expression
+     * body receives a single `sourceData` argument bound to the full
+     * execution scope and must return an array. Example:
      *
      *   data_selector: "(sourceData) => sourceData.fetch_projects.data.projects"
      *
@@ -903,8 +902,8 @@ export const WorkflowRuntimeSchema = z
 // keyed on `(tenant_id, workflow_id)`; deleting or version-rotating
 // the workflow removes the row and emits a `*.trigger.unbound` audit
 // entry. This module owns the schema only — executor logic for
-// webhook firing lives in `webhooks/inbound/service.ts` (#46) and for
-// schedule firing in `scheduler/reconciler.ts` (#47).
+// webhook firing lives in `webhooks/inbound/service.ts` and for
+// schedule firing in `scheduler/reconciler.ts`.
 export const RequestTriggerSchema = z
   .object({
     kind: z.literal("request"),
@@ -1006,15 +1005,14 @@ const _baseWorkflowDefSchema = z.object({
    * bound as `input`; a return value of `false` (or any throw) trips
    * `validation_failed`. Use when the invariant needs imperative
    * logic (multi-pass scans, regex, custom comparators) that JSONata
-   * can't express. Mirrors the reference impl's `validationFunction`.
+   * can't express.
    */
   validation_function: z.string().min(1).optional(),
   /**
    * Optional final-output transform. JSONata expression applied to
    * the last step's output to produce the workflow's public payload.
    * Equivalent to declaring a trailing `transform` step but keeps
-   * the public-facing shape declared at the workflow root. Mirrors
-   * the reference impl's JSONata-equivalent `outputTransform`.
+   * the public-facing shape declared at the workflow root.
    */
   output_transform: z.string().min(1).optional(),
   /**
@@ -1023,16 +1021,14 @@ const _baseWorkflowDefSchema = z.object({
    * `validation_function`). The body executes with the last step's
    * output bound as `input`; whatever it returns becomes the
    * workflow's public payload. Throws on the JS side surface as
-   * `output_transform_failed`. Mirrors the reference impl's JS
-   * `outputTransform` arrow-function form.
+   * `output_transform_failed`.
    */
   output_transform_function: z.string().min(1).optional(),
   /**
    * Optional response filters applied to the FINAL workflow output
-   * (post `output_transform` / `output_transform_function`). Mirrors
-   * the reference impl's workflow-level `responseFilters` — masks PII
-   * or strips internal-only fields from the payload that crosses the
-   * tenant boundary, regardless of which step produced them.
+   * (post `output_transform` / `output_transform_function`). Workflow-level
+   * filters mask PII or strip internal-only fields from the payload that
+   * crosses the tenant boundary, regardless of which step produced them.
    *
    * Per-request filters declared on `RequestStep.response_filters`
    * still operate at step-execution time (mid-pipeline cleanup);
@@ -1094,7 +1090,7 @@ export const WorkflowDefSchema = _baseWorkflowDefSchema
       // by skipping the issue. Kept here as a hook for a future
       // policy.
     }
-    // #49: HITL workflows must declare `WorkflowDef.timeout_ms` at least
+    // HITL workflows must declare `WorkflowDef.timeout_ms` at least
     // as long as the longest `wait_for_event.timeout_ms`. Otherwise the
     // workflow's own timeout aborts the wait early — and the operator
     // who minted a 30-day approval link sees the run die at 6h with no

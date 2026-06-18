@@ -4585,7 +4585,7 @@
     "operator_quirks": {
       "auth": "Use aws_service=sts. AssumeRole returns `Credentials.{AccessKeyId,SecretAccessKey,SessionToken,Expiration}` — propagate `SessionToken` as `session_token` for downstream sigv4 calls. Tokens expire (default 1h, max 12h with `DurationSeconds`).",
       "pagination": "STS responses are not paginated.",
-      "general": "AssumeRoleWithWebIdentity supports OIDC tokens (e.g. GitHub OIDC, Auth0). The Token output of AssumeRole is sensitive; downstream steps consuming it should mark `outputs.SessionToken.secret = true` once the secret-output flag (Workstream A7) ships."
+      "general": "AssumeRoleWithWebIdentity supports OIDC tokens (e.g. GitHub OIDC, Auth0). The Token output of AssumeRole is sensitive; downstream steps consuming it should mark `outputs.SessionToken.secret = true` so audit and logs scrub it."
     },
     "recipes": [
       {
@@ -5007,7 +5007,7 @@
     "slug": "bamboohr",
     "name": "BambooHR",
     "driver": "http",
-    "base_url": "https://api.bamboohr.com/api/gateway.php/{companyDomain}/v1",
+    "base_url": "https://{companyDomain}.bamboohr.com/api/v1",
     "auth_type": "basic",
     "oauth": null,
     "default_skill": "bamboohr-basics",
@@ -5036,9 +5036,9 @@
           "use_pkce": false,
           "client_id": null,
           "extra_headers": {},
-          "issuer_url": "https://id.bamboohr.com",
-          "authorization_endpoint": "https://id.bamboohr.com/authorize",
-          "token_endpoint": "https://id.bamboohr.com/token",
+          "issuer_url": "https://{companyDomain}.bamboohr.com",
+          "authorization_endpoint": "https://{companyDomain}.bamboohr.com/authorize.php",
+          "token_endpoint": "https://{companyDomain}.bamboohr.com/token.php",
           "scopes": "openid offline_access"
         }
       }
@@ -5574,7 +5574,7 @@
       "issuer_url": "https://auth.atlassian.com",
       "authorization_endpoint": "https://auth.atlassian.com/authorize",
       "token_endpoint": "https://auth.atlassian.com/oauth/token",
-      "scopes": "read:confluence-content.all write:confluence-content offline_access",
+      "scopes": "read:page:confluence read:space:confluence write:page:confluence write:space:confluence offline_access",
       "grant_type": "authorization_code",
       "token_auth_method": "body",
       "token_content_type": "form",
@@ -5611,7 +5611,7 @@
           "issuer_url": "https://auth.atlassian.com",
           "authorization_endpoint": "https://auth.atlassian.com/authorize",
           "token_endpoint": "https://auth.atlassian.com/oauth/token",
-          "scopes": "read:confluence-content.all write:confluence-content offline_access"
+          "scopes": "read:page:confluence read:space:confluence write:page:confluence write:space:confluence offline_access"
         }
       }
     ],
@@ -5661,7 +5661,7 @@
     "description": "Crawl4AI self-hosted web scraping API",
     "category": "scraping",
     "tags": ["rest", "web-scraping", "llm-extraction", "docker", "python"],
-    "setup_instructions": "Self-hosted only: `docker run -d -p 11235:11235 --shm-size=1g unclecode/crawl4ai:latest`. OpenAPI docs at /docs. Optional JWT auth via POST /token.",
+    "setup_instructions": "Self-hosted only: set CRAWL4AI_API_TOKEN, then `docker run -d -p 11235:11235 --shm-size=1g unclecode/crawl4ai:latest`. OpenAPI docs at /docs (auth-gated). Auth is required; generate JWT via POST /token.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -5954,7 +5954,7 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase",
+      "scopes": "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/datastore",
       "grant_type": "authorization_code",
       "token_auth_method": "body",
       "token_content_type": "form",
@@ -6114,7 +6114,7 @@
     "oauth": null,
     "default_skill": "firecrawl-basics",
     "ingestion_source": "openapi",
-    "ingestion_url": "https://raw.githubusercontent.com/mendableai/firecrawl/main/apps/api/v1-openapi.json",
+    "ingestion_url": "https://raw.githubusercontent.com/mendableai/firecrawl/main/apps/api/openapi.json",
     "icon": "firecrawl.svg",
     "description": "Firecrawl web scraping and crawling API",
     "category": "scraping",
@@ -6290,7 +6290,7 @@
     "ingestion_source": "openapi",
     "ingestion_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
     "icon": "github.svg",
-    "description": "GitHub REST API v3 — best for write operations (issue creation, PR merge, file commits) where REST is more expressive than GraphQL.",
+    "description": "GitHub REST API (date-versioned: 2026-03-10 latest, 2022-11-28 default) — best for write operations (issue creation, PR merge, file commits) where REST is more expressive than GraphQL.",
     "category": "devops",
     "tags": ["rest", "webhooks", "git"],
     "setup_instructions": "Create a PAT at github.com/settings/tokens, or register an OAuth App under Developer Settings.",
@@ -8557,7 +8557,7 @@
     "recipes": [
       {
         "slug": "postmortem-due-in-n-days-via-state",
-        "title": "Daily check: are any HubSpot deals due for a postmortem in N days? (#51 + #47 pattern)",
+        "title": "Daily check: are any HubSpot deals due for a postmortem in N days?",
         "description": "Schedule + State multi-day lifecycle. Every morning the workflow scans HubSpot for closed-lost deals whose `closedate` falls within the next N days, reads `last_postmortem_swept_at` from persistent state, branches on whether the operator has already been notified for this window, and writes the new watermark in the same transaction as the digest. Adapt to any HubSpot lifecycle (renewal-due-in-30-days, contract-expiring, dormant-account-recheck) — the pattern is `state_read → query → branch → state_write`, never a multi-day in-flight wait.",
         "intent_keywords": [
           "postmortem reminder",
@@ -8573,8 +8573,8 @@
         "estimated_setup_minutes": 10,
         "prerequisites": [
           "HubSpot connector with read access to /crm/v3/objects/deals",
-          "Engine scheduler reconciler running (#47)",
-          "Persistent workflow state enabled (#51)"
+          "Engine scheduler reconciler running",
+          "Persistent workflow state enabled"
         ],
         "sample_input": null,
         "expected_output_preview": null,
@@ -9130,7 +9130,7 @@
     },
     "default_skill": "intercom-basics",
     "ingestion_source": "openapi",
-    "ingestion_url": "https://raw.githubusercontent.com/intercom/Intercom-OpenAPI/main/descriptions/2.11/api.intercom.io.yaml",
+    "ingestion_url": "https://raw.githubusercontent.com/intercom/Intercom-OpenAPI/main/descriptions/2.15/api.intercom.io.yaml",
     "icon": "intercom.svg",
     "description": "Intercom customer messaging API",
     "category": "enterprise",
@@ -9184,7 +9184,7 @@
     "recipes": [
       {
         "slug": "trial-nurture-day-1-3-7-14-via-state",
-        "title": "Daily trial-nurture sweep with state-driven cadence (#51 + #47 pattern)",
+        "title": "Daily trial-nurture sweep with state-driven cadence",
         "description": "Replaces a multi-day in-flight wait with the canonical Schedule + State pattern. Every morning the workflow lists Intercom contacts whose `created_at` matches one of the nurture-cadence days (1, 3, 7, 14 days post-signup), reads `last_nurture_sent_for` from state, sends only the messages that haven't been delivered yet, and advances the watermark. Adapt the cadence array (`[1, 3, 7, 14]`) for any time-shaped lifecycle.",
         "intent_keywords": [
           "trial nurture",
@@ -9200,8 +9200,8 @@
         "estimated_setup_minutes": 10,
         "prerequisites": [
           "Intercom connector with read access to /contacts and write to /messages",
-          "Engine scheduler reconciler running (#47)",
-          "Persistent workflow state enabled (#51)"
+          "Engine scheduler reconciler running",
+          "Persistent workflow state enabled"
         ],
         "sample_input": null,
         "expected_output_preview": null,
@@ -12046,7 +12046,7 @@
     "description": "MySQL relational database",
     "category": "database",
     "tags": ["sql", "relational", "introspection", "mariadb"],
-    "setup_instructions": "Provide a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Works with MySQL 5.7+, MySQL 8.x, and MariaDB 10.x+.",
+    "setup_instructions": "Provide a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Works with MySQL 5.7+, MySQL 8.x, MySQL 9.x, and MariaDB 10.x+.",
     "auth_options": [],
     "url_pattern": "^$",
     "keywords": [],
@@ -12895,7 +12895,7 @@
     "operator_quirks": {
       "auth": "Most providers accept client_id + client_secret as Basic auth (Authorization: Basic base64(client_id:client_secret)). Some require them in the form body instead — recipes can switch via the body field.",
       "pagination": "OAuth2 token endpoints are not paginated.",
-      "general": "Token responses include `access_token`, `expires_in`, optional `refresh_token`, and optional `scope`. Mark `outputs.access_token.secret = true` and `outputs.refresh_token.secret = true` once the secret-output flag (Workstream A7) ships, so audit and logs scrub them."
+      "general": "Token responses include `access_token`, `expires_in`, optional `refresh_token`, and optional `scope`. Mark `outputs.access_token.secret = true` and `outputs.refresh_token.secret = true` so audit and logs scrub them."
     },
     "recipes": [
       {
@@ -13716,7 +13716,7 @@
     "inline_schema": null,
     "probe_endpoint": {
       "method": "GET",
-      "path": "/v1/identity/oauth2/userinfo",
+      "path": "/v1/identity/openidconnect/userinfo",
       "expected_status": [200, 401],
       "description": "Identity echo endpoint"
     },
@@ -13763,7 +13763,7 @@
     "slug": "pipedrive",
     "name": "Pipedrive",
     "driver": "http",
-    "base_url": "https://api.pipedrive.com/api/v2",
+    "base_url": "https://{companydomain}.pipedrive.com/api/v2",
     "auth_type": "bearer",
     "oauth": {
       "issuer_url": "https://oauth.pipedrive.com",
@@ -14409,7 +14409,7 @@
     "slug": "salesforce",
     "name": "Salesforce",
     "driver": "http",
-    "base_url": "https://{instance}.my.salesforce.com/services/data/v60.0",
+    "base_url": "https://{instance}.my.salesforce.com/services/data/v67.0",
     "auth_type": "oauth2",
     "oauth": {
       "issuer_url": "https://login.salesforce.com",
@@ -14494,7 +14494,7 @@
     "base_url_options": [
       {
         "environment": "sandbox",
-        "base_url": "https://test.salesforce.com",
+        "base_url": "https://test.salesforce.com/services/data/v67.0",
         "label": "Sandbox"
       },
       {
@@ -14612,7 +14612,7 @@
     "slug": "sendgrid",
     "name": "SendGrid",
     "driver": "http",
-    "base_url": "https://api.sendgrid.com",
+    "base_url": "https://api.sendgrid.com/v3",
     "auth_type": "bearer",
     "oauth": null,
     "default_skill": "sendgrid-basics",
@@ -15190,7 +15190,7 @@
     "slug": "shopify",
     "name": "Shopify",
     "driver": "http",
-    "base_url": "https://{shop}.myshopify.com/admin/api/2024-07",
+    "base_url": "https://{shop}.myshopify.com/admin/api/2026-04",
     "auth_type": "header",
     "oauth": null,
     "default_skill": "shopify-basics",
@@ -17004,7 +17004,7 @@
       },
       {
         "slug": "incremental-charges-via-state",
-        "title": "Incremental charges sync via persistent state (#51 + #47 pattern)",
+        "title": "Incremental charges sync via persistent state",
         "description": "Canonical AI-authoring few-shot for the multi-day lifecycle pattern: a daily schedule wakes the workflow, `state_read` pulls the last-synced cursor (`null` on the first run via `default_value`), the request lists only newer charges, and `state_write` advances the watermark in the same transaction as the step result. Replaces the multi-day-wait anti-pattern: subkit's mental model is *trigger fires run, run terminates* — not *function that sleeps for days*. Adapt to dunning (D1/D3/D7 reminders), trial nurture (Day 1/3/7/14), and any other lifecycle whose cadence is daily-or-coarser.",
         "intent_keywords": [
           "incremental sync",
@@ -17022,8 +17022,8 @@
         "estimated_setup_minutes": 10,
         "prerequisites": [
           "Stripe connector with read access to /v1/charges",
-          "Engine scheduler reconciler running (#47)",
-          "Persistent workflow state enabled (#51)"
+          "Engine scheduler reconciler running",
+          "Persistent workflow state enabled"
         ],
         "sample_input": null,
         "expected_output_preview": null,
@@ -18382,7 +18382,7 @@
               "kind": "request",
               "id": "projects",
               "method": "GET",
-              "url": "${connector.vercel.base_url}/v9/projects"
+              "url": "${connector.vercel.base_url}/v10/projects"
             }
           ]
         }
@@ -18423,7 +18423,7 @@
               "kind": "request",
               "id": "deployments",
               "method": "GET",
-              "url": "${connector.vercel.base_url}/v6/deployments",
+              "url": "${connector.vercel.base_url}/v7/deployments",
               "query": {
                 "projectId": "${input.project_id}"
               }
@@ -18989,7 +18989,7 @@
     "description": "LinkedIn API — member identity (OpenID Connect) and posting (UGC Posts).",
     "category": "communication",
     "tags": ["rest", "linkedin", "social", "oauth2", "openid"],
-    "setup_instructions": "Create an app at linkedin.com/developers. Add the 'Sign In with LinkedIn using OpenID Connect' and 'Share on LinkedIn' products. Under Auth, add the redirect URL https://subkit-api.mikebild.dev/v1/oauth/callback (exact match, no trailing slash). Copy the Client ID and Client Secret.",
+    "setup_instructions": "Create an app at linkedin.com/developers. Add the 'Sign In with LinkedIn using OpenID Connect' and 'Share on LinkedIn' products. Under Auth, add the redirect URL https://subkit-api.example.com/v1/oauth/callback (exact match, no trailing slash). Copy the Client ID and Client Secret.",
     "auth_options": [],
     "url_pattern": "^https://api\\.linkedin\\.com(\\/|$)",
     "keywords": ["linkedin", "post", "share", "social", "userinfo", "ugc"],

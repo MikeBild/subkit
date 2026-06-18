@@ -46,9 +46,9 @@
 //      custom-role principal lacking `workflow:read` can piggy-back
 //      on a subscription URI it learned out-of-band. Always-on by
 //      design — the prior portal-only short-circuit was a latent
-//      timing-leak surface for custom roles (#178 round-3 W1).
+//      timing-leak surface for custom roles.
 //
-// Subscribe DoS defenses (#178 W-1): the subscribe handler rejects URIs
+// Subscribe DoS defenses: the subscribe handler rejects URIs
 // outside the four known prefixes (so a client can't trick the
 // lifecycle forwarder into a `can()` lookup for nonsense) and caps the
 // per-session subscribed-Set at `SUBSCRIBE_CAP`.
@@ -109,8 +109,7 @@ function fileUri(id: string): string {
 
 /** Prefix set the subscribe handler accepts. Anything else is dropped at
  *  subscribe time so a misbehaving client can't grow `subscribed` with
- *  garbage (#178 review W-1). Keep this in sync with the URI helpers
- *  above. */
+ *  garbage. Keep this in sync with the URI helpers above. */
 const SUBSCRIBE_URI_PREFIXES: readonly string[] = [
   "connector://",
   "knowledge://",
@@ -162,7 +161,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     // `workflow://<id>`. The MCP notification carries no payload —
     // only the URI — but timing alone is signal. The conservative
     // choice is to run `can()` every time and let the permissions
-    // cache absorb the cost (#178 round-3 W1).
+    // cache absorb the cost.
     if (args.rbacCheck) {
       const allow = await args.rbacCheck();
       if (!allow) {
@@ -252,7 +251,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       // `skill-candidate://` shape. The forwarder is gated on
       // `file:read` so a custom-role principal that subscribed to a
       // `file://<fid>` it learned out-of-band cannot piggy-back on the
-      // lifecycle event (#178 round-3 W1 parity).
+      // lifecycle event.
       const fileId = payload.file_id as string | undefined;
       if (fileId) {
         await forwardIfSubscribed({
@@ -336,7 +335,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       });
     }
 
-    // Workflows (active only, tenant-scoped). Issue #169.
+    // Workflows (active only, tenant-scoped).
     //
     // Portal-scoped principals carry `allowed_workflows`; we mirror the
     // connector-block filter above so a portal token narrowed to one
@@ -346,8 +345,8 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     // narrowing.
     //
     // Uses `listWorkflowSummaries` (not `listWorkflows`) so each row is
-    // a single Postgres-side projection — no `dag` parse per workflow
-    // (#178 W-2). The MCP list view only needs name / slug / version /
+    // a single Postgres-side projection — no `dag` parse per workflow.
+    // The MCP list view only needs name / slug / version /
     // step_count anyway.
     const { rows: workflowList } = await workflowSvc.listWorkflowSummaries(
       principal.tenant_id,

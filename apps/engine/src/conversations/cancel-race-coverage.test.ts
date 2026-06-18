@@ -1,9 +1,9 @@
-// Cancel-race coverage gate (#148 done-when item 3).
+// Cancel-race coverage gate.
 //
 // `apps/engine/src/conversations/abort.test.ts` pins the registry's
 // invariants in isolation; the e2e at `tests/e2e/authoring-regressions
-// .e2e.test.ts` covers the full HTTP `POST /messages` path. Issue #148
-// asks for the same regression cover extended to every NEW register
+// .e2e.test.ts` covers the full HTTP `POST /messages` path. This gate
+// extends the same regression cover to every NEW register
 // site introduced by the runLoop fallback retirement:
 //
 //   - HTTP `POST /v1/conversations/{id}/messages/upload`
@@ -112,7 +112,7 @@ function readSource(rel: string): string {
   return readFileSync(resolve(ROOT, rel), "utf8");
 }
 
-describe("cancel-race coverage gate (#148)", () => {
+describe("cancel-race coverage gate", () => {
   for (const surface of SURFACES) {
     test(`${surface.label} — registers + unregisters around the service call`, () => {
       const src = readSource(surface.file);
@@ -121,7 +121,7 @@ describe("cancel-race coverage gate (#148)", () => {
       if (!src.includes(surface.registerCall)) {
         throw new Error(
           `${surface.file} is missing the sync-register call: \`${surface.registerCall}\`. ` +
-            `Issue #148 retired the runLoop fallback; every caller must register on its synchronous-accept frame.`,
+            `The runLoop fallback is retired; every caller must register on its synchronous-accept frame.`,
         );
       }
 

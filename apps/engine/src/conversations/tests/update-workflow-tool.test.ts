@@ -7,9 +7,8 @@
 //   - audit emits WORKFLOW_UPDATED with metadata.kind="metadata"
 //     plus from/to snapshots — no new audit-action enum entry.
 //
-// Reference parity: the reference codebase exposes rename + lifecycle
-// only as HTTP datastore ops; subkit's chat-first contract requires
-// the same op be reachable as a chat tool. See
+// subkit's chat-first contract requires rename + lifecycle ops to be
+// reachable as a chat tool, not only as HTTP datastore ops. See
 // `apps/engine/src/conversations/tools/generated/writes/update-workflow.ts`.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

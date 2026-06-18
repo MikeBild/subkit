@@ -14,7 +14,7 @@ import { audit, auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../../crypto/aes-gcm.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
-import { type Db, getDb } from "../../db/client.ts";
+import { type Db, type Executor, getDb } from "../../db/client.ts";
 import { webhooksInbound, workflows } from "../../db/schema/index.ts";
 import { createExecution } from "../../execution/state.ts";
 import { logger } from "../../logging/logger.ts";
@@ -25,8 +25,6 @@ import { verifyGitHub } from "./verifiers/github.ts";
 import { verifyStandard } from "./verifiers/standard-webhooks.ts";
 import { verifyStripe } from "./verifiers/stripe.ts";
 import type { VerifierFn, VerifierResult } from "./verifiers/types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function aadFor(tenant_id: string, id: string): string {
   return `webhook-inbound:${tenant_id}:${id}`;
@@ -232,7 +230,7 @@ export async function deleteInbound(
 //
 // The "none" mapping reuses the standard-webhooks verifier as a
 // pass-through so the inbound driver never has to special-case the
-// missing signature; the executor PR (#46) wires `skip` through.
+// missing signature; the executor wires `skip` through.
 
 const VERIFY_TO_VERIFIER: Record<WebhookTrigger["verify"], InboundVerifierName> = {
   "stripe-signature": "stripe",

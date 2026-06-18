@@ -7,7 +7,7 @@ import { and, asc, desc, eq, isNull, like, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { skills as skillsTable, workflows, workflowVersions } from "../db/schema/index.ts";
@@ -22,11 +22,9 @@ import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 
-export type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
-
 /**
  * Emit a `workflow.lifecycle` outbox event after Zod-validating the
- * payload (#178 round-3 S1). Every state-changing entry point in this
+ * payload. Every state-changing entry point in this
  * file flows through this helper so the channel can't drift into
  * untyped object literals over time. The schema lives in
  * `pubsub/types.ts` so subscribers (today: the MCP forwarder) can
@@ -561,7 +559,7 @@ export async function updateWorkflowMetadata(
       );
       // Emit on the same channel as definition-level updates — a rename
       // / lifecycle flip changes what `readResource("workflow://<id>")`
-      // would return, so MCP subscribers must see it (#169 W1).
+      // would return, so MCP subscribers must see it.
       await emitWorkflowLifecycle(tx, {
         tenant_id: input.tenant_id,
         type: "workflow.metadata_updated",
@@ -619,7 +617,7 @@ export interface ListWorkflowsOptions {
 
 /**
  * Build the WHERE conditions shared by `listWorkflows` and
- * `listWorkflowSummaries` (#178 round-3 S5). Centralising the
+ * `listWorkflowSummaries`. Centralising the
  * predicate avoids drift the next time the list surface gains a
  * filter (e.g. an `owner_id` knob).
  */
@@ -691,7 +689,7 @@ export interface WorkflowSummary {
  * `dag` payload over the wire. Uses Postgres' `jsonb_array_length`
  * to count steps server-side. Mirrors `listWorkflows` filtering
  * surface (status, name_contains, limit, offset) and ordering
- * (newest first). #178 review W-2.
+ * (newest first).
  */
 export async function listWorkflowSummaries(
   tenant_id: string,
@@ -904,7 +902,7 @@ export async function restoreWorkflowVersion(
       tx,
     );
     // A version restore replaces what `readResource("workflow://<id>")`
-    // returns; MCP subscribers must be notified (#169 W1).
+    // returns; MCP subscribers must be notified.
     await emitWorkflowLifecycle(tx, {
       tenant_id,
       type: "workflow.version_restored",

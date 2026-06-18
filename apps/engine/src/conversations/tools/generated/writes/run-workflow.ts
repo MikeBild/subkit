@@ -116,8 +116,7 @@ const Input = z
     /**
      * When true, the result envelope always includes a `step_trace`
      * array (one entry per step: status, kind, duration_ms,
-     * request_meta, output_preview, error_code). Mirrors the reference
-     * impl's `includeStepResults: true`. Default behaviour still
+     * request_meta, output_preview, error_code). Default behaviour still
      * attaches the trace on failure / partial / warnings, so leaving
      * this off costs nothing on the happy path.
      */
@@ -597,8 +596,7 @@ export const runWorkflowTool: ConversationTool = {
       // Per-step trace — same envelope shape dry_run_workflow returns
       // so the LLM can pinpoint the failing step + see its driver
       // metadata (status code, byte counts, connector resolution) in
-      // one read. Mirrors the reference impl's `run_tool({
-      // includeStepResults: true })`. Always populated when the run
+      // one read. Always populated when the run
       // didn't succeed cleanly; omitted on success to save tokens
       // (the user can still inspect_workflow if they want details).
       const stepTraceEntries = result.steps.map((s) => {
@@ -685,7 +683,7 @@ export const runWorkflowTool: ConversationTool = {
           ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
         };
       });
-      // Fingerprint stamping (Fix 5): bind each trace to the step
+      // Fingerprint stamping: bind each trace to the step
       // definition it was recorded against so draft mutations drop
       // evidence per changed step, not wholesale.
       const persistedStepTraces = stampStepTraceFingerprints(

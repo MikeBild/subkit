@@ -1,4 +1,4 @@
-// Issue #47 — schedule trigger calendar-gate executor.
+// Schedule trigger calendar-gate executor.
 //
 // Walks the workflow-schedule fan-out through one fire window plus a
 // weekend plus a skip-date and asserts:

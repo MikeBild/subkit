@@ -585,7 +585,7 @@ export function formatSkillCandidates(candidates: SkillCandidateView[]): string 
 //  the same cap values without hard-coding magic numbers.)
 
 // ---------------------------------------------------------------------------
-// Prior workflows — 5th authoring context source (#203)
+// Prior workflows — 5th authoring context source
 // ---------------------------------------------------------------------------
 
 /**
@@ -670,8 +670,7 @@ export function trimPriorWorkflowsToBudget(refs: PriorWorkflowRef[]): {
 }
 
 /**
- * Render the interaction log as a markdown section. Mirrors the
- * reference impl's `interactionLog` array — gives the model an
+ * Render the interaction log as a markdown section. Gives the model an
  * append-only record of "what was tested vs. confirmed vs. declined"
  * so it doesn't re-ask for already-resolved actions or treat a
  * partial approval as full.

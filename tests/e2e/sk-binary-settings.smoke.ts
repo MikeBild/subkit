@@ -80,7 +80,7 @@ describe("sk binary smoke (v3.5)", () => {
     expect(r.stderr).toMatch(/cannot reach engine|sk:|transport/i);
   });
 
-  // Note on the JSON-envelope assertion (audit #20): the wire shape
+  // Note on the JSON-envelope assertion: the wire shape
   // is locked down by the route integration test in
   // apps/engine/src/http/routes/__tests__/settings.integration.test.ts
   // (real DB, real engine) and the headless CLI passes through the

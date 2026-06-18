@@ -561,8 +561,8 @@ describe("features: inline reverse-i-search", () => {
 
 // ---------- 8. /paste + /attach built-ins ----------
 
-// Wave-D rewired /attach from the local PasteStore to engine upload +
-// `$file` insert. The tests below provide a mocked EngineClient so
+// /attach routes through engine upload + `$file` insert rather than the
+// local PasteStore. The tests below provide a mocked EngineClient so
 // the slash handler exercises the upload path; assertions cover the
 // new behaviour (uploaded info line, fid inserted at the cursor) and
 // the unchanged guard rails (missing path, no args).
@@ -687,7 +687,7 @@ describe("features: /attach built-in slash", () => {
   });
 
   // The legacy `/attach remove <id>` sub-form mutated the local
-  // PasteStore. Since Wave-D, /attach uploads to the engine and the
+  // PasteStore. Now /attach uploads to the engine and the
   // PasteStore stays empty for engine-uploaded files; `remove` on an
   // empty store reports a "no pending item" error. The assertion
   // below pins that current contract — engine-backed file removal

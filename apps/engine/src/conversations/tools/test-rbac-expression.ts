@@ -26,8 +26,7 @@ import type { ConversationTool } from "./index.ts";
 //      resource R?" Reuses the live RBAC evaluator. Authoritative —
 //      no drift.
 //   2. `expression_preview` — "would this JSONata predicate
-//      evaluate to true against this sample step config?" Mirrors
-//      the reference impl's `test_role_access` shape so the LLM can
+//      evaluate to true against this sample step config?" so the LLM can
 //      validate a proposed custom rule before saving it.
 //
 // IMPORTANT: must be a flat z.object (NOT z.union / z.discriminatedUnion).

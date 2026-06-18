@@ -32,10 +32,10 @@ import type { PersonaProbe } from "../slash.ts";
  *  so the next bootstrap re-fetches with the new shape. */
 export const PERSISTED_SNAPSHOT_VERSION = 3 as const;
 
-/** R8-S1: derive a stable, sha256-fingerprinted cache key from a
+/** Derive a stable, sha256-fingerprinted cache key from a
  *  profile. Used by both `bootstrapCachePath` and the React
  *  `usePersona` hook so they can never disagree on what counts as
- *  "the same principal" (R5-W2 stable bootstrap key). */
+ *  "the same principal". */
 export function fingerprintApiKey(apiKey: string | undefined): string {
   return createHash("sha256")
     .update(apiKey ?? "")
@@ -48,7 +48,7 @@ export function bootstrapCacheKey(profile: ResolvedProfile): {
   tenantSlug: string;
   tokenFp: string;
 } {
-  // R11-W4 review fix: the no-tenant sentinel cannot collide with
+  // The no-tenant sentinel cannot collide with
   // any sanitised real tenant slug. The sanitiser keeps `[A-Za-z0-9_-]`
   // and replaces everything else with `_`, so any sentinel that
   // contains the `__` substring (which a tenant slug pattern
@@ -59,7 +59,7 @@ export function bootstrapCacheKey(profile: ResolvedProfile): {
       : profile.active_tenant_id.replace(/[^a-z0-9_-]/gi, "_");
   // engineSlug = `<host-prefix-24>-<sha256(full url)[0..12]>`
   //
-  // R10-S5 + R11-S2: keeps the cache filename grep-friendly via the
+  // Keeps the cache filename grep-friendly via the
   // host-prefix while making accidental collisions implausible via
   // the URL hash. The previous shape — `engine_url.slice(-32)` —
   // collapsed `engine-old.acme.example/` and `engine-new.acme.example/`
@@ -76,8 +76,7 @@ export function bootstrapCacheKey(profile: ResolvedProfile): {
 
 /** Wire-shape pulled directly from the generated OpenAPI client.
  *  Used by both the consumer types below and `engine-client.ts` so
- *  a typo in a flag name fails to compile across the whole CLI.
- *  R4-W1 / R4-S5. */
+ *  a typo in a flag name fails to compile across the whole CLI. */
 export type SkBootstrapWireResponse = components["schemas"]["SkBootstrap"];
 export type SkBootstrapFlags = SkBootstrapWireResponse["flags"];
 
@@ -98,7 +97,7 @@ export interface SkBootstrapSnapshot {
   recentSessions: SkBootstrapWireResponse["recent_sessions"];
   /** Persona-visible feature flags. Drawn from the generated openapi
    *  type so a typo on either the engine or CLI side fails to
-   *  compile. R4-W1. */
+   *  compile. */
   flags: SkBootstrapFlags;
   /** REPL + UI + notification preferences resolved by the engine for
    *  this principal. */
@@ -120,7 +119,7 @@ export interface BootstrapOptions {
   now?: () => number;
 }
 
-// R8-W1: Zod schema for the persisted cache file. Reads validate
+// Zod schema for the persisted cache file. Reads validate
 // the parsed JSON against this schema and reject the file on
 // mismatch — a corrupted file or stale field shape now fails
 // closed instead of flowing into `materialize()`. The cache file
@@ -142,7 +141,7 @@ const PersistedSnapshotSchema = z
       }),
     ),
     // `flags` is the typed enum object from the engine — empty `{}`
-    // today (R5-S2). The wire shape strictly rejects unknown keys
+    // today. The wire shape strictly rejects unknown keys
     // (engine-side); the cache reader is more permissive (passthrough
     // record) so a snapshot produced by a newer engine with new
     // flags doesn't fail to read on an older CLI. The engine-side
@@ -150,7 +149,7 @@ const PersistedSnapshotSchema = z
     // cast at the materialize() boundary closes the type gap when
     // `SkBootstrapFlags` is the empty object.
     //
-    // R10-W3: when the first real flag lands engine-side, also bump
+    // When the first real flag lands engine-side, also bump
     // `PERSISTED_SNAPSHOT_VERSION` so older malformed cache files
     // (which would have any boolean key whatsoever under this
     // permissive record) get rejected on the next read instead of
@@ -187,7 +186,7 @@ const PersistedSnapshotSchema = z
 
 type PersistedSnapshot = z.infer<typeof PersistedSnapshotSchema>;
 
-/** R10-W3: closed allow-list of flag keys the cache reader will
+/** Closed allow-list of flag keys the cache reader will
  *  surface. Today empty (mirrors `SkBootstrapFlagsSchema = z.object({}).strict()`).
  *  When the first real flag lands engine-side, add its name here
  *  AND bump `PERSISTED_SNAPSHOT_VERSION` so older malformed caches
@@ -284,7 +283,7 @@ function materialize(
     tenant: p.tenant,
     email: p.email,
     recentSessions: p.recent_sessions,
-    // R8-W1 + R10-W3: cache schema accepts arbitrary `flags` keys
+    // Cache schema accepts arbitrary `flags` keys
     // but the engine-side wire schema is strict (`.object({}).strict()`
     // today, will narrow as flags land). Drop any key that isn't on
     // the wire-shape's allowed set so a tampered cache file can't
@@ -339,13 +338,13 @@ export function bootstrapCachePath(profile: ResolvedProfile, override?: string):
   //
   // The fingerprint is the first 16 hex chars of sha256(api_key) —
   // short enough to keep the filename readable, long enough to make a
-  // cross-token collision negligible (~1 in 2^64). 8 hex (R2-W11
-  // initial fix) was 1-in-2^32 per pair, which is fine for two keys
+  // cross-token collision negligible (~1 in 2^64). 8 hex was
+  // 1-in-2^32 per pair, which is fine for two keys
   // but starts approaching birthday-bound territory across an
-  // operator's lifetime of rotated tokens. R3-S3 bumped to 16. The
+  // operator's lifetime of rotated tokens, so the width is 16. The
   // hash itself is never reversible to the bearer because we only
   // persist the prefix.
-  // R8-S1: derive the (engine, tenant, fingerprint) triple from the
+  // Derive the (engine, tenant, fingerprint) triple from the
   // shared helper so this path and `usePersona`'s `bootstrapKey` can
   // never disagree on what counts as the same principal.
   const { engineSlug, tenantSlug, tokenFp } = bootstrapCacheKey(profile);
@@ -365,7 +364,7 @@ function readCachedSnapshot(path: string): PersistedSnapshot | null {
   } catch {
     return null;
   }
-  // R8-W1: strict Zod validation. A corrupted file, version
+  // Strict Zod validation. A corrupted file, version
   // mismatch, or unknown extra field now fails closed.
   const result = PersistedSnapshotSchema.safeParse(parsed);
   if (!result.success) {
@@ -382,7 +381,7 @@ function writeCachedSnapshot(path: string, snap: PersistedSnapshot): void {
   } catch (err) {
     // Cache writes are best-effort. If the disk is full or read-only
     // we fall back to in-memory only — the REPL still works.
-    // R5-W6: surface the failure via debugLog so a CI runner with a
+    // Surface the failure via debugLog so a CI runner with a
     // read-only `~/.sk/cache` (or similar) doesn't silently disable
     // caching forever.
     debugLog("bootstrap.cache_write_failed", { path, error: serializeDebugError(err) }, {});

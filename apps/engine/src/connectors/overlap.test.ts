@@ -1,6 +1,6 @@
-// Tests for the structural connector-overlap scorer (Adoption A).
+// Tests for the structural connector-overlap scorer.
 //
-// Design note (S5 round-2 review): every `existingConnector(...)` call
+// Design note: every `existingConnector(...)` call
 // builds the row from explicit fields, not by spreading `PROPOSED` as
 // a default. The earlier shape ("match everything by default, override
 // to differ") made it easy to write a regression where the helper's
@@ -14,7 +14,7 @@ import { baseUrlHost, compareConnectorOverlap, scoreConnectorOverlap } from "./o
 
 const PROPOSED = {
   driver: "http",
-  base_url: "https://si-emobility.atlassian.net/wiki/api/v2",
+  base_url: "https://acme.atlassian.net/wiki/api/v2",
   auth_type: "basic",
 };
 
@@ -32,9 +32,7 @@ function existingConnector(row: ExistingRow): ExistingRow {
 
 describe("baseUrlHost", () => {
   it("returns lowercased host for a normal URL", () => {
-    expect(baseUrlHost("https://Si-EMobility.Atlassian.NET/wiki/api/v2")).toBe(
-      "si-emobility.atlassian.net",
-    );
+    expect(baseUrlHost("https://Acme.Atlassian.NET/wiki/api/v2")).toBe("acme.atlassian.net");
   });
 
   it("returns empty string for null / empty / malformed input", () => {
@@ -51,7 +49,7 @@ describe("scoreConnectorOverlap", () => {
       existingConnector({
         id: "c1",
         driver: "http",
-        base_url: "https://si-emobility.atlassian.net",
+        base_url: "https://acme.atlassian.net",
         auth_type: "basic",
       }),
       PROPOSED,
@@ -65,7 +63,7 @@ describe("scoreConnectorOverlap", () => {
       existingConnector({
         id: "c2",
         driver: "http",
-        base_url: "https://si-emobility.atlassian.net",
+        base_url: "https://acme.atlassian.net",
         auth_type: "oauth2_authorization_code",
       }),
       PROPOSED,
@@ -145,14 +143,14 @@ describe("compareConnectorOverlap", () => {
         existingConnector({
           id: "auth-mismatch",
           driver: "http",
-          base_url: "https://si-emobility.atlassian.net",
+          base_url: "https://acme.atlassian.net",
           auth_type: "oauth2_authorization_code",
         }),
         // Score 3 — full match.
         existingConnector({
           id: "exact",
           driver: "http",
-          base_url: "https://si-emobility.atlassian.net",
+          base_url: "https://acme.atlassian.net",
           auth_type: "basic",
         }),
       ],
@@ -188,7 +186,7 @@ describe("compareConnectorOverlap", () => {
         existingConnector({
           id: "near",
           driver: "http",
-          base_url: "https://si-emobility.atlassian.net",
+          base_url: "https://acme.atlassian.net",
           auth_type: "oauth2_authorization_code",
         }),
       ],

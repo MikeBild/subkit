@@ -44,7 +44,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { audit, auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Db, type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionFixtures, patchCandidates } from "../db/schema/index.ts";
 import { MAX_REPAIR_ATTEMPTS } from "../execution/timeouts.ts";
@@ -69,8 +69,6 @@ import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
 import { candidateProposal, findMatchingTerminalEndpointCandidate } from "./terminal-dedup.ts";
 import type { DriftSignal, DryRunStep, WorkflowRepairJob } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface SelfHealingResult {
   drift_detected: boolean;
@@ -725,7 +723,7 @@ export async function processDriftSignal(
     classification: decision.classification,
     decision: auto_applied ? "auto_applied" : "parked",
   });
-  // Opening edge of the Run → Drift → Patch → Skill loop (positioning.md §6):
+  // Opening edge of the Run → Drift → Patch → Skill loop (docs/06-execution.md):
   // a drift signal just became a Patch Candidate. Tenant-scoped sibling of the
   // tenant-less patch_candidates_total above.
   recordLoopDriftToPatchCandidate({

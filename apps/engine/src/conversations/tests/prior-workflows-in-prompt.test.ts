@@ -1,4 +1,4 @@
-// Prior Workflows — 5th authoring context source (#203). End-to-end
+// Prior Workflows — 5th authoring context source. End-to-end
 // pin that for a structured authoring flow (`generate`) the assembler
 // surfaces this tenant's most similar active workflow as a reference
 // case, marked `[reference, not template]` per the issue contract.

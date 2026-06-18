@@ -2,7 +2,7 @@
 // a member of `UX_GATING_PERMISSIONS` (the canonical bootstrap-probe
 // set in `@shared/ux-gating`).
 //
-// **Why this exists** (R6-C1, found by independent review): when a
+// **Why this exists**: when a
 // slash declares `requires: "connector:write"` but `connector:write`
 // is NOT in `UX_GATING_PERMISSIONS`, the bootstrap response never
 // probes that permission, the persona's `allowed` Set never contains
@@ -20,7 +20,7 @@
 //   2. Drop the `requires:` field from the slash entry if the
 //      permission is genuinely outside the bootstrap probe set.
 //
-// **Why this file is type-only** (R10-S3 review fix follow-up): the
+// **Why this file is type-only**: the
 // initial extraction also moved the runtime assignment here, but
 // `slash.ts → slash-permissions-invariant.ts → slash.ts` was a
 // runtime cycle that crashed at module load (`Cannot access

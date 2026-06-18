@@ -71,7 +71,7 @@ export const externalCallMetering = pgTable(
       t.month_bucket,
     ),
     check("external_call_metering_result_check", sql`${t.result} IN ('ok','error')`),
-    // Pin `provider` to a slug grammar (#178 review S4, migration 0016).
+    // Pin `provider` to a slug grammar (migration 0016).
     // Operator-facing roll-ups join on this column; an unconstrained
     // free-string field would drift into typo soup before any writer
     // ships.

@@ -1,4 +1,4 @@
--- One-shot cleanup for the repair-pattern detector rescope (see #202).
+-- One-shot cleanup for the repair-pattern detector rescope.
 --
 -- The repair-pattern detector used to emit `scope='workflow'` Skill
 -- Candidates; it now emits `scope='connector'` (the repair is an

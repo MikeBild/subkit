@@ -1,10 +1,10 @@
-// Lock-the-lead invariant: if the QuickJS WASM module fails to load
+// Fail-closed invariant: if the QuickJS WASM module fails to load
 // for any reason, `runJs` MUST throw — there is no host-eval fallback,
-// no silent skip, no "best-effort" host `Function(...)` evaluation. A
-// reference implementation evaluates RBAC custom-rule expressions with
-// raw `new Function(…)` even though the inputs are admin-defined; we
-// run all untrusted JS in QuickJS and never fall back to host. This
-// test proves the contract holds when the WASM loader rejects.
+// no silent skip, no "best-effort" host `Function(...)` evaluation.
+// All untrusted JS (including RBAC custom-rule expressions) runs in
+// QuickJS and never falls back to a raw host `new Function(…)`, even
+// when the inputs are admin-defined. This test proves the contract
+// holds when the WASM loader rejects.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { runJs, setQuickJsModuleProviderForTesting } from "./runtime.ts";

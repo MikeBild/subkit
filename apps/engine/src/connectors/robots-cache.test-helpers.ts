@@ -1,4 +1,4 @@
-// Web-scraper #144 — test-only helpers for the robots LRU.
+// Test-only helpers for the robots LRU.
 //
 // Lives in a `.test-helpers.ts` sibling so the production module
 // (`robots-cache.ts`) exports stay clean. Only test files and other

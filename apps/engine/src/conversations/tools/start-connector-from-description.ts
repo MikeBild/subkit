@@ -49,8 +49,7 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     // generate a brand-new slug `aws-appsync-discovery`, and lose
     // the working `aws-appsync-graphql` connector + cached credential.
     // The user then re-typed credentials. This dedup keeps the prior
-    // session's work — same pattern as the reference impl's
-    // `findSystem(url)` short-circuit.
+    // session's work via a `findReusableConnectorByUrl` short-circuit.
     const reuseEnvelope = await findReusableConnectorByUrl({
       tenant_id: ctx.tenant_id,
       environment: args.environment,

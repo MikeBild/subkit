@@ -1,7 +1,6 @@
 // Ink-based rich REPL root for `sk`.
 //
-// Wires together every UX surface described in the Claude Code
-// adoption plan:
+// Wires together every UX surface of the conversational REPL:
 //
 //   * <WelcomeBanner> on first paint (unicode-block logo + tip)
 //   * Scriptable status line with rate-limited rebuild ticker
@@ -248,8 +247,8 @@ export interface InkAppProps {
   /** Called when the user exits. */
   onExit?: () => void;
   /**
-   * Called when the user presses Esc during a long-running turn
-   * (codex parity). Routes to `engineClient.cancelConversation(id)`
+   * Called when the user presses Esc during a long-running turn.
+   * Routes to `engineClient.cancelConversation(id)`
    * which fires the engine's abort signal so the in-flight stream
    * ends with `cancelled` instead of `succeeded` / `failed`.
    */
@@ -274,7 +273,7 @@ export interface InkAppProps {
   } | null;
 }
 
-// ---------- Tool-call card (Claude Code style) ----------
+// ---------- Tool-call card ----------
 //
 // Indented under the turn with a `⎿` glyph. Status glyph colors by
 // state (running yellow, done green, failed red). One-line input
@@ -526,7 +525,7 @@ const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns, detailed }) => 
     color = theme.severity.dim;
   }
 
-  // Result/error body — Claude-Code-style transparency block. Always
+  // Result/error body — transparency block. Always
   // visible for failures (the operator needs the reason to course-
   // correct); collapsed for successes unless explicitly expanded.
   const bodyLines: Array<{ text: string; tone: "ok" | "fail" | "dim" }> = [];
@@ -715,7 +714,7 @@ const SetupBanner: React.FC<SetupBannerProps> = memo(({ status, warnings, blocke
 });
 SetupBanner.displayName = "SetupBanner";
 
-// ---------- Message row (Claude Code style) ----------
+// ---------- Message row ----------
 
 const MESSAGE_ROW_INDENT = 8; // 2 glyph + 6 label
 const MESSAGE_ROW_RIGHT_MARGIN = 2; // safety so a wide ¶ doesn't kiss the right edge
@@ -735,8 +734,7 @@ const MessageRow: React.FC<{
   const theme = useTheme();
   // Speaker label + glyph. Two columns: a 2-char glyph slot, then a
   // fixed-width label so wrapping body text aligns under itself, not
-  // under the label. Pattern mirrors the codex-rs / reference-agent
-  // chat surface — `›  you` for the operator, `•  sk` for the
+  // under the label — `›  you` for the operator, `•  sk` for the
   // assistant, `$  tool` for tool calls, `·` for system rows.
   const glyph = role === "user" ? "›" : role === "assistant" ? "•" : role === "tool" ? "$" : "·";
   const label =
@@ -812,7 +810,7 @@ StatusBar.displayName = "StatusBar";
 
 // ---------- Composer ----------
 //
-// Bordered-input layout, Claude-Code style:
+// Bordered-input layout:
 //
 //   ─────────────────────────────────────────
 //   ❯ <typed text><blinking cursor>
@@ -1439,7 +1437,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   const busyRef = useRef(false);
   const [altScreen, setAltScreen] = useState(false);
   // Transcript pager — Ctrl-P toggles a modal overlay that renders
-  // every cell with full output and unabridged diffs. Codex parity.
+  // every cell with full output and unabridged diffs.
   const [pagerOpen, setPagerOpen] = useState(false);
   const [statusLine, setStatusLine] = useState<string>("");
   const [notices, setNotices] = useState<TranscriptNotice[]>([]);
@@ -2677,8 +2675,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         return;
       }
 
-      // Pending-elicitation routing — mirrors the reference impl's
-      // structured-only confirmation pattern.
+      // Pending-elicitation routing — structured-only confirmation.
       //
       // The engine pauses the conversation on any `askUser.*` tool and
       // expects the next /respond call to carry a STRUCTURED answer
@@ -2691,9 +2688,9 @@ export const InkApp: React.FC<InkAppProps> = ({
       // Free text typed at the main prompt input while an elicitation
       // is open is NEVER classified as a confirmation answer. The
       // pre-c35ef1c regex classifier ("yes" / "save it" / "ship it" →
-      // confirm) was fragile, surfaced silent false-positives, and is
-      // not how the reference impl works. We forward the user to the
-      // structured component instead. Slash commands (/approve,
+      // confirm) was fragile and surfaced silent false-positives. We
+      // forward the user to the structured component instead. Slash
+      // commands (/approve,
       // /reject, /respond, /cancel) remain available for explicit
       // CLI-only flows.
       if (session.pendingElicitation) {
@@ -3033,7 +3030,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   useInput(
     (char, key) => {
       // --- Global shortcuts (active even under modal / busy) ----------
-      // Ctrl-P toggles the transcript pager — codex-style modal showing
+      // Ctrl-P toggles the transcript pager — a modal showing
       // every cell with full output / full diff. Distinct from the
       // alt-screen inspect mode (Ctrl-T) which is a different rendering.
       if (key.ctrl && char === "p") {
@@ -3103,8 +3100,8 @@ export const InkApp: React.FC<InkAppProps> = ({
           return;
         }
       }
-      // Ctrl-R opens inline history-search (Claude-Code-style
-      // above-composer widget). The modal pane is still reachable
+      // Ctrl-R opens inline history-search (an above-composer
+      // widget). The modal pane is still reachable
       // via `/resume` for users who prefer it.
       if (key.ctrl && char === "r") {
         if (historyRef.current.length > 0) setInlineSearchOpen(true);
@@ -3126,7 +3123,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         showInfo("credential paste cancelled");
         return;
       }
-      // Esc-to-interrupt for a long-running turn — codex parity.
+      // Esc-to-interrupt for a long-running turn.
       // Routes to the engine's cancel endpoint via the conversation
       // id; the running stream sees its abort signal fire and the
       // turn ends with a `cancelled` status. Only fires when the CLI
@@ -3359,7 +3356,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       //
       //   - Ctrl-J (line feed) — the tmux / emacs convention, works on
       //     every terminal because the byte is unambiguous.
-      //   - Shift+Enter — codex-style; only delivered as a distinct
+      //   - Shift+Enter — only delivered as a distinct
       //     event on terminals that speak the kitty keyboard protocol
       //     (kitty, ghostty, recent iTerm2, foot, alacritty with
       //     `keyboard_protocol = enabled`). On classic terminals
@@ -3805,7 +3802,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         }
       }
       // Render any threaded diff cells under this assistant message.
-      // Codex parity: structural mutation visible inline at the moment
+      // Structural mutation is visible inline at the moment
       // it lands, no scroll-back required.
       const childDiffs = diffsByParent.get(m.id);
       if (childDiffs && childDiffs.length > 0) {
@@ -4289,9 +4286,8 @@ export const InkApp: React.FC<InkAppProps> = ({
           onDismiss={() => setHistoryOpen(false)}
         />
       ) : null}
-      {/* Inline Ctrl-R search — Claude-Code-style above-composer
-          reverse-i-search widget. Commits replace the buffer; cancel
-          restores it. */}
+      {/* Inline Ctrl-R search — above-composer reverse-i-search
+          widget. Commits replace the buffer; cancel restores it. */}
       {inlineSearchOpen ? (
         <InlineHistorySearch
           entries={historyRef.current}
@@ -4417,7 +4413,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           when `busy` is false. */}
       <ActivityLine activity={session.activity} active={busy} />
 
-      {/* Modal transcript pager — codex parity (Ctrl-P toggles).
+      {/* Modal transcript pager (Ctrl-P toggles).
           Renders every cell with full output and unabridged diffs.
           Returns null when closed; ESC inside it routes to onClose. */}
       <TranscriptPager

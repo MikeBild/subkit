@@ -3,8 +3,6 @@
 // cancel`); second press within `windowMs` exits the process.
 // Outside a turn the helper returns `"exit"` immediately so the host
 // CLI can tear down its readline / Ink runtime.
-//
-// This mirrors Claude Code's interrupt ceremony at minimal size.
 
 export type InterruptPhase = "cancel-turn" | "exit";
 

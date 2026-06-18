@@ -158,9 +158,7 @@ async function fetchSpec(
   const effectiveUrl = normalizeKnownHosts(url);
   // Egress guard — discovery is just as much an outbound fetch surface
   // as the runtime drivers, and SSRF attempts via spec URLs (private
-  // ranges, localhost, link-local) need the same RFC1918 reject. The
-  // ref impl had this gap on the documentation-fetching path; we close
-  // it here.
+  // ranges, localhost, link-local) need the same RFC1918 reject.
   assertEgressAllowed(effectiveUrl, {});
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);

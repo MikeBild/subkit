@@ -31,7 +31,7 @@
 // to persist Patch Candidates.
 
 import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { schemaVersions } from "../db/schema/connectors.ts";
 import { executions } from "../db/schema/executions.ts";
 import { tenants } from "../db/schema/identity.ts";
@@ -41,8 +41,6 @@ import { instrument } from "../observability/runtime-telemetry.ts";
 import { diffShapes } from "../schema-versions/service.ts";
 import { scanStdlibDrift } from "./stdlib-drift-scan.ts";
 import type { DriftSignal, SchemaShape } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface ProactiveScanFilters {
   /** Limit the scan to a single tenant. Required for tenant-scoped

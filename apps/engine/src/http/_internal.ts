@@ -5,7 +5,7 @@
 //
 // Kept in a separate file (rather than inline in `errors.ts`) so the
 // brand doesn't leak into the OpenAPI/IDE autocomplete surface of
-// the public errors module. R5-S5 review fix.
+// the public errors module.
 //
 // @internal
 
@@ -19,7 +19,7 @@
  * module under bun's parallel test runner sees the same symbol
  * identity as the engine's runtime.
  *
- * Trust model (R6-S4 review note): `Symbol.for("sk.HttpErrorOptions")`
+ * Trust model: `Symbol.for("sk.HttpErrorOptions")`
  * lives in the global symbol registry, so any code in-process can
  * re-fetch the same symbol and stamp a forged brand on a details
  * bag. This is acceptable for this codebase: the engine runs

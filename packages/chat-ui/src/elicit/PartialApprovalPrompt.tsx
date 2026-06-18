@@ -1,12 +1,12 @@
 // askUser.confirm with kind: "partial_diff_approval" — per-row approve/
-// reject toggle. Mirrors reference impl's DiffApprovalComponent shape.
+// reject toggle.
 //
 // State machine: every row starts as "approved" (default). The user
 // toggles individual rows to "rejected" with space. Enter submits;
 // the response carries the indices of approved rows so the engine
 // can apply only the approved subset via applyDiffsToConfig.
 //
-// Three submit shapes match the reference's response envelope:
+// Three submit shapes the engine's response envelope accepts:
 //   - all approved   → { confirmed: true, partial: false, approved_indices: [0..N-1] }
 //   - all rejected   → { confirmed: false }
 //   - mixed (some)   → { confirmed: true, partial: true, approved_indices: [...] }

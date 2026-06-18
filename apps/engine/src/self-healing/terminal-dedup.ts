@@ -1,10 +1,8 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import type { DriftSignal } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v)).join(",")}]`;

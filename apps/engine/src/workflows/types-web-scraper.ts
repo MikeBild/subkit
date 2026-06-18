@@ -1,4 +1,4 @@
-// Web-scraper transform languages (#144) — schema sidecar for `types.ts`.
+// Web-scraper transform languages — schema sidecar for `types.ts`.
 //
 // Lives in its own file so `types.ts` stays under the 1000-LOC audit
 // ceiling. `types.ts` imports the three config + three output Zod

@@ -1,5 +1,5 @@
 // find_workflow — fuzzy lookup over the saved-workflow catalog.
-// Mirrors the reference impl's `find_tool`: keyword overlap against
+// Keyword overlap against
 // id/slug/name/description/step.id/step.kind/step.connector_id.
 //
 // Read-only. Use when the operator says "do we have a HubSpot

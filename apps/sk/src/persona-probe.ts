@@ -29,7 +29,7 @@ import type { PersonaProbe } from "./slash.ts";
  *  every entry below MUST be a member of `UxGatingPermission`. The
  *  exhaustiveness assertion at the bottom of this file enforces that
  *  the *engine*'s canonical set fully covers the union of tiers
- *  below — added in response to the W1/W2 review feedback that the
+ *  below — the
  *  hand-written test only catches contains-mismatches at runtime. */
 const TIER_PERMISSIONS: Record<number, readonly UxGatingPermission[]> = {
   1: ["conversation:read", "conversation:write", "memory:write"],

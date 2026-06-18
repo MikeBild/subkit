@@ -1,5 +1,5 @@
 // Calendar heatmap of recent workflow-execution activity, sourced from
-// the tenant-scoped /v1/stats/executions endpoint (#160) at
+// the tenant-scoped /v1/stats/executions endpoint at
 // `bucket=day`. Rows are weeks, columns are weekdays; intensity is one
 // of five glyphs based on count quintile. Toggle the window with `1`
 // (Last 7), `2` (Last 30), `3` (All time). Replaces the prior audit-log

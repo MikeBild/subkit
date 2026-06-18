@@ -9,12 +9,10 @@
 //   enforce.ts     — per-run token cap on workflow request steps
 //                    (was execution/llm-budget.ts)
 //
-// Two byte-budget files were intentionally LEFT IN PLACE despite the
-// audit doc's original framing: knowledge/budgets.ts and
-// docs-ingestion/budgets.ts gate file-storage and HTTP-fetch resource
-// usage, not LLM tokens. They share the word "budget" but not the
-// logic. The audit doc §4.3 is updated alongside this consolidation
-// so the scope reflects reality.
+// Two byte-budget files are intentionally NOT consolidated here:
+// knowledge/budgets.ts and docs-ingestion/budgets.ts gate file-storage
+// and HTTP-fetch resource usage, not LLM tokens. They share the word
+// "budget" but not the logic.
 
 export {
   type AccountParams,

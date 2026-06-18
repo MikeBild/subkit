@@ -7,7 +7,7 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { auditLog, skills } from "../db/schema/index.ts";
 import { HttpError, NotFoundError } from "../http/errors.ts";
 import { log } from "../logging/logger.ts";
@@ -21,8 +21,6 @@ import {
   type SkillSource,
   type UpdateSkillInput,
 } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 type SkillRow = typeof skills.$inferSelect;
 

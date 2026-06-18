@@ -13,8 +13,7 @@
 //
 // `searchSlashCommands(query, persona)` runs a Fuse.js fuzzy match
 // against the visible-for-persona set, weighted so command names
-// dominate over help-string matches. Mirrors the pattern in
-// Claude Code's `src/components/PromptInput/commandSuggestions.ts`.
+// dominate over help-string matches.
 
 import Fuse from "fuse.js";
 import { z } from "zod";
@@ -26,11 +25,11 @@ import { frequencyBias } from "./usage-stats.ts";
  * which characters are legal in a registered command name. The
  * cursor-aware scanner in `repl/slash/findPositions.ts` reuses this
  * to guarantee both surfaces (the catalog + the input scanner)
- * accept the same alphabet. R1-S6 review fix.
+ * accept the same alphabet.
  */
 export const SLASH_NAME_CHAR_RE = /[A-Za-z0-9_-]/;
 
-/** R5-S3: helper exported alongside the regex so callers consume the
+/** Helper exported alongside the regex so callers consume the
  *  predicate behind a name. Keeps a future Unicode-class change in
  *  one place. */
 export function isSlashNameChar(ch: string): boolean {
@@ -42,7 +41,7 @@ export function isSlashNameChar(ch: string): boolean {
  * branch in `apps/sk/src/repl/slash/handler.ts` because the Ink-only
  * host (`ink-app.tsx`) intercepts them before dispatch.
  *
- * R11-S4 review note: the list lives here (next to `SLASH_COMMANDS`)
+ * The list lives here (next to `SLASH_COMMANDS`)
  * because it's metadata about the registry, not about dispatch.
  * `apps/sk/src/repl/slash/dispatcher.ts` re-exports it for the
  * dispatcher contract test.
@@ -85,7 +84,7 @@ export const INK_INTERCEPTED_LOCAL_SLASHES = Object.freeze([
  *   - /paste, /attach, /queue, /view — input/transcript-side
  *     intercepts (`ink-app.tsx:1660,1684,1725,1746`)
  *
- * The R11-S1 contract test asserts every `routing: "engine"` slash
+ * The contract test asserts every `routing: "engine"` slash
  * either has a `case` in `handler.ts`, lands in a per-category
  * sub-dispatcher, or appears here.
  */
@@ -99,7 +98,7 @@ export const INK_INTERCEPTED_ENGINE_SLASHES = Object.freeze([
   "view",
 ] as const);
 
-/** R5-W3 review fix: every slash command can declare a Zod schema
+/** Every slash command can declare a Zod schema
  *  for its positional args (`/foo bar baz` → `["bar", "baz"]`).
  *  Local-only slashes that today parse args ad-hoc (e.g. `/debug`
  *  accepting `on|off|tail`) get validated at the dispatcher entry,
@@ -124,7 +123,7 @@ export interface SlashCommand {
    * row): /clear, /help, /cost, /verbose, /debug, etc. Setting this
    * field at registration removes a class of bug where the dispatcher
    * routes by raw name (`LOCAL_ONLY_NAMES`) and a future name collision
-   * silently bypasses the audited path. Resolves R1-S2 / R2-W4.
+   * silently bypasses the audited path.
    */
   routing?: "local" | "engine";
   /**
@@ -132,7 +131,7 @@ export interface SlashCommand {
    * (`["bar", "baz"]` for `/foo bar baz`). Validated at dispatcher
    * entry — a malformed call fails before reaching the handler with
    * a structured Zod error. When omitted, `SlashArgsSchemaDefault`
-   * is used (any string array). R5-W3.
+   * is used (any string array).
    */
   argsSchema?: z.ZodType<readonly string[]>;
 }
@@ -246,7 +245,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Approve a pending request_human_approval",
     category: "session",
     requires: "conversation:approve",
-    // R8-W3: 0 args (approve latest) or 1 arg (approval id).
+    // 0 args (approve latest) or 1 arg (approval id).
     argsSchema: z.union([z.tuple([]), z.tuple([z.string().min(1).max(128)])]),
   },
   {
@@ -254,7 +253,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Reject a pending approval (with optional reason)",
     category: "session",
     requires: "conversation:approve",
-    // R8-W3: 0+ args. First arg is approval id (optional);
+    // 0+ args. First arg is approval id (optional);
     // remaining args are the rejection reason — we don't tightly
     // bound it, just require non-empty strings if present.
     argsSchema: z.array(z.string().min(1).max(512)),
@@ -606,8 +605,8 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
 ] as const;
 
 // Typecheck-time invariant: every slash command's `requires:` must
-// be a member of `UX_GATING_PERMISSIONS`. R10-S3: moved the
-// explainer + mapped-type into its own file. The runtime assignment
+// be a member of `UX_GATING_PERMISSIONS`. The
+// explainer + mapped-type live in their own file. The runtime assignment
 // stays here because anchoring it where `SLASH_COMMANDS` is in scope
 // avoids a runtime import cycle. See
 // `apps/sk/src/slash-permissions-invariant.ts` for the full
@@ -648,8 +647,7 @@ export function findSlashCommand(raw: string): SlashCommand | undefined {
 /**
  * Fuzzy search the slash-command catalog for commands matching
  * `query`, restricted to the caller's persona. Returns ranked
- * suggestions with the best match first. Thresholds mirror
- * Claude Code's `commandSuggestions.ts`: name 3x weight,
+ * suggestions with the best match first. Thresholds: name 3x weight,
  * aliases 2x, help 0.5x, threshold 0.3.
  *
  * An empty query returns the whole visible catalog (useful for

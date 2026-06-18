@@ -1,4 +1,4 @@
-// analyze_scrape_target — web-scraper #144 pre-flight authoring gate.
+// analyze_scrape_target — web-scraper pre-flight authoring gate.
 //
 // The chat surface calls this tool BEFORE drafting a `crawl-sitemap-to-
 // markdown` workflow. The tool probes the target origin and returns a

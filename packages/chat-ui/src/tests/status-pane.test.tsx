@@ -21,7 +21,7 @@ describe("StatusPane", () => {
           title="status"
           subtitle="default"
           rows={[
-            ["user", "mike@mikebild.com"],
+            ["user", "user@example.com"],
             ["tenant", "tenant-alpha"],
             ["connectors", 7],
             ["tokens · today", 128],
@@ -33,7 +33,7 @@ describe("StatusPane", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("status");
     expect(frame).toContain("default");
-    expect(frame).toContain("mike@mikebild.com");
+    expect(frame).toContain("user@example.com");
     expect(frame).toContain("tenant-alpha");
     expect(frame).toContain("7");
     expect(frame).toContain("128");

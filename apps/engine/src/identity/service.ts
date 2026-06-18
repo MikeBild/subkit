@@ -7,7 +7,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import {
   apiKeys,
   portalTokens,
@@ -25,8 +25,6 @@ import { generatePortalToken } from "./portal-token.ts";
 // docs/08-operations.md.
 export const SESSION_SLIDING_TTL_MS = 8 * 60 * 60 * 1000; // 8 h
 export const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 d
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface ListOptions {
   limit?: number;

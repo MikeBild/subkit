@@ -1,28 +1,27 @@
-// W-C of PR #161 review (round 3): direct unit test for the
-// `isAdminFromPermissions` gate that decides whether the
-// `/settings → Admin` tab is visible. Without this test, a future
-// contributor who re-broadens `ADMIN_ONLY_PERMISSIONS` to include the
-// member-scoped `api_key:read` / `identity:read` / `portal_token:read`
-// permissions would re-open the round-2 W3+S2 regression silently —
+// Direct unit test for the `isAdminFromPermissions` gate that decides
+// whether the `/settings → Admin` tab is visible. Without this test, a
+// future contributor who re-broadens `ADMIN_ONLY_PERMISSIONS` to include
+// the member-scoped `api_key:read` / `identity:read` / `portal_token:read`
+// permissions would re-expose the Admin tab to members silently —
 // `SettingsApp` / `SettingsPane` only assert on the `isAdmin` boolean,
 // not on which permission set was checked.
 
 import { describe, expect, test } from "bun:test";
 import { isAdminFromPermissions } from "../settings-ui/lib/admin-gate.ts";
 
-describe("isAdminFromPermissions (W-C of PR #161 review round 3)", () => {
-  test("returns true when the principal holds any admin-only permission (round 4 widened set)", () => {
+describe("isAdminFromPermissions", () => {
+  test("returns true when the principal holds any admin-only permission", () => {
     // Each of these is a permission the built-in `member` role does
     // NOT carry per `apps/engine/src/rbac/seed.ts:memberPermissionFilter`.
-    // The Admin tab must light up for any one of them. Round 4 of PR
-    // #161 review widened the gate to mirror the engine's deny-list.
+    // The Admin tab must light up for any one of them; the gate mirrors
+    // the engine's deny-list.
     expect(isAdminFromPermissions(["rbac:read"])).toBe(true);
-    expect(isAdminFromPermissions(["rbac:write"])).toBe(true); // S1: was missing
+    expect(isAdminFromPermissions(["rbac:write"])).toBe(true);
     expect(isAdminFromPermissions(["audit:read"])).toBe(true);
     expect(isAdminFromPermissions(["api_key:write"])).toBe(true);
-    expect(isAdminFromPermissions(["api_key:rotate"])).toBe(true); // S1: was missing
-    expect(isAdminFromPermissions(["api_key:revoke"])).toBe(true); // S1: was missing
-    expect(isAdminFromPermissions(["credential:write"])).toBe(true); // S1: was missing
+    expect(isAdminFromPermissions(["api_key:rotate"])).toBe(true);
+    expect(isAdminFromPermissions(["api_key:revoke"])).toBe(true);
+    expect(isAdminFromPermissions(["credential:write"])).toBe(true);
     expect(isAdminFromPermissions(["credential:delete"])).toBe(true); // prefix match
     expect(isAdminFromPermissions(["discovery:approve"])).toBe(true);
   });
@@ -45,7 +44,7 @@ describe("isAdminFromPermissions (W-C of PR #161 review round 3)", () => {
   });
 
   test("returns false for the member-scoped permissions that previously over-listed admin", () => {
-    // Round-2 W3+S2 regression guard: `api_key:read`, `identity:read`,
+    // Regression guard: `api_key:read`, `identity:read`,
     // `portal_token:read` are catch-all member reads. A regression that
     // adds any of them back to ADMIN_ONLY_PERMISSIONS would surface the
     // Admin tab to every tenant member.

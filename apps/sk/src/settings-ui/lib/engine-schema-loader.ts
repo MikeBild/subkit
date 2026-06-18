@@ -45,8 +45,8 @@ export class EngineSchemaError extends Error {
  * compatible with SchemaForm's `_describeFieldsForTests` walker.
  *
  * Strict: an empty enum or an unknown field type **throws** an
- * `EngineSchemaError` — silent fallbacks were a R3-W3 / R4-W3 bug.
- * R7-S4: dropped the previous `permissive: true` escape hatch
+ * `EngineSchemaError` — silent fallbacks were a bug.
+ * Dropped the previous `permissive: true` escape hatch
  * because no in-tree caller used it (YAGNI). Re-add when a real
  * bug-report path needs the fallback shape.
  */

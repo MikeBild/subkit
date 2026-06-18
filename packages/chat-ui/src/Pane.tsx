@@ -6,10 +6,8 @@
 // optional footer hints, and an Esc-to-dismiss keybinding. The host
 // owns open/close state; Pane notifies through `onDismiss`.
 //
-// Mirrors the `<Pane>` pattern in Claude Code's design system without
-// copying its internals. We keep things flat — no modal stacking, no
-// slot context — because sk's interaction model never needs more than
-// one modal at a time.
+// We keep things flat — no modal stacking, no slot context — because
+// sk's interaction model never needs more than one modal at a time.
 
 import { Box, Text, useInput } from "ink";
 import type React from "react";

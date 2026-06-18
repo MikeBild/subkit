@@ -25,7 +25,7 @@ const SPEC: LiveScenarioSpec = {
   connectors: ["digitalocean", "gmail"],
   expect_judge_block: false,
   content_checks: [
-    { name: "recipient", pattern: "mike@mikebild\\.com" },
+    { name: "recipient", pattern: "user@example\\.com" },
     { name: "specs", pattern: "vcpu", flags: "i" },
   ],
 };
@@ -55,7 +55,7 @@ function happyObservation(): ScenarioObservation {
               step_id: "send",
               held: true,
               held_request: {
-                body: { to: "mike@mikebild.com", html: "<p>web — 2 vCPU / 4GB / 80GB</p>" },
+                body: { to: "user@example.com", html: "<p>web — 2 vCPU / 4GB / 80GB</p>" },
               },
             },
           ],
@@ -277,6 +277,6 @@ describe("live scenario specs", () => {
 
   test("the droplet-specs scenario goal names the recipient (fabricated-recipient regression)", () => {
     const spec = LIVE_SCENARIOS.find((s) => s.slug === "droplet-specs-email");
-    expect(spec?.goal).toContain("mike@mikebild.com");
+    expect(spec?.goal).toContain("user@example.com");
   });
 });

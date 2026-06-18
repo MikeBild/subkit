@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { connectorTemplates } from "../db/schema/index.ts";
 import {
   type ConnectorTemplate,
@@ -8,7 +8,6 @@ import {
 } from "./templates.ts";
 
 export type ConnectorTemplateSource = "builtin" | "tenant";
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface ResolvedConnectorTemplate {
   id: string | null;

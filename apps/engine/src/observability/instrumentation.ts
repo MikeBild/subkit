@@ -312,7 +312,7 @@ export function recordProactiveDriftUnanchored(args: {
   });
 }
 
-// --- Run → Drift → Patch → Skill loop closure (positioning.md §6) ---------
+// --- Run → Drift → Patch → Skill loop closure (docs/06-execution.md) ---------
 
 /** Closing edge: catalog/candidate skills that entered an authoring LLM
  *  context. `source` distinguishes promoted Skills (`catalog`) from proposed

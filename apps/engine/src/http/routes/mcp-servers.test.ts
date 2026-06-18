@@ -1,4 +1,4 @@
-// Integration tests for /v1/mcp-servers routes (#171).
+// Integration tests for /v1/mcp-servers routes.
 //
 // Mirrors the oauth-clients.test.ts pattern: real Postgres via
 // createHttpTestServer, real HTTP via fetch, no mocking of domain layer.

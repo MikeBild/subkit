@@ -119,7 +119,7 @@ describe("setup banner — render path", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("⚠ Setup");
     expect(frame).toContain("2 warnings");
-    // Reworded after #159: ends with the bare `/setup` slash so it
+    // Ends with the bare `/setup` slash so it
     // can't be misread as `/setup-for-details` (operator typed
     // `/details` and got an unknown-slash error).
     expect(frame).toContain("Type /setup");

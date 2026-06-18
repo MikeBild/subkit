@@ -40,7 +40,7 @@ const DOLLAR_RE = /\$\{([^{}]*)\}/g;
 // Must mirror the runtime parser's accepted heads (parser.ts parseBody
 // switch): cred | connector | input | scope | item | state. Pre-fix this
 // set omitted `state`, so the verifier false-flagged the valid
-// `${state.<var>}` placeholder (workflow persistent state, #51) as
+// `${state.<var>}` placeholder (workflow persistent state) as
 // bad_kind even though the runtime substitutes it.
 const KNOWN_KINDS = new Set(["cred", "connector", "input", "scope", "item", "state"]);
 

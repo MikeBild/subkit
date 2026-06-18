@@ -1,4 +1,4 @@
-// Removed-slash guidance map (M13 of #159).
+// Removed-slash guidance map.
 // Asserts:
 //   * agentic-coding slashes return the rationale message
 //   * collapsed-into-hub slashes return the new-home hint
@@ -13,7 +13,7 @@ import type { EngineClient } from "../engine-client.ts";
 import { removedSlashGuidance } from "../repl/slash/dispatcher.ts";
 import { handleSlash, type SlashHandlerContext } from "../repl/slash/handler.ts";
 
-describe("removedSlashGuidance map (M13)", () => {
+describe("removedSlashGuidance map", () => {
   test("returns the agentic-coding rationale for /agents", () => {
     const hint = removedSlashGuidance("agents");
     expect(hint).toMatch(/no subagent routing/);
@@ -57,7 +57,7 @@ describe("removedSlashGuidance map (M13)", () => {
   });
 });
 
-describe("dispatcher short-circuit for removed slashes (M13)", () => {
+describe("dispatcher short-circuit for removed slashes", () => {
   function makeCtx(): SlashHandlerContext {
     return {
       client: {} as EngineClient,

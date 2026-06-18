@@ -104,8 +104,7 @@ function pickValue(leaf: ConfigLeaf, salt: number): unknown {
         tag,
         `https://example.com/${tag}`,
         tag.padEnd(32, "x").slice(0, 32),
-        // W2 of PR #161 review (round 4): HH:MM-shaped value for the
-        // notifications.push.quietHours* regex.
+        // HH:MM-shaped value for the notifications.push.quietHours* regex.
         "00:00",
         "",
       ];
@@ -117,7 +116,7 @@ function pickValue(leaf: ConfigLeaf, salt: number): unknown {
     }
     case "number": {
       // Candidate ladder for leaves with high min() bounds (web-scraper
-      // #144 max_chars_*, robots_cache.ttl_ms) or tight max() bounds
+      // max_chars_*, robots_cache.ttl_ms) or tight max() bounds
       // (min_runs_before_proposing max 50).
       const numCandidates = [
         Math.max(1, Math.min(50, salt + 1)),

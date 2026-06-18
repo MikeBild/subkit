@@ -1,4 +1,4 @@
-// Drift detection — the actionable signal #149 was missing.
+// Drift detection — surfaces the actionable signal a silent schema mismatch otherwise hides.
 //
 // We seed `drizzle.__drizzle_migrations` with rows that don't belong
 // to this binary's embedded set and confirm `detectDrift` reports them.

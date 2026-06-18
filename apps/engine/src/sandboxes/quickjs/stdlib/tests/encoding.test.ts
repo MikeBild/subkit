@@ -25,7 +25,7 @@ describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () =>
     "Veröffentlichung", // German umlaut (multi-byte)
     "Projekt: Größe & Maß — 100% ✓", // mixed multi-byte + symbol + check mark
     "Emoji: 😀", // surrogate pair must preserve jsonata's historical low-byte behavior
-    "To: mike@mikebild.com\r\nSubject: Essays published: 3\r\n\r\n<html>ä</html>", // MIME shape
+    "To: user@example.com\r\nSubject: Essays published: 3\r\n\r\n<html>ä</html>", // MIME shape
   ];
 
   for (const s of cases) {
@@ -48,7 +48,7 @@ describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () =>
   });
 
   test("base64UrlEncode matches the Gmail raw idiom these workflows use", async () => {
-    const msg = "To: mike@mikebild.com\r\nSubject: Grüße\r\n\r\n<p>Maß</p>";
+    const msg = "To: user@example.com\r\nSubject: Grüße\r\n\r\n<p>Maß</p>";
     const fromJs = await b64("return sk.base64UrlEncode(input.s);", { s: msg });
     // The exact jsonata expression daily-do-resources-email / publish-ready-essays use.
     const fromJsonata = await jsonataEval<string>(

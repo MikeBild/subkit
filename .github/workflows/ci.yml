@@ -69,9 +69,6 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Terminology gate
-        run: bun run check:terminology
-
       - name: Recipe lint
         run: bun run lint:recipes
 

@@ -1,4 +1,4 @@
-// Workflow signals service (#49). Inbound signal write (called from the
+// Workflow signals service. Inbound signal write (called from the
 // HTTP signal route) + match query (called from the wait-for-event step
 // runner). Atomic claim semantics: a poll that finds a matching row
 // flips `consumed_at` from NULL to now() in the same statement, so two

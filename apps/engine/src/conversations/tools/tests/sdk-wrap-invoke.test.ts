@@ -56,7 +56,7 @@ describe("buildCapAlternatives", () => {
   });
 });
 
-describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes (Fix 8)", () => {
+describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes", () => {
   // The gates are fingerprint-keyed now: evidence survives edits to
   // OTHER steps and blocks only when the referenced step's own
   // definition changed since the last dry-run. The hints must teach
@@ -107,8 +107,8 @@ describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes (Fix 8)", (
 });
 
 describe("ERROR_CODE_ALTERNATIVES catalogue completeness", () => {
-  // S3 (round-2 review): the previous hand-maintained list was a
-  // documentation drift hazard — adding a new `error_code` to any
+  // The previous hand-maintained list was a documentation drift
+  // hazard — adding a new `error_code` to any
   // tool would land green even though the cap message falls back to
   // the generic "ask the user". Now we grep the source for actual
   // `error_code: "..."` literals and assert the catalogue covers each

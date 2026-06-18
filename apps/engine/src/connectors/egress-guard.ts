@@ -182,7 +182,7 @@ export function assertEgressAllowed(url: URL | string, ctx: EgressGuardContext):
 }
 
 /**
- * Web-scraper #144 — robots.txt enforcement. Throws
+ * Web-scraper connector robots.txt enforcement. Throws
  * `RobotsDisallowedError` when robots.txt disallows the given URL for
  * the configured User-Agent. Per-tenant + TTL-cached via
  * `robots-cache.ts`. Pass `fetchImpl` to inject a stub from tests.

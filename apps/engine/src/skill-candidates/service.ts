@@ -7,7 +7,7 @@ import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, getDb } from "../db/client.ts";
+import { type Db, type Executor, getDb } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/executions.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
 import { log } from "../logging/logger.ts";
@@ -32,8 +32,6 @@ import type {
   SkillCandidateEvidenceView,
   SkillCandidateView,
 } from "./types.ts";
-
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const MAX_EVIDENCE_PER_CANDIDATE = 50;
 
@@ -381,7 +379,7 @@ async function upsertFromSignal(
     // conventions — different endpoints, or different repair kinds on one
     // endpoint (a field-path fix and a header add are both real, both needed).
     // They must COEXIST; cross-superseding them silently drops a valid,
-    // evidence-backed candidate (the bug #202's connector-scoping introduced).
+    // evidence-backed candidate (a bug connector-scoping can introduce).
     // Same-fingerprint recurrence is already handled by the dedup/update branch
     // above; a stale repair candidate is retired through the operator gate, not
     // by another endpoint/kind appearing. So we skip supersede entirely when
@@ -526,10 +524,10 @@ export async function runPatternAnalysis(
     const result = await upsertFromSignal(params.tenant_id, signal, db);
     if (result.action === "proposed") proposed++;
     if (result.action === "updated") updated++;
-    // Middle edge of the Run → Drift → Patch → Skill loop (positioning.md §6):
+    // Middle edge of the Run → Drift → Patch → Skill loop (docs/06-execution.md):
     // a freshly-proposed candidate whose evidence carries a patch_candidate_id
     // is a Patch Candidate that became a Skill Candidate (the repair-pattern
-    // detector path). #202's auto-aggregator will later feed the same counter.
+    // detector path). The auto-aggregator feeds the same counter.
     if (result.action === "proposed" && signal.evidence.some((e) => e.patch_candidate_id)) {
       recordLoopPatchToSkillCandidate({ tenant_id: params.tenant_id });
     }
@@ -639,7 +637,7 @@ export async function approveSkillCandidate(
       actor_id: p.actor_id,
     });
 
-    // Promotion edge of the Run → Drift → Patch → Skill loop (positioning.md
+    // Promotion edge of the Run → Drift → Patch → Skill loop (docs/06-execution.md).
     // §6). Lag is anchored to the EARLIEST linked Patch Candidate's created_at
     // (drift-detection time) — not the evidence-capture time — so the
     // histogram measures the true drift→skill journey. Candidates with no

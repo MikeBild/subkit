@@ -1,7 +1,7 @@
 // api-key auth provider — negative-path tests.
 //
-// Phase 2 of the 2026-05 architecture audit. The api-key provider has
-// six rejection paths in resolve(): malformed token, prefix not found,
+// The api-key provider has six rejection paths in resolve():
+// malformed token, prefix not found,
 // hash mismatch, revoked, not_before in the future, expired. The
 // existing http/tests/auth.test.ts covers malformed + missing cases
 // at the route layer; this file pins the provider-direct behavior for

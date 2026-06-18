@@ -220,7 +220,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const events: TurnEvent[] = sink.asArrayProxy();
   const budget = p.step_budget ?? DEFAULT_BUDGET;
   // Caller registers + unregisters on their synchronous-accept frame
-  // (#146 / A4 + #148). The loop only consumes the signal here;
+  // (A4). The loop only consumes the signal here;
   // re-registering inside this body would re-open the cancel race.
   const turnAbortCtrl = p.turn_abort_ctrl;
 
@@ -537,7 +537,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ].filter((id): id is string => typeof id === "string" && id.length > 0),
     ),
   ];
-  // Run-verb bias: a message like "run emobxp-jira-test-plans" or
+  // Run-verb bias: a message like "run acme-jira-test-plans" or
   // "starte foo" tilts the prompt's authoring_hint.mode to `execution`
   // even when no draft summary exists yet, so EXECUTION_PERSONA fires
   // for that turn and the tenant snapshot's HARD RULE about

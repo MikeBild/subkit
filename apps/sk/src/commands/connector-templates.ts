@@ -197,7 +197,7 @@ const deleteCommand = defineCommand({
   },
 });
 
-// Workstream E3 — recipe browse subcommands. Mirror the conversation
+// Recipe browse subcommands. Mirror the conversation
 // tools (`start_workflow_from_recipe`, `inspect_recipe`) and the MCP
 // tools (`list_recipes`, `inspect_recipe`) so the CLI is the third
 // equivalent surface per the chat-CLI parity rule in

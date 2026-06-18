@@ -11,8 +11,7 @@
 //      blocks so the provider can cache the head and recompute only the
 //      tail each turn.
 //
-// After the Phase 4 split (audit §4.2), the assembler is split across
-// `context-assembler/`:
+// The assembler is split across `context-assembler/`:
 //
 //   - `context-assembler/loaders.ts`      — DB-side loaders
 //                                            (interaction log, latest
@@ -35,7 +34,7 @@
 
 import { getConnector } from "../../connectors/service.ts";
 import { generateMainAgentSystemPrompt } from "../../conversations/agent/context.ts";
-import { getDb } from "../../db/client.ts";
+import { type Executor, getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { idHashesCapped } from "../../observability/id-hashes.ts";
 import {
@@ -76,7 +75,6 @@ import {
   trimPriorWorkflowsToBudget,
 } from "./context-assembler/formatters.ts";
 import {
-  type Executor,
   type InteractionLogEntry,
   type LatestPreviewEntry,
   loadChunks,
@@ -479,7 +477,7 @@ export async function assembleEnhancedPrompt(
     );
   }
 
-  // Prior workflows — 5th authoring context source (#203). Compressed
+  // Prior workflows — 5th authoring context source. Compressed
   // reference cases from this tenant's most similar active workflows,
   // surfaced so the LLM grounds new drafts in patterns the team has
   // already used. Gated by `preEmbedCorpus`: the converse flow
@@ -967,7 +965,7 @@ export async function assembleContext(
     section_tokens: prompt.token_counts,
   });
 
-  // Closing edge of the Run → Drift → Patch → Skill loop (positioning.md §6):
+  // Closing edge of the Run → Drift → Patch → Skill loop (docs/06-execution.md):
   // record which loop-originated skills actually influenced this authoring
   // turn. `catalog` counts ONLY Skills promoted from a Skill Candidate
   // (source === "candidate") — not engine-shipped seed/template/manual skills,

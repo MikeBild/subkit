@@ -86,7 +86,7 @@ function seedStageEvidence(toolCtx: ReturnType<typeof makeCtx>): void {
   };
 }
 
-describe("build_workflow — recorded_eval envelope (Fix 9)", () => {
+describe("build_workflow — recorded_eval envelope", () => {
   tw(
     "loop without recorded evidence: draft ACCEPTED, gate verdict + missing evidence in envelope, zero egress",
     async () => {
@@ -149,7 +149,7 @@ describe("build_workflow — recorded_eval envelope (Fix 9)", () => {
   );
 });
 
-describe("propose_step — recorded_eval envelope (Fix 9)", () => {
+describe("propose_step — recorded_eval envelope", () => {
   tw(
     "branch with a bad JSONata `when` is accepted with a caret compile error in the envelope",
     async () => {

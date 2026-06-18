@@ -12,7 +12,7 @@
 #   - SSH key upload (subkit-deploy) on Digital Ocean
 #   - Droplet (subkit-engine, $REGION / $SIZE, ubuntu-24-04 image)
 #   - Cloud firewall (ports 22/80/443)
-#   - DNS A record for subkit-api.mikebild.dev
+#   - DNS A record for subkit-api.example.com
 #   - subkit system user/group + /etc/subkit + /var/lib/subkit + /var/log/subkit
 #   - postgres role + database (subkit:<password>) listening on 127.0.0.1
 #   - caddy with the repo's Caddyfile
@@ -21,7 +21,7 @@
 #
 # Prerequisites:
 #   - doctl installed locally (`brew install doctl`) and authenticated
-#   - mikebild.dev zone on DO nameservers
+#   - example.com zone on DO nameservers
 #   - ~/.ssh/subkit_deploy{,.pub} exists (or SSH_KEY_PATH overrides)
 #
 # Note: no DOCR, no DO_TOKEN. The host does not pull from a registry
@@ -29,7 +29,7 @@
 
 set -euo pipefail
 
-DOMAIN_ROOT="${DOMAIN_ROOT:-mikebild.dev}"
+DOMAIN_ROOT="${DOMAIN_ROOT:-example.com}"
 HOST_API="${HOST_API:-subkit-api}"
 REGION="${REGION:-fra1}"
 SIZE="${SIZE:-s-2vcpu-4gb}"
