@@ -458,3 +458,32 @@ jobs:
             ghcr.io/mikebild/subkit:latest
             docker.io/mikebild/subkit:${{ steps.meta.outputs.version }}
             docker.io/mikebild/subkit:latest
+
+  # ── Notify subkit-deploy to roll the droplet to this release ──
+  # Event-driven replacement for subkit-deploy's old */15 schedule poll: once
+  # the GitHub Release assets exist, fire a repository_dispatch so the droplet
+  # deploys this version within seconds instead of waiting on a throttled cron.
+  # The default GITHUB_TOKEN is scoped to this repo and CANNOT dispatch
+  # cross-repo, so this uses a PAT (DEPLOY_DISPATCH_TOKEN) with write access to
+  # MikeBild/subkit-deploy. No-ops (does not fail the release) when the secret
+  # is absent, so releases keep working before the token is configured.
+  notify-deploy:
+    name: notify-deploy
+    needs: publish-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch deploy-release to subkit-deploy
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_DISPATCH_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "DEPLOY_DISPATCH_TOKEN not set — skipping deploy dispatch (configure it to enable auto-deploy)"
+            exit 0
+          fi
+          # TAG is this release's own tag (e.g. v7.0.0) — trusted, but passed via
+          # env and a printf format arg (never interpolated into the shell).
+          printf '{"event_type":"deploy-release","client_payload":{"ref":"%s"}}' "$TAG" \
+            | gh api -X POST repos/MikeBild/subkit-deploy/dispatches --input -
+          echo "dispatched deploy-release ref=$TAG to MikeBild/subkit-deploy"
