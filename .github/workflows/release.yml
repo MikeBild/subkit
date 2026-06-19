@@ -44,6 +44,10 @@ permissions:
 # Prevent two runs for the same tag (e.g. a tag push plus a manual
 # workflow_dispatch) from building + publishing the same release assets
 # concurrently. Per-tag group — different versions may build in parallel.
+# NOTE: docker-publish mutates the shared `:latest` tag. Two different
+# versions releasing at once is last-write-wins on `:latest`; if that ever
+# matters (or a new step mutates other shared state), tighten this back to
+# a single global group.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true

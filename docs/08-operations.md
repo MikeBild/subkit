@@ -250,7 +250,7 @@ flowchart LR
     Fetch["Download new binary<br/>+ signed SHA256SUMS"]
     Verify{"Ed25519 verify<br/>against embedded public key"}
     Park["Park current → ~/.engine/versions/<v>/<br/>(keep last 3 with manifest.json)"]
-    Swap["Atomic binary swap<br/>+ systemctl restart"]
+    Swap["Atomic binary swap<br/>+ process restart"]
     Audit[("audit_log:<br/>engine.update.completed")]
     Fail[("audit_log:<br/>engine.update.failed")]
     Rollback(["engine --rollback"])
