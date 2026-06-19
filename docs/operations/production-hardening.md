@@ -8,8 +8,8 @@ close it, and the future TODO.
 The engine emits these at boot so you can grep for them:
 
 ```sh
-# on the droplet
-journalctl -u subkit-engine --no-pager | grep -E '"action":"(scanner.noop_in_production|override.active|ephemeral_dir_warning)"'
+# from the engine container logs
+docker logs subkit 2>&1 | grep -E '"action":"(scanner.noop_in_production|override.active|ephemeral_dir_warning)"'
 ```
 
 ---
@@ -90,11 +90,12 @@ warn  files  scanner.noop_in_production
 
 ### What it is
 The engine resolves config from `subkit.config.json` plus **`SK_OVERRIDE_*`
-environment overlays** (prefix `SK_OVERRIDE_`, see `config/loader.ts`). On the
-production droplet:
+environment overlays** (prefix `SK_OVERRIDE_`, see `config/loader.ts`). In
+production, point file storage at a persistent path (e.g. the all-in-one
+image's `/data` volume):
 
 ```
-SK_OVERRIDE_STORAGE_FILES_DIR=/var/lib/subkit/files
+SK_OVERRIDE_STORAGE_FILES_DIR=/data/files
 ```
 
 overrides `storage.files.dir`. Boot log:

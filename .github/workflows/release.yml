@@ -456,38 +456,3 @@ jobs:
             ghcr.io/mikebild/subkit:latest
             docker.io/mikebild/subkit:${{ steps.meta.outputs.version }}
             docker.io/mikebild/subkit:latest
-
-  # ── Trigger the droplet deploy in the private subkit-deploy repo ──
-  # GITHUB_TOKEN cannot dispatch across repos, so this uses a fine-grained
-  # PAT (DEPLOY_DISPATCH_TOKEN). Absent token → deploy simply doesn't fire;
-  # the release itself still succeeds.
-  dispatch-deploy:
-    name: dispatch-deploy
-    needs: [publish-release, docker-publish]
-    if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Resolve version
-        id: meta
-        env:
-          RELEASE_REF: ${{ inputs.tag || github.ref_name }}
-        run: |
-          V="${RELEASE_REF#subkit-v}"; V="${V#v}"
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-      - name: Fire repository_dispatch → subkit-deploy
-        env:
-          GH_TOKEN: ${{ secrets.DEPLOY_DISPATCH_TOKEN }}
-          VERSION: ${{ steps.meta.outputs.version }}
-          REF: ${{ inputs.tag || github.ref_name }}
-        run: |
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "DEPLOY_DISPATCH_TOKEN not set — skipping deploy dispatch (release unaffected)."
-            exit 0
-          fi
-          # Send both the release tag (for `gh release download`) and the
-          # stripped version (for health/smoke assertions) to subkit-deploy.
-          gh api repos/mikebild/subkit-deploy/dispatches \
-            -f event_type=deploy-release \
-            -F client_payload[ref]="$REF" \
-            -F client_payload[version]="$VERSION"
-          echo "Dispatched deploy-release ref=$REF version=$VERSION to mikebild/subkit-deploy"

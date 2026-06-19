@@ -207,7 +207,7 @@ Admin command groups exposed from `apps/sk/src/index.ts`:
 | `sk install` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk auth` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk extract` | `subkit-cli.e2e.test.ts` |
-| `sk health` | `subkit-cli.e2e.test.ts`, `remote-health.smoke.ts` |
+| `sk health` | `subkit-cli.e2e.test.ts` |
 | `sk sessions` / `sk ls` / `sk show` / `sk rename` / `sk rm` | `sk-cli.e2e.test.ts`, `apps/sk/src/tests/` |
 | `sk rbac` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
 | `sk audit` | `subkit-cli.e2e.test.ts`, `apps/engine/src/tests/journeys/30-cli-audit.journey.test.ts` |
