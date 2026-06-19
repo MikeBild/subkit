@@ -1,0 +1,370 @@
+[
+  {
+    "name": "workflow:read",
+    "description": "Read workflow definitions and history",
+    "resource_type": "workflow"
+  },
+  {
+    "name": "workflow:write",
+    "description": "Create or update workflow definitions",
+    "resource_type": "workflow"
+  },
+  { "name": "workflow:run", "description": "Execute a workflow", "resource_type": "workflow" },
+  { "name": "workflow:delete", "description": "Delete a workflow", "resource_type": "workflow" },
+  {
+    "name": "workflow:export",
+    "description": "Export workflow bundles",
+    "resource_type": "workflow"
+  },
+  {
+    "name": "workflow:import",
+    "description": "Import workflow bundles",
+    "resource_type": "workflow"
+  },
+  {
+    "name": "workflow:restore",
+    "description": "Restore a previous workflow version",
+    "resource_type": "workflow"
+  },
+
+  {
+    "name": "connector:read",
+    "description": "Read connector definitions",
+    "resource_type": "connector"
+  },
+  {
+    "name": "connector:write",
+    "description": "Create or update connector definitions",
+    "resource_type": "connector"
+  },
+  { "name": "connector:delete", "description": "Delete a connector", "resource_type": "connector" },
+  {
+    "name": "connector:test",
+    "description": "Execute a connector smoke test",
+    "resource_type": "connector"
+  },
+  {
+    "name": "connector:oauth",
+    "description": "Initiate connector OAuth flows",
+    "resource_type": "connector"
+  },
+
+  {
+    "name": "credential:read",
+    "description": "Read credential metadata",
+    "resource_type": "credential"
+  },
+  {
+    "name": "credential:write",
+    "description": "Create or update credentials",
+    "resource_type": "credential"
+  },
+  {
+    "name": "credential:rotate",
+    "description": "Rotate credential secrets",
+    "resource_type": "credential"
+  },
+  {
+    "name": "credential:delete",
+    "description": "Delete credentials",
+    "resource_type": "credential"
+  },
+
+  { "name": "skill:read", "description": "Read skills", "resource_type": "skill" },
+  { "name": "skill:write", "description": "Create or update skills", "resource_type": "skill" },
+  { "name": "skill:activate", "description": "Activate a skill", "resource_type": "skill" },
+  { "name": "skill:archive", "description": "Archive a skill", "resource_type": "skill" },
+  { "name": "skill:delete", "description": "Delete a skill", "resource_type": "skill" },
+
+  {
+    "name": "execution:read",
+    "description": "Read executions and step logs",
+    "resource_type": "execution"
+  },
+  {
+    "name": "execution:abort",
+    "description": "Abort a running execution",
+    "resource_type": "execution"
+  },
+  {
+    "name": "execution:replay",
+    "description": "Replay a completed execution",
+    "resource_type": "execution"
+  },
+  {
+    "name": "execution:signal",
+    "description": "POST a wait-for-event signal to a paused execution (e.g. an HITL approval). The signals route also accepts a one-shot HMAC token; this permission gates the bearer-auth path.",
+    "resource_type": "execution"
+  },
+
+  {
+    "name": "schedule:read",
+    "description": "Read schedule definitions",
+    "resource_type": "schedule"
+  },
+  {
+    "name": "schedule:write",
+    "description": "Create or update schedules",
+    "resource_type": "schedule"
+  },
+  { "name": "schedule:pause", "description": "Pause a schedule", "resource_type": "schedule" },
+  { "name": "schedule:resume", "description": "Resume a schedule", "resource_type": "schedule" },
+  { "name": "schedule:delete", "description": "Delete a schedule", "resource_type": "schedule" },
+
+  {
+    "name": "subscription:read",
+    "description": "Read outbound subscription definitions",
+    "resource_type": "subscription"
+  },
+  {
+    "name": "subscription:write",
+    "description": "Create or update outbound subscriptions",
+    "resource_type": "subscription"
+  },
+  {
+    "name": "subscription:delete",
+    "description": "Delete outbound subscriptions",
+    "resource_type": "subscription"
+  },
+  {
+    "name": "subscription:replay",
+    "description": "Replay a subscription delivery",
+    "resource_type": "subscription"
+  },
+
+  {
+    "name": "inbound_hook:read",
+    "description": "Read inbound hook definitions",
+    "resource_type": "inbound_hook"
+  },
+  {
+    "name": "inbound_hook:write",
+    "description": "Create or update inbound hooks",
+    "resource_type": "inbound_hook"
+  },
+  {
+    "name": "inbound_hook:delete",
+    "description": "Delete inbound hooks",
+    "resource_type": "inbound_hook"
+  },
+
+  {
+    "name": "identity:read",
+    "description": "Read tenant identity rows",
+    "resource_type": "identity"
+  },
+  {
+    "name": "identity:write",
+    "description": "Create or update tenant identity rows",
+    "resource_type": "identity"
+  },
+
+  { "name": "api_key:read", "description": "List API keys", "resource_type": "api_key" },
+  { "name": "api_key:write", "description": "Create API keys", "resource_type": "api_key" },
+  { "name": "api_key:rotate", "description": "Rotate an API key", "resource_type": "api_key" },
+  { "name": "api_key:revoke", "description": "Revoke an API key", "resource_type": "api_key" },
+
+  {
+    "name": "portal_token:read",
+    "description": "List portal tokens",
+    "resource_type": "portal_token"
+  },
+  {
+    "name": "portal_token:write",
+    "description": "Issue portal tokens",
+    "resource_type": "portal_token"
+  },
+  {
+    "name": "portal_token:revoke",
+    "description": "Revoke a portal token",
+    "resource_type": "portal_token"
+  },
+
+  {
+    "name": "notification:read",
+    "description": "Read notification rules and deliveries",
+    "resource_type": "notification"
+  },
+  {
+    "name": "notification:write",
+    "description": "Create or update notification rules",
+    "resource_type": "notification"
+  },
+
+  {
+    "name": "metrics:read",
+    "description": "Scrape Prometheus metrics",
+    "resource_type": "metrics"
+  },
+
+  { "name": "audit:read", "description": "Read the audit log", "resource_type": "audit" },
+
+  {
+    "name": "stats:read",
+    "description": "Read tenant-scoped runtime statistics: workflow runs, connector calls, audit-class events, LLM usage",
+    "resource_type": "tenant"
+  },
+
+  {
+    "name": "rbac:read",
+    "description": "Read RBAC roles, permissions, grants, groups",
+    "resource_type": "rbac"
+  },
+  {
+    "name": "rbac:write",
+    "description": "Manage RBAC roles, permissions, grants, groups",
+    "resource_type": "rbac"
+  },
+
+  {
+    "name": "conversation:read",
+    "description": "Read conversation messages, history, tool-call results",
+    "resource_type": "conversation"
+  },
+  {
+    "name": "conversation:write",
+    "description": "Create conversation, append messages, drive turns",
+    "resource_type": "conversation"
+  },
+  {
+    "name": "conversation:approve",
+    "description": "Decide on request_human_approval prompts",
+    "resource_type": "conversation"
+  },
+  {
+    "name": "conversation:cancel",
+    "description": "Cancel an in-flight conversation",
+    "resource_type": "conversation"
+  },
+  {
+    "name": "conversation:commit",
+    "description": "Gate the engine-side save_workflow_draft tool",
+    "resource_type": "conversation"
+  },
+  {
+    "name": "conversation:list",
+    "description": "List conversations for the caller",
+    "resource_type": "conversation"
+  },
+  {
+    "name": "memory:write",
+    "description": "Attach a user-supplied memory payload to a conversation turn",
+    "resource_type": "conversation"
+  },
+  {
+    "name": "mcp:read",
+    "description": "List MCP prompts, resources, and tools for slash-command pickers",
+    "resource_type": "mcp"
+  },
+  {
+    "name": "mcp:authoring",
+    "description": "Access the MCP endpoint with conversation authoring tools enabled",
+    "resource_type": "mcp"
+  },
+  {
+    "name": "mcp:admin",
+    "description": "Access the MCP endpoint with full tenant admin tools enabled",
+    "resource_type": "mcp"
+  },
+  {
+    "name": "mcp_server:manage",
+    "description": "Register, configure, enable, disable, and remove external MCP servers",
+    "resource_type": "mcp_server"
+  },
+  {
+    "name": "mcp_external_tool:invoke",
+    "description": "Invoke a tool exposed by a registered external MCP server",
+    "resource_type": "mcp_external_tool"
+  },
+
+  {
+    "name": "knowledge:read",
+    "description": "Read knowledge sources and search knowledge",
+    "resource_type": "knowledge"
+  },
+  {
+    "name": "knowledge:write",
+    "description": "Create, update, or refresh knowledge sources",
+    "resource_type": "knowledge"
+  },
+  {
+    "name": "knowledge:delete",
+    "description": "Delete knowledge sources",
+    "resource_type": "knowledge"
+  },
+
+  {
+    "name": "discovery:read",
+    "description": "Read discovery runs and artifacts",
+    "resource_type": "discovery"
+  },
+  {
+    "name": "discovery:write",
+    "description": "Create discovery runs and upload files for analysis",
+    "resource_type": "discovery"
+  },
+  {
+    "name": "discovery:approve",
+    "description": "Approve or reject discovery artifacts",
+    "resource_type": "discovery"
+  },
+
+  {
+    "name": "settings:read",
+    "description": "Read engine + tenant settings (secrets are masked in the response)",
+    "resource_type": "settings"
+  },
+  {
+    "name": "settings:write",
+    "description": "Update engine-global or tenant-scoped settings",
+    "resource_type": "settings"
+  },
+
+  {
+    "name": "file:read",
+    "description": "Read file metadata and download file content",
+    "resource_type": "file"
+  },
+  {
+    "name": "file:write",
+    "description": "Upload, finalize, or link files",
+    "resource_type": "file"
+  },
+  {
+    "name": "file:delete",
+    "description": "Delete files (soft-delete via `deleted_at`)",
+    "resource_type": "file"
+  },
+
+  {
+    "name": "mcp_oauth_client:read",
+    "description": "List registered MCP OAuth clients",
+    "resource_type": "mcp_oauth_client"
+  },
+  {
+    "name": "mcp_oauth_client:revoke",
+    "description": "Disable a registered MCP OAuth client",
+    "resource_type": "mcp_oauth_client"
+  },
+
+  {
+    "name": "chat_workspace:read",
+    "description": "List chat workspaces installed in this tenant",
+    "resource_type": "chat_workspace"
+  },
+  {
+    "name": "chat_workspace:write",
+    "description": "Install or remove a chat workspace (Slack/Teams/Google Chat)",
+    "resource_type": "chat_workspace"
+  },
+  {
+    "name": "chat_identity:read",
+    "description": "List chat-identity links (platform user → subkit user)",
+    "resource_type": "chat_identity"
+  },
+  {
+    "name": "chat_identity:write",
+    "description": "Link or unlink a chat user to a subkit user",
+    "resource_type": "chat_identity"
+  }
+]

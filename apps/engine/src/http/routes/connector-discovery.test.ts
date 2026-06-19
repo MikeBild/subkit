@@ -1,0 +1,322 @@
+// HTTP integration tests for `POST /v1/connectors/discover`.
+//
+// We mock `discoverConnectorEndpoints` so the test never reaches the
+// network. The HTTP route shares the same service helper as the
+// conversation tool, so the cache + audit assertions here protect the
+// shared path.
+
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import * as discoveryModule from "../../connectors/discovery/index.ts";
+import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
+import { auditLog } from "../../db/schema/audit.ts";
+import { apiKeys, tenants, users } from "../../db/schema/index.ts";
+import { knowledgeSources } from "../../db/schema/knowledge_sources.ts";
+import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+
+const hex = createDeterministicHexFactory(0xc4112_d15c);
+
+import { createRole } from "../../rbac/roles.ts";
+import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
+
+let ctx: HttpTestServer;
+// A second tenant + key so we can prove tenant isolation.
+let secondTenantApiKey: string;
+let secondTenantId: string;
+// A member-role api key in the same tenant — admin short-circuits the
+// RBAC evaluator so we need a non-admin caller to probe the 403 path.
+let memberApiKey: string;
+
+const SAMPLE_RESULT: DiscoveryResult = {
+  source_url: "https://api.stripe.com/openapi.json",
+  fetched_at: "2026-04-26T00:00:00.000Z",
+  strategy: "openapi-direct",
+  spec_version: "openapi-3",
+  title: "Stripe API",
+  servers: ["https://api.stripe.com"],
+  auth_schemes: [{ name: "bearer_auth", type: "http", scheme: "bearer" }],
+  endpoints: [
+    {
+      method: "GET",
+      path: "/v1/customers",
+      summary: "List customers",
+      description: null,
+      operation_id: "ListCustomers",
+      scopes: [],
+      params: [],
+      request_body_schema: null,
+      response_schemas: { "200": { type: "object" } },
+      pagination_hint: null,
+      deprecated: false,
+    },
+  ],
+  warnings: [],
+};
+
+beforeAll(async () => {
+  ctx = await createHttpTestServer("conn-disc");
+
+  // Seed a second tenant + api key on the same server so we can test
+  // tenant isolation. We bypass createHttpTestServer for the second
+  // pair because we want them to share the same Hono app.
+  const [t2] = await ctx.db
+    .insert(tenants)
+    .values({ slug: "t-conn-disc-b", display_name: "Tenant B" })
+    .returning();
+  if (!t2) throw new Error("seed tenant B failed");
+  secondTenantId = t2.id;
+  const [u2] = await ctx.db
+    .insert(users)
+    .values({
+      tenant_id: secondTenantId,
+      email: "admin-conn-disc-b@test.local",
+      role: "admin",
+    })
+    .returning();
+  if (!u2) throw new Error("seed user B failed");
+
+  const rand = hex(24).slice(0, 32);
+  secondTenantApiKey = `wf_live_${rand}`;
+  const prefix = secondTenantApiKey.slice(0, 12);
+  const hash = createHash("sha256").update(secondTenantApiKey).digest("hex");
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: secondTenantId,
+    user_id: u2.id,
+    prefix,
+    token_sha256: hash,
+    scopes: ["*"],
+  });
+
+  // Non-admin caller in tenant A bound to a *no-permissions* custom
+  // role so we can exercise the 403 branch. Admins short-circuit the
+  // RBAC evaluator (`builtin_admin` source) and the built-in `member`
+  // role grants `connector:read` — neither would surface a denial.
+  const noopRole = await createRole(ctx.db, ctx.tenantId, "noop-conn-disc", "no permissions");
+  const [member] = await ctx.db
+    .insert(users)
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "member-conn-disc@test.local",
+      role: "member",
+      role_id: noopRole.id,
+    })
+    .returning();
+  if (!member) throw new Error("seed member failed");
+  const memberRand = hex(24).slice(0, 32);
+  memberApiKey = `wf_live_${memberRand}`;
+  const memberPrefix = memberApiKey.slice(0, 12);
+  const memberHash = createHash("sha256").update(memberApiKey).digest("hex");
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: ctx.tenantId,
+    user_id: member.id,
+    prefix: memberPrefix,
+    token_sha256: memberHash,
+    scopes: ["*"],
+  });
+});
+
+afterAll(async () => {
+  // Tiny drain so fire-and-forget audit inserts (`api_key.used`) finish
+  // before we tear down the per-suite database. Without this the
+  // `pool.end()` inside `ctx.cleanup()` can race the in-flight inserts
+  // and hang waiting for the connection to release.
+  // allow-wall-clock: real ms required to flush postgres write queue.
+  await new Promise((r) => setTimeout(r, 250));
+  // Bound the teardown so a stuck pool doesn't block the test runner's
+  // 5s afterEach budget. Aborted cleanup just leaks a transient test
+  // database; the disposable-database harness GCs them on the next
+  // `createTestDb` call.
+  // allow-wall-clock: wall-clock cap on cleanup to avoid Bun's 5s afterAll timeout.
+  await Promise.race([ctx.cleanup(), new Promise<void>((r) => setTimeout(r, 4000))]);
+}, 10_000);
+
+// No `afterEach` cleanup. The HTTP test fixture uses a disposable
+// per-suite database and parallel asynchronous audit inserts from the
+// auth middleware (`api_key.used`, fire-and-forget) make a `DELETE` /
+// `TRUNCATE` between tests race against in-flight writes — that race
+// has caused 5s afterEach-hook timeouts. Tests are written so each
+// scenario sets a unique cache key (different `template_id`s + the
+// second tenant), so leaked rows from one test don't poison the next.
+
+describe("POST /v1/connectors/discover", () => {
+  test("200 — template_id returns DiscoveryResult and persists cache row + audit", async () => {
+    const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
+      SAMPLE_RESULT,
+    );
+    try {
+      const res = await fetch(`${ctx.baseUrl}/v1/connectors/discover`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${ctx.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ template_id: "stripe" }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        source: string;
+        cache_key: string;
+        result: DiscoveryResult;
+      };
+      expect(body.source).toBe("fresh");
+      expect(body.cache_key).toBe("template:stripe");
+      expect(body.result.endpoints).toHaveLength(1);
+      expect(body.result.endpoints[0]?.path).toBe("/v1/customers");
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      // Cache row persisted.
+      const rows = await ctx.db
+        .select()
+        .from(knowledgeSources)
+        .where(eq(knowledgeSources.tenant_id, ctx.tenantId));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.source_type).toBe("discovery_endpoint_index");
+      expect(rows[0]?.slug).toBe("discovery-template-stripe");
+
+      // Audit row recorded with reason `discovery_cache_refresh`.
+      const audit = await ctx.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.tenant_id, ctx.tenantId));
+      const refresh = audit.find((a) => a.action === "knowledge_source.refreshed");
+      expect(refresh).toBeDefined();
+      expect(refresh?.reason).toBe("discovery_cache_refresh");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("400 — empty body fails Zod refinement", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/connectors/discover`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${ctx.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("403 — non-admin member without connector:read grant is rejected", async () => {
+    const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
+      SAMPLE_RESULT,
+    );
+    try {
+      const res = await fetch(`${ctx.baseUrl}/v1/connectors/discover`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${memberApiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ template_id: "stripe" }),
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code: string };
+      expect(body.code).toBe("forbidden");
+      // Discovery must NOT have run when the request was rejected at
+      // the policy gate.
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("401 — missing bearer is rejected by auth", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/connectors/discover`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ template_id: "stripe" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test("503 — every strategy bailing surfaces as discovery_unavailable", async () => {
+    const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockRejectedValue(
+      new DiscoveryError("all_strategies_failed", "every strategy bailed"),
+    );
+    try {
+      const res = await fetch(`${ctx.baseUrl}/v1/connectors/discover`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${ctx.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ template_id: "no-such-template" }),
+      });
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { code: string; message: string };
+      expect(body.code).toBe("discovery_unavailable");
+      expect(body.message).toContain("every strategy bailed");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("tenant isolation — tenant A's cached discovery is not returned for tenant B", async () => {
+    // Tenant A populates the cache (cache miss → fresh).
+    const seed = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
+      SAMPLE_RESULT,
+    );
+    const aRes = await fetch(`${ctx.baseUrl}/v1/connectors/discover`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${ctx.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ template_id: "stripe" }),
+    });
+    expect(aRes.status).toBe(200);
+    seed.mockRestore();
+
+    // Tenant B asks the same key — must miss and re-fetch with their
+    // own response. (Returns a different title so we can tell them apart.)
+    const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue({
+      ...SAMPLE_RESULT,
+      title: "Tenant B view",
+    });
+    try {
+      const bRes = await fetch(`${ctx.baseUrl}/v1/connectors/discover`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${secondTenantApiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ template_id: "stripe" }),
+      });
+      expect(bRes.status).toBe(200);
+      const body = (await bRes.json()) as {
+        source: string;
+        result: DiscoveryResult;
+      };
+      expect(body.source).toBe("fresh");
+      expect(body.result.title).toBe("Tenant B view");
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      // Both tenants have their own cache row.
+      const aRows = await ctx.db
+        .select()
+        .from(knowledgeSources)
+        .where(
+          and(
+            eq(knowledgeSources.tenant_id, ctx.tenantId),
+            eq(knowledgeSources.slug, "discovery-template-stripe"),
+          ),
+        );
+      expect(aRows).toHaveLength(1);
+      const bRows = await ctx.db
+        .select()
+        .from(knowledgeSources)
+        .where(
+          and(
+            eq(knowledgeSources.tenant_id, secondTenantId),
+            eq(knowledgeSources.slug, "discovery-template-stripe"),
+          ),
+        );
+      expect(bRows).toHaveLength(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

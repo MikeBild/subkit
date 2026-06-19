@@ -1,0 +1,25 @@
+{
+  "name": "My Jira Tickets",
+  "slug": "my-jira-tickets",
+  "steps": [
+    {
+      "id": "fetch_my_tickets",
+      "kind": "request",
+      "path": "/rest/api/3/search/jql",
+      "query": {
+        "jql": "assignee = currentUser() ORDER BY updated DESC",
+        "fields": "summary,status,priority,issuetype,project,updated,created"
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "format_output",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "return (input.scope.fetch_my_tickets.data.issues || []).map((r) => ({ key: r.key, summary: r.fields.summary, status: r.fields.status.name, priority: r.fields.priority ? r.fields.priority.name : undefined, updated: r.fields.updated }));"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+diff --git a/lib/data-patch.js b/lib/data-patch.js
+index cd49cbec3e7de20dea750e95e007dbdb1488ac96..2b501e221c22279e54af35be427ac1bf9df5777a 100644
+--- a/lib/data-patch.js
++++ b/lib/data-patch.js
+@@ -1,6 +1,10 @@
+-import { createRequire } from 'module';
+-
+-const require = createRequire(import.meta.url);
+-const patch = require('../data/patch.json');
++// Patched for Bun --compile compatibility (subkit): replace the
++// `createRequire`-based runtime require with a static ESM JSON
++// import so `bun build --compile` embeds patch.json into the
++// binary's virtual filesystem. The upstream form
++//   const require = createRequire(import.meta.url);
++//   const patch = require('../data/patch.json');
++// can't be statically resolved by any bundler.
++import patch from "../data/patch.json" with { type: "json" };
+ 
+ export default patch;
+diff --git a/lib/data.js b/lib/data.js
+index 162fa2068f45413e415e22ad1fe56f4c372623ad..fd8c4ecf11899b094beb93b141c13d5cbea583ef 100755
+--- a/lib/data.js
++++ b/lib/data.js
+@@ -1,11 +1,12 @@
+-import { createRequire } from 'module';
++// Patched for Bun --compile compatibility (subkit): replace
++// `createRequire`-based runtime requires with static ESM JSON
++// imports so `bun build --compile` embeds these data files into
++// the binary's virtual filesystem.
++import mdnAtrules from "mdn-data/css/at-rules.json" with { type: "json" };
++import mdnProperties from "mdn-data/css/properties.json" with { type: "json" };
++import mdnSyntaxes from "mdn-data/css/syntaxes.json" with { type: "json" };
+ import patch from './data-patch.js';
+ 
+-const require = createRequire(import.meta.url);
+-const mdnAtrules = require('mdn-data/css/at-rules.json');
+-const mdnProperties = require('mdn-data/css/properties.json');
+-const mdnSyntaxes = require('mdn-data/css/syntaxes.json');
+-
+ const hasOwn = Object.hasOwn || ((object, property) => Object.prototype.hasOwnProperty.call(object, property));
+ const extendSyntax = /^\s*\|\s*/;
+ 
+diff --git a/lib/version.js b/lib/version.js
+index dde3a83f43883ecbad6ca0a23afb58c12235148a..cb9c309ef9f62fdcc40df3291b28df5419258f14 100644
+--- a/lib/version.js
++++ b/lib/version.js
+@@ -1,5 +1,6 @@
+-import { createRequire } from 'module';
++// Patched for Bun --compile compatibility (subkit): replace
++// `createRequire`-based runtime require with a static ESM JSON
++// import so `bun build --compile` embeds package.json.
++import pkg from "../package.json" with { type: "json" };
+ 
+-const require = createRequire(import.meta.url);
+-
+-export const { version } = require('../package.json');
++export const { version } = pkg;

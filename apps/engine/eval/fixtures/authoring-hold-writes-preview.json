@@ -1,0 +1,40 @@
+{
+  "name": "authoring-hold-writes-preview",
+  "description": "Hold-writes preview: dry_run_workflow holds the POST/send step with a fully MATERIALIZED held_request (real upstream data substituted) and zero egress; dependents of the held step are labeled skipped; the green judged hold-preview still auto-commits.",
+  "flow": "infra",
+  "input": {
+    "workflow_input": { "recipient": "ops@example.com", "subject": "Daily digest" },
+    "steps": [
+      {
+        "id": "compose",
+        "kind": "transform",
+        "language": "javascript",
+        "expression": "return { to: input.input.recipient, subject: input.input.subject, html: '<p>Hello ' + input.input.recipient + '</p>' };"
+      },
+      {
+        "id": "send",
+        "kind": "request",
+        "method": "POST",
+        "url": "https://mail.example.test/send",
+        "body": {
+          "to": "${scope.compose.data.to}",
+          "subject": "${scope.compose.data.subject}",
+          "html": "${scope.compose.data.html}"
+        }
+      },
+      {
+        "id": "confirm",
+        "kind": "transform",
+        "language": "javascript",
+        "expression": "return input.scope.send.data;"
+      }
+    ],
+    "expect": {
+      "held_step": "send",
+      "held_method": "POST",
+      "held_body_to": "ops@example.com",
+      "skipped_step": "confirm",
+      "skipped_error_code": "skipped_dependency_held"
+    }
+  }
+}

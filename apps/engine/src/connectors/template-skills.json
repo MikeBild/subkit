@@ -1,0 +1,1519 @@
+{
+  "stripe-basics": {
+    "title": "Stripe API Basics",
+    "body": "Use bearer auth with your Stripe Secret Key. All requests go to https://api.stripe.com/v1. POST bodies use form-encoding, not JSON. Always include an Idempotency-Key header on writes.",
+    "examples": [
+      "GET /v1/customers?limit=10 — list customers with pagination",
+      "POST /v1/charges — create a charge (form-encoded body)"
+    ],
+    "best_practices": [
+      "Use cursor pagination via starting_after param",
+      "Include Idempotency-Key on every POST/DELETE to safely retry"
+    ],
+    "pitfalls": [
+      "Stripe returns 200 with an error object for validation failures — always check the error field"
+    ],
+    "doc_refs": ["https://stripe.com/docs/api"]
+  },
+  "paypal-basics": {
+    "title": "PayPal REST API Basics",
+    "body": "Authenticate via Client Credentials grant: POST client_id and secret with Basic Auth to /v1/oauth2/token to obtain a Bearer token. All requests go to https://api-m.paypal.com (production) or https://api-m.sandbox.paypal.com (sandbox). Responses are JSON.",
+    "examples": [
+      "POST /v2/checkout/orders — create an order",
+      "POST /v2/checkout/orders/{id}/capture — capture an approved order",
+      "GET /v1/reporting/transactions?start_date=2026-05-01T00:00:00Z&end_date=2026-05-31T23:59:59Z&fields=transaction_info&page_size=500&page=1 — Transaction Search (list transactions in a window)"
+    ],
+    "best_practices": [
+      "Always use sandbox (api-m.sandbox.paypal.com) for development and testing",
+      "Store and reuse Bearer tokens until they expire (typically 9 hours)",
+      "Transaction Search (GET /v1/reporting/transactions) needs the scope https://uri.paypal.com/services/reporting/search/read and the 'Transaction Search' feature enabled on the REST app (Business accounts only)",
+      "Transaction Search dates are RFC 3339 (e.g. 2026-05-01T00:00:00Z); a single call covers at most a 31-day window and only the last ~3 years — to fetch a full history, iterate contiguous <=31-day windows",
+      "Paginate each window with page_size (max 500) and page (1-based); read total_pages from the response and fetch pages 2..total_pages when total_pages > 1"
+    ],
+    "pitfalls": [
+      "Never mix sandbox and production credentials — calls will silently fail or return confusing errors",
+      "Transaction Search returns 403 if the app lacks the Transaction Search feature, and an empty result for windows wider than 31 days or older than ~3 years — chunk the range instead",
+      "Executed transactions can take up to ~3 hours to appear in Transaction Search results"
+    ],
+    "doc_refs": [
+      "https://developer.paypal.com/docs/api/overview/",
+      "https://developer.paypal.com/docs/transaction-search/",
+      "https://developer.paypal.com/docs/api/transaction-search/v1/"
+    ]
+  },
+  "square-basics": {
+    "title": "Square API Basics",
+    "body": "Authenticate with a Bearer token from the Square Developer Portal. Every request must include a Square-Version header with a date (e.g., 2025-01-22). All requests go to https://connect.squareup.com. Responses are JSON with cursor-based pagination.",
+    "examples": [
+      "GET /v2/catalog/list — list catalog items",
+      "POST /v2/payments — create a payment"
+    ],
+    "best_practices": [
+      "Always include Square-Version date header to pin API behavior",
+      "Use cursor-based pagination via the cursor param in list responses"
+    ],
+    "pitfalls": ["OAuth tokens expire in 30 days — implement refresh token rotation before expiry"],
+    "doc_refs": ["https://docs.connect.squareup.com/"]
+  },
+  "shopify-basics": {
+    "title": "Shopify Admin API Basics",
+    "body": "Authenticate with the X-Shopify-Access-Token header containing your Admin API access token. The base URL includes a versioned API date (e.g., /admin/api/2026-04). Shopify supports both REST and GraphQL Admin APIs. Rate limits are bucket-based (40 requests burst for REST).",
+    "examples": [
+      "GET /admin/api/2026-04/products.json — list products",
+      "POST /admin/api/2026-04/orders.json — create an order"
+    ],
+    "best_practices": [
+      "Use the GraphQL Admin API for complex queries to reduce call count",
+      "Pin to a specific API version date and test before upgrading"
+    ],
+    "pitfalls": [
+      "API versions are deprecated ~12 months after release — monitor deprecation headers"
+    ],
+    "doc_refs": ["https://shopify.dev/docs/api/admin-rest"]
+  },
+  "salesforce-basics": {
+    "title": "Salesforce REST API Basics",
+    "body": "Authenticate via OAuth 2.0 Authorization Code flow using a Connected App. All requests go to https://{instance}.my.salesforce.com/services/data/v67.0. Query records using SOQL via the /query endpoint. Rate limits are org-wide and depend on edition.",
+    "examples": [
+      "GET /services/data/v60.0/query?q=SELECT+Id,Name+FROM+Account — run a SOQL query",
+      "POST /services/data/v60.0/sobjects/Contact — create a contact"
+    ],
+    "best_practices": [
+      "Use SOQL queries via /query for efficient data retrieval instead of listing all records",
+      "Leverage the Bulk API 2.0 for large data operations (50K+ records)"
+    ],
+    "pitfalls": [
+      "The instance URL varies per org — always derive it from the OAuth token response (instance_url field)"
+    ],
+    "doc_refs": ["https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/"]
+  },
+  "hubspot-basics": {
+    "title": "HubSpot CRM API Basics",
+    "body": "Authenticate with a Bearer token from a private app or OAuth. All requests go to https://api.hubapi.com. CRM objects (contacts, deals, companies) follow a consistent CRUD pattern at /crm/v3/objects/{objectType}. Rate limits are 100 requests per 10 seconds for OAuth apps.",
+    "examples": [
+      "GET /crm/v3/objects/contacts?limit=10 — list contacts",
+      "POST /crm/v3/objects/deals — create a deal"
+    ],
+    "best_practices": [
+      "Use the batch endpoints (/batch/read, /batch/create) to reduce API calls",
+      "Request only needed properties via the properties query param"
+    ],
+    "pitfalls": [
+      "Private app tokens have fixed scopes — changing scopes requires regenerating the token"
+    ],
+    "doc_refs": ["https://developers.hubspot.com/docs/guides/api/crm/objects/contacts"]
+  },
+  "pipedrive-basics": {
+    "title": "Pipedrive CRM API Basics",
+    "body": "Authenticate with a Bearer token (OAuth) or API token (v1 query param). The v2 API at https://api.pipedrive.com/api/v2 uses cursor-based pagination. Rate limits are token-budget based: 30K base/day multiplied by plan and seat count.",
+    "examples": [
+      "GET /api/v2/deals?limit=50 — list deals with cursor pagination",
+      "POST /api/v2/persons — create a person (contact)"
+    ],
+    "best_practices": [
+      "Use v2 API for cursor pagination; v1 uses less efficient offset pagination",
+      "Monitor X-RateLimit headers to stay within daily token budget"
+    ],
+    "pitfalls": [
+      "v1 API token goes as ?api_token= query param, not in the Authorization header — do not mix v1 and v2 auth patterns"
+    ],
+    "doc_refs": [
+      "https://developers.pipedrive.com/docs/api/v1",
+      "https://pipedrive.readme.io/docs/pipedrive-api-v2"
+    ]
+  },
+  "zoho-crm-basics": {
+    "title": "Zoho CRM API Basics",
+    "body": "Authenticate via OAuth 2.0 only — no API key option. The auth header format is Zoho-oauthtoken {token} (not standard Bearer). Endpoints are region-specific (.com, .eu, .in, .com.au, .jp). Access tokens expire in 1 hour; always implement refresh flow.",
+    "examples": [
+      "GET /crm/v7/Contacts?per_page=200 — list contacts (max 200/request)",
+      "POST /crm/v7/Deals — create a deal"
+    ],
+    "best_practices": [
+      "Use the correct regional endpoint matching your Zoho data center",
+      "Always implement token refresh — access tokens expire in 1 hour"
+    ],
+    "pitfalls": [
+      "The Authorization header uses 'Zoho-oauthtoken' prefix, not 'Bearer' — standard OAuth libraries need customization"
+    ],
+    "doc_refs": ["https://www.zoho.com/crm/developer/docs/api/v7/"]
+  },
+  "jira-basics": {
+    "title": "Jira Cloud REST API Basics",
+    "body": "Authenticate via OAuth 2.0 (3LO) or Basic Auth with an API token. OAuth requires the audience=api.atlassian.com param and uses a Cloud ID in the base URL. Basic Auth uses a different base URL ({domain}.atlassian.net). Use JQL for issue queries via /search/jql (the /search path returned HTTP 410 Gone as of 2025). Rate limits are 100 GET/s burst and 65K points/hr.",
+    "examples": [
+      "GET /rest/api/3/search/jql?jql=project=PROJ+ORDER+BY+created — search issues with JQL",
+      "GET /rest/api/3/search/jql?jql=assignee=currentUser()+AND+statusCategory!=\"Done\"+ORDER+BY+updated+DESC — list open issues (locale-invariant)",
+      "POST /rest/api/3/issue — create an issue"
+    ],
+    "best_practices": [
+      "Use JQL via /search/jql endpoint for filtered queries instead of listing all issues — /search is deprecated and returns HTTP 410",
+      "Use cursor-based pagination: /search/jql returns nextPageToken in the response; pass it as the nextPageToken query param on subsequent requests. maxResults controls page size.",
+      "Before testing a by-key workflow (GET /rest/api/3/issue/{key}), fetch a real key first via /search/jql — never invent ticket IDs like ACME-1, as they 404 and produce misleading permission errors.",
+      "Filter by lifecycle state with statusCategory (`new` | `indeterminate` | `done`) — these three values are locale-invariant and stable across workspace customisations. `status.name` (Done, Closed, Erledigt, Fertig, Outdated, Resolved, …) varies per language and per project workflow and will silently leak issues when used as a `NOT IN` exclude list."
+    ],
+    "pitfalls": [
+      "OAuth and Basic Auth use different base URLs — OAuth requires the cloudId path, Basic Auth uses {domain}.atlassian.net directly",
+      "`status in (Done, Closed)` and `status NOT IN (Done, Closed)` only cover the English-default workflow — German (Fertig, Erledigt), French (Terminé), and custom statuses (Outdated, Won't Fix, Resolved) bypass the filter. Always use `statusCategory != \"Done\"` for an open/closed split.",
+      "Do not invent Jira ticket keys (e.g. ACME-1) when building or testing workflows — fabricated keys 404 and the error message looks like a permissions problem, masking the real cause. Always retrieve a real key from /search/jql first."
+    ],
+    "doc_refs": ["https://developer.atlassian.com/cloud/jira/platform/rest/v3/"]
+  },
+  "linear-basics": {
+    "title": "Linear GraphQL API Basics",
+    "body": "Linear is GraphQL-only. Authenticate with a Bearer token (personal API key or OAuth token). All requests are POST to https://api.linear.app/graphql. Use cursor-based pagination with after/before params in connection queries.",
+    "examples": [
+      "POST /graphql with query { issues(first: 50) { nodes { id title } } } — list issues",
+      "POST /graphql with mutation { issueCreate(input: { title: \"Bug\", teamId: \"...\" }) { issue { id } } } — create an issue"
+    ],
+    "best_practices": [
+      "Request only the fields you need in GraphQL queries to stay within complexity limits",
+      "Use webhook subscriptions for real-time updates instead of polling"
+    ],
+    "pitfalls": ["There is no REST API — all operations must use GraphQL mutations and queries"],
+    "doc_refs": ["https://linear.app/developers/graphql"]
+  },
+  "asana-basics": {
+    "title": "Asana REST API Basics",
+    "body": "Authenticate with a Bearer token (Personal Access Token or OAuth). All requests go to https://app.asana.com/api/1.0. Asana uses opt-in field selection — you must specify which fields to return via the opt_fields query param. Rate limits are 150/min (free) and 1500/min (paid).",
+    "examples": [
+      "GET /api/1.0/tasks?project={id}&opt_fields=name,completed,assignee — list tasks with specific fields",
+      "POST /api/1.0/tasks — create a task"
+    ],
+    "best_practices": [
+      "Always use ?opt_fields= to request only the fields you need — default responses are minimal",
+      "Use offset pagination with limit and offset params"
+    ],
+    "pitfalls": [
+      "Search endpoint (/workspaces/{id}/tasks/search) has a stricter rate limit of 60 requests/min"
+    ],
+    "doc_refs": ["https://developers.asana.com/reference/rest-api-reference"]
+  },
+  "monday-basics": {
+    "title": "Monday.com GraphQL API Basics",
+    "body": "Monday.com is GraphQL-only. Authenticate with a Bearer token. All requests are POST to https://api.monday.com/v2. Rate limits are complexity-based (5M-10M points/min depending on plan), not call-count-based. Cursor pagination via items_page(limit, cursor).",
+    "examples": [
+      "POST /v2 with query { boards { id name } } — list boards",
+      "POST /v2 with mutation { create_item(board_id: 123, item_name: \"Task\") { id } } — create an item"
+    ],
+    "best_practices": [
+      "Monitor complexity cost of queries — complex nested queries consume more points",
+      "Use items_page(limit, cursor) for paginated item fetching"
+    ],
+    "pitfalls": [
+      "Cursors expire after 60 minutes — long-running pagination jobs must handle cursor expiration"
+    ],
+    "doc_refs": ["https://developer.monday.com/api-reference/reference"]
+  },
+  "trello-basics": {
+    "title": "Trello REST API Basics",
+    "body": "Authenticate via query parameters: ?key={apiKey}&token={token}. All requests go to https://api.trello.com/1. Rate limits are 300 requests per 10 seconds per API key and 100 per 10 seconds per token. Maximum 1000 results per request.",
+    "examples": [
+      "GET /1/boards/{id}/lists?key=KEY&token=TOKEN — get lists on a board",
+      "POST /1/cards?key=KEY&token=TOKEN&idList=LISTID&name=Task — create a card"
+    ],
+    "best_practices": [
+      "Use nested resources (e.g., /boards/{id}/cards) to fetch related data in one call",
+      "Batch requests using /1/batch?urls= for up to 10 URLs at once"
+    ],
+    "pitfalls": [
+      "Auth credentials go in query params, not headers — be careful with URL logging and caching"
+    ],
+    "doc_refs": ["https://developer.atlassian.com/cloud/trello/rest/api-group-actions/"]
+  },
+  "clickup-basics": {
+    "title": "ClickUp REST API Basics",
+    "body": "Authenticate with a personal token (Authorization: pk_{token}, starting with pk_ prefix) or OAuth token (Authorization: Bearer {token}). All requests go to https://api.clickup.com/api/v2. ClickUp has a workspace hierarchy: Workspace > Space > Folder > List > Task. Rate limits range from 100/min (free) to 10K/min (enterprise).",
+    "examples": [
+      "GET /api/v2/team — list workspaces (teams)",
+      "POST /api/v2/list/{list_id}/task — create a task in a list"
+    ],
+    "best_practices": [
+      "Navigate the hierarchy top-down: get teams first, then spaces, then lists",
+      "Use custom fields via the custom_fields array when creating/updating tasks"
+    ],
+    "pitfalls": [
+      "Personal tokens use Authorization: {token} (no prefix) while OAuth tokens use Bearer prefix — mixing these causes 401 errors"
+    ],
+    "doc_refs": ["https://clickup.com/api/"]
+  },
+  "slack-basics": {
+    "title": "Slack Web API Basics",
+    "body": "Authenticate with a Bot User OAuth Token (xoxb-) as a Bearer token. All requests go to https://slack.com/api. Most methods accept JSON or form-encoded bodies. Rate limits are tier-based per method (e.g., Tier 1: 1/min, Tier 3: 50/min, Tier 4: 100/min).",
+    "examples": [
+      "POST /api/chat.postMessage — send a message to a channel",
+      "GET /api/conversations.list — list channels the bot has access to"
+    ],
+    "best_practices": [
+      "Use cursor-based pagination via cursor and next_cursor params on list endpoints",
+      "Add only the minimum required Bot Token Scopes for your use case"
+    ],
+    "pitfalls": [
+      "Slack API methods return HTTP 200 even on errors — always check the ok field in the response body"
+    ],
+    "doc_refs": ["https://docs.slack.dev/reference/methods/"]
+  },
+  "discord-basics": {
+    "title": "Discord REST API Basics",
+    "body": "Authenticate bot requests with Authorization: Bot {token} (not Bearer). All requests go to https://discord.com/api/v10. Rate limits are global (50 req/sec) plus per-route limits. IDs are Snowflake format (large integers as strings).",
+    "examples": [
+      "GET /api/v10/guilds/{guild_id}/channels — list channels in a guild",
+      "POST /api/v10/channels/{channel_id}/messages — send a message"
+    ],
+    "best_practices": [
+      "Respect X-RateLimit headers and implement backoff — Discord bans repeated rate limit violations",
+      "Use Snowflake ID-based pagination with before/after params"
+    ],
+    "pitfalls": [
+      "Bot tokens use 'Bot' prefix in Authorization header, not 'Bearer' — using Bearer will return 401"
+    ],
+    "doc_refs": ["https://docs.discord.com/developers/reference"]
+  },
+  "twilio-basics": {
+    "title": "Twilio REST API Basics",
+    "body": "Authenticate with Basic Auth using Account SID as username and Auth Token as password. The base URL is https://api.twilio.com/2010-04-01, but subdomains vary by product (e.g., conversations, video). Pagination uses PageSize (max 1000) and next_page_uri. Webhooks POST form-encoded data.",
+    "examples": [
+      "POST /2010-04-01/Accounts/{SID}/Messages.json — send an SMS",
+      "GET /2010-04-01/Accounts/{SID}/Calls.json?PageSize=20 — list recent calls"
+    ],
+    "best_practices": [
+      "Follow next_page_uri links for pagination rather than constructing page URLs manually",
+      "Use .json suffix on resource URIs to get JSON responses (default is XML)"
+    ],
+    "pitfalls": [
+      "Different Twilio products use different subdomains (api, conversations, video) — check the product docs for correct base URL"
+    ],
+    "doc_refs": ["https://www.twilio.com/docs/usage/api"]
+  },
+  "sendgrid-basics": {
+    "title": "SendGrid Email API Basics",
+    "body": "Authenticate with a Bearer token (API key starting with SG.). All requests go to https://api.sendgrid.com. Rate limits are 600 requests/min for most endpoints and 6/min for Email Activity. EU customers use api.eu.sendgrid.com.",
+    "examples": [
+      "POST /v3/mail/send — send an email",
+      "GET /v3/marketing/contacts?page_size=50 — list marketing contacts"
+    ],
+    "best_practices": [
+      "Use dynamic templates with template_id and dynamic_template_data for reusable emails",
+      "For EU data residency, use api.eu.sendgrid.com as the base URL"
+    ],
+    "pitfalls": [
+      "The Email Activity API has a much stricter rate limit (6/min) compared to other endpoints — avoid polling it frequently"
+    ],
+    "doc_refs": ["https://www.twilio.com/docs/sendgrid/api-reference"]
+  },
+  "mailchimp-basics": {
+    "title": "Mailchimp Marketing API Basics",
+    "body": "Authenticate via Basic Auth (any username, API key as password) or Bearer token. The API key suffix determines your data center (e.g., -us19 means us19.api.mailchimp.com). Maximum 10 concurrent connections. Offset pagination with offset + count params (max 1000).",
+    "examples": [
+      "GET /3.0/lists — list audiences",
+      "POST /3.0/lists/{list_id}/members — add a subscriber to an audience"
+    ],
+    "best_practices": [
+      "Extract data center from the API key suffix and include it in the base URL",
+      "Use batch operations (/3.0/batches) for bulk creates/updates to stay within rate limits"
+    ],
+    "pitfalls": [
+      "Maximum 10 concurrent connections per API key — exceeding this returns 429 errors"
+    ],
+    "doc_refs": ["https://mailchimp.com/developer/marketing/api/"]
+  },
+  "notion-basics": {
+    "title": "Notion API Basics",
+    "body": "Authenticate with a Bearer token (internal integration token starting with ntn_). All requests go to https://api.notion.com/v1. You must include a Notion-Version header (e.g., 2025-09-03). Pages and databases must be explicitly shared with your integration to be accessible.",
+    "examples": [
+      "POST /v1/databases/{id}/query — query a database with filters and sorts",
+      "POST /v1/pages — create a page"
+    ],
+    "best_practices": [
+      "Always include the Notion-Version header to pin API behavior",
+      "Use cursor-based pagination via start_cursor and has_more in responses"
+    ],
+    "pitfalls": [
+      "Pages and databases are invisible to your integration unless explicitly shared — this is the most common cause of 'not found' errors"
+    ],
+    "doc_refs": ["https://developers.notion.com/reference"]
+  },
+  "airtable-basics": {
+    "title": "Airtable REST API Basics",
+    "body": "Authenticate with a Bearer token (personal access token). All requests go to https://api.airtable.com/v0/{baseId}/{tableName}. Rate limits are 5 requests per second per base. Pagination uses offset tokens returned in each response.",
+    "examples": [
+      "GET /v0/{baseId}/{tableName}?maxRecords=100 — list records",
+      "POST /v0/{baseId}/{tableName} — create up to 10 records in a batch"
+    ],
+    "best_practices": [
+      "Batch creates/updates up to 10 records per request to minimize API calls",
+      "Use filterByFormula and sort params to reduce returned data"
+    ],
+    "pitfalls": [
+      "Rate limit is 5 requests/second per base, not per table — heavy concurrent usage on one base will throttle all tables"
+    ],
+    "doc_refs": ["https://airtable.com/developers/web/api/introduction"]
+  },
+  "confluence-basics": {
+    "title": "Confluence Cloud API Basics",
+    "body": "Authenticate via OAuth 2.0 (3LO) or Basic Auth with an API token (same Atlassian tokens as Jira). The v2 API at /wiki/api/v2 uses cursor-based pagination via limit and _links.next. Rate limit is 65K points per hour. The same Atlassian OAuth app can serve both Jira and Confluence.",
+    "examples": [
+      "GET /wiki/api/v2/pages?limit=25 — list pages",
+      "POST /wiki/api/v2/pages — create a page with body in storage format"
+    ],
+    "best_practices": [
+      "Use cursor pagination by following _links.next rather than offset-based queries",
+      "Reuse the same Atlassian OAuth app across Jira and Confluence"
+    ],
+    "pitfalls": [
+      "Content body must be in Confluence Storage Format (XHTML-like) — submitting plain HTML will fail or render incorrectly"
+    ],
+    "doc_refs": ["https://developer.atlassian.com/cloud/confluence/rest/v2/"]
+  },
+  "dropbox-basics": {
+    "title": "Dropbox API Basics",
+    "body": "Authenticate via OAuth 2.0. There are two base URLs: api.dropboxapi.com for RPC-style endpoints and content.dropboxapi.com for uploads/downloads. Access tokens are short-lived (~4 hours) — always implement refresh tokens. Pagination is cursor-based.",
+    "examples": [
+      "POST /2/files/list_folder — list files in a folder",
+      "POST /2/files/download (at content.dropboxapi.com) — download a file"
+    ],
+    "best_practices": [
+      "Use content.dropboxapi.com for upload/download and api.dropboxapi.com for metadata operations",
+      "Implement refresh token flow — access tokens expire in approximately 4 hours"
+    ],
+    "pitfalls": [
+      "Using the wrong base URL (api vs content) for upload/download operations will return errors"
+    ],
+    "doc_refs": ["https://www.dropbox.com/developers/documentation/http/overview"]
+  },
+  "box-basics": {
+    "title": "Box Content API Basics",
+    "body": "Authenticate via OAuth 2.0. All metadata requests go to https://api.box.com/2.0, while uploads go to https://upload.box.com/api/2.0. Access tokens last 60 minutes and refresh tokens are single-use with 60-day expiry. Rate limit is 1000 requests/min per user. Marker-based pagination for large collections.",
+    "examples": [
+      "GET /2.0/folders/0/items — list items in root folder",
+      "POST /2.0/files/content (at upload.box.com) — upload a file"
+    ],
+    "best_practices": [
+      "Use marker-based pagination (marker param) for large collections instead of offset",
+      "Use upload.box.com for file uploads — the regular API endpoint does not accept file content"
+    ],
+    "pitfalls": [
+      "Refresh tokens are single-use — if you fail to store the new refresh token after each exchange, you lose access permanently"
+    ],
+    "doc_refs": ["https://developer.box.com/reference/"]
+  },
+  "google-workspace-basics": {
+    "title": "Google Workspace API Basics",
+    "body": "Authenticate via OAuth 2.0 with scopes for each Google service (Gmail, Calendar, Drive). All Google APIs share the same OAuth consent flow and token endpoints. Pagination uses pageToken and nextPageToken. Rate limits are per-project and per-user, varying by API.",
+    "examples": [
+      "GET /gmail/v1/users/me/messages?maxResults=10 — list Gmail messages",
+      "GET /calendar/v3/calendars/primary/events — list Calendar events"
+    ],
+    "best_practices": [
+      "Request the minimum necessary OAuth scopes to pass Google's verification review",
+      "Use service accounts with domain-wide delegation for server-to-server access"
+    ],
+    "pitfalls": [
+      "Apps requesting sensitive scopes need Google OAuth verification — unverified apps show a warning screen limiting to 100 test users"
+    ],
+    "doc_refs": ["https://developers.google.com/workspace"]
+  },
+  "google-gmail-basics": {
+    "title": "Google Gmail API Basics",
+    "body": "Authenticate via OAuth 2.0 with gmail.modify or gmail.send scopes. All requests go to https://gmail.googleapis.com/gmail/v1. Rate limits are quota-unit based (e.g., messages.get=5 units, messages.send=100 units) with 1.2M units/min per project. Pagination uses pageToken/nextPageToken.",
+    "examples": [
+      "GET /gmail/v1/users/me/messages?maxResults=20 — list messages",
+      "POST /gmail/v1/users/me/messages/send — send an email (base64-encoded RFC 2822)"
+    ],
+    "best_practices": [
+      "Use batch requests to reduce quota unit consumption for high-volume operations",
+      "Prefer messages.list + messages.get over threads for precise message access"
+    ],
+    "pitfalls": [
+      "Sending email costs 100 quota units — hitting the limit blocks all sending, not just the current request"
+    ],
+    "doc_refs": ["https://developers.google.com/workspace/gmail/api/reference/rest"]
+  },
+  "google-calendar-basics": {
+    "title": "Google Calendar API Basics",
+    "body": "Authenticate via OAuth 2.0 with calendar.events scope. All requests go to https://www.googleapis.com/calendar/v3. Use RFC 3339 timestamps for dates. Supports push notifications via webhook channels. Pagination uses pageToken/nextPageToken.",
+    "examples": [
+      "GET /calendar/v3/calendars/primary/events?timeMin=2025-01-01T00:00:00Z — list upcoming events",
+      "POST /calendar/v3/calendars/primary/events — create an event"
+    ],
+    "best_practices": [
+      "Use timeMin/timeMax params to filter events by date range instead of paginating all events",
+      "Use syncToken for incremental sync instead of re-fetching all events"
+    ],
+    "pitfalls": [
+      "Recurring events return a single master event — use instances endpoint to get individual occurrences"
+    ],
+    "doc_refs": ["https://developers.google.com/workspace/calendar/api/v3/reference"]
+  },
+  "google-drive-basics": {
+    "title": "Google Drive API Basics",
+    "body": "Authenticate via OAuth 2.0. The drive.file scope limits access to app-created files; the drive scope grants full access. All requests go to https://www.googleapis.com/drive/v3. Rate limit is 12K queries per 60 seconds. Upload limit is 5TB per file and 750GB per day per user.",
+    "examples": [
+      "GET /drive/v3/files?q=mimeType='application/pdf' — search for PDF files",
+      "POST /upload/drive/v3/files?uploadType=resumable — start a resumable upload"
+    ],
+    "best_practices": [
+      "Use the q parameter with Drive query syntax for efficient file searches",
+      "Use resumable uploads for files larger than 5MB"
+    ],
+    "pitfalls": [
+      "drive.file scope only provides access to files created by your app — not the user's existing files"
+    ],
+    "doc_refs": ["https://developers.google.com/workspace/drive/api/reference/rest/v3"]
+  },
+  "google-docs-basics": {
+    "title": "Google Docs API Basics",
+    "body": "Authenticate via OAuth 2.0 with documents scope. All requests go to https://docs.googleapis.com/v1. Document edits use the batchUpdate endpoint with an array of request objects. There is no list endpoint — use the Drive API to find documents. Rate limit is 60 writes per minute per user.",
+    "examples": [
+      "GET /v1/documents/{documentId} — get document content",
+      "POST /v1/documents/{documentId}:batchUpdate — insert text, apply styles, etc."
+    ],
+    "best_practices": [
+      "Use batchUpdate to combine multiple edits into a single request",
+      "Use the Drive API (files.list with mimeType filter) to discover Docs documents"
+    ],
+    "pitfalls": [
+      "There is no documents.list endpoint — you must use the Drive API to search for documents"
+    ],
+    "doc_refs": ["https://developers.google.com/workspace/docs/api/reference/rest"]
+  },
+  "google-sheets-basics": {
+    "title": "Google Sheets API Basics",
+    "body": "Authenticate via OAuth 2.0 with spreadsheets scope. All requests go to https://sheets.googleapis.com/v4. Cell ranges use A1 notation (e.g., Sheet1!A1:C10). Rate limit is 300 read and write requests per minute per project. Use batchGet/batchUpdate for multiple ranges.",
+    "examples": [
+      "GET /v4/spreadsheets/{id}/values/Sheet1!A1:C10 — read cell values",
+      "PUT /v4/spreadsheets/{id}/values/Sheet1!A1?valueInputOption=USER_ENTERED — write values"
+    ],
+    "best_practices": [
+      "Use batchGet and batchUpdate to read/write multiple ranges in a single request",
+      "Specify valueInputOption=USER_ENTERED for automatic type detection (dates, numbers)"
+    ],
+    "pitfalls": [
+      "A1 notation is case-sensitive for sheet names — mismatched case returns 'range not found' errors"
+    ],
+    "doc_refs": ["https://developers.google.com/workspace/sheets/api/reference/rest"]
+  },
+  "google-chat-basics": {
+    "title": "Google Chat API Basics",
+    "body": "Authenticate via OAuth 2.0 or service account. All requests go to https://chat.googleapis.com/v1. Requires Google Workspace — not available for consumer Gmail accounts. Rate limits are per-space (1 write/sec, 15 reads/sec) and 3K message writes/min per project.",
+    "examples": [
+      "GET /v1/spaces — list spaces the app has access to",
+      "POST /v1/spaces/{space}/messages — send a message to a space"
+    ],
+    "best_practices": [
+      "Use service accounts for Chat apps that operate without user interaction",
+      "Respect per-space rate limits — batch messaging across spaces rather than sending all to one"
+    ],
+    "pitfalls": [
+      "Google Chat API is only available for Google Workspace organizations — consumer Gmail accounts cannot use it"
+    ],
+    "doc_refs": ["https://developers.google.com/workspace/chat/api/reference/rest"]
+  },
+  "google-cloud-storage-basics": {
+    "title": "Google Cloud Storage JSON API Basics",
+    "body": "Authenticate via OAuth 2.0 or service account with devstorage.read_write scope. All requests go to https://storage.googleapis.com/storage/v1. Objects are organized in buckets. Supports resumable uploads for large files. Pagination uses pageToken/nextPageToken.",
+    "examples": [
+      "GET /storage/v1/b/{bucket}/o — list objects in a bucket",
+      "POST /upload/storage/v1/b/{bucket}/o?uploadType=resumable — upload an object"
+    ],
+    "best_practices": [
+      "Use service accounts with minimal IAM roles (Storage Object Viewer/Creator) for server-to-server access",
+      "Use resumable uploads for files larger than 5MB"
+    ],
+    "pitfalls": [
+      "Bucket names are globally unique — if creation fails, the name is likely taken by another GCP project"
+    ],
+    "doc_refs": ["https://docs.cloud.google.com/storage/docs/json_api/v1"]
+  },
+  "microsoft-graph-basics": {
+    "title": "Microsoft Graph API Basics",
+    "body": "Authenticate via OAuth 2.0 with Microsoft Entra ID. Microsoft Graph is the unified gateway for Mail, Calendar, OneDrive, SharePoint, and Teams. OData-style pagination via @odata.nextLink. Use $top for page size and delta queries via $deltatoken for change tracking. Rate limit is 130K requests per 10 seconds per app globally.",
+    "examples": [
+      "GET /v1.0/me — get current user profile",
+      "GET /v1.0/me/messages?$top=10&$select=subject,from — list recent emails"
+    ],
+    "best_practices": [
+      "Use $select to request only needed fields — reduces payload and improves performance",
+      "Use delta queries ($deltatoken) for efficient change tracking instead of re-fetching"
+    ],
+    "pitfalls": [
+      "Use /common/ for multi-tenant apps or tenant GUID for single-tenant — using the wrong one causes auth failures"
+    ],
+    "doc_refs": ["https://learn.microsoft.com/en-us/graph/api/overview"]
+  },
+  "microsoft-outlook-basics": {
+    "title": "Microsoft Outlook Mail API Basics",
+    "body": "Authenticate via OAuth 2.0 through Microsoft Graph. Endpoints are under /me/messages, /me/mailFolders, /users/{id}/messages. Rate limit is 10K requests per 10 minutes per mailbox and 30 messages/min for sending. Application-level Mail.Read grants access to ALL mailboxes.",
+    "examples": [
+      "GET /v1.0/me/messages?$top=25&$orderby=receivedDateTime+desc — list recent emails",
+      "POST /v1.0/me/sendMail — send an email"
+    ],
+    "best_practices": [
+      "Use $filter and $search for server-side filtering instead of fetching all messages",
+      "For app-only access, use application access policies to restrict mailbox access"
+    ],
+    "pitfalls": [
+      "Application-level Mail.Read permission grants access to ALL mailboxes in the tenant — use access policies to restrict scope"
+    ],
+    "doc_refs": ["https://learn.microsoft.com/en-us/graph/api/resources/mail-api-overview"]
+  },
+  "microsoft-teams-basics": {
+    "title": "Microsoft Teams API Basics",
+    "body": "Authenticate via OAuth 2.0 through Microsoft Graph. Endpoints are under /teams/{id}, /teams/{id}/channels, /chats, /me/joinedTeams. Most Teams permissions require admin consent. ChannelMessage.Read.All is application-only.",
+    "examples": [
+      "GET /v1.0/me/joinedTeams — list teams the user belongs to",
+      "POST /v1.0/teams/{id}/channels/{id}/messages — post a message to a channel"
+    ],
+    "best_practices": [
+      "Request admin consent upfront — most useful Teams permissions require it",
+      "Use change notifications (webhooks) for real-time message monitoring instead of polling"
+    ],
+    "pitfalls": [
+      "Most Teams permissions require admin consent — apps without consent will fail silently with 403 errors"
+    ],
+    "doc_refs": ["https://learn.microsoft.com/en-us/graph/api/resources/teams-api-overview"]
+  },
+  "microsoft-sharepoint-basics": {
+    "title": "Microsoft SharePoint API Basics",
+    "body": "Authenticate via OAuth 2.0 through Microsoft Graph. Access sites via /sites/{hostname}:/{path}, lists via /sites/{id}/lists, and drives via /sites/{id}/drive. Sites.ReadWrite.All grants access to ALL sites in the tenant. Use the Graph API, not the legacy /_api/ endpoint.",
+    "examples": [
+      "GET /v1.0/sites/root — get the root SharePoint site",
+      "GET /v1.0/sites/{siteId}/lists — list document libraries and lists"
+    ],
+    "best_practices": [
+      "Use Microsoft Graph API instead of the legacy SharePoint REST /_api/ endpoint",
+      "Use delta queries for incremental sync of document libraries"
+    ],
+    "pitfalls": [
+      "Sites.ReadWrite.All grants access to ALL sites — there is no per-site permission scoping in Graph API"
+    ],
+    "doc_refs": ["https://learn.microsoft.com/en-us/graph/api/resources/sharepoint"]
+  },
+  "microsoft-onedrive-basics": {
+    "title": "Microsoft OneDrive API Basics",
+    "body": "Authenticate via OAuth 2.0 through Microsoft Graph. Access personal files via /me/drive, root children via /me/drive/root/children, and shared drives via /drives/{id}/items. Delta queries via /delta enable efficient change tracking. Supports resumable uploads for large files.",
+    "examples": [
+      "GET /v1.0/me/drive/root/children — list files in root folder",
+      "PUT /v1.0/me/drive/items/{id}/content — upload a small file (up to 4MB)"
+    ],
+    "best_practices": [
+      "Use delta queries (/me/drive/root/delta) for change tracking instead of re-listing",
+      "Use resumable upload sessions for files larger than 4MB"
+    ],
+    "pitfalls": [
+      "Files.Read scope is personal OneDrive only — accessing org-level SharePoint drives requires Sites.Read.All permission"
+    ],
+    "doc_refs": ["https://learn.microsoft.com/en-us/graph/api/resources/onedrive"]
+  },
+  "github-basics": {
+    "title": "GitHub REST API Basics",
+    "body": "Authenticate with a Bearer token (Personal Access Token or OAuth). All requests go to https://api.github.com. Rate limits are 5000 requests/hour for authenticated users and 60/hour for unauthenticated. Pagination uses Link headers with page and per_page params (max 100 per page).",
+    "examples": [
+      "GET /repos/{owner}/{repo}/issues?state=open&per_page=30 — list open issues",
+      "POST /repos/{owner}/{repo}/issues — create an issue"
+    ],
+    "best_practices": [
+      "Use conditional requests (If-None-Match with ETag) to avoid consuming rate limit on unchanged data",
+      "Prefer the GraphQL connector (github-graphql) for deep read traversals — one query replaces many REST roundtrips"
+    ],
+    "pitfalls": [
+      "Personal Access Tokens (classic) with no expiration are a security risk — use fine-grained tokens with expiration"
+    ],
+    "doc_refs": ["https://docs.github.com/en/rest"]
+  },
+  "github-graphql-basics": {
+    "title": "GitHub GraphQL API Basics",
+    "body": "The GraphQL connector targets https://api.github.com/graphql and reuses the same PAT or OAuth token as the REST connector (scopes repo + read:org). One query can fetch nested data (repo → issues → comments → labels) that would cost many REST roundtrips. Cost, not request count, is the rate-limit budget — observe the X-RateLimit-Cost and X-RateLimit-Remaining response headers.",
+    "examples": [
+      "query { viewer { login } } — sanity check the credential",
+      "query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ issues(last:20,states:OPEN){ nodes { number title comments(last:5){ nodes { body } } labels(first:10){ nodes { name } } } } } } — 20 issues with comments and labels in one roundtrip"
+    ],
+    "best_practices": [
+      "Page large lists with pageInfo.endCursor + first:50 rather than fetching everything at once",
+      "Request only the fields you consume — every extra field increases the query cost",
+      "Use named operations (query MyOp { ... }) so request_meta.operation_name is human-readable in traces"
+    ],
+    "pitfalls": [
+      "Write operations in GraphQL are incomplete — organisation-admin mutations often don't exist. Fall back to the REST connector (github) for those.",
+      "Subscriptions are not supported by the subkit graphql driver — plan for webhook-based push instead"
+    ],
+    "doc_refs": ["https://docs.github.com/en/graphql"]
+  },
+  "gitlab-basics": {
+    "title": "GitLab REST API Basics",
+    "body": "Authenticate with a Personal Access Token via PRIVATE-TOKEN header (not Bearer), or use OAuth Bearer tokens. All requests go to https://gitlab.com/api/v4 (or your self-hosted instance). Rate limits are 2000 requests/min for authenticated and 500/min for unauthenticated. Supports offset and keyset pagination.",
+    "examples": [
+      "GET /api/v4/projects?owned=true&per_page=20 — list owned projects",
+      "POST /api/v4/projects/{id}/issues — create an issue"
+    ],
+    "best_practices": [
+      "Use keyset pagination (pagination=keyset) for large datasets — it's more efficient than offset",
+      "Use the PRIVATE-TOKEN header for PATs instead of query param to avoid token leakage in logs"
+    ],
+    "pitfalls": [
+      "PATs use the PRIVATE-TOKEN header (not Bearer/Authorization) — using Authorization: Bearer with a PAT will not work"
+    ],
+    "doc_refs": ["https://docs.gitlab.com/api/rest/"]
+  },
+  "bitbucket-basics": {
+    "title": "Bitbucket Cloud REST API Basics",
+    "body": "Authenticate via OAuth 2.0 or Basic Auth with an app password. All requests go to https://api.bitbucket.org/2.0. Rate limit starts at 1000 requests/hour and scales to 10K with paid users. Pagination follows links in the next URL field.",
+    "examples": [
+      "GET /2.0/repositories/{workspace}/{repo_slug} — get repository details",
+      "GET /2.0/repositories/{workspace}/{repo_slug}/pullrequests — list pull requests"
+    ],
+    "best_practices": [
+      "Follow the next URL in responses for pagination rather than constructing URLs manually",
+      "Use app passwords (not your account password) for Basic Auth"
+    ],
+    "pitfalls": [
+      "The token endpoint is /site/oauth2/access_token (not /token) — standard OAuth libraries may need the URL overridden"
+    ],
+    "doc_refs": ["https://developer.atlassian.com/cloud/bitbucket/rest/intro/"]
+  },
+  "circleci-basics": {
+    "title": "CircleCI REST API Basics",
+    "body": "Authenticate with Bearer token (RFC 6750, recommended) or Circle-Token header. All requests go to https://circleci.com/api/v2. Pagination uses next_page_token/page-token params. The API covers pipelines, workflows, jobs, and project configuration.",
+    "examples": [
+      "GET /api/v2/project/{project-slug}/pipeline — list pipelines for a project",
+      "POST /api/v2/project/{project-slug}/pipeline — trigger a new pipeline"
+    ],
+    "best_practices": [
+      "Use project slugs in the format gh/{org}/{repo} or bb/{org}/{repo} for project identification",
+      "Use next_page_token from responses for pagination"
+    ],
+    "pitfalls": [
+      "Circle-Token query parameter is deprecated — use Bearer token or Circle-Token header instead"
+    ],
+    "doc_refs": ["https://circleci.com/docs/api/v2/"]
+  },
+  "vercel-basics": {
+    "title": "Vercel REST API Basics",
+    "body": "Authenticate with a Bearer token. All requests go to https://api.vercel.com. API versions are per-endpoint (e.g., /v13/deployments). For team resources, append ?teamId={id} to every request. Rate limits vary by endpoint and plan.",
+    "examples": [
+      "GET /v7/deployments?teamId={id}&limit=20 — list deployments",
+      "POST /v13/deployments — create a new deployment"
+    ],
+    "best_practices": [
+      "Always include teamId query param when working with team-owned resources",
+      "Check endpoint-specific version numbers in docs — they differ per resource"
+    ],
+    "pitfalls": [
+      "Omitting teamId when the token belongs to a team will return personal resources or 403 — always include it for team context"
+    ],
+    "doc_refs": ["https://vercel.com/docs/rest-api"]
+  },
+  "cloudflare-basics": {
+    "title": "Cloudflare API Basics",
+    "body": "Authenticate with a scoped API Token as Bearer. All requests go to https://api.cloudflare.com/client/v4. Rate limit is 1200 requests per 5 minutes per user — exceeding it blocks ALL API calls for the remainder of the window. Responses wrap results in a standard envelope with success, errors, and result fields.",
+    "examples": [
+      "GET /client/v4/zones — list zones (domains)",
+      "POST /client/v4/zones/{zone_id}/dns_records — create a DNS record"
+    ],
+    "best_practices": [
+      "Use scoped API Tokens with minimum permissions instead of the Global API Key",
+      "Monitor rate limit headers closely — 1200/5min is strict for automation"
+    ],
+    "pitfalls": [
+      "Exceeding rate limit blocks ALL API calls for the entire 5-minute window, not just the offending endpoint"
+    ],
+    "doc_refs": ["https://developers.cloudflare.com/api/"]
+  },
+  "aws-s3-basics": {
+    "title": "AWS S3 Basics",
+    "body": "Authenticate with AWS Signature Version 4 using Access Key ID and Secret Access Key. Endpoints are region-specific (e.g., s3.us-east-1.amazonaws.com). Rate limits are 3500 PUT/s and 5500 GET/s per prefix. Use multipart upload for files larger than 100MB.",
+    "examples": [
+      "GET /{bucket}?list-type=2 — list objects in a bucket",
+      "PUT /{bucket}/{key} — upload an object"
+    ],
+    "best_practices": [
+      "Distribute objects across key prefixes to maximize throughput (3500 PUT + 5500 GET per prefix)",
+      "Use multipart upload for files over 100MB for resilience and performance"
+    ],
+    "pitfalls": [
+      "S3 endpoints are region-specific — using the wrong region returns 301 redirects or access denied errors"
+    ],
+    "doc_refs": ["https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html"]
+  },
+  "aws-lambda-basics": {
+    "title": "AWS Lambda API Basics",
+    "body": "Authenticate with AWS Signature Version 4. Invoke functions via POST /2015-03-31/functions/{name}/invocations. Control plane rate limit is 15 requests/s and GetFunction is 100/s. Payload limits are 6MB for synchronous and 1MB for asynchronous invocations.",
+    "examples": [
+      "POST /2015-03-31/functions/{functionName}/invocations — invoke a function synchronously",
+      "GET /2015-03-31/functions — list Lambda functions"
+    ],
+    "best_practices": [
+      "Use asynchronous invocation (InvocationType: Event) for fire-and-forget workloads",
+      "Keep synchronous payloads under 6MB — use S3 for larger data"
+    ],
+    "pitfalls": [
+      "Synchronous payload limit is 6MB and async is 256KB — exceeding either returns a 413 error with no partial processing"
+    ],
+    "doc_refs": ["https://docs.aws.amazon.com/lambda/latest/api/welcome.html"]
+  },
+  "aws-dynamodb-basics": {
+    "title": "AWS DynamoDB API Basics",
+    "body": "Authenticate with AWS Signature Version 4. All operations are POST with an X-Amz-Target header specifying the operation (e.g., DynamoDB_20120810.GetItem). Rate limits are capacity-based (Read/Write Capacity Units), not call-count-based. Results are in DynamoDB's typed JSON format.",
+    "examples": [
+      "POST / with X-Amz-Target: DynamoDB_20120810.GetItem — get a single item by key",
+      "POST / with X-Amz-Target: DynamoDB_20120810.Query — query items by partition key"
+    ],
+    "best_practices": [
+      "Use Query instead of Scan — Scan reads the entire table and consumes massive RCUs",
+      "Use BatchGetItem/BatchWriteItem for bulk operations (up to 25 items per batch)"
+    ],
+    "pitfalls": [
+      "All operations use POST — the X-Amz-Target header determines the action, not the HTTP method or path"
+    ],
+    "doc_refs": ["https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/Welcome.html"]
+  },
+  "aws-ses-basics": {
+    "title": "AWS SES API Basics",
+    "body": "Authenticate with AWS Signature Version 4. In sandbox mode, you can only send to verified email addresses with a limit of 200 emails per 24 hours and 1 per second. Request production access to remove sandbox restrictions. Maximum message size is 40MB.",
+    "examples": [
+      "POST /v2/email/outbound-emails — send an email via SES v2",
+      "GET /v2/email/identities — list verified identities"
+    ],
+    "best_practices": [
+      "Verify sender domain (not just email) using DNS records for production use",
+      "Request production access early — sandbox restrictions block real-world testing"
+    ],
+    "pitfalls": [
+      "Sandbox mode only allows sending to verified addresses — unverified recipients silently receive nothing"
+    ],
+    "doc_refs": ["https://docs.aws.amazon.com/ses/latest/APIReference-V2/Welcome.html"]
+  },
+  "aws-sqs-basics": {
+    "title": "AWS SQS API Basics",
+    "body": "Authenticate with AWS Signature Version 4. Standard queues support near-unlimited throughput. FIFO queues are limited to 300 messages/sec (3000 with batching). Batch operations support up to 10 messages per request. FIFO queue names must end with .fifo suffix.",
+    "examples": [
+      "POST / with Action=SendMessage&QueueUrl={url}&MessageBody={body} — send a message",
+      "POST / with Action=ReceiveMessage&QueueUrl={url}&MaxNumberOfMessages=10 — receive messages"
+    ],
+    "best_practices": [
+      "Use batch operations (SendMessageBatch, DeleteMessageBatch) to process up to 10 messages per API call",
+      "Use long polling (WaitTimeSeconds=20) to reduce empty receives and costs"
+    ],
+    "pitfalls": [
+      "FIFO queue names must end with .fifo suffix — creating a queue without this suffix makes it a standard queue"
+    ],
+    "doc_refs": [
+      "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/Welcome.html"
+    ]
+  },
+  "azure-devops-basics": {
+    "title": "Azure DevOps REST API Basics",
+    "body": "Authenticate via PAT with Basic Auth (base64 of ':' + PAT, empty username) or OAuth via Microsoft Entra ID. All requests require ?api-version=7.2 query parameter. Rate limit is 200 TSTUs per 5 minutes per user. The base URL includes your organization name.",
+    "examples": [
+      "GET /{organization}/{project}/_apis/wit/workitems/{id}?api-version=7.2 — get a work item",
+      "POST /{organization}/{project}/_apis/build/builds?api-version=7.2 — queue a build"
+    ],
+    "best_practices": [
+      "Always include ?api-version= on every request — omitting it returns errors or unpredictable behavior",
+      "Use PAT Basic Auth format: base64(':' + PAT) with empty username"
+    ],
+    "pitfalls": [
+      "The api-version query parameter is required on every request — there is no default version"
+    ],
+    "doc_refs": ["https://learn.microsoft.com/en-us/rest/api/azure/devops/"]
+  },
+  "azure-blob-storage-basics": {
+    "title": "Azure Blob Storage REST API Basics",
+    "body": "Authenticate with Shared Key, SAS tokens, or Microsoft Entra ID Bearer token. All requests go to https://{account}.blob.core.windows.net. Rate limit is 20K requests/sec per storage account. Every request requires an x-ms-version header (e.g., 2026-06-06).",
+    "examples": [
+      "GET /{container}?restype=container&comp=list — list blobs in a container",
+      "PUT /{container}/{blob} — upload a block blob"
+    ],
+    "best_practices": [
+      "Use SAS tokens for time-limited access delegation instead of sharing storage account keys",
+      "Always include the x-ms-version header to pin API behavior"
+    ],
+    "pitfalls": [
+      "Shared Key auth gives full account access — prefer SAS tokens or Entra ID for production to limit blast radius"
+    ],
+    "doc_refs": ["https://learn.microsoft.com/en-us/rest/api/storageservices/"]
+  },
+  "azure-functions-basics": {
+    "title": "Azure Functions Management API Basics",
+    "body": "Authenticate via OAuth 2.0 with Microsoft Entra ID using the https://management.azure.com/.default scope. This is the ARM management API for provisioning and managing Function Apps. Rate limits are 12K reads/hr and 1.2K writes/hr per subscription. Version via ?api-version=2026-03-15.",
+    "examples": [
+      "GET /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/{name}?api-version=2026-03-15 — get function app details",
+      "POST /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/{name}/functions/{func}/listkeys?api-version=2026-03-15 — get function keys"
+    ],
+    "best_practices": [
+      "Use the ARM management API for provisioning and the function URL with function key for invocation",
+      "Always include ?api-version= parameter — it is mandatory for all ARM calls"
+    ],
+    "pitfalls": [
+      "This API manages Function Apps, not invokes them — to invoke a function, use its direct HTTP trigger URL with the function key"
+    ],
+    "doc_refs": ["https://learn.microsoft.com/en-us/rest/api/appservice/"]
+  },
+  "digitalocean-basics": {
+    "title": "DigitalOcean API Basics",
+    "body": "Authenticate with a Bearer token (Personal Access Token starting with dop_v1_). All requests go to https://api.digitalocean.com/v2. Rate limit is 5000 requests/hour (some endpoints stricter, e.g., SSH keys: 10 per 60 seconds). Pagination uses links.pages.next and meta.total.",
+    "examples": ["GET /v2/droplets — list droplets", "POST /v2/droplets — create a new droplet"],
+    "best_practices": [
+      "Use per_page parameter (max 200) and follow links.pages.next for pagination",
+      "Use tags to organize resources and filter API results"
+    ],
+    "pitfalls": [
+      "Some endpoints have much stricter rate limits than the global 5K/hr — SSH key endpoints are limited to 10/60s"
+    ],
+    "doc_refs": ["https://docs.digitalocean.com/reference/api/"]
+  },
+  "postgres-basics": {
+    "title": "PostgreSQL Database Basics",
+    "body": "Connect using a PostgreSQL DSN: postgres://user:password@host:5432/database or postgresql://user:password@host:5432/database. The engine introspects tables, columns, and relationships via information_schema. Parameterized queries prevent SQL injection. Health check uses SELECT 1.",
+    "examples": [
+      "SELECT * FROM users WHERE created_at > $1 LIMIT 50 — query with parameterized date filter",
+      "INSERT INTO orders (customer_id, total) VALUES ($1, $2) RETURNING id — insert and return ID"
+    ],
+    "best_practices": [
+      "Always use parameterized queries ($1, $2) instead of string concatenation to prevent SQL injection",
+      "Use LIMIT and OFFSET or cursor-based pagination for large result sets"
+    ],
+    "pitfalls": [
+      "Leaving idle connections open exhausts the connection pool — always use connection pooling (e.g., PgBouncer)"
+    ],
+    "doc_refs": ["https://www.postgresql.org/docs/current/sql.html"]
+  },
+  "mssql-basics": {
+    "title": "Microsoft SQL Server Basics",
+    "body": "Connect using an MSSQL DSN: mssql://user:password@hostname:1433/database?encrypt=true. Full information_schema support for introspection. For Azure SQL, enable encryption and allow Azure services in firewall rules. Health check uses SELECT 1.",
+    "examples": [
+      "SELECT TOP 50 * FROM Customers WHERE Region = @region — parameterized query with TOP",
+      "INSERT INTO Orders (CustomerId, Total) OUTPUT INSERTED.Id VALUES (@custId, @total) — insert with OUTPUT"
+    ],
+    "best_practices": [
+      "Use parameterized queries (@param) to prevent SQL injection",
+      "For Azure SQL, always enable encrypt=true in the connection string"
+    ],
+    "pitfalls": [
+      "MSSQL uses @param syntax for parameters (not $1) and TOP instead of LIMIT — PostgreSQL-style syntax will fail"
+    ],
+    "doc_refs": [
+      "https://learn.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-ver17"
+    ]
+  },
+  "mysql-basics": {
+    "title": "MySQL Database Basics",
+    "body": "Connect using a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Full information_schema support for introspection. Works with MySQL 5.7+, MySQL 8.x, MySQL 9.x, and MariaDB 10.x+. Health check uses SELECT 1.",
+    "examples": [
+      "SELECT * FROM products WHERE category = ? LIMIT 50 — parameterized query with LIMIT",
+      "INSERT INTO orders (customer_id, total) VALUES (?, ?) — parameterized insert"
+    ],
+    "best_practices": [
+      "Use ? placeholder syntax for parameterized queries",
+      "Enable ssl=true in the connection string for production databases"
+    ],
+    "pitfalls": [
+      "MySQL uses ? placeholders (not $1 or @param) — using the wrong syntax silently fails or causes injection vulnerabilities"
+    ],
+    "doc_refs": ["https://dev.mysql.com/doc/refman/9.7/en/sql-statements.html"]
+  },
+  "cockroachdb-basics": {
+    "title": "CockroachDB Database Basics",
+    "body": "Connect using a PostgreSQL DSN: postgresql://user:password@host:26257/defaultdb?sslmode=verify-full. CockroachDB implements PostgreSQL wire protocol v3.0 — the standard PostgreSQL driver works unchanged. Uses information_schema for introspection. Health check uses SELECT 1.",
+    "examples": [
+      "SELECT * FROM accounts WHERE balance > $1 ORDER BY balance DESC LIMIT 50 — parameterized query",
+      "INSERT INTO transfers (from_id, to_id, amount) VALUES ($1, $2, $3) RETURNING id — insert with RETURNING"
+    ],
+    "best_practices": [
+      "Use the standard PostgreSQL driver and DSN — no CockroachDB-specific driver needed",
+      "Use transactions with AS OF SYSTEM TIME for consistent reads without blocking writes"
+    ],
+    "pitfalls": [
+      "Default port is 26257 (not 5432) — using 5432 will fail to connect to CockroachDB"
+    ],
+    "doc_refs": ["https://www.cockroachlabs.com/docs/stable/sql-statements.html"]
+  },
+  "oracle-ords-basics": {
+    "title": "Oracle ORDS REST API Basics",
+    "body": "Authenticate with Basic Auth (database credentials) or OAuth. POST SQL to the /_/sql endpoint to get JSON results. Auto-REST enables GET/POST/PUT/DELETE on /ords/{schema}/{table}/ for any REST-enabled table. ORDS is always-on for Oracle Autonomous Database on OCI; on-premise requires separate deployment.",
+    "examples": [
+      "POST /ords/{schema}/_/sql — execute a SQL statement and get JSON results",
+      "GET /ords/{schema}/{table}/?limit=25 — list rows from a REST-enabled table"
+    ],
+    "best_practices": [
+      "Use Auto-REST to expose tables as REST endpoints without writing custom PL/SQL",
+      "Use the /_/sql endpoint for ad-hoc queries and Auto-REST for CRUD operations"
+    ],
+    "pitfalls": [
+      "On-premise Oracle requires a separate ORDS deployment — it is not built into the database unlike Autonomous DB on OCI"
+    ],
+    "doc_refs": ["https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/"]
+  },
+  "supabase-basics": {
+    "title": "Supabase PostgREST API Basics",
+    "body": "Authenticate with an apikey header (literal header name, not Authorization). Use the anon key for client-side and service_role key for server-side (bypasses Row Level Security). The API is PostgREST-based with powerful filtering via query params. Supports range and offset pagination.",
+    "examples": [
+      "GET /rest/v1/todos?select=id,title&is_complete=eq.false — list incomplete todos",
+      "POST /rest/v1/todos — insert a new todo"
+    ],
+    "best_practices": [
+      "Use the anon key with Row Level Security (RLS) policies for client-side access",
+      "Use PostgREST query operators (eq, gt, in, like) for server-side filtering"
+    ],
+    "pitfalls": [
+      "The service_role key bypasses ALL Row Level Security — never expose it in client-side code"
+    ],
+    "doc_refs": ["https://supabase.com/docs/guides/api"]
+  },
+  "firebase-basics": {
+    "title": "Firebase Firestore REST API Basics",
+    "body": "Authenticate via OAuth 2.0 with a service account or user credentials. All requests go to https://firestore.googleapis.com/v1. Documents are organized in collections. Queries use structured query objects in POST bodies. Supports real-time listeners via the listen RPC.",
+    "examples": [
+      "GET /v1/projects/{projectId}/databases/(default)/documents/{collection} — list documents in a collection",
+      "POST /v1/projects/{projectId}/databases/(default)/documents/{collection} — create a document"
+    ],
+    "best_practices": [
+      "Use service accounts with Firestore Admin IAM role for server-to-server access",
+      "Design document hierarchies to minimize reads — Firestore charges per read operation"
+    ],
+    "pitfalls": [
+      "Firestore queries require composite indexes for multi-field filters — missing indexes return an error with a link to create the index"
+    ],
+    "doc_refs": ["https://firebase.google.com/docs/firestore/reference/rest"]
+  },
+  "snowflake-basics": {
+    "title": "Snowflake SQL API Basics",
+    "body": "Authenticate with JWT (RSA key pair preferred) or OAuth. Submit SQL via POST /api/v2/statements. Results are paginated via Link headers. The account identifier format varies between organizations (org-account vs legacy locator format).",
+    "examples": [
+      "POST /api/v2/statements — execute a SQL statement",
+      "GET /api/v2/statements/{statementHandle} — check statement execution status"
+    ],
+    "best_practices": [
+      "Use RSA key-pair JWT auth for production — it is more secure and does not require storing passwords",
+      "Use async execution for long-running queries and poll the status endpoint"
+    ],
+    "pitfalls": [
+      "Account identifier format varies (org-account vs legacy locator) — using the wrong format causes connection failures"
+    ],
+    "doc_refs": ["https://docs.snowflake.com/en/developer-guide/sql-api/reference"]
+  },
+  "datadog-basics": {
+    "title": "Datadog API Basics",
+    "body": "Authenticate with two headers: DD-API-KEY (API key) and DD-APPLICATION-KEY (Application key). Base URLs are region-specific: .com (US1), .eu (EU), .us3, .us5, .ap1, .ap2, .ddog-gov. Rate limits are endpoint-specific and vary widely.",
+    "examples": [
+      "GET /api/v1/monitor — list all monitors",
+      "POST /api/v2/series — submit metrics data points"
+    ],
+    "best_practices": [
+      "Use the correct region-specific base URL matching your Datadog organization",
+      "Always send both DD-API-KEY and DD-APPLICATION-KEY headers — most endpoints require both"
+    ],
+    "pitfalls": [
+      "Using the wrong regional base URL returns auth errors — each Datadog org is tied to a specific region"
+    ],
+    "doc_refs": ["https://docs.datadoghq.com/api/"]
+  },
+  "pagerduty-basics": {
+    "title": "PagerDuty REST API Basics",
+    "body": "Authenticate with Authorization: Token token={key} (not Bearer). All requests go to https://api.pagerduty.com (or api.eu.pagerduty.com for EU). Rate limit is 960 requests/min. Supports both offset and cursor-based pagination.",
+    "examples": [
+      "GET /incidents?statuses[]=triggered&statuses[]=acknowledged — list active incidents",
+      "POST /incidents — create a new incident"
+    ],
+    "best_practices": [
+      "Use cursor-based pagination (cursor param) for large result sets for better performance",
+      "Filter incidents by urgency and status to reduce result set size"
+    ],
+    "pitfalls": [
+      "Authorization format is 'Token token=xxx' (not 'Bearer xxx') — using Bearer returns 401"
+    ],
+    "doc_refs": ["https://developer.pagerduty.com/api-reference/"]
+  },
+  "sentry-basics": {
+    "title": "Sentry REST API Basics",
+    "body": "Authenticate with a Bearer token (scoped auth token). All requests go to https://sentry.io/api/0 (US) or https://de.sentry.io/api/0 (EU). Pagination uses Link headers. Rate limits are per-organization and vary by endpoint.",
+    "examples": [
+      "GET /api/0/organizations/{org}/issues/?query=is:unresolved — list unresolved issues",
+      "POST /api/0/projects/{org}/{project}/events/ — retrieve events"
+    ],
+    "best_practices": [
+      "Use scoped tokens with minimum required permissions (e.g., event:read, project:read)",
+      "Follow Link header pagination — constructing page URLs manually is unreliable"
+    ],
+    "pitfalls": [
+      "Auth tokens are scoped — a token without the required scope returns 403, not 401, making debugging confusing"
+    ],
+    "doc_refs": ["https://docs.sentry.io/api/"]
+  },
+  "servicenow-basics": {
+    "title": "ServiceNow REST API Basics",
+    "body": "Authenticate via OAuth 2.0 or Basic Auth. The Table API at /api/now/table/{tableName} provides CRUD for any table. Pagination uses sysparm_limit + sysparm_offset with Link headers. Rate limits are configurable per instance.",
+    "examples": [
+      "GET /api/now/table/incident?sysparm_limit=20&sysparm_query=active=true — list active incidents",
+      "POST /api/now/table/incident — create an incident"
+    ],
+    "best_practices": [
+      "Use sysparm_fields to return only needed fields and reduce payload size",
+      "Use sysparm_query with encoded query syntax for server-side filtering"
+    ],
+    "pitfalls": [
+      "OAuth and Basic Auth endpoints are instance-specific ({instance}.service-now.com) — sharing credentials across instances will fail"
+    ],
+    "doc_refs": [
+      "https://www.servicenow.com/docs/r/vancouver/api-reference/rest-apis/c_TableAPI.html"
+    ]
+  },
+  "okta-basics": {
+    "title": "Okta Management API Basics",
+    "body": "Authenticate with Authorization: SSWS {token} for API keys or OAuth Bearer tokens. All requests go to https://{domain}.okta.com/api/v1. Rate limits are bucket-based (e.g., users GET 600/min, authorize 1200/min, per-client default 60/min). Cursor pagination via Link header.",
+    "examples": [
+      "GET /api/v1/users?limit=25 — list users",
+      "POST /api/v1/users?activate=true — create and activate a user"
+    ],
+    "best_practices": [
+      "Use SSWS token auth for admin operations and OAuth for user-context operations",
+      "Follow Link header (rel=next) for cursor-based pagination"
+    ],
+    "pitfalls": [
+      "SSWS auth uses 'SSWS' prefix (not 'Bearer') — using Bearer with an API key returns 401"
+    ],
+    "doc_refs": ["https://developer.okta.com/docs/api/"]
+  },
+  "auth0-basics": {
+    "title": "Auth0 Management API Basics",
+    "body": "Authenticate via Client Credentials grant with audience=https://{tenant}.auth0.com/api/v2/. All requests go to https://{tenant}.auth0.com/api/v2. Rate limits are burst-based: 50 req/s (paid) and 10 req/s (free). Checkpoint pagination with from + take is recommended over offset.",
+    "examples": [
+      "GET /api/v2/users?page=0&per_page=25 — list users",
+      "POST /api/v2/users — create a user"
+    ],
+    "best_practices": [
+      "Use checkpoint pagination (from + take) for large datasets instead of page/per_page",
+      "Cache the Management API access token and reuse until expiry"
+    ],
+    "pitfalls": [
+      "The audience parameter must be set to the Management API URL when requesting tokens — omitting it returns a token that cannot access the Management API"
+    ],
+    "doc_refs": ["https://auth0.com/docs/api/management/v2"]
+  },
+  "intercom-basics": {
+    "title": "Intercom REST API Basics",
+    "body": "Authenticate with a Bearer token (private app access token or OAuth token). All requests go to https://api.intercom.io. Rate limits are 166 operations per 10 seconds for most endpoints and 10K/min for private apps. Cursor pagination via pages.next.",
+    "examples": [
+      "GET /contacts?per_page=50 — list contacts",
+      "POST /messages — send an in-app or email message"
+    ],
+    "best_practices": [
+      "Use cursor pagination via pages.next rather than offset for reliable pagination",
+      "Use the search endpoint with query objects for efficient filtered lookups"
+    ],
+    "pitfalls": [
+      "Some mandatory scopes are auto-selected during app creation — check what scopes your token has before debugging access issues"
+    ],
+    "doc_refs": ["https://developers.intercom.com/docs/references/rest-api/api.intercom.io/"]
+  },
+  "freshdesk-basics": {
+    "title": "Freshdesk REST API Basics",
+    "body": "Authenticate with Basic Auth using your API key as username and 'X' as password. All requests go to https://{domain}.freshdesk.com/api/v2. Rate limits depend on plan: Free 50/min, Growth 200/min, Pro 400/min, Enterprise 700/min. Pagination is 1-indexed with page and per_page (max 100), limited to 300 pages.",
+    "examples": [
+      "GET /api/v2/tickets?per_page=30&page=1 — list tickets",
+      "POST /api/v2/tickets — create a ticket"
+    ],
+    "best_practices": [
+      "Use the updated_since filter to fetch only recently changed tickets instead of paginating all",
+      "Use per_page=100 to minimize API calls when fetching large datasets"
+    ],
+    "pitfalls": [
+      "Pagination is limited to 300 pages maximum — use date-based filters to work around this for large datasets"
+    ],
+    "doc_refs": ["https://developers.freshdesk.com/api/"]
+  },
+  "bamboohr-basics": {
+    "title": "BambooHR REST API Basics",
+    "body": "Authenticate with Basic Auth using your API key as username and 'x' as password. All requests go to https://api.bamboohr.com/api/gateway.php/{companyDomain}/v1. Rate limit is approximately 100 requests/min. Pagination varies by endpoint (cursor or offset).",
+    "examples": [
+      "GET /v1/employees/directory — get the employee directory",
+      "GET /v1/employees/{id}?fields=firstName,lastName,jobTitle — get employee details"
+    ],
+    "best_practices": [
+      "Use the fields parameter to request only needed employee fields",
+      "Use the reports endpoint for bulk data exports instead of iterating individual employees"
+    ],
+    "pitfalls": [
+      "The company domain in the URL path must match exactly — case mismatches or typos return generic auth errors"
+    ],
+    "doc_refs": ["https://documentation.bamboohr.com/reference"]
+  },
+  "zendesk-basics": {
+    "title": "Zendesk REST API Basics",
+    "body": "Authenticate with API token Basic Auth (email/token:{api_token} as username) or OAuth Bearer. All requests go to https://{subdomain}.zendesk.com/api/v2. Rate limits depend on plan: 200-700 requests/min. Cursor pagination (page[after] + page[size]) is preferred — offset pagination is limited to 10K records.",
+    "examples": [
+      "GET /api/v2/tickets?page[size]=100 — list tickets with cursor pagination",
+      "POST /api/v2/tickets — create a ticket"
+    ],
+    "best_practices": [
+      "Use cursor-based pagination (page[after] + page[size]) instead of offset — offset is limited to 10K records",
+      "Use incremental exports for bulk data sync instead of paginating the list endpoint"
+    ],
+    "pitfalls": [
+      "Offset pagination is hard-limited to 10K records — cursors or incremental exports are required for larger datasets"
+    ],
+    "doc_refs": ["https://developer.zendesk.com/api-reference/"]
+  },
+  "apple-icloud-calendar-basics": {
+    "title": "Apple iCloud CalDAV Basics",
+    "body": "Authenticate with Basic Auth using your Apple ID email and an app-specific password (not your Apple ID password). CalDAV discovery chain: PROPFIND /.well-known/caldav -> current-user-principal -> calendar-home-set -> list calendars. Events use ICS format. Supports sync-token for incremental sync (RFC 6578).",
+    "examples": [
+      "PROPFIND /.well-known/caldav — discover CalDAV service endpoint",
+      "REPORT /calendars/{user}/{calendar}/ with calendar-query — filter events by date range"
+    ],
+    "best_practices": [
+      "Use sync-token for incremental sync instead of re-fetching all events",
+      "Use calendar-multiget REPORT for batch fetching multiple events by URL"
+    ],
+    "pitfalls": [
+      "Apple requires app-specific passwords — your regular Apple ID password will not work for CalDAV auth"
+    ],
+    "doc_refs": ["https://datatracker.ietf.org/doc/html/rfc6764"]
+  },
+  "apple-icloud-contacts-basics": {
+    "title": "Apple iCloud CardDAV Basics",
+    "body": "Authenticate with Basic Auth using your Apple ID email and an app-specific password. CardDAV discovery chain: PROPFIND /.well-known/carddav -> current-user-principal -> addressbook-home-set. Contacts use vCard format. Use addressbook-multiget REPORT for batch fetching.",
+    "examples": [
+      "PROPFIND /.well-known/carddav — discover CardDAV service endpoint",
+      "REPORT /contacts/{user}/card/ with addressbook-multiget — fetch multiple contacts"
+    ],
+    "best_practices": [
+      "Use addressbook-multiget REPORT to batch fetch multiple contacts in a single request",
+      "Use sync-token for incremental sync of contact changes"
+    ],
+    "pitfalls": [
+      "Apple requires app-specific passwords — your regular Apple ID password will not work"
+    ],
+    "doc_refs": [
+      "https://developer.apple.com/documentation/devicemanagement/carddav",
+      "https://www.rfc-editor.org/rfc/rfc6352.html"
+    ]
+  },
+  "caldav-generic-basics": {
+    "title": "CalDAV Generic Server Basics",
+    "body": "Authenticate with Basic Auth (or OAuth for Google). Standard CalDAV (RFC 4791) discovery via .well-known/caldav. Works with Nextcloud, Fastmail, Radicale, Baikal, Synology, and any standards-compliant server. Events are in ICS format, managed via PROPFIND, REPORT, PUT, and DELETE.",
+    "examples": [
+      "PROPFIND /.well-known/caldav — start CalDAV discovery chain",
+      "PUT /calendars/{user}/{calendar}/{event}.ics — create or update an event"
+    ],
+    "best_practices": [
+      "Follow the full discovery chain (well-known -> principal -> calendar-home-set) rather than hardcoding paths",
+      "Use calendar-query REPORT with date filters to avoid fetching the entire calendar"
+    ],
+    "pitfalls": [
+      "CalDAV paths vary significantly between servers (Nextcloud uses /remote.php/dav, Google uses /caldav/v2) — always use discovery"
+    ],
+    "doc_refs": ["https://www.rfc-editor.org/rfc/rfc4791"]
+  },
+  "webdav-generic-basics": {
+    "title": "WebDAV Generic Server Basics",
+    "body": "Authenticate with Basic Auth or Bearer token. WebDAV (RFC 4918) extends HTTP with methods like PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, and UNLOCK. Use PROPFIND with Depth:1 to list directory contents. OPTIONS response reveals DAV compliance level (1, 2, or 3).",
+    "examples": [
+      "PROPFIND / with Depth:1 — list files in root directory",
+      "PUT /files/document.pdf — upload a file"
+    ],
+    "best_practices": [
+      "Use OPTIONS request to check DAV compliance level before using advanced features (locking, versioning)",
+      "Use PROPFIND Depth:1 for directory listing — Depth:infinity can be very expensive on large trees"
+    ],
+    "pitfalls": [
+      "Not all WebDAV servers support all methods — check OPTIONS response before using LOCK, COPY, or MOVE"
+    ],
+    "doc_refs": ["https://www.ietf.org/rfc/rfc4918.html"]
+  },
+  "soap-generic-basics": {
+    "title": "SOAP Generic Web Service Basics",
+    "body": "All operations are HTTP POST with XML envelope. SOAP 1.1 uses text/xml content type, SOAP 1.2 uses application/soap+xml. Provide the WSDL URL (usually endpoint + ?wsdl) for auto-discovery of operations, messages, and types. SOAPAction header identifies the operation.",
+    "examples": [
+      "POST /service with SOAPAction header — invoke a SOAP operation",
+      "GET /service?wsdl — fetch the WSDL service definition"
+    ],
+    "best_practices": [
+      "Fetch and parse the WSDL first to understand available operations and their input/output schemas",
+      "Always include the SOAPAction header — many services require it to route the request"
+    ],
+    "pitfalls": [
+      "SOAP faults return HTTP 500 with an XML body — always parse the fault detail element for the actual error message"
+    ],
+    "doc_refs": ["https://www.w3.org/TR/soap12-part1/"]
+  },
+  "sap-soap-basics": {
+    "title": "SAP SOAP Web Services Basics",
+    "body": "Authenticate with Basic Auth using SAP technical user credentials. SAP exposes SOAP services at /sap/bc/srt/scs_ext/ or /sap/bc/srt/wsdl/. WSDL auto-discovery is supported at the service endpoint + ?wsdl. Common services include Material Master, Business Partner, Sales Order, and Financial Posting.",
+    "examples": [
+      "POST /sap/bc/srt/scs_ext/material — invoke a Material Master service operation",
+      "GET /sap/bc/srt/wsdl/flv_10002A111AD1/wsdl11/allinone/ws_policy/document?sap-client=100 — fetch WSDL"
+    ],
+    "best_practices": [
+      "Use a dedicated SAP technical user with minimal authorizations for API integrations",
+      "Include sap-client parameter in requests when your SAP system has multiple clients"
+    ],
+    "pitfalls": [
+      "SAP SOAP endpoints require the correct sap-client number — omitting it may route to the wrong client or fail"
+    ],
+    "doc_refs": ["https://help.sap.com/docs/SAP_S4HANA_CLOUD"]
+  },
+  "servicenow-soap-basics": {
+    "title": "ServiceNow SOAP API Basics",
+    "body": "Authenticate with Basic Auth using admin credentials. SOAP endpoints follow the pattern /{tableName}.do?SOAP for execution and /{tableName}.do?WSDL for schema. Operations include insert, update, deleteRecord, get, getRecords, and getKeys. This is the legacy API complementary to the REST Table API.",
+    "examples": [
+      "POST /incident.do?SOAP — execute a SOAP operation on the incident table",
+      "GET /incident.do?WSDL — get the WSDL for the incident table"
+    ],
+    "best_practices": [
+      "Use the REST Table API for new integrations — SOAP is legacy",
+      "Use getKeys + get for targeted record retrieval instead of getRecords for all"
+    ],
+    "pitfalls": [
+      "Each table has its own WSDL endpoint ({table}.do?WSDL) — there is no single unified WSDL for all tables"
+    ],
+    "doc_refs": [
+      "https://www.servicenow.com/docs/r/vancouver/api-reference/rest-apis/soap-integration.html"
+    ]
+  },
+  "grpc-connect-basics": {
+    "title": "gRPC Connect Protocol Basics",
+    "body": "Connect protocol (from Buf) provides gRPC-compatible RPC over standard HTTP/1.1 with JSON encoding. POST to /{package.Service}/{Method} with a JSON body. No HTTP/2 or Envoy proxy required. Uses standard HTTP status codes and headers. Compatible with the existing HTTP driver.",
+    "examples": [
+      "POST /example.v1.ExampleService/GetUser — call a unary RPC method with JSON body",
+      "POST /example.v1.ExampleService/ListUsers — call a server-streaming method"
+    ],
+    "best_practices": [
+      "Use JSON encoding (default) for easier debugging; switch to protobuf for production performance",
+      "Use standard HTTP headers for metadata instead of gRPC-specific trailers"
+    ],
+    "pitfalls": [
+      "Server-streaming responses use NDJSON format — each line is a separate JSON message, not a single array"
+    ],
+    "doc_refs": ["https://connectrpc.com/docs/protocol/"]
+  },
+  "grpc-native-basics": {
+    "title": "gRPC Native Protocol Basics",
+    "body": "Native gRPC over HTTP/2 with protobuf binary encoding. Supports four RPC types: unary, server-streaming, client-streaming, and bidirectional streaming. Discovery via gRPC Server Reflection (grpc.reflection.v1). Auth via metadata headers (similar to HTTP Bearer). TLS and mTLS supported.",
+    "examples": [
+      "Unary call: service.GetUser({ id: '123' }) — single request/response",
+      "Server stream: service.ListUsers({}) — server sends multiple responses"
+    ],
+    "best_practices": [
+      "Enable gRPC Server Reflection on your server for automatic service/method discovery",
+      "Use deadlines (timeouts) on every RPC call to prevent hanging connections"
+    ],
+    "pitfalls": [
+      "gRPC requires HTTP/2 — it will not work through HTTP/1.1 proxies or load balancers that do not support h2c or h2"
+    ],
+    "doc_refs": ["https://grpc.io/docs/"]
+  },
+  "mqtt-basics": {
+    "title": "MQTT Protocol Basics",
+    "body": "MQTT is pub/sub, not request/response. Subscribe to topics to receive messages; publish to topics to send. QoS levels: 0 (at-most-once), 1 (at-least-once), 2 (exactly-once). Topic wildcards: + (single level), # (all below). Connect via mqtt:// (plain), mqtts:// (TLS), or wss:// (WebSocket).",
+    "examples": [
+      "SUBSCRIBE sensors/+/temperature — subscribe to temperature readings from all sensors",
+      "PUBLISH devices/lamp1/command {\"state\":\"on\"} — send a command to a device"
+    ],
+    "best_practices": [
+      "Use QoS 1 (at-least-once) as default — QoS 0 loses messages, QoS 2 adds significant overhead",
+      "Design topic hierarchies carefully — they cannot be changed once devices are deployed"
+    ],
+    "pitfalls": [
+      "MQTT 3.1.1 and 5.0 have different feature sets (5.0 adds shared subscriptions, properties) — specify the protocol version in config"
+    ],
+    "doc_refs": ["https://mqtt.org/mqtt-specification/"]
+  },
+  "imap-email-basics": {
+    "title": "IMAP Email Protocol Basics",
+    "body": "IMAP is a stateful TCP protocol. Operations: LIST (folders), SELECT (open folder), FETCH (messages), SEARCH (filter), STORE (flags), APPEND (add). Always use TLS (port 993). SMTP is used for sending. Gmail and Outlook support IMAP XOAUTH2 as an alternative to passwords.",
+    "examples": [
+      "SELECT INBOX then SEARCH UNSEEN — find unread messages in inbox",
+      "FETCH 1:10 (BODY[HEADER.FIELDS (FROM SUBJECT DATE)]) — get headers of first 10 messages"
+    ],
+    "best_practices": [
+      "Use IMAP IDLE for real-time push notifications instead of polling",
+      "Reuse connections — IMAP connection setup is expensive (TCP + TLS + AUTH)"
+    ],
+    "pitfalls": [
+      "IMAP connections are stateful — the driver must manage connection pooling and handle dropped connections gracefully"
+    ],
+    "doc_refs": ["https://datatracker.ietf.org/doc/html/rfc9051"]
+  },
+  "firecrawl-basics": {
+    "title": "Firecrawl Web Scraping API Basics",
+    "body": "Authenticate with a Bearer token (API key starting with fc-). POST /v2/scrape for single-URL scraping, POST /v2/crawl for async site crawling (poll via GET /v2/crawl/{id}), POST /v2/map for URL discovery, and POST /v2/extract for LLM-powered structured extraction. Returns markdown, HTML, links, and metadata.",
+    "examples": [
+      "POST /v2/scrape { \"url\": \"https://example.com\" } — scrape a single page",
+      "POST /v2/crawl { \"url\": \"https://example.com\", \"limit\": 100 } — start async site crawl"
+    ],
+    "best_practices": [
+      "Use /v2/map first to discover URLs, then /v2/batch/scrape for targeted extraction",
+      "Use /v2/extract with a JSON schema for structured data extraction from pages"
+    ],
+    "pitfalls": [
+      "Self-hosted Firecrawl lacks the anti-bot 'Fire-engine' features — some sites may block self-hosted instances"
+    ],
+    "doc_refs": ["https://docs.firecrawl.dev/api-reference/"]
+  },
+  "crawl4ai-basics": {
+    "title": "Crawl4AI Web Scraping API Basics",
+    "body": "Self-hosted only. Authentication is now required by default. Generate a JWT token via POST /token with credentials. FastAPI-based with auto-generated OpenAPI docs at /docs. Endpoints: POST /crawl (sync multi-URL), POST /crawl/stream (NDJSON streaming), POST /crawl/job (async), POST /md (markdown), POST /llm (LLM extraction).",
+    "examples": [
+      "POST /crawl { \"urls\": [\"https://example.com\"] } — crawl URLs synchronously",
+      "POST /llm { \"url\": \"https://example.com\", \"instruction\": \"Extract prices\" } — LLM-powered extraction"
+    ],
+    "best_practices": [
+      "Use --shm-size=1g in Docker to prevent Chrome crashes from shared memory limits",
+      "Use async /crawl/job endpoint for large crawls to avoid timeout issues"
+    ],
+    "pitfalls": ["Running without --shm-size=1g causes Chrome to crash on memory-intensive pages"],
+    "doc_refs": ["https://docs.crawl4ai.com/"]
+  },
+  "apify-basics": {
+    "title": "Apify Cloud Scraping API Basics",
+    "body": "Authenticate with a Bearer token (API token). Apify runs 'Actors' (scrapers and automations) in the cloud. Start an actor run via POST, poll status via GET, and retrieve results from datasets. Rate limit is 250K requests/min globally. Offset pagination on dataset items. 1600+ pre-built actors available in the store.",
+    "examples": [
+      "POST /v2/actors/{actorId}/runs — start an actor run",
+      "GET /v2/datasets/{datasetId}/items?offset=0&limit=100 — fetch results from a dataset"
+    ],
+    "best_practices": [
+      "Use webhooks on actor runs instead of polling for completion status",
+      "Search the Actor Store (1600+ actors) before building custom scrapers"
+    ],
+    "pitfalls": [
+      "Actor runs are async — POSTing to /runs returns immediately with a runId, not results"
+    ],
+    "doc_refs": ["https://docs.apify.com/api/v2"]
+  },
+  "scrapingbee-basics": {
+    "title": "ScrapingBee Web Scraping API Basics",
+    "body": "Authenticate via Authorization: Bearer {api_key} header (preferred) or deprecated api_key query parameter. Single endpoint: GET /api/v1?url={target}. Key features via params: render_js (browser rendering), extract_rules (CSS selector extraction), ai_query (AI extraction), screenshot, return_page_markdown. Credit-based pricing: 5 (standard), 25 (premium), 75 (stealth) per request.",
+    "examples": [
+      "GET /api/v1?api_key=KEY&url=https://example.com&render_js=false — scrape without JS rendering",
+      "GET /api/v1?api_key=KEY&url=https://example.com&extract_rules={\"title\":\"h1\"} — extract with CSS selectors"
+    ],
+    "best_practices": [
+      "Disable render_js when not needed — it uses fewer credits and is faster",
+      "Use extract_rules for structured data extraction instead of parsing HTML client-side"
+    ],
+    "pitfalls": [
+      "Premium and stealth proxies cost 5x-15x more credits — use standard proxy first and only upgrade if blocked"
+    ],
+    "doc_refs": ["https://www.scrapingbee.com/documentation/"]
+  },
+  "browserless-basics": {
+    "title": "Browserless Headless Chrome API Basics",
+    "body": "Authenticate with a token via ?token= query param or Bearer header. Headless Chrome as a service. Endpoints: POST /chrome/content (HTML), /chrome/scrape (CSS extraction), /chrome/screenshot, /chrome/pdf, /chrome/function (Puppeteer code), /smart-scrape (intelligent fallback). Rate limiting is concurrency-based.",
+    "examples": [
+      "POST /chrome/content { \"url\": \"https://example.com\" } — get rendered HTML content",
+      "POST /chrome/screenshot { \"url\": \"https://example.com\" } — take a screenshot"
+    ],
+    "best_practices": [
+      "Use /smart-scrape for automatic best-strategy selection between different extraction methods",
+      "Self-host with Docker for high-volume usage to avoid SaaS concurrency limits"
+    ],
+    "pitfalls": [
+      "Concurrency-based limits mean slow pages block slots — set reasonable timeouts to prevent queue buildup"
+    ],
+    "doc_refs": ["https://docs.browserless.io/"]
+  },
+  "jina-reader-basics": {
+    "title": "Jina Reader API Basics",
+    "body": "URL-to-markdown: GET r.jina.ai/{url}. Search: GET/POST s.jina.ai/{query}. No auth required for 20 RPM; free API key unlocks 500 RPM (Reader) and 100 RPM (Search). Supports structured extraction via x-json-schema or x-instruction headers. EU endpoint available at eu.r.jina.ai.",
+    "examples": [
+      "GET https://r.jina.ai/https://example.com — convert a URL to markdown",
+      "GET https://s.jina.ai/how+to+cook+pasta — search the web"
+    ],
+    "best_practices": [
+      "Use x-json-schema header for structured data extraction with a JSON Schema definition",
+      "Get a free API key to increase rate limit from 20 RPM to 500 RPM"
+    ],
+    "pitfalls": [
+      "The target URL is part of the path (r.jina.ai/{url}), not a query parameter — URL encoding matters"
+    ],
+    "doc_refs": ["https://jina.ai/reader/"]
+  },
+  "brightdata-basics": {
+    "title": "Bright Data Web Scraping API Basics",
+    "body": "Authenticate with a Bearer token (API key). POST /datasets/v3/scrape for synchronous scraping (1-minute timeout) and POST /datasets/v3/trigger for async batch jobs (poll via GET /datasets/v3/snapshot/{id}). Requires a dataset_id to select a pre-built scraper. Output formats: JSON, NDJSON, CSV. Enterprise proxy network included.",
+    "examples": [
+      "POST /datasets/v3/trigger?dataset_id=gd_xxx — trigger an async scraping job",
+      "GET /datasets/v3/snapshot/{snapshotId}?format=json — download results"
+    ],
+    "best_practices": [
+      "Use async /datasets/v3/trigger for production workloads — sync endpoint times out at 1 minute",
+      "Browse the 700+ pre-built dataset scrapers before building custom solutions"
+    ],
+    "pitfalls": [
+      "The sync scrape endpoint has a hard 1-minute timeout — any scraping job taking longer will fail silently"
+    ],
+    "doc_refs": ["https://docs.brightdata.com/datasets/scrapers/overview.md"]
+  },
+  "ftp-basics": {
+    "title": "FTP/FTPS Protocol Basics",
+    "body": "Authenticate with username/password or anonymous access. Operations: LIST (directory listing), RETR (download), STOR (upload), DELE (delete), MKD (create directory), RMD (remove directory), RENAME. FTPS adds TLS encryption (implicit on port 990, explicit via STARTTLS on port 21). Use passive mode for firewall compatibility.",
+    "examples": [
+      "LIST / — list files in the root directory",
+      "STOR /uploads/document.pdf — upload a file"
+    ],
+    "best_practices": [
+      "Always use FTPS (TLS) in production — plain FTP transmits credentials and data unencrypted",
+      "Use passive mode to avoid firewall issues with data connections"
+    ],
+    "pitfalls": [
+      "Plain FTP transmits passwords and files in cleartext — never use it over untrusted networks"
+    ],
+    "doc_refs": ["https://datatracker.ietf.org/doc/html/rfc959"]
+  },
+  "web-scraper-basics": {
+    "title": "Web scraper basics",
+    "body": "The web-scraper connector fetches public web pages over plain HTTP and converts them via three transform languages: `readability` (Mozilla Readability article extraction), `html-to-markdown` (Turndown), and `structured-data` (JSON-LD / OpenGraph / microdata). No JavaScript rendering, no CSS-selector engineering. Defaults are zero-config: robots.txt respected, 1000-page crawl cap, 100K-char extract cap, friendly User-Agent. All tunables live under `connectors.web_scraper.*` and can be overridden per tenant via `sk settings set`.",
+    "examples": [
+      "GET https://example.com → transform.html-to-markdown → { markdown, bytes, url, truncated, stripped_elements }",
+      "GET https://blog.example.com/post → transform.readability → { title, byline, content_html, lang, length, url }",
+      "GET https://example.com/sitemap.xml → loop urlset.url.loc → fetch each → readability → markdown — output is { pages: [{ title, url, markdown }, …] }",
+      "GET https://example.com → transform.structured-data → { json_ld, opengraph, microdata, found_any, url }"
+    ],
+    "best_practices": [
+      "Leave respect_robots = true (the default). It costs one extra HTTP per origin (cached 1h per tenant) and keeps you on the right side of operator ToS.",
+      "Cap your crawl with `connectors.web_scraper.runtime.max_pages` — the default 1000 prevents a runaway sitemap from starving other tenants.",
+      "Prefer `crawl-sitemap-to-markdown` over hand-rolling a loop — it composes the four transform languages with the right defaults.",
+      "Always set `expected_statuses: [200]` on the request step so the transform never sees an error page's HTML."
+    ],
+    "pitfalls": [
+      "No JavaScript is executed — pages that render content client-side (React SPAs without SSR, infinite-scroll feeds) return empty markdown. Prefer `llms.txt` or the site's REST/GraphQL API for those.",
+      "The `crawl-sitemap-to-markdown` recipe does NOT post into Knowledge Sources directly — it emits an array. To ingest, the calling chat agent (or a follow-up workflow step) POSTs each element to `POST /v1/knowledge-sources/inline` (JSON body: `{ name, slug?, content, mime_type, source_uri? }`). The legacy `/v1/knowledge-sources` route stays multipart/form-data for file uploads.",
+      "Sitemap > 10 000 entries triggers a Yellow verdict from `analyze_scrape_target`; > 100 000 triggers Red. Tune `connectors.web_scraper.authoring.*_threshold` if you operate at higher scale.",
+      "Operators are responsible for the target site's ToS. The connector enforces robots.txt by default but takes no position on commercial scraping rights."
+    ],
+    "doc_refs": [
+      "https://datatracker.ietf.org/doc/html/rfc9309",
+      "https://github.com/mozilla/readability",
+      "https://github.com/mixmark-io/turndown"
+    ]
+  },
+  "linkedin-basics": {
+    "title": "LinkedIn API Basics",
+    "body": "Authenticate with OAuth 2.0 (authorization code) using the MODERN OpenID Connect scopes ONLY: `openid profile email` for member identity, plus `w_member_social` to publish posts. The complete, correct scope set for this connector is `openid profile email w_member_social` — nothing else. Do NOT request `r_liteprofile` or `r_emailaddress`, and do NOT call `/v2/me`: LinkedIn deprecated all three; requesting them fails with \"<scope> is not authorized for your application\" and `/v2/me` returns 403 ACCESS_DENIED. The OpenID replacement for `/v2/me` is `GET /v2/userinfo` — its `sub` is the member id and the author URN for posts is `urn:li:person:{sub}`. The connector base_url is exactly `https://api.linkedin.com` with NO trailing `/v2` (endpoint paths already include `/v2`; a base ending in `/v2` produces a broken `/v2/v2/...` URL). The token endpoint is form-encoded (`application/x-www-form-urlencoded`) with client_id/client_secret in the body.",
+    "examples": [
+      "GET /v2/userinfo — returns { sub, name, email, picture } for the authenticated member",
+      "POST /v2/ugcPosts — publish a text share (JSON body) with header X-Restli-Protocol-Version: 2.0.0; author is urn:li:person:{sub}"
+    ],
+    "best_practices": [
+      "Request exactly `openid profile email w_member_social` — never the deprecated `r_liteprofile`/`r_emailaddress`. For profile data call `/v2/userinfo`, not the deprecated `/v2/me`.",
+      "Always send the header `X-Restli-Protocol-Version: 2.0.0` on /v2/ugcPosts and other /v2 Rest.li endpoints.",
+      "Build the author URN from /v2/userinfo `sub` rather than hard-coding a member id.",
+      "The redirect URI is the engine's HTTPS callback (https://<engine-host>/v1/oauth/callback) — never http://. Tell the operator to copy the exact value the engine returns from authenticate_oauth into the LinkedIn app's Authorized redirect URLs.",
+      "`w_member_social` is granted only by the 'Share on LinkedIn' product, which requires the app to be linked to a verified LinkedIn Company Page. 'Sign In with LinkedIn using OpenID Connect' grants `openid profile email`. Both products must be added.",
+      "Access tokens last ~60 days; refresh tokens are available so the connector can renew without re-consent."
+    ],
+    "pitfalls": [
+      "A connector created without the LinkedIn template (template_slug=null) has no OAuth metadata and can never mint a token — always start from the `linkedin` template.",
+      "\"<scope> is not authorized for your application\" at the authorize step = that scope's product isn't approved on the app. For `w_member_social` add 'Share on LinkedIn'. NEVER work around it by switching to `r_liteprofile`/`r_emailaddress` — those are deprecated and also unauthorized; the fix is always the product, never an older scope.",
+      "\"redirect_uri does not match the registered value\" = the LinkedIn app has the wrong callback. The engine sends HTTPS; a registered `http://` value (or a trailing slash) is the usual cause. Register the exact https value the engine returned.",
+      "A `/v2/v2/userinfo` (double `/v2`) URL at runtime means the connector base_url wrongly includes `/v2`. The base must be `https://api.linkedin.com`; the `/v2` belongs in the step path only.",
+      "If the operator consented to fewer scopes than requested, the engine logs `oauth.callback.partial_grant` and the token is missing scopes (e.g. posting fails with 403). Re-run authenticate_oauth and approve ALL requested scopes.",
+      "`/v2/userinfo` returns 200 via call_connector once authorized; if a probe/inspect shows no credential while call_connector works, trust call_connector — the token is persisted on the connector's credential row."
+    ],
+    "doc_refs": [
+      "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow",
+      "https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin"
+    ]
+  }
+}

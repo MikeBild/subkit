@@ -1,0 +1,10 @@
+{
+  "name": "convo-placeholder-parse",
+  "description": "Parser extracts all five placeholder token families and preserves escape semantics.",
+  "flow": "converse",
+  "input": {
+    "text": "POST ${connector.hubspot.base_url}/contacts with header Authorization: Bearer ${cred.hubspot.token}, body {\"id\": \"${input.contact_id}\", \"stage\": \"${scope.classify.data.stage}\", \"note\": \"from ${connector.hubspot.config.region} — literal $${connector.keep.as.is}\"}",
+    "expect_kinds": ["cred", "connector_config", "connector_url", "input", "scope"],
+    "expect_errors": 0
+  }
+}

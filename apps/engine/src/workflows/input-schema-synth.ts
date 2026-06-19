@@ -1,0 +1,183 @@
+// Synthesize a workflow MCP `inputSchema` from its DAG when the author
+// didn't declare one explicitly.
+//
+// Two signal sources:
+//   1. `${input.<pointer>}` placeholders in request URLs / paths /
+//      headers / query values / body strings (parsed via the canonical
+//      `parsePlaceholders`).
+//   2. `input.input.<identifier>` references inside JavaScript transform
+//      bodies (the sole transform language), plus `$input.<identifier>`
+//      inside the remaining JSONata slots (`branch.when`).
+//
+// Output: `{type: "object", properties: {foo: {type: "string"}}, additionalProperties: true}`
+// or `null` when nothing references `input`. String is the safe default
+// — operators who want stricter typing declare `input_schema` on the DAG.
+
+import { extractAst } from "../execution/jsonata-engine.ts";
+import { parsePlaceholders } from "../llm/substitution/parser.ts";
+import type { StepDef, WorkflowDef } from "./types.ts";
+
+type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
+
+type JsonSchemaObject = {
+  type: "object";
+  properties: Record<string, { type: "string" }>;
+  additionalProperties: true;
+};
+
+function collectFromString(text: string, into: Set<string>): void {
+  const { tokens } = parsePlaceholders(text);
+  for (const tok of tokens) {
+    if (tok.kind !== "input") continue;
+    const first = tok.path[0];
+    if (first && typeof first === "string" && first.length > 0) into.add(first);
+  }
+}
+
+function collectFromJson(value: JsonValue | undefined, into: Set<string>): void {
+  if (value == null) return;
+  if (typeof value === "string") {
+    collectFromString(value, into);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) collectFromJson(v, into);
+    return;
+  }
+  if (typeof value === "object") {
+    for (const v of Object.values(value)) collectFromJson(v as JsonValue, into);
+  }
+}
+
+// Jsonata AST traversal. Recurses over every own property (including
+// arrays and nested arrays) so object constructors and other nested
+// shapes aren't missed.
+interface AstNode {
+  type?: string;
+  value?: unknown;
+  steps?: unknown;
+}
+
+function collectFromJsonataAst(node: unknown, into: Set<string>): void {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    for (const child of node) collectFromJsonataAst(child, into);
+    return;
+  }
+  const ast = node as AstNode;
+  if (ast.type === "path" && Array.isArray(ast.steps) && ast.steps.length >= 2) {
+    const [head, next] = ast.steps as AstNode[];
+    const isInputVar = head?.type === "variable" && head?.value === "input";
+    const isInputName = head?.type === "name" && head?.value === "input";
+    if (isInputVar || isInputName) {
+      if (next?.type === "name" && typeof next.value === "string" && next.value.length > 0) {
+        into.add(next.value);
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(ast)) {
+    if (k === "type" || k === "value" || k === "position") continue;
+    collectFromJsonataAst(v, into);
+  }
+}
+
+// JS counterpart of the JSONata `$input.<name>` walk: workflow-input
+// references inside a JavaScript transform body. Dot access and quoted
+// bracket access are both recognised (bracket covers names dot-syntax can't
+// express). Mirrors `extractJsScopeReferences` in conversations/js-transform-eval.ts.
+const JS_INPUT_REF_PATTERNS = [
+  /\binput\??\.input\??\.([A-Za-z_$][A-Za-z0-9_$]*)/g,
+  /\binput\??\.input\[\s*["']([^"'\]]+)["']\s*\]/g,
+];
+
+function collectJsInputRefs(code: string, into: Set<string>): void {
+  for (const re of JS_INPUT_REF_PATTERNS) {
+    re.lastIndex = 0;
+    for (let m = re.exec(code); m !== null; m = re.exec(code)) {
+      const name = m[1];
+      if (name && name.length > 0) into.add(name);
+    }
+  }
+}
+
+function collectFromStep(step: StepDef, into: Set<string>): void {
+  if (step.kind === "request") {
+    if (step.url) collectFromString(step.url, into);
+    if (step.path) collectFromString(step.path, into);
+    if (step.headers) {
+      for (const v of Object.values(step.headers)) collectFromString(v, into);
+    }
+    if (step.query) {
+      for (const v of Object.values(step.query)) {
+        if (typeof v === "string") collectFromString(v, into);
+      }
+    }
+    if (step.body !== undefined) collectFromJson(step.body, into);
+    return;
+  }
+  if (step.kind === "transform") {
+    // Transforms are JavaScript. Collect workflow-input references of the
+    // form `input.input.<name>` / `input.input["name"]` so an input used
+    // only inside a transform still surfaces in the synthesized schema.
+    if (typeof step.expression === "string" && step.expression.length > 0) {
+      collectJsInputRefs(step.expression, into);
+    }
+    return;
+  }
+  if (step.kind === "branch" && step.when) {
+    // `when` is typed as a jsonata expression string.
+    const ast = extractAst(step.when) as AstNode | null;
+    if (ast) collectFromJsonataAst(ast, into);
+  }
+}
+
+export function synthesizeInputSchema(dag: WorkflowDef): JsonSchemaObject | null {
+  const names = new Set<string>();
+  for (const step of dag.steps) collectFromStep(step, names);
+  if (names.size === 0) return null;
+
+  const properties: Record<string, { type: "string" }> = {};
+  for (const n of [...names].sort()) properties[n] = { type: "string" };
+  return { type: "object", properties, additionalProperties: true };
+}
+
+export interface WorkflowInputContract {
+  /** Declared `input_schema` when present, else the synthesized one. */
+  schema: Record<string, unknown>;
+  /** Declared property names. */
+  properties: string[];
+  /** Keys a run must supply. From `schema.required` when declared
+   *  non-empty; otherwise EVERY property — synthesized schemas never
+   *  carry `required`, and a placeholder substituting null/undefined
+   *  at runtime is worse than one extra confirmation. */
+  required: string[];
+}
+
+/**
+ * The workflow's effective input contract — the SAME source everywhere:
+ * the `wf_<slug>` tool schema, the persist-envelope usage block, the
+ * `run_workflow` missing-input gate, and the chat fast-path all read
+ * this, so no surface can disagree about what a run needs.
+ * Returns `null` when the workflow takes no input.
+ */
+export function resolveWorkflowInputContract(dag: WorkflowDef): WorkflowInputContract | null {
+  const declared =
+    dag.input_schema && typeof dag.input_schema === "object"
+      ? (dag.input_schema as Record<string, unknown>)
+      : null;
+  const schema =
+    declared && Object.keys(declared).length > 0
+      ? declared
+      : ((synthesizeInputSchema(dag) as Record<string, unknown> | null) ?? null);
+  if (!schema) return null;
+  const properties =
+    schema.properties && typeof schema.properties === "object"
+      ? Object.keys(schema.properties as Record<string, unknown>)
+      : [];
+  if (properties.length === 0) return null;
+  const required =
+    Array.isArray(schema.required) && schema.required.length > 0
+      ? schema.required.filter((k): k is string => typeof k === "string")
+      : properties;
+  return { schema, properties, required };
+}

@@ -1,0 +1,16 @@
+{
+  "name": "convo-dlp-masks-default-pii",
+  "description": "Default DLP rules mask email + phone + ssn shapes in a realistic step output.",
+  "flow": "converse",
+  "input": {
+    "payload": {
+      "user": {
+        "email": "ada@example.test",
+        "phone": "555-010-0199",
+        "ssn": "123-45-6789",
+        "display_name": "Ada Lovelace"
+      }
+    },
+    "expect_redacted_paths": ["user.email", "user.phone", "user.ssn"]
+  }
+}

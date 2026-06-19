@@ -1,0 +1,12 @@
+{
+  "name": "convo-history-questions-stay-grounded",
+  "description": "Conversation prompt must forbid speculative answers about why a resource was named or configured when the reason is not recorded.",
+  "flow": "converse",
+  "input": {
+    "required_phrases": [
+      "GROUNDING FOR HISTORY QUESTIONS",
+      "If the reason is not recorded, say that plainly",
+      "Do not speculate"
+    ]
+  }
+}

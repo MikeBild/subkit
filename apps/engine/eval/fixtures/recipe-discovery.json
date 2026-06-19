@@ -1,0 +1,9 @@
+{
+  "name": "recipe-discovery",
+  "description": "When a connector created from a template with recipes is in scope, the assembled context surfaces the recipe roster (slug + title + intent_keywords) so the LLM can offer start_workflow_from_recipe instead of authoring from scratch.",
+  "flow": "converse",
+  "input": {
+    "template_slug": "stripe",
+    "expected_recipe_slugs": ["list-customers", "get-customer", "create-customer"]
+  }
+}

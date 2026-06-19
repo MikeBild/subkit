@@ -1,0 +1,9 @@
+{
+  "name": "convo-auto-save-follow-up-uses-state-tool",
+  "id": "convo-auto-save-follow-up-uses-state-tool",
+  "description": "Ready save states should carry a concrete next tool so a short approval like \"yes\" in auto mode maps back onto the save path without transcript guesswork.",
+  "flow": "converse",
+  "input": {
+    "approval_reply": "yes"
+  }
+}
