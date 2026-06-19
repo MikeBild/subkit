@@ -1,0 +1,30 @@
+# Tables that the tenant-filter AST scan may select from WITHOUT a
+# tenantId predicate, because the table is tenant-agnostic by design.
+#
+# This allowlist exists so the audit-invariants CI check does not flag
+# legitimate system-table reads. Every other table MUST be queried with
+# a tenantId predicate.
+#
+# Adding to this list is security-sensitive: humans only. The closed-loop
+# audit driver (§10.3) is forbidden from touching this file.
+#
+# ── Naming convention for inline predicate arrays ────────────────────
+# When a `.where(...)` clause is built dynamically as an array
+# (`const X = [eq(<table>.tenant_id, t), …]; .where(and(...X))`),
+# the AST scan recognises X as a tenant signal **only if its name
+# matches /tenant/i**. This is why list services in this repo use
+# `tenantConds` / `tenantWhereClauses` rather than `conds` /
+# `whereClauses`. Do NOT rename them back — the rename silently
+# regresses the audit gate by hiding the existing predicate from
+# the scanner. (Helper functions whose body references `tenant_id`
+# are also picked up automatically; named-pattern recognition is the
+# fallback for inline arrays.)
+#
+# Format: one Drizzle table identifier per line. Blanks and `#` lines
+# are ignored.
+
+tenants                       # the root entity itself
+permissions                   # global RBAC permission catalog
+connectorTemplates            # system-wide template catalog (definitions, not bindings)
+connectorTemplateCredentials  # system-wide template credential SHAPES (not values)
+engineSettings                # engine-global runtime config

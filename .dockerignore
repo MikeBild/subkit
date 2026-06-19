@@ -1,0 +1,38 @@
+# Keep the Docker build context small + reproducible. The build needs the
+# full source tree + bun.lock + patches/, so only exclude regenerable or
+# host-local artifacts.
+
+# Dependency + build outputs (reinstalled/recompiled inside the image).
+node_modules/
+**/node_modules/
+dist/
+.bun/
+.turbo/
+tsconfig.tsbuildinfo
+
+# Local env + secrets (never bake these into an image layer).
+.env
+.env.*
+!.env.example
+
+# VCS + CI + editor noise.
+.git/
+.github/
+.githooks/
+.vscode/
+.idea/
+.DS_Store
+
+# Tests + fixtures — not needed to compile the engine/sk binaries.
+tests/
+**/*.test.ts
+**/__tests__/
+**/tests/
+
+# Eval pipeline + coverage artifacts.
+apps/engine/eval/out/
+coverage/
+
+# Logs + staging.
+*.log
+docker/binaries/

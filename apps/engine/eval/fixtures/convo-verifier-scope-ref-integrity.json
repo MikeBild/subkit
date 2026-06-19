@@ -1,0 +1,22 @@
+{
+  "name": "convo-verifier-scope-ref-integrity",
+  "description": "Static verifier catches a step that references a later step via $scope (forward reference).",
+  "flow": "converse",
+  "input": {
+    "workflow": {
+      "steps": [
+        {
+          "id": "earlier",
+          "kind": "transform",
+          "expression": "$scope.later.data.id"
+        },
+        {
+          "id": "later",
+          "kind": "request",
+          "method": "GET",
+          "path": "/x"
+        }
+      ]
+    }
+  }
+}

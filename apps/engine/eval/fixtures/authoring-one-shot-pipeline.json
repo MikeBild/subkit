@@ -1,0 +1,41 @@
+{
+  "name": "authoring-one-shot-pipeline",
+  "description": "author_workflow one-shot contract: ONE goal in -> schema-valid COMPLETE definition with JS-first transforms, recorded_eval attached, goal stashed on the draft, next action dry_run_workflow, zero egress, exactly one generation pass.",
+  "flow": "generate",
+  "input": {
+    "goal": "Show me the top repos with their names ranked by stars",
+    "generated_definition": {
+      "name": "Top repos digest",
+      "slug": "top-repos-digest",
+      "description": "Fetch repos and shape the top entries.",
+      "steps": [
+        {
+          "id": "fetch_repos",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://api.example.com/repos"
+        },
+        {
+          "id": "shape_repos",
+          "kind": "transform",
+          "language": "javascript",
+          "expression": "const repos = input.scope.fetch_repos.data; return repos.map(r => ({ name: r.name, stars: r.stars }));"
+        }
+      ],
+      "output_schema": { "type": "array" }
+    },
+    "expect": {
+      "slug": "top-repos-digest",
+      "attempts": 1,
+      "next": "dry_run_workflow",
+      "transform_language": "javascript",
+      "prompt_must_contain": [
+        "Show me the top repos with their names ranked by stars",
+        "FUNCTION BODY",
+        "input.scope.<step_id>.data",
+        "input.input",
+        "`item_var` is retired"
+      ]
+    }
+  }
+}

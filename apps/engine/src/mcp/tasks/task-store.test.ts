@@ -1,0 +1,369 @@
+// ConversationTaskStore — SEP-1686 status derivation.
+//
+// Task state is DERIVED from the mcp_tasks index row + the owning
+// conversations row + any pending elicitation. This test pins every
+// row of that derivation table:
+//
+//   failure_reason set                                → failed
+//   cancelled_at set                                  → cancelled
+//   conversation awaiting_input + pending elicitation  → input_required
+//   result set, no pending elicitation                → completed
+//   nothing set                                       → working
+//
+// Plus: tenant-scoping (a foreign tenant cannot read the task) and
+// `updateTaskStatus('cancelled')` stamping `cancelled_at`.
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import {
+  conversationElicitations,
+  conversations,
+  mcpTasks,
+  tenants,
+} from "../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { ConversationTaskStore } from "./task-store.ts";
+
+let testDb: TestDb;
+let tenantId: string;
+let otherTenantId: string;
+
+beforeAll(async () => {
+  testDb = await createTestDb("mcp_task_store");
+  const [t] = await testDb.db
+    .insert(tenants)
+    .values({ slug: "t-taskstore", display_name: "TaskStore" })
+    .returning();
+  if (!t) throw new Error("seed tenant failed");
+  tenantId = t.id;
+  const [t2] = await testDb.db
+    .insert(tenants)
+    .values({ slug: "t-taskstore-other", display_name: "Other" })
+    .returning();
+  if (!t2) throw new Error("seed other tenant failed");
+  otherTenantId = t2.id;
+});
+
+afterAll(async () => {
+  await testDb.cleanup();
+});
+
+async function seedConversation(
+  status: "active" | "awaiting_input" | "committed",
+): Promise<string> {
+  const [conv] = await testDb.db
+    .insert(conversations)
+    .values({ tenant_id: tenantId, status, draft: {} })
+    .returning();
+  if (!conv) throw new Error("seed conversation failed");
+  return conv.id;
+}
+
+async function seedTask(
+  conversation_id: string,
+  overrides: Partial<{
+    result: unknown;
+    failure_reason: string;
+    cancelled_at: Date;
+    tenant_id: string;
+    kind: "start" | "append" | "respond_elicitation";
+    turn_seq: number;
+  }> = {},
+): Promise<string> {
+  const [row] = await testDb.db
+    .insert(mcpTasks)
+    .values({
+      tenant_id: overrides.tenant_id ?? tenantId,
+      conversation_id,
+      turn_seq: overrides.turn_seq ?? 1,
+      kind: overrides.kind ?? "start",
+      actor_id: null,
+      request_source: "mcp",
+      ...(overrides.result !== undefined
+        ? { result: overrides.result as Record<string, unknown> }
+        : {}),
+      ...(overrides.failure_reason ? { failure_reason: overrides.failure_reason } : {}),
+      ...(overrides.cancelled_at ? { cancelled_at: overrides.cancelled_at } : {}),
+    })
+    .returning();
+  if (!row) throw new Error("seed mcp_task failed");
+  return row.id;
+}
+
+describe("ConversationTaskStore.getTask — status derivation", () => {
+  test("nothing set → working", async () => {
+    const conv = await seedConversation("active");
+    const taskId = await seedTask(conv);
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const task = await store.getTask(taskId);
+    expect(task?.status).toBe("working");
+  });
+
+  test("failure_reason set → failed", async () => {
+    const conv = await seedConversation("active");
+    const taskId = await seedTask(conv, { failure_reason: "llm_timeout" });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const task = await store.getTask(taskId);
+    expect(task?.status).toBe("failed");
+    expect(task?.statusMessage).toBe("llm_timeout");
+  });
+
+  test("cancelled_at set → cancelled", async () => {
+    const conv = await seedConversation("active");
+    const taskId = await seedTask(conv, { cancelled_at: new Date(FROZEN_NOW) });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const task = await store.getTask(taskId);
+    expect(task?.status).toBe("cancelled");
+  });
+
+  test("result set, no pending elicitation → completed", async () => {
+    const conv = await seedConversation("committed");
+    const taskId = await seedTask(conv, {
+      result: { conversation_id: conv, status: "committed", events: [] },
+    });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const task = await store.getTask(taskId);
+    expect(task?.status).toBe("completed");
+  });
+
+  test("conversation awaiting_input + pending elicitation → input_required (even with result set)", async () => {
+    const conv = await seedConversation("awaiting_input");
+    await testDb.db.insert(conversationElicitations).values({
+      tenant_id: tenantId,
+      conversation_id: conv,
+      tool_name: "ask_user_confirm",
+      summary: "confirm",
+      input: { kind: "generic" },
+      status: "pending",
+    });
+    const taskId = await seedTask(conv, {
+      result: { conversation_id: conv, status: "awaiting_input", events: [] },
+    });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const task = await store.getTask(taskId);
+    expect(task?.status).toBe("input_required");
+  });
+
+  test("a respond_elicitation turn still in flight derives working, not input_required", async () => {
+    // A `respond_elicitation` task IS the turn resolving the pending
+    // elicitation. Until the worker finishes, the conversation still
+    // reads awaiting_input with the pending row — but the task is
+    // `working`, not `input_required`. Deriving `input_required` here
+    // would tell a Tasks client to re-submit the same answer. This
+    // mirrors the `respondInFlight` carve-out in `conversation_get`;
+    // the two derivation surfaces must agree.
+    const conv = await seedConversation("awaiting_input");
+    await testDb.db.insert(conversationElicitations).values({
+      tenant_id: tenantId,
+      conversation_id: conv,
+      tool_name: "ask_user_confirm",
+      summary: "confirm",
+      input: { kind: "generic" },
+      status: "pending",
+    });
+    const taskId = await seedTask(conv, { kind: "respond_elicitation" });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const task = await store.getTask(taskId);
+    expect(task?.status).toBe("working");
+  });
+
+  test("S2: a historical (non-latest turn_seq) completed task stays completed while a later turn is input_required", async () => {
+    // Two turns on one conversation. The older turn (turn_seq 1)
+    // completed; a later turn (turn_seq 2) then paused the conversation
+    // at awaiting_input with a pending elicitation. The historical task
+    // must NOT flip to `input_required` — only the latest-turn_seq row
+    // derives off the conversation's current pause. The historical row
+    // derives purely from its own `result`.
+    const conv = await seedConversation("awaiting_input");
+    await testDb.db.insert(conversationElicitations).values({
+      tenant_id: tenantId,
+      conversation_id: conv,
+      tool_name: "ask_user_confirm",
+      summary: "confirm",
+      input: { kind: "generic" },
+      status: "pending",
+    });
+    const historical = await seedTask(conv, {
+      turn_seq: 1,
+      result: { conversation_id: conv, status: "active", events: [] },
+    });
+    const latest = await seedTask(conv, {
+      turn_seq: 2,
+      result: { conversation_id: conv, status: "awaiting_input", events: [] },
+    });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    // The historical task: a later turn pausing must not re-open it.
+    expect((await store.getTask(historical))?.status).toBe("completed");
+    // The latest task: input_required wins over completed.
+    expect((await store.getTask(latest))?.status).toBe("input_required");
+  });
+
+  test("unknown taskId → null", async () => {
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const task = await store.getTask("00000000-0000-0000-0000-000000000000");
+    expect(task).toBeNull();
+  });
+
+  test("tenant-scoped — a foreign tenant cannot read another tenant's task", async () => {
+    const conv = await seedConversation("active");
+    const taskId = await seedTask(conv);
+    const foreignStore = new ConversationTaskStore({ db: testDb.db, tenant_id: otherTenantId });
+    const task = await foreignStore.getTask(taskId);
+    expect(task).toBeNull();
+  });
+});
+
+describe("ConversationTaskStore.updateTaskStatus", () => {
+  test("'cancelled' stamps cancelled_at and the task derives cancelled", async () => {
+    const conv = await seedConversation("active");
+    const taskId = await seedTask(conv);
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    await store.updateTaskStatus(taskId, "cancelled");
+    const [row] = await testDb.db
+      .select({ cancelled_at: mcpTasks.cancelled_at })
+      .from(mcpTasks)
+      .where(eq(mcpTasks.id, taskId));
+    expect(row?.cancelled_at).toBeInstanceOf(Date);
+    const task = await store.getTask(taskId);
+    expect(task?.status).toBe("cancelled");
+  });
+
+  test("'completed' is a derivation no-op (does not throw, does not mutate)", async () => {
+    const conv = await seedConversation("active");
+    const taskId = await seedTask(conv);
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    await store.updateTaskStatus(taskId, "completed");
+    const task = await store.getTask(taskId);
+    // No result row was written → still working (derivation, not stored).
+    expect(task?.status).toBe("working");
+  });
+});
+
+describe("ConversationTaskStore.listTasks", () => {
+  test("tenant-scoped — lists only the calling tenant's tasks", async () => {
+    const conv = await seedConversation("active");
+    await seedTask(conv);
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const { tasks } = await store.listTasks();
+    expect(tasks.length).toBeGreaterThan(0);
+    // A foreign tenant sees none of them.
+    const foreign = new ConversationTaskStore({ db: testDb.db, tenant_id: otherTenantId });
+    const foreignList = await foreign.listTasks();
+    expect(foreignList.tasks.length).toBe(0);
+  });
+});
+
+describe("ConversationTaskStore.getTaskResult — the tasks/result surface", () => {
+  test("a completed task returns the terminal envelope as a non-error text body", async () => {
+    const conv = await seedConversation("committed");
+    const envelope = {
+      conversation_id: conv,
+      status: "committed",
+      events: [{ type: "completed" }],
+      committed_workflow_id: "wf_123",
+    };
+    const taskId = await seedTask(conv, { result: envelope });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const result = (await store.getTaskResult(taskId)) as {
+      content: Array<{ type: string; text: string }>;
+      isError: boolean;
+    };
+    expect(result.isError).toBe(false);
+    expect(result.content[0]?.type).toBe("text");
+    // The body is the verbatim envelope so Tasks + non-Tasks clients
+    // see an identical payload.
+    expect(JSON.parse(result.content[0]?.text ?? "{}")).toEqual(envelope);
+  });
+
+  test("a failed task returns an isError text body carrying the failure reason", async () => {
+    const conv = await seedConversation("active");
+    const taskId = await seedTask(conv, { failure_reason: "llm_overloaded" });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const result = (await store.getTaskResult(taskId)) as {
+      content: Array<{ text: string }>;
+      isError: boolean;
+    };
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toBe("llm_overloaded");
+  });
+
+  test("a non-terminal (working) task throws rather than returning an empty body", async () => {
+    const conv = await seedConversation("active");
+    const taskId = await seedTask(conv);
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    await expect(store.getTaskResult(taskId)).rejects.toThrow(/no result yet/);
+  });
+
+  test("a foreign tenant cannot read another tenant's task result", async () => {
+    const conv = await seedConversation("committed");
+    const taskId = await seedTask(conv, {
+      result: { conversation_id: conv, status: "committed", events: [] },
+    });
+    const foreign = new ConversationTaskStore({ db: testDb.db, tenant_id: otherTenantId });
+    await expect(foreign.getTaskResult(taskId)).rejects.toThrow(/task not found/);
+  });
+
+  test("S5: a task with result set but deriving input_required refuses — not a success body", async () => {
+    // A backgrounded turn finishes (result written) while the
+    // conversation parks at awaiting_input with a pending elicitation.
+    // The task derives `input_required`, NOT `completed`. `getTaskResult`
+    // must refuse rather than hand back the stored envelope with
+    // `isError:false` — that would let a Tasks client treat the turn as
+    // done and skip the elicitation.
+    const conv = await seedConversation("awaiting_input");
+    await testDb.db.insert(conversationElicitations).values({
+      tenant_id: tenantId,
+      conversation_id: conv,
+      tool_name: "ask_user_confirm",
+      summary: "confirm",
+      input: { kind: "generic" },
+      status: "pending",
+    });
+    const taskId = await seedTask(conv, {
+      result: { conversation_id: conv, status: "awaiting_input", events: [] },
+    });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    // The task derives input_required …
+    expect((await store.getTask(taskId))?.status).toBe("input_required");
+    // … so getTaskResult must NOT return a success body.
+    await expect(store.getTaskResult(taskId)).rejects.toThrow(/awaiting input/);
+  });
+});
+
+describe("ConversationTaskStore.updateTaskStatus — cancel of a terminal task", () => {
+  test("cancelling an already-completed task stamps cancelled_at without throwing", async () => {
+    // SEP-1686 cancel is idempotent: a cancel that races a turn that
+    // already finished must not error. `cancelled_at` derivation then
+    // wins over `result` (the file-header table puts cancelled above
+    // completed).
+    const conv = await seedConversation("committed");
+    const taskId = await seedTask(conv, {
+      result: { conversation_id: conv, status: "committed", events: [] },
+    });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const before = await store.getTask(taskId);
+    expect(before?.status).toBe("completed");
+    await store.updateTaskStatus(taskId, "cancelled");
+    const after = await store.getTask(taskId);
+    expect(after?.status).toBe("cancelled");
+  });
+
+  test("cancelling an unknown taskId throws task-not-found", async () => {
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    await expect(
+      store.updateTaskStatus("00000000-0000-0000-0000-000000000000", "cancelled"),
+    ).rejects.toThrow(/task not found/);
+  });
+
+  test("a foreign tenant cannot cancel another tenant's task", async () => {
+    const conv = await seedConversation("active");
+    const taskId = await seedTask(conv);
+    const foreign = new ConversationTaskStore({ db: testDb.db, tenant_id: otherTenantId });
+    await expect(foreign.updateTaskStatus(taskId, "cancelled")).rejects.toThrow(/task not found/);
+    // The legitimate tenant's task was never touched.
+    const owner = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const task = await owner.getTask(taskId);
+    expect(task?.status).toBe("working");
+  });
+});

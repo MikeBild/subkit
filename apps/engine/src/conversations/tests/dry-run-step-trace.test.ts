@@ -1,0 +1,149 @@
+// dry_run_workflow + run_workflow envelope must include a structured
+// `step_trace` array per step so the LLM can pinpoint the failing
+// step without paging through the run's full output.
+//
+// On dry-run we always include `step_trace` (one row per step) with
+// step_id / kind / status / duration_ms / output_preview / error /
+// error_code / request_meta when each is present. On run_workflow the
+// trace is only attached when the run isn't a clean success (failure,
+// partial_success, or any warning) — clean wins skip the field to
+// save tokens.
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { EngineClient } from "../../engine-client/index.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
+import type { ToolContext } from "../tools/index.ts";
+import type { DraftDocument } from "../types.ts";
+import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+
+const uuid = createDeterministicUuidFactory(0xd11c5_71ace);
+
+let ctx: ConversationTestCtx;
+
+beforeAll(async () => {
+  ctx = await createConversationTestCtx("dry-run-step-trace");
+});
+
+afterAll(async () => {
+  await ctx.cleanup();
+});
+
+function makeCtx(getDraft: () => DraftDocument): ToolContext {
+  return {
+    db: ctx.testDb.db,
+    tenant_id: ctx.tenant_id,
+    conversation_id: uuid(),
+    actor_id: ctx.user_id,
+    connector_id: null,
+    workflow_id: null,
+    engineClient: new EngineClient({
+      tenant_id: ctx.tenant_id,
+      actor_id: ctx.user_id,
+      db: ctx.testDb.db,
+    }),
+    getDraft,
+    setDraft: async () => {},
+  };
+}
+
+describe("dry_run_workflow · step_trace envelope", () => {
+  test("clean run surfaces step_trace with kind, status, duration, output_preview", async () => {
+    // Stateful draft holder so commitWorkflowAtomic's checkpoint
+    // machinery sees the fresh `workflow_previewed` row the dry-run
+    // writes — without it the green dry-run's auto-commit refuses with
+    // `workflow_not_ready` (see the multi-step test below for the same
+    // pattern).
+    let draft: DraftDocument = {
+      workflow: {
+        name: "trace-clean",
+        slug: "trace-clean",
+        steps: [
+          {
+            id: "shape",
+            kind: "transform",
+            language: "javascript",
+            expression: "return { doubled: input.input.value * 2 };",
+          },
+        ],
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    } as any;
+    const toolCtx: ToolContext = {
+      ...makeCtx(() => draft),
+      setDraft: async (next) => {
+        draft = next;
+      },
+    };
+    const result = await dryRunWorkflowTool.execute(toolCtx, { input: { value: 21 } });
+    // A clean dry-run of a valid draft auto-commits and returns ok.
+    expect(result.ok).toBe(true);
+    const data = result.data as { step_trace?: Array<Record<string, unknown>> };
+    expect(Array.isArray(data.step_trace)).toBe(true);
+    expect(data.step_trace!.length).toBe(1);
+    const entry = data.step_trace![0]!;
+    expect(entry.step_id).toBe("shape");
+    expect(entry.kind).toBe("transform");
+    expect(entry.status).toBe("succeeded");
+    expect(typeof entry.duration_ms).toBe("number");
+    // Transform output is enveloped — preview reflects what downstream
+    // steps would see in scope. The exact shape is the data-handling
+    // contract; we just confirm a preview was attached.
+    expect(entry.output_preview).toBeDefined();
+    // No error fields on a clean step.
+    expect(entry.error_code).toBeUndefined();
+    expect(entry.error).toBeUndefined();
+  });
+
+  test("step_trace preserves kind for every step in a multi-step draft (auto-committed envelope)", async () => {
+    // With auto-commit-on-green-dry-run the envelope returned by
+    // dry_run_workflow is the committed-workflow shape — but
+    // step_trace is forwarded to the new envelope so the LLM (and
+    // downstream tests) can still inspect per-step shape + status.
+    // The test uses a stateful draft holder so the checkpoint
+    // machinery in commitWorkflowAtomic sees a fresh
+    // `workflow_previewed` row after dry-run.
+    let draft: DraftDocument = {
+      workflow: {
+        name: "trace-multi",
+        slug: "trace-multi",
+        steps: [
+          {
+            id: "shape",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.input;",
+          },
+          {
+            id: "second",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.scope.shape.data;",
+          },
+        ],
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    } as any;
+    const toolCtx: ToolContext = {
+      ...makeCtx(() => draft),
+      setDraft: async (next) => {
+        draft = next;
+      },
+    };
+    const result = await dryRunWorkflowTool.execute(toolCtx, {
+      input: { hello: "world" },
+    });
+    const data = result.data as {
+      step_trace?: Array<Record<string, unknown>>;
+      auto_committed?: boolean;
+    };
+    // Either the auto-commit fired (preferred) or it refused on a
+    // precondition — in both cases the step_trace must survive on
+    // the returned envelope so the test contract holds. Pre-fix the
+    // auto-committed envelope dropped step_trace entirely.
+    expect(data.step_trace).toBeDefined();
+    expect(data.step_trace!.map((o) => o.step_id)).toEqual(["shape", "second"]);
+    expect(data.step_trace!.every((o) => o.kind === "transform")).toBe(true);
+    expect(data.step_trace!.every((o) => o.status === "succeeded")).toBe(true);
+  });
+});

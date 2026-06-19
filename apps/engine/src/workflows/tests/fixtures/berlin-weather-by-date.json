@@ -1,0 +1,48 @@
+{
+  "name": "Berlin Weather by Date",
+  "slug": "berlin-weather-by-date",
+  "steps": [
+    {
+      "id": "calculate_tomorrow",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "const d = input.input.date; return (d !== undefined && d !== null) ? d : new Date(Date.now() + 86400000).toISOString().slice(0, 10);"
+    },
+    {
+      "id": "fetch_forecast",
+      "kind": "request",
+      "path": "/v1/forecast",
+      "query": {
+        "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode,windspeed_10m_max",
+        "end_date": "${scope.calculate_tomorrow.data}",
+        "latitude": "52.52",
+        "timezone": "Europe/Berlin",
+        "longitude": "13.41",
+        "start_date": "${scope.calculate_tomorrow.data}"
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "extract_forecast",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "const daily = input.scope.fetch_forecast.data.daily; return { city: 'Berlin, Germany', date: daily.time[0], temperature_max_c: daily.temperature_2m_max[0], temperature_min_c: daily.temperature_2m_min[0], precipitation_mm: daily.precipitation_sum[0], weathercode: daily.weathercode[0], windspeed_max_kmh: daily.windspeed_10m_max[0] };"
+    }
+  ],
+  "description": "Fetch weather forecast for Berlin, Germany for tomorrow (automatically calculated)",
+  "input_schema": {
+    "type": "object",
+    "required": [],
+    "properties": {
+      "date": {
+        "type": "string",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+        "description": "Datum im Format YYYY-MM-DD. Falls nicht angegeben, wird morgen verwendet."
+      }
+    }
+  }
+}

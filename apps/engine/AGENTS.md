@@ -1,0 +1,277 @@
+# Engine — Directory-Local Agent Rules
+
+Overrides and extends the root `AGENTS.md` for code under `apps/engine/`.
+When rules conflict, the more specific file wins (this one).
+
+## Purpose
+
+`apps/engine/` owns the server: HTTP API, MCP server, queue workers, scheduler,
+pub/sub, connector drivers, AI flows, self-healing, audit log, RBAC. It's the only
+surface with domain logic. `sk` (`apps/sk/`) is a thin wrapper on top of it.
+
+See the subsystem table in `../../AGENTS.md` for the 44 directories and their
+responsibilities.
+
+## Non-negotiables
+
+- **Tenant isolation on every query and response.** `tenant_id` is not optional.
+  A missing scope is a security bug, not a style issue. The
+  `audit-invariants` `tenant_filter` AST scan recognises a `.where(...)`
+  argument as tenant-scoped if any identifier or property name in the
+  argument tree matches `/tenant/i`. List services in this repo use
+  `tenantConds` / `tenantWhereClauses` (rather than `conds` /
+  `whereClauses`) so the scan sees the predicate. **Do not rename
+  these back** — the rename silently regresses the gate. Inline
+  exemptions live as `// tenant-filter:exempt — <reason>` comments
+  with a mandatory non-`TODO`/`FIXME` reason; see
+  `.tenant-filter-allowlist.txt` and
+  `apps/engine/scripts/audit/tenant-filter-ast.ts` for the full
+  detection rules. **Scope:** the AST scan covers
+  `db.select().from(<table>).where(...)` chains only —
+  `db.update(<table>).set(...).where(...)` and
+  `db.delete(<table>).where(...)` chains are reviewer-enforced.
+  Extending the scan to those write paths surfaces ~180 pre-existing
+  call sites that need triage; that burndown is tracked as a
+  follow-up audit pass.
+- **Audit on every state change.** Use the helpers in `audit/`. Include
+  request source (`api | cli | scheduler | mcp | webhook | tool-chain | ui`) and
+  actor. A state change without an audit entry is a bug.
+- **Zod at every boundary.** HTTP routes (`http/routes/`), MCP tools (`mcp/`),
+  webhooks (`webhooks/`), outbound integrations, scheduled jobs — all validated
+  with Zod schemas declared under `api/` or locally. No untyped JSON at a
+  boundary.
+- **Structured logger only.** Import from `logging/`. **No `console.log`,
+  `console.warn`, `console.error` in engine code.** Scripts under `scripts/`
+  may use console output; engine never does.
+- **Untrusted JS runs in `sandboxes/` only.** Before-request hooks, transforms,
+  self-healing repair proposals — all through `quickjs-emscripten` with
+  wall-clock + memory + tick budgets. Capabilities and what each limit really
+  enforces (and why `tick_budget` is not an opcode count) live in
+  [`sandboxes/quickjs/QUICKJS.md`](src/sandboxes/quickjs/QUICKJS.md); limits are
+  operator-tunable under `sandbox.*`.
+- **Encrypted credentials only.** Secrets go through `credentials/` + `crypto/`
+  (AES-256-GCM). Never write raw secrets to `audit_log` or logs.
+- **No cross-subsystem reach-arounds.** If `http/routes/foo.ts` needs
+  `credentials/`, it calls the public entry point, not internal helpers.
+- **RBAC on every route and MCP tool.** A route without an explicit permission
+  is missing a check.
+
+## Style
+
+- Biome formatter (inherited from root `biome.json`). 100 char width, semicolons,
+  double quotes, trailing commas.
+- TypeScript strict mode. No `any`. No non-null assertions without a documented
+  invariant.
+- ESM imports (`"type": "module"`).
+- Prefer named exports. Default exports only where Hono / MCP / driver contracts
+  require them.
+- File names: `kebab-case.ts` for modules, `kebab-case.test.ts` for tests.
+
+## Tests
+
+- Unit tests co-located as `*.test.ts` alongside source.
+- Integration tests under the corresponding subsystem (e.g. `db/*.test.ts`).
+- Shared utilities in `apps/engine/src/tests/`.
+- Mock the LLM (there's an existing mock provider). Never call a real model.
+- Use `testcontainers` for Postgres; don't mock the DB.
+- See `../../.claude/skills/subkit-testing-and-validation/SKILL.md` for layer
+  selection.
+
+## When adding a new subsystem
+
+Ask first. 44 directories already cover the concerns subkit owns. If you think
+you need a new one:
+
+1. Confirm it doesn't fit in an existing directory.
+2. Confirm with the user (or `domain-architect`) before creating it.
+3. Add it to the subsystem table in the root `AGENTS.md`.
+4. Add relevant docs under `docs/` with the next available number.
+
+## Quality gate before "done"
+
+Run `bun run verify` — full matrix (lint, typecheck, determinism lint, unit,
+eval, integration, build:sk, e2e). See `.claude/commands/verify.md` for the
+per-step breakdown.
+
+If Postgres is not already listening on `localhost:5432`, start it first:
+`docker compose up -d postgres` (the repo's `docker-compose.yml` is dev-only as of 4.2.0; production runs postgres as the apt-installed system service).
+
+## Architectural decisions worth recording
+
+These are choices that look arbitrary at first glance; documenting them once
+here saves a future maintainer the reverse-engineering trip.
+
+### Runtime stats (`stats/` + `http/routes/stats/`)
+
+Read-time aggregation over `executions` / `audit_log` / `llm_usage` — no new
+tables. `stats/aggregate-{executions,audit,llm}.ts` are pure Drizzle `sql\`\``
+builders; the routes under `http/routes/stats/` wrap them with the shared
+`bucket-window.ts` validation (bucket enum + hard window caps + audit-retention
+clamp) and gate every path with `requirePermission("stats:read")`. The
+**tenant filter is the first WHERE clause** in every builder and is bound from
+the principal — user-supplied `connector_id`/`workflow_id` can only narrow
+within the tenant, never widen across tenants.
+
+### Binary file parsers — `xlsx@0.18.5` supply-chain stance
+
+SheetJS deprecated all npm-published versions in 2023 and migrated security
+fixes to their self-hosted CDN. `0.18.5` is the last npm artifact and is
+known to carry CVE-2023-30533 (prototype pollution via crafted file). We
+intentionally pin it here for three reasons:
+
+1. **Mitigations are in place.** The 60 s `withParserTimeout` guard kills
+   any pathological workbook; the 200-row-per-sheet cap (`XLSX_ROW_CAP_PER_SHEET`)
+   bounds output volume; `XLSX.read(..., { type: "buffer", cellDates: true })`
+   does NOT enable formula evaluation, so the CVE's prototype-pollution path
+   (which requires running formulas) does not trigger from our usage.
+2. **No npm alternative is drop-in.** `@e965/xlsx` (community fork) lags
+   behind on SheetJS bugfixes; `exceljs` has a meaningfully different
+   row-iteration API and would require parser rewrite.
+3. **CDN tarball install is operator-hostile.** Bun's lockfile + offline
+   mirrors assume npm registry; switching the install source would break
+   reproducible builds.
+
+If the threat model changes (e.g. tenant-supplied workbooks become a
+revenue surface), revisit: fetch the SheetJS CDN tarball and check it
+into a `vendor/` dir, or switch to `exceljs` with a wider API rewrite.
+
+The decision is recorded here, not env-flag-gated — operators should not
+choose between two parser libraries at runtime.
+
+### Binary file parsers — `pdf-parse@2.4.5` supply-chain stance
+
+`pdf-parse@2.4.5` is the chosen PDF text-extraction surface. Dropping
+`pdfjs-dist` as a *direct* dependency in favour of `pdf-parse` does
+NOT shrink the install tree — pdf-parse transitively re-pulls
+`pdfjs-dist@^5` and `@napi-rs/canvas` (a 50–100 MB native binary set
+across optional platform deps). The win is a smaller direct-dep
+surface plus one canonical Node-friendly extraction API; build-image
+size is essentially unchanged.
+
+`pdfjs-dist` has a history of RCE-class issues
+(e.g. CVE-2024-4367 — fixed in pdfjs ≥ 4.2). Our mitigation stack:
+
+1. **Hard timeout** — `withParserTimeout("pdf", 30_000)` in
+   `apps/engine/src/docs-ingestion/parsers/strategy.ts` kills the
+   worker after 30 s regardless of progress.
+2. **No JS execution** — we call `PDFParse#getText()` only;
+   `pdf-parse` does not enable PDF JavaScript actions in the
+   Node target, and we never render PDFs to canvas (which is the
+   path RCE classes have historically exploited).
+3. **No untrusted browser context** — pdf-parse runs Node-only;
+   the `@napi-rs/canvas` native binary is loaded for image
+   rendering paths we never call. `pdf-parse@2.4.5` transitively
+   pins `@napi-rs/canvas@0.1.80` (a *downgrade* from whatever a
+   prior unrelated dep selected — a `bun.lock` diff will show it).
+   This is benign: `@napi-rs/canvas` is unreachable in our call
+   graph because we only ever call `PDFParse#getText()`, never the
+   `toImage` / screenshot APIs. Dependabot reviewers tracking
+   `@napi-rs/canvas` CVEs can treat the engine as not-affected.
+4. **Per-file ceiling** — `TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES = 25 MB`
+   in `file-context.ts` caps the per-file raw read, bounding the
+   memory pressure any single PDF can create.
+
+If the threat model changes (e.g. tenant-supplied PDFs become a
+revenue surface), revisit: vendor `unpdf` instead, or move PDF
+extraction into a separate process with seccomp/seatbelt sandboxing.
+
+### Why subkit splits engine vs sk vs agent vs chat-ui
+
+Subkit splits along three axes that each demand a separate runtime:
+
+- **`apps/engine/`** — HTTP / MCP / queue server. Multi-tenant, runs in a
+  Postgres-backed cluster, talks to LLMs, owns RBAC. Big, stateful, careful.
+- **`apps/sk/`** — CLI wrapper. Single-tenant, single-user, runs on an
+  operator's laptop. Talks to engine over HTTP only. Independent release
+  cadence; sk versions ≠ engine versions.
+- **`packages/chat-ui/`** — Browser-only React frontend. Different runtime,
+  different deploy target.
+
+A monolithic package would force every CLI install to ship the engine's
+Postgres + LLM + queue surface. The split lets each binary stay minimal.
+
+### Why subkit uses a queue (pg-boss) instead of a synchronous subprocess
+
+Subkit enqueues each workflow run to pg-boss rather than spawning a child
+process per run. The queue path costs a millisecond of latency in
+exchange for:
+
+- **Crash recovery** — a job in pg-boss survives engine restart; an in-flight
+  subprocess does not. SLA targets demand the former.
+- **Backpressure** — pg-boss caps `team-size` so a flood of executions
+  doesn't OOM the engine. Subprocesses fork unbounded.
+- **Retry semantics** — pg-boss handles per-job retry / backoff / DLQ
+  uniformly; spawning subprocesses leaves retry to the caller.
+- **Observability** — a single queue-depth + lag metric covers every
+  workflow shape; subprocess-per-run requires per-spawn tracing.
+
+The cost is operational: pg-boss demands Postgres, and step execution can't
+be a pure function of the request anymore. Worth it for production, ignored
+for `sk eval` which runs in-process.
+
+### Conversations · `next_suggestion` SSE event
+
+The converse loop emits one `next_suggestion` frame per turn,
+immediately after `completed` and before the SSE outcome envelope.
+Sk-cli paints it as ghost text in the input composer; other consumers
+ignore it. Generation runs through `conversations/suggest-next.ts`
+which orchestrates a deterministic English offer-parse fast path,
+falling back to a Haiku-class model call.
+
+The suggestion call MUST NOT use `assembleEnhancedPrompt`. It has its
+own minimal `llm/core/suggestion-prompt.ts` assembler that only loads
+the last ≤8 turns of conversation history — no skills, no knowledge,
+no docs, no runtime context. Routing it through the heavy assembler
+re-introduces the 1M-token empty-turn class of bug. Both
+`BASE_SYSTEM_PROMPTS` (compile-time `Record<Exclude<LlmFlow, "converse"
+| "suggest_next">, string>`) and `basePromptFor` (runtime `throw`)
+enforce this at the type level.
+
+The frame is additive — clients that don't know about it ignore it,
+so adding new fields is safe. Do not move the emission point earlier
+in the loop without updating the frame-ordering integration tests in
+`conversations/loop/suggest-next-emitter.test.ts`.
+
+### `ConnectorSystem` facade (see `connectors/system.ts`)
+
+A read-side facade over a connector's credentials + driver + docs
+(`getCredentials`, `getDocumentation`). `tenantId` and `templateVersion`
+fields on the facade enforce tenant-isolation and self-healing drift
+correlation by construction. Every consumer of credentials + driver +
+docs should go through this facade rather than hand-rolling three
+lookups.
+
+Write-side enrichment intentionally stays out of the facade — template
+merging is a write-time concern handled by
+`connectors/template-enrichment.ts` at connector-creation time, not by
+the read-side orchestrator.
+
+## Determinism contract (test code)
+
+All test code follows a single determinism contract, enforced by
+`scripts/check-determinism.ts` at every `/verify` run:
+
+- **Time** — production code that reads "now" should go through an injected
+  clock or `getTestNow()` from `test-helpers/determinism/clock`; tests use
+  `FROZEN_NOW` or `createDeterministicClock()`. `Date.now()` / `new Date()` in
+  a test file is a warning; annotate intentional uses with `// allow-wall-clock`.
+- **Randomness** — tests must not call `Math.random()`, `crypto.randomUUID()`,
+  or `crypto.randomBytes()` directly. Use `createSeededRandom`,
+  `createDeterministicUuidFactory`, or `createDeterministicHexFactory` from
+  `test-helpers/determinism/{random,ids}`. Pin the seed via
+  `SUBKIT_DETERMINISTIC_SEED` for reproducible runs. Annotate legitimate
+  per-test unique-id generators with `// allow-random`.
+- **Waiting** — tests must never call `setTimeout` directly. Use `waitFor` /
+  `waitForJson` from `test-helpers/determinism/wait` (microtask poll by
+  default; opt into a real sleep with `sleepMs: N` only for I/O-bound
+  waits). Annotate legitimate real-time waits with `// allow-wall-clock`.
+- **Skips** — no `.only(...)` and no `.skip(...)` in committed code. Use
+  `test.skipIf(condition)` with a named env flag when a skip is
+  environmental (e.g. outbound network access).
+- **Env** — wrap per-test env overrides with `withTestEnv` /
+  `runWithTestEnv` from `test-helpers/determinism/env` so cleanup is
+  automatic.
+
+`bun run test:flake` runs the unit suite 5× with distinct seeds (1..5) and
+fails if any run diverges — use it before pushing changes that touch
+anything stochastic.

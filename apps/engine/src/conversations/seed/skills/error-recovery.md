@@ -1,0 +1,166 @@
+---
+slug: error-recovery
+scope: global
+title: Authoring-Time Error Recovery
+description: Canonical tool-error shape and recovery routine for errors that surface WHILE the assistant is building a connector or workflow in a conversation. For failures of workflows that have already been committed and run, see `troubleshooting-workflow-failures`.
+activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"error"},{"kind":"intent_keyword","word":"failed"},{"kind":"intent_keyword","word":"failure"},{"kind":"intent_keyword","word":"broken"},{"kind":"intent_keyword","word":"debug"},{"kind":"intent_keyword","word":"fix"},{"kind":"intent_keyword","word":"http_4xx"},{"kind":"intent_keyword","word":"http_5xx"},{"kind":"intent_keyword","word":"4xx"},{"kind":"intent_keyword","word":"5xx"},{"kind":"intent_keyword","word":"400"},{"kind":"intent_keyword","word":"401"},{"kind":"intent_keyword","word":"403"},{"kind":"intent_keyword","word":"404"},{"kind":"intent_keyword","word":"409"},{"kind":"intent_keyword","word":"422"},{"kind":"intent_keyword","word":"429"},{"kind":"intent_keyword","word":"500"},{"kind":"intent_keyword","word":"502"},{"kind":"intent_keyword","word":"503"},{"kind":"intent_keyword","word":"504"},{"kind":"intent_keyword","word":"placeholder_unresolved"},{"kind":"intent_keyword","word":"permission_denied"},{"kind":"intent_keyword","word":"validation_failed"},{"kind":"intent_keyword","word":"step_timeout"},{"kind":"intent_keyword","word":"filter_fail"},{"kind":"intent_keyword","word":"connector_not_found"},{"kind":"intent_keyword","word":"ok false"},{"kind":"intent_keyword","word":"tool error"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [authoring, errors, recovery]
+version: 4
+---
+
+# Error Recovery
+
+Tools in sk return a uniform error envelope when they fail. This skill is
+the playbook: how to read it, how to diagnose, and how to fix without
+thrashing.
+
+## Canonical tool error shape
+
+Every tool's failure returns:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "<machine_readable_code>",
+    "message": "<human_readable_summary>",
+    "details": { /* optional, shape depends on code */ }
+  }
+}
+```
+
+Never trust a tool call that returned `ok: false` — even partial results in
+`details` are diagnostic-only, not payload.
+
+## Common codes and what they mean
+
+| Code | Meaning | First thing to try |
+|---|---|---|
+| `placeholder_unresolved` | A `${...}` token referenced a credential, connector, input, or scope path that doesn't exist | Read `details.token`; check spelling, env, or prior step's envelope |
+| `permission_denied` | The caller lacks the permission on this resource | Read `details.permission` + `details.resource`; do not retry |
+| `connector_not_found` | Referenced connector slug does not exist in this env | `list_connectors` to see what exists |
+| `step_timeout` | Step exceeded its wall-clock limit | Check downstream health via `probe_connector`; consider pagination or splitting |
+| `http_5xx` | Downstream 500/502/503/504 | Retry with backoff; if persistent, it's a vendor problem |
+| `http_4xx` | Downstream 4xx (except 429) | Read `details.body`; fix the request shape |
+| `filter_fail` | A branch `when` or JSONata filter errored | Read the expression; usually `$scope.foo.data` has `undefined` where code expected an array |
+| `validation_failed` | Input didn't match `input_schema` | Read `details.violations`; fix the caller's input or widen the schema |
+
+## The recovery routine
+
+When a tool call or a step fails mid-conversation, do these five things in
+order. Do not skip.
+
+### 1. Read the error
+
+Don't summarize. Look at the raw envelope. `code`, `message`, and every key
+of `details`. Ninety percent of fixes are unblocked by reading `details.token`
+or `details.body`.
+
+### 2. Load the relevant skill
+
+Based on the code:
+
+- `placeholder_unresolved` → `load_skill("sk-concepts")` to re-check token
+  shapes, or the relevant driver skill if the token refers to a connector.
+- `http_4xx` / `http_5xx` → `load_skill("http-connectors")`.
+- Postgres error → `load_skill("postgres-connectors")`.
+- `permission_denied` → `load_skill("rbac-and-scopes")`.
+- `filter_fail` / shape mismatch → `load_skill("data-handling")`.
+
+Skills are loaded on-demand; the context cost is paid once per conversation.
+
+### 3. `search_knowledge`
+
+Tenants often seed internal knowledge sources with vendor-specific quirks
+("HubSpot API: dealstage must be a pipeline-scoped internal id, not a label").
+`search_knowledge` hits those. Query with the vendor name + the specific error
+message keyword.
+
+### 4. `probe_connector`
+
+If the error is at the connector boundary, probe it. Probe runs a canonical
+shallow request (for HTTP: GET `base_url`; for Postgres: `SELECT 1`; for S3:
+`HeadBucket`; for GraphQL: a minimal introspection query) and returns the
+envelope. This isolates whether the bug is in your step config, the connector
+config, or the credential.
+
+### 5. Edit the draft
+
+Only now edit. With the error read, the skill loaded, the knowledge searched,
+and the connector probed, you have the information to make a targeted fix.
+Re-dry-run the specific step before moving on.
+
+## When to retry vs give up vs ask the user
+
+| Situation | Action |
+|---|---|
+| `http_5xx` on first try, probe healthy | Retry once with backoff; if it persists, move to probe-unhealthy |
+| `http_5xx` sustained + probe_connector shows 5xx | Stop. Vendor incident. Tell the user. |
+| `http_4xx` 400/422 | Read `details.body`. The request is wrong. Fix and retry. |
+| `http_4xx` 401/403 | Connector auth or scope issue. Do not retry the same shape. |
+| `http_4xx` 404 | Either the resource truly doesn't exist, or the path template is wrong. Probe first. |
+| `permission_denied` | Do not retry. Surface to the user; ask for role change or scope reduction. |
+| `validation_failed` | Fix the input or schema. Never retry with the same input. |
+| `step_timeout` on a pagination step | Lower page size, add `max_pages`, or split the workflow. |
+| `placeholder_unresolved` on `${cred.foo.bar}` | Credential either doesn't exist in this env, or the field name is wrong. Ask the user to create/rotate. |
+| `filter_fail` | Almost always a scope path error. Reread the upstream envelope. |
+| Same error three turns in a row | Stop. Ask the user for guidance; do not thrash. |
+| Five consecutive failed tool calls (any tool, any code) | Stop. Emit `ask_user_choice` with three concrete options derived from the failure shape. Do not continue patching. The counter resets on the first successful tool call. |
+
+## Worked example
+
+Turn 1 — user asks "list all HubSpot deals closed last week".
+
+Turn 2 — you dry-run:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "http_4xx",
+    "message": "400 Bad Request",
+    "details": {
+      "status": 400,
+      "body": { "status": "error", "message": "property 'closedate' is not searchable; use 'hs_closedate'", "correlationId": "..." }
+    }
+  }
+}
+```
+
+Turn 3 — you: read error (property name issue), `load_skill("http-connectors")`
+(refresh pagination / query patterns), `search_knowledge("hubspot closedate")`
+(finds: "HubSpot renames many user-visible properties; internal name is the
+`hs_`-prefixed variant"), edit step to use `hs_closedate`, re-dry-run.
+
+Turn 4 — green. Commit.
+
+Three turns from failure to commit. Skipping step 3 (knowledge search) would
+have cost another round-trip guessing `closedate_unix` or similar.
+
+## Common pitfalls
+
+- **Retrying a 4xx as if it were a 5xx.** 4xx means "your request was wrong";
+  retrying the same request gets the same error. Fix first.
+- **Ignoring `details.body`.** The vendor's error message is the shortest
+  path to a fix. Read it.
+- **Re-running the commit path after a dry-run error.** Neither the
+  `ask_user_confirm`+`commit_intent` auto-persist nor a direct `save_workflow_draft`
+  re-runs the failing step. Repair the step + re-`dry_run` first, then commit.
+  You'll otherwise persist a known-broken draft.
+- **Assuming `permission_denied` is a bug.** It's the correct outcome until
+  RBAC changes. Surface it; don't work around it.
+- **Looping through retries without bounds.** Three failed turns on the same
+  error means your mental model is wrong. Ask the user, don't thrash.
+- **Probing the wrong env.** `probe_connector` runs in the current
+  conversation's env. If you're authoring for prod but the conversation is
+  dev-scoped, probe results may not reflect prod reality.
+
+## See also
+
+- `sk-concepts.md` — placeholder tokens and scope paths.
+- `workflow-authoring.md` — the six-phase authoring flow (probe is step 3).
+- `self-healing.md` — how repeated failures become patch candidates.
+- `rbac-and-scopes.md` — `permission_denied` recovery.

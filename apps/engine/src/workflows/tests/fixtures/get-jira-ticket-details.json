@@ -1,0 +1,24 @@
+{
+  "name": "Get Jira Ticket Details",
+  "slug": "get-jira-ticket-details",
+  "steps": [
+    {
+      "id": "fetch_ticket_details",
+      "kind": "request",
+      "path": "/rest/api/3/issue/${input.ticket_key}",
+      "query": {
+        "expand": "changelog,transitions"
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "format_ticket",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "const t = input.scope.fetch_ticket_details.data; const f = t.fields || {}; const desc = (f.description && f.description.content && f.description.content[0] && f.description.content[0].content && f.description.content[0].content[0]) ? f.description.content[0].content[0].text : undefined; return { key: t.key, summary: f.summary, description: desc, assignee: f.assignee ? f.assignee.displayName : undefined, status: f.status ? f.status.name : undefined, priority: f.priority ? f.priority.name : undefined, type: f.issuetype ? f.issuetype.name : undefined, components: (f.components || []).map((c) => c.name), created: f.created, updated: f.updated };"
+    }
+  ]
+}

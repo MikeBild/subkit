@@ -1,0 +1,92 @@
+import { describe, expect, test } from "bun:test";
+import { runJs } from "../runtime.ts";
+import { SandboxInterruptError, SandboxMemoryError, SandboxTimeoutError } from "../types.ts";
+
+describe("quickjs runtime", () => {
+  test("happy path — sum of two numbers", async () => {
+    const { output, stats } = await runJs<number>({
+      code: "return input.a + input.b;",
+      input: { a: 2, b: 3 },
+    });
+    expect(output).toBe(5);
+    expect(stats.ticks).toBeGreaterThan(0);
+  });
+
+  test("returns a structured object back to the host", async () => {
+    const { output } = await runJs<{ doubled: number[]; sum: number }>({
+      code: "const doubled = input.items.map(n => n * 2); return { doubled, sum: doubled.reduce((a, b) => a + b, 0) };",
+      input: { items: [1, 2, 3, 4] },
+    });
+    expect(output.doubled).toEqual([2, 4, 6, 8]);
+    expect(output.sum).toBe(20);
+  });
+
+  test("memory cap denies a 200 MB allocation", async () => {
+    let threw: unknown = null;
+    try {
+      await runJs({
+        code: "const big = new Uint8Array(200 * 1024 * 1024); big[0] = 1; return big.length;",
+        input: null,
+        limits: { memory_bytes: 128 * 1024 * 1024, wall_ms: 5_000 },
+      });
+    } catch (err) {
+      threw = err;
+    }
+    expect(threw).not.toBeNull();
+    // Either memory cap or interrupt — both are acceptable failure modes
+    // because QuickJS may hit the cap inside the allocator or abort the
+    // running bytecode via the interrupt handler first.
+    expect(
+      threw instanceof SandboxMemoryError ||
+        threw instanceof SandboxInterruptError ||
+        threw instanceof SandboxTimeoutError,
+    ).toBe(true);
+  });
+
+  test("interrupt cap denies an infinite loop", async () => {
+    let threw: unknown = null;
+    try {
+      await runJs({
+        code: "let i = 0; while (true) { i += 1; }",
+        input: null,
+        limits: { tick_budget: 1_000_000, wall_ms: 3_000 },
+      });
+    } catch (err) {
+      threw = err;
+    }
+    expect(threw).not.toBeNull();
+    expect(threw instanceof SandboxInterruptError || threw instanceof SandboxTimeoutError).toBe(
+      true,
+    );
+  });
+
+  test("host globals are not reachable from inside the VM", async () => {
+    const { output } = await runJs<Record<string, string>>({
+      code: `return {
+        fetch: typeof fetch,
+        process: typeof process,
+        require: typeof require,
+        Bun: typeof Bun,
+        globalThis_fetch: typeof globalThis.fetch,
+      };`,
+      input: null,
+    });
+    expect(output.fetch).toBe("undefined");
+    expect(output.process).toBe("undefined");
+    expect(output.require).toBe("undefined");
+    expect(output.Bun).toBe("undefined");
+    expect(output.globalThis_fetch).toBe("undefined");
+  });
+
+  test("peak_memory_bytes is populated and bounded by the memory limit", async () => {
+    const { stats } = await runJs<number>({
+      // Allocate ~4 MB of strings to force memory usage above idle noise.
+      code: "var bucket = []; for (var i = 0; i < 64; i++) { bucket.push(new Array(1024).join('x')); } return bucket.length;",
+      input: null,
+      limits: { memory_bytes: 32 * 1024 * 1024, wall_ms: 3_000 },
+    });
+    expect(stats.peak_memory_bytes).not.toBeNull();
+    expect(stats.peak_memory_bytes! > 0).toBe(true);
+    expect(stats.peak_memory_bytes! <= 32 * 1024 * 1024).toBe(true);
+  });
+});
