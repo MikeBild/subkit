@@ -117,6 +117,7 @@ rollback is a version change.
 
 | You want to | Start here |
 |-------------|-----------|
+| Brand new to sk — go from nothing to a running engine + first connector, workflow, and knowledge article | [Zero-to-running quickstart](docs/quickstart/zero-to-running.md) |
 | Run the engine for a team | [Operator quickstart](docs/quickstart/operator.md) |
 | Use `sk`, chat, or MCP | [End-user quickstart](docs/quickstart/end-user.md) |
 | Contribute to sk | [Developer quickstart](docs/quickstart/developer.md) |

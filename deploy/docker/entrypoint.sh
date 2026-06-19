@@ -26,8 +26,19 @@ export ENGINE_LISTEN_HOST="${ENGINE_LISTEN_HOST:-0.0.0.0}"
 
 # Default file storage to a persistent path inside the volume unless the
 # operator overrode it. These are the engine's standard config-leaf overrides.
-export SK_OVERRIDE_STORAGE__FILES__BACKEND="${SK_OVERRIDE_STORAGE__FILES__BACKEND:-local}"
-export SK_OVERRIDE_STORAGE__FILES__DIR="${SK_OVERRIDE_STORAGE__FILES__DIR:-$BLOBS_DIR}"
+# NOTE: the loader maps SK_OVERRIDE_<PATH> with a SINGLE underscore between
+# path segments (envKeyForLeaf joins leaf.path with "_"), so the leaf
+# storage.files.dir is SK_OVERRIDE_STORAGE_FILES_DIR — NOT double underscores.
+export SK_OVERRIDE_STORAGE_FILES_BACKEND="${SK_OVERRIDE_STORAGE_FILES_BACKEND:-local}"
+export SK_OVERRIDE_STORAGE_FILES_DIR="${SK_OVERRIDE_STORAGE_FILES_DIR:-$BLOBS_DIR}"
+
+# Point the engine's boot-dependency fs-write probe at the real state dirs on
+# the volume. Without these (systemd convention) the probe falls back to
+# /etc/subkit + /var/lib/subkit — absent and unwritable in this image — and
+# emits alarming but meaningless EACCES warnings on every boot. SUBKIT_CONFIG
+# already pins the actual config path, so this only steers the probe.
+export CONFIGURATION_DIRECTORY="${CONFIGURATION_DIRECTORY:-$CONFIG_DIR}"
+export STATE_DIRECTORY="${STATE_DIRECTORY:-$DATA_DIR}"
 
 mkdir -p "$CONFIG_DIR" "$BLOBS_DIR" "$PGDATA" "${HOME:-/data/home}"
 chown -R postgres:postgres "$DATA_DIR"
@@ -91,8 +102,8 @@ RUNTIME_ENV="$CONFIG_DIR/runtime.env"
 ( umask 077; {
   printf 'DATABASE_URL=%q\n' "$DATABASE_URL"
   printf 'MASTER_KEY=%q\n' "$MASTER_KEY"
-  printf 'SK_OVERRIDE_STORAGE__FILES__BACKEND=%q\n' "$SK_OVERRIDE_STORAGE__FILES__BACKEND"
-  printf 'SK_OVERRIDE_STORAGE__FILES__DIR=%q\n' "$SK_OVERRIDE_STORAGE__FILES__DIR"
+  printf 'SK_OVERRIDE_STORAGE_FILES_BACKEND=%q\n' "$SK_OVERRIDE_STORAGE_FILES_BACKEND"
+  printf 'SK_OVERRIDE_STORAGE_FILES_DIR=%q\n' "$SK_OVERRIDE_STORAGE_FILES_DIR"
 } >"$RUNTIME_ENV" )
 chown postgres:postgres "$RUNTIME_ENV"
 

@@ -211,7 +211,9 @@ export async function createConnector(
       .values({
         tenant_id: p.tenant_id,
         slug,
-        display_name: effective.name,
+        // Never persist a blank name — conversational drafts sometimes carry
+        // only a slug, which left the connector list showing an empty name.
+        display_name: effective.name || slug,
         driver: effective.driver,
         environment,
         auth_type,

@@ -52,8 +52,11 @@ function worst(results: CheckResult[]): CheckStatus {
 }
 
 function exitCodeFromStatus(s: CheckStatus): number {
+  // Warnings are advisory, not failures — a freshly-bootstrapped, correctly
+  // configured engine routinely warns (e.g. no public_base_url on localhost),
+  // and gating CI/onboarding scripts on a non-zero exit for that is noise.
+  // Only a hard blocker is a non-zero exit.
   if (s === "blocked") return 2;
-  if (s === "warn") return 1;
   return 0;
 }
 
@@ -61,7 +64,7 @@ export const doctorCommand = defineCommand({
   meta: {
     name: "doctor",
     description:
-      "Diagnose engine connectivity, authentication, and setup. Exits 0 ok, 1 warn, 2 blocked.",
+      "Diagnose engine connectivity, authentication, and setup. Exits 0 (ok or warn) or 2 (blocked).",
   },
   args: {
     "engine-url": { type: "string", description: "Override the resolved engine URL" },
@@ -161,7 +164,7 @@ export const doctorCommand = defineCommand({
           detail: `overall=${overall} blockers=${counts.blockers} warnings=${counts.warnings} sections_blocked=${counts.sections_blocked} sections_warn=${counts.sections_warn}`,
           ...(overall !== "ok"
             ? {
-                hint: "run `sk setup` (or hit GET /v1/diagnostics/setup) for the per-section detail",
+                hint: "run `sk doctor --json` (or hit GET /v1/diagnostics/setup) for the per-section detail",
               }
             : {}),
         });
