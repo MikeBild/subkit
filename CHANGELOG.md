@@ -2,7 +2,7 @@
 
 ## [7.0.1]
 
-Event-driven droplet deploys: subkit's release pipeline now fires a `repository_dispatch` to subkit-deploy on publish (replacing the unreliable scheduled poll).
+Release pipeline now emits an event-driven deploy notification on publish, replacing a scheduled poll.
 
 ## [7.0.0]
 
