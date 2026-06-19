@@ -256,7 +256,7 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
 describe("connector-template catalog — Layer-3 vendor-drift sweep", () => {
   // Layer 1 (this file) is structural: it never touches the network. The
   // actual sweep (gated by `RUN_TEMPLATE_AUDIT=1`) is maintained in the
-  // `subkit-do` repo. This test is the bridge: it only
+  // `subkit-deploy` repo. This test is the bridge: it only
   // *warns* (never fails) when a template's `verified_at` is null or
   // older than 90 days, so a stale catalog surfaces in `bun test` output
   // without blocking unrelated PRs. The sweep script — run on a cadence
@@ -314,7 +314,7 @@ describe("connector-template catalog — Layer-3 vendor-drift sweep", () => {
       console.warn(
         [
           `[connector-templates] vendor-drift sweep stale on ${stale.length}/${templates.length} templates.`,
-          `Run the Layer-3 vendor-drift sweep (RUN_TEMPLATE_AUDIT=1, maintained in the subkit-do repo) to refresh verified_at.`,
+          `Run the Layer-3 vendor-drift sweep (RUN_TEMPLATE_AUDIT=1, maintained in the subkit-deploy repo) to refresh verified_at.`,
           ...lines,
         ].join("\n"),
       );

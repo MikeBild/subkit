@@ -212,11 +212,11 @@ The catalogue ships three layers of validation:
 
 - **Layer 1 — structural lint.** `apps/engine/src/connectors/templates.test.ts` runs at every PR: every template must parse `ConnectorTemplateSchema`, slugs are globally unique, recipes pass `WorkflowDefSchema`, etc. No network.
 - **Layer 2 — cross-reference invariants.** Same test file: every `default_skill` resolves to a known entry in `template-skills.json`, recipe placeholders are bound, no credential-shaped literals leak into recipe workflows. No network.
-- **Layer 3 — vendor-drift sweep.** A network sweep HEADs every `base_url`, calls every declared `probe_endpoint`, and fetches `<oauth.issuer_url>/.well-known/openid-configuration` for OAuth templates, stamping `verified_at` per template. It **never runs in CI** — gated by `RUN_TEMPLATE_AUDIT=1` so a careless pipeline can't hammer vendors. The sweep tooling is maintained in the **`subkit-do`** repo (`scripts/audit/template-vendor-sweep.ts`), run on an operator-chosen cadence against this repo's `templates.json`.
+- **Layer 3 — vendor-drift sweep.** A network sweep HEADs every `base_url`, calls every declared `probe_endpoint`, and fetches `<oauth.issuer_url>/.well-known/openid-configuration` for OAuth templates, stamping `verified_at` per template. It **never runs in CI** — gated by `RUN_TEMPLATE_AUDIT=1` so a careless pipeline can't hammer vendors. The sweep tooling is maintained in the **`subkit-deploy`** repo (`scripts/audit/template-vendor-sweep.ts`), run on an operator-chosen cadence against this repo's `templates.json`.
 
 ### Running the sweep
 
-The sweep lives in the `subkit-do` repo. With this repo checked out as a sibling, run it from there (gated by `RUN_TEMPLATE_AUDIT=1`):
+The sweep lives in the `subkit-deploy` repo. With this repo checked out as a sibling, run it from there (gated by `RUN_TEMPLATE_AUDIT=1`):
 
 ```bash
 # Full sweep — concurrency=3, 1s/host backoff. Takes a few minutes.
@@ -246,7 +246,7 @@ The Layer-1 test emits a `console.warn` (it does **not** fail the suite) when a 
 
 ```
 [connector-templates] vendor-drift sweep stale on 105/105 templates.
-Run the Layer-3 vendor-drift sweep (RUN_TEMPLATE_AUDIT=1, maintained in the subkit-do repo) to refresh verified_at.
+Run the Layer-3 vendor-drift sweep (RUN_TEMPLATE_AUDIT=1, maintained in the subkit-deploy repo) to refresh verified_at.
   - airtable (verified_at=null, never swept)
   - apify (verified_at=null, never swept)
   …

@@ -437,7 +437,7 @@ export const ConnectorTemplateSchema = z
      * or the script has not been run since the field landed). The
      * Layer-1 lint emits a `console.warn` (not a failure) when this is
      * `null` or older than 90 days; the Layer-3 vendor-drift sweep
-     * (gated by `RUN_TEMPLATE_AUDIT=1`, maintained in the `subkit-do`
+     * (gated by `RUN_TEMPLATE_AUDIT=1`, maintained in the `subkit-deploy`
      * repo) refreshes it. See `docs/05-connectors.md` →
      * "Vendor-drift sweep" for the lifecycle.
      */
