@@ -23,7 +23,14 @@ const fetchConnectorRows = async (client: EngineClient) => {
   const { items } = await client.listConnectors({ limit: 50 });
   return (items as Record<string, unknown>[]).map((r) => ({
     id: String(r.id),
-    name: typeof r.name === "string" ? r.name : null,
+    // The engine exposes the connector's name as `display_name`; fall back to
+    // it so the picker/list never show a blank name column.
+    name:
+      typeof r.display_name === "string"
+        ? r.display_name
+        : typeof r.name === "string"
+          ? r.name
+          : null,
     detail: typeof r.slug === "string" ? r.slug : null,
   }));
 };
@@ -38,11 +45,18 @@ const listCommand = defineCommand({
     const client = makeClient();
     try {
       const { items, total } = await client.listConnectors({ limit: Number(args.limit) });
-      emitList(
-        !!args.json,
-        ["id", "name", "slug", "environment", "template_slug"],
-        items as Record<string, unknown>[],
-      );
+      // The engine names connectors via `display_name`; surface it under the
+      // `name` column so the list never renders a blank name.
+      const rows = (items as Record<string, unknown>[]).map((r) => ({
+        ...r,
+        name:
+          typeof r.name === "string" && r.name
+            ? r.name
+            : typeof r.display_name === "string"
+              ? r.display_name
+              : "",
+      }));
+      emitList(!!args.json, ["id", "name", "slug", "environment", "template_slug"], rows);
       // Ground-truth cardinality: never present a page as the universe.
       if (!args.json) {
         process.stdout.write(

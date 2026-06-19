@@ -156,6 +156,54 @@ const getCommand = defineCommand({
   },
 });
 
+const resultCommand = defineCommand({
+  meta: {
+    name: "result",
+    description: "Print the final output a workflow execution produced",
+  },
+  args: {
+    id: { type: "positional", required: false, description: "Execution id" },
+    json: { type: "boolean", description: "JSON-only output", default: false },
+  },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    try {
+      const id = await pickId({
+        label: "execution id",
+        argValue: args.id,
+        fetch: () => fetchExecutionRows(client),
+      });
+      const execution = (await client.getExecution(id)) as Record<string, unknown>;
+      // The produced value lives on the final step's `output_preview`
+      // (`result_preview` is its stringified form; large results are offloaded
+      // to `result_storage_uri`). The execution row itself carries no output.
+      const { items } = await client.executionSteps(id);
+      const steps = items as Record<string, unknown>[];
+      const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
+      const output = last?.output_preview ?? last?.result_preview ?? null;
+      if (args.json) {
+        printJson(output);
+        return;
+      }
+      const status = typeof execution.status === "string" ? execution.status : "unknown";
+      process.stdout.write(`execution ${id} · ${status}\n`);
+      if (output === null || output === undefined) {
+        const uri = last?.result_storage_uri;
+        process.stdout.write(
+          typeof uri === "string" && uri
+            ? `  result offloaded to ${uri}\n`
+            : "  (no output recorded)\n",
+        );
+        return;
+      }
+      printJson(output);
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
 const stepsCommand = defineCommand({
   meta: { name: "steps", description: "List steps for an execution" },
   args: {
@@ -340,6 +388,7 @@ export const executionsCommand = defineCommand({
   subCommands: {
     list: listCommand,
     get: getCommand,
+    result: resultCommand,
     steps: stepsCommand,
     abort: abortCommand,
     tail: tailCommand,

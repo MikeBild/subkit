@@ -89,6 +89,27 @@ describe("consumer read-back per subsystem", () => {
     expect(detectConfiguredProvider()).toBe("anthropic");
   });
 
+  test("F1: generic llm.api_key is mirrored into the active provider's leaf", async () => {
+    const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
+    // Mirrors `sk init --llm-provider anthropic --llm-api-key …`, which writes
+    // ONLY the generic leaves. The provider-specific leaf the resolver reads
+    // (llm.providers.anthropic.api_key) must be auto-filled so the first AI
+    // call doesn't fail with ProviderMisconfiguredError.
+    await setConfigKey("llm.provider", "anthropic", { force: true });
+    await setConfigKey("llm.api_key", "generic-ant-key", { force: true });
+
+    expect(getConfig().llm.providers.anthropic.api_key).toBe("generic-ant-key");
+    expect(globalLlmStatus().anthropic_key_set).toBe(true);
+  });
+
+  test("F1: an explicit provider-specific key is never overwritten by the generic one", async () => {
+    await setConfigKey("llm.providers.anthropic.api_key", "explicit-key", { force: true });
+    await setConfigKey("llm.provider", "anthropic", { force: true });
+    await setConfigKey("llm.api_key", "generic-key", { force: true });
+
+    expect(getConfig().llm.providers.anthropic.api_key).toBe("explicit-key");
+  });
+
   test("globalLlmStatus reflects every provider config flip", async () => {
     const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
     let st = globalLlmStatus();

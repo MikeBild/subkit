@@ -2,6 +2,8 @@
 
 You run sk for your team. Goal: engine up in production, one admin key minted, one connector registered. 15 minutes.
 
+> **Brand new to sk?** The [zero-to-running quickstart](./zero-to-running.md) walks a complete beginner from the Docker image through a first connector, workflow, and knowledge article.
+
 > **Just kicking the tires?** The local-dev path (postgres-only compose + `bun run dev`) is in [docs/quickstart/developer.md](./developer.md). This page stands up a production engine with the all-in-one Docker image.
 
 ## 1. Install the `sk` CLI

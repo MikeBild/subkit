@@ -435,10 +435,13 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     );
 
     // Interactive auto-enrich (best-effort): generate a description + tags
-    // when the upload landed without them. Runs after the create commits,
-    // outside its transaction. Any failure (incl. LlmQuotaExhausted) leaves
-    // the source created/un-enriched and never fails the upload.
-    if (source.description === null || source.tags.length === 0) {
+    // ONLY when the upload landed with neither. Supplying explicit tags (or a
+    // description) opts out entirely — auto-analysis would otherwise overwrite
+    // the operator's authoritative tags, contradicting the `--tags` contract
+    // ("omit to auto-generate"). Runs after the create commits, outside its
+    // transaction. Any failure (incl. LlmQuotaExhausted) leaves the source
+    // created/un-enriched and never fails the upload.
+    if (source.description === null && source.tags.length === 0) {
       try {
         const enriched = await svc.analyzeKnowledgeSource(
           { tenant_id: principal.tenant_id, id: source.id, actor_id: principal.id },

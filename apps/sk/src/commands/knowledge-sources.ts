@@ -95,7 +95,11 @@ const createCommand = defineCommand({
       type: "string",
       description: "Description (omit to let the engine auto-generate one)",
     },
-    tags: { type: "string", description: "Comma-separated tags (omit to auto-generate)" },
+    tags: {
+      type: "string",
+      description:
+        "Comma-separated tags. When set, they are authoritative (no AI auto-tagging). Omit both --tags and --description to auto-generate them.",
+    },
     scope: { type: "string", description: "Scope: global | workflow" },
     "workflow-id": { type: "string", description: "Workflow id (required when scope=workflow)" },
     json: { type: "boolean", description: "JSON-only output (suppresses narration)" },

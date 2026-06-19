@@ -251,6 +251,29 @@ function serialize(config: Config): string {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
+// Mirror the generic (llm.provider, llm.api_key, llm.model) leaves into the
+// provider-specific llm.providers.<provider>.* leaves that the model resolver
+// actually reads (see llm/core/model-init.ts ENV_TO_CONFIG_PATH). `sk init`,
+// `sk settings set llm.api_key`, and SK_OVERRIDE_LLM_API_KEY all write the
+// generic leaf; without this mirror the first AI call fails with
+// ProviderMisconfiguredError even though the key is plainly set. Only fills an
+// empty provider-specific leaf, so an explicit per-provider value always wins.
+function mirrorGenericLlmKey(cfg: Config): void {
+  const provider = cfg.llm.provider;
+  const providers = cfg.llm.providers as Record<
+    string,
+    { api_key?: string; model?: string } | undefined
+  >;
+  const target = providers[provider];
+  if (!target || typeof target !== "object") return;
+  if (cfg.llm.api_key && "api_key" in target && !target.api_key) {
+    target.api_key = cfg.llm.api_key;
+  }
+  if (cfg.llm.model && "model" in target && !target.model) {
+    target.model = cfg.llm.model;
+  }
+}
+
 export async function loadConfig(
   opts: { env?: Record<string, string | undefined>; configPathOverride?: string } = {},
 ): Promise<Config> {
@@ -311,6 +334,10 @@ export async function loadConfig(
     }
     throw err;
   }
+
+  // Reconcile the generic LLM key/model into the provider-specific leaves the
+  // model resolver reads, so a key set via `sk init` / generic settings works.
+  mirrorGenericLlmKey(parsed);
 
   // Auto-generate session secret on first boot if missing.
   let needsPersist = false;
@@ -648,6 +675,10 @@ export async function setConfigKey(
         leaf.kind,
       );
     }
+
+    // Keep the provider-specific LLM leaves in sync when the generic
+    // llm.provider/llm.api_key/llm.model leaves are edited at runtime.
+    mirrorGenericLlmKey(fullParse.data);
 
     await atomicWrite(state.configPath, serialize(fullParse.data));
 

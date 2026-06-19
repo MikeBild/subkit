@@ -41,6 +41,8 @@ Three persona-specific paths to get running fast.
 
 | Guide | For |
 |---|---|
+| [quickstart/zero-to-running.md](quickstart/zero-to-running.md) | Brand new to sk, no prior knowledge. From the Docker image to a running engine, authenticated `sk`, and a first connector, workflow, and knowledge article. 15 minutes. |
+| [quickstart/using-the-repl.md](quickstart/using-the-repl.md) | Author connectors and workflows by conversation in the `sk` REPL — the approve-to-commit loop, slash commands, and headless `-p` scripting. |
 | [quickstart/operator.md](quickstart/operator.md) | You run sk for your team. Engine up, admin key minted, first connector registered. 10 minutes. |
 | [quickstart/end-user.md](quickstart/end-user.md) | You use sk through the CLI, chat, or an MCP client. Authenticated, first conversation open. 5 minutes. |
 | [quickstart/developer.md](quickstart/developer.md) | You contribute to sk. Repo cloned, tests green, engine in watch mode. 10 minutes. |

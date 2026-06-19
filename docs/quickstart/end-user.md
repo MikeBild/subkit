@@ -2,6 +2,8 @@
 
 You use sk through `sk` (conversational CLI), Slack/Teams/Google Chat, or an MCP-speaking client. Goal: authenticated and holding your first conversation. 5 minutes.
 
+> **Want to run your own engine first?** The [zero-to-running quickstart](./zero-to-running.md) takes a complete beginner from the Docker image to a first connector, workflow, and knowledge article.
+
 Your operator has already set up the engine and should have given you **one** of the following:
 
 - An **engine URL + API key** (you are a direct operator of a tenant).

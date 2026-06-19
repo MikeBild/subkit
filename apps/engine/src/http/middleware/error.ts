@@ -123,6 +123,22 @@ function readRetryAfter(details: unknown): number | undefined {
 }
 
 function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
+  // A provider whose key/region/etc. is not configured. Matched by name to
+  // avoid importing the heavy model-init module into the HTTP layer. Surface
+  // the actionable message + hint as a 400 instead of a masked 500 "internal
+  // error" — this is the difference between a confusing dead-end and a fix.
+  if (err instanceof Error && err.name === "ProviderMisconfiguredError") {
+    captureToRing(c, err, 400, "llm_provider_misconfigured", "llm_provider");
+    return envelope(
+      c,
+      400,
+      "llm_provider_misconfigured",
+      err.message,
+      envelopeOpts({
+        hint: "set the provider key with `sk settings set llm.providers.<provider>.api_key '\"…\"'` (or `sk init --llm-api-key`), then retry",
+      }),
+    );
+  }
   if (err instanceof LlmQuotaExhausted) {
     captureToRing(c, err, 429, "llm_quota_exhausted", "llm_quota");
     const retryAfter = readRetryAfter(err.details) ?? 60;
