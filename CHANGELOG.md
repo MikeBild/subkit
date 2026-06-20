@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.2.2]
+
+Fix connector reauth for Cognito `USER_PASSWORD_AUTH` connectors.
+
+- `request_connector_reauth` no longer mints a dead browser sign-in link for `cognito_user_password` connectors (e.g. AppSync/Cognito). Cognito is a password grant — the engine never stores the password — so reauth now routes to the in-chat email+password re-issue and re-mints via `InitiateAuth`, rotating the credential in place. Previously the browser dance hit the Cognito endpoint and failed with "unexpected HTTP response status code", showing a misleading "this link has been used up" page.
+- `beginConnectorOAuthDance` now fails fast with a clear error for non-browser grants instead of the opaque transport error.
+
 ## [7.2.1]
 
 Closes the last onboarding rough edges.
