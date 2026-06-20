@@ -664,6 +664,24 @@ export async function setConfigKey(
       updatedConfig = next;
     }
 
+    // A1: switching the active LLM provider must not let a stale generic
+    // `llm.api_key` (set for the PREVIOUS provider) mirror into the newly
+    // selected provider's empty leaf. Clear the generic key on a real
+    // provider change; the prior provider keeps its own provider-specific
+    // leaf, and the new provider stays unset until the operator supplies its
+    // key (yielding a clear ProviderMisconfigured error rather than a
+    // wrong-key auth failure). Global scope only — tenant overlays are rare
+    // and handled explicitly.
+    if (
+      !opts.tenantId &&
+      leafPath.length === 2 &&
+      leafPath[0] === "llm" &&
+      leafPath[1] === "provider" &&
+      beforeValue !== validatedValue
+    ) {
+      setDeep(updatedConfig as unknown as Record<string, unknown>, ["llm", "api_key"], "");
+    }
+
     // Re-validate the whole config after the targeted edit so cross-leaf
     // refinements stay coherent.
     const fullParse = ConfigSchema.safeParse(updatedConfig);

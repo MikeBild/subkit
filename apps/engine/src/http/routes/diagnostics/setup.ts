@@ -468,16 +468,14 @@ function buildPublicUrlsSection(snapshot: ReturnType<typeof getConfig>): SetupSe
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
   if (!baseUrl) {
-    issues.push(
-      buildIssue(
-        "public-base-url",
-        "warning",
-        "Public base URL",
-        "server.public_base_url is not set. External webhook links, chat deeplinks, and operator copy-paste URLs may be wrong.",
-      ),
-    );
+    // Advisory only — NOT a warning. A correct local/trial install routinely
+    // runs without a public base URL, and the code paths that genuinely need
+    // it (OAuth callbacks, MCP resource origin, webhook links) already fail
+    // with their own clear errors when it's missing. Surfacing it as a setup
+    // `warning` was the lone reason a healthy fresh install showed ⚠, so it
+    // lives in recommendations instead.
     recommendations.push(
-      "Run `sk settings set server.public_base_url '\"https://...\"'` with the externally reachable engine URL.",
+      "For external webhooks, chat deeplinks, and OAuth callbacks, set a public base URL: `sk settings set server.public_base_url '\"https://...\"'` with the externally reachable engine URL.",
     );
   }
   return buildSection(

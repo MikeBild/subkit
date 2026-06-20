@@ -50,43 +50,42 @@ uploaded files) so restarts keep your data.
 
 ## Step 2 — First-run bootstrap (tenant + admin key + LLM)
 
-A fresh engine has no tenants. It prints a one-time **bootstrap token** (valid
-15 minutes) to the logs:
+A fresh engine has no tenants. Complete setup with `sk init` — on the all-in-one
+image the bundled CLI **auto-detects the one-time bootstrap token** the engine
+dropped on the `/data` volume, so you don't copy anything:
 
 ```bash
-docker logs subkit 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
-# sk init --token 77e76b9b2e487ca1327bd79c390baa79670db792b553faa059508e2378ece7e7
-```
-
-> If the token has expired, just run the grep again — the engine **reprints a
-> fresh token** the next time you try, so you can never get permanently stuck.
-
-Complete setup with `sk init` (the bundled CLI runs inside the container; its
-profile is saved on the `/data` volume, so the container stays logged in):
-
-```bash
-docker exec subkit sk init --token <TOKEN> \
+docker exec subkit sk init \
   --admin-email you@example.com \
   --tenant-name "My Org" \
   --llm-provider anthropic \
   --llm-api-key sk-ant-YOUR-KEY
+# sk init: using bootstrap token from /data/config/bootstrap.token
 # sk init: bootstrap complete — tenant 6c82c719-…
 #   admin_api_key prefix: wf_live_IKx_
 #   profile 'default' saved to /data/home/.sk/config.json
 ```
 
+> **No API key handy?** Use `--llm-provider mock` to walk the connector/workflow
+> mechanics with zero external accounts (authoring quality is limited, but the
+> full pipeline runs). Or pass `-e ANTHROPIC_API_KEY=sk-ant-…` at `docker run`
+> time and drop `--llm-api-key` here.
+>
+> **Manual token (non-bundled deploys):** copy it from the logs and pass
+> `--token` explicitly. It's valid 15 minutes; the engine reprints a fresh one
+> on the next attempt, so you can't get stuck:
+> ```bash
+> docker logs subkit 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
+> ```
+
 Verify the whole setup:
 
 ```bash
 docker exec subkit sk doctor
-# ✔ profile / reachability / authn / version_match … (exit 0)
+# ✔ profile / reachability / authn / setup / version_match … (exit 0)
 docker exec subkit sk -p "Say only the word: pong" --output text
 # pong            ← confirms the LLM is wired correctly
 ```
-
-> **Alternative:** pass the key at `docker run` time with
-> `-e ANTHROPIC_API_KEY=sk-ant-YOUR-KEY` and you can skip `--llm-api-key` on
-> `sk init` entirely.
 
 ---
 
@@ -117,9 +116,16 @@ docker exec subkit sk connectors list
 docker exec subkit sk connectors test <CONNECTOR_ID>
 ```
 
-> **Connectors that need an API key** (Stripe, GitHub, …): the same
-> conversational flow asks for the secret and stores it encrypted in the vault —
-> you never put a key in a workflow file. See [`docs/05-connectors.md`](../05-connectors.md).
+> **Connectors that need an API key** (Stripe, GitHub, …): the conversational
+> flow asks for the secret and stores it encrypted in the vault. For
+> **scripted / CI** setup, create from a template and attach the credential
+> without a conversation:
+> ```bash
+> docker exec subkit sk connectors create --template stripe --name stripe-prod --skip-checks
+> docker exec subkit sk credentials set <CONNECTOR_ID> --mode bearer --token sk_live_…
+> #   modes: bearer | header | query | basic | aws_sigv4 | none  (probes after, unless --skip-checks)
+> ```
+> You never put a key in a workflow file. See [`docs/05-connectors.md`](../05-connectors.md).
 
 ---
 
