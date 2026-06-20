@@ -6,6 +6,8 @@ Closes the last onboarding rough edges.
 
 - `sk credentials list <connector-id>` now shows attached credentials (redacted: id, mode, environment, oauth-refresh flag, created_at). The single-connector GET embeds the same summary; secret material never leaves the vault.
 - `engine --issue-admin-key` prints a complete, copy-paste `sk login --engine-url … --api-key …` line so logging the host CLI in is one paste.
+- Quickstart now covers the conversational `sk` REPL (approve-to-commit loop, slash commands) and connecting from an MCP client — Codex `config.toml` (streamable-HTTP + `bearer_token_env_var`) and the `sk mcp` stdio proxy.
+- New docker-backed smoke (`bun run smoke:surfaces`) verifies the Codex MCP handshake (`/mcp` initialize + tools/list) and the headless REPL loop against a released image.
 
 ## [7.2.0]
 

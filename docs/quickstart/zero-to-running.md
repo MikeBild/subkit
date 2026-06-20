@@ -201,6 +201,101 @@ docker exec subkit sk knowledge-sources search "how do I get the temperature for
 
 ---
 
+## Step 6 — Author by conversation (the `sk` REPL)
+
+Everything above used one-shot commands. The friendliest way to build is to just
+**talk to the engine** — the AI proposes, you approve. Open the interactive REPL
+(needs a TTY, so add `-it`):
+
+```bash
+docker exec -it subkit sk
+```
+
+A real session looks like this:
+
+```text
+You    ▸ get the current temperature in Munich using the open-meteo connector
+AI     ▸ Here's the workflow I propose:
+         1. request   GET /v1/forecast?latitude=48.14&longitude=11.58&current=temperature_2m
+         2. transform extract { city, time, temperature_c }
+         (dry-run preview: 22.1 °C)
+         Approve to save this as a workflow?
+You    ▸ /approve
+AI     ▸ Saved "munich-current-temperature" (v1). Run it: sk workflows run munich-current-temperature
+```
+
+Useful inside the REPL — type `/` for the menu:
+
+| Command | Does |
+|---|---|
+| `/approve` · `/reject` | commit or revise the AI's current proposal |
+| `/connector-templates` | browse the 105 built-in integrations |
+| `/knowledge` · `/skills` | manage knowledge sources / reusable context |
+| `/clear` · `/help` · `/exit` | new conversation · list commands · leave |
+
+`@file:<id>` attaches a file; `@skill:<name>` pulls in a Skill. Nothing is saved
+or run until you approve. Full walkthrough: [`using-the-repl.md`](./using-the-repl.md).
+
+> **Scripting?** The same loop runs headless: `sk -p "create a workflow that …"
+> --output text` (no TTY, no slash commands; the AI completes autonomously up to
+> `--max-turns`). `--output json` / `stream-json` for machine consumption.
+
+---
+
+## Step 7 — Use it from Codex / any MCP client
+
+The engine is an **MCP server**, so AI coding tools (Codex, Claude Desktop,
+Cursor, …) can drive your governed workflows directly. Two transports:
+
+**A. Streamable HTTP (recommended)** — point the client at `${ENGINE_URL}/mcp`
+with a Bearer key (mint one with `engine --issue-admin-key`, see "from your own
+machine" below). For **Codex** (`~/.codex/config.toml`, or Settings → MCP
+Servers) — Codex auto-detects the transport from `url`, and
+`bearer_token_env_var` names an env var so the key stays out of the file:
+
+```toml
+[mcp_servers.subkit]
+url = "http://localhost:3000/mcp"
+bearer_token_env_var = "SUBKIT_API_KEY"
+```
+
+```bash
+export SUBKIT_API_KEY=wf_live_…   # the key from `engine --issue-admin-key`
+```
+
+Equivalent JSON for clients that take an inline header map (Claude Desktop /
+Cursor) — this is the shape subkit's own connector recipe emits:
+
+```json
+{ "mcpServers": { "subkit": {
+  "url": "http://localhost:3000/mcp",
+  "transport": "streamable-http",
+  "headers": { "Authorization": "Bearer wf_live_…" }
+} } }
+```
+
+**B. stdio (local)** — after `sk login` on your machine, let the client spawn the
+bundled proxy (reads `~/.sk/config.json`):
+
+```json
+{ "mcpServers": { "subkit": { "command": "sk", "args": ["mcp"] } } }
+```
+
+Once connected, the client sees your tenant's tools — author and run workflows
+(`author_workflow`, `build_workflow`, `dry_run_workflow`, `start_workflow_from_recipe`),
+inspect connectors (`test_connector`, `list_recipes`), and more. Destructive
+calls return a confirm prompt before they execute. Verify the endpoint by hand:
+
+```bash
+curl -s http://localhost:3000/mcp \
+  -H "Authorization: Bearer wf_live_…" -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+# → 200 with an mcp-session-id response header
+```
+
+---
+
 ## Use `sk` from your own machine (instead of `docker exec`)
 
 `docker exec subkit sk …` is the zero-install path. To run `sk` directly on your
@@ -210,11 +305,12 @@ host:
 # 1. Install the CLI (also served by your engine at /install)
 curl -fsSL http://localhost:3000/install | bash
 
-# 2. Mint a full admin key (the slug is the kebab-cased tenant name)
+# 2. Mint a full admin key — prints a ready-to-paste `sk login` line
 docker exec subkit engine --issue-admin-key --tenant my-org
+#   run this on your machine to log the host `sk` in:
+#     sk login --engine-url http://localhost:3000 --api-key wf_live_…
 
-# 3. Log in and verify
-sk login --engine-url http://localhost:3000 --api-key wf_live_…
+# 3. Paste that line, then verify
 sk status
 ```
 
