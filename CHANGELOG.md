@@ -1,5 +1,15 @@
 # Changelog
 
+## [7.2.0]
+
+Onboarding polish: scriptable setup and a friction-free first run.
+
+- New `sk credentials set <connector-id> --mode bearer|header|query|basic|aws_sigv4|none …` attaches a credential without a conversation, so key-based connectors can be provisioned fully headless (create `--skip-checks` → `credentials set` → `connectors test`).
+- All-in-one image: `sk init` auto-detects the one-time bootstrap token from the volume — no more `docker logs | grep`. The engine writes it to `SUBKIT_BOOTSTRAP_TOKEN_FILE` on mint and deletes it on consume.
+- Switching `llm.provider` no longer lets the previous provider's generic key leak into the new provider (clear "not configured" error instead of a wrong-key failure).
+- A clean local install is fully green: the missing `server.public_base_url` is now an advisory recommendation, not a setup warning.
+- Guide: documents `--llm-provider mock` for a zero-API-key tour.
+
 ## [7.1.0]
 
 Onboarding hardening and a zero-to-running quickstart.
