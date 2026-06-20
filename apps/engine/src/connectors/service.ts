@@ -8,7 +8,7 @@ import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
-import { connectors } from "../db/schema/index.ts";
+import { connectors, credentials } from "../db/schema/index.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
@@ -309,6 +309,57 @@ export async function getConnector(
     .limit(1);
   const row = rows[0];
   return row ? toView(row) : null;
+}
+
+export interface CredentialSummary {
+  id: string;
+  mode: string;
+  environment: string;
+  has_oauth_refresh: boolean;
+  granted_scopes: string | null;
+  oauth2_expires_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Redacted credential summaries for a connector — what's attached, never the
+ * secret. Powers `sk credentials list` and the single-connector GET view so an
+ * operator who runs `sk credentials set` can confirm the credential landed.
+ */
+export async function listConnectorCredentials(
+  tenant_id: string,
+  connector_id: string,
+  exec?: Executor,
+): Promise<CredentialSummary[]> {
+  const db = exec ?? getDb();
+  const rows = await db
+    .select({
+      id: credentials.id,
+      mode: credentials.mode,
+      environment: credentials.environment,
+      oauth2_refresh_ciphertext: credentials.oauth2_refresh_ciphertext,
+      granted_scopes: credentials.granted_scopes,
+      oauth2_expires_at: credentials.oauth2_expires_at,
+      created_at: credentials.created_at,
+    })
+    .from(credentials)
+    .where(
+      and(
+        eq(credentials.tenant_id, tenant_id),
+        eq(credentials.connector_id, connector_id),
+        isNull(credentials.deleted_at),
+      ),
+    )
+    .orderBy(desc(credentials.created_at));
+  return rows.map((r) => ({
+    id: r.id,
+    mode: r.mode,
+    environment: r.environment,
+    has_oauth_refresh: r.oauth2_refresh_ciphertext != null,
+    granted_scopes: r.granted_scopes,
+    oauth2_expires_at: r.oauth2_expires_at?.toISOString() ?? null,
+    created_at: r.created_at.toISOString(),
+  }));
 }
 
 /**

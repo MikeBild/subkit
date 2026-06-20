@@ -27,7 +27,11 @@ const listCommand = defineCommand({
         unknown
       >;
       const credentials = (connector.credentials ?? []) as Record<string, unknown>[];
-      emitList(!!args.json, ["id", "kind", "created_at"], credentials);
+      emitList(
+        !!args.json,
+        ["id", "mode", "environment", "has_oauth_refresh", "created_at"],
+        credentials,
+      );
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }

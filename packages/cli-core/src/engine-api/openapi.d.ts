@@ -11491,6 +11491,17 @@ export interface components {
             auth_failed_reason: string | null;
             created_at: string;
             updated_at: string;
+            credentials?: components["schemas"]["CredentialSummary"][];
+        };
+        CredentialSummary: {
+            id: string;
+            mode: string;
+            environment: string;
+            has_oauth_refresh: boolean;
+            granted_scopes: string | null;
+            /** Format: date-time */
+            oauth2_expires_at: string | null;
+            created_at: string;
         };
         CreateConnectorBody: {
             name: string;

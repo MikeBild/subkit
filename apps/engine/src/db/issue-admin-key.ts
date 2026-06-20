@@ -108,6 +108,12 @@ export async function issueAdminKey(opts: { tenantSlug: string }): Promise<Issue
 }
 
 export function formatIssuedKeyBanner(issued: IssuedAdminKey): string {
+  // Emit a fully copy-paste `sk login` line so logging in from the host is one
+  // step. Prefer the configured public base URL; fall back to the local default.
+  const engineUrl =
+    process.env.SUBKIT_PUBLIC_BASE_URL?.trim() ||
+    process.env.PUBLIC_BASE_URL?.trim() ||
+    "http://localhost:3000";
   return [
     "",
     "----------------------------------------------------------------",
@@ -117,7 +123,8 @@ export function formatIssuedKeyBanner(issued: IssuedAdminKey): string {
     ` user:    ${issued.user_email}`,
     ` key:     ${issued.key_plaintext}`,
     "----------------------------------------------------------------",
-    ` next:    sk login --api-key ${issued.key_plaintext}`,
+    " run this on your machine to log the host `sk` in:",
+    `   sk login --engine-url ${engineUrl} --api-key ${issued.key_plaintext}`,
     "",
   ].join("\n");
 }
