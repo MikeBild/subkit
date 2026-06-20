@@ -192,9 +192,13 @@ describe("/v1/diagnostics/setup", () => {
       expect(body.overall_status).toBe("blocked");
       expect(body.summary_counts.blockers).toBeGreaterThan(0);
       expect(body.sections.llm.status).toBe("blocked");
-      expect(body.sections.public_urls.status).toBe("warn");
+      // A missing public_base_url is advisory (a recommendation), NOT a setup
+      // warning — a correct local/trial install should not show ⚠ for it, and
+      // the paths that truly need it already error clearly on their own.
+      expect(body.sections.public_urls.status).toBe("ok");
+      expect(body.issues.some((issue) => issue.id === "public-base-url")).toBe(false);
+      expect(body.recommendations.some((rec) => rec.includes("public_base_url"))).toBe(true);
       expect(body.issues.some((issue) => issue.id === "llm-summarize")).toBe(true);
-      expect(body.issues.some((issue) => issue.id === "public-base-url")).toBe(true);
       // Settings-style key naming: every value key matches a settings
       // path (`sk settings set <key> ...`), not a legacy env var.
       expect(
