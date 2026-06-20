@@ -244,14 +244,33 @@ export const requestConnectorReauthTool: ConversationTool = {
 
     const { method } = buildReauthUrl(connector);
 
-    // Non-OAuth (basic/bearer/header/query) connectors have no working
-    // click-through credential form. Repair IN CHAT: bind the saved connector
-    // into a re-issue draft, then have the LLM collect the new secret via a
-    // masked `ask_user_form`. The submission flows through the existing
-    // auto-persist re-issue path (`saveConnectorAtomic` → `upsertCredential`
-    // → `clearConnectorReauth`), rotating the credential on the SAME connector
-    // id — no delete+recreate, no orphaned workflows.
-    if (method === "portal_setup") {
+    // Resolve the OAuth grant type up front — it decides browser vs. machine
+    // vs. in-chat re-issue.
+    const oauthCfg = await resolveConnectorOAuthConfig(ctx.db, ctx.tenant_id, connector);
+    const grantType = oauthCfg?.grant_type ?? null;
+
+    // Cognito USER_PASSWORD_AUTH (`cognito_user_password`) is OAuth2-typed but
+    // is NOT a browser authorization-code flow: the engine stores only the
+    // refresh token + username — never the password. Once the refresh token
+    // expires there is nothing to refresh and no authorization endpoint to
+    // redirect to; issuing a browser grant link sends the user to the Cognito
+    // InitiateAuth endpoint, where the dance throws "unexpected HTTP response
+    // status code" (the grant is burned and the user sees a misleading
+    // "link used up" page). The correct repair is the SAME in-chat re-issue
+    // used for basic/bearer/etc.: re-collect email + password and re-mint.
+    const needsInteractiveReissue =
+      method === "portal_setup" || grantType === "cognito_user_password";
+
+    // Non-OAuth (basic/bearer/header/query) connectors — and password grants
+    // like Cognito USER_PASSWORD_AUTH — have no working click-through flow.
+    // Repair IN CHAT: bind the saved connector into a re-issue draft, then have
+    // the LLM collect the new secret via a masked `ask_user_form`. The
+    // submission flows through the existing auto-persist re-issue path
+    // (`saveConnectorAtomic` → `upsertCredential` → `clearConnectorReauth`),
+    // rotating the credential on the SAME connector id — no delete+recreate,
+    // no orphaned workflows.
+    if (needsInteractiveReissue) {
+      const isCognito = grantType === "cognito_user_password";
       // A `none`-auth connector has no credential to rotate.
       if (connector.auth_type === "none") {
         return structuredError(
@@ -279,22 +298,21 @@ export const requestConnectorReauthTool: ConversationTool = {
         ok: true,
         data: {
           connector: connector.slug,
-          method,
+          method: "portal_setup",
           mode: "credential_re_issue",
           auth_type: connector.auth_type,
+          ...(isCognito ? { grant_type: "cognito_user_password" } : {}),
           needs_reauth: connector.needs_reauth,
           auth_failed_at: connector.auth_failed_at?.toISOString() ?? null,
           next_best_actions: ["ask_user_form"],
-          next_prompt: `Collect the new ${connector.auth_type} secret for '${connector.slug}' via a masked ask_user_form (type: password, sensitive: true). It rotates in place on the existing connector — the id and every workflow that uses it stay intact.`,
+          next_prompt: isCognito
+            ? `The Cognito refresh token for '${connector.slug}' has expired and the password is never stored, so it must be re-entered. Collect the Cognito email (field 'username') and password (field 'password') via a masked ask_user_form (the password field: type password, sensitive: true). The engine re-runs InitiateAuth (USER_PASSWORD_AUTH) and rotates the credential in place — the connector id and every workflow that uses it stay intact.`
+            : `Collect the new ${connector.auth_type} secret for '${connector.slug}' via a masked ask_user_form (type: password, sensitive: true). It rotates in place on the existing connector — the id and every workflow that uses it stay intact.`,
           instructions:
-            "Do not paste the secret in chat. Call ask_user_form(type: password, sensitive: true) to collect it; the harness persists it atomically onto the existing connector, clears needs_reauth, and re-probes.",
+            "Do not paste the secret in chat. Call ask_user_form(sensitive: true) to collect it; the harness persists it atomically onto the existing connector, clears needs_reauth, and re-probes.",
         },
       };
     }
-
-    // OAuth2: resolve the grant_type to decide browser vs. machine path.
-    const oauthCfg = await resolveConnectorOAuthConfig(ctx.db, ctx.tenant_id, connector);
-    const grantType = oauthCfg?.grant_type ?? null;
 
     // Machine-to-machine (client_credentials_json): run the exchange
     // synchronously — no browser dance needed.
