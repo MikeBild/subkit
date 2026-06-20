@@ -53,18 +53,26 @@ Key properties:
 
 Type `/` to see the menu. The ones you'll use most:
 
+These are the actual commands in the shipped build (type `/` for the live menu):
+
 | Command | What it does |
 |---|---|
-| `/help` | List all commands. |
 | `/approve` | Approve the AI's current proposal (commit the draft). |
-| `/reject` | Reject the proposal; tell the AI what to change. |
-| `/clear` | Start a fresh conversation. |
-| `/knowledge` | Manage knowledge sources from inside the chat. |
-| `/connector-templates` | Browse the 105 built-in connector templates. |
-| `/skills` | Manage reusable context (Skills) the AI loads. |
-| `/config` | Open the settings UI. |
-| `/debug` | Toggle verbose logging for the turn. |
-| `/exit` (or `/quit`) | Leave the REPL. |
+| `/reject` | Reject the proposal (optionally with a reason); the AI revises. |
+| `/preview` | Dry-run the current workflow draft now (`/preview show` for the last result). |
+| `/probe` | Test the current connector draft now (`/probe show` for the last result). |
+| `/draft` · `/connector` · `/workflow` | Inspect the current authoring state. |
+| `/templates` | Browse connector templates suggested for the draft. |
+| `/onboard` | Guided wizard: pick a template, enter credentials, probe, save. |
+| `/versions` · `/restore <n>` | List committed workflow versions / roll back to one. |
+| `/skills` · `/knowledge` | List reusable Skills / knowledge sources in scope. |
+| `/clear` (`/new`) · `/compact` · `/resume` | New conversation · shrink history · reattach. |
+| `/setup` · `/status` · `/cost` · `/usage` | Readiness · session+persona · budget · token usage. |
+| `/config` (`/settings`) | Open the searchable settings UI (every engine setting). |
+| `/model` · `/tenant` · `/login` · `/logout` | Switch model · switch/list tenants · auth. |
+| `/attach` · `/upload` · `/files` | Attach a file to the message · upload · list files. |
+| `/yolo` | Lift the destructive-action confirm gate for a few turns (typed `yes`). |
+| `/help` · `/exit` (`/quit`) | Cheat sheet · leave the REPL. |
 
 ## Mentions & attachments
 

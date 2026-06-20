@@ -87,13 +87,16 @@ sk login --engine-url http://localhost:3000 --api-key wf_live_…   # on your ho
 
 ## Change the LLM provider later
 
-`sk init` wires the LLM provider for you. To change it afterwards, either edit
-the persisted config (the in-container CLI is already authenticated):
+**`sk settings` is the canonical way to manage every runtime setting** — it
+writes the leaf, validates it, and audits the change. `sk init` wired the LLM
+provider for you; change it any time (the in-container CLI is already
+authenticated):
 
 ```bash
 docker exec subkit sk settings set llm.provider '"anthropic"'
 docker exec subkit sk settings set llm.api_key  '"sk-ant-…"'
 docker exec subkit sk settings set llm.model    '"claude-sonnet-4-6"'
+docker exec subkit sk settings list             # every leaf + resolved value
 ```
 
 …or override it ephemerally via env at `docker run` time (handy for CI / secrets
@@ -109,10 +112,25 @@ docker run -d --name subkit -p 3000:3000 -v subkit-data:/data \
 
 ## Configuration
 
-The image reads only a handful of bootstrap env vars; everything else lives in
-`subkit.config.json` on the volume (`docker exec subkit sk settings …` or the
-`SK_OVERRIDE_*` escape hatch). Full leaf reference:
-[`settings-reference.md`](./settings-reference.md).
+Every **runtime setting** is managed with `sk settings` (get / set / list /
+`configure`) — that is the one surface you need. The env vars below are
+deliberately *not* `sk settings`, and for a reason worth knowing:
+
+- **`MASTER_KEY` / `DATABASE_URL` / `ENGINE_LISTEN_HOST` are bootstrap-only.**
+  They're needed *before* the engine, its database, or its HTTP API exist —
+  `MASTER_KEY` decrypts the credential vault, `DATABASE_URL` is *how* the engine
+  reaches the database where settings are stored, and `ENGINE_LISTEN_HOST` is
+  where the server binds. `sk settings` talks to a *running* engine, so it
+  cannot set them (chicken-and-egg). `MASTER_KEY` isn't even a config leaf.
+- **`engine --issue-admin-key` is the operator escape hatch for the *first*
+  key.** `sk` authenticates with an API key, so it can't mint its own first one;
+  that runs directly against the database on the `engine` binary. Once you have
+  a key, `sk apikeys create` mints more through the API.
+- **`SK_OVERRIDE_*` is the no-disk complement to `sk settings`** — ephemeral env
+  overrides for CI / secret managers, re-applied each boot, never persisted.
+
+Everything else lives in `subkit.config.json` on the volume. Full leaf
+reference: [`settings-reference.md`](./settings-reference.md).
 
 | Env var | Default | Purpose |
 |---|---|---|
