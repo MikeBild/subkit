@@ -6054,6 +6054,12 @@
           },
           "updated_at": {
             "type": "string"
+          },
+          "credentials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialSummary"
+            }
           }
         },
         "required": [
@@ -6078,6 +6084,44 @@
           "auth_failed_reason",
           "created_at",
           "updated_at"
+        ]
+      },
+      "CredentialSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "has_oauth_refresh": {
+            "type": "boolean"
+          },
+          "granted_scopes": {
+            "type": "string",
+            "nullable": true
+          },
+          "oauth2_expires_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "environment",
+          "has_oauth_refresh",
+          "granted_scopes",
+          "oauth2_expires_at",
+          "created_at"
         ]
       },
       "CreateConnectorBody": {

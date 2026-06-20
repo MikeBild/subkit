@@ -128,19 +128,18 @@ Legend: ✅ fixed & verified.
 - ✅ **Bootstrap token TTL.** Banner already states the absolute expiry + “(15
   minutes)”; with auto-consume the copy step is gone, so the TTL rarely bites.
 
-## Still open (minor, found verifying 7.2.0)
+## Resolved in 7.2.1
 
-- **A4 — `sk credentials list` shows no rows.** After `sk credentials set …`
-  succeeds (engine returns 2xx), `sk credentials list <connector-id>` prints
-  "(no rows)" — the command reads `connector.credentials`, which the connector
-  view doesn't embed. The credential IS persisted (a probe with a valid key
-  succeeds); only the listing is blind. Fix: embed a redacted credential summary
-  (`{id, kind, has_credential, created_at}`) in the connector view, or have
-  `credentials list` hit a dedicated endpoint. Low impact; deferred.
+- ✅ **A4 — `sk credentials list` shows rows.** The single-connector GET
+  (`/v1/connectors/:id`) now embeds a redacted credential summary
+  (`{id, mode, environment, has_oauth_refresh, granted_scopes,
+  oauth2_expires_at, created_at}`) via `listConnectorCredentials`; the CLI lists
+  it. Secret material never leaves the vault.
+- ✅ **Smoother host login (the Imp5 *intent*, done the right way).**
+  `engine --issue-admin-key` (the operator tool) now prints a complete,
+  copy-paste `sk login --engine-url … --api-key …` line. `sk` itself still does
+  NOT shell out to Docker — it stays a multi-tenant end-user tool, not a
+  DevOps wrapper. The host path is now: run `engine --issue-admin-key`, paste
+  the printed line.
 
-## Deliberately NOT done
-
-- **One-step host login (`sk login --from-container`)** — rejected by design:
-  `sk` is a multi-tenant end-user tool, not a Docker/DevOps wrapper, so it must
-  not shell out to `docker exec`. The host path stays
-  `engine --issue-admin-key` (operator action) → `sk login --api-key …`.
+_No open onboarding items remain._

@@ -12,6 +12,18 @@ import type { OAuth2ClientConfig } from "../../../credentials/index.ts";
 import type { Db } from "../../../db/client.ts";
 import { BadRequestError } from "../../errors.ts";
 
+export const CredentialSummarySchema = z
+  .object({
+    id: z.string(),
+    mode: z.string(),
+    environment: z.string(),
+    has_oauth_refresh: z.boolean(),
+    granted_scopes: z.string().nullable(),
+    oauth2_expires_at: z.string().datetime().nullable(),
+    created_at: z.string(),
+  })
+  .openapi("CredentialSummary");
+
 export const ConnectorSchema = z
   .object({
     id: z.string(),
@@ -46,6 +58,10 @@ export const ConnectorSchema = z
     auth_failed_reason: z.string().nullable(),
     created_at: z.string(),
     updated_at: z.string(),
+    // Redacted credential summaries — present on single-connector GET so
+    // operators can confirm what's attached (and via `sk credentials list`).
+    // NEVER carries secret material; the vault ciphertext stays server-side.
+    credentials: z.array(CredentialSummarySchema).optional(),
   })
   .openapi("Connector");
 

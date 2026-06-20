@@ -113,7 +113,10 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const found = await connectorSvc.getConnector(principal.tenant_id, id, db);
     if (!found) throw new NotFoundError("connector");
-    return c.json(serialize(found), 200);
+    // Embed redacted credential summaries so `sk credentials list` (and any GET
+    // consumer) can see what's attached — no secret material is included.
+    const creds = await connectorSvc.listConnectorCredentials(principal.tenant_id, id, db);
+    return c.json({ ...serialize(found), credentials: creds }, 200);
   });
 
   app.openapi(patchRoute, async (c) => {
