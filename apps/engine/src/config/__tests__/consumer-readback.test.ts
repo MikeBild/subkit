@@ -110,6 +110,20 @@ describe("consumer read-back per subsystem", () => {
     expect(getConfig().llm.providers.anthropic.api_key).toBe("explicit-key");
   });
 
+  test("A1: switching provider does not leak the previous provider's generic key", async () => {
+    // Bootstrap anthropic with a generic key → mirrored to the anthropic leaf.
+    await setConfigKey("llm.provider", "anthropic", { force: true });
+    await setConfigKey("llm.api_key", "ant-key", { force: true });
+    expect(getConfig().llm.providers.anthropic.api_key).toBe("ant-key");
+
+    // Switch to openai WITHOUT supplying an openai key. The anthropic key must
+    // NOT bleed into the openai leaf, and anthropic must keep its own key.
+    await setConfigKey("llm.provider", "openai", { force: true });
+    expect(getConfig().llm.providers.openai.api_key).toBe("");
+    expect(getConfig().llm.providers.anthropic.api_key).toBe("ant-key");
+    expect(getConfig().llm.api_key).toBe("");
+  });
+
   test("globalLlmStatus reflects every provider config flip", async () => {
     const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
     let st = globalLlmStatus();

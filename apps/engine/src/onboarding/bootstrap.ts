@@ -25,6 +25,7 @@
 // to until the bootstrap transaction lands.
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { unlinkSync, writeFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import pc from "picocolors";
 import { z } from "zod";
@@ -184,7 +185,47 @@ async function mintToken(db: Db): Promise<{ plaintext: string; expires_at: Date 
     expires_at_ms: now() + BOOTSTRAP_TOKEN_TTL_MS,
   };
   await writeSetting(db, BOOTSTRAP_TOKEN_KEY, envelope);
+  writeTokenFile(plaintext);
   return { plaintext, expires_at: new Date(envelope.expires_at_ms) };
+}
+
+/**
+ * Convenience for the single-container (all-in-one) image: when
+ * SUBKIT_BOOTSTRAP_TOKEN_FILE is set, also drop the plaintext token into a
+ * 0600 file on the shared volume so `sk init` (run via `docker exec` in the
+ * SAME container) can auto-discover it — no copy-paste from the logs. The
+ * trust boundary is identical to the banner the engine already prints to
+ * stdout/logs; anyone who can `docker exec` already has full control.
+ * No-op (and never fatal) when the env var is unset or the write fails.
+ */
+function tokenFilePath(): string | undefined {
+  const p = process.env.SUBKIT_BOOTSTRAP_TOKEN_FILE;
+  return p && p.length > 0 ? p : undefined;
+}
+
+function writeTokenFile(plaintext: string): void {
+  const p = tokenFilePath();
+  if (!p) return;
+  try {
+    writeFileSync(p, plaintext, { mode: 0o600 });
+  } catch (err) {
+    logger.warn({
+      module: "onboarding.bootstrap",
+      action: "bootstrap.token_file_write_failed",
+      msg: "could not write bootstrap token file (auto-discovery disabled)",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+function removeTokenFile(): void {
+  const p = tokenFilePath();
+  if (!p) return;
+  try {
+    unlinkSync(p);
+  } catch {
+    /* already gone / never written — fine */
+  }
 }
 
 /**
@@ -414,6 +455,7 @@ export async function consume(
   // Flip the sentinel and revoke the token in the same logical step.
   await writeSetting(db, BOOTSTRAP_COMPLETED_KEY, true);
   await deleteSetting(db, BOOTSTRAP_TOKEN_KEY);
+  removeTokenFile();
 
   await auditAwait(
     {

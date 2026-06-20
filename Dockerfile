@@ -83,6 +83,7 @@ ENV NODE_ENV=production \
     ENGINE_LISTEN_HOST=0.0.0.0 \
     PGDATA=/data/pgdata \
     SUBKIT_CONFIG=/data/config/subkit.config.json \
+    SUBKIT_BOOTSTRAP_TOKEN_FILE=/data/config/bootstrap.token \
     HOME=/data/home
 
 EXPOSE 3000

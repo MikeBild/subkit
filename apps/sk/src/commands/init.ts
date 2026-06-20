@@ -14,6 +14,7 @@
 //     all supplied alongside `--token`; no prompts shown.  This is the
 //     CI / scripted-bootstrap path.
 
+import { existsSync, readFileSync } from "node:fs";
 import * as prompts from "@clack/prompts";
 import { defineCommand } from "citty";
 import {
@@ -243,11 +244,26 @@ export const initCommand = defineCommand({
     "llm-api-key": { type: "string", description: "LLM API key (skip prompt)" },
   },
   async run({ args }) {
-    const token = args.token as string | undefined;
+    let token = args.token as string | undefined;
+    // All-in-one image convenience: when --token is omitted, auto-discover the
+    // one-time token the engine dropped on the shared volume
+    // (SUBKIT_BOOTSTRAP_TOKEN_FILE). Lets `docker exec <c> sk init …` skip the
+    // `docker logs | grep` copy step entirely.
+    if (!token) {
+      const tokenFile = process.env.SUBKIT_BOOTSTRAP_TOKEN_FILE;
+      if (tokenFile && existsSync(tokenFile)) {
+        const fromFile = readFileSync(tokenFile, "utf8").trim();
+        if (fromFile.length > 0) {
+          token = fromFile;
+          process.stderr.write(`sk init: using bootstrap token from ${tokenFile}\n`);
+        }
+      }
+    }
     if (!token) {
       process.stderr.write(
         "sk init: --token <token> is required.\n" +
-          "  The token was printed in the engine's startup banner on first boot.\n",
+          "  The token was printed in the engine's startup banner on first boot.\n" +
+          "  (On the all-in-one Docker image, `sk init` auto-detects it — no token needed.)\n",
       );
       process.exit(2);
     }

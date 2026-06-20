@@ -97,34 +97,50 @@ Legend: ✅ fixed & verified.
 
 ---
 
-## New findings worth a follow-up (beyond F1–F10)
+## Follow-up findings — resolved in 7.2.0
 
-- **A1 — provider-switch key reuse.** F1's mirror fills the *active* provider's
-  empty key from the generic `llm.api_key`. If an operator switches
-  `llm.provider` without setting the new provider's key, the old key is mirrored
-  in (→ a clear auth error, but from the wrong provider). Consider not mirroring
-  on a provider-only change, or warning when the generic key's origin provider
-  differs from the new one.
-- **A2 — JSON envelope inconsistency.** Some list commands emit a bare array,
-  others `{items: [...]}` (`executions steps --json` returns an array though the
-  client types it `{items}`). Normalize the `--json` envelope across list
-  commands so scripts don't special-case each.
-- **A3 — no scriptable credential supply.** `sk connectors create --template`
-  has no `--credential` flag, and `sk credentials` only list/rotate/delete, so a
-  key-based connector can only be created conversationally. An
-  `sk connectors create --credential …` (or `sk credentials set`) would unblock
-  fully-scripted onboarding.
+- ✅ **A1 — provider-switch key reuse.** `setConfigKey` now clears the generic
+  `llm.api_key` on a real `llm.provider` change, so a stale key can't mirror into
+  the newly-selected provider. The prior provider keeps its own provider-specific
+  leaf; the new one stays unset until you supply its key (clear
+  `ProviderMisconfigured` error, not a wrong-key auth failure). Regression test
+  in `config/__tests__/consumer-readback.test.ts`.
+- ✅ **A2 — JSON envelope.** Confirmed the CLI surface is already consistent:
+  `emitList` always prints a **bare JSON array** for `--json` (lists → array,
+  single-`get` → object). The `{items}` shape is the engine wire type, not the
+  CLI output. Documented the convention; no breaking change made.
+- ✅ **A3 — scriptable credential supply.** New `sk credentials set <connector-id>
+  --mode bearer|header|query|basic|aws_sigv4|none …` POSTs to the existing
+  `/v1/connectors/:id/credentials` and probes after. A key-based connector can
+  now be provisioned fully headless (template create `--skip-checks` →
+  `credentials set` → `connectors test`).
 
-## Further setup / onboarding / config improvements
+## Improvements — done in 7.2.0
 
-- **Auto-consume the bootstrap token.** On the all-in-one image, `sk init` runs
-  on the same host as the engine; it could read the freshly-minted token from the
-  engine directly so the user skips the `docker logs | grep` copy step.
-- **Offer a zero-key tour.** Mention `--llm-provider mock` in the guide so a user
-  with no API key can still walk the connector/workflow mechanics.
-- **Downgrade the localhost `public_base_url` setup-warning** to info — it's the
-  lone benign warn a correct local install shows.
-- **Lengthen or annotate the 15-min bootstrap token TTL.** The reprint-on-expiry
-  is good; surfacing “expires in N min” at `sk init` time would reduce surprise.
-- **One-step host login.** Collapse `engine --issue-admin-key` + `sk login` into a
-  single `sk login --from-container subkit` helper for the host CLI path.
+- ✅ **Auto-consume the bootstrap token.** The engine writes the one-time token
+  to `SUBKIT_BOOTSTRAP_TOKEN_FILE` (set to `/data/config/bootstrap.token` in the
+  image) on mint and deletes it on consume; `sk init` reads it when `--token` is
+  omitted. The all-in-one flow no longer needs `docker logs | grep`.
+- ✅ **Zero-key tour.** Guide documents `--llm-provider mock` for a no-account run.
+- ✅ **Downgrade localhost `public_base_url` warning.** Moved from a setup
+  `warning` to a recommendation (the paths that truly need it already error
+  clearly), so a clean local install shows no spurious ⚠.
+- ✅ **Bootstrap token TTL.** Banner already states the absolute expiry + “(15
+  minutes)”; with auto-consume the copy step is gone, so the TTL rarely bites.
+
+## Still open (minor, found verifying 7.2.0)
+
+- **A4 — `sk credentials list` shows no rows.** After `sk credentials set …`
+  succeeds (engine returns 2xx), `sk credentials list <connector-id>` prints
+  "(no rows)" — the command reads `connector.credentials`, which the connector
+  view doesn't embed. The credential IS persisted (a probe with a valid key
+  succeeds); only the listing is blind. Fix: embed a redacted credential summary
+  (`{id, kind, has_credential, created_at}`) in the connector view, or have
+  `credentials list` hit a dedicated endpoint. Low impact; deferred.
+
+## Deliberately NOT done
+
+- **One-step host login (`sk login --from-container`)** — rejected by design:
+  `sk` is a multi-tenant end-user tool, not a Docker/DevOps wrapper, so it must
+  not shell out to `docker exec`. The host path stays
+  `engine --issue-admin-key` (operator action) → `sk login --api-key …`.
