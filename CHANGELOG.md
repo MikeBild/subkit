@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.2.1]
+
+Closes the last onboarding rough edges.
+
+- `sk credentials list <connector-id>` now shows attached credentials (redacted: id, mode, environment, oauth-refresh flag, created_at). The single-connector GET embeds the same summary; secret material never leaves the vault.
+- `engine --issue-admin-key` prints a complete, copy-paste `sk login --engine-url … --api-key …` line so logging the host CLI in is one paste.
+
 ## [7.2.0]
 
 Onboarding polish: scriptable setup and a friction-free first run.
