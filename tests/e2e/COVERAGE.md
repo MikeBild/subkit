@@ -216,6 +216,44 @@ Admin command groups exposed from `apps/sk/src/index.ts`:
 | `sk users` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk system-accounts` | `tier3-subkit-matrix.e2e.test.ts` |
 
+## Surface-expansion suites (mock LLM, in-process engine)
+
+Broad outcome-based coverage of the author→connect→verify→execute surfaces
+plus safety nets, driven through HTTP + `sk` against the in-process engine.
+Shared helpers live under `tests/e2e/_helpers/` (`poll`, `http`, `logs`,
+`factories`, `scheduler`, `pty-steps`).
+
+| File | Surfaces | Key assertions |
+|------|----------|----------------|
+| `connectors-surface.e2e.test.ts` | HTTP + `sk` | create → `/test` probe → `/call`; templates list + `match-url`; `sk connectors list`; runtime-log (`module=http`) on the call |
+| `workflows-authoring.e2e.test.ts` | HTTP + `sk` | `/v1/workflows/validate` good+bad; create → history → update (new version) → restore; `workflow.created` audit row; `sk workflows list` |
+| `executions-matrix.e2e.test.ts` | HTTP + `sk` | run `source: saved` (sync + async + rerun), `draft`, `step`, `/executions/transform`; `waitForExecution`; `module=execution` log correlation |
+| `knowledge-sources.e2e.test.ts` | HTTP + `sk` | inline ingest → search (polled) → get; `sk knowledge-sources list`; foreign-tenant header cannot broaden |
+| `scheduler.e2e.test.ts` | HTTP + DB + `sk` | seed schedule → `runReconcileOnce` fires `request_source="scheduler"` exactly once (CAS dedup); `schedule.trigger.fired` audit; `sk schedules list` |
+| `rbac-tenant-negatives.e2e.test.ts` | HTTP + personas | 401 (none/bogus), 403 (member audit / enduser diagnostics / enduser connector-write), foreign-tenant header non-broadening, audit-on-state-change invariant |
+| `logs-observability.e2e.test.ts` | HTTP diagnostics | structured tail + `trace_id` correlation; tenant scoping; API-key plaintext never logged (redaction); `diagnostics.logs_tailed` audit |
+| `repl-conversational.e2e.test.ts` | REPL (PTY) | boots to the quick-start banner + clean `/exit`; `/help` pane renders. Fills the default-CI PTY gap (sk-interactive-smoke is gated behind `SK_RUN_STARTER_E2E`) |
+
+## Docker image track (`tests/docker/*.docker.test.ts`)
+
+Drives the PRODUCTION all-in-one container (`Dockerfile` + `deploy/docker/
+entrypoint.sh`) over the published port via the `tests/docker/_harness.ts`
+harness (`dockerBoot` → `compose up --wait` + first-run `POST /v1/setup`
+with `llm_provider=mock`). Outcome-based only — Track B cannot pin LLM tool
+sequences. Run via `bun run test:docker` (needs `compose:test:up`).
+
+| File | When | Coverage |
+|------|------|----------|
+| `bootstrap.docker.test.ts` | PR (`docker-e2e` job) | health `ok`+`db_connected`; minted `wf_live_` key; `sk health`/`status`; `/v1/diagnostics/version`; operator `engine --issue-admin-key` |
+| `surface-crud.docker.test.ts` | PR (`docker-e2e` job) | connector create+probe+call (call egress-guarded → 422 OK); workflow save+history + `sk workflows list`; knowledge inline+search; saved transform execution |
+| `scheduler.docker.test.ts` | nightly (`docker-nightly`) | real in-container reconciler fires an `every:30` schedule → `request_source="scheduler"` (capped poll) |
+| `repl-smoke.docker.test.ts` | nightly (`docker-nightly`) | host `sk` REPL boots to the quick-start banner over a PTY against the container and exits cleanly |
+
+CI: the PR `docker-e2e` job (`.github/workflows/ci.yml`) runs the bootstrap
++ surface-CRUD subset; the `docker-nightly` job (`.github/workflows/
+nightly.yml`) runs the full track. Both inject the mock LLM via
+`docker-compose.test.yml` and upload the engine ndjson log on failure.
+
 ## Continuous coverage rules
 
 1. **Every new slash command** added to `apps/sk/src/slash.ts` MUST

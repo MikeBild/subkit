@@ -38,3 +38,9 @@ subkit.config.json
 # source. Never committed.
 .claude/worktrees/
 
+
+# Docker-image E2E (tests/docker) runtime artifacts — sk profile homes the
+# harness writes per run + engine log snapshots collected on failure.
+.docker-sk-home/
+.docker-repl-home/
+engine-docker*.log

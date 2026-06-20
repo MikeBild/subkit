@@ -1,0 +1,35 @@
+# CI-only compose for the Docker-image E2E track (tests/docker/*.docker.test.ts).
+#
+# Builds and runs the production all-in-one image (Dockerfile) with the
+# embedded PostgreSQL, exactly as a customer would `docker run` it — but
+# pinned for hermetic CI: a fixed MASTER_KEY, the mock LLM provider so no
+# model is ever called in the gate, and ndjson logs so the log-artifact is
+# machine-parseable on failure. One service, one published port, the image's
+# own /v1/health healthcheck (so `docker compose up --wait` blocks on
+# readiness — no fixed sleeps).
+services:
+  engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: subkit:cintest
+    environment:
+      NODE_ENV: production
+      # Mock provider: bootstrap (POST /v1/setup) accepts "mock", and no
+      # gating Docker test invokes an LLM endpoint.
+      LLM_PROVIDER: mock
+      # Fixed 64-hex key so encrypted state is reproducible across runs and
+      # the harness never has to scrape a generated key.
+      MASTER_KEY: "00000000000000000000000000000000000000000000000000000000000000aa"
+      # Machine-parseable logs for the failure artifact + log assertions.
+      LOG_FORMAT: ndjson
+    ports:
+      - "3000:3000"
+    # The Dockerfile already declares the healthcheck; restate the timings
+    # here so a slow embedded initdb on a cold CI runner doesn't flap.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/v1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
