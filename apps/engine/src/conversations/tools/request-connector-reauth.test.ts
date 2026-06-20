@@ -36,6 +36,9 @@ afterAll(async () => {
 async function seedConnector(opts: {
   slug: string;
   needs_reauth?: boolean;
+  auth_type?: "bearer" | "oauth2" | "basic" | "header" | "query" | "none";
+  driver?: "http" | "graphql";
+  config?: Record<string, unknown>;
 }): Promise<{ connector_id: string }> {
   const [c] = await ctx.testDb.db
     .insert(connectors)
@@ -43,11 +46,11 @@ async function seedConnector(opts: {
       tenant_id: ctx.tenant_id,
       slug: opts.slug,
       display_name: opts.slug,
-      driver: "http",
+      driver: opts.driver ?? "http",
       environment: "dev",
-      auth_type: "bearer",
+      auth_type: opts.auth_type ?? "bearer",
       base_url: "https://example.test",
-      config: {},
+      config: opts.config ?? {},
       needs_reauth: opts.needs_reauth ?? false,
     })
     .returning();
@@ -129,6 +132,41 @@ describe("request_connector_reauth — happy path", () => {
 // ---------------------------------------------------------------------------
 
 type ErrorResult = { ok: false; error_code?: string; message?: string };
+
+describe("request_connector_reauth — cognito USER_PASSWORD_AUTH", () => {
+  // Regression: a Cognito (cognito_user_password) connector must NOT get a
+  // browser authorization-code link — the password isn't stored, there is no
+  // authorization endpoint, and the dance throws "unexpected HTTP response
+  // status code", burning the grant and showing a misleading "link used up"
+  // page. It must route to the in-chat email+password re-issue instead.
+  test("cognito_user_password → in-chat re-issue, never a browser reauth_url", async () => {
+    const { connector_id } = await seedConnector({
+      slug: "rr-cognito",
+      auth_type: "oauth2",
+      driver: "graphql",
+      needs_reauth: true,
+      config: {
+        oauth: {
+          issuer_url: "https://cognito-idp.eu-central-1.amazonaws.com",
+          client_id: "test-client-id",
+          token_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
+          grant_type: "cognito_user_password",
+        },
+      },
+    });
+
+    const result = await requestConnectorReauthTool.execute(makeToolContext(), { connector_id });
+
+    expect(result.ok).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.method).toBe("portal_setup");
+    expect(data.mode).toBe("credential_re_issue");
+    expect(data.grant_type).toBe("cognito_user_password");
+    // The bug was minting a browser link — assert there is none.
+    expect("reauth_url" in data).toBe(false);
+    expect(String(data.next_prompt).toLowerCase()).toContain("password");
+  });
+});
 
 describe("request_connector_reauth — error envelopes", () => {
   test("neither connector_id nor slug → invalid_input", async () => {

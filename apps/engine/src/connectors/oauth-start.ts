@@ -218,6 +218,21 @@ export async function beginConnectorOAuthDance(
     return { kind: "done" };
   }
 
+  // Browser authorization-code is the ONLY remaining flow this function
+  // supports. Password / InitiateAuth grants (e.g. Cognito USER_PASSWORD_AUTH)
+  // have no authorization endpoint to redirect to — attempting the dance hits
+  // the provider's InitiateAuth/token endpoint and throws an opaque
+  // "unexpected HTTP response status code", burning the single-use grant and
+  // showing the user a misleading "link used up" page. Fail fast with an
+  // actionable error; `request_connector_reauth` routes these to an in-chat
+  // credential re-issue instead of ever minting a browser link.
+  if (cfg.grant_type === "cognito_user_password") {
+    throw new BadRequestError(
+      "connector uses Cognito USER_PASSWORD_AUTH (cognito_user_password), not a browser " +
+        "authorization-code flow — re-issue its credential (email + password) instead of opening a sign-in link",
+    );
+  }
+
   const cfgWithRedirect = { ...cfg, redirect_uri };
   const started = await startAuthorizationCode(cfgWithRedirect);
   await db.insert(connectorOauthStates).values({
