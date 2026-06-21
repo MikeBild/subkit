@@ -1,5 +1,16 @@
 # Changelog
 
+## [7.4.0]
+
+Runtime-log hardening, authoring-quality lints, and a count-consistency critic check — all grounded in production runtime-log analysis.
+
+- **Scheduler survives a transient PostgreSQL bounce.** A short PG restart (e.g. an unattended-upgrade point release) used to drop per-cadence scheduler jobs — docs/knowledge refresh, schedule fan-out, drift/reauth/endpoint/skill-candidate scans — for a full cadence (1–6h). Each reconcile pass now retries on a transient DB error with jittered backoff, absorbing a ~10s bounce within the tick.
+- **Silent-data-loss warnings now fire.** `transform_empty_extraction` (blocking at dry-run) and `transform_dropped_fields` (informational) were defined and consumed by the repair loop but never emitted; the transform step now produces them, so a projection that quietly drops fields or extracts nothing surfaces during authoring instead of shipping green.
+- **New `supabase-graphql` connector template** (graphql driver at `/graphql/v1`, apikey + Bearer) with matching skills, plus a GraphQL `404 → remote_resource_not_found` probe classification so the authoring agent gets a "wrong endpoint" signal instead of a generic upstream error.
+- **Authoring guidance:** independent reads should use `for_each` (auto-parallel) over `loop` (sequential); a bounded recursive/tree-traversal pattern (`has_children`, no nested loops); the authoring critic now flags avoidable sequential reads, silent data loss, and incomplete traversal.
+- **Chat-critic count consistency:** a deterministic check rejects a self-contradictory assistant tally (total ≠ sum of parts) or a stated count that over-claims the items actually listed — caught from a bulk-delete summary that claimed more workflows than existed.
+- **`tool.failed` carries the reason:** a structured `ok:false` rejection (e.g. `credential_form_mismatch`) now logs its `error_code`/`message` instead of a bare `ok:false` with only `data_keys`.
+
 ## [7.3.1]
 
 Make Biome honor `.gitignore` so local lint/pre-push stays green after the docker tests.
