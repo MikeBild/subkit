@@ -13,22 +13,16 @@
 // boot and Ctrl+C; this file fills the rest.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
-import { EXPECT_BIN, runPtyScenario, SK_BIN } from "./_helpers/pty.ts";
+import { HAS_SK_BIN, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
 import { boot, cli, type E2EEnv, expectSuccess, shutdown } from "./setup.ts";
 
-const HAS_BINARY = existsSync(SK_BIN);
-const HAS_EXPECT = !!EXPECT_BIN;
-
-// PTY harness fully working as of this commit; see the top-of-file
-// comment in sk-overhaul-cold-start.e2e.test.ts for the two fixes
-// (spawn flag + ResizeBoundary 0×0 sanitization).
-const SKIP_PTY = !HAS_BINARY || !HAS_EXPECT;
+// `HAS_SK_BIN` + `SKIP_PTY` come from _helpers/pty.ts — the single source of
+// truth so `expect`-missing fails loudly in CI instead of silently skipping.
 
 let env: E2EEnv | null = null;
 
 beforeAll(async () => {
-  if (!HAS_BINARY) return;
+  if (!HAS_SK_BIN) return;
   env = await boot("sk-overhaul-matrix", { llm: "mock" });
 }, 90_000);
 
@@ -47,7 +41,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
   // todos. Rows with enough local fixtures are asserted directly here.
   test.todo("device login renders the auth flow chrome — needs device-flow mock harness");
 
-  test.skipIf(!HAS_BINARY)("api-key login stores a usable profile", async () => {
+  test.skipIf(!HAS_SK_BIN)("api-key login stores a usable profile", async () => {
     const result = await cli(
       ["login", "--engine-url", E().baseUrl, "--api-key", E().personas.admin.apiKey],
       { env: E(), persona: "admin" },
@@ -59,7 +53,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
 
   test.todo("portal-token login boots and exits clean — needs portal-token mint harness");
 
-  test.skipIf(!HAS_BINARY)("headless `sk -p` resolves cleanly", async () => {
+  test.skipIf(!HAS_SK_BIN)("headless `sk -p` resolves cleanly", async () => {
     const result = await cli(["--p", "say hello", "--output", "json"], {
       env: E(),
       persona: "admin",
@@ -71,7 +65,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     expect(body.session_id).toBeTruthy();
   });
 
-  test.skipIf(!HAS_BINARY)("`--quiet` suppresses headless warnings", async () => {
+  test.skipIf(!HAS_SK_BIN)("`--quiet` suppresses headless warnings", async () => {
     const noisy = await cli(["--p", "please inspect @missing-file", "--output", "text"], {
       env: E(),
       persona: "admin",
@@ -92,7 +86,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     expect(quiet.stderr).not.toContain("@missing-file: not found");
   });
 
-  test.skipIf(!HAS_BINARY)("`--max-turns` is accepted by headless mode", async () => {
+  test.skipIf(!HAS_SK_BIN)("`--max-turns` is accepted by headless mode", async () => {
     const result = await cli(["--max-turns", "1", "--p", "say hello", "--output", "json"], {
       env: E(),
       persona: "admin",

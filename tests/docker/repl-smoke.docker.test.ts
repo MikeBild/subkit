@@ -9,7 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import path from "node:path";
-import { EXPECT_BIN, runPtyScenario } from "../e2e/_helpers/pty.ts";
+import { runPtyScenario, SKIP_PTY_WHEN_NO_EXPECT } from "../e2e/_helpers/pty.ts";
 import { exit, quickStartReady } from "../e2e/_helpers/pty-steps.ts";
 import { collectContainerLogs, type DockerEnv, dockerBoot } from "./_harness.ts";
 
@@ -22,11 +22,13 @@ afterAll(() => {
   collectContainerLogs(path.resolve(import.meta.dir, "../../engine-docker-repl.log"));
 }, 60_000);
 
-const noExpect = !EXPECT_BIN;
 const HOME = path.resolve(import.meta.dir, "../../.docker-repl-home");
 
 describe("sk REPL against the container", () => {
-  test.skipIf(noExpect)(
+  // Skip only when `expect` is missing AND not in CI; in CI a missing
+  // `expect` fails loudly instead of dropping coverage. See
+  // SKIP_PTY_WHEN_NO_EXPECT in _helpers/pty.ts.
+  test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(
     "boots to the quick-start banner over a PTY and exits cleanly",
     async () => {
       const result = await runPtyScenario([quickStartReady(), exit()], {
