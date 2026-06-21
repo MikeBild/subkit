@@ -31,18 +31,13 @@ let attempts = 0;
 
 beforeAll(async () => {
   ctx = await createEngineCtx("request-timeout-no-retry");
-  // Handler that never responds within the step's timeout budget: count
-  // the hit, then reply far too late (the client has already aborted).
+  // Handler that NEVER responds: the request hangs until the step's
+  // `timeout_ms` fires on the client side (no setTimeout — the
+  // determinism linter forbids it in tests). Each connection bumps the
+  // counter so we can assert no-retry.
   mock = await createMockServer((_req, res) => {
     attempts += 1;
-    setTimeout(() => {
-      try {
-        res.statusCode = 200;
-        res.end('{"ok":true}');
-      } catch {
-        // socket already torn down by the client timeout — ignore.
-      }
-    }, 5_000);
+    void res; // leave the response open; the client aborts on timeout.
   });
 });
 
