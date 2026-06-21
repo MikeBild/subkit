@@ -10,45 +10,42 @@
 // (~23 min wall clock) AND risked double-sending the email
 // (production: workflow 18bfde85 send_email, 2026-06-21).
 //
-// Behavioural (DB + mock server): a POST whose response never arrives
-// within `timeout_ms` hits the upstream exactly ONCE. The no-DB
-// source-level contract for the same fix lives in
-// request-retry-telemetry.test.ts.
+// Deterministic (DB + driver-fetch seam): the driver egress is replaced
+// with a fake that ALWAYS throws a `TimeoutError`, counting calls. A POST
+// step that times out must invoke the upstream EXACTLY ONCE — no retry,
+// no double-send. Using the seam (not a real client timeout) keeps the
+// assertion free of wall-clock flakiness on loaded CI runners.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { runExecution } from "../engine.ts";
-import {
-  createEngineCtx,
-  createMockServer,
-  createWorkflowRow,
-  type EngineTestCtx,
-  type MockServer,
-} from "./setup.ts";
+import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 
 let ctx: EngineTestCtx;
-let mock: MockServer;
-let attempts = 0;
 
 beforeAll(async () => {
   ctx = await createEngineCtx("request-timeout-no-retry");
-  // Handler that NEVER responds: the request hangs until the step's
-  // `timeout_ms` fires on the client side (no setTimeout — the
-  // determinism linter forbids it in tests). Each connection bumps the
-  // counter so we can assert no-retry.
-  mock = await createMockServer((_req, res) => {
-    attempts += 1;
-    void res; // leave the response open; the client aborts on timeout.
-  });
 });
 
 afterAll(async () => {
-  await mock.close();
   await ctx.cleanup();
 });
 
+/** A driver fetch that always times out, counting how often it is hit. */
+function makeTimeoutFetch(): { fetch: typeof fetch; calls: () => number } {
+  let calls = 0;
+  const fake = ((_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => {
+    calls += 1;
+    // Mirror Bun's AbortSignal.timeout rejection shape.
+    const err = new Error("The operation timed out.");
+    err.name = "TimeoutError";
+    return Promise.reject(err);
+  }) as unknown as typeof fetch;
+  return { fetch: fake, calls: () => calls };
+}
+
 describe("request_timeout · no retry", () => {
-  test("a POST that times out hits upstream exactly once and fails", async () => {
-    attempts = 0;
+  test("a POST that times out hits the upstream exactly once and fails", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "no-retry-on-timeout",
       steps: [
@@ -56,23 +53,54 @@ describe("request_timeout · no retry", () => {
           kind: "request",
           id: "send",
           method: "POST",
-          url: `${mock.baseUrl}/send`,
+          url: "http://127.0.0.1:9/send", // never dialled — the seam fake intercepts
           headers: { "Content-Type": "application/json" },
           body: { hello: "world" },
-          // Tiny budget so the client aborts well before the 5s server reply.
-          timeout_ms: 250,
         },
       ],
     });
-    const result = await runExecution({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenantId,
-      source: { kind: "saved", workflow_id },
-      input: null,
-    });
+
+    const probe = makeTimeoutFetch();
+    const result = await withDriverFetchForTests(probe.fetch, () =>
+      runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+      }),
+    );
+
     expect(result.status).toBe("failed");
     // The crux: a non-idempotent POST timeout is NOT retried, so the
-    // upstream saw the request exactly once (no double-send).
-    expect(attempts).toBe(1);
+    // upstream was invoked exactly once (no 5× retry, no double-send).
+    expect(probe.calls()).toBe(1);
+  });
+
+  test("an idempotent GET that times out is also not retried (terminal)", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "no-retry-on-timeout-get",
+      steps: [
+        {
+          kind: "request",
+          id: "read",
+          method: "GET",
+          url: "http://127.0.0.1:9/read",
+        },
+      ],
+    });
+
+    const probe = makeTimeoutFetch();
+    const result = await withDriverFetchForTests(probe.fetch, () =>
+      runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+      }),
+    );
+
+    expect(result.status).toBe("failed");
+    // A timeout already spent the full budget — terminal for all methods.
+    expect(probe.calls()).toBe(1);
   });
 });
