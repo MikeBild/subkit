@@ -6,12 +6,45 @@
 // {wait, send, sleep} steps; the harness drives the binary, captures
 // stdout, and returns the stripped text.
 
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { E2EEnv } from "../setup.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 export const SK_BIN = path.join(REPO_ROOT, "dist/sk");
 export const EXPECT_BIN = Bun.which("expect");
+
+/** True when the compiled `dist/sk` binary exists — PTY scenarios spawn it. */
+export const HAS_SK_BIN = existsSync(SK_BIN);
+
+/**
+ * Expect-only skip predicate — single source of truth.
+ *
+ * Skip a PTY scenario ONLY when `expect` is absent AND we're NOT in CI.
+ * Locally this keeps the suite developer-friendly (no hard dependency on the
+ * TCL `expect` tool). In CI (`CI` is set on every runner) a missing `expect`
+ * must NOT silently drop coverage: the test runs and `runPtyScenario` throws
+ * a clear "missing expect" error, so a runner-image or toolchain change that
+ * removes `expect` becomes a LOUD failure instead of an invisible skip.
+ *
+ * Evaluated at module-init (env is set before `bun test` spawns) — do not
+ * toggle `CI` mid-run. Use for PTY-only suites where a missing binary should
+ * itself be loud (the throw covers it).
+ */
+export const SKIP_PTY_WHEN_NO_EXPECT = !EXPECT_BIN && !process.env.CI;
+
+/**
+ * Combined predicate for PTY suites that ALSO gate on the compiled binary
+ * (sk-overhaul-matrix / sk-overhaul-cold-start, which run without booting the
+ * engine in some tests). Skips when the binary is absent — a developer
+ * convenience for runs that skipped `build:sk` (a missing binary in CI is
+ * caught loudly by the non-PTY e2e tests that spawn it) — OR when the
+ * expect-only predicate above fires (CI-loud).
+ *
+ * Import this; NEVER re-derive `!HAS_BINARY || !HAS_EXPECT` inline. Drift
+ * across files is exactly the gap these exports close.
+ */
+export const SKIP_PTY = !HAS_SK_BIN || SKIP_PTY_WHEN_NO_EXPECT;
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);

@@ -12,7 +12,7 @@
 // LLM: mock — boot hermetic; the stable path makes no model call.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { EXPECT_BIN, runPtyScenario } from "./_helpers/pty.ts";
+import { runPtyScenario, SKIP_PTY_WHEN_NO_EXPECT } from "./_helpers/pty.ts";
 import { exit, quickStartReady, slash } from "./_helpers/pty-steps.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
@@ -24,12 +24,11 @@ afterAll(async () => {
   await shutdown(env);
 }, 30_000);
 
-// Skip the whole suite where `expect` is unavailable (mirrors the sibling
-// PTY smoke). CI runners ship it; this only guards exotic local envs.
-const noExpect = !EXPECT_BIN;
-
 describe("sk REPL over a PTY", () => {
-  test.skipIf(noExpect)(
+  // Skip only when `expect` is missing AND not in CI — in CI a missing
+  // `expect` is a loud failure, not a silent coverage drop. See
+  // SKIP_PTY_WHEN_NO_EXPECT in _helpers/pty.ts.
+  test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(
     "boots to the quick-start banner and exits cleanly",
     async () => {
       const result = await runPtyScenario([quickStartReady(), exit()], {
@@ -44,7 +43,7 @@ describe("sk REPL over a PTY", () => {
     40_000,
   );
 
-  test.skipIf(noExpect)(
+  test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(
     "renders the slash-command help pane from the banner",
     async () => {
       const result = await runPtyScenario(
