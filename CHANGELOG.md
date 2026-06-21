@@ -1,5 +1,11 @@
 # Changelog
 
+## [7.3.1]
+
+Make Biome honor `.gitignore` so local lint/pre-push stays green after the docker tests.
+
+- `biome.json` had `vcs.enabled: false`, which silently disabled the already-set `useIgnoreFile: true` — so Biome ignored `.gitignore` entirely. Running `bun run test:docker` leaves git-ignored scratch homes (`.docker-repl-home/`, `.docker-sk-home/`) in the working tree, and the next `bun run lint` / pre-push hook then failed on those JSON artifacts. Setting `vcs.enabled: true` brings lint and git back in sync (also covers `coverage/`, `subkit.config.json`, `.claude/settings.local.json`, …). No effect in CI (fresh checkout) and no tracked source is git-ignored.
+
 ## [7.3.0]
 
 Upgrade the bundled database to PostgreSQL 18.
