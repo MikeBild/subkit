@@ -319,17 +319,22 @@
   },
   "notion-basics": {
     "title": "Notion API Basics",
-    "body": "Authenticate with a Bearer token (internal integration token starting with ntn_). All requests go to https://api.notion.com/v1. You must include a Notion-Version header (e.g., 2025-09-03). Pages and databases must be explicitly shared with your integration to be accessible.",
+    "body": "Authenticate with a Bearer token (internal integration token starting with ntn_). All requests go to https://api.notion.com/v1. You must include a Notion-Version header (e.g., 2025-09-03). Pages and databases must be explicitly shared with your integration to be accessible. A page body is a TREE of blocks: GET /v1/blocks/{id}/children returns one level; any block whose has_children is true must be fetched again to descend — there is no single call that returns a whole page. Keep each level to ONE paginated request (page_size=100 + start_cursor) and only recurse where has_children is true.",
     "examples": [
       "POST /v1/databases/{id}/query — query a database with filters and sorts",
-      "POST /v1/pages — create a page"
+      "POST /v1/pages — create a page",
+      "GET /v1/blocks/{id}/children?page_size=100 — one level of a page's block tree"
     ],
     "best_practices": [
       "Always include the Notion-Version header to pin API behavior",
-      "Use cursor-based pagination via start_cursor and has_more in responses"
+      "Use cursor-based pagination via start_cursor and has_more in responses",
+      "Fetch each block level with ONE paginated request (page_size=100), not one request per child block",
+      "Only recurse into a child when has_children is true — most blocks (text, headings) are leaves",
+      "When descending into many children, run the for_each over them in PARALLEL (bounded concurrency) rather than sequentially — a deep page is dozens of independent child fetches"
     ],
     "pitfalls": [
-      "Pages and databases are invisible to your integration unless explicitly shared — this is the most common cause of 'not found' errors"
+      "Pages and databases are invisible to your integration unless explicitly shared — this is the most common cause of 'not found' errors",
+      "Re-fetching the same children without paginating, or descending into leaf blocks, turns one page into an N+1 storm of serial requests"
     ],
     "doc_refs": ["https://developers.notion.com/reference"]
   },
@@ -946,7 +951,7 @@
   },
   "supabase-basics": {
     "title": "Supabase PostgREST API Basics",
-    "body": "Authenticate with an apikey header (literal header name, not Authorization). Use the anon key for client-side and service_role key for server-side (bypasses Row Level Security). The API is PostgREST-based with powerful filtering via query params. Supports range and offset pagination.",
+    "body": "Authenticate with an apikey header (literal header name, not Authorization). Use the anon key for client-side and service_role key for server-side (bypasses Row Level Security). The API is PostgREST-based with powerful filtering via query params. Supports range and offset pagination. Supabase also exposes a GraphQL endpoint at /graphql/v1 (pg_graphql) — use the supabase-graphql connector for nested reads in a single roundtrip.",
     "examples": [
       "GET /rest/v1/todos?select=id,title&is_complete=eq.false — list incomplete todos",
       "POST /rest/v1/todos — insert a new todo"
@@ -956,9 +961,28 @@
       "Use PostgREST query operators (eq, gt, in, like) for server-side filtering"
     ],
     "pitfalls": [
-      "The service_role key bypasses ALL Row Level Security — never expose it in client-side code"
+      "The service_role key bypasses ALL Row Level Security — never expose it in client-side code",
+      "REST lives at /rest/v1 and GraphQL at /graphql/v1 — mixing the two paths returns 404"
     ],
     "doc_refs": ["https://supabase.com/docs/guides/api"]
+  },
+  "supabase-graphql": {
+    "title": "Supabase GraphQL (pg_graphql) Basics",
+    "body": "The GraphQL endpoint is https://<ref>.supabase.co/graphql/v1 — note the /v1 suffix (a bare /graphql 404s). Send the apikey header with the anon or service_role key; most projects also require Authorization: Bearer <key> carrying the same key. pg_graphql auto-generates a relay-style schema: each table is exposed as <table>Collection { edges { node { ... } cursor } pageInfo { hasNextPage endCursor } }. The anon key respects Row Level Security; service_role bypasses it.",
+    "examples": [
+      "POST /graphql/v1 — query { todosCollection(first: 50) { edges { node { id title } } pageInfo { hasNextPage endCursor } } }",
+      "POST /graphql/v1 — query { todosCollection(filter: { is_complete: { eq: false } }) { edges { node { id title } } } }"
+    ],
+    "best_practices": [
+      "Always target /graphql/v1, never /graphql — the missing /v1 is the most common 404 cause",
+      "Send BOTH apikey and Authorization: Bearer headers with the same key when RLS is enabled",
+      "Page with the relay cursor: pass pageInfo.endCursor as the next `after` argument and stop when hasNextPage is false"
+    ],
+    "pitfalls": [
+      "apikey alone can return 401 on RLS-enabled projects — add the Authorization: Bearer header",
+      "Field names are the table/column names; pg_graphql pluralizes collections as <table>Collection"
+    ],
+    "doc_refs": ["https://supabase.com/docs/guides/graphql"]
   },
   "firebase-basics": {
     "title": "Firebase Firestore REST API Basics",

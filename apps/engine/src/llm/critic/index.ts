@@ -17,6 +17,7 @@
 // more reliable than LLM-as-judge for structural criteria.
 
 import type { SubkitLlm } from "../core/base-types.ts";
+import { type CountIssue, detectCountInconsistencies } from "./count-consistency.ts";
 import { chatRubric } from "./rubrics/chat.ts";
 import type { SaveWorkflowDraftArtifact } from "./rubrics/save-workflow-draft.ts";
 import { saveWorkflowDraftRubric } from "./rubrics/save-workflow-draft.ts";
@@ -122,6 +123,10 @@ function gradeChat(
 ): CriticVerdict {
   const matches = text.match(UUID_PATTERN) ?? [];
   const ungroundedIds = snapshot ? matches.filter((m) => !snapshot.includes(m)) : [];
+  // Numeric self-consistency: the assistant's own stated counts must add up
+  // and must not over-claim against the items it actually lists. Grounds a
+  // destructive bulk-action summary against arithmetic, not LLM prose.
+  const countIssues: CountIssue[] = detectCountInconsistencies(text);
   const checks = {
     ids_grounded: ungroundedIds.length === 0,
     runtime_values_consistent:
@@ -129,6 +134,7 @@ function gradeChat(
       ((!runtimeContext.engine_url || !text.includes("https://your-")) &&
         (!runtimeContext.tenant_slug || !text.includes("your-tenant"))),
     no_placeholder_markers: !PLACEHOLDER_MARKER.test(text),
+    counts_consistent: countIssues.length === 0,
   };
   const failed = Object.entries(checks).filter(([, v]) => v === false);
   if (failed.length === 0) {
@@ -152,6 +158,15 @@ function gradeChat(
     );
   if (failed.some(([k]) => k === "no_placeholder_markers"))
     hintParts.push("replace [guard:placeholder] markers with grounded values");
+  if (countIssues.length > 0)
+    hintParts.push(
+      `fix the inconsistent counts — ${countIssues
+        .slice(0, 3)
+        .map((c) => c.detail)
+        .join(
+          "; ",
+        )}. Derive counts from the items you actually list, do not pad to a claimed number`,
+    );
   return {
     verdict: "fail",
     confidence,
