@@ -401,6 +401,8 @@ export const log = {
     draft: {
       credential_rejected: (ctx: Ctx) =>
         logger.warn({ module: "connector", action: "draft.credential_rejected", ...ctx }),
+      auth_param_in_config: (ctx: Ctx) =>
+        logger.warn({ module: "connector", action: "draft.auth_param_in_config", ...ctx }),
     },
   },
   scheduler: {

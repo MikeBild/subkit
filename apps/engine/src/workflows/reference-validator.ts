@@ -589,22 +589,38 @@ export function validateUnsupportedPlaceholders(def: WorkflowDef): UnsupportedPl
       continue;
     }
     if (step.kind === "transform") {
-      const tx = step as { expression?: string };
-      if (tx.expression) visit(step.id, "expression", tx.expression);
+      // A `transform.expression` is a JavaScript body (the language enum
+      // is javascript | readability | html-to-markdown | structured-data
+      // and defaults to "javascript"; the non-JS languages forbid an
+      // expression). In JS, `${...}` is a TEMPLATE LITERAL — not the
+      // `${kind.X}` placeholder grammar — so the placeholder linter must
+      // NOT scan it. Pre-fix it did: every `` `${c.from}` `` /
+      // `` `${rows}` `` tripped `bad_kind` → `workflow_unsupported_placeholder`,
+      // which forced authors to rewrite valid JS to string concatenation
+      // (production session c3e1bd7e, the Gmail MIME build). Scope refs in
+      // a JS transform (`input.scope.X`) are checked by `validateReferences`,
+      // not here. Only the rare non-JS expression (none today) would be a
+      // JSONata-style interpolation site worth scanning.
+      const tx = step as { expression?: string; language?: string };
+      // Mirrors the Zod default in workflows/types.ts (`s.language ??
+      // "javascript"`). If that default ever changes, update both.
+      const language = tx.language ?? "javascript";
+      if (tx.expression && language !== "javascript") {
+        visit(step.id, "expression", tx.expression);
+      }
       continue;
     }
     // Generic walk — `path`, `url`, `headers`, `query`, `body`, etc.
     visit(step.id, "*", step);
   }
 
+  // `output_transform` is JSONata/interpolation — scan it. The separate
+  // `output_transform_function` is a JavaScript body (same template-literal
+  // reasoning as transform.expression above), so it is intentionally NOT
+  // placeholder-scanned.
   const outputTransform = (def as { output_transform?: unknown }).output_transform;
   if (typeof outputTransform === "string" && outputTransform.length > 0) {
     visit("(output_transform)", "output_transform", outputTransform);
-  }
-  const outputTransformFn = (def as { output_transform_function?: unknown })
-    .output_transform_function;
-  if (typeof outputTransformFn === "string" && outputTransformFn.length > 0) {
-    visit("(output_transform_function)", "output_transform_function", outputTransformFn);
   }
 
   return errors;

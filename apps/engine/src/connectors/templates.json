@@ -5263,38 +5263,25 @@
     "name": "Browserless",
     "driver": "http",
     "base_url": "https://production-sfo.browserless.io",
-    "auth_type": "bearer",
+    "auth_type": "query",
     "oauth": null,
     "default_skill": "browserless-basics",
-    "ingestion_source": "openapi",
+    "ingestion_source": "unsupported",
     "ingestion_url": null,
     "icon": "browserless.svg",
     "description": "Browserless headless Chrome API",
     "category": "scraping",
-    "tags": ["rest", "headless-chrome", "screenshots", "pdf", "docker"],
-    "setup_instructions": "SaaS: get token at browserless.io. Self-hosted: `docker run -p 3000:3000 -e TOKEN=my-token ghcr.io/browserless/chrome`. Pass token as `?token=` query param or Bearer.",
-    "auth_options": [
-      {
-        "auth_type": "query",
-        "label": "Token (query param)",
-        "description": "Append ?token=YOUR_TOKEN to all requests.",
-        "oauth": null
-      },
-      {
-        "auth_type": "bearer",
-        "label": "Bearer Token",
-        "description": "Pass token as Authorization: Bearer header.",
-        "oauth": null
-      }
-    ],
+    "tags": ["rest", "headless-chrome", "query-auth", "screenshots", "pdf", "docker"],
+    "setup_instructions": "Get a token at browserless.io (or self-host: `docker run -p 3000:3000 -e TOKEN=my-token ghcr.io/browserless/chrome`). Authenticate with the token as the `?token=` query parameter — the query parameter name is exactly `token`. The SaaS hosts reject Authorization: Bearer (HTTP 500), so always use query auth.",
+    "auth_options": [],
     "url_pattern": "^https://production\\-sfo\\.browserless\\.io(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
     "credential_hints": [
       {
-        "field": "token",
-        "label": "API Bearer Token",
+        "field": "value",
+        "label": "API token (query parameter `token`)",
         "placeholder": "",
         "doc_url": null,
         "secret": true

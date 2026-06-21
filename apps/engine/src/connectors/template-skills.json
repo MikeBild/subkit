@@ -1423,17 +1423,22 @@
   },
   "browserless-basics": {
     "title": "Browserless Headless Chrome API Basics",
-    "body": "Authenticate with a token via ?token= query param or Bearer header. Headless Chrome as a service. Endpoints: POST /chrome/content (HTML), /chrome/scrape (CSS extraction), /chrome/screenshot, /chrome/pdf, /chrome/function (Puppeteer code), /smart-scrape (intelligent fallback). Rate limiting is concurrency-based.",
+    "body": "Headless Chrome as a service. Authenticate ONLY with the token as the `?token=` query parameter — the SaaS hosts reject Authorization: Bearer with HTTP 500, so the connector uses query auth. Endpoints are browser-prefixed (POST): /chrome/content (rendered HTML), /chrome/scrape (CSS-selector extraction), /chrome/screenshot, /chrome/pdf, /chrome/function (run a Puppeteer/Playwright function and return structured JSON), plus /chromium/* and /edge/* equivalents. /content, /scrape, /function (no prefix) are accepted as legacy aliases but the /chrome/* paths are the documented, future-proof ones. All of these only READ data — set `side_effects: \"read\"` on the request step so dry-run/preview renders them instead of holding them as writes. Rate limiting is concurrency-based.",
     "examples": [
-      "POST /chrome/content { \"url\": \"https://example.com\" } — get rendered HTML content",
-      "POST /chrome/screenshot { \"url\": \"https://example.com\" } — take a screenshot"
+      "POST /chrome/content { \"url\": \"https://example.com\" } with side_effects:read — get rendered HTML",
+      "POST /chrome/scrape { \"url\": \"https://example.com\", \"elements\": [{ \"selector\": \"h1\" }] } — structured CSS extraction",
+      "POST /chrome/function { \"code\": \"export default async ({ page }) => { await page.goto('https://example.com'); return { data: await page.title(), type: 'application/json' }; }\" } — custom render returning JSON"
     ],
     "best_practices": [
-      "Use /smart-scrape for automatic best-strategy selection between different extraction methods",
-      "Self-host with Docker for high-volume usage to avoid SaaS concurrency limits"
+      "Always set side_effects:read on browserless request steps — the calls render pages but never mutate state, so they should not be held back as writes in dry-run/preview.",
+      "For Cloudflare- or bot-gated sites (a 'Just a moment…' / Turnstile challenge), call /unblock or add the `?proxy=residential&stealth` query params to /chrome/function — the residential proxy + stealth bypass the bot wall. Example: POST /chrome/function?proxy=residential&stealth.",
+      "Use /chrome/function when you need to wait for client-side JS to render and return structured JSON in one round-trip (page.goto → page.waitForSelector → page.evaluate).",
+      "Self-host with Docker for high-volume usage to avoid SaaS concurrency limits."
     ],
     "pitfalls": [
-      "Concurrency-based limits mean slow pages block slots — set reasonable timeouts to prevent queue buildup"
+      "Do NOT use bearer/header auth — the SaaS hosts return HTTP 500. Token goes in the `?token=` query parameter only.",
+      "Plain /chrome/content returns only the initial HTML shell for SPAs; pages that load data via XHR need /chrome/function with an explicit page.waitForSelector before page.evaluate.",
+      "Concurrency-based limits mean slow pages block slots — set reasonable timeouts to prevent queue buildup."
     ],
     "doc_refs": ["https://docs.browserless.io/"]
   },
