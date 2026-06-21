@@ -32,6 +32,12 @@ describe("classifyGraphqlProbe — HTTP status signals", () => {
     expect(classifyGraphqlProbe(403, null)).toBe("credential_invalid");
   });
 
+  // Must NOT be flagged as credential or transient — the endpoint path is wrong
+  // (e.g. Supabase GraphQL lives at /graphql/v1, not /graphql).
+  test("404 → remote_resource_not_found, not credential or upstream blip", () => {
+    expect(classifyGraphqlProbe(404, null)).toBe("remote_resource_not_found");
+  });
+
   test("500 + null messages → unknown_upstream_error", () => {
     expect(classifyGraphqlProbe(500, null)).toBe("unknown_upstream_error");
   });

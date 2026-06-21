@@ -187,6 +187,28 @@ exclusion — just ONE step that runs once per element.
 | Each iteration needs multiple sequential sibling steps | `loop` with `body: [...]` |
 | HATEOAS expansion needing two sequential passes | Two flat `for_each` steps separated by a transform |
 
+**Parallelism — `for_each` fans out, `loop` does not.**
+
+When iterations are independent, `for_each` is also the FAST choice, not
+just the simple one:
+
+- A `for_each` over a **read** request (GET / GraphQL query / SQL SELECT /
+  S3 GET·HEAD·LIST) runs its iterations **concurrently** with a bounded
+  pool (default 8). N independent reads cost ~1 roundtrip of wall-clock,
+  not N. This is automatic — you do not declare anything.
+- **Writes** (POST/PUT/PATCH/DELETE, mutations) stay **sequential** by
+  default — firing writes in parallel without intent is unsafe. Opt in
+  deliberately with `for_each_concurrency: <N>` on the step ONLY when the
+  writes are truly independent.
+- The standalone **`loop` step always runs strictly sequentially** — there
+  is no concurrency knob on it. So a `loop` whose body is N independent
+  reads pays N× the wall-clock for no reason. If the body is a single
+  independent read, rewrite it as a `for_each` step to get the parallel
+  fan-out for free; reserve `loop` for bodies that genuinely need multiple
+  ordered sibling steps per item.
+- Tune an explicit bound with `for_each_concurrency` (integer ≥ 1; `1`
+  forces sequential). Lower it when the upstream API rate-limits hard.
+
 **Addressing `for_each` output downstream (after the step):**
 
 - JS transform: `input.scope.<step_id>.data.map(iter => iter.<field>)`
@@ -195,6 +217,43 @@ exclusion — just ONE step that runs once per element.
 A step with `for_each` is NOT a container — it is a regular step that
 the runtime expands inline. The static container/child exclusion that
 applies to `loop.body` steps does not apply here.
+
+## Nested / tree data — traverse it, don't silently flatten
+
+Some APIs return a TREE, not a flat list: Notion page blocks
+(`/blocks/{id}/children`, where any block with `has_children: true` has
+its own children one fetch deeper), a file/folder hierarchy, an org →
+teams → members chain, threaded comments. The engine **cannot nest
+loops**, so you cannot recurse to unbounded depth in one workflow. Two
+failure modes to avoid:
+
+- **Silent truncation.** Fetching only the top level (`/children` once)
+  and rendering that drops every nested node. The run reads green while
+  toggles, list items, nested callouts, sub-pages, and replies are
+  silently lost. If the user asked for "the whole page" / "all
+  descendants", a one-level fetch does NOT satisfy the goal.
+- **Catch-all transforms that return empty.** A renderer that handles a
+  fixed set of node types and returns `""`/`null`/`[]` for everything
+  else discards unmatched content with no signal. Handle the unmatched
+  case explicitly (pass through, or record what was skipped). The
+  `transform_empty_extraction` warning now fires when a transform yields
+  empty output over non-empty input — treat it as a real bug, not noise.
+
+**The bounded-depth pattern (no nested loops):**
+
+1. Fetch level 0 (paginated: `page_size=100` + `start_cursor`).
+2. `for_each` over the nodes where `has_children` (or the API's
+   equivalent flag) is true → fetch their children. This is one flat
+   `for_each`, and because the fetch is a read it fans out in parallel.
+3. Repeat per expected depth, OR — preferably — ask the user how deep
+   the data actually goes and stop there. State the depth bound in the
+   workflow so it is explicit, not accidental.
+
+If the data is arbitrarily deep, say so to the user and agree on a depth
+limit rather than pretending one workflow flattens an unbounded tree. A
+connector with a **GraphQL** endpoint often collapses the whole traversal
+into ONE nested query — prefer it over N+1 REST descents when available
+(see the GraphQL connector skills).
 
 ## Recurring cadence is part of the workflow definition
 

@@ -33,6 +33,13 @@ For transform steps, set `input_schema` to document what must be in scope and `o
 
 ## Loop step guidelines
 
+- **Independent reads → `for_each`, not `loop`.** A `loop` body runs
+  strictly sequentially (no concurrency knob). A `for_each` over a read
+  request fans out concurrently (bounded pool, default 8), so N independent
+  reads cost ~1 roundtrip instead of N. Only reach for `loop` when each item
+  genuinely needs multiple ordered sibling steps. Writes stay sequential by
+  default; opt into `for_each_concurrency: <N>` only when they are truly
+  independent.
 - Set `timeout_ms` per step inside the loop body (not on the loop step itself)
 - Use `data_selector` to reduce the scope size passed between steps
 - Set `max_retries: 0` for request steps inside loop bodies (fail fast per item, not retry per item)

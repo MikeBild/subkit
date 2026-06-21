@@ -10,6 +10,8 @@
 //   2. Are quoted runtime values (engine_url, tenant_slug) consistent
 //      with the runtime_context block?
 //   3. Are there NO `[guard:placeholder]` markers in the final text?
+//   4. Do the assistant's own stated counts add up and match the items it
+//      lists (no "5 = 2+2", no "3 Workflows" over a 2-item list)?
 //
 // Step 0 exports the schema. Step 4 fills in the judge prompt.
 
@@ -25,6 +27,7 @@ export const ChatVerdictSchema = z.object({
       ids_grounded: z.boolean(),
       runtime_values_consistent: z.boolean(),
       no_placeholder_markers: z.boolean(),
+      counts_consistent: z.boolean(),
     })
     .partial()
     .default({}),
