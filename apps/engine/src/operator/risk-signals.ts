@@ -58,12 +58,8 @@ function sortBySeverity(a: RiskSignal, b: RiskSignal): number {
  * registry against the configured predictive thresholds. Pure read — never
  * mutates a gauge, never throws (a config-read failure collapses to an empty
  * list so the digest still renders). Sorted highest-severity-first.
- *
- * `uptimeSeconds` is injectable so the transient-retry rate (retries ÷ uptime)
- * is deterministic under test — production passes `process.uptime()`, tests
- * pass a fixed value so the boundary never flakes on a slow runner's clock.
  */
-export function computeRiskSignals(opts?: { uptimeSeconds?: number }): RiskSignal[] {
+export function computeRiskSignals(): RiskSignal[] {
   let predictive: Config["observability"]["predictive"];
   try {
     predictive = getConfig().observability.predictive;
@@ -119,11 +115,12 @@ export function computeRiskSignals(opts?: { uptimeSeconds?: number }): RiskSigna
     });
   }
 
-  // 3. Transient-DB-retry rate. Counter is process-cumulative; we chart it
-  //    per minute of uptime against the configured per-minute rate.
-  const transientRetries = reg.counterSum(METRIC_NAMES.DB_TRANSIENT_RETRIES_TOTAL);
-  const uptimeMin = Math.max((opts?.uptimeSeconds ?? process.uptime()) / 60, 1);
-  const retryRate = transientRetries / uptimeMin;
+  // 3. Transient-DB-retry rate. Read the WINDOWED per-minute gauge the memory
+  //    sampler maintains (retries since the previous 60s tick ÷ elapsed
+  //    minutes), not the cumulative total ÷ uptime — a lifetime average would
+  //    latch on an old blip (short uptime) or go deaf to a fresh spike (long
+  //    uptime). The gauge is a true leading indicator that decays per window.
+  const retryRate = reg.gaugeSum(METRIC_NAMES.DB_TRANSIENT_RETRY_RATE_PER_MIN);
   if (retryRate >= predictive.transient_retry_rate) {
     signals.push({
       kind: "transient_retry",

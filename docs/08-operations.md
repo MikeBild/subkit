@@ -112,11 +112,19 @@ New metrics added in this revision:
 - `llm_context_total_tokens{flow}` — histogram of total prompt tokens
   per call.
 - Predictive-maintenance gauges/counters: `db_pool_{total,idle,waiting}_connections`,
-  `db_transient_retries_total{label}`, `dlq_job_count{queue}`,
-  `connector_call_total{slug,health}`, `llm_call_duration_ms{provider,model,flow}`,
+  `db_transient_retries_total{label}`, `db_transient_retry_rate_per_min`,
+  `dlq_job_count{queue}`, `connector_call_total{slug,health}`,
+  `llm_call_duration_ms{provider,model,flow}`,
   `llm_fallback_invocations_total{from,to,reason}`,
   `process_memory_rss_high_water_bytes`. These feed the leading-indicator `risk[]`
   block of `GET /v1/operator/health-digest`.
+  - The `transient_retry` risk signal reads `db_transient_retry_rate_per_min`, a
+    **windowed** rate the 60s memory sampler computes (retries since the previous
+    tick ÷ elapsed minutes), against `observability.predictive.transient_retry_rate`
+    — **not** the cumulative `db_transient_retries_total` ÷ uptime. The window is
+    what keeps it a leading indicator: a one-off Postgres blip decays to 0 within
+    a tick or two instead of latching the warn (short uptime) or being averaged
+    into silence (long uptime).
 
 **Risk-signal audit dedup is per-process.** A risk signal crossing into
 `critical` (or recovering) writes a single `operator.risk_signal_raised` /

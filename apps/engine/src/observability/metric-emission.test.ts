@@ -1,4 +1,8 @@
-// Integration tests for Phase-2 predictive-maintenance metric helpers.
+// Unit tests for Phase-2 predictive-maintenance metric helpers.
+//
+// No DB or queue infrastructure — these drive the live metrics registry
+// directly, so the file is a plain unit test (`.test.ts`, not `.int.test.ts`):
+// the integration CI layer must not spin up compose just to run it.
 //
 // These tests use the live metrics registry (no DB required) to assert that
 // each instrumentation helper records the expected counter / gauge change when

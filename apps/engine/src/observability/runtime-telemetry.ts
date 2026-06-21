@@ -21,6 +21,7 @@
 import { errorFields, log, logger } from "../logging/logger.ts";
 import { recordProcessRssHighWater, setDbPoolStats } from "./instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
+import { sampleTransientRetryRate } from "./transient-retry-rate.ts";
 
 const BYTES_PER_MB = 1024 * 1024;
 
@@ -242,9 +243,10 @@ export function startMemorySampler(opts?: {
       reg.set(METRIC_NAMES.PROCESS_MEMORY_HEAP_USED_BYTES, m.heapUsed, {});
       reg.set(METRIC_NAMES.PROCESS_MEMORY_HEAP_TOTAL_BYTES, m.heapTotal, {});
       reg.set(METRIC_NAMES.PROCESS_MEMORY_EXTERNAL_BYTES, m.external, {});
-      // Phase 2: max-ever RSS (climb-only) + Postgres-pool saturation
-      // gauges, both riding this existing 60s ticker.
+      // Phase 2: max-ever RSS (climb-only), windowed transient-retry rate, and
+      // Postgres-pool saturation gauges, all riding this existing 60s ticker.
       recordProcessRssHighWater(m.rss);
+      sampleTransientRetryRate();
       if (opts?.poolStats) {
         const p = opts.poolStats();
         setDbPoolStats({ total: p.total, idle: p.idle, waiting: p.waiting });

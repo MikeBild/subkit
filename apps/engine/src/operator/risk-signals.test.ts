@@ -25,6 +25,10 @@ import {
   METRIC_NAMES,
   resetMetricsRegistryForTests,
 } from "../observability/metrics.ts";
+import {
+  _resetTransientRetryRateForTests,
+  sampleTransientRetryRate,
+} from "../observability/transient-retry-rate.ts";
 import { computeRiskSignals, topRisk } from "./risk-signals.ts";
 
 // Load a minimal config so getConfig() inside computeRiskSignals() resolves.
@@ -47,6 +51,7 @@ async function ensureConfig(): Promise<void> {
 beforeEach(async () => {
   resetMetricsRegistryForTests();
   _resetRssHighWaterForTests();
+  _resetTransientRetryRateForTests();
   await ensureConfig();
 });
 
@@ -110,14 +115,15 @@ describe("computeRiskSignals — dlq_growth", () => {
 });
 
 describe("computeRiskSignals — transient_retry", () => {
-  test("emits warn when retry rate ≥ transient_retry_rate (default 1/min)", () => {
-    // Inject a fixed uptime so the rate (retries ÷ uptime_min) is deterministic
-    // and the boundary never flakes on a slow runner's wall clock. At uptime =
-    // 60s → 1 min, 2 retries → rate 2 ≥ threshold 1.
-    for (let i = 0; i < 2; i++) {
-      recordDbTransientRetry({ label: "test" });
-    }
-    const signals = computeRiskSignals({ uptimeSeconds: 60 });
+  // The signal reads the WINDOWED rate gauge the memory sampler maintains.
+  // Drive it deterministically: baseline-sample at t0, record retries, then
+  // sample again at t0+Δ with injected nowMs so the rate = retries ÷ Δminutes.
+  test("emits warn when the windowed rate ≥ transient_retry_rate (default 1/min)", () => {
+    sampleTransientRetryRate({ nowMs: 0 }); // baseline
+    for (let i = 0; i < 2; i++) recordDbTransientRetry({ label: "test" });
+    sampleTransientRetryRate({ nowMs: 60_000 }); // 2 retries over 1 min → rate 2
+
+    const signals = computeRiskSignals();
     const s = signals.find((r) => r.kind === "transient_retry");
     expect(s).toBeDefined();
     expect(s!.severity).toBe("warn");
@@ -125,13 +131,23 @@ describe("computeRiskSignals — transient_retry", () => {
     expect(s!.threshold).toBe(1);
   });
 
-  test("no signal when retry rate is below threshold (injected uptime)", () => {
-    // 5 retries over 600s = 10 min → rate 0.5/min, below the default 1/min.
-    for (let i = 0; i < 5; i++) {
-      recordDbTransientRetry({ label: "test" });
-    }
-    const signals = computeRiskSignals({ uptimeSeconds: 600 });
-    expect(signals.find((r) => r.kind === "transient_retry")).toBeUndefined();
+  test("no signal when the windowed rate is below threshold", () => {
+    sampleTransientRetryRate({ nowMs: 0 });
+    for (let i = 0; i < 5; i++) recordDbTransientRetry({ label: "test" });
+    sampleTransientRetryRate({ nowMs: 600_000 }); // 5 retries over 10 min → 0.5/min
+
+    expect(computeRiskSignals().find((r) => r.kind === "transient_retry")).toBeUndefined();
+  });
+
+  test("an old blip decays: a quiet window drops the rate back to 0 (no latch)", () => {
+    // Spike, then a window with NO new retries → rate returns to 0, proving the
+    // windowed gauge is a leading indicator, not a cumulative-÷-uptime latch.
+    sampleTransientRetryRate({ nowMs: 0 });
+    for (let i = 0; i < 10; i++) recordDbTransientRetry({ label: "test" });
+    sampleTransientRetryRate({ nowMs: 60_000 }); // rate 10 → would warn
+    sampleTransientRetryRate({ nowMs: 120_000 }); // quiet minute → rate 0
+
+    expect(computeRiskSignals().find((r) => r.kind === "transient_retry")).toBeUndefined();
   });
 });
 

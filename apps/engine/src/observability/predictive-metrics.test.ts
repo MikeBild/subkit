@@ -17,10 +17,15 @@ import {
   setDlqJobCount,
 } from "./instrumentation.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "./metrics.ts";
+import {
+  _resetTransientRetryRateForTests,
+  sampleTransientRetryRate,
+} from "./transient-retry-rate.ts";
 
 beforeEach(() => {
   resetMetricsRegistryForTests();
   _resetRssHighWaterForTests();
+  _resetTransientRetryRateForTests();
 });
 
 describe("setDbPoolStats", () => {
@@ -161,5 +166,34 @@ describe("recordProcessRssHighWater", () => {
     const snap = getMetrics().snapshot();
     const entry = snap.find((s) => s.name === METRIC_NAMES.PROCESS_MEMORY_RSS_HIGH_WATER_BYTES);
     expect(entry?.samples[0]?.value).toBe(3000);
+  });
+});
+
+describe("sampleTransientRetryRate (windowed)", () => {
+  const rateGauge = (): number | undefined =>
+    getMetrics()
+      .snapshot()
+      .find((s) => s.name === METRIC_NAMES.DB_TRANSIENT_RETRY_RATE_PER_MIN)?.samples[0]?.value;
+
+  test("first call only establishes the baseline — no rate yet", () => {
+    recordDbTransientRetry({ label: "drift_scan" });
+    sampleTransientRetryRate({ nowMs: 0 });
+    expect(rateGauge()).toBeUndefined();
+  });
+
+  test("charts the delta over the elapsed window (retries ÷ minutes)", () => {
+    sampleTransientRetryRate({ nowMs: 0 });
+    for (let i = 0; i < 6; i++) recordDbTransientRetry({ label: "drift_scan" });
+    sampleTransientRetryRate({ nowMs: 120_000 }); // 6 retries over 2 min → 3/min
+    expect(rateGauge()).toBe(3);
+  });
+
+  test("a quiet window decays the rate back to 0 (no latch)", () => {
+    sampleTransientRetryRate({ nowMs: 0 });
+    for (let i = 0; i < 10; i++) recordDbTransientRetry({ label: "drift_scan" });
+    sampleTransientRetryRate({ nowMs: 60_000 }); // 10/min
+    expect(rateGauge()).toBe(10);
+    sampleTransientRetryRate({ nowMs: 120_000 }); // no new retries → 0
+    expect(rateGauge()).toBe(0);
   });
 });

@@ -62,6 +62,7 @@ export const METRIC_NAMES = {
   DB_POOL_IDLE_CONNECTIONS: "db_pool_idle_connections",
   DB_POOL_WAITING_CONNECTIONS: "db_pool_waiting_connections",
   DB_TRANSIENT_RETRIES_TOTAL: "db_transient_retries_total",
+  DB_TRANSIENT_RETRY_RATE_PER_MIN: "db_transient_retry_rate_per_min",
   DLQ_JOB_COUNT: "dlq_job_count",
   CONNECTOR_CALL_TOTAL: "connector_call_total",
   LLM_CALL_DURATION_MS: "llm_call_duration_ms",
@@ -443,6 +444,11 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.DB_TRANSIENT_RETRIES_TOTAL,
     help: "Transient-database-error retries performed by retryTransient, partitioned by the caller's pass label. A rising rate flags a flapping Postgres before the pass exhausts its tries.",
     labels: ["label"],
+  });
+  reg.registerGauge({
+    name: METRIC_NAMES.DB_TRANSIENT_RETRY_RATE_PER_MIN,
+    help: "Transient-DB-retry rate over the last sampler window (retries since the previous 60s tick ÷ elapsed minutes). A windowed leading indicator — unlike the cumulative total ÷ uptime, a one-off blip decays within a window instead of latching.",
+    labels: [],
   });
   reg.registerGauge({
     name: METRIC_NAMES.DLQ_JOB_COUNT,
