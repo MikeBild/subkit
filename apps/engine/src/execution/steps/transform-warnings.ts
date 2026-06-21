@@ -16,9 +16,10 @@
 //   transform_dropped_fields (INFORMATIONAL) — the transform mapped over a
 //     non-empty array and emitted an array of the SAME length whose object
 //     keys are a strict subset of the source items' keys. A strong hint the
-//     projection silently dropped fields (session 3f6082d2: format_output
-//     dropped the `resources` field). Advisory only — reshaping that
-//     intentionally narrows is legitimate, so this never blocks a commit.
+//     projection silently dropped fields (the "format_output emits
+//     {id,name} from rows that also carried `resources`" shape). Advisory
+//     only — reshaping that intentionally narrows is legitimate, so this
+//     never blocks a commit.
 //
 // Detection is purely structural (no JS parsing) and deliberately
 // conservative on the advisory code: dropped-fields fires only when EXACTLY

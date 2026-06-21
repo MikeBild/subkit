@@ -9,8 +9,8 @@
 // Run: bun run scripts/benchmark-authoring-lints.ts
 //
 // The corpus is labelled ground truth drawn from the two production failure
-// shapes (Notion renderer returning "" for every block; session 3f6082d2
-// format_output dropping `resources`) plus clean cases that MUST stay quiet.
+// shapes (Notion renderer returning "" for every block; format_output dropping
+// `resources`) plus clean cases that MUST stay quiet.
 
 import { detectTransformWarnings } from "../apps/engine/src/execution/steps/transform-warnings.ts";
 
@@ -53,7 +53,7 @@ const CORPUS: Case[] = [
   },
   // ── Lossy: dropped fields (INFORMATIONAL code) ───────────────────────
   {
-    name: "format_output drops `resources` (session 3f6082d2)",
+    name: "format_output drops `resources` from mapped rows",
     output: [
       { project_id: 1, project_name: "a" },
       { project_id: 2, project_name: "b" },

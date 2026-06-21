@@ -2,7 +2,7 @@
 // specified in execution/types.ts + consumed by the dry-run repair loop but
 // never wired. Covers the two production failure shapes that motivated the
 // codes: a renderer that returns empty for every input (Notion blocks), and a
-// projection that drops a field while mapping (session 3f6082d2 resources).
+// projection that drops a field while mapping (the dropped-`resources` shape).
 
 import { describe, expect, test } from "bun:test";
 import { detectTransformWarnings } from "../transform-warnings.ts";

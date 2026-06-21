@@ -91,12 +91,27 @@ export interface RetryTransientOptions {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+// ±20% jitter so independent retriers (multiple engine instances, or several
+// reconcile passes) recovering from the SAME bounce don't realign on one
+// backoff schedule and stampede the just-returned database. Matches the
+// request-step retry's jitter (execution/steps/request/retry.ts).
+function jitter(ms: number): number {
+  return Math.max(0, ms + (Math.random() * 2 - 1) * ms * 0.2);
+}
+
 /**
  * Run `fn`, retrying ONLY on `isTransientDbError` with capped exponential
- * backoff (mirrors the pub/sub listener: start small, double, cap). A
- * non-transient error rethrows immediately; the last transient error
- * rethrows once `tries` is exhausted so the caller's existing `.catch()`
- * logging still fires.
+ * backoff + jitter (mirrors the pub/sub listener: start small, double, cap). A
+ * non-transient error rethrows immediately; the last transient error rethrows
+ * once `tries` is exhausted so the caller's existing `.catch()` logging fires.
+ *
+ * IDEMPOTENCY CONTRACT: `fn` MUST be safe to run more than once. retryTransient
+ * cannot detect a partial commit — if `fn` performs an enqueue/write and THEN
+ * advances a dedup watermark, a transient connection drop between the two will
+ * re-run the whole body on retry and double-fire. Every scheduler pass wrapped
+ * here advances its CAS/`last_enqueued_at` watermark such that a re-run is a
+ * no-op (the cron-due / claim check fails the second time); keep that order
+ * when adding new callers.
  */
 export async function retryTransient<T>(
   fn: () => Promise<T>,
@@ -112,6 +127,7 @@ export async function retryTransient<T>(
     } catch (err) {
       lastErr = err;
       if (attempt >= tries || !isTransientDbError(err)) throw err;
+      const sleepMs = jitter(delay);
       logger.warn({
         module: "db",
         action: "retry_transient",
@@ -119,10 +135,10 @@ export async function retryTransient<T>(
         ...(opts.label !== undefined ? { label: opts.label } : {}),
         attempt,
         tries,
-        delay_ms: delay,
+        delay_ms: Math.round(sleepMs),
         ...errorFields(err),
       });
-      await sleep(delay);
+      await sleep(sleepMs);
       delay = Math.min(maxMs, delay * 2);
     }
   }

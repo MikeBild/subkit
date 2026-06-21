@@ -1,8 +1,8 @@
 // Unit tests for detectCountInconsistencies — the deterministic count checks
-// added to the chat critic. Regression guard for the corsica-ferries delete
-// (conversation dc81979b) where the assistant claimed "3 Workflows / 5 total"
-// over a 2-workflow tenant and a self-contradictory "5 = 2+2" final tally,
-// and the critic passed it with confidence 1.
+// added to the chat critic. Regression guard for a bulk-delete summary where
+// the assistant claimed "3 Workflows / 5 total" over a 2-workflow tenant and a
+// self-contradictory "5 = 2+2" final tally, and the critic passed it with
+// confidence 1.
 
 import { describe, expect, test } from "bun:test";
 import { detectCountInconsistencies } from "../count-consistency.ts";

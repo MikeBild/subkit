@@ -338,7 +338,11 @@ export function summarizeToolFailure(result: {
 }): Record<string, string> {
   if (result.ok) return {};
   const out: Record<string, string> = {};
-  if (typeof result.error_code === "string") out.error_code = result.error_code;
-  if (typeof result.message === "string") out.error = result.message;
+  // Bound both fields: a tool may interpolate an arbitrarily large payload
+  // (e.g. an upstream response body) into its rejection message, and this
+  // lands verbatim in the structured log. The field-level redactor still
+  // scrubs credential-shaped substrings; the cap just stops log bloat.
+  if (typeof result.error_code === "string") out.error_code = result.error_code.slice(0, 80);
+  if (typeof result.message === "string") out.error = result.message.slice(0, 500);
   return out;
 }

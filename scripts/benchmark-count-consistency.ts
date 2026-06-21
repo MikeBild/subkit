@@ -6,9 +6,9 @@
 //
 // Run: bun run scripts/benchmark-count-consistency.ts
 //
-// Ground truth is drawn from the real corsica-ferries delete (conversation
-// dc81979b): the "3 Workflows over a 2-item list" summary and the "5 = 2+2"
-// final tally — plus clean messages that MUST stay quiet (precision).
+// Ground truth is drawn from the real corsica-ferries delete: the "3 Workflows
+// over a 2-item list" summary and the "5 = 2+2" final tally — plus clean
+// messages that MUST stay quiet (precision).
 
 import { detectCountInconsistencies } from "../apps/engine/src/llm/critic/count-consistency.ts";
 

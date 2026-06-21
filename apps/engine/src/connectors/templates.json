@@ -17896,7 +17896,7 @@
         "oauth": null
       }
     ],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.supabase\\.co/graphql/v1(\\/|$)",
+    "url_pattern": "^https://[^/]+\\.supabase\\.co/graphql/v1(\\/|$)",
     "keywords": ["collection", "edges", "node", "pageInfo", "pg_graphql"],
     "inline_schema": null,
     "probe_endpoint": null,

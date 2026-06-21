@@ -57,13 +57,19 @@ const BREAKDOWN_RE =
 
 const NUM_NOUN_RE = /(\d+)\s+[\p{L}][\p{L}-]*/gu;
 
+// Cap parsed counts well below float-precision loss. A "count" larger than
+// this is not a real resource tally; ignore it rather than risk a bogus verdict.
+const MAX_COUNT = 1_000_000;
+const toCount = (s: string | undefined): number => Number.parseInt(s ?? "", 10);
+
 /** A: stated total ≠ sum of its `+`-joined itemised parts. */
 function detectArithmetic(text: string): CountIssue[] {
   const issues: CountIssue[] = [];
   for (const m of text.matchAll(BREAKDOWN_RE)) {
-    const total = Number(m[1]);
-    const parts = [...(m[2] ?? "").matchAll(NUM_NOUN_RE)].map((p) => Number(p[1]));
+    const total = toCount(m[1]);
+    const parts = [...(m[2] ?? "").matchAll(NUM_NOUN_RE)].map((p) => toCount(p[1]));
     if (parts.length < 2) continue;
+    if (total > MAX_COUNT || parts.some((p) => p > MAX_COUNT)) continue;
     const sum = parts.reduce((a, b) => a + b, 0);
     if (sum !== total) {
       issues.push({
@@ -116,13 +122,18 @@ function detectOverEnumeration(text: string): CountIssue[] {
   for (const s of sections) if (!bySection.has(s.stem)) bySection.set(s.stem, s);
 
   const issues: CountIssue[] = [];
+  // "<N> <noun>" claim. The `{2,}` noun floor avoids matching short
+  // prepositions/particles (de "im"/"am", en "of"), so a count of 1 over a
+  // 1-char noun is intentionally not graded — the false-positive cost there
+  // outweighs the rare real catch.
   const claimRe = /(\d+)\s+([\p{L}][\p{L}-]{2,})/gu;
   const seen = new Set<string>();
   for (const m of text.matchAll(claimRe)) {
     const idx = m.index ?? 0;
     const before = text.slice(Math.max(0, idx - 20), idx);
     if (TRUNCATION_RE.test(before)) continue; // "top 5", "showing 3", …
-    const count = Number(m[1]);
+    const count = toCount(m[1]);
+    if (count > MAX_COUNT) continue;
     const s = bySection.get(stem(m[2] ?? ""));
     if (!s) continue;
     const key = `${stem(m[2] ?? "")}:${count}`;

@@ -17,16 +17,27 @@ describe("connector-template catalog — structural", () => {
     expect(templates.length).toBeGreaterThanOrEqual(10);
   });
 
-  test("ships 106 templates", () => {
+  test("ships the expected number of templates", () => {
     // Bump this counter when adding/removing built-in templates. The
     // canonical drift guard is `loadBuiltinTemplates()` at startup —
     // every entry must pass `ConnectorTemplateSchema`. This test pins
     // the catalog size so a stray add/remove surfaces explicitly.
-    //
-    // History: 95 → 101 (six AWS/oauth2 entries) → 102 (web-scraper) →
-    // 103 (generic-multipart-upload) → 104 (linkedin oauth2 + create-post
-    // recipe) → 105 (xray-cloud graphql) → 106 (supabase-graphql).
     expect(templates.length).toBe(106);
+  });
+
+  test("supabase-graphql url_pattern matches a real host, not the literal [^/]+", () => {
+    // Regression: the pattern was copied with an over-escaped character
+    // class (`\\[\\^/\\]\\+`) that matched the literal string "[^/]+"
+    // instead of a hostname, so URL auto-detection never recognised the
+    // connector. A proper `[^/]+` host class must match a real ref and
+    // must not match the REST endpoint.
+    const t = templates.find((x) => x.slug === "supabase-graphql");
+    expect(t?.url_pattern).toBeTruthy();
+    const re = new RegExp(t?.url_pattern as string);
+    expect(re.test("https://abcdef.supabase.co/graphql/v1")).toBe(true);
+    expect(re.test("https://abcdef.supabase.co/graphql/v1/")).toBe(true);
+    expect(re.test("https://abcdef.supabase.co/rest/v1")).toBe(false);
+    expect(re.test("https://[^/]+.supabase.co/graphql/v1")).toBe(false);
   });
 
   test("every slug matches the lowercase-kebab regex", () => {
