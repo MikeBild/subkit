@@ -771,12 +771,12 @@ export async function setConfigKey(
     let reconfigureFailed = false;
     if (leaf.path[0] === "observability") {
       // Hot-reload the per-field log cap when observability.* changes —
-      // operators set `sk settings set observability.field_truncation_bytes`
+      // operators set `sk settings set observability.field_truncation_chars`
       // expecting the next log line to honor it without a restart.
       try {
         const { reconfigureObservability } = await import("../logging/logger.ts");
         reconfigureObservability({
-          field_truncation_bytes: fullParse.data.observability.field_truncation_bytes,
+          field_truncation_chars: fullParse.data.observability.field_truncation_chars,
         });
       } catch {
         /* logger module not loaded */

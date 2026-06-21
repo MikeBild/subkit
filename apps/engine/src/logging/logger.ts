@@ -119,16 +119,17 @@ function emitPretty(level: LogLevel, fields: LogFields): void {
 // secret the redactor would otherwise have masked.
 //
 // Phase 1 boot default is 2048; `reconfigureObservability()` swaps it to
-// `observability.field_truncation_bytes` once the config loader resolves
+// `observability.field_truncation_chars` once the config loader resolves
 // (mirrors `reconfigureLogger`). Until then — and in unit tests that never
-// load config — the 2048 default holds.
+// load config — the 2048 default holds. The cap is in characters (UTF-16
+// code units, matching `String.length`/`slice`), not bytes.
 const DEFAULT_MAX_FIELD_LEN = 2048;
 let MAX_FIELD_LEN = DEFAULT_MAX_FIELD_LEN;
 
-/** Hot-swap the per-field log cap from `observability.field_truncation_bytes`.
- *  Falls back to the 2048 boot default when `bytes` is absent or invalid. */
-export function reconfigureObservability(opts: { field_truncation_bytes?: number }): void {
-  const n = opts.field_truncation_bytes;
+/** Hot-swap the per-field log cap from `observability.field_truncation_chars`.
+ *  Falls back to the 2048 boot default when the value is absent or invalid. */
+export function reconfigureObservability(opts: { field_truncation_chars?: number }): void {
+  const n = opts.field_truncation_chars;
   MAX_FIELD_LEN = typeof n === "number" && Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_FIELD_LEN;
 }
 

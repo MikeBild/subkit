@@ -111,27 +111,27 @@ describe("computeRiskSignals — dlq_growth", () => {
 
 describe("computeRiskSignals — transient_retry", () => {
   test("emits warn when retry rate ≥ transient_retry_rate (default 1/min)", () => {
-    // Record enough retries so the rate ≥ 1/min. Since uptime starts from
-    // process boot, we need many retries to drive the per-minute rate above
-    // threshold reliably. The formula is retries / max(uptime_min, 1); with
-    // uptime >> 1 we need huge numbers — instead we just check the threshold
-    // boundary at uptime = 1 by using 2 retries (rate = 2 ≥ 1).
-    //
-    // NOTE: `process.uptime()` may already be > 1 minute in slow CI, which
-    // would dilute the rate. Guard with a large batch so the rate stays over 1
-    // even at 5 min uptime.
-    const uptimeMin = Math.max(process.uptime() / 60, 1);
-    // 100 retries → rate = 100/uptimeMin; threshold = 1; 100 >> uptime_min for reasonable values.
-    for (let i = 0; i < 100; i++) {
+    // Inject a fixed uptime so the rate (retries ÷ uptime_min) is deterministic
+    // and the boundary never flakes on a slow runner's wall clock. At uptime =
+    // 60s → 1 min, 2 retries → rate 2 ≥ threshold 1.
+    for (let i = 0; i < 2; i++) {
       recordDbTransientRetry({ label: "test" });
     }
-    const signals = computeRiskSignals();
+    const signals = computeRiskSignals({ uptimeSeconds: 60 });
     const s = signals.find((r) => r.kind === "transient_retry");
     expect(s).toBeDefined();
     expect(s!.severity).toBe("warn");
-    expect(s!.value).toBeGreaterThanOrEqual(1);
+    expect(s!.value).toBe(2);
     expect(s!.threshold).toBe(1);
-    void uptimeMin; // used implicitly above
+  });
+
+  test("no signal when retry rate is below threshold (injected uptime)", () => {
+    // 5 retries over 600s = 10 min → rate 0.5/min, below the default 1/min.
+    for (let i = 0; i < 5; i++) {
+      recordDbTransientRetry({ label: "test" });
+    }
+    const signals = computeRiskSignals({ uptimeSeconds: 600 });
+    expect(signals.find((r) => r.kind === "transient_retry")).toBeUndefined();
   });
 });
 

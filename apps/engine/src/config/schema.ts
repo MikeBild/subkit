@@ -471,13 +471,15 @@ const ObservabilitySection = z
     // logger hot-reloads this via reconfigureObservability() on any
     // observability.* write; it falls back to 2048 when the loader is not
     // initialised (boot, unit tests).
-    field_truncation_bytes: z
+    field_truncation_chars: z
       .number()
       .int()
       .min(256)
       .max(65_536)
       .default(2048)
-      .describe("Per-field string cap applied to structured log fields after redaction.")
+      .describe(
+        "Per-field cap (in characters / UTF-16 code units, not bytes) applied to structured log fields after redaction.",
+      )
       .meta(global()),
     // Phase 2 predictive-maintenance thresholds. These are the leading
     // indicators the operator health-digest evaluates against the live

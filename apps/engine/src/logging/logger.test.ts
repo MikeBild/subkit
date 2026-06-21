@@ -136,6 +136,18 @@ describe("ndjson field-length cap", () => {
     expect(blob.length).toBeLessThan(huge.length);
   });
 
+  test("caps by character count, not bytes (multibyte field)", () => {
+    // "한" is 1 UTF-16 code unit (String.length 1) but 3 UTF-8 bytes. The cap
+    // is documented as characters, not bytes, so 5000 of them truncate at the
+    // same 2048-char boundary as the ASCII case — dropping 2952 chars — even
+    // though the byte length (~15 KB) is far larger.
+    const huge = "한".repeat(5000);
+    const rec = captureNdjson(() => logger.info({ module: "t", action: "a", blob: huge }));
+    const blob = rec.blob as string;
+    expect(blob.startsWith("한".repeat(2048))).toBe(true);
+    expect(blob).toContain("…[truncated 2952 chars]");
+  });
+
   test("leaves short string fields untouched", () => {
     const rec = captureNdjson(() => logger.info({ module: "t", action: "a", small: "ok" }));
     expect(rec.small).toBe("ok");

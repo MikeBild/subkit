@@ -136,7 +136,7 @@ async function runServer(): Promise<void> {
   await bootPhase("config_load", () => loadConfig());
   const cfg = getConfig();
   reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
-  reconfigureObservability({ field_truncation_bytes: cfg.observability.field_truncation_bytes });
+  reconfigureObservability({ field_truncation_chars: cfg.observability.field_truncation_chars });
   recordBootConsumer("logger");
 
   // Storage sanity: when the local-disk backend is selected without an
@@ -684,7 +684,7 @@ async function loadConfigAndReconfigureLogger(): Promise<void> {
   const cfg = getConfig();
   const { reconfigureLogger, reconfigureObservability } = await import("./logging/logger.ts");
   reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
-  reconfigureObservability({ field_truncation_bytes: cfg.observability.field_truncation_bytes });
+  reconfigureObservability({ field_truncation_chars: cfg.observability.field_truncation_chars });
 }
 
 async function runMigrateOnce(): Promise<void> {
