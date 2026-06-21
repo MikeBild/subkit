@@ -602,6 +602,8 @@ export function validateUnsupportedPlaceholders(def: WorkflowDef): UnsupportedPl
       // not here. Only the rare non-JS expression (none today) would be a
       // JSONata-style interpolation site worth scanning.
       const tx = step as { expression?: string; language?: string };
+      // Mirrors the Zod default in workflows/types.ts (`s.language ??
+      // "javascript"`). If that default ever changes, update both.
       const language = tx.language ?? "javascript";
       if (tx.expression && language !== "javascript") {
         visit(step.id, "expression", tx.expression);

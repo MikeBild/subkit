@@ -290,6 +290,13 @@ export interface RecordConnectorDraftCredentialRejectedParams extends RecorderBa
    * intentionally NOT recorded — only the path is safe to surface.
    */
   matched_key_path: string;
+  /**
+   * Policy discriminator. Defaults to `credential_must_use_form` (a
+   * credential-shaped value smuggled into config). The query-auth
+   * param-name guard passes `auth_param_name_in_config` so operators
+   * tailing `audit_log` can tell the two rejection classes apart.
+   */
+  reason?: "credential_must_use_form" | "auth_param_name_in_config";
 }
 
 /**
@@ -313,7 +320,7 @@ export function recordConnectorDraftCredentialRejected(
       resource_type: "conversation",
       resource_id: p.conversation_id,
       result: "denied",
-      reason: "credential_must_use_form",
+      reason: p.reason ?? "credential_must_use_form",
       metadata: {
         conversation_id: p.conversation_id,
         matched_key_path: p.matched_key_path,

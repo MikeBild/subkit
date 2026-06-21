@@ -65,8 +65,9 @@ const DRIVER_FETCH: typeof fetch = Object.assign(
   (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
     LOAD_TIME_FETCH(input, { ...(init ?? {}), keepalive: false }),
   // `typeof fetch` (Bun) also carries `preconnect`; delegate it to the real
-  // implementation so the wrapper remains a drop-in.
-  { preconnect: globalThis.fetch.preconnect.bind(globalThis) },
+  // implementation so the wrapper remains a drop-in. Optional-chained so a
+  // non-Bun runtime (no `fetch.preconnect`) doesn't crash module import.
+  { preconnect: globalThis.fetch.preconnect?.bind(globalThis) ?? (() => {}) },
 );
 
 const overrideStore = new AsyncLocalStorage<typeof fetch>();

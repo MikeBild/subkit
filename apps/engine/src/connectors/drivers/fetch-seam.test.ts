@@ -8,7 +8,7 @@
 // to a connection-counting server must open N distinct TCP connections.
 // (A plain pooled fetch would open 1.)
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import { getDriverFetch } from "./fetch-seam.ts";
 
@@ -30,12 +30,16 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  server.closeAllConnections?.();
   await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
+beforeEach(() => {
+  connections = 0;
 });
 
 describe("driver egress · no connection pooling (keepalive:false)", () => {
   test("N sequential driver-egress requests open N fresh TCP connections", async () => {
-    connections = 0;
     const fetchImpl = getDriverFetch();
     const N = 5;
     for (let i = 0; i < N; i++) {

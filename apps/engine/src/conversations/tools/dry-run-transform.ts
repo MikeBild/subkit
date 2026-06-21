@@ -62,7 +62,13 @@ const DryRunInput = z
       .unknown()
       .default(null)
       .describe(
-        'Sample input for the expression. A literal OBJECT becomes the scope record: each top-level key is a step id, so `{ "scrape_prices": { "data": {…} } }` is read as `input.scope.scrape_prices.data` in a javascript body (exactly the production shape). The workflow-input slot `input.input` is populated ONLY from an `input` key on that object — to set it, pass `{ "input": {…}, "<step_id>": {…} }`. A literal array/scalar rides `input.input` with an empty `input.scope`. To pull REAL recorded upstream data instead of hand-shaping it, pass the string `$scope`, `$scope.<step_id>`, or `$input` (resolved from the latest dry_run_workflow preview).',
+        [
+          "Sample input for the expression.",
+          'A literal OBJECT becomes the scope record: each top-level key is a step id, so `{ "scrape_prices": { "data": {…} } }` is read as `input.scope.scrape_prices.data` in a javascript body (exactly the production shape).',
+          'The workflow-input slot `input.input` is populated ONLY from an `input` key on that object — to set it, pass `{ "input": {…}, "<step_id>": {…} }`.',
+          "A literal array/scalar rides `input.input` with an empty `input.scope`.",
+          "To pull REAL recorded upstream data instead of hand-shaping it, pass the string `$scope`, `$scope.<step_id>`, or `$input` (resolved from the latest dry_run_workflow preview).",
+        ].join(" "),
       ),
     // Transforms are JavaScript — default the probe to the same language so
     // an author testing a transform body gets execution-parity by default.

@@ -89,24 +89,23 @@ function containsCredentialShape(value: unknown, path: string, depth: number): s
  * name" for query auth. None of these exist in any driver's config
  * schema — `HttpConnectorConfig` is `.strict()` and rejects them at save
  * with the opaque "invalid http connector config". The param name lives
- * in the credential's `param` field, never in config. Returns the
- * offending key (original casing) or null. Match is case-insensitive and
- * top-level only — these are never nested.
+ * in the credential's `param` field, never in config.
+ *
+ * Matched by regex rather than a fixed deny-list so future LLM inventions
+ * (`query_arg_name`, `query_string_param`, `auth_query_param`, …) are
+ * caught without a redeploy. The pattern requires the key to START with
+ * an auth/query/param/token/key/arg token (after an optional `auth_`/
+ * `query_` prefix), so it never collides with a real HTTP-config key
+ * (static_headers, static_query, query_defaults, timeout_ms, oauth, …).
+ * Known matches: query_param_name, query_parameter_name, query_param,
+ * param_name, query_key, auth_param, auth_query_param, token_param.
  */
-const AUTH_PARAM_CONFIG_KEYS = new Set([
-  "query_param_name",
-  "query_parameter_name",
-  "query_param",
-  "param_name",
-  "query_key",
-  "auth_param",
-  "auth_query_param",
-  "token_param",
-]);
+const AUTH_PARAM_CONFIG_KEY_RE =
+  /^(auth_|query_)?(param|parameter|query|token|key|arg)(_?(name|param|parameter|key|arg))*$/i;
 
 function findAuthParamConfigKey(config: Record<string, unknown>): string | null {
   for (const key of Object.keys(config)) {
-    if (AUTH_PARAM_CONFIG_KEYS.has(key.toLowerCase())) return key;
+    if (AUTH_PARAM_CONFIG_KEY_RE.test(key)) return key;
   }
   return null;
 }
@@ -220,6 +219,23 @@ export const updateConnectorDraftTool: ConversationTool = {
       // generic "use a form" one. Generalized, not vendor-specific.
       const authParamKey = findAuthParamConfigKey(args.config);
       if (authParamKey !== null) {
+        // Telemetry parity with the credential-shape rejection below:
+        // emit the structured log line AND an audit_log row so operator
+        // tooling that tails either surface sees the policy decision. The
+        // offending KEY name is safe to record; its value never is.
+        log.connector.draft.auth_param_in_config({
+          conversation_id: ctx.conversation_id,
+          tenant_id: ctx.tenant_id,
+          matched_key_path: authParamKey,
+        });
+        recordConnectorDraftCredentialRejected({
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.actor_id,
+          executor: ctx.db,
+          conversation_id: ctx.conversation_id,
+          matched_key_path: authParamKey,
+          reason: "auth_param_name_in_config",
+        });
         return {
           ok: false,
           error_code: "auth_param_name_in_config",

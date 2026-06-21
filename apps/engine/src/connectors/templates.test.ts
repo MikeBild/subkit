@@ -430,10 +430,25 @@ describe("connector-template catalog — browserless query-auth hardening", () =
   // `bearer`, which the SaaS hosts reject with HTTP 500 — the model
   // fought the template, invented `config.query_param_name`, and looped.
   // Browserless authenticates ONLY via the `?token=` query parameter.
+  //
+  // MIGRATION NOTE (v7.5.0): this flips tenant-visible template defaults
+  // (auth_type bearer→query, auth_options emptied, credential_hints field
+  // token→value, ingestion_source openapi→unsupported). Templates only
+  // SEED defaults for NEW drafts — they never mutate stored connectors.
+  // An already-saved Browserless connector with a bearer credential keeps
+  // sending `Authorization: Bearer …` at runtime unchanged; only new
+  // drafts (and re-auth flows) pick up query auth. The empty auth_options
+  // is deliberate (bearer 500s on SaaS), matching the canonical query
+  // templates scrapingbee/trello.
   test("browserless template defaults to query auth (not bearer)", () => {
     const t = templates.find((x) => x.slug === "browserless");
     expect(t).toBeDefined();
     expect(t?.auth_type).toBe("query");
+  });
+
+  test("browserless auth_options is intentionally empty (no broken bearer path offered)", () => {
+    const t = templates.find((x) => x.slug === "browserless");
+    expect(t?.auth_options ?? []).toEqual([]);
   });
 
   test("browserless credential hint is the canonical query shape (field `value`)", () => {

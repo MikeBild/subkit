@@ -129,4 +129,15 @@ describe("base64 decode + btoa/atob globals (stdlib v1.3.0)", () => {
     const out = await b64("return btoa(input.s);", { s: "ä" });
     expect(out).toBe(Buffer.from("ä", "binary").toString("base64"));
   });
+
+  test("stdlib installs cleanly across sequential sandbox runs (fresh context per call)", async () => {
+    // Each runJs builds a fresh QuickJS context and installs the stdlib
+    // (sk + btoa/atob) once. Two sequential runs must both succeed — i.e.
+    // the non-configurable defineProperty installs never collide across
+    // contexts (no long-lived context reused with a second install).
+    const a = await b64("return btoa('a');", {});
+    const c = await b64("return btoa('c');", {});
+    expect(a).toBe(Buffer.from("a", "binary").toString("base64"));
+    expect(c).toBe(Buffer.from("c", "binary").toString("base64"));
+  });
 });
