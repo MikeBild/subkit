@@ -8,7 +8,7 @@ docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:la
 ```
 
 - **Image build** — the root [`Dockerfile`](../Dockerfile) (multi-stage: a bun
-  builder compiles the engine + `sk` binaries, a `postgres:16` runtime stage
+  builder compiles the engine + `sk` binaries, a `postgres:18` runtime stage
   runs them). Boot logic lives in [`../deploy/docker/entrypoint.sh`](../deploy/docker/entrypoint.sh).
 - **Customer guide** — [`../docs/operations/docker.md`](../docs/operations/docker.md):
   quick start, admin key, LLM wiring, external-DB mode, persistence, limits.

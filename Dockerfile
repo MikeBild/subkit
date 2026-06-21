@@ -47,11 +47,11 @@ RUN set -eux; \
       --outfile /out/sk
 
 # ---------------------------------------------------------------------------
-# Stage 2 — runtime: postgres:16 base bundles PostgreSQL 16, initdb, gosu,
+# Stage 2 — runtime: postgres:18 base bundles PostgreSQL 18, initdb, gosu,
 # and a glibc userland for the bun-compiled binary. We only add curl +
 # ca-certificates (healthcheck + outbound TLS to LLM providers).
 # ---------------------------------------------------------------------------
-FROM postgres:16-bookworm AS runtime
+FROM postgres:18-bookworm AS runtime
 
 # Retry apt-get update: under buildx/QEMU multi-arch builds the InRelease
 # fetch occasionally fails transiently ("is not signed"). Acquire::Retries
