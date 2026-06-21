@@ -10,12 +10,8 @@
 // at tests/e2e/_helpers/pty.ts.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
-import { EXPECT_BIN, runPtyScenario, SK_BIN } from "./_helpers/pty.ts";
+import { runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
-
-const HAS_BINARY = existsSync(SK_BIN);
-const HAS_EXPECT = !!EXPECT_BIN;
 
 // PTY harness — fully working as of this commit:
 //   1) tests/e2e/_helpers/pty.ts dropped the invalid `--` from
@@ -27,7 +23,10 @@ const HAS_EXPECT = !!EXPECT_BIN;
 //
 // Wait patterns target literals that actually appear in the welcome
 // banner (apps/sk/src/repl/welcome-banner.tsx).
-const SKIP_PTY = !HAS_BINARY || !HAS_EXPECT;
+//
+// `SKIP_PTY` is imported from _helpers/pty.ts (single source of truth):
+// skips on a missing binary locally, but a missing `expect` is a LOUD
+// failure in CI rather than a silent coverage drop.
 
 let env: E2EEnv | null = null;
 
