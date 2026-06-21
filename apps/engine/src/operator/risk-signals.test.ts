@@ -20,7 +20,11 @@ import {
   setDbPoolStats,
   setDlqJobCount,
 } from "../observability/instrumentation.ts";
-import { getMetrics, resetMetricsRegistryForTests } from "../observability/metrics.ts";
+import {
+  getMetrics,
+  METRIC_NAMES,
+  resetMetricsRegistryForTests,
+} from "../observability/metrics.ts";
 import { computeRiskSignals, topRisk } from "./risk-signals.ts";
 
 // Load a minimal config so getConfig() inside computeRiskSignals() resolves.
@@ -241,19 +245,16 @@ describe("computeRiskSignals — config unavailable falls back to empty list", (
 
 describe("getMetrics gaugeSum / counterSum / histogramCount read-path contract", () => {
   test("gaugeSum returns 0 for an un-set gauge", () => {
-    const { METRIC_NAMES } = require("../observability/metrics.ts");
     expect(getMetrics().gaugeSum(METRIC_NAMES.DB_POOL_TOTAL_CONNECTIONS)).toBe(0);
   });
 
   test("counterSum accumulates across label-sets", () => {
-    const { METRIC_NAMES } = require("../observability/metrics.ts");
     recordConnectorCall({ slug: "a", health: "ok" });
     recordConnectorCall({ slug: "b", health: "ok" });
     expect(getMetrics().counterSum(METRIC_NAMES.CONNECTOR_CALL_TOTAL)).toBe(2);
   });
 
   test("histogramCount counts observations across label-sets", () => {
-    const { METRIC_NAMES } = require("../observability/metrics.ts");
     recordLlmCallDuration({ provider: "p", model: "m", flow: "f", duration_ms: 50 });
     recordLlmCallDuration({ provider: "p", model: "m2", flow: "f", duration_ms: 200 });
     expect(getMetrics().histogramCount(METRIC_NAMES.LLM_CALL_DURATION_MS)).toBe(2);

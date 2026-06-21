@@ -12693,7 +12693,7 @@ export interface components {
         OperatorRiskSignal: {
             kind: string;
             /** @enum {string} */
-            severity: "info" | "warn" | "critical";
+            severity: "warn" | "critical";
             headline: string;
             detail: string;
             metric: string;

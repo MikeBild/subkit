@@ -17,9 +17,13 @@
 
 import { totalmem } from "node:os";
 import { getConfig } from "../config/loader.ts";
+import type { Config } from "../config/schema.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 
-export type RiskSeverity = "info" | "warn" | "critical";
+// Only "warn" and "critical" are produced today — a signal either trends
+// toward the cliff (warn) or is over it (critical). No "info" tier until a
+// producer needs one; keeping it would be dead surface in the generated type.
+export type RiskSeverity = "warn" | "critical";
 
 export interface RiskSignal {
   /** Stable machine kind — e.g. "pool_saturation", "llm_fallback". */
@@ -37,7 +41,7 @@ export interface RiskSignal {
   threshold: number;
 }
 
-const SEVERITY_RANK: Record<RiskSeverity, number> = { info: 0, warn: 1, critical: 2 };
+const SEVERITY_RANK: Record<RiskSeverity, number> = { warn: 1, critical: 2 };
 
 /** Highest-severity-first, then by how far past threshold (worst first). */
 function sortBySeverity(a: RiskSignal, b: RiskSignal): number {
@@ -56,7 +60,7 @@ function sortBySeverity(a: RiskSignal, b: RiskSignal): number {
  * list so the digest still renders). Sorted highest-severity-first.
  */
 export function computeRiskSignals(): RiskSignal[] {
-  let predictive: ReturnType<typeof getConfig>["observability"]["predictive"];
+  let predictive: Config["observability"]["predictive"];
   try {
     predictive = getConfig().observability.predictive;
   } catch {

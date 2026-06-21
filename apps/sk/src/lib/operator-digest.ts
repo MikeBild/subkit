@@ -28,11 +28,10 @@ export async function fetchOperatorDigest(
 }
 
 /** Severity → terminal color. Critical leads in red (same weight as a
- *  scheduled production failure); warn is yellow; info is dim. */
+ *  scheduled production failure); warn is yellow. */
 const RISK_COLOR: Record<RiskSeverity, (s: string) => string> = {
   critical: pc.red,
   warn: pc.yellow,
-  info: pc.dim,
 };
 
 /** Best-effort one-line risk summary for the `sk login` success path. Fetches
@@ -40,17 +39,14 @@ const RISK_COLOR: Record<RiskSeverity, (s: string) => string> = {
  *  any others, or null when there's nothing to flag / the engine is
  *  unreachable. Never throws — login must never block on this. */
 export async function riskSummaryLine(client: EngineClient): Promise<string | null> {
-  try {
-    const digest = await client.getOperatorHealthDigest();
-    const risks = digest.risk;
-    if (risks.length === 0) return null;
-    const top = risks[0]!;
-    const color = RISK_COLOR[top.severity];
-    const more = risks.length > 1 ? pc.dim(` (+${risks.length - 1} more)`) : "";
-    return `${color("●")} ${color(`[${top.severity}]`)} ${top.headline}${more}`;
-  } catch {
-    return null;
-  }
+  // Reuse the normalized fetch (risk ?? [], null on all-clear/unreachable) so a
+  // version-skewed engine without `risk` can't reach a raw `.length`.
+  const digest = await fetchOperatorDigest(client);
+  if (!digest || digest.risk.length === 0) return null;
+  const top = digest.risk[0]!;
+  const color = RISK_COLOR[top.severity];
+  const more = digest.risk.length > 1 ? pc.dim(` (+${digest.risk.length - 1} more)`) : "";
+  return `${color("●")} ${color(`[${top.severity}]`)} ${top.headline}${more}`;
 }
 
 const ORIGIN_LABEL: Record<string, string> = {

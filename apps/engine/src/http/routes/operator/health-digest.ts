@@ -41,7 +41,7 @@ const PatchSchema = z
 const RiskSignalSchema = z
   .object({
     kind: z.string(),
-    severity: z.enum(["info", "warn", "critical"]),
+    severity: z.enum(["warn", "critical"]),
     headline: z.string(),
     detail: z.string(),
     metric: z.string(),

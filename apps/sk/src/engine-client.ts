@@ -199,7 +199,7 @@ export interface DigestPatch {
   classification: "safe" | "unsafe";
   summary: string;
 }
-export type RiskSeverity = "info" | "warn" | "critical";
+export type RiskSeverity = "warn" | "critical";
 export interface RiskSignal {
   kind: string;
   severity: RiskSeverity;

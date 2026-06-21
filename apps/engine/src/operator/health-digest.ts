@@ -21,6 +21,7 @@ import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, patchCandidates, workflows } from "../db/schema/index.ts";
 import { classifyFailure, humanizeClassification } from "../execution/classify.ts";
+import { getContext } from "../logging/context.ts";
 import { computeRiskSignals, type RiskSignal, takeRiskEdges, topRisk } from "./risk-signals.ts";
 
 const DEFAULT_WINDOW_HOURS = 24;
@@ -90,7 +91,12 @@ function asRecord(v: unknown): Record<string, unknown> {
 export async function buildOperatorHealthDigest(
   db: Db,
   tenant_id: string,
-  opts?: { window_hours?: number },
+  // `audit` (default true): emit the RISK_SIGNAL_* edge audits + advance the
+  // process-scoped edge tracker. The canonical operator reads (the HTTP route,
+  // the MCP resource) leave it on; the incidental read-only summaries (MCP
+  // `initialize` instructions, `sk login`) pass `audit: false` so a connect or
+  // a login is a pure read with no audit side-effect.
+  opts?: { window_hours?: number; audit?: boolean },
 ): Promise<OperatorHealthDigest> {
   const windowHours = opts?.window_hours ?? DEFAULT_WINDOW_HOURS;
   const generatedAt = new Date();
@@ -249,38 +255,45 @@ export async function buildOperatorHealthDigest(
   // resource read / REPL start). The signals are host-scoped shared
   // infrastructure, so rows land under the system tenant rather than the
   // reading tenant (which would duplicate one host condition across every
-  // tenant that reads). `actor_id: null` is explicit (system, no human actor).
-  // Fire-and-forget: the digest read must not block on the audit write.
-  const edges = takeRiskEdges(risk);
-  for (const r of edges.raised) {
-    audit({
-      tenant_id: SYSTEM_TENANT_ID,
-      actor_type: "system",
-      actor_id: null,
-      action: AuditAction.RISK_SIGNAL_RAISED,
-      resource_type: "operator_health_digest",
-      resource_id: r.kind,
-      result: "success",
-      metadata: {
-        kind: r.kind,
-        severity: r.severity,
-        metric: r.metric,
-        value: r.value,
-        threshold: r.threshold,
-      },
-    });
-  }
-  for (const kind of edges.cleared) {
-    audit({
-      tenant_id: SYSTEM_TENANT_ID,
-      actor_type: "system",
-      actor_id: null,
-      action: AuditAction.RISK_SIGNAL_CLEARED,
-      resource_type: "operator_health_digest",
-      resource_id: kind,
-      result: "success",
-      metadata: { kind },
-    });
+  // tenant that reads). `actor_id: null` is explicit (system, no human actor);
+  // `request_source` carries the surface that triggered the read so SIEM can
+  // split edges by entry point. Skipped entirely on read-only summary paths
+  // (audit:false) so a connect/login is a pure read. Fire-and-forget: the
+  // digest read must not block on the audit write.
+  if (opts?.audit !== false) {
+    const requestSource = getContext().request_source;
+    const edges = takeRiskEdges(risk);
+    for (const r of edges.raised) {
+      audit({
+        tenant_id: SYSTEM_TENANT_ID,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.RISK_SIGNAL_RAISED,
+        resource_type: "operator_health_digest",
+        resource_id: r.kind,
+        result: "success",
+        metadata: {
+          kind: r.kind,
+          severity: r.severity,
+          metric: r.metric,
+          value: r.value,
+          threshold: r.threshold,
+          ...(requestSource ? { request_source: requestSource } : {}),
+        },
+      });
+    }
+    for (const kind of edges.cleared) {
+      audit({
+        tenant_id: SYSTEM_TENANT_ID,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.RISK_SIGNAL_CLEARED,
+        resource_type: "operator_health_digest",
+        resource_id: kind,
+        result: "success",
+        metadata: { kind, ...(requestSource ? { request_source: requestSource } : {}) },
+      });
+    }
   }
 
   const allClear = failureGroups.length === 0 && patchItems.length === 0 && risk.length === 0;
@@ -341,7 +354,6 @@ const ORIGIN_TAG: Record<FailureOrigin, string> = {
 };
 
 const RISK_TAG: Record<RiskSignal["severity"], string> = {
-  info: "[info]",
   warn: "[warn]",
   critical: "[critical]",
 };
@@ -400,7 +412,11 @@ export async function buildOperatorHealthSummary(
   db: Db,
   tenant_id: string,
 ): Promise<{ digest: OperatorHealthDigest; text: string }> {
-  const digest = await buildOperatorHealthDigest(db, tenant_id);
+  // `audit: false` — this is the incidental read-only path (MCP `initialize`
+  // instructions + `sk login`). The RISK_SIGNAL_* edge audits fire only on the
+  // deliberate operator digest reads (HTTP route, MCP resource), so a connect
+  // or login never advances the edge tracker or writes an audit row.
+  const digest = await buildOperatorHealthDigest(db, tenant_id, { audit: false });
   if (digest.all_clear) {
     return { digest, text: "Engine health: all clear — no failing runs, pending fixes, or risks." };
   }

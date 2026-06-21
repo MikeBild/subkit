@@ -8,7 +8,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
-import { logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/logger.ts";
 import { buildOperatorHealthSummary } from "../operator/health-digest.ts";
 import { can } from "../rbac/evaluator.ts";
 import { registerCompletionCapability } from "./capabilities/completion.ts";
@@ -66,7 +66,7 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
             action: "mcp.instructions.late_error",
             msg: "connect health summary failed (after the initialize race resolved)",
             tenant_id: principal.tenant_id,
-            error: err instanceof Error ? err.message : String(err),
+            ...errorFields(err),
           });
           return null;
         },
@@ -97,7 +97,7 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
       action: "mcp.instructions.skipped",
       msg: "could not compute connect health summary — proceeding without instructions",
       tenant_id: principal.tenant_id,
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
 

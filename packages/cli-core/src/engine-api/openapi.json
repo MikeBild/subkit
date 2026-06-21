@@ -10833,7 +10833,6 @@
           "severity": {
             "type": "string",
             "enum": [
-              "info",
               "warn",
               "critical"
             ]
