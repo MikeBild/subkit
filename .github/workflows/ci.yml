@@ -119,10 +119,15 @@ jobs:
 
       - name: Install expect (PTY REPL tests)
         # The GitHub ubuntu-24.04 image ships without `expect`, so the
-        # PTY-driven REPL suites (repl-conversational.e2e, sk-interactive-
-        # smoke) self-skip via `skipIf(!EXPECT_BIN)` and silently drop their
-        # coverage. Install it so those tests actually run in the gate.
-        run: sudo apt-get update && sudo apt-get install -y expect
+        # PTY-driven REPL suites (repl-conversational.e2e) would self-skip
+        # via SKIP_PTY_WHEN_NO_EXPECT. In CI that predicate is false (CI is
+        # set) so a missing `expect` is a HARD failure, not a silent skip —
+        # this install is load-bearing. `command -v` surfaces a partial-
+        # mirror install failure here with a clear line, not minutes later
+        # inside an expect script. --no-install-recommends skips tcl/tk extras.
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends expect
+          command -v expect
 
       - name: E2E tests
         run: bun test tests/e2e/

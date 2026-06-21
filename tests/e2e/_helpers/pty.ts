@@ -13,6 +13,21 @@ const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 export const SK_BIN = path.join(REPO_ROOT, "dist/sk");
 export const EXPECT_BIN = Bun.which("expect");
 
+/**
+ * The skip predicate every PTY suite must use — single source of truth.
+ *
+ * Skip a PTY scenario ONLY when `expect` is absent AND we're NOT in CI.
+ * Locally this keeps the suite developer-friendly (no hard dependency on the
+ * TCL `expect` tool). In CI (`CI` is set on every runner) a missing `expect`
+ * must NOT silently drop coverage: the test runs and `runPtyScenario` throws
+ * a clear "missing expect" error, so a runner-image or toolchain change that
+ * removes `expect` becomes a LOUD failure instead of an invisible skip.
+ *
+ * Tests: `test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(...)`. Never re-derive the
+ * predicate inline — drift across files is exactly the gap this prevents.
+ */
+export const SKIP_PTY_WHEN_NO_EXPECT = !EXPECT_BIN && !process.env.CI;
+
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
 const ANSI_ESCAPE_RE = new RegExp(`${ESC}\\[[0-?]*[ -/]*[@-~]`, "g");
