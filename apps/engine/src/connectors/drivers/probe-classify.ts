@@ -13,6 +13,10 @@ import type { ProbeErrorCode } from "./index.ts";
  * error messages.
  *
  * - Non-2xx 401/403 → credential_invalid (HTTP auth rejection).
+ * - 404 → remote_resource_not_found (the GraphQL endpoint path is wrong —
+ *   e.g. Supabase GraphQL lives at /graphql/v1, not /graphql). This steers
+ *   the authoring LLM toward fixing base_url instead of treating it as a
+ *   transient upstream blip.
  * - 2xx + error messages that name an auth failure (GraphQL 200+errors
  *   pattern, common in AppSync / Hasura / GraphQL-shield) → credential_invalid.
  * - Anything else → unknown_upstream_error.
@@ -24,6 +28,10 @@ export function classifyGraphqlProbe(
   // HTTP-level auth rejection: the server rejected the credential before
   // executing the query.
   if (status === 401 || status === 403) return "credential_invalid";
+
+  // 404: the endpoint path is wrong, not a credential or transient failure.
+  // Mirrors classifyPgProbeError (3D000) and classifyS3ProbeError (404).
+  if (status === 404) return "remote_resource_not_found";
 
   // GraphQL-over-HTTP convention: logical errors ride as HTTP 200 with a
   // top-level `errors` array. AppSync, Hasura, Apollo, and graphql-shield use

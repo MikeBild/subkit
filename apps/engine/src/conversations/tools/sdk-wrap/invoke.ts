@@ -65,6 +65,7 @@ import {
   REVIEW_AFTER_EXECUTION_KIND,
   referencesProseConfirmation,
   summarizeToolData,
+  summarizeToolFailure,
   topLevelElicitationKindForTool,
 } from "./policy-helpers.ts";
 import {
@@ -1434,6 +1435,9 @@ export function wrapOne(
           committed: Boolean(result.committed_workflow_id),
           duration_ms: Date.now() - startedAt,
           ...dataSummary,
+          // Lift a structured `ok:false` reason (top-level error_code/message)
+          // into the log so tool.failed carries WHY, not just data_keys.
+          ...summarizeToolFailure(result),
         };
         if (result.ok) log.conversation.tool.succeeded(logCtx);
         else log.conversation.tool.failed(logCtx);

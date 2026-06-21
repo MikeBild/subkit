@@ -19,6 +19,7 @@ import {
   workflows,
   workflowsSchedules,
 } from "../db/schema/index.ts";
+import { retryTransient } from "../db/transient.ts";
 import { createExecution } from "../execution/state.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
@@ -316,7 +317,9 @@ export class SchedulerReconciler {
     // the connectors with a non-null `auto_refresh_cron` and enqueues a
     // `connector.ingest-docs` job whenever the cron expression has
     // elapsed since the connector's `last_ingested_at`.
-    await this.reconcileDocsAutoRefresh().catch((err) => {
+    await retryTransient(() => this.reconcileDocsAutoRefresh(), {
+      label: "docs_auto_refresh",
+    }).catch((err) => {
       logger.error({
         module: "scheduler",
         action: "docs_refresh_failed",
@@ -324,7 +327,9 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    await this.reconcileKnowledgeAutoRefresh().catch((err) => {
+    await retryTransient(() => this.reconcileKnowledgeAutoRefresh(), {
+      label: "knowledge_auto_refresh",
+    }).catch((err) => {
       logger.error({
         module: "scheduler",
         action: "knowledge_refresh_failed",
@@ -338,7 +343,9 @@ export class SchedulerReconciler {
     // last enqueue, and only THEN fires an execution.run job. A
     // 10-minute outage that brings a `* * * * *` schedule "10 minutes
     // behind" therefore produces ONE catch-up enqueue, not 10.
-    await this.reconcileWorkflowSchedules().catch((err) => {
+    await retryTransient(() => this.reconcileWorkflowSchedules(), {
+      label: "workflow_schedules",
+    }).catch((err) => {
       logger.error({
         module: "scheduler",
         action: "schedule_fanout_failed",
@@ -352,7 +359,9 @@ export class SchedulerReconciler {
     // followed by `processDriftSignal({ allowAutoApply: false })` per
     // signal so every Patch Candidate produced this way is parked for
     // operator review regardless of policy/classification gates.
-    await this.reconcileProactiveDriftScans().catch((err) => {
+    await retryTransient(() => this.reconcileProactiveDriftScans(), {
+      label: "drift_scan",
+    }).catch((err) => {
       logger.error({
         module: "scheduler",
         action: "drift_scan_failed",
@@ -365,7 +374,9 @@ export class SchedulerReconciler {
     // deployments exactly-once firing per cadence; each due tenant gets
     // a lightweight authenticated probe per connector so stale or revoked
     // credentials are flagged before a workflow hits them at runtime.
-    await this.reconcileConnectorReauthScans().catch((err) => {
+    await retryTransient(() => this.reconcileConnectorReauthScans(), {
+      label: "connector_reauth_scan",
+    }).catch((err) => {
       logger.error({
         module: "scheduler",
         action: "connector_reauth_scan_failed",
@@ -379,7 +390,9 @@ export class SchedulerReconciler {
     // through the normal authed path — a vendor's 410 or Deprecation/
     // Sunset announcement flips connector+workflow health BEFORE an
     // unattended run returns "0 results".
-    await this.reconcileEndpointContractScans().catch((err) => {
+    await retryTransient(() => this.reconcileEndpointContractScans(), {
+      label: "endpoint_contract_scan",
+    }).catch((err) => {
       logger.error({
         module: "scheduler",
         action: "endpoint_contract_scan_failed",
@@ -393,7 +406,9 @@ export class SchedulerReconciler {
     // `skill-candidate.analyze` job enqueued, whose worker runs
     // runPatternAnalysis (repair / failure / success detectors → Skill
     // Candidate proposals behind the operator-approval gate).
-    await this.reconcileSkillCandidateAnalysis().catch((err) => {
+    await retryTransient(() => this.reconcileSkillCandidateAnalysis(), {
+      label: "skill_candidate_analyze",
+    }).catch((err) => {
       logger.error({
         module: "scheduler",
         action: "skill_candidate_analyze_failed",
@@ -407,7 +422,9 @@ export class SchedulerReconciler {
     // orphans, unlinked TTL, LLM provider expiry); errors inside the
     // sweeps are caught per-sweep so a failure does not abort the rest
     // of the reconciler tick.
-    await this.reconcileFilesCleanup().catch((err) => {
+    await retryTransient(() => this.reconcileFilesCleanup(), {
+      label: "files_cleanup",
+    }).catch((err) => {
       logger.error({
         module: "scheduler",
         action: "files_cleanup_failed",
@@ -418,7 +435,9 @@ export class SchedulerReconciler {
     // MCP OAuth retention sweep. Hour-throttled in-process; errors
     // inside the sweeps are caught per-sweep so a failure does not
     // abort the rest of the reconciler tick.
-    await this.reconcileMcpOAuthCleanup().catch((err) => {
+    await retryTransient(() => this.reconcileMcpOAuthCleanup(), {
+      label: "mcp_oauth_cleanup",
+    }).catch((err) => {
       logger.error({
         module: "scheduler",
         action: "mcp_oauth_cleanup_failed",
@@ -428,7 +447,9 @@ export class SchedulerReconciler {
     });
     // chat_events_seen retention sweep. Same hour-throttle pattern;
     // bounds the replay-dedup table as inbound Slack volume grows.
-    await this.reconcileChatDedupCleanup().catch((err) => {
+    await retryTransient(() => this.reconcileChatDedupCleanup(), {
+      label: "chat_dedup_cleanup",
+    }).catch((err) => {
       logger.error({
         module: "scheduler",
         action: "chat_dedup_cleanup_failed",
@@ -436,7 +457,9 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    const desired = await this.computeDesired();
+    const desired = await retryTransient(() => this.computeDesired(), {
+      label: "compute_desired",
+    });
 
     // Install sub-minute (`every:N`) schedules as local interval timers.
     // Cron-mode schedules are NOT installed here — they fire directly

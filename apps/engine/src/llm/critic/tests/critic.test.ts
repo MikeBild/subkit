@@ -202,6 +202,40 @@ describe("chat rubric", () => {
     expect(v.verdict).toBe("fail");
     expect(v.checks?.runtime_values_consistent).toBe(false);
   });
+
+  it("fails on a self-contradictory count (5 ≠ 2+2) — corsica final tally", async () => {
+    const v = await runCritic({
+      artifact: {
+        kind: "chat",
+        payload: "Fertig. Alle 5 Corsica-Ferries-Ressourcen gelöscht: 2 Workflows + 2 Connectors.",
+      },
+    });
+    expect(v.verdict).toBe("fail");
+    expect(v.checks?.counts_consistent).toBe(false);
+    expect(v.hint).toContain("counts");
+  });
+
+  it("fails when a stated count over-claims its listed items (3 Workflows over 2)", async () => {
+    const v = await runCritic({
+      artifact: {
+        kind: "chat",
+        payload: "Das sind 3 Workflows:\n• alpha\n• beta\n• (keine weiteren im Namen)",
+      },
+    });
+    expect(v.verdict).toBe("fail");
+    expect(v.checks?.counts_consistent).toBe(false);
+  });
+
+  it("passes a consistent count breakdown", async () => {
+    const v = await runCritic({
+      artifact: {
+        kind: "chat",
+        payload: "Deleted 4 resources (2 workflows + 2 connectors).",
+      },
+    });
+    expect(v.verdict).toBe("pass");
+    expect(v.checks?.counts_consistent).toBe(true);
+  });
 });
 
 describe("confidence scaling", () => {

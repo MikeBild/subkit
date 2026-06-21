@@ -32,6 +32,7 @@ import { resolveScopeForJsonata } from "../jsonata-bindings.ts";
 import { TRANSFORM_TIMEOUT_DEFAULT_MS } from "../timeouts.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
+import { detectTransformWarnings } from "./transform-warnings.ts";
 import { runHtmlToMarkdown, runReadability, runStructuredData } from "./transform-web-scraper.ts";
 
 export interface RunTransformParams {
@@ -133,11 +134,18 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
         signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
       }),
     ]);
+    const output = (raced as { output: unknown }).output;
+    // Silent-data-loss detection: a JS transform that extracts nothing (empty
+    // output despite non-empty upstream) or narrows a mapped array's fields.
+    // Surfaced as step warnings so dry_run/commit see WHY a projection lost
+    // data instead of a green run that quietly dropped it.
+    const warnings = detectTransformWarnings({ step_id: p.step.id, output, scope: p.scope });
     return {
       status: "succeeded",
-      output: (raced as { output: unknown }).output,
+      output,
       retry_count: 0,
       duration_ms: Date.now() - start,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   } catch (err) {
     const duration_ms = Date.now() - start;

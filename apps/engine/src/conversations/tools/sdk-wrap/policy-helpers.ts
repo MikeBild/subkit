@@ -319,3 +319,26 @@ export function summarizeToolData(data: unknown): Record<string, number | string
   out.data_keys = Object.keys(obj).length;
   return out;
 }
+
+/**
+ * Lift the rejection reason from a structured `ok:false` ToolResult into log
+ * fields. The reason lives at the TOP LEVEL (`error_code`/`message`) on the
+ * ToolResult, NOT inside `data` — so `summarizeToolData` (which inspects
+ * `data`) misses it. Without this, `conversation.tool.failed` logged a bare
+ * `ok:false` carrying only `data_keys`, leaving an operator with no WHY (the
+ * production `ask_user_form` / `probe_connector_draft` credential_form_mismatch
+ * failures read as silent). `message` maps to the log's `error` field so it
+ * lines up with the throw-path's `error: msg`. Returns `{}` for an `ok:true`
+ * result or one with no structured reason.
+ */
+export function summarizeToolFailure(result: {
+  ok: boolean;
+  error_code?: string;
+  message?: string;
+}): Record<string, string> {
+  if (result.ok) return {};
+  const out: Record<string, string> = {};
+  if (typeof result.error_code === "string") out.error_code = result.error_code;
+  if (typeof result.message === "string") out.error = result.message;
+  return out;
+}

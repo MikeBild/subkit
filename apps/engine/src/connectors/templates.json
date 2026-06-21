@@ -17874,6 +17874,60 @@
   },
   {
     "version": 1,
+    "slug": "supabase-graphql",
+    "name": "Supabase (GraphQL)",
+    "driver": "graphql",
+    "base_url": "https://{ref}.supabase.co/graphql/v1",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "supabase-graphql",
+    "ingestion_source": "graphql",
+    "ingestion_url": null,
+    "icon": "supabase.svg",
+    "description": "Supabase GraphQL API (pg_graphql at /graphql/v1) — one roundtrip for nested reads instead of N+1 PostgREST calls.",
+    "category": "database",
+    "tags": ["graphql", "postgrest", "pg_graphql", "database"],
+    "setup_instructions": "Project URL + API keys live in Dashboard > Settings > API. The GraphQL endpoint is https://<ref>.supabase.co/graphql/v1 (NOT /graphql). Send the `apikey` header with the anon or service_role key; most projects also require `Authorization: Bearer <key>` carrying the same key. The anon key respects Row Level Security; the service_role key bypasses it.",
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "API key (apikey header)",
+        "description": "Use the anon or service_role key from Dashboard > Settings > API. Supabase GraphQL expects the `apikey` header; pair it with `Authorization: Bearer <key>` for RLS-guarded reads.",
+        "oauth": null
+      }
+    ],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.supabase\\.co/graphql/v1(\\/|$)",
+    "keywords": ["collection", "edges", "node", "pageInfo", "pg_graphql"],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (apikey header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "operator_quirks": {
+      "general": "The GraphQL endpoint is /graphql/v1, not /graphql. A 404 on a probe almost always means the path is missing the /v1 suffix — fix base_url before re-collecting the credential.",
+      "auth": "Send the `apikey` header with the anon or service_role key. Most projects also require `Authorization: Bearer <key>` (same key); apikey alone can return 401 once RLS is enabled.",
+      "pagination": "pg_graphql uses relay-style cursors: <table>Collection { edges { node { ... } cursor } pageInfo { hasNextPage endCursor } }. Pass the returned endCursor as the next `after` argument.",
+      "schema": "Read the GraphQL data payload via $scope.<step>.data.<field>. pg_graphql exposes each table as <table>Collection with edges/node; filtering rides on the `filter:` argument."
+    },
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null
+  },
+  {
+    "version": 1,
     "slug": "trello",
     "name": "Trello",
     "driver": "http",
