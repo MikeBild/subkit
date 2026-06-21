@@ -8,7 +8,7 @@
 import type { Job, PgBoss } from "pg-boss";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { Db } from "../../db/client.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { errorFields, log, logger } from "../../logging/logger.ts";
 import type { AdapterResolver } from "../../notifications/service.ts";
 import { fanoutEventRow, makeRegistryAdapterResolver } from "../../webhooks/outbound/fanout.ts";
 
@@ -60,14 +60,14 @@ export async function registerEventFanoutHandler(
             queue: EVENT_FANOUT_QUEUE,
             job_id: j.id,
             event_row_id: j.data.event_row_id,
-            error: err instanceof Error ? err.message : String(err),
+            ...errorFields(err),
             duration_ms: Date.now() - started,
           });
           logger.error({
             module: "webhooks.outbound",
             action: "fanout.handler_error",
             msg: "event.fanout handler threw",
-            error: err instanceof Error ? err.message : String(err),
+            ...errorFields(err),
           });
         }
       }

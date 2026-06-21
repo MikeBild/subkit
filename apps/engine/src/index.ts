@@ -5,7 +5,7 @@ import { ChatAdapterRegistry } from "./chat/registry.ts";
 import { SkCliAdapter } from "./chat/sk-cli/adapter.ts";
 import { closeAllPools } from "./connectors/drivers/postgres.ts";
 import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
-import { closeDb, getDb } from "./db/client.ts";
+import { closeDb, getDb, getPool } from "./db/client.ts";
 import { type DriftReport, detectDrift, runMigrations } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
@@ -132,10 +132,11 @@ async function runServer(): Promise<void> {
   const { loadConfig, getConfig, recordBootConsumer, emitBootComplete } = await import(
     "./config/loader.ts"
   );
-  const { reconfigureLogger } = await import("./logging/logger.ts");
+  const { reconfigureLogger, reconfigureObservability } = await import("./logging/logger.ts");
   await bootPhase("config_load", () => loadConfig());
   const cfg = getConfig();
   reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
+  reconfigureObservability({ field_truncation_bytes: cfg.observability.field_truncation_bytes });
   recordBootConsumer("logger");
 
   // Storage sanity: when the local-disk backend is selected without an
@@ -572,7 +573,19 @@ async function runServer(): Promise<void> {
   // event-loop monitor flags loop blockage. Both timers are unref'd and
   // stopped on shutdown.
   stopBootHeartbeat();
-  const stopMemorySampler = startMemorySampler();
+  const stopMemorySampler = startMemorySampler({
+    // Sample the shared Postgres-pool counts on the 60s memory tick so the
+    // predictive saturation gauges ride an existing ticker. node-postgres
+    // exposes these synchronous counters on the Pool.
+    poolStats: () => {
+      const pool = getPool();
+      return {
+        total: pool.totalCount,
+        idle: pool.idleCount,
+        waiting: pool.waitingCount,
+      };
+    },
+  });
   const stopEventLoopLagMonitor = startEventLoopLagMonitor();
 
   // boot.complete: every subsystem above (logger, queue, http_server,
@@ -669,8 +682,9 @@ async function loadConfigAndReconfigureLogger(): Promise<void> {
   const { loadConfig, getConfig } = await import("./config/loader.ts");
   await loadConfig();
   const cfg = getConfig();
-  const { reconfigureLogger } = await import("./logging/logger.ts");
+  const { reconfigureLogger, reconfigureObservability } = await import("./logging/logger.ts");
   reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
+  reconfigureObservability({ field_truncation_bytes: cfg.observability.field_truncation_bytes });
 }
 
 async function runMigrateOnce(): Promise<void> {

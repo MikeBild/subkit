@@ -9,14 +9,45 @@
 // issues. Best-effort: any failure here must never block the REPL.
 
 import pc from "picocolors";
-import type { EngineClient, OperatorHealthDigest } from "../engine-client.ts";
+import type { EngineClient, OperatorHealthDigest, RiskSeverity } from "../engine-client.ts";
 
 export async function fetchOperatorDigest(
   client: EngineClient,
 ): Promise<OperatorHealthDigest | null> {
   try {
     const digest = await client.getOperatorHealthDigest();
-    return digest.all_clear ? null : digest;
+    if (digest.all_clear) return null;
+    // Normalize at the chokepoint: an engine older than the risk[] field (a
+    // rolling-deploy version skew) omits `risk`, and every caller reads
+    // `digest.risk.length` outside a guard. Default to [] here so the REPL
+    // banner / context render can never throw on a missing field.
+    return { ...digest, risk: digest.risk ?? [] };
+  } catch {
+    return null;
+  }
+}
+
+/** Severity → terminal color. Critical leads in red (same weight as a
+ *  scheduled production failure); warn is yellow; info is dim. */
+const RISK_COLOR: Record<RiskSeverity, (s: string) => string> = {
+  critical: pc.red,
+  warn: pc.yellow,
+  info: pc.dim,
+};
+
+/** Best-effort one-line risk summary for the `sk login` success path. Fetches
+ *  the digest, returns a single severity-colored line naming the top risk and
+ *  any others, or null when there's nothing to flag / the engine is
+ *  unreachable. Never throws — login must never block on this. */
+export async function riskSummaryLine(client: EngineClient): Promise<string | null> {
+  try {
+    const digest = await client.getOperatorHealthDigest();
+    const risks = digest.risk;
+    if (risks.length === 0) return null;
+    const top = risks[0]!;
+    const color = RISK_COLOR[top.severity];
+    const more = risks.length > 1 ? pc.dim(` (+${risks.length - 1} more)`) : "";
+    return `${color("●")} ${color(`[${top.severity}]`)} ${top.headline}${more}`;
   } catch {
     return null;
   }
@@ -63,6 +94,18 @@ export function renderDigestBanner(digest: OperatorHealthDigest): string {
     }
   }
 
+  // Leading-indicator risk signals — the things trending toward an incident
+  // that haven't failed a run yet. Severity-colored so a critical stands out.
+  if (digest.risk.length > 0) {
+    lines.push("");
+    lines.push(pc.bold("  Risk signals") + pc.dim("  (leading indicators):"));
+    for (const r of digest.risk) {
+      const color = RISK_COLOR[r.severity];
+      lines.push(`      ${color("●")} ${color(`[${r.severity}]`)} ${pc.bold(r.headline)}`);
+      lines.push(`        ${pc.dim(r.detail)}`);
+    }
+  }
+
   lines.push("");
   lines.push(
     pc.dim("  Want me to walk through fixes? Reply ") +
@@ -97,6 +140,15 @@ export function digestAsContext(digest: OperatorHealthDigest): string {
     for (const p of digest.patch_candidates.items) {
       const label = p.workflow_name ?? p.workflow_id ?? "(workflow)";
       parts.push(`- ${p.id} · ${label} · [${p.classification}] — ${p.summary}`);
+    }
+    parts.push("");
+  }
+  if (digest.risk.length > 0) {
+    parts.push("Risk signals (leading indicators, engine-computed):");
+    for (const r of digest.risk) {
+      parts.push(
+        `- [${r.severity}] ${r.kind} · ${r.headline} (${r.metric}=${r.value}, threshold ${r.threshold}) — ${r.detail}`,
+      );
     }
     parts.push("");
   }

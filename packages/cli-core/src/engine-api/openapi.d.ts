@@ -12665,6 +12665,7 @@ export interface components {
                 pending: number;
                 items: components["schemas"]["OperatorDigestPatch"][];
             };
+            risk: components["schemas"]["OperatorRiskSignal"][];
             rendered: string;
             all_clear: boolean;
         };
@@ -12688,6 +12689,16 @@ export interface components {
             /** @enum {string} */
             classification: "safe" | "unsafe";
             summary: string;
+        };
+        OperatorRiskSignal: {
+            kind: string;
+            /** @enum {string} */
+            severity: "info" | "warn" | "critical";
+            headline: string;
+            detail: string;
+            metric: string;
+            value: number;
+            threshold: number;
         };
         SelfHealingScanResponse: {
             /** Format: uuid */

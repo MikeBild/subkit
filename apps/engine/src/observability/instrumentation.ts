@@ -6,6 +6,7 @@
 // observability code from ever taking down a request path.
 
 import { logger } from "../logging/logger.ts";
+import { CONNECTOR_HEALTH_VALUES, DB_TRANSIENT_RETRY_LABELS } from "./metric-label-allowlists.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 
 function safe(fn: () => void): void {
@@ -153,6 +154,104 @@ export function setQueueDepth(queue: string, depth: number): void {
   safe(() => {
     getMetrics().set(METRIC_NAMES.QUEUE_DEPTH, depth, { queue });
   });
+}
+
+// --- Phase 2: predictive-maintenance helpers ---------------------------------
+
+/** Set the three Postgres-pool gauges to their current absolute values.
+ *  Called from the memory-sampler tick (60s) so the leading saturation
+ *  signal (`waiting`) rides an existing ticker rather than a new timer. */
+export function setDbPoolStats(args: { total: number; idle: number; waiting: number }): void {
+  safe(() => {
+    const reg = getMetrics();
+    reg.set(METRIC_NAMES.DB_POOL_TOTAL_CONNECTIONS, args.total, {});
+    reg.set(METRIC_NAMES.DB_POOL_IDLE_CONNECTIONS, args.idle, {});
+    reg.set(METRIC_NAMES.DB_POOL_WAITING_CONNECTIONS, args.waiting, {});
+  });
+}
+
+/** Increment the transient-retry counter once per backoff inside
+ *  `retryTransient`. `label` carries the caller's pass name (empty when the
+ *  caller did not supply one), collapsed to "other" off the allow-list in
+ *  metric-label-allowlists.ts. */
+export function recordDbTransientRetry(args: { label?: string }): void {
+  safe(() => {
+    const raw = args.label ?? "";
+    getMetrics().inc(METRIC_NAMES.DB_TRANSIENT_RETRIES_TOTAL, {
+      label: DB_TRANSIENT_RETRY_LABELS.has(raw) ? raw : "other",
+    });
+  });
+}
+
+/** Set the per-DLQ depth gauge. Called from the queue-depth poller (15s)
+ *  for every queue whose name ends in `.dlq`. */
+export function setDlqJobCount(queue: string, count: number): void {
+  safe(() => {
+    getMetrics().set(METRIC_NAMES.DLQ_JOB_COUNT, count, { queue });
+  });
+}
+
+/** Increment the connector-call counter once per `call_connector` invocation
+ *  that reached the wire, partitioned by connector slug + response health. */
+export function recordConnectorCall(args: { slug: string; health: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.CONNECTOR_CALL_TOTAL, {
+      slug: args.slug,
+      health: CONNECTOR_HEALTH_VALUES.has(args.health) ? args.health : "other",
+    });
+  });
+}
+
+/** Observe one LLM invoke() round-trip duration, partitioned by provider +
+ *  model + flow. */
+export function recordLlmCallDuration(args: {
+  provider: string;
+  model: string;
+  flow: string;
+  duration_ms: number;
+}): void {
+  safe(() => {
+    if (!Number.isFinite(args.duration_ms) || args.duration_ms < 0) return;
+    getMetrics().observe(METRIC_NAMES.LLM_CALL_DURATION_MS, args.duration_ms, {
+      provider: args.provider,
+      model: args.model,
+      flow: args.flow,
+    });
+  });
+}
+
+/** Increment the LLM-fallback counter on the fallback branch, partitioned by
+ *  from-model, to-model, and the provider-error reason. */
+export function recordLlmFallbackInvocation(args: {
+  from: string;
+  to: string;
+  reason: string;
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.LLM_FALLBACK_INVOCATIONS_TOTAL, {
+      from: args.from,
+      to: args.to,
+      reason: args.reason,
+    });
+  });
+}
+
+/** Update the RSS high-water gauge if `rss` exceeds the previous maximum.
+ *  Stateful across the process lifetime (the max-ever value), driven by the
+ *  memory sampler. */
+let _rssHighWaterBytes = 0;
+export function recordProcessRssHighWater(rss: number): void {
+  safe(() => {
+    if (!Number.isFinite(rss) || rss <= _rssHighWaterBytes) return;
+    _rssHighWaterBytes = rss;
+    getMetrics().set(METRIC_NAMES.PROCESS_MEMORY_RSS_HIGH_WATER_BYTES, rss, {});
+  });
+}
+
+/** Test-only — reset the in-memory RSS high-water mark so a case can assert
+ *  the climb-only behaviour from a known baseline. */
+export function _resetRssHighWaterForTests(): void {
+  _rssHighWaterBytes = 0;
 }
 
 export function setQueueLag(queue: string, lag_ms: number): void {

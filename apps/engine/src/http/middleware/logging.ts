@@ -3,7 +3,7 @@
 // context populated upstream by traceMiddleware + authMiddleware.
 
 import type { MiddlewareHandler } from "hono";
-import { log } from "../../logging/logger.ts";
+import { errorFields, log } from "../../logging/logger.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const SILENT_PATHS = new Set(["/v1/health"]);
@@ -32,7 +32,7 @@ export function loggingMiddleware(): MiddlewareHandler<AppEnv> {
         method,
         path,
         duration_ms,
-        error: err instanceof Error ? err.message : String(err),
+        ...errorFields(err),
       });
       throw err;
     }

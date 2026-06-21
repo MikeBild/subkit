@@ -19,6 +19,7 @@
 // one log line before and after the gap. See project_engine_slow_boot_stall.
 
 import { errorFields, log, logger } from "../logging/logger.ts";
+import { recordProcessRssHighWater, setDbPoolStats } from "./instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 
 const BYTES_PER_MB = 1024 * 1024;
@@ -222,7 +223,16 @@ export function startBootHeartbeat(opts?: { intervalMs?: number }): () => void {
  * way to attribute it to a tenant/turn. Fires once immediately, then every
  * `intervalMs`. Returns a stop fn. Timer is `unref`'d.
  */
-export function startMemorySampler(opts?: { intervalMs?: number }): () => void {
+/** Current Postgres-pool counts, supplied by the caller so this module
+ *  doesn't import db/client.ts (which imports `instrument` from here — a
+ *  cycle). `startMemorySampler` calls it once per tick and feeds the
+ *  predictive pool gauges. */
+export type PoolStatsProvider = () => { total: number; idle: number; waiting: number };
+
+export function startMemorySampler(opts?: {
+  intervalMs?: number;
+  poolStats?: PoolStatsProvider;
+}): () => void {
   const intervalMs = opts?.intervalMs ?? 60_000;
   const tick = (): void =>
     safe(() => {
@@ -232,6 +242,13 @@ export function startMemorySampler(opts?: { intervalMs?: number }): () => void {
       reg.set(METRIC_NAMES.PROCESS_MEMORY_HEAP_USED_BYTES, m.heapUsed, {});
       reg.set(METRIC_NAMES.PROCESS_MEMORY_HEAP_TOTAL_BYTES, m.heapTotal, {});
       reg.set(METRIC_NAMES.PROCESS_MEMORY_EXTERNAL_BYTES, m.external, {});
+      // Phase 2: max-ever RSS (climb-only) + Postgres-pool saturation
+      // gauges, both riding this existing 60s ticker.
+      recordProcessRssHighWater(m.rss);
+      if (opts?.poolStats) {
+        const p = opts.poolStats();
+        setDbPoolStats({ total: p.total, idle: p.idle, waiting: p.waiting });
+      }
       log.process.memory({
         rss_mb: toMb(m.rss),
         heap_used_mb: toMb(m.heapUsed),

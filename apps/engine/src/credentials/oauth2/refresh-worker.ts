@@ -28,7 +28,8 @@ import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import type { Db } from "../../db/client.ts";
 import { connectors, credentials } from "../../db/schema/index.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { errorFields, log, logger } from "../../logging/logger.ts";
+import { withJobContext } from "../../queue/job-context.ts";
 import { rotateOAuth2Tokens } from "../service.ts";
 import type { DecryptedCredential } from "../types.ts";
 import {
@@ -243,7 +244,7 @@ export async function refreshIfStale(
       msg: "failed to refresh oauth2 access token inline",
       credential_id: credRow.id,
       connector_id: credRow.connector_id,
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
     audit(
       {
@@ -282,29 +283,33 @@ export async function registerOAuth2RefreshHandler(opts: {
     { batchSize: 1, pollingIntervalSeconds: 5 },
     async (jobs: Job<RefreshOAuthJob>[]) => {
       for (const job of jobs) {
-        const started = Date.now();
-        try {
-          await handleRefreshJob(opts.db, job.data);
-          log.queue.job.completed({
-            msg: "connector.refresh-oauth job completed",
-            queue: "connector.refresh-oauth",
-            job_id: job.id,
-            tenant_id: job.data.tenant_id,
-            credential_id: job.data.credential_id,
-            duration_ms: Date.now() - started,
-          });
-        } catch (err) {
-          log.queue.job.failed({
-            msg: "connector.refresh-oauth job failed",
-            queue: "connector.refresh-oauth",
-            job_id: job.id,
-            tenant_id: job.data.tenant_id,
-            credential_id: job.data.credential_id,
-            error: err instanceof Error ? err.message : String(err),
-            duration_ms: Date.now() - started,
-          });
-          throw err;
-        }
+        // Bridge the enqueuing tenant across the queue boundary so the
+        // refresh's downstream logs inherit the originating context.
+        await withJobContext(job.data, async () => {
+          const started = Date.now();
+          try {
+            await handleRefreshJob(opts.db, job.data);
+            log.queue.job.completed({
+              msg: "connector.refresh-oauth job completed",
+              queue: "connector.refresh-oauth",
+              job_id: job.id,
+              tenant_id: job.data.tenant_id,
+              credential_id: job.data.credential_id,
+              duration_ms: Date.now() - started,
+            });
+          } catch (err) {
+            log.queue.job.failed({
+              msg: "connector.refresh-oauth job failed",
+              queue: "connector.refresh-oauth",
+              job_id: job.id,
+              tenant_id: job.data.tenant_id,
+              credential_id: job.data.credential_id,
+              ...errorFields(err),
+              duration_ms: Date.now() - started,
+            });
+            throw err;
+          }
+        });
       }
     },
   );

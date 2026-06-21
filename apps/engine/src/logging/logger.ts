@@ -2,6 +2,7 @@ import { LOG_LEVEL_WEIGHT, type LogLevelName } from "@cli-core/log-levels.ts";
 import pc from "picocolors";
 import { logRing } from "../observability/log-ring.ts";
 import { getContext } from "./context.ts";
+import { classifyError, type ErrorClass } from "./error-class.ts";
 import { redact } from "./redact.ts";
 
 // Re-export under the engine's historical name so callers don't churn.
@@ -42,10 +43,12 @@ export function reconfigureLogger(opts: {
   }
 }
 
-// Test-only — restore Phase 1 defaults between cases that call `reconfigureLogger`.
+// Test-only — restore Phase 1 defaults between cases that call
+// `reconfigureLogger` / `reconfigureObservability`.
 export function _resetLoggerForTests(): void {
   MODE = defaultMode();
   THRESHOLD = LEVEL_WEIGHT.info;
+  MAX_FIELD_LEN = DEFAULT_MAX_FIELD_LEN;
 }
 
 function formatTimestampPretty(d: Date): string {
@@ -109,9 +112,48 @@ function emitPretty(level: LogLevel, fields: LogFields): void {
   process.stderr.write(`${line}\n`);
 }
 
+// Per-field string cap. A single runaway field (a megabyte of HTML in an
+// upstream error body, a base64 blob in a stack) can blow a log line past
+// what the collector accepts and drown the surrounding signal. We cap each
+// individual string AFTER redaction so a truncated tail can never expose a
+// secret the redactor would otherwise have masked.
+//
+// Phase 1 boot default is 2048; `reconfigureObservability()` swaps it to
+// `observability.field_truncation_bytes` once the config loader resolves
+// (mirrors `reconfigureLogger`). Until then — and in unit tests that never
+// load config — the 2048 default holds.
+const DEFAULT_MAX_FIELD_LEN = 2048;
+let MAX_FIELD_LEN = DEFAULT_MAX_FIELD_LEN;
+
+/** Hot-swap the per-field log cap from `observability.field_truncation_bytes`.
+ *  Falls back to the 2048 boot default when `bytes` is absent or invalid. */
+export function reconfigureObservability(opts: { field_truncation_bytes?: number }): void {
+  const n = opts.field_truncation_bytes;
+  MAX_FIELD_LEN = typeof n === "number" && Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_FIELD_LEN;
+}
+
+function truncateLongStrings(value: unknown): unknown {
+  if (typeof value === "string") {
+    if (value.length <= MAX_FIELD_LEN) return value;
+    const dropped = value.length - MAX_FIELD_LEN;
+    return `${value.slice(0, MAX_FIELD_LEN)}…[truncated ${dropped} chars]`;
+  }
+  if (Array.isArray(value)) return value.map(truncateLongStrings);
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = truncateLongStrings(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 function emitNdjson(level: LogLevel, fields: LogFields): void {
   const ctx = getContext();
-  const redactedFields = redact(fields) as Record<string, unknown>;
+  // Redact first, then cap: truncating before redaction could slice a
+  // secret mid-token and leave the leading half un-masked.
+  const redactedFields = truncateLongStrings(redact(fields)) as Record<string, unknown>;
   const record: Record<string, unknown> = {
     ts: new Date().toISOString(),
     level,
@@ -178,14 +220,23 @@ function emit(level: LogLevel, fields: LogFields): void {
  * log fields, e.g.:
  *
  *   logger.error({ module: "x", action: "y", msg: "z", ...errorFields(err) });
+ *
+ * Also stamps `error_class` (see `error-class.ts`) so every call site that
+ * already spreads `errorFields(err)` gains an operator-facetable bucket for
+ * free — `error_class=upstream_auth`, `=transient`, etc.
  */
 export function errorFields(err: unknown): {
   error: string;
+  error_class: ErrorClass;
   cause?: string;
   stack?: string;
 } {
-  if (!(err instanceof Error)) return { error: String(err) };
-  const out: { error: string; cause?: string; stack?: string } = { error: err.message };
+  const error_class = classifyError(err);
+  if (!(err instanceof Error)) return { error: String(err), error_class };
+  const out: { error: string; error_class: ErrorClass; cause?: string; stack?: string } = {
+    error: err.message,
+    error_class,
+  };
   if (err.cause instanceof Error) out.cause = err.cause.message;
   else if (err.cause !== undefined) out.cause = String(err.cause);
   if (err.stack) out.stack = err.stack;

@@ -65,6 +65,7 @@ import {
 import { EngineClient } from "./engine-client.ts";
 import type { OutputFormat } from "./headless.ts";
 import { runHeadless } from "./headless.ts";
+import { riskSummaryLine } from "./lib/operator-digest.ts";
 import { suggestCommand } from "./lib/suggest.ts";
 import { runMcpProxy } from "./mcp-proxy.ts";
 
@@ -128,6 +129,9 @@ const loginCommand = defineCommand({
         const client = new EngineClient({ engine_url: engineUrl, api_key: apiKey, tenant });
         const h = await client.health();
         process.stdout.write(`sk: engine health: ${h.status} db=${h.db_connected}\n`);
+        // Best-effort leading-indicator risk line — never blocks login.
+        const risk = await riskSummaryLine(client);
+        if (risk) process.stdout.write(`sk: ${risk}\n`);
       } catch (err) {
         process.stderr.write(
           `sk: warning — could not reach ${engineUrl}: ${err instanceof Error ? err.message : String(err)}\n`,

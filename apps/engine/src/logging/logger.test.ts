@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { errorFields } from "./logger.ts";
+import { _resetLoggerForTests, errorFields, logger, reconfigureLogger } from "./logger.ts";
 import { redact } from "./redact.ts";
 
 describe("redact", () => {
@@ -68,9 +68,20 @@ describe("redact", () => {
 
 describe("errorFields", () => {
   test("returns String(err) for non-Error thrown values", () => {
-    expect(errorFields("plain string")).toEqual({ error: "plain string" });
-    expect(errorFields(42)).toEqual({ error: "42" });
-    expect(errorFields(null)).toEqual({ error: "null" });
+    expect(errorFields("plain string")).toEqual({
+      error: "plain string",
+      error_class: "unknown",
+    });
+    expect(errorFields(42)).toEqual({ error: "42", error_class: "unknown" });
+    expect(errorFields(null)).toEqual({ error: "null", error_class: "unknown" });
+  });
+
+  test("stamps error_class on every result", () => {
+    // A plain Error with no recognised signal is "unknown".
+    expect(errorFields(new Error("boom")).error_class).toBe("unknown");
+    // A libpq connection drop is "transient" (via isTransientDbError).
+    const transient = Object.assign(new Error("down"), { code: "ECONNREFUSED" });
+    expect(errorFields(transient).error_class).toBe("transient");
   });
 
   test("surfaces err.cause as a sibling field — drizzle-orm puts the pg error there", () => {
@@ -94,5 +105,48 @@ describe("errorFields", () => {
     const out = errorFields(new Error("plain"));
     expect(out.error).toBe("plain");
     expect(out.cause).toBeUndefined();
+  });
+});
+
+describe("ndjson field-length cap", () => {
+  function captureNdjson(fn: () => void): Record<string, unknown> {
+    reconfigureLogger({ format: "ndjson", level: "info" });
+    const orig = process.stdout.write.bind(process.stdout);
+    let captured = "";
+    process.stdout.write = ((chunk: string | Uint8Array): boolean => {
+      captured += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      fn();
+    } finally {
+      process.stdout.write = orig as typeof process.stdout.write;
+      _resetLoggerForTests();
+    }
+    return JSON.parse(captured.trim()) as Record<string, unknown>;
+  }
+
+  test("truncates a string field longer than the 2048 cap", () => {
+    const huge = "x".repeat(5000);
+    const rec = captureNdjson(() => logger.info({ module: "t", action: "a", blob: huge }));
+    const blob = rec.blob as string;
+    // 2048 kept chars + the truncation marker; original tail dropped.
+    expect(blob.startsWith("x".repeat(2048))).toBe(true);
+    expect(blob).toContain("…[truncated 2952 chars]");
+    expect(blob.length).toBeLessThan(huge.length);
+  });
+
+  test("leaves short string fields untouched", () => {
+    const rec = captureNdjson(() => logger.info({ module: "t", action: "a", small: "ok" }));
+    expect(rec.small).toBe("ok");
+  });
+
+  test("caps nested string fields too", () => {
+    const huge = "y".repeat(3000);
+    const rec = captureNdjson(() =>
+      logger.info({ module: "t", action: "a", nested: { deep: huge } }),
+    );
+    const deep = (rec.nested as Record<string, unknown>).deep as string;
+    expect(deep).toContain("…[truncated 952 chars]");
   });
 });

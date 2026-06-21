@@ -9,7 +9,16 @@ export type LogContext = {
   tenant_id?: string;
   execution_id?: string;
   workflow_id?: string;
-  request_source?: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat";
+  request_source?:
+    | "api"
+    | "cli"
+    | "scheduler"
+    | "mcp"
+    | "webhook"
+    | "tool-chain"
+    | "ui"
+    | "chat"
+    | "queue";
   actor_id?: string;
 };
 

@@ -982,6 +982,7 @@ export class SchedulerReconciler {
       module: "scheduler",
       action: "schedule.fired",
       msg: "cron-schedule enqueued execution.run",
+      tenant_id: payload.tenant_id,
       schedule_key: key,
       execution_id,
     });
@@ -1007,6 +1008,7 @@ export class SchedulerReconciler {
       module: "scheduler",
       action: "schedule.fired",
       msg: "every-schedule enqueued execution.run",
+      tenant_id: payload.tenant_id,
       schedule_key: key,
       execution_id,
     });

@@ -16,9 +16,12 @@
 // candidates ride along as the "fixes awaiting review" bucket.
 
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { AuditAction, audit } from "../audit/index.ts";
+import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, patchCandidates, workflows } from "../db/schema/index.ts";
 import { classifyFailure, humanizeClassification } from "../execution/classify.ts";
+import { computeRiskSignals, type RiskSignal, takeRiskEdges, topRisk } from "./risk-signals.ts";
 
 const DEFAULT_WINDOW_HOURS = 24;
 const MAX_SCANNED_EXECUTIONS = 500;
@@ -58,6 +61,11 @@ export interface OperatorHealthDigest {
   headline: string;
   failure_groups: DigestFailureGroup[];
   patch_candidates: { pending: number; items: DigestPatch[] };
+  /** Leading-indicator risk signals computed from the live process
+   *  gauges/counters vs the operator-tuned predictive thresholds. The
+   *  failure groups above are lagging (a run already failed); these flag
+   *  what is trending toward an incident. Highest-severity first. */
+  risk: RiskSignal[];
   /** Plain-text fallback render; the CLI styles its own from the
    *  structured fields above. */
   rendered: string;
@@ -232,9 +240,52 @@ export async function buildOperatorHealthDigest(
     };
   });
 
-  const allClear = failureGroups.length === 0 && patchItems.length === 0;
-  const headline = buildHeadline(failureGroups, patchItems.length);
-  const rendered = renderDigest(headline, windowHours, failureGroups, patchItems);
+  // Leading-indicator risks from the live process metrics. Pure read; the
+  // builder stays deterministic for a fixed registry + config snapshot.
+  const risk = computeRiskSignals();
+
+  // Audit each critical risk ONCE on the false→true edge and once on recovery
+  // — not on every digest read (the builder runs on every MCP connect /
+  // resource read / REPL start). The signals are host-scoped shared
+  // infrastructure, so rows land under the system tenant rather than the
+  // reading tenant (which would duplicate one host condition across every
+  // tenant that reads). `actor_id: null` is explicit (system, no human actor).
+  // Fire-and-forget: the digest read must not block on the audit write.
+  const edges = takeRiskEdges(risk);
+  for (const r of edges.raised) {
+    audit({
+      tenant_id: SYSTEM_TENANT_ID,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.RISK_SIGNAL_RAISED,
+      resource_type: "operator_health_digest",
+      resource_id: r.kind,
+      result: "success",
+      metadata: {
+        kind: r.kind,
+        severity: r.severity,
+        metric: r.metric,
+        value: r.value,
+        threshold: r.threshold,
+      },
+    });
+  }
+  for (const kind of edges.cleared) {
+    audit({
+      tenant_id: SYSTEM_TENANT_ID,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.RISK_SIGNAL_CLEARED,
+      resource_type: "operator_health_digest",
+      resource_id: kind,
+      result: "success",
+      metadata: { kind },
+    });
+  }
+
+  const allClear = failureGroups.length === 0 && patchItems.length === 0 && risk.length === 0;
+  const headline = buildHeadline(failureGroups, patchItems.length, risk);
+  const rendered = renderDigest(headline, windowHours, failureGroups, patchItems, risk);
 
   return {
     generated_at: generatedAt.toISOString(),
@@ -242,17 +293,28 @@ export async function buildOperatorHealthDigest(
     headline,
     failure_groups: failureGroups,
     patch_candidates: { pending: patchItems.length, items: patchItems },
+    risk,
     rendered,
     all_clear: allClear,
   };
 }
 
-function buildHeadline(groups: DigestFailureGroup[], patchCount: number): string {
-  if (groups.length === 0 && patchCount === 0) {
+function buildHeadline(
+  groups: DigestFailureGroup[],
+  patchCount: number,
+  risk: RiskSignal[],
+): string {
+  const top = topRisk(risk);
+  if (groups.length === 0 && patchCount === 0 && risk.length === 0) {
     return "All workflows healthy — nothing needs your attention.";
   }
-  const operational = groups.filter((g) => g.origin === "scheduled").length;
   const parts: string[] = [];
+  // A critical leading risk leads the headline — the host is about to fail,
+  // which the lagging failure groups can't yet see.
+  if (top?.severity === "critical") {
+    parts.push(top.headline);
+  }
+  const operational = groups.filter((g) => g.origin === "scheduled").length;
   if (operational > 0) {
     parts.push(`${operational} scheduled workflow${operational === 1 ? "" : "s"} failing`);
   }
@@ -262,6 +324,11 @@ function buildHeadline(groups: DigestFailureGroup[], patchCount: number): string
   }
   if (patchCount > 0) {
     parts.push(`${patchCount} fix${patchCount === 1 ? "" : "es"} awaiting review`);
+  }
+  // Non-critical risks ride along as a count so they're never lost.
+  const warnRisks = risk.filter((r) => r.severity !== "critical").length;
+  if (warnRisks > 0) {
+    parts.push(`${warnRisks} risk${warnRisks === 1 ? "" : "s"} trending`);
   }
   return `Needs attention: ${parts.join(", ")}.`;
 }
@@ -273,14 +340,29 @@ const ORIGIN_TAG: Record<FailureOrigin, string> = {
   mixed: "[mixed]",
 };
 
+const RISK_TAG: Record<RiskSignal["severity"], string> = {
+  info: "[info]",
+  warn: "[warn]",
+  critical: "[critical]",
+};
+
 function renderDigest(
   headline: string,
   windowHours: number,
   groups: DigestFailureGroup[],
   patches: DigestPatch[],
+  risk: RiskSignal[],
 ): string {
-  if (groups.length === 0 && patches.length === 0) return headline;
+  if (groups.length === 0 && patches.length === 0 && risk.length === 0) return headline;
   const lines: string[] = [headline, ""];
+  if (risk.length > 0) {
+    lines.push("Risk signals (leading indicators):");
+    for (const r of risk) {
+      lines.push(`${RISK_TAG[r.severity]} ${r.headline}`);
+      lines.push(`   ${r.detail}`);
+    }
+    lines.push("");
+  }
   for (const g of groups) {
     const label = g.workflow_name ?? g.workflow_id ?? "(draft)";
     const times = g.count === 1 ? "once" : `${g.count}×`;
@@ -300,4 +382,34 @@ function renderDigest(
   lines.push("");
   lines.push(`Scanned the last ${windowHours}h. Ask me to walk through any of these.`);
   return lines.join("\n");
+}
+
+/** How many risk lines the compact MCP summary carries before collapsing the
+ *  tail to a "+N more" count. Keeps the `instructions` string short enough to
+ *  ride every initialize without bloating the handshake. */
+const MCP_SUMMARY_TOP_N = 3;
+
+/**
+ * Compact one-paragraph health/risk summary for the MCP surface — the
+ * `instructions` string handed to the client at connect, the
+ * `subkit://operator/health-digest` resource body, and the `get_engine_status`
+ * tail. Bounded to the top-N risks so it never bloats the handshake. Reuses
+ * the same digest builder as every other surface — one source of truth.
+ */
+export async function buildOperatorHealthSummary(
+  db: Db,
+  tenant_id: string,
+): Promise<{ digest: OperatorHealthDigest; text: string }> {
+  const digest = await buildOperatorHealthDigest(db, tenant_id);
+  if (digest.all_clear) {
+    return { digest, text: "Engine health: all clear — no failing runs, pending fixes, or risks." };
+  }
+  const parts: string[] = [digest.headline];
+  if (digest.risk.length > 0) {
+    const shown = digest.risk.slice(0, MCP_SUMMARY_TOP_N);
+    for (const r of shown) parts.push(`- [${r.severity}] ${r.headline}`);
+    const more = digest.risk.length - shown.length;
+    if (more > 0) parts.push(`- (+${more} more risk${more === 1 ? "" : "s"})`);
+  }
+  return { digest, text: parts.join("\n") };
 }

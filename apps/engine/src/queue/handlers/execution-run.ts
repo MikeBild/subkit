@@ -11,6 +11,7 @@ import type { Db } from "../../db/client.ts";
 import { runExecution } from "../../execution/engine.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
 import { log } from "../../logging/logger.ts";
+import { withJobContext } from "../job-context.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queues.ts";
 
 export interface RegisterExecutionRunOptions {
@@ -74,7 +75,9 @@ export async function registerExecutionRunHandler(
     { batchSize: 1, pollingIntervalSeconds: 1 },
     async (jobs: Job<ExecutionRunJob>[]) => {
       for (const job of jobs) {
-        await handleOne(job, db);
+        // Bridge the enqueuing trace_id/tenant across the queue boundary so
+        // every downstream execution.* log inherits the originating context.
+        await withJobContext(job.data, () => handleOne(job, db));
       }
     },
   );
