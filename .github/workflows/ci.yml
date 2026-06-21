@@ -117,6 +117,13 @@ jobs:
           echo "sk version: $SK_VERSION"
           test -n "$SK_VERSION"
 
+      - name: Install expect (PTY REPL tests)
+        # The GitHub ubuntu-24.04 image ships without `expect`, so the
+        # PTY-driven REPL suites (repl-conversational.e2e, sk-interactive-
+        # smoke) self-skip via `skipIf(!EXPECT_BIN)` and silently drop their
+        # coverage. Install it so those tests actually run in the gate.
+        run: sudo apt-get update && sudo apt-get install -y expect
+
       - name: E2E tests
         run: bun test tests/e2e/
 

@@ -187,6 +187,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
+      - name: Install expect (PTY REPL test)
+        # repl-smoke.docker drives the sk REPL over a PTY; without `expect`
+        # on the runner it self-skips. Install it so the nightly track
+        # actually exercises the packaged binary's REPL.
+        run: sudo apt-get update && sudo apt-get install -y expect
       - name: Build sk binary
         run: bun run build:sk
       - name: Build + start the production image
