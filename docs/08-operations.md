@@ -24,7 +24,7 @@ flowchart TB
     Internet(("Internet"))
     Proxy["TLS reverse proxy / LB<br/>(your choice)"]
     Engine["engine container<br/>mikebild/subkit"]
-    PG[("PostgreSQL 16")]
+    PG[("PostgreSQL 18")]
     LLM[("LLM Provider<br/>Anthropic / OpenAI / Google")]
     S3[("S3 (optional)<br/>step-result spillover")]
 

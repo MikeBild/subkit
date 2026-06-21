@@ -34,7 +34,7 @@ jobs:
     if: ${{ github.repository_owner == 'MikeBild' }}
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: subkit
           POSTGRES_PASSWORD: subkit
@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: subkit
           POSTGRES_PASSWORD: subkit

@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.3.0]
+
+Upgrade the bundled database to PostgreSQL 18.
+
+- The all-in-one image (`mikebild/subkit`) now embeds **PostgreSQL 18** (`postgres:18-bookworm` runtime stage); the dev `docker-compose.yml` and CI/nightly/weekly service containers move to `postgres:18-alpine`. Docs and the operations topology diagram are updated to match.
+- **Breaking (embedded DB only):** the embedded cluster's on-disk format changes across the major version. An existing `/data` volume initialized by PostgreSQL 16 will not start under PG18 — back up and recreate the volume, or point the engine at an external `DATABASE_URL`. External-database deployments are unaffected.
+
 ## [7.2.2]
 
 Fix connector reauth for Cognito `USER_PASSWORD_AUTH` connectors.
