@@ -49,4 +49,27 @@ describe("request driver · retry telemetry shape", () => {
   test("retry-after header value is logged on http_429", () => {
     expect(body).toContain("retry_after_header");
   });
+
+  // Timeout classification (2026-06-21 Gmail send outage): a per-request
+  // timeout must be terminal, not a retryable connection error. Without
+  // this, a `POST /messages/send` that stalled for the full budget was
+  // retried 5× (~23 min) and risked double-sending the email.
+  test("recognises TimeoutError as a timeout (not a connection error)", () => {
+    expect(body).toMatch(/e\.name === "TimeoutError"/);
+    expect(body).toMatch(/timed out\|timeout/);
+  });
+
+  test("classifies a per-request timeout as terminal (cause_kind 'timeout' is thrown, never retried)", () => {
+    expect(body).toMatch(/err\.cause_kind === "timeout"\) throw err/);
+  });
+
+  test("the timeout branch precedes the connection-error retry fallthrough", () => {
+    const timeoutIdx = body.indexOf(
+      'throw new RequestError(e.message ?? "operation timed out", "timeout")',
+    );
+    const connIdx = body.indexOf("connection error: retry regardless of method");
+    expect(timeoutIdx).toBeGreaterThan(0);
+    expect(connIdx).toBeGreaterThan(0);
+    expect(timeoutIdx).toBeLessThan(connIdx);
+  });
 });
