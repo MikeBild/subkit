@@ -56,7 +56,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
     resetMetricsRegistryForTests();
     _resetRssHighWaterForTests();
     _resetCriticalEdgeTrackerForTests();
-    // Default dlq_growth_per_window = 5; set DLQ depth to exactly 5 → triggers.
+    // Default dlq_critical_depth = 5; set DLQ depth to exactly 5 → triggers.
     setDlqJobCount("execution.dlq", 5);
 
     const digest = await buildOperatorHealthDigest(testDb.db, tenant_id);

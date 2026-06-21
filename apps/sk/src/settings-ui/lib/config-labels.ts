@@ -129,7 +129,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "observability.otlp.service_name": "OTLP service name",
   "observability.field_truncation_bytes": "Log field truncation (bytes)",
   "observability.predictive.pool_saturation_pct": "Pool saturation threshold (%)",
-  "observability.predictive.dlq_growth_per_window": "DLQ growth per window",
+  "observability.predictive.dlq_critical_depth": "DLQ critical depth",
   "observability.predictive.transient_retry_rate": "Transient retry rate (per min)",
   "observability.predictive.memory_cap_fraction": "Memory cap fraction (OOM risk)",
   "observability.predictive.connector_unhealthy_pct": "Connector unhealthy threshold (%)",

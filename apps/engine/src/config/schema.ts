@@ -495,13 +495,13 @@ const ObservabilitySection = z
             "Percent of the Postgres pool in use (or any waiting clients) above which saturation is flagged.",
           )
           .meta(global()),
-        dlq_growth_per_window: z
+        dlq_critical_depth: z
           .number()
           .int()
           .min(1)
           .default(5)
           .describe(
-            "Increase in a DLQ's job count within one scan window that flags worker failure.",
+            "Standing dead-letter-queue depth at or above which DLQ accumulation is flagged critical (a worker-failure backlog, not a per-window delta).",
           )
           .meta(global()),
         transient_retry_rate: z

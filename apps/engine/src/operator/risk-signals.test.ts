@@ -29,7 +29,7 @@ import { computeRiskSignals, topRisk } from "./risk-signals.ts";
 
 // Load a minimal config so getConfig() inside computeRiskSignals() resolves.
 // The predictive thresholds are tuned in-test via setConfigKey so this just
-// seeds the default values (pool_saturation_pct=80, dlq_growth_per_window=5,
+// seeds the default values (pool_saturation_pct=80, dlq_critical_depth=5,
 // transient_retry_rate=1, memory_cap_fraction=0.9).
 async function ensureConfig(): Promise<void> {
   try {
@@ -92,7 +92,7 @@ describe("computeRiskSignals — pool_saturation", () => {
 });
 
 describe("computeRiskSignals — dlq_growth", () => {
-  test("emits critical when DLQ depth ≥ dlq_growth_per_window (default 5)", () => {
+  test("emits critical when DLQ depth ≥ dlq_critical_depth (default 5)", () => {
     setDlqJobCount("execution.dlq", 5);
     const signals = computeRiskSignals();
     const s = signals.find((r) => r.kind === "dlq_growth");

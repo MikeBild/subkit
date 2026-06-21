@@ -97,12 +97,12 @@ export function computeRiskSignals(): RiskSignal[] {
     }
   }
 
-  // 2. DLQ growth. We can't see per-window deltas from a point read, so we
-  //    treat the current parked count against the per-window threshold: a
-  //    DLQ at or above the growth threshold means a worker is failing every
-  //    attempt for some payload class.
+  // 2. DLQ depth. A point read can't see per-window deltas, so we flag on the
+  //    standing parked count: a DLQ at or above the critical-depth threshold
+  //    means a worker is failing every attempt for some payload class and the
+  //    backlog won't drain on its own.
   const dlqDepth = reg.gaugeSum(METRIC_NAMES.DLQ_JOB_COUNT);
-  if (dlqDepth >= predictive.dlq_growth_per_window) {
+  if (dlqDepth >= predictive.dlq_critical_depth) {
     signals.push({
       kind: "dlq_growth",
       severity: "critical",
@@ -111,7 +111,7 @@ export function computeRiskSignals(): RiskSignal[] {
         "A worker is failing every retry for some payload class. Inspect the *.dlq queue; these jobs will never drain on their own.",
       metric: METRIC_NAMES.DLQ_JOB_COUNT,
       value: dlqDepth,
-      threshold: predictive.dlq_growth_per_window,
+      threshold: predictive.dlq_critical_depth,
     });
   }
 
