@@ -333,6 +333,48 @@ function healthHintMeta(
   };
 }
 
+/**
+ * Classify a non-`RequestError` thrown by the fetch transport into the
+ * retry taxonomy. Pure + exported so the timeout-is-terminal contract is
+ * unit-testable without a live socket.
+ *
+ *   - "abort"      — the caller's signal aborted (cancellation). Terminal.
+ *   - "timeout"    — a per-request timeout: `AbortSignal.timeout` raises a
+ *                    DOMException `TimeoutError` ("The operation timed
+ *                    out."); an `AbortError` whose source is NOT the
+ *                    caller's signal is also a per-request timeout. The
+ *                    attempt already spent the entire budget, so this is
+ *                    terminal for ALL methods. Pre-fix (2026-06-21 Gmail
+ *                    send outage) the `TimeoutError` shape leaked into
+ *                    "connection" and was retried "regardless of method" —
+ *                    a Gmail `POST /messages/send` that stalled for the
+ *                    300s budget retried 5× (~23 min) and risked double-
+ *                    sending the email.
+ *   - "connection" — a transient transport error; retryable per policy.
+ */
+export function classifyTransportError(
+  err: unknown,
+  signalAborted: boolean,
+): "abort" | "timeout" | "connection" {
+  if (signalAborted) return "abort";
+  const e = err as { name?: string; message?: string; cause?: { name?: string } };
+  if (
+    e.name === "AbortError" ||
+    e.cause?.name === "AbortError" ||
+    /aborted|abort/i.test(e.message ?? "")
+  ) {
+    return "timeout";
+  }
+  if (
+    e.name === "TimeoutError" ||
+    e.cause?.name === "TimeoutError" ||
+    /timed out|timeout/i.test(e.message ?? "")
+  ) {
+    return "timeout";
+  }
+  return "connection";
+}
+
 async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
   let attempt = 0;
   let lastErr: unknown = null;
@@ -507,32 +549,13 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         if (attempt >= p.max_attempts) throw err;
         continue;
       }
-      const e = err as { name?: string; message?: string; cause?: { name?: string } };
-      const isAbort =
-        e.name === "AbortError" ||
-        e.cause?.name === "AbortError" ||
-        /aborted|abort/i.test(e.message ?? "") ||
-        p.signal.aborted;
-      if (isAbort) {
-        if (p.signal.aborted) throw new RequestError("aborted", "abort");
-        throw new RequestError("timeout", "timeout");
-      }
-      // A per-request timeout (`AbortSignal.timeout` → DOMException
-      // `TimeoutError`, message "The operation timed out.") is NOT a
-      // transient connection error: the attempt already spent the entire
-      // timeout budget. Pre-fix it fell through to the connection-error
-      // branch below and was retried "regardless of method" — so a Gmail
-      // `POST /messages/send` that stalled for the 300s budget retried 5×
-      // (~23 min wall clock) AND risked double-sending the email
-      // (production: workflow 18bfde85 send_email, 2026-06-21; the log read
-      // "operation timed out" then "retrying after connection error" ×5).
-      // Classify it as a terminal `timeout` so the step fails fast and
-      // non-idempotent writes are never silently re-dispatched.
-      const isTimeout =
-        e.name === "TimeoutError" ||
-        e.cause?.name === "TimeoutError" ||
-        /timed out|timeout/i.test(e.message ?? "");
-      if (isTimeout) {
+      const e = err as { message?: string };
+      const klass = classifyTransportError(err, p.signal.aborted);
+      if (klass === "abort") throw new RequestError("aborted", "abort");
+      if (klass === "timeout") {
+        // A per-request timeout already spent the entire budget — it is
+        // terminal for ALL methods (no retry, no non-idempotent re-send).
+        // See classifyTransportError for the full root-cause note.
         throw new RequestError(e.message ?? "operation timed out", "timeout");
       }
       // connection error: retry regardless of method
