@@ -5,7 +5,7 @@
 // Every helper is a no-throw operation; failures are swallowed to keep
 // observability code from ever taking down a request path.
 
-import { logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/logger.ts";
 import { CONNECTOR_HEALTH_VALUES, DB_TRANSIENT_RETRY_LABELS } from "./metric-label-allowlists.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 
@@ -17,7 +17,7 @@ function safe(fn: () => void): void {
       module: "observability",
       action: "metrics.write_failed",
       msg: "metric write threw — ignoring",
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
 }

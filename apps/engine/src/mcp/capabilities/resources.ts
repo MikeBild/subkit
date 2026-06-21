@@ -403,15 +403,26 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       });
     }
 
-    // Operator health digest — the one read-only operator surface. Always
-    // enumerated; the read handler gates it on `stats:read`.
-    resources.push({
-      uri: OPERATOR_HEALTH_DIGEST_URI,
-      name: "Operator health digest",
-      description:
-        "Deterministic, LLM-free summary of failing runs, pending self-healing fixes, and leading-indicator risk signals.",
-      mimeType: "application/json",
+    // Operator health digest — the one read-only operator surface. Enumerate
+    // it ONLY for a principal that can actually read it (`stats:read`), the
+    // same gate the read handler enforces. Enumerating it for everyone would
+    // disclose by listing that the host exposes operator-tier telemetry to a
+    // tenant principal (e.g. a portal token) that can never read it — a soft
+    // tenant-isolation drift. Gate the listing too, so visibility == access.
+    const digestDecision = await can(db, {
+      tenant_id: principal.tenant_id,
+      principal,
+      permission: "stats:read",
     });
+    if (digestDecision.allow) {
+      resources.push({
+        uri: OPERATOR_HEALTH_DIGEST_URI,
+        name: "Operator health digest",
+        description:
+          "Deterministic, LLM-free summary of failing runs, pending self-healing fixes, and leading-indicator risk signals.",
+        mimeType: "application/json",
+      });
+    }
 
     return { resources };
   });

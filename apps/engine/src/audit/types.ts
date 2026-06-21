@@ -954,6 +954,28 @@ export const EngineUpdateMetadataSchema = z.object({
 });
 export type EngineUpdateMetadata = z.infer<typeof EngineUpdateMetadataSchema>;
 
+/** `operator.risk_signal_raised` metadata. A leading-indicator predictive
+ *  signal crossed its threshold (false→true edge). `severity` mirrors
+ *  `RiskSeverity` in `operator/risk-signals.ts` ("info" was pruned). */
+export const RiskSignalRaisedMetadataSchema = z.object({
+  kind: z.string(),
+  severity: z.enum(["warn", "critical"]),
+  metric: z.string(),
+  value: z.number(),
+  threshold: z.number(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type RiskSignalRaisedMetadata = z.infer<typeof RiskSignalRaisedMetadataSchema>;
+
+/** `operator.risk_signal_cleared` metadata. The paired clear edge — the
+ *  signal fell back below its threshold (true→false). Only the `kind` is
+ *  carried; the cleared value is by definition under threshold. */
+export const RiskSignalClearedMetadataSchema = z.object({
+  kind: z.string(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type RiskSignalClearedMetadata = z.infer<typeof RiskSignalClearedMetadataSchema>;
+
 export type AuditEntry = {
   id: string;
   ts: Date;

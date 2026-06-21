@@ -17,7 +17,11 @@
 
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { AuditAction, audit } from "../audit/index.ts";
-import { SYSTEM_TENANT_ID } from "../audit/types.ts";
+import {
+  RiskSignalClearedMetadataSchema,
+  RiskSignalRaisedMetadataSchema,
+  SYSTEM_TENANT_ID,
+} from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, patchCandidates, workflows } from "../db/schema/index.ts";
 import { classifyFailure, humanizeClassification } from "../execution/classify.ts";
@@ -279,14 +283,14 @@ export async function buildOperatorHealthDigest(
           resource_type: "operator_health_digest",
           resource_id: r.kind,
           result: "success",
-          metadata: {
+          metadata: RiskSignalRaisedMetadataSchema.parse({
             kind: r.kind,
             severity: r.severity,
             metric: r.metric,
             value: r.value,
             threshold: r.threshold,
             ...(requestSource ? { request_source: requestSource } : {}),
-          },
+          }),
         },
         db,
       );
@@ -301,7 +305,10 @@ export async function buildOperatorHealthDigest(
           resource_type: "operator_health_digest",
           resource_id: kind,
           result: "success",
-          metadata: { kind, ...(requestSource ? { request_source: requestSource } : {}) },
+          metadata: RiskSignalClearedMetadataSchema.parse({
+            kind,
+            ...(requestSource ? { request_source: requestSource } : {}),
+          }),
         },
         db,
       );
