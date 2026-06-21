@@ -145,6 +145,72 @@ describe("update_connector_draft — credential-shape rejection", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Pure unit tests — query-auth param-name in config rejection (no DB)
+// ---------------------------------------------------------------------------
+//
+// Reproduces production session aba4551f (the Browserless connector): the
+// model invented `config.query_param_name`, the `.strict()`
+// HttpConnectorConfig rejected it at save with the opaque "invalid http
+// connector config", and — given no actionable hint — the model re-added
+// the key and looped for minutes. The guard fails fast here with a
+// directed message so the model self-corrects in one turn.
+
+describe("update_connector_draft — query-auth param-name in config rejection", () => {
+  const KEYS = [
+    "query_param_name",
+    "query_parameter_name",
+    "query_param",
+    "param_name",
+    "query_key",
+    "auth_param",
+    "auth_query_param",
+    "token_param",
+  ];
+
+  for (const key of KEYS) {
+    it(`rejects config.${key} with auth_param_name_in_config + actionable next steps`, async () => {
+      const result = await updateConnectorDraftTool.execute(stubCtx, {
+        config: { [key]: "token" },
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error_code).toBe("auth_param_name_in_config");
+        // Message redirects to the credential's `param` field, not config.
+        expect(result.message).toContain("param");
+        expect(result.message).toContain(key);
+        expect(result.next_best_actions).toEqual(
+          expect.arrayContaining(["ask_user_form", "save_connector_draft"]),
+        );
+      }
+    });
+  }
+
+  it("is case-insensitive (config.Query_Param_Name)", async () => {
+    const result = await updateConnectorDraftTool.execute(stubCtx, {
+      config: { Query_Param_Name: "token" },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error_code).toBe("auth_param_name_in_config");
+    }
+  });
+
+  it("does not mutate the draft on rejection", async () => {
+    const emptyDraft = createEmptyDraftDocument();
+    let storedDraft = emptyDraft;
+    const ctx2: ToolContext = {
+      ...stubCtx,
+      getDraft: () => emptyDraft,
+      setDraft: async (next: DraftDocument) => {
+        storedDraft = next;
+      },
+    };
+    await updateConnectorDraftTool.execute(ctx2, { config: { query_param_name: "token" } });
+    expect(storedDraft).toBe(emptyDraft);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Integration tests — clean updates require DB + template resolution
 // ---------------------------------------------------------------------------
 

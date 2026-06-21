@@ -501,6 +501,9 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         if (err.cause_kind === "abort") throw err;
         if (err.cause_kind === "filter_fail") throw err;
         if (err.cause_kind === "request_invalid") throw err;
+        // A per-request timeout is terminal — it already consumed the
+        // full budget; retrying would re-send a non-idempotent write.
+        if (err.cause_kind === "timeout") throw err;
         if (attempt >= p.max_attempts) throw err;
         continue;
       }
@@ -513,6 +516,24 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       if (isAbort) {
         if (p.signal.aborted) throw new RequestError("aborted", "abort");
         throw new RequestError("timeout", "timeout");
+      }
+      // A per-request timeout (`AbortSignal.timeout` → DOMException
+      // `TimeoutError`, message "The operation timed out.") is NOT a
+      // transient connection error: the attempt already spent the entire
+      // timeout budget. Pre-fix it fell through to the connection-error
+      // branch below and was retried "regardless of method" — so a Gmail
+      // `POST /messages/send` that stalled for the 300s budget retried 5×
+      // (~23 min wall clock) AND risked double-sending the email
+      // (production: workflow 18bfde85 send_email, 2026-06-21; the log read
+      // "operation timed out" then "retrying after connection error" ×5).
+      // Classify it as a terminal `timeout` so the step fails fast and
+      // non-idempotent writes are never silently re-dispatched.
+      const isTimeout =
+        e.name === "TimeoutError" ||
+        e.cause?.name === "TimeoutError" ||
+        /timed out|timeout/i.test(e.message ?? "");
+      if (isTimeout) {
+        throw new RequestError(e.message ?? "operation timed out", "timeout");
       }
       // connection error: retry regardless of method
       if (attempt >= p.max_attempts) {

@@ -46,6 +46,12 @@ export async function createMockServer(initial: Handler): Promise<MockServer> {
     callCount: () => count,
     close: () =>
       new Promise<void>((resolve) => {
+        // Force-drain any still-open sockets first. `server.close()` alone
+        // waits for in-flight connections to end, so a test that
+        // intentionally leaves a response open (e.g. a client-timeout
+        // regression) would hang `afterAll` forever. No-op when there are
+        // no open connections.
+        server.closeAllConnections?.();
         server.close(() => resolve());
       }),
   };

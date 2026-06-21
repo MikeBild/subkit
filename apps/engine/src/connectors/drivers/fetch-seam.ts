@@ -39,10 +39,41 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 const LOAD_TIME_FETCH: typeof fetch = globalThis.fetch.bind(globalThis);
 
+// Production egress wrapper — forces a FRESH connection per request
+// (`keepalive: false`) instead of reusing Bun's pooled keep-alive
+// connection.
+//
+// Root cause of the 2026-06-21 Gmail send outage: after an unclean engine
+// restart (DB-connection drop / memory event at 14:49 UTC), Bun's fetch
+// kept reusing a half-open pooled HTTP/2 connection to
+// gmail.googleapis.com. Every `POST /messages/send` wrote the request into
+// that black-hole socket and waited the full timeout — the scheduled
+// DigitalOcean report and every other Gmail send hung for HOURS across
+// runs until a manual `systemctl restart`. Reads to other hosts and a
+// fresh process were fine, so it was specifically the poisoned pooled
+// connection.
+//
+// Disabling keep-alive makes Bun open a new connection for each egress
+// call (verified empirically: 5 sequential requests → 5 TCP connections
+// with `keepalive:false` vs 1 when pooled), so a poisoned connection can
+// never be reused — a future blip self-heals on the next request with no
+// restart. The cost is one TLS handshake per request (~tens of ms),
+// acceptable for this engine's request volume and far cheaper than a
+// multi-hour silent send outage. Test overrides bypass this wrapper so
+// mocks see exactly what they stub.
+const DRIVER_FETCH: typeof fetch = Object.assign(
+  (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+    LOAD_TIME_FETCH(input, { ...(init ?? {}), keepalive: false }),
+  // `typeof fetch` (Bun) also carries `preconnect`; delegate it to the real
+  // implementation so the wrapper remains a drop-in. Optional-chained so a
+  // non-Bun runtime (no `fetch.preconnect`) doesn't crash module import.
+  { preconnect: globalThis.fetch.preconnect?.bind(globalThis) ?? (() => {}) },
+);
+
 const overrideStore = new AsyncLocalStorage<typeof fetch>();
 
 export function getDriverFetch(): typeof fetch {
-  return overrideStore.getStore() ?? LOAD_TIME_FETCH;
+  return overrideStore.getStore() ?? DRIVER_FETCH;
 }
 
 /** Test seam: run `body` with the driver-egress fetch bound to `fn`
