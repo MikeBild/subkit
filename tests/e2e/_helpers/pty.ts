@@ -120,7 +120,18 @@ export function buildExpectScript(
     }
     lines.push(`after ${step.ms}`);
   }
-  lines.push("expect eof");
+  // Bounded teardown. Once every wait/send step has run the scenario's
+  // assertions are already satisfied. The Ink REPL under a PTY frequently
+  // keeps stdin open and never emits EOF, so a bare `expect eof` hangs the
+  // full 20s `set timeout` — wasting ~20s on EVERY scenario AND colliding
+  // with tests whose bun-test timeout is 20s (they get SIGKILL'd mid-
+  // teardown and fail at ~20001ms, which is exactly how the sk-overhaul PTY
+  // suites broke once CI gained `expect`). Give the process a short grace to
+  // exit, then let the script end (exit 0) regardless: expect reaps the
+  // spawned process on exit, so the eof vs timeout race never changes the
+  // exit code the assertions check.
+  lines.push("set timeout 5");
+  lines.push("expect { eof {} timeout {} }");
   return lines.join("\n");
 }
 
