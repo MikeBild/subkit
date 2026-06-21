@@ -263,36 +263,48 @@ export async function buildOperatorHealthDigest(
   if (opts?.audit !== false) {
     const requestSource = getContext().request_source;
     const edges = takeRiskEdges(risk);
+    // Bind the audit insert to the SAME `db` the digest read from — not the
+    // global `getDb()` pool the bare `audit()` would reach for. The digest is
+    // already fully parameterised on `db`; letting its audit side-effect drift
+    // to a different handle is a latent DB-routing inconsistency (and makes an
+    // int test that injects a disposable db silently poison the process-global
+    // pool, racing every other suite's audit writes).
     for (const r of edges.raised) {
-      audit({
-        tenant_id: SYSTEM_TENANT_ID,
-        actor_type: "system",
-        actor_id: null,
-        action: AuditAction.RISK_SIGNAL_RAISED,
-        resource_type: "operator_health_digest",
-        resource_id: r.kind,
-        result: "success",
-        metadata: {
-          kind: r.kind,
-          severity: r.severity,
-          metric: r.metric,
-          value: r.value,
-          threshold: r.threshold,
-          ...(requestSource ? { request_source: requestSource } : {}),
+      audit(
+        {
+          tenant_id: SYSTEM_TENANT_ID,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.RISK_SIGNAL_RAISED,
+          resource_type: "operator_health_digest",
+          resource_id: r.kind,
+          result: "success",
+          metadata: {
+            kind: r.kind,
+            severity: r.severity,
+            metric: r.metric,
+            value: r.value,
+            threshold: r.threshold,
+            ...(requestSource ? { request_source: requestSource } : {}),
+          },
         },
-      });
+        db,
+      );
     }
     for (const kind of edges.cleared) {
-      audit({
-        tenant_id: SYSTEM_TENANT_ID,
-        actor_type: "system",
-        actor_id: null,
-        action: AuditAction.RISK_SIGNAL_CLEARED,
-        resource_type: "operator_health_digest",
-        resource_id: kind,
-        result: "success",
-        metadata: { kind, ...(requestSource ? { request_source: requestSource } : {}) },
-      });
+      audit(
+        {
+          tenant_id: SYSTEM_TENANT_ID,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.RISK_SIGNAL_CLEARED,
+          resource_type: "operator_health_digest",
+          resource_id: kind,
+          result: "success",
+          metadata: { kind, ...(requestSource ? { request_source: requestSource } : {}) },
+        },
+        db,
+      );
     }
   }
 
