@@ -239,6 +239,74 @@
     return base64EncodeUtf8(input).replace(/\+/g, "-").replace(/\//g, "_");
   }
 
+  // Decode side — absent before v1.3.0, which forced transforms to either
+  // hand-roll a decoder or give up. Accepts BOTH the standard (`+`/`/`) and
+  // url-safe (`-`/`_`) alphabets and tolerates missing padding, so a value
+  // produced by any of the encoders above round-trips. Whitespace is ignored.
+  const B64_LOOKUP = (function buildLookup() {
+    const table = {};
+    for (let i = 0; i < B64_ALPHABET.length; i++) table[B64_ALPHABET[i]] = i;
+    table["-"] = 62; // url-safe `+`
+    table["_"] = 63; // url-safe `/`
+    return table;
+  })();
+
+  function base64ToBytes(input) {
+    const str = stringInput(input).replace(/[\s=]/g, "");
+    const bytes = [];
+    let acc = 0;
+    let bits = 0;
+    for (let i = 0; i < str.length; i++) {
+      const v = B64_LOOKUP[str[i]];
+      if (v === undefined) throw new Error("base64Decode: invalid character at index " + i);
+      acc = (acc << 6) | v;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes.push((acc >> bits) & 0xff);
+      }
+    }
+    return bytes;
+  }
+
+  // Inverse of `base64Encode`: returns a "binary string" (one char per byte,
+  // low 8 bits) — Web `atob` semantics.
+  function base64Decode(input) {
+    const bytes = base64ToBytes(input);
+    let out = "";
+    for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+    return out;
+  }
+
+  // Inverse of `base64EncodeUtf8`: decodes the bytes as UTF-8 back to a
+  // JS string (handles multi-byte sequences and surrogate pairs).
+  function base64DecodeUtf8(input) {
+    const bytes = base64ToBytes(input);
+    let out = "";
+    let i = 0;
+    while (i < bytes.length) {
+      const b0 = bytes[i++];
+      if (b0 < 0x80) {
+        out += String.fromCharCode(b0);
+      } else if (b0 >= 0xc0 && b0 < 0xe0) {
+        const b1 = bytes[i++] & 0x3f;
+        out += String.fromCharCode(((b0 & 0x1f) << 6) | b1);
+      } else if (b0 >= 0xe0 && b0 < 0xf0) {
+        const b1 = bytes[i++] & 0x3f;
+        const b2 = bytes[i++] & 0x3f;
+        out += String.fromCharCode(((b0 & 0x0f) << 12) | (b1 << 6) | b2);
+      } else {
+        const b1 = bytes[i++] & 0x3f;
+        const b2 = bytes[i++] & 0x3f;
+        const b3 = bytes[i++] & 0x3f;
+        let cp = ((b0 & 0x07) << 18) | (b1 << 12) | (b2 << 6) | b3;
+        cp -= 0x10000;
+        out += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff));
+      }
+    }
+    return out;
+  }
+
   function isString(v) {
     return typeof v === "string";
   }
@@ -279,16 +347,52 @@
     base64UrlEncode: base64UrlEncode,
     base64EncodeUtf8: base64EncodeUtf8,
     base64UrlEncodeUtf8: base64UrlEncodeUtf8,
+    base64Decode: base64Decode,
+    base64DecodeUtf8: base64DecodeUtf8,
     isString: isString,
     isNumber: isNumber,
     isArray: isArray,
     isObject: isObject,
     isNil: isNil,
-    version: "1.2.0",
+    version: "1.3.0",
   });
 
   Object.defineProperty(globalThis, "sk", {
     value: sk,
+    writable: false,
+    configurable: false,
+    enumerable: false,
+  });
+
+  // Install the universally-known `btoa`/`atob` globals as thin wrappers
+  // over the binary-string base64 codec (Web semantics: each char is one
+  // byte, low 8 bits). Their absence is a footgun — author code reaches
+  // for `btoa` by reflex, fails, and hand-rolls an encoder instead of
+  // finding `sk.base64EncodeUtf8` (production session, the Gmail MIME
+  // build). For Unicode payloads use `sk.base64EncodeUtf8` /
+  // `sk.base64UrlEncodeUtf8`; `btoa` mirrors the browser and throws on
+  // code points > 255. Still no host I/O — pure in-sandbox functions.
+  Object.defineProperty(globalThis, "btoa", {
+    value: function btoa(input) {
+      const s = stringInput(input);
+      for (let i = 0; i < s.length; i++) {
+        if (s.charCodeAt(i) > 0xff) {
+          throw new Error(
+            "btoa: string contains a code point > 255 — use sk.base64EncodeUtf8() for Unicode",
+          );
+        }
+      }
+      return base64Encode(s);
+    },
+    writable: false,
+    configurable: false,
+    enumerable: false,
+  });
+
+  Object.defineProperty(globalThis, "atob", {
+    value: function atob(input) {
+      return base64Decode(input);
+    },
     writable: false,
     configurable: false,
     enumerable: false,

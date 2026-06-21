@@ -78,3 +78,55 @@ describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () =>
     expect(url.endsWith("=")).toBe(true);
   });
 });
+
+// Decode side + the familiar `btoa`/`atob` globals — added in stdlib
+// v1.3.0. Pre-fix the sandbox installed no `btoa`/`Buffer`, so authors
+// reached for `btoa` by reflex, failed, and hand-rolled an encoder
+// instead of finding `sk.base64EncodeUtf8` (production Gmail MIME build).
+// There was also NO decode path at all.
+describe("base64 decode + btoa/atob globals (stdlib v1.3.0)", () => {
+  const unicode = ["", "a", "ab", "abc", "Größe 😀", "Toulon → Ajaccio 185,00 €", "ä€"];
+
+  for (const s of unicode) {
+    test(`base64DecodeUtf8(base64EncodeUtf8(x)) round-trips ${JSON.stringify(s).slice(0, 30)}`, async () => {
+      const rt = await b64("return sk.base64DecodeUtf8(sk.base64EncodeUtf8(input.s));", { s });
+      expect(rt).toBe(s);
+    });
+  }
+
+  test("base64DecodeUtf8 tolerates url-safe alphabet and missing padding", async () => {
+    const s = "Toulon → Ajaccio";
+    const rt = await b64(
+      "return sk.base64DecodeUtf8(sk.base64UrlEncodeUtf8(input.s).replace(/=+$/, ''));",
+      { s },
+    );
+    expect(rt).toBe(s);
+  });
+
+  test("btoa global matches sk.base64Encode (binary-string Web semantics)", async () => {
+    const s = "hello world";
+    const fromBtoa = await b64("return btoa(input.s);", { s });
+    const fromSk = await b64("return sk.base64Encode(input.s);", { s });
+    expect(fromBtoa).toBe(fromSk);
+    expect(fromBtoa).toBe(Buffer.from(s, "binary").toString("base64"));
+  });
+
+  test("atob global is the inverse of btoa (binary string)", async () => {
+    const s = "hello world";
+    const rt = await b64("return atob(btoa(input.s));", { s });
+    expect(rt).toBe(s);
+  });
+
+  test("btoa throws on code points > 255 (Web parity; use sk.base64EncodeUtf8 for Unicode)", async () => {
+    // "€" is U+20AC (8364 > 255). runJs surfaces an in-sandbox throw by rejecting.
+    await expect(
+      runJs<string>({ code: "return btoa(input.s);", input: { s: "€" } }),
+    ).rejects.toThrow();
+  });
+
+  test("btoa accepts a Latin-1 code point (<= 255) like 'ä' without throwing", async () => {
+    // charCode 0xE4 (228) fits one byte — Web btoa accepts it.
+    const out = await b64("return btoa(input.s);", { s: "ä" });
+    expect(out).toBe(Buffer.from("ä", "binary").toString("base64"));
+  });
+});

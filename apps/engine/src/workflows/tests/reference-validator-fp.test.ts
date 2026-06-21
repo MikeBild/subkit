@@ -153,4 +153,64 @@ describe("validateUnsupportedPlaceholders", () => {
     };
     expect(validateUnsupportedPlaceholders(wf(draft.steps as WorkflowDef["steps"]))).toEqual([]);
   });
+
+  // Regression: a `language: "javascript"` transform body legitimately
+  // uses `${...}` TEMPLATE LITERALS. These are NOT the `${kind.X}`
+  // placeholder grammar and must not be flagged. Pre-fix every
+  // `` `${c.from}` `` / `` `${rows}` `` tripped `bad_kind` →
+  // `workflow_unsupported_placeholder`, forcing a rewrite to string
+  // concatenation (production session c3e1bd7e, the Gmail MIME build).
+  test("does NOT flag JS template literals in a javascript transform", () => {
+    const draft = {
+      name: "draft",
+      steps: [
+        { id: "scrape_prices", kind: "request", method: "POST", path: "/chrome/function" },
+        {
+          id: "build_email",
+          kind: "transform",
+          language: "javascript",
+          expression:
+            "const rows = input.scope.scrape_prices.data.map((c) => `<tr><td>${c.from} -> ${c.to}</td><td>${c.price}</td></tr>`).join('');\nconst html = `<table>${rows}</table>`;\nreturn { html, count: input.scope.scrape_prices.data.length };",
+        },
+      ],
+    };
+    expect(validateUnsupportedPlaceholders(wf(draft.steps as WorkflowDef["steps"]))).toEqual([]);
+  });
+
+  test("transform default language (undefined) is treated as javascript and not flagged", () => {
+    const draft = {
+      name: "draft",
+      steps: [
+        { id: "fetch", kind: "request", method: "GET", url: "https://api.example.com/x" },
+        {
+          id: "shape",
+          kind: "transform",
+          // no `language` → defaults to javascript
+          expression:
+            "const greeting = `hello ${input.scope.fetch.data.name}`; return { greeting };",
+        },
+      ],
+    };
+    expect(validateUnsupportedPlaceholders(wf(draft.steps as WorkflowDef["steps"]))).toEqual([]);
+  });
+
+  // The gate is JS-BODY-scoped: a genuinely bad placeholder in a request
+  // step's interpolated string field is still caught. Proves we narrowed
+  // the scan, not disabled it.
+  test("still flags ${baduser.x} in a request URL (string interpolation site)", () => {
+    const draft = {
+      name: "draft",
+      steps: [
+        {
+          id: "fetch",
+          kind: "request",
+          method: "GET",
+          url: "https://api.example.com/${baduser.id}",
+        },
+      ],
+    };
+    const errs = validateUnsupportedPlaceholders(wf(draft.steps as WorkflowDef["steps"]));
+    expect(errs.length).toBe(1);
+    expect(errs[0]?.code).toBe("bad_kind");
+  });
 });

@@ -84,6 +84,33 @@ function containsCredentialShape(value: unknown, path: string, depth: number): s
   return null;
 }
 
+/**
+ * Top-level config keys the LLM invents to "store the query parameter
+ * name" for query auth. None of these exist in any driver's config
+ * schema — `HttpConnectorConfig` is `.strict()` and rejects them at save
+ * with the opaque "invalid http connector config". The param name lives
+ * in the credential's `param` field, never in config. Returns the
+ * offending key (original casing) or null. Match is case-insensitive and
+ * top-level only — these are never nested.
+ */
+const AUTH_PARAM_CONFIG_KEYS = new Set([
+  "query_param_name",
+  "query_parameter_name",
+  "query_param",
+  "param_name",
+  "query_key",
+  "auth_param",
+  "auth_query_param",
+  "token_param",
+]);
+
+function findAuthParamConfigKey(config: Record<string, unknown>): string | null {
+  for (const key of Object.keys(config)) {
+    if (AUTH_PARAM_CONFIG_KEYS.has(key.toLowerCase())) return key;
+  }
+  return null;
+}
+
 const inputSchema = z
   .object({
     name: z.string().min(1).optional(),
@@ -176,10 +203,39 @@ export const updateConnectorDraftTool: ConversationTool = {
       };
     }
 
-    // Hard-reject any attempt to store a credential-shaped value in config.
-    // The only correct path for credentials is ask_user_form(type: password,
-    // sensitive: true) followed by save_connector_draft({credential}).
     if (args.config !== undefined) {
+      // Reject the LLM-invented query-auth param-name keys FIRST — before
+      // the generic credential-shape guard below. There is NO config slot
+      // for the query parameter name: for `auth_type: "query"` the param
+      // name lives in the credential's `param` field (collected via
+      // ask_user_form + save_connector_draft({credential:{mode:"query",
+      // param, value}})). `HttpConnectorConfig` is `.strict()`, so a key
+      // like `config.query_param_name` is rejected at save time with the
+      // opaque "invalid http connector config" — and the model, given no
+      // actionable hint, re-added the key and looped (production session
+      // aba4551f, the Browserless connector: the save retried for minutes).
+      // This runs ahead of `containsCredentialShape` so keys that also
+      // carry a credential substring (`token_param`, `query_key`) get the
+      // precise "param belongs in credential.param" message instead of the
+      // generic "use a form" one. Generalized, not vendor-specific.
+      const authParamKey = findAuthParamConfigKey(args.config);
+      if (authParamKey !== null) {
+        return {
+          ok: false,
+          error_code: "auth_param_name_in_config",
+          message:
+            `\`config.${authParamKey}\` is not a valid connector config key — there is no config slot for the query parameter name. ` +
+            "For query auth the parameter name belongs in the credential's `param` field. " +
+            'Set `auth_type: "query"`, then collect the secret via ask_user_form(type: password, sensitive: true) and submit ' +
+            'save_connector_draft({credential: {mode: "query", param: "<param-name>", value: "<token>"}}) — e.g. param: "token" for Browserless. ' +
+            "Remove this key from config.",
+          next_best_actions: ["ask_user_form", "save_connector_draft"],
+        };
+      }
+
+      // Hard-reject any attempt to store a credential-shaped value in config.
+      // The only correct path for credentials is ask_user_form(type: password,
+      // sensitive: true) followed by save_connector_draft({credential}).
       const hitPath = containsCredentialShape(args.config, "", 0);
       if (hitPath !== null) {
         log.connector.draft.credential_rejected({
