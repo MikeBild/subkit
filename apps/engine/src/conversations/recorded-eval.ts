@@ -61,6 +61,7 @@ import {
 import {
   describeTransformGateBlock,
   evaluateTransformAuthoringGate,
+  isHandRolledCodecBlock,
   type TransformGateBlock,
 } from "./tools/transform-authoring-gate.ts";
 import { repairTransformExpression, type TransformRepairOutcome } from "./transform-repair.ts";
@@ -143,10 +144,22 @@ export interface RecordedEvalScopeRef {
   evidence: "recorded" | "stale" | "missing";
 }
 
+// Wire contract for `missing_evidence[].next_action`, read by downstream
+// tools/clients. Pinned as a typed const map so a rename changes one place.
+// PREVIEW_GAP = upstream step has no recorded preview (re-run to record it);
+// CODEC_REWRITE = transform hand-rolls a codec alphabet (swap for `sk.*`).
+export const MISSING_EVIDENCE_NEXT_ACTIONS = {
+  PREVIEW_GAP: "dry_run_workflow",
+  CODEC_REWRITE: "rewrite_with_sk_base64",
+} as const;
+
+export type MissingEvidenceNextAction =
+  (typeof MISSING_EVIDENCE_NEXT_ACTIONS)[keyof typeof MISSING_EVIDENCE_NEXT_ACTIONS];
+
 export interface RecordedEvalMissingEvidence {
   step_id: string;
   reason: string;
-  next_action: "dry_run_workflow";
+  next_action: MissingEvidenceNextAction;
 }
 
 export interface RecordedEvalReport {
@@ -815,14 +828,20 @@ export async function runRecordedEval(
     missingByStep.set(b.referenced_step_id, {
       step_id: b.referenced_step_id,
       reason: describeLoopGateBlock(b),
-      next_action: "dry_run_workflow",
+      next_action: MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP,
     });
   }
   for (const b of transformGate.blocks) {
-    missingByStep.set(b.referenced_step_id, {
-      step_id: b.referenced_step_id,
+    // A hand-rolled-codec block is about the transform's own source, not an
+    // upstream reference: key it on the transform step id, steer to a rewrite.
+    const isCodec = isHandRolledCodecBlock(b);
+    const key = isCodec ? b.transform_step_id : b.referenced_step_id;
+    missingByStep.set(key, {
+      step_id: key,
       reason: describeTransformGateBlock(b),
-      next_action: "dry_run_workflow",
+      next_action: isCodec
+        ? MISSING_EVIDENCE_NEXT_ACTIONS.CODEC_REWRITE
+        : MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP,
     });
   }
   const missing_evidence = [...missingByStep.values()];
@@ -863,9 +882,20 @@ export async function runRecordedEval(
     if (hasJsonataEmptyResults) next_actions.push("suggest_jsonata_paths");
     next_actions.push("dry_run_transform");
   }
+  // Codec blocks resolve by an `sk.*` rewrite (steer to `update_param`); only
+  // preview-evidence gaps want dry_run_workflow.
+  const hasCodecBlock = transformGate.blocks.some(isHandRolledCodecBlock);
+  const hasPreviewGap =
+    !loopGate.ok || transformGate.blocks.some((b) => !isHandRolledCodecBlock(b));
+  if (hasCodecBlock) {
+    next_actions.push("update_param", "edit_workflow_patch");
+  }
   // Truncated-evidence empties resolve with a faithful full-data run, not a
-  // transform rewrite — steer to dry_run_workflow.
-  if (hasTruncatedEmptyResults || !gatesOk || missing_evidence.length > 0) {
+  // transform rewrite. A preview-gap missing_evidence entry also wants a run.
+  const hasDryRunMissingEvidence = missing_evidence.some(
+    (m) => m.next_action === MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP,
+  );
+  if (hasTruncatedEmptyResults || hasPreviewGap || hasDryRunMissingEvidence) {
     next_actions.push("dry_run_workflow");
   }
 
@@ -886,9 +916,20 @@ export async function runRecordedEval(
   if (hasEvalErrors) problems.push("evaluation error(s) against recorded scope");
   if (hasEmptyResults) problems.push("empty result(s) over recorded evidence");
   if (!gatesOk) {
-    problems.push(
-      `${loopGate.blocks.length + transformGate.blocks.length} step(s) reference data with no recorded preview — run dry_run_workflow once to record the shape`,
-    );
+    const codecBlocks = transformGate.blocks.filter(isHandRolledCodecBlock);
+    const previewBlocks =
+      loopGate.blocks.length +
+      transformGate.blocks.filter((b) => !isHandRolledCodecBlock(b)).length;
+    if (previewBlocks > 0) {
+      problems.push(
+        `${previewBlocks} step(s) reference data with no recorded preview — run dry_run_workflow once to record the shape`,
+      );
+    }
+    if (codecBlocks.length > 0) {
+      problems.push(
+        `${codecBlocks.length} transform step(s) hand-roll a codec alphabet/lookup table — rewrite with sk.base64Encode/base64UrlEncode/base64EncodeUtf8/base64Decode (or sk.hexEncode/hexDecode) via update_param`,
+      );
+    }
   }
   if (repairedCount > 0) {
     problems.push(
@@ -937,7 +978,16 @@ export function emitRecordedEvalSignals(args: {
     recordAuthoringGateBlock({ code: "loop_authoring_requires_inspect", tool: args.tool });
   }
   if (!report.gates.transform.ok) {
-    recordAuthoringGateBlock({ code: "transform_authoring_requires_inspect", tool: args.tool });
+    // Split the metric by failure class: a hand-rolled-codec block is a
+    // distinct authoring mistake from a missing-preview inspect gap.
+    const hasCodec = report.gates.transform.blocks.some(isHandRolledCodecBlock);
+    const hasInspect = report.gates.transform.blocks.some((b) => !isHandRolledCodecBlock(b));
+    if (hasInspect) {
+      recordAuthoringGateBlock({ code: "transform_authoring_requires_inspect", tool: args.tool });
+    }
+    if (hasCodec) {
+      recordAuthoringGateBlock({ code: "transform_hand_rolled_codec", tool: args.tool });
+    }
   }
   if (!report.ok) {
     logger.warn({

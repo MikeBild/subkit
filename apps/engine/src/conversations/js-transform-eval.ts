@@ -46,6 +46,9 @@ export async function checkJsBodySyntax(
       code: `const __authored__ = (function (input) {\n${code}\n});\nreturn true;`,
       input: null,
       limits: { wall_ms: JS_EVAL_WALL_MS },
+      // Authoring-time syntax check — no execution context, intentionally
+      // constant clock.
+      clock: null,
     });
     return { ok: true };
   } catch (err) {
@@ -70,6 +73,9 @@ export async function evaluateJsBody(args: {
       code: args.code,
       input: { scope: args.scope, input: args.input ?? null },
       limits: { wall_ms: JS_EVAL_WALL_MS },
+      // Recorded-eval authoring preview — no live execution instant to
+      // thread, intentionally constant clock.
+      clock: null,
     });
     return { ok: true, value: result.output };
   } catch (err) {

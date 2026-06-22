@@ -17,6 +17,7 @@ import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
 import {
   describeTransformGateBlock,
   evaluateTransformAuthoringGate,
+  isHandRolledCodecBlock,
 } from "./transform-authoring-gate.ts";
 
 const inputSchema = z
@@ -346,6 +347,36 @@ export const updateParamTool: ConversationTool = {
         );
         if (!transformGate.ok) {
           const summary = transformGate.blocks.map(describeTransformGateBlock).join("; ");
+          const codecBlocks = transformGate.blocks.filter(isHandRolledCodecBlock);
+          // A hand-rolled-codec block is a source mistake, not a missing-
+          // preview gap: re-running a dry-run fixes nothing. Surface a
+          // distinct typed refusal that steers to the `sk.*` encoders. A
+          // mixed verdict (codec + inspect) still leads with the codec
+          // steer because the source must be rewritten before any re-run
+          // is meaningful.
+          if (codecBlocks.length > 0) {
+            recordAuthoringGateBlock({
+              code: "transform_hand_rolled_codec",
+              tool: "update_param",
+            });
+            return {
+              ok: false,
+              data: buildGateError(currentDraft, {
+                error_code: "transform_hand_rolled_codec",
+                message: `update would embed a hand-rolled base64/base32/hex codec in a transform's source. ${summary}. Rewrite the expression to call the deterministic sk.* encoders (sk.base64Encode / sk.base64UrlEncode / sk.base64EncodeUtf8 / sk.base64Decode, or sk.hexEncode / sk.hexDecode) instead of an alphabet literal or reverse-lookup table.`,
+                recommended_mode: "workflow",
+                // The corrective action is to re-apply the rewritten
+                // expression via update_param — lead with it so the steer
+                // matches the message (inspect is the secondary fallback).
+                next_best_actions: ["update_param", "inspect_workflow_draft"],
+                extra: {
+                  gate_blocks: transformGate.blocks,
+                  step_id: args.step_id,
+                  param: args.param,
+                },
+              }),
+            };
+          }
           recordAuthoringGateBlock({
             code: "transform_authoring_requires_inspect",
             tool: "update_param",
