@@ -5,7 +5,11 @@
 
 import { describe, expect, test } from "bun:test";
 import type { WorkflowDraftStepPreview } from "../../types.ts";
-import { evaluateTransformAuthoringGate } from "../transform-authoring-gate.ts";
+import {
+  describeTransformGateBlock,
+  detectHandRolledCodec,
+  evaluateTransformAuthoringGate,
+} from "../transform-authoring-gate.ts";
 
 const traceFor = (step_id: string, output_preview?: unknown): WorkflowDraftStepPreview => ({
   step_id,
@@ -360,5 +364,172 @@ describe("evaluateTransformAuthoringGate", () => {
     // The referenced step's failure is not a runtime/data error — gate holds.
     expect(result.ok).toBe(false);
     expect(result.blocks[0]?.referenced_step_id).toBe("fetch");
+  });
+});
+
+// Hand-rolled-codec rejection. A transform that re-implements a
+// base64/base32/hex codec (or its reverse-lookup table) in JS instead of
+// calling the deterministic `sk.*` encoders is blocked and steered to
+// sk.base64*/sk.hex*. This is the failure class behind the Gmail send
+// outage: a redaction-corrupted alphabet literal drove a hand-rolled
+// encoder to emit a 416KB malformed body.
+describe("detectHandRolledCodec", () => {
+  const B64_STD = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const B64_URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+  test("flags a standard base64 alphabet literal", () => {
+    expect(detectHandRolledCodec(`const A="${B64_STD}";`)).toEqual({
+      found: true,
+      kind: "base64",
+    });
+  });
+
+  test("flags a url-safe base64 alphabet literal", () => {
+    expect(detectHandRolledCodec(`var b = '${B64_URL}';`)).toEqual({
+      found: true,
+      kind: "base64",
+    });
+  });
+
+  test("flags a base32 alphabet literal", () => {
+    expect(detectHandRolledCodec(`const a="${B32}";`)).toEqual({
+      found: true,
+      kind: "base32",
+    });
+  });
+
+  test("flags a hex encode table literal", () => {
+    expect(detectHandRolledCodec(`const HEX="0123456789abcdef";`)).toEqual({
+      found: true,
+      kind: "hex_table",
+    });
+  });
+
+  test("flags a reverse-lookup table keyed by single chars to small ints", () => {
+    const table = "const rev={A:0,B:1,C:2,D:3,E:4,F:5,G:6,H:7,I:8};return rev[input.input.c];";
+    expect(detectHandRolledCodec(table)).toEqual({ found: true, kind: "reverse_lookup" });
+  });
+
+  test("does NOT flag a transform that uses sk.base64Encode", () => {
+    expect(detectHandRolledCodec("return sk.base64Encode(input.input.s);")).toEqual({
+      found: false,
+      kind: null,
+    });
+  });
+
+  test("does NOT flag a long base64 DATA literal (not the ordered alphabet)", () => {
+    // A real base64-encoded asset — long, high-entropy, but NOT the
+    // sequential A-Z a-z 0-9 alphabet ordering. Must pass through.
+    const data = "const asset='SGVsbG8sIHdvcmxkISBUaGlzIGlzIGEgZml4dHVyZSBwYXlsb2FkLg==aGVsbG8';";
+    expect(detectHandRolledCodec(data)).toEqual({ found: false, kind: null });
+  });
+
+  test("does NOT flag an ordinary small object literal", () => {
+    expect(detectHandRolledCodec("const m={a:1,b:2,c:3};return m;")).toEqual({
+      found: false,
+      kind: null,
+    });
+  });
+});
+
+describe("evaluateTransformAuthoringGate — hand-rolled codec", () => {
+  const B64_STD = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  test("blocks a transform that embeds a base64 alphabet, with a sk.base64 steer", () => {
+    const result = evaluateTransformAuthoringGate(
+      {
+        steps: [
+          {
+            id: "encode",
+            kind: "transform",
+            expression: `const B="${B64_STD}";let o="";return o;`,
+          },
+        ],
+      },
+      null,
+    );
+    expect(result.ok).toBe(false);
+    const block = result.blocks[0];
+    expect(block?.reason).toBe("hand_rolled_codec_alphabet");
+    expect(block?.transform_step_id).toBe("encode");
+    expect(block?.codec_kind).toBe("base64");
+    const msg = describeTransformGateBlock(block!);
+    expect(msg).toContain("sk.base64Encode");
+    expect(msg).toContain("encode");
+  });
+
+  test("steers a hex_table block to sk.hexEncode", () => {
+    const result = evaluateTransformAuthoringGate(
+      {
+        steps: [
+          {
+            id: "hex",
+            kind: "transform",
+            expression: `const HEX="0123456789abcdef";return HEX;`,
+          },
+        ],
+      },
+      null,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.blocks[0]?.codec_kind).toBe("hex_table");
+    expect(describeTransformGateBlock(result.blocks[0]!)).toContain("sk.hexEncode");
+  });
+
+  test("does NOT block a transform that calls sk.base64Encode", () => {
+    const result = evaluateTransformAuthoringGate(
+      {
+        steps: [
+          {
+            id: "encode",
+            kind: "transform",
+            expression: "return sk.base64Encode(input.input.payload);",
+          },
+        ],
+      },
+      null,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("does NOT block a transform carrying a long base64 DATA literal", () => {
+    const result = evaluateTransformAuthoringGate(
+      {
+        steps: [
+          {
+            id: "fixture",
+            kind: "transform",
+            expression:
+              "const asset='SGVsbG8sIHdvcmxkISBUaGlzIGlzIGEgZml4dHVyZSBwYXlsb2FkLg=='; return asset;",
+          },
+        ],
+      },
+      null,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("a codec block fires regardless of step references / preview", () => {
+    // No $scope refs at all — the codec block is a static-source check,
+    // independent of the inspect-before-transform gate.
+    const result = evaluateTransformAuthoringGate(
+      {
+        steps: [
+          {
+            id: "encode",
+            kind: "transform",
+            expression: `const B="${B64_STD}";return B;`,
+          },
+        ],
+      },
+      {
+        ok: true,
+        summary: "ok",
+        step_traces: [],
+      },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.blocks[0]?.reason).toBe("hand_rolled_codec_alphabet");
   });
 });

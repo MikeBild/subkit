@@ -103,6 +103,8 @@ export async function replayEstateCase(
     const newResult = await runJs({
       code: testCase.new_javascript.code,
       input: testCase.new_javascript.input ?? null,
+      // Equivalence-replay harness — no live execution instant, constant.
+      clock: null,
     });
     const new_output = newResult.output;
     const output_equal = isDeepStrictEqual(old_output, new_output);

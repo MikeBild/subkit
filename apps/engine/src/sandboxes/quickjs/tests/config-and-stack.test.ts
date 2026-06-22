@@ -46,6 +46,7 @@ describe("sandbox limits are sourced from config", () => {
       await runJs({
         code: "const big = new Uint8Array(64 * 1024 * 1024); big[0] = 1; return big.length;",
         input: null,
+        clock: null,
       });
     } catch (err) {
       threw = err;
@@ -62,7 +63,11 @@ describe("sandbox limits are sourced from config", () => {
 
     let threw: unknown = null;
     try {
-      await runJs({ code: "let i = 0; while (true) { i += 1; } return i;", input: null });
+      await runJs({
+        code: "let i = 0; while (true) { i += 1; } return i;",
+        input: null,
+        clock: null,
+      });
     } catch (err) {
       threw = err;
     }
@@ -78,14 +83,19 @@ describe("stack cap", () => {
   `;
 
   test("deep recursion fits inside the 2 MB default stack", async () => {
-    const { output } = await runJs<number>({ code: recursion, input: null });
+    const { output } = await runJs<number>({ code: recursion, input: null, clock: null });
     expect(output).toBe(1500);
   });
 
   test("the same recursion overflows a tiny stack budget", async () => {
     let threw: unknown = null;
     try {
-      await runJs({ code: recursion, input: null, limits: { stack_bytes: 64 * 1024 } });
+      await runJs({
+        code: recursion,
+        input: null,
+        limits: { stack_bytes: 64 * 1024 },
+        clock: null,
+      });
     } catch (err) {
       threw = err;
     }

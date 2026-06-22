@@ -20,7 +20,7 @@ describe("quickjs runtime · fail-closed invariant", () => {
     });
     let threw = false;
     try {
-      await runJs({ code: "return 1 + 1", input: null });
+      await runJs({ code: "return 1 + 1", input: null, clock: null });
     } catch (err) {
       threw = true;
       expect(err).toBeInstanceOf(Error);
@@ -38,6 +38,7 @@ describe("quickjs runtime · fail-closed invariant", () => {
     const result = await runJs<{ has_process: boolean }>({
       code: "return { has_process: typeof process !== 'undefined' }",
       input: null,
+      clock: null,
     });
     expect(result.output.has_process).toBe(false);
   });

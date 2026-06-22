@@ -10,6 +10,7 @@ describe("sk.http.isMutating / isSafe", () => {
     const { output } = await runJs<Record<string, boolean>>({
       code: "return { post: sk.http.isMutating('POST'), put: sk.http.isMutating('PUT'), patch: sk.http.isMutating('PATCH'), del: sk.http.isMutating('DELETE') };",
       input: null,
+      clock: null,
     });
     expect(output.post).toBe(true);
     expect(output.put).toBe(true);
@@ -21,6 +22,7 @@ describe("sk.http.isMutating / isSafe", () => {
     const { output } = await runJs<Record<string, boolean>>({
       code: "return { get: sk.http.isSafe('GET'), head: sk.http.isSafe('HEAD'), opts: sk.http.isSafe('OPTIONS') };",
       input: null,
+      clock: null,
     });
     expect(output.get).toBe(true);
     expect(output.head).toBe(true);
@@ -31,6 +33,7 @@ describe("sk.http.isMutating / isSafe", () => {
     const { output } = await runJs<Record<string, boolean>>({
       code: "return { lower: sk.http.isMutating('post'), mixed: sk.http.isMutating('Put'), safeLower: sk.http.isSafe('get') };",
       input: null,
+      clock: null,
     });
     expect(output.lower).toBe(true);
     expect(output.mixed).toBe(true);
@@ -41,6 +44,7 @@ describe("sk.http.isMutating / isSafe", () => {
     const { output } = await runJs<Record<string, boolean>>({
       code: "return { nil: sk.http.isMutating(null), num: sk.http.isMutating(42), obj: sk.http.isMutating({}) };",
       input: null,
+      clock: null,
     });
     expect(output.nil).toBe(false);
     expect(output.num).toBe(false);
@@ -51,6 +55,7 @@ describe("sk.http.isMutating / isSafe", () => {
     const { output } = await runJs<{ read: string[]; write: string[] }>({
       code: "return { read: sk.http.METHODS.READ, write: sk.http.METHODS.WRITE };",
       input: null,
+      clock: null,
     });
     expect(output.read).toEqual(["GET", "HEAD", "OPTIONS"]);
     expect(output.write).toEqual(["POST", "PUT", "PATCH", "DELETE"]);

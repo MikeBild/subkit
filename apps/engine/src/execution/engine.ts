@@ -167,6 +167,17 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   const parent_execution_id = opts.parent_execution_id ?? null;
   const execution_mode = opts.execution_mode ?? "dev";
 
+  // Single execution instant: persisted as the row's `started_at` (via
+  // markExecutionRunning) AND reused as the one clock every sandbox reads —
+  // the per-step transforms (`ctx.started_at`) and the workflow-scope
+  // output_transform/validation functions alike. So `sk.now()` mirrors the
+  // execution's `started_at` and is identical across all sandboxes in a run
+  // (`sk.uuid()` is stable via the `execution_id`-derived seed). A fresh
+  // re-run gets its own instant — sk.now() is consistent within one run and
+  // equals the persisted row, not byte-identical across separate runs.
+  const execution_started_at_date = new Date();
+  const execution_started_at = execution_started_at_date.getTime();
+
   // Persist queued execution row (unless one already exists — the queue
   // worker passes `existing_execution_id` so the HTTP-created row is
   // reused instead of spawning a new one). For draft / step runs the
@@ -217,7 +228,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   );
   const signal = combineSignals([ctrl.signal, totalTimeoutCtrl.signal]);
 
-  await markExecutionRunning(db, tenant_id, execution_id);
+  await markExecutionRunning(db, tenant_id, execution_id, execution_started_at_date);
 
   // Per-run LLM-token budget. The cap lives on the workflow def; null
   // means "no per-run cap" (the per-tenant monthly budget still
@@ -432,7 +443,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       depth,
       signal,
       scope,
-      started_at: new Date(),
+      // One instant for the whole execution (== persisted row `started_at`),
+      // shared by every step + the workflow-scope sandboxes.
+      started_at: execution_started_at_date,
       workflow_slug: resolved.workflow_slug,
       trace_id: opts.trace_id ?? null,
       principal: opts.principal ?? null,
@@ -458,6 +471,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         step.id,
         scope,
         forEachStart,
+        // Deterministic clock/id for `sk.now()`/`sk.uuid()` in the
+        // selector — the execution's fixed instant + a per-step seed, same
+        // wiring as steps/transform.ts.
+        { now_ms: ctx.started_at.getTime(), seed: `${execution_id}:${step.id}` },
       );
       if (collectionResult.kind === "failure") {
         // Collection resolution failed — record the failure as the step
@@ -1269,6 +1286,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         const result = await runJs<unknown>({
           code: def.output_transform_function,
           input: lastOutput,
+          clock: { now_ms: execution_started_at, seed: `${execution_id}:output_transform` },
         });
         if (result.output !== undefined) lastOutput = result.output;
       } catch (err) {
@@ -1446,6 +1464,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       const result = await runJs<unknown>({
         code: def.validation_function,
         input: lastOutput,
+        clock: { now_ms: execution_started_at, seed: `${execution_id}:validation` },
       });
       const verdict = result.output;
       if (verdict === false) {

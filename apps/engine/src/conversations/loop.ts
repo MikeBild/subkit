@@ -1476,6 +1476,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             // carries the (possibly rewritten) text plus the violation
             // list so replay tests + the capability-gap analytics can
             // read them back without re-scanning.
+            // The guard's secret pre-pass uses the code-context-suppressed
+            // `findSecretSpans` — see the authoritative redaction contract
+            // above `redactGenericTokens` in
+            // `packages/shared/src/redaction.ts`.
             const guarded = hasText
               ? runOutputGuard(step.text, {
                   ...(p.runtime_context?.engine_url

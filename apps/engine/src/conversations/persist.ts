@@ -236,6 +236,9 @@ export async function appendMessage(
   // leaf at the single insert chokepoint — covers `service/append.ts`,
   // `service/create.ts`, and the loop's user-row inserts.
   // Capture-to-credential-cache happens upstream in `service/append.ts`.
+  // This row is the persisted REPLAY source. `scrubString`'s generic
+  // matcher is code-context-suppressed — see the authoritative redaction
+  // contract above `redactGenericTokens` in `packages/shared/src/redaction.ts`.
   if (role === "user" && content && typeof content === "object") {
     const c = content as Record<string, unknown>;
     if (typeof c.text === "string") content = { ...c, text: scrubString(c.text) };

@@ -42,21 +42,107 @@ function extractTransformStepRefs(step: Record<string, unknown>): string[] {
   return [...out];
 }
 
+/** What the `hand_rolled_codec_alphabet` detector matched, so the
+ *  refusal can name the exact codec the author re-implemented. */
+export type HandRolledCodecKind = "base64" | "base32" | "hex_table" | "reverse_lookup";
+
 export interface TransformGateBlock {
   /** id of the transform step that triggered the block. */
   transform_step_id: string;
-  /** Upstream step id the transform's expression references. */
+  /** Upstream step id the transform's expression references. Empty for
+   *  blocks that are not about an upstream reference (e.g. a
+   *  `hand_rolled_codec_alphabet` block, which is about the source
+   *  itself, not a sibling step). */
   referenced_step_id: string;
   /** Source expression text (truncated) so the LLM sees what it wrote. */
   expression: string;
   /** Why the gate refused — one of the enumerated reasons. */
-  reason: "no_preview_for_referenced_step" | "no_dry_run_yet" | "preview_stale_for_referenced_step";
+  reason:
+    | "no_preview_for_referenced_step"
+    | "no_dry_run_yet"
+    | "preview_stale_for_referenced_step"
+    | "hand_rolled_codec_alphabet";
+  /** Present only on `hand_rolled_codec_alphabet` blocks: which codec
+   *  the source re-implemented, so the steer can name the `sk.*` helper. */
+  codec_kind?: HandRolledCodecKind;
+}
+
+// A hand-rolled base64 alphabet, in standard or url-safe ordering. We
+// anchor on the SEQUENTIAL A-Z a-z 0-9 ordering of the alphabet (not on
+// any long base64 run) so an embedded base64 DATA literal — a fixture, an
+// inlined asset — does not trip the detector. The lookahead asserts the
+// three contiguous case/digit runs appear inside one quoted literal; the
+// `[+/=_-]` tail covers both standard (`+/`) and url-safe (`-_`) variants.
+export const HAND_ROLLED_B64_ALPHABET_RE: RegExp =
+  /["'`](?=[^"'`]*ABCDEFGHIJKLMNOPQRSTUVWXYZ)(?=[^"'`]*abcdefghijklmnopqrstuvwxyz)(?=[^"'`]*0123456789)[A-Za-z0-9+/=_-]{40,}["'`]/;
+
+// The RFC 4648 base32 alphabet, verbatim. Distinct ordering (digits
+// `234567` tail, no lowercase) so it can't collide with the base64 signature.
+export const HAND_ROLLED_B32_ALPHABET_RE: RegExp = /ABCDEFGHIJKLMNOPQRSTUVWXYZ234567/;
+
+// A hex encode table — `"0123456789abcdef"` (or uppercase) used as a
+// per-nibble lookup. Anchored on the full ordered 16-char run so a
+// random hex DATA literal doesn't match.
+const HAND_ROLLED_HEX_ALPHABET_RE: RegExp = /["'`]0123456789[aA][bB][cC][dD][eE][fF]["'`]/;
+
+// A reverse-lookup table mapping single characters to small integer
+// codes — the shape a hand-rolled decoder builds to invert an alphabet
+// (`{ A: 0, B: 1, C: 2, … }` or `{ "A": 0, "B": 1, … }`). We require at
+// least eight such single-char→int entries in sequence so an ordinary
+// small object literal doesn't match.
+const REVERSE_LOOKUP_TABLE_RE: RegExp = /(?:["']?[A-Za-z0-9+/]["']?\s*:\s*\d+\s*,\s*){8,}/;
+
+/**
+ * Pure detector for a hand-rolled codec embedded in a transform's
+ * source. Returns the first codec class found (or `null`). Used by the
+ * authoring gate to refuse transforms that re-implement base64/base32/
+ * hex encoding instead of calling the deterministic `sk.*` primitives —
+ * the failure class behind the Gmail send outage (a redaction-corrupted
+ * alphabet literal drove a hand-rolled encoder to emit 43k `undefined`s).
+ */
+export function detectHandRolledCodec(expression: string): {
+  found: boolean;
+  kind: HandRolledCodecKind | null;
+} {
+  if (typeof expression !== "string" || expression.length === 0) {
+    return { found: false, kind: null };
+  }
+  if (HAND_ROLLED_B64_ALPHABET_RE.test(expression)) return { found: true, kind: "base64" };
+  if (HAND_ROLLED_B32_ALPHABET_RE.test(expression)) return { found: true, kind: "base32" };
+  if (HAND_ROLLED_HEX_ALPHABET_RE.test(expression)) return { found: true, kind: "hex_table" };
+  if (REVERSE_LOOKUP_TABLE_RE.test(expression)) return { found: true, kind: "reverse_lookup" };
+  return { found: false, kind: null };
+}
+
+/** The `sk.*` primitive(s) an author should call instead of hand-rolling
+ *  a given codec. Single source for the steer message + next_best_actions. */
+function skReplacementFor(kind: HandRolledCodecKind): string {
+  switch (kind) {
+    case "base64":
+    case "base32":
+    case "reverse_lookup":
+      return "sk.base64Encode / sk.base64UrlEncode / sk.base64EncodeUtf8 / sk.base64Decode";
+    case "hex_table":
+      return "sk.hexEncode / sk.hexDecode";
+  }
+}
+
+/** True when a block is the static hand-rolled-codec verdict (rewrite the
+ *  source with an `sk.*` encoder) rather than a missing-preview gap (re-run
+ *  a dry-run). Single source for every caller that splits the two classes —
+ *  update_param's refusal, the recorded-eval steer, and the metric split. */
+export function isHandRolledCodecBlock(b: TransformGateBlock): boolean {
+  return b.reason === "hand_rolled_codec_alphabet";
 }
 
 /** One-line human rendering of a block — single source for every tool
  *  that surfaces a transform-gate verdict (update_param's refusal
  *  message, the recorded-eval report on build/propose/patch). */
 export function describeTransformGateBlock(b: TransformGateBlock): string {
+  if (b.reason === "hand_rolled_codec_alphabet") {
+    const kind = b.codec_kind ?? "base64";
+    return `transform \`${b.transform_step_id}\` hand-rolls a ${kind} codec alphabet/lookup table in its source; use ${skReplacementFor(kind)} instead — the sandbox ships deterministic encoders so an alphabet literal can never be corrupted into malformed output`;
+  }
   const why =
     b.reason === "no_dry_run_yet"
       ? "no dry-run has been recorded yet"
@@ -231,6 +317,22 @@ export function evaluateTransformAuthoringGate(
     if (!isTransformStep(step)) continue;
     const expr = typeof step.expression === "string" ? step.expression : "";
     if (!expr) continue;
+    // Static-source rejection — independent of step refs / preview. A
+    // transform that re-implements a base64/base32/hex codec (or its
+    // reverse-lookup table) in JS instead of calling the deterministic
+    // `sk.*` encoders is the failure class behind the Gmail send outage:
+    // a redaction-corrupted alphabet literal silently produced a 416KB
+    // malformed body. Refuse and steer to `sk.base64*` / `sk.hex*`.
+    const codec = detectHandRolledCodec(expr);
+    if (codec.found && codec.kind) {
+      blocks.push({
+        transform_step_id: step.id,
+        referenced_step_id: "",
+        expression: expr.length > 200 ? `${expr.slice(0, 200)}…` : expr,
+        reason: "hand_rolled_codec_alphabet",
+        codec_kind: codec.kind,
+      });
+    }
     const referenced = extractTransformStepRefs(step);
     if (referenced.length === 0) continue;
     for (const ref of referenced) {

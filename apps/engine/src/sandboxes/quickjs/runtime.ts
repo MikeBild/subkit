@@ -116,6 +116,33 @@ export interface RunJsOptions {
   input: unknown;
   /** Optional per-call limit overrides. */
   limits?: SandboxLimits;
+  /**
+   * Deterministic clock/id context. The fixed `now_ms` (epoch ms, e.g.
+   * the execution's `started_at`) backs `sk.now()`/`sk.nowIso()`, and the
+   * stable `seed` (e.g. the execution id) backs `sk.uuid()`. Both are
+   * injected as VM globals (`__sandbox_now__`, `__sandbox_seed__`) BEFORE
+   * the stdlib installs; the stdlib captures them into closure consts
+   * once and deletes the globals so user code cannot mutate them.
+   *
+   * REQUIRED — and `null` is a deliberate choice, not a default. Every
+   * caller must state which world it is in:
+   *   - A production execution path passes the real clock (the execution's
+   *     fixed `started_at` + a per-run seed) so a replayed run reproduces
+   *     byte-identical `sk.now()`/`sk.uuid()` values — the whole point of
+   *     self-healing dry-runs replaying the same context.
+   *   - A pure lint / syntax-check / preview path that has no execution
+   *     context passes `null` (the "intentionally constant" case): `sk.now()`
+   *     reads 0 and `sk.uuid()` seeds from a constant, identical to the
+   *     historical omission behavior.
+   * Making the field required turns a forgotten execution-clock wiring into
+   * a COMPILE error instead of a silent epoch read at runtime.
+   */
+  clock: {
+    /** Fixed instant in epoch milliseconds. */
+    now_ms: number;
+    /** Stable per-run seed for deterministic id derivation. */
+    seed: string;
+  } | null;
 }
 
 /**
@@ -195,6 +222,22 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
   });
 
   try {
+    // Inject the deterministic clock/id context BEFORE the stdlib runs.
+    // The stdlib reads `__sandbox_now__`/`__sandbox_seed__` exactly ONCE
+    // at install time, captures them into closure consts (which back
+    // `sk.now()`/`sk.uuid()`), and then DELETEs the writable globals — so
+    // user code cannot overwrite them between calls and corrupt
+    // determinism. No host clock or RNG crosses the boundary — only the
+    // host-fixed values the caller chose, keeping the run reproducible.
+    const nowMs = opts.clock?.now_ms ?? 0;
+    const seed = opts.clock?.seed ?? "";
+    const nowHandle = context.newNumber(Number.isFinite(nowMs) ? nowMs : 0);
+    context.setProp(context.global, "__sandbox_now__", nowHandle);
+    nowHandle.dispose();
+    const seedHandle = context.newString(seed);
+    context.setProp(context.global, "__sandbox_seed__", seedHandle);
+    seedHandle.dispose();
+
     // Install the sk-Stdlib global (sk.http, sk.get, sk.allow, …)
     // before any user code runs. Failure here is an engine bug, not a
     // user error — surface it as a distinct sandbox kind so callers
