@@ -15,6 +15,7 @@
 //   [LOADED SKILLS]   — skills already pulled via load_skill this conv
 
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { parseLoadedSkills } from "../../conversations/loop/skill-recency.ts";
 import type { Db } from "../../db/client.ts";
 import {
   connectors,
@@ -27,6 +28,7 @@ import {
   skills as skillsTable,
   workflows,
 } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
 
 interface TenantStateOpts {
   tenant_id: string;
@@ -169,7 +171,20 @@ export async function buildLoadedSkillsMessage(opts: LoadedSkillsOpts): Promise<
       and(eq(conversations.tenant_id, opts.tenant_id), eq(conversations.id, opts.conversation_id)),
     )
     .limit(1);
-  const loaded = (row?.loaded_skills ?? []) as string[];
+  // `loaded_skills` carries `{slug,last_turn}` recency entries; this
+  // informational message lists ALL loaded slugs (membership), not the
+  // recency-filtered full-body subset.
+  const loaded = parseLoadedSkills(row?.loaded_skills, ({ dropped, raw }) =>
+    logger.warn({
+      module: "conversation",
+      action: "skill_recency.malformed_loaded_skills",
+      msg: "dropped malformed loaded_skills entries while building loaded-skills message",
+      conversation_id: opts.conversation_id,
+      tenant_id: opts.tenant_id,
+      dropped,
+      raw,
+    }),
+  ).map((e) => e.slug);
   if (loaded.length === 0) return null;
   // Look up titles for readability.
   const titleRows = await opts.db

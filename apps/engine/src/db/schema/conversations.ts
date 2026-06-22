@@ -44,10 +44,23 @@ export const conversations = pgTable(
     model: text("model"),
     title: text("title"),
     memory: text("memory"),
-    // Skills the conversation has loaded on-demand via `load_skill`.
-    // Persisted so resuming a session keeps the same skill palette in
-    // the LLM context.
-    loaded_skills: jsonb("loaded_skills").$type<string[]>().default([]).notNull(),
+    // Skills the conversation has loaded on-demand via `load_skill` or
+    // via context-driven autoload. Each entry carries the slug plus the
+    // `last_turn` it was last relevant on. The loop renders a skill's
+    // FULL body only while `(turn_count - last_turn) < K` (K=3, the
+    // recency window); outside that window the slug falls back to the
+    // always-present skill INDEX and re-promotes on the next match or an
+    // explicit `load_skill`. Persisted so resuming a session keeps the
+    // same skill palette + recency state in the LLM context.
+    loaded_skills: jsonb("loaded_skills")
+      .$type<Array<{ slug: string; last_turn: number }>>()
+      .default([])
+      .notNull(),
+    // Monotonic per-conversation turn counter. Incremented once at the
+    // start of every `runLoop` invocation and used as the recency clock
+    // for `loaded_skills[*].last_turn`. Starts at 0; the first turn
+    // becomes 1.
+    turn_count: integer("turn_count").notNull().default(0),
     // Per-tool execution policy overrides (tool name → mode).
     // { run_workflow: "confirm_before_execution", list_workflows: "no_confirm" }
     tool_policies: jsonb("tool_policies").$type<Record<string, string>>().default({}).notNull(),

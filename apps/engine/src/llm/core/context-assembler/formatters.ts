@@ -77,7 +77,10 @@ export function formatSkill(
  * Pre-fix every applicable skill rendered with its full body
  * (~31k tokens / turn in session a128deba). Post-fix only
  * loaded_skills carry full bodies; ambient skills appear as one
- * line in this index.
+ * line in this index. Loaded skills carry their full body ONLY within
+ * the K-turn recency window; once they age out they fall back to the
+ * "Loaded" variant of this index until a match or `load_skill`
+ * re-promotes them.
  */
 export function formatSkillIndex(
   label: string,

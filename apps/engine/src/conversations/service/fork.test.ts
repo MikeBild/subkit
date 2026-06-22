@@ -43,7 +43,7 @@ async function seedConversationWithMessages(tenantLabel: string, count: number):
       status: "active",
       title: `seed-${tenantLabel}`,
       memory: "carry-over memory",
-      loaded_skills: ["baseline.skill"],
+      loaded_skills: [{ slug: "baseline.skill", last_turn: 0 }],
     })
     .returning();
   const conversation_id = conv!.id;
@@ -200,7 +200,7 @@ describe("forkConversation", () => {
       .from(conversations)
       .where(eq(conversations.id, result!.conversation.id));
     expect(forkRow!.memory).toBe("carry-over memory");
-    expect(forkRow!.loaded_skills).toEqual(["baseline.skill"]);
+    expect(forkRow!.loaded_skills).toEqual([{ slug: "baseline.skill", last_turn: 0 }]);
     expect(forkRow!.title).toMatch(/^fork — /);
   });
 

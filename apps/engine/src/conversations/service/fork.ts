@@ -137,6 +137,10 @@ export async function forkConversation(
       draft: source.draft,
       owner_id: p.actor_id ?? source.owner_id ?? null,
       loaded_skills: source.loaded_skills,
+      // Copy the source turn counter so recency math stays coherent in the
+      // fork — without it the fork resets to turn 0 and instantly demotes
+      // every loaded skill for K turns.
+      turn_count: source.turn_count,
       title: forkTitle,
       memory: source.memory,
       ...(source.model ? { model: source.model } : {}),
