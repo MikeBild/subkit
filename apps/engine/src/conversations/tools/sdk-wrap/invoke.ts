@@ -37,10 +37,15 @@ import { recordTransition } from "../../confirmation.ts";
 import { isDangerousTool } from "../../dangerous-tools.ts";
 import { createDraftSnapshot } from "../../draft-checkpoints.ts";
 import { createElicitation } from "../../elicitations.ts";
+import { parseLoadedSkills } from "../../loop/skill-recency.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import { findPriorSaveWorkflowApproval } from "../../persistence/save-workflow-approval.ts";
 import { resolveScopeFactsForConversation } from "../../scope-facts.ts";
-import { autoloadForToolCall, loadActivationCatalog } from "../../skill-autoload.ts";
+import {
+  autoloadForToolCall,
+  loadActivationCatalog,
+  reaffirmLoadedForTurn,
+} from "../../skill-autoload.ts";
 import { computeLineDiff } from "../../text-line-diff.ts";
 import {
   buildPendingOutputForTool,
@@ -1210,7 +1215,10 @@ export function wrapOne(
         // their bodies. Idempotent — already-loaded slugs are filtered.
         try {
           const convRow = await db
-            .select({ loaded_skills: conversations.loaded_skills })
+            .select({
+              loaded_skills: conversations.loaded_skills,
+              turn_count: conversations.turn_count,
+            })
             .from(conversations)
             .where(
               and(
@@ -1219,27 +1227,67 @@ export function wrapOne(
               ),
             )
             .limit(1);
-          const currentlyLoaded = (convRow[0]?.loaded_skills ?? []) as string[];
+          const currentEntries = parseLoadedSkills(convRow[0]?.loaded_skills, ({ dropped, raw }) =>
+            logger.warn({
+              module: "conversation",
+              action: "skill_recency.malformed_loaded_skills",
+              msg: "dropped malformed loaded_skills entries during tool-call autoload",
+              conversation_id: ctx.conversation_id,
+              tenant_id: ctx.tenant_id,
+              dropped,
+              raw,
+            }),
+          );
+          // The loop increments `turn_count` at turn start, before any tool
+          // runs, so the persisted value is the current turn — stamp both
+          // new additions and tool-driven re-touches with it.
+          const currentTurn = convRow[0]?.turn_count ?? 0;
+          const membership = currentEntries.map((e) => e.slug);
           const [catalog, scope] = await Promise.all([
             loadActivationCatalog(ctx.tenant_id, db),
             resolveScopeFactsForConversation(db, ctx.tenant_id, ctx.conversation_id, rawArgs),
           ]);
+          // New slugs this tool unlocks (skip already-loaded — that path is
+          // re-affirmed below).
           const additions = autoloadForToolCall(
             { tool: inner.name, input: rawArgs, ...scope },
             catalog,
-            currentlyLoaded,
+            membership,
           );
-          if (additions.length > 0) {
+          // Already-loaded slugs whose `activates_when` still matches this
+          // tool call — refresh their recency so a tool-driven re-touch
+          // keeps the body alive.
+          const reaffirmed = new Set(
+            reaffirmLoadedForTurn(
+              { mode: "tool_call", tool: inner.name, input: rawArgs, ...scope },
+              catalog,
+              membership,
+            ),
+          );
+          if (additions.length > 0 || reaffirmed.size > 0) {
+            const refreshed = currentEntries.map((e) =>
+              reaffirmed.has(e.slug) ? { slug: e.slug, last_turn: currentTurn } : e,
+            );
+            const next = [
+              ...refreshed,
+              ...additions.map((slug) => ({ slug, last_turn: currentTurn })),
+            ];
             await db
               .update(conversations)
-              .set({ loaded_skills: [...currentlyLoaded, ...additions] })
-              .where(eq(conversations.id, ctx.conversation_id));
+              .set({ loaded_skills: next })
+              .where(
+                and(
+                  eq(conversations.tenant_id, ctx.tenant_id),
+                  eq(conversations.id, ctx.conversation_id),
+                ),
+              );
             logger.debug({
               module: "conversations.skill_autoload",
               action: "skill_autoload.applied",
               conversation_id: ctx.conversation_id,
               tool: inner.name,
               added_skills: additions,
+              reaffirmed_skills: [...reaffirmed],
             });
           }
         } catch (err) {

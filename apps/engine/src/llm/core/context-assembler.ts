@@ -41,7 +41,7 @@ import {
   recordAuthoringContextSkillsUsed,
   recordLlmContextAssembled,
 } from "../../observability/instrumentation.ts";
-import { getSkill, getSkillBySlug, retrieveApplicableSkills } from "../../skills/service.ts";
+import { retrieveApplicableSkills } from "../../skills/service.ts";
 import type { Skill } from "../../skills/types.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
@@ -74,6 +74,7 @@ import {
   selectOperatorQuirkCategories,
   trimPriorWorkflowsToBudget,
 } from "./context-assembler/formatters.ts";
+import { resolveLoadedSkills } from "./context-assembler/loaded-skills.ts";
 import {
   type InteractionLogEntry,
   type LatestPreviewEntry,
@@ -102,8 +103,6 @@ export {
   selectOperatorQuirkCategories,
 } from "./context-assembler/formatters.ts";
 export { detectIntentSkills } from "./context-assembler/skill-picker.ts";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Live-data assembly only. The structural prompt body (persona,
 // behaviour skills, authoring-focus blocks) is owned by the agent
@@ -288,40 +287,24 @@ export async function assembleEnhancedPrompt(
   const connectorSkills = skillsApplicable.filter((s) => s.scope === "connector");
   const workflowSkills = skillsApplicable.filter((s) => s.scope === "workflow");
 
-  // On-demand skills (load_skill). Each entry is a slug, an id, or a
-  // title. Resolution order is slug → id → title — slug first because
-  // `loaded_skill_slugs` literally carries slugs from the seed-loader
-  // and the auto-loaded authoring constants (loop.ts). The fetch routes
-  // by shape so a bare slug never hits the uuid-typed id column.
-  //
-  // Previously this path fetched ALL active skills via listSkills (full
-  // body for every row, capped at 500) just to find ~3-5 matches by
-  // slug — flagged in the 2026-05-28 memory-stuck incident as one of
-  // the hottest per-turn allocations. Now we hit the indexed lookup
-  // helpers per ref. A handful of indexed primary-key / unique-slug
-  // queries is much cheaper on wall-time *and* heap than streaming the
-  // whole skills table into JS.
-  //
-  // The title fallback is intentionally dropped: in practice loadedSkillSlugs
-  // is populated from slug or id (the seed-loader and load_skill tool both
-  // resolve to one of those upstream), and a stray title-shaped ref is a
-  // caller bug — better to surface as a missing skill in the trace than to
-  // silently re-introduce a full-table scan to translate it.
+  // On-demand skills (load_skill) + index-safety. `loaded_skill_slugs`
+  // (the recency window) renders FULL bodies; `loaded_skill_membership`
+  // (everything still loaded but aged out of the window) renders through
+  // the "Loaded" index so no skill disappears. Resolution and the
+  // slug↔id↔scope de-duplication live in the recency-aware loader; the
+  // returned arrays stay mutable here because the token-budget trimmer
+  // below shrinks/pops them when the prompt overflows.
   const loadedSkillSlugs = p.loaded_skill_slugs ?? [];
-  const loadedSkills = [] as Skill[];
-  if (loadedSkillSlugs.length > 0) {
-    const existingIds = new Set(skillsApplicable.map((s) => s.id));
-    for (const ref of loadedSkillSlugs) {
-      if (existingIds.has(ref)) continue;
-      const fetched = UUID_RE.test(ref)
-        ? await getSkill(p.tenant_id, ref, db)
-        : await getSkillBySlug(p.tenant_id, ref, db);
-      if (fetched && !existingIds.has(fetched.id)) {
-        loadedSkills.push(fetched);
-        existingIds.add(fetched.id);
-      }
-    }
-  }
+  const membershipSlugs = p.loaded_skill_membership ?? [];
+  const resolvedLoaded = await resolveLoadedSkills(
+    p.tenant_id,
+    loadedSkillSlugs,
+    membershipSlugs,
+    skillsApplicable,
+    db,
+  );
+  const loadedSkills = resolvedLoaded.fullBody;
+  const loadedIndexSkills = resolvedLoaded.index;
 
   const query = buildQuery(p.user_turns);
 
@@ -618,9 +601,15 @@ export async function assembleEnhancedPrompt(
     if (priorWorkflowsBlock) sections.push(priorWorkflowsBlock);
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
-    // Loaded skills carry the full body — the LLM explicitly opted
-    // in via load_skill, so the cost is justified.
+    // Loaded skills carry the full body — they are loaded AND within the
+    // K-turn recency window, so the cost is justified.
     for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));
+    // Index-safety "Loaded" block: ever-loaded skills that aged out of
+    // the full-body window (or are out-of-scope / experimental) stay
+    // referenceable as a one-line index entry. `load_skill('<slug>')`
+    // re-promotes any of them to a full body for the next K turns.
+    const loadedIndexBlock = formatSkillIndex("Loaded", loadedIndexSkills, p.runtime_context);
+    if (loadedIndexBlock) sections.push(loadedIndexBlock);
     // Proposed skill candidates render next to loaded skills — same
     // shape (full prose body, scope, best practices, pitfalls), lower
     // confidence. Marked `[pending approval]` so the LLM treats them as
@@ -739,6 +728,13 @@ export async function assembleEnhancedPrompt(
     } else if (loadedSkills.length > 0) {
       loadedSkills.pop();
       trimmed.push("loaded_skill");
+    } else if (loadedIndexSkills.length > 0) {
+      // The "Loaded" index (aged-out / out-of-scope loaded skills) is a
+      // one-line-per-skill navigational aid — drop it wholesale once the
+      // full-body loaded skills are gone. The slug stays recoverable via
+      // load_skill regardless.
+      loadedIndexSkills.length = 0;
+      trimmed.push("loaded_skill_index");
     } else if (workflowSkills.length > 0) {
       // Index blocks render as one section per scope. Dropping them
       // entirely is the right granularity — we can't pop one entry

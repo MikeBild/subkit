@@ -166,6 +166,73 @@ export function autoloadForUserTurn(
 }
 
 /**
+ * Re-affirm which ALREADY-LOADED slugs still match this turn's signals.
+ *
+ * The matchers above (`autoloadForUserTurn` / `autoloadForToolCall`)
+ * are one-way ADD operations: they SKIP any slug already in
+ * `currently_loaded` (`have.has(slug) => continue`), so they can never
+ * refresh a loaded skill's recency. This function is their inverse: it
+ * re-runs the SAME matchers over ONLY the loaded set and returns the
+ * subset that still matches, so the loop can reset their `last_turn` and
+ * keep their full body alive.
+ *
+ * `mode` selects which matcher fires:
+ *   - `"user_turn"`: `intent_keyword` / `connector_driver` /
+ *     `connector_template` / `connector_recipe_match` against
+ *     `user_text` + ScopeFacts.
+ *   - `"tool_call"`: `tool` / `tool_arg` / `connector_driver` /
+ *     `connector_template` / `connector_recipe_match` / `step_kind`
+ *     against the about-to-run tool + ScopeFacts.
+ *
+ * Experimental skills never match `activates_when`; they are returned
+ * only when baseline (they are not) — i.e. they age out after K turns
+ * and re-promote via explicit `load_skill`. The function returns false
+ * for them without throwing. Baseline slugs always re-affirm.
+ *
+ * Pure — no DB, no mutation. Returns a subset of `currently_loaded`.
+ */
+export function reaffirmLoadedForTurn(
+  ctx: (UserTurnContext & { mode: "user_turn" }) | (ToolCallContext & { mode: "tool_call" }),
+  catalog: readonly ActivationRecord[],
+  currently_loaded: readonly string[],
+): string[] {
+  const loaded = new Set(currently_loaded);
+  const out = new Set<string>();
+  const drivers = new Set((ctx.connector_drivers ?? []).map((d) => d.toLowerCase()));
+  const templates = new Set((ctx.connector_templates ?? []).map((t) => t.toLowerCase()));
+
+  for (const rec of catalog) {
+    if (!loaded.has(rec.slug)) continue;
+    if (out.has(rec.slug)) continue;
+    // Baseline skills are the core mental model — always re-affirmed.
+    if (rec.activates_when.some((r) => r.kind === "baseline")) {
+      out.add(rec.slug);
+      continue;
+    }
+    // Experimental skills cannot match `activates_when`; they re-promote
+    // only via explicit `load_skill`. Skip without throwing.
+    if (rec.maturity === "experimental") continue;
+    if (ctx.mode === "user_turn") {
+      const text = (ctx.user_text ?? "").toLowerCase();
+      // first_turn is irrelevant here — re-affirm runs over the loaded
+      // set, and baseline is already handled above.
+      if (matchesUserTurn(rec.activates_when, text, drivers, templates, false)) {
+        out.add(rec.slug);
+      }
+    } else {
+      const localDrivers = new Set(drivers);
+      for (const d of inferDriversFromToolInput(ctx.tool, ctx.input))
+        localDrivers.add(d.toLowerCase());
+      const stepKinds = new Set(inferStepKindsFromToolInput(ctx.tool, ctx.input));
+      if (matchesToolCall(rec.activates_when, ctx, localDrivers, templates, stepKinds)) {
+        out.add(rec.slug);
+      }
+    }
+  }
+  return [...out];
+}
+
+/**
  * Slugs to load on conversation boot. These are the skills with at
  * least one `kind:"baseline"` activation rule. Used by
  * `conversations/service.ts` when seeding `loaded_skills` on first

@@ -131,13 +131,23 @@ export interface AssembleContextParams {
    */
   user_memory?: string;
   /**
-   * Skill ids (or titles) the caller has explicitly loaded for this
-   * conversation via `load_skill`. Their full body is injected into
-   * the stable cache block on every turn — in addition to the
-   * scope-based `retrieveApplicableSkills` result — so on-demand
-   * domain knowledge actually reaches the model.
+   * Recency-current full-body subset — the slugs whose FULL body is
+   * rendered this turn (loaded AND within the K-turn recency window).
+   * Their body is injected into the stable cache block in addition to
+   * the scope-based `retrieveApplicableSkills` result. Slugs that have
+   * aged out of the window are NOT here — they fall back to the "Loaded"
+   * index via `loaded_skill_membership`.
    */
   loaded_skill_slugs?: string[];
+  /**
+   * ALL loaded slugs regardless of recency (membership). Drives the
+   * index-safety "Loaded" index block: any membership slug not already
+   * rendered as a full body and not present in the scope-based index is
+   * rendered as a one-line index entry so an ever-loaded skill (a
+   * demoted connector/workflow-scoped-out-of-scope or experimental skill)
+   * never disappears. A single `load_skill` call re-fetches the full body.
+   */
+  loaded_skill_membership?: string[];
   /**
    * Pre-rendered authoring context block — a structured "current state"
    * summary describing the active draft, readiness, missing fields,
