@@ -85,6 +85,7 @@ import {
   MAX_REPAIRS_PER_TURN,
   resolveLanguageModel,
 } from "./loop/model-resolver.ts";
+import { applyRecency, type LoadedSkillEntry } from "./loop/skill-recency.ts";
 import {
   committedStopCondition,
   noProgressRepairStopCondition,
@@ -100,6 +101,13 @@ import {
   setToolCallParentMessage,
   updateMessageContent,
 } from "./persist.ts";
+import { resolveScopeFactsForConversation } from "./scope-facts.ts";
+import {
+  autoloadForUserTurn,
+  listBaselineSlugs,
+  loadActivationCatalog,
+  reaffirmLoadedForTurn,
+} from "./skill-autoload.ts";
 import { nextSuggestion } from "./streaming.ts";
 import { elideWithinTurnToolOutputs } from "./tool-output-elision.ts";
 import { listTools, type ToolContext } from "./tools/index.ts";
@@ -397,15 +405,33 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // the assembled prompt. Matches the envelope `callWithFallback`
   // used before A5.
   const currentUserText = ingestedUserMessage ?? "continue";
-  // Thread loaded skills from the conversation row into the prompt so
-  // on-demand knowledge from `load_skill(slug)` actually reaches the
-  // model. Also thread `surface` so per-surface prompt variants fire.
-  const loadedSkillsRowForPrompt = await p.db
-    .select({ loaded_skills: conversations.loaded_skills })
+  // Single consolidated read of the conversation row: loaded_skills (new
+  // {slug,last_turn} recency shape), the turn counter, tool_policies, and
+  // the persisted target_connector_id (folds three prior separate SELECTs
+  // — the two old loaded_skills reads and the activeConnectorId lookup).
+  const convRow = await p.db
+    .select({
+      loaded_skills: conversations.loaded_skills,
+      turn_count: conversations.turn_count,
+      tool_policies: conversations.tool_policies,
+      target_connector_id: conversations.target_connector_id,
+    })
     .from(conversations)
     .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
-  const explicitSkillSlugs = (loadedSkillsRowForPrompt[0]?.loaded_skills ?? []) as string[];
+  const loadedEntries = (convRow[0]?.loaded_skills ?? []) as LoadedSkillEntry[];
+  // Increment the recency clock exactly once per turn, BEFORE any tool can
+  // run, and persist it immediately so mid-turn writers (load_skill, the
+  // tool-call autoload) stamp `last_turn` against the same turn index.
+  const currentTurn = (convRow[0]?.turn_count ?? 0) + 1;
+  await p.db
+    .update(conversations)
+    .set({ turn_count: currentTurn })
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)));
+  const loopToolPolicies = (convRow[0]?.tool_policies ?? {}) as Record<
+    string,
+    "no_confirm" | "confirm_before_execution" | "confirm_after_execution"
+  >;
 
   // Auto-load skills based on conversation context — attachment MIME
   // types, recent execution failures, and target workflow presence.
@@ -464,6 +490,75 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           },
           p.db,
         );
+
+  // Recency-aware full-body skill loading. A loaded skill keeps its full
+  // body when it is a baseline skill (core mental model, always refreshed)
+  // or still matches this turn's signals via `activates_when`. New
+  // autoload additions enter at `last_turn = currentTurn` so they are
+  // full-body immediately. On a continuation turn (short "approve"/"yes")
+  // the topic has not shifted — refresh baseline only and leave topical
+  // `last_turn`s untouched, so a short affirmation neither promotes nor
+  // demotes a topical skill. This is NOT the old ratchet: idle topical
+  // skills still age out after K turns and fall back to the skill index.
+  const loadedSlugs = loadedEntries.map((e) => e.slug);
+  const skillCatalog = await loadActivationCatalog(p.tenant_id, p.db);
+  const baselineSlugSet = new Set(listBaselineSlugs(skillCatalog));
+  let refreshSet: Set<string>;
+  let recencyAdditions: string[] = [];
+  if (isContinuationTurn && attachmentMimeTypes.length === 0) {
+    refreshSet = new Set(loadedSlugs.filter((s) => baselineSlugSet.has(s)));
+  } else {
+    const scope = await resolveScopeFactsForConversation(
+      p.db,
+      p.tenant_id,
+      p.conversation_id,
+      null,
+    );
+    const reaffirmed = reaffirmLoadedForTurn(
+      {
+        mode: "user_turn",
+        user_text: currentUserText,
+        connector_drivers: scope.connector_drivers,
+        connector_templates: scope.connector_templates,
+      },
+      skillCatalog,
+      loadedSlugs,
+    );
+    refreshSet = new Set<string>([
+      ...loadedSlugs.filter((s) => baselineSlugSet.has(s)),
+      ...reaffirmed,
+    ]);
+    recencyAdditions = autoloadForUserTurn(
+      {
+        user_text: currentUserText,
+        connector_drivers: scope.connector_drivers,
+        connector_templates: scope.connector_templates,
+        first_turn: currentTurn === 1,
+      },
+      skillCatalog,
+      loadedSlugs,
+    );
+  }
+  const recency = applyRecency(
+    loadedEntries,
+    currentTurn,
+    refreshSet,
+    recencyAdditions,
+    baselineSlugSet,
+  );
+  // Persist the recency-updated array (refreshed last_turns, additions,
+  // and prunes of entries past the K-turn window) in one tenant-scoped
+  // write. Merge-by-slug semantics are owned by `applyRecency`.
+  await p.db
+    .update(conversations)
+    .set({ loaded_skills: recency.next })
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)));
+  // The PROMPT body set is recency-filtered: only full-body slugs reach
+  // the assembler as `loaded_skill_slugs`. The PALETTE membership (the
+  // `loadedSlugMembership` below) is the full set so skill-gated tools
+  // stay unlocked even when a skill has aged out of the full-body window.
+  const explicitSkillSlugs = recency.fullBodySet;
+  const loadedSlugMembership = recency.membership;
   const loadedSkillSlugs = [...new Set([...explicitSkillSlugs, ...intentSkillSlugs])];
 
   // Surface document-analysis registry summary for the active connector
@@ -474,18 +569,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     endpoint_count: number;
     sample_endpoints: Array<{ method: string; path: string }>;
   } | null = null;
-  const activeConnectorId =
-    p.connector_id ??
-    (
-      await p.db
-        .select({ target_connector_id: conversations.target_connector_id })
-        .from(conversations)
-        .where(
-          and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
-        )
-        .limit(1)
-    )[0]?.target_connector_id ??
-    null;
+  // Folded into the consolidated `convRow` read above — no separate
+  // SELECT for the persisted target_connector_id.
+  const activeConnectorId = p.connector_id ?? convRow[0]?.target_connector_id ?? null;
   if (activeConnectorId) {
     const epRows = await p.db
       .select({
@@ -649,6 +735,14 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         model: effectiveModel,
         ...(p.user_memory ? { user_memory: p.user_memory } : {}),
         ...(loadedSkillSlugs.length > 0 ? { loaded_skill_slugs: loadedSkillSlugs } : {}),
+        // Index-safety: every loaded slug (recency-filtered or not) must
+        // stay referenceable. The assembler renders any membership slug
+        // not already full-body as a one-line "Loaded" index entry so a
+        // demoted connector/workflow-scoped-out-of-scope or experimental
+        // skill never disappears — one `load_skill` re-promotes it.
+        ...(loadedSlugMembership.length > 0
+          ? { loaded_skill_membership: loadedSlugMembership }
+          : {}),
         ...(p.surface ? { surface: p.surface } : {}),
         ...(authoringContext ? { authoring_context: authoringContext } : {}),
         ...(authoringHint ? { authoring_hint: authoringHint } : {}),
@@ -757,38 +851,26 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     throw err;
   }
 
-  // Load the conversation's `loaded_skills` + `tool_policies` so
-  // skill-gated tools are filtered out until the matching
-  // `load_skill(slug)` is called and policy-gated tools see the
-  // right pre-execution mode.
-  const skillAndPolicyRow = await p.db
-    .select({
-      loaded_skills: conversations.loaded_skills,
-      tool_policies: conversations.tool_policies,
-    })
-    .from(conversations)
-    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
-    .limit(1);
-  const persistedLoadedSkills = (skillAndPolicyRow[0]?.loaded_skills ?? []) as string[];
-  // Auto-load the canonical authoring skills so the palette exposes
-  // both the connector and workflow tool sets from turn one. The user's
-  // first message could go either way ("create a connector for foo" /
-  // "build a workflow that bars"); exposing both sets up front avoids
-  // the dead-end where the LLM has to call `load_skill` twice before
-  // it can do anything (and avoids the 00b93a52 failure where the
-  // model said "tool not in palette" and asked the user to restart).
-  // The skill BODIES are still pulled into the prompt only when needed
-  // (via `detectIntentSkills`) — this auto-load only shapes the
-  // PALETTE, not the prompt budget.
+  // PALETTE membership: skill-gated tools must see the FULL set of loaded
+  // slugs (`loadedSlugMembership` from the consolidated read above), NOT
+  // the recency-filtered full-body subset — a skill that aged out of the
+  // full-body window still keeps its gated tools unlocked. Only the PROMPT
+  // BODY rendering is recency-filtered; the palette is not.
+  //
+  // Auto-load the canonical authoring skills so the palette exposes both
+  // the connector and workflow tool sets from turn one. The user's first
+  // message could go either way ("create a connector for foo" / "build a
+  // workflow that bars"); exposing both sets up front avoids the dead-end
+  // where the LLM has to call `load_skill` twice before it can do anything
+  // (and avoids the 00b93a52 failure where the model said "tool not in
+  // palette" and asked the user to restart). The skill BODIES are still
+  // pulled into the prompt only when needed (recency window above) — this
+  // auto-load only shapes the PALETTE, not the prompt budget.
   const AUTO_LOADED_AUTHORING_SKILLS: ReadonlyArray<string> = [
     "connector-creation-guidance",
     "workflow-authoring",
   ];
-  const loadedSkills = [...new Set([...persistedLoadedSkills, ...AUTO_LOADED_AUTHORING_SKILLS])];
-  const loopToolPolicies = (skillAndPolicyRow[0]?.tool_policies ?? {}) as Record<
-    string,
-    "no_confirm" | "confirm_before_execution" | "confirm_after_execution"
-  >;
+  const loadedSkills = [...new Set([...loadedSlugMembership, ...AUTO_LOADED_AUTHORING_SKILLS])];
   logger.debug({
     module: "conversation_palette",
     action: "palette.resolved",
@@ -796,7 +878,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     conversation_id: p.conversation_id,
     tenant_id: p.tenant_id,
     loaded_skills: loadedSkills,
-    persisted_skills_count: persistedLoadedSkills.length,
+    persisted_skills_count: loadedSlugMembership.length,
   });
 
   const signals: TurnSignals = {

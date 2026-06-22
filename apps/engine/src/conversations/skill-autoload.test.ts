@@ -12,6 +12,7 @@ import {
   autoloadForToolCall,
   autoloadForUserTurn,
   listBaselineSlugs,
+  reaffirmLoadedForTurn,
 } from "./skill-autoload.ts";
 
 const CATALOG: ActivationRecord[] = [
@@ -106,6 +107,72 @@ const CATALOG: ActivationRecord[] = [
     tags: [],
   },
 ];
+
+describe("reaffirmLoadedForTurn — recency re-affirmation (inverse of one-way add)", () => {
+  test("always re-affirms baseline loaded slugs (user_turn)", () => {
+    const out = reaffirmLoadedForTurn(
+      { mode: "user_turn", user_text: "nothing relevant here" },
+      CATALOG,
+      ["subkit-concepts", "error-recovery"],
+    );
+    // Both carry a baseline rule → re-affirmed regardless of text.
+    expect(out).toContain("subkit-concepts");
+    expect(out).toContain("error-recovery");
+  });
+
+  test("re-affirms a loaded slug whose intent_keyword still matches", () => {
+    const out = reaffirmLoadedForTurn({ mode: "user_turn", user_text: "I hit an error" }, CATALOG, [
+      "error-recovery",
+    ]);
+    expect(out).toContain("error-recovery");
+  });
+
+  test("re-affirms a loaded slug whose connector_driver is still in scope", () => {
+    const out = reaffirmLoadedForTurn(
+      { mode: "user_turn", user_text: "no keyword", connector_drivers: ["postgres"] },
+      CATALOG,
+      ["postgres-connectors"],
+    );
+    expect(out).toContain("postgres-connectors");
+  });
+
+  test("returns [] for a loaded slug with no current match", () => {
+    const out = reaffirmLoadedForTurn(
+      { mode: "user_turn", user_text: "unrelated chatter" },
+      CATALOG,
+      ["postgres-connectors"],
+    );
+    expect(out).toEqual([]);
+  });
+
+  test("never returns a slug that is NOT in currently_loaded (re-affirm only, never add)", () => {
+    const out = reaffirmLoadedForTurn(
+      { mode: "user_turn", user_text: "I hit an error", connector_drivers: ["postgres"] },
+      CATALOG,
+      // error-recovery would match but it is NOT loaded → must not appear.
+      ["subkit-concepts"],
+    );
+    expect(out).not.toContain("error-recovery");
+    expect(out).not.toContain("postgres-connectors");
+    expect(out).toContain("subkit-concepts");
+  });
+
+  test("drops experimental loaded slugs without throwing (re-load to re-promote)", () => {
+    const out = reaffirmLoadedForTurn({ mode: "user_turn", user_text: "anything" }, CATALOG, [
+      "experimental-thing",
+    ]);
+    expect(out).not.toContain("experimental-thing");
+  });
+
+  test("tool_call mode re-affirms a loaded slug whose tool rule matches", () => {
+    const out = reaffirmLoadedForTurn(
+      { mode: "tool_call", tool: "probe_connector", input: {} },
+      CATALOG,
+      ["http-connectors"],
+    );
+    expect(out).toContain("http-connectors");
+  });
+});
 
 describe("autoloadForToolCall — RULES parity matrix", () => {
   test("probe_connector → http-connectors", () => {

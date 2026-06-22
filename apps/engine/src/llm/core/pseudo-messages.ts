@@ -169,7 +169,12 @@ export async function buildLoadedSkillsMessage(opts: LoadedSkillsOpts): Promise<
       and(eq(conversations.tenant_id, opts.tenant_id), eq(conversations.id, opts.conversation_id)),
     )
     .limit(1);
-  const loaded = (row?.loaded_skills ?? []) as string[];
+  // `loaded_skills` carries `{slug,last_turn}` recency entries; this
+  // informational message lists ALL loaded slugs (membership), not the
+  // recency-filtered full-body subset.
+  const loaded = ((row?.loaded_skills ?? []) as Array<{ slug: string; last_turn: number }>).map(
+    (e) => e.slug,
+  );
   if (loaded.length === 0) return null;
   // Look up titles for readability.
   const titleRows = await opts.db

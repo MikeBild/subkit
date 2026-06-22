@@ -82,29 +82,53 @@ export const loadSkillTool: ConversationTool = {
     }
 
     const rows = await ctx.db
-      .select({ loaded_skills: conversations.loaded_skills })
+      .select({
+        loaded_skills: conversations.loaded_skills,
+        turn_count: conversations.turn_count,
+      })
       .from(conversations)
       .where(
         and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
       )
       .limit(1);
-    const current = (rows[0]?.loaded_skills ?? []) as string[];
+    const current = (rows[0]?.loaded_skills ?? []) as Array<{ slug: string; last_turn: number }>;
+    // The loop increments `turn_count` at turn start, before any tool can
+    // run, so the persisted value IS the current turn — stamp `last_turn`
+    // with it so the freshly-loaded skill is full-body this turn and for
+    // the K-turn recency window.
+    const currentTurn = rows[0]?.turn_count ?? 0;
     // Persist the SLUG (not the UUID id) so downstream palette gating
     // and prompt-context lookup can both rely on the stable cross-tenant
     // identifier. The context-assembler already accepts id-or-slug for
     // backwards compat with any rows that still hold UUIDs.
     const key = match.slug ?? match.id;
-    if (current.includes(key)) {
+    if (current.some((e) => e.slug === key)) {
+      // Already loaded — refresh recency so an explicit re-load re-promotes
+      // a demoted skill back to full body.
+      const refreshed = current.map((e) =>
+        e.slug === key ? { slug: key, last_turn: currentTurn } : e,
+      );
+      await ctx.db
+        .update(conversations)
+        .set({ loaded_skills: refreshed })
+        .where(
+          and(
+            eq(conversations.tenant_id, ctx.tenant_id),
+            eq(conversations.id, ctx.conversation_id),
+          ),
+        );
       return {
         ok: true,
         data: { slug: key, already_loaded: true, skill: { id: match.id, title: match.title } },
       };
     }
-    const next = [...current, key];
+    const next = [...current, { slug: key, last_turn: currentTurn }];
     await ctx.db
       .update(conversations)
       .set({ loaded_skills: next })
-      .where(eq(conversations.id, ctx.conversation_id));
+      .where(
+        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
+      );
 
     return {
       ok: true,

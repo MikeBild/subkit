@@ -213,7 +213,10 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
         status: "active",
         title: "fork-carryover-source",
         memory: "carry-this-memory-string",
-        loaded_skills: ["skill.alpha", "skill.beta"],
+        loaded_skills: [
+          { slug: "skill.alpha", last_turn: 0 },
+          { slug: "skill.beta", last_turn: 0 },
+        ],
       })
       .returning();
 
@@ -240,7 +243,10 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
       .where(eq(conversations.id, body.conversation.id));
     expect(forked).toBeDefined();
     expect(forked!.memory).toBe("carry-this-memory-string");
-    expect(forked!.loaded_skills).toEqual(["skill.alpha", "skill.beta"]);
+    expect(forked!.loaded_skills).toEqual([
+      { slug: "skill.alpha", last_turn: 0 },
+      { slug: "skill.beta", last_turn: 0 },
+    ]);
   });
 
   test("admin → fork audit row records tool_calls_omitted + elicitations_omitted", async () => {

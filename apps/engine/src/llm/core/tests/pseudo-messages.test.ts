@@ -238,7 +238,7 @@ describe("buildLoadedSkillsMessage", () => {
     const { eq } = await import("drizzle-orm");
     await ctx.db
       .update(conversations)
-      .set({ loaded_skills: ["http-connectors"] })
+      .set({ loaded_skills: [{ slug: "http-connectors", last_turn: 0 }] })
       .where(eq(conversations.id, conversation_id));
 
     const msg = await buildLoadedSkillsMessage({

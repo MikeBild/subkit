@@ -89,7 +89,10 @@ export async function createConversation(
       status: "active",
       draft: initialDraft,
       owner_id: p.actor_id ?? null,
-      loaded_skills: baselineSlugs,
+      // Seed at last_turn 0 (turn_count defaults to 0; the first turn
+      // becomes 1, so baseline skills satisfy the K-turn full-body window
+      // immediately).
+      loaded_skills: baselineSlugs.map((slug) => ({ slug, last_turn: 0 })),
       ...(p.model ? { model: p.model } : {}),
       ...(p.title ? { title: p.title } : {}),
       ...(memory ? { memory } : {}),
