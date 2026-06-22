@@ -128,12 +128,19 @@ async function readAppliedHashes(db: Db): Promise<AppliedState> {
  * invoke on every engine boot. The caller owns the connection pool —
  * this function does not open or close any pools.
  */
-export async function runMigrations(db: Db): Promise<MigrationReport> {
+export async function runMigrations(
+  db: Db,
+  // The migration set to apply. Defaults to the embedded bundle; overridable
+  // ONLY so tests can drive the real runner with a synthetic appended migration
+  // (proving the tag-membership logic, not a hand-copy of it). Production always
+  // uses the default.
+  migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
+): Promise<MigrationReport> {
   logger.info({
     module: "db",
     action: "migrate.started",
     msg: "applying embedded migrations",
-    total: EMBEDDED_MIGRATIONS.length,
+    total: migrations.length,
   });
 
   await ensureMigrationsTable(db);
@@ -142,7 +149,7 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
   let appliedCount = 0;
   let skippedCount = 0;
   let hashDriftCount = 0;
-  for (const m of EMBEDDED_MIGRATIONS) {
+  for (const m of migrations) {
     // Authoritative: a migration is applied iff its tag is recorded.
     if (applied.tags.has(m.tag)) {
       if (applied.hashes.has(m.hash)) {
@@ -266,7 +273,7 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
     applied: appliedCount,
     skipped: skippedCount,
     hash_drift_backfilled: hashDriftCount,
-    total: EMBEDDED_MIGRATIONS.length,
+    total: migrations.length,
   };
 
   logger.info({
