@@ -160,9 +160,18 @@ export function classifyRedisProbeError(err: unknown): ProbeErrorCode {
  * https://github.com/mscdex/ssh2#authentication-errors
  */
 export function classifySftpProbeError(err: unknown): ProbeErrorCode {
-  // ssh2 sets .level = "client-authentication" on credential rejection.
+  // ssh2 sets .level = "client-authentication" on credential rejection — true
+  // when probing the RAW ssh2.Client.
   const level = (err as { level?: string } | null | undefined)?.level;
   if (level === "client-authentication") return "credential_invalid";
+  // The driver uses ssh2-sftp-client, whose error wrapper COPIES ONLY `.code`
+  // and DROPS `.level` (src/utils.js errorListener). So through the wrapper the
+  // only surviving auth signal is ssh2's stable message for credential
+  // rejection — match it so a bad key/password isn't mislabeled as a generic
+  // upstream error. (Without this, `.level` never reaches us and SFTP auth
+  // failures silently classify as unknown_upstream_error.)
+  const msg = err instanceof Error ? err.message : "";
+  if (/all configured authentication methods failed/i.test(msg)) return "credential_invalid";
   return "unknown_upstream_error";
 }
 
