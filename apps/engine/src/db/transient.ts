@@ -17,6 +17,7 @@
 // through immediately so we never mask logic errors behind retries.
 
 import { errorFields, logger } from "../logging/logger.ts";
+import { recordDbTransientRetry } from "../observability/instrumentation.ts";
 
 /**
  * SQLSTATE + Node system codes that mean "the connection went away / the
@@ -128,6 +129,7 @@ export async function retryTransient<T>(
       lastErr = err;
       if (attempt >= tries || !isTransientDbError(err)) throw err;
       const sleepMs = jitter(delay);
+      recordDbTransientRetry(opts.label !== undefined ? { label: opts.label } : {});
       logger.warn({
         module: "db",
         action: "retry_transient",

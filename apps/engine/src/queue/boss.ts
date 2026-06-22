@@ -7,7 +7,7 @@
 import type { ConstructorOptions, QueueResult } from "pg-boss";
 import { PgBoss } from "pg-boss";
 import { logger } from "../logging/logger.ts";
-import { setQueueDepth, setQueueLag } from "../observability/instrumentation.ts";
+import { setDlqJobCount, setQueueDepth, setQueueLag } from "../observability/instrumentation.ts";
 import { QUEUE_DEFINITIONS, QUEUE_NAMES, type QueueName } from "./queues.ts";
 
 let _boss: PgBoss | null = null;
@@ -19,6 +19,12 @@ async function pollQueueDepths(boss: PgBoss): Promise<void> {
     const queues = (await boss.getQueues()) as QueueResult[];
     for (const q of queues) {
       setQueueDepth(q.name, q.queuedCount ?? 0);
+      // Phase 2: dead-letter depth. A growing `*.dlq` queue means a worker
+      // is failing every attempt for some payload class — a leading
+      // maintenance signal distinct from steady-state queue depth.
+      if (q.name.endsWith(".dlq")) {
+        setDlqJobCount(q.name, q.queuedCount ?? 0);
+      }
       // pg-boss exposes per-queue `updatedOn` rather than oldest-pending
       // age. Use `updatedOn` as a proxy for "queue idle since" — if the
       // queue is empty this stays small; if jobs are stuck it grows.

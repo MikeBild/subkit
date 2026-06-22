@@ -127,6 +127,13 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "observability.langfuse.secret_key": "Langfuse secret key",
   "observability.otlp.endpoint": "OTLP endpoint",
   "observability.otlp.service_name": "OTLP service name",
+  "observability.field_truncation_chars": "Log field truncation (chars)",
+  "observability.predictive.pool_saturation_pct": "Pool saturation threshold (%)",
+  "observability.predictive.dlq_critical_depth": "DLQ critical depth",
+  "observability.predictive.transient_retry_rate": "Transient retry rate (per min)",
+  "observability.predictive.memory_cap_fraction": "Memory cap fraction (OOM risk)",
+  "observability.predictive.connector_unhealthy_pct": "Connector unhealthy threshold (%)",
+  "observability.predictive.llm_fallback_pct": "LLM fallback threshold (%)",
 
   // ── Network egress ─────────────────────────────────────────────
   "egress.mode": "Egress mode",

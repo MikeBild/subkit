@@ -13,6 +13,7 @@
 
 import { generateText, jsonSchema, NoSuchToolError, type Tool, tool } from "ai";
 import { logger } from "../../logging/logger.ts";
+import { recordLlmFallbackInvocation } from "../../observability/instrumentation.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { isTracingActive } from "../../observability/tracing.ts";
 import { classifyProviderError, isFallbackEligible } from "../provider-errors.ts";
@@ -307,6 +308,11 @@ export class AiSdkModel implements SubkitLlm {
       if (kind === "quota_exhausted" && this.fallbackResolved.provider === primary.provider) {
         throw err;
       }
+      recordLlmFallbackInvocation({
+        from: primary.modelId,
+        to: this.fallbackResolved.modelId,
+        reason: kind,
+      });
       logger.warn({
         module: "llm",
         action: "fallback.triggered",

@@ -10,6 +10,7 @@ import type { Db } from "../../db/client.ts";
 import { knowledgeSources } from "../../db/schema/index.ts";
 import { ingestKnowledgeSource } from "../../knowledge/service.ts";
 import { log } from "../../logging/logger.ts";
+import { withJobContext } from "../job-context.ts";
 
 export const INGEST_KNOWLEDGE_QUEUE = "knowledge.ingest" as const;
 
@@ -136,7 +137,7 @@ export async function registerIngestKnowledgeHandler(
     { batchSize: 1, pollingIntervalSeconds: 2 },
     async (jobs: Job<IngestKnowledgeJob>[]) => {
       for (const job of jobs) {
-        await processIngestKnowledgeJob(job, db);
+        await withJobContext(job.data, () => processIngestKnowledgeJob(job, db));
       }
     },
   );

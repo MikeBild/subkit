@@ -170,6 +170,18 @@ export const AuditAction = {
   SELF_HEALING_SCAN_TRIGGERED: "self_healing.scan.triggered",
   SELF_HEALING_SCAN_COMPLETED: "self_healing.scan.completed",
 
+  // A critical predictive-maintenance risk signal crossed its threshold
+  // when the operator health digest was built (pool exhaustion, DLQ
+  // growth, RSS approaching the host memory cap, …). Resource_id is the
+  // signal `kind`; metadata carries metric / value / threshold so the SIEM
+  // trail proves the operator was warned before the incident landed.
+  RISK_SIGNAL_RAISED: "operator.risk_signal_raised",
+
+  // The matching recovery edge — a previously-critical risk signal fell back
+  // below its threshold. Paired with RISK_SIGNAL_RAISED so the SIEM can
+  // compute the incident window (MTTR) from the two edges.
+  RISK_SIGNAL_CLEARED: "operator.risk_signal_cleared",
+
   SUBSCRIPTION_CREATED: "subscription.created",
   SUBSCRIPTION_UPDATED: "subscription.updated",
   SUBSCRIPTION_DELETED: "subscription.deleted",
@@ -941,6 +953,31 @@ export const EngineUpdateMetadataSchema = z.object({
   reason: z.string().optional(),
 });
 export type EngineUpdateMetadata = z.infer<typeof EngineUpdateMetadataSchema>;
+
+/** `operator.risk_signal_raised` metadata. A leading-indicator predictive
+ *  signal crossed its threshold (false→true edge). `severity` mirrors
+ *  `RiskSeverity` in `operator/risk-signals.ts` ("info" was pruned). */
+export const RiskSignalRaisedMetadataSchema = z.object({
+  kind: z.string(),
+  severity: z.enum(["warn", "critical"]),
+  metric: z.string(),
+  value: z.number(),
+  threshold: z.number(),
+  /** Process uptime (s) at the edge — a low value flags a post-restart
+   *  re-raise of a standing critical vs. a live transition (see call site). */
+  uptime_s: z.number().optional(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type RiskSignalRaisedMetadata = z.infer<typeof RiskSignalRaisedMetadataSchema>;
+
+/** `operator.risk_signal_cleared` metadata. The paired clear edge — the
+ *  signal fell back below its threshold (true→false). Only the `kind` is
+ *  carried; the cleared value is by definition under threshold. */
+export const RiskSignalClearedMetadataSchema = z.object({
+  kind: z.string(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type RiskSignalClearedMetadata = z.infer<typeof RiskSignalClearedMetadataSchema>;
 
 export type AuditEntry = {
   id: string;

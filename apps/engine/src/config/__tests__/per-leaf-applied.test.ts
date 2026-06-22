@@ -112,7 +112,8 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
       // (salt mod 45) + 5 → 5..49, in-range for both high-min leaves
       // (via the ladder below) and tight-max leaves like
       // min_runs_before_proposing (max 50).
-      const candidates = [((salt + 5) % 45) + 5, 200, 1_000, 60_000, 100_000, 3_600_000];
+      // `0.5` covers fractional leaves (memory_cap_fraction, min 0.1 / max 1).
+      const candidates = [((salt + 5) % 45) + 5, 0.5, 200, 1_000, 60_000, 100_000, 3_600_000];
       for (const c of candidates) {
         if (leaf.schema.safeParse(c).success) return c;
       }

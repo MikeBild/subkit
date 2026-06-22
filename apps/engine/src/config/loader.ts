@@ -770,6 +770,17 @@ export async function setConfigKey(
     // that touches config (CLI, tests, smoke binary) for no benefit.
     let reconfigureFailed = false;
     if (leaf.path[0] === "observability") {
+      // Hot-reload the per-field log cap when observability.* changes —
+      // operators set `sk settings set observability.field_truncation_chars`
+      // expecting the next log line to honor it without a restart.
+      try {
+        const { reconfigureObservability } = await import("../logging/logger.ts");
+        reconfigureObservability({
+          field_truncation_chars: fullParse.data.observability.field_truncation_chars,
+        });
+      } catch {
+        /* logger module not loaded */
+      }
       // The reconfigure runs INSIDE withWriteLock on purpose: a second
       // setConfigKey arriving mid-reconfigure would otherwise see the
       // new in-memory config but the old running tracer, and could

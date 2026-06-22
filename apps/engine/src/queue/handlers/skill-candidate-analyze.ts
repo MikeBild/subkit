@@ -7,6 +7,7 @@ import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { runPatternAnalysis } from "../../skill-candidates/service.ts";
+import { withJobContext } from "../job-context.ts";
 
 export const SKILL_CANDIDATE_ANALYZE_QUEUE = "skill-candidate.analyze" as const;
 
@@ -66,7 +67,7 @@ export async function registerSkillCandidateAnalyzeHandler(
     { batchSize: 1, pollingIntervalSeconds: 5 },
     async (jobs: Job<SkillCandidateAnalyzeJob>[]) => {
       for (const job of jobs) {
-        await handleOne(job, db);
+        await withJobContext(job.data, () => handleOne(job, db));
       }
     },
   );

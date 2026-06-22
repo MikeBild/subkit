@@ -29,6 +29,7 @@ import { truncateForLlm } from "../../conversations/tools/truncate.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
+import { recordConnectorCall } from "../../observability/instrumentation.ts";
 import { query as graphqlQuery } from "../drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../drivers/http.ts";
 import {
@@ -336,6 +337,11 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
   // anonymous-200). Classify so the audit row and the LLM-facing envelope
   // both reflect that instead of recording a blind "success".
   const health = dispatch ? classifyConnectorHealth(status, dispatch.headers) : "ok";
+
+  // Phase 2: per-call health counter — a climbing non-ok share for a slug is
+  // the leading signal of connector drift (rotated credential, removed
+  // endpoint, vendor degradation) before it cascades into failed workflows.
+  recordConnectorCall({ slug: connector.slug, health });
 
   await recordConnectorInvoked({
     tenant_id: req.tenant_id,

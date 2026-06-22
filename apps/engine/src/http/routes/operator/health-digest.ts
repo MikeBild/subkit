@@ -38,6 +38,18 @@ const PatchSchema = z
   })
   .openapi("OperatorDigestPatch");
 
+const RiskSignalSchema = z
+  .object({
+    kind: z.string(),
+    severity: z.enum(["warn", "critical"]),
+    headline: z.string(),
+    detail: z.string(),
+    metric: z.string(),
+    value: z.number(),
+    threshold: z.number(),
+  })
+  .openapi("OperatorRiskSignal");
+
 const DigestResponse = z
   .object({
     generated_at: z.string(),
@@ -45,6 +57,7 @@ const DigestResponse = z
     headline: z.string(),
     failure_groups: z.array(FailureGroupSchema),
     patch_candidates: z.object({ pending: z.number().int(), items: z.array(PatchSchema) }),
+    risk: z.array(RiskSignalSchema),
     rendered: z.string(),
     all_clear: z.boolean(),
   })

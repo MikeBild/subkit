@@ -10,7 +10,7 @@
 // Tests call `closeAllMssqlPools()` to reset.
 
 import mssql from "mssql";
-import { logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 import type { DriverProbeResult } from "./index.ts";
@@ -59,7 +59,7 @@ async function getPool(connector: ConnectorView): Promise<mssql.ConnectionPool> 
       action: "mssql.pool.error",
       msg: "mssql driver pool emitted error",
       connector_id: connector.id,
-      error: err.message,
+      ...errorFields(err),
     });
   });
   await pool.connect();

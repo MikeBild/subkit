@@ -76,6 +76,7 @@ import { isTextLike } from "../../files/content-type.ts";
 import { FileNotFoundError, requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import * as knowledgeSvc from "../../knowledge/service.ts";
 import { logger } from "../../logging/logger.ts";
+import { buildOperatorHealthDigest } from "../../operator/health-digest.ts";
 import { globalEmitter, type PubSubEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { can } from "../../rbac/evaluator.ts";
@@ -106,6 +107,11 @@ function workflowUri(id: string): string {
 function fileUri(id: string): string {
   return `file://${id}`;
 }
+
+/** Singleton read-only operator surface. Unlike the per-object resources
+ *  above it has no id — there is exactly one health digest per tenant,
+ *  computed on read. Gated on `stats:read`, mirroring the HTTP route. */
+const OPERATOR_HEALTH_DIGEST_URI = "subkit://operator/health-digest";
 
 /** Prefix set the subscribe handler accepts. Anything else is dropped at
  *  subscribe time so a misbehaving client can't grow `subscribed` with
@@ -397,11 +403,59 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       });
     }
 
+    // Operator health digest — the one read-only operator surface. Enumerate
+    // it ONLY for a principal that can actually read it (`stats:read`), the
+    // same gate the read handler enforces. Enumerating it for everyone would
+    // disclose by listing that the host exposes operator-tier telemetry to a
+    // tenant principal (e.g. a portal token) that can never read it — a soft
+    // tenant-isolation drift. Gate the listing too, so visibility == access.
+    const digestDecision = await can(db, {
+      tenant_id: principal.tenant_id,
+      principal,
+      permission: "stats:read",
+    });
+    if (digestDecision.allow) {
+      resources.push({
+        uri: OPERATOR_HEALTH_DIGEST_URI,
+        name: "Operator health digest",
+        description:
+          "Deterministic, LLM-free summary of failing runs, pending self-healing fixes, and leading-indicator risk signals.",
+        mimeType: "application/json",
+      });
+    }
+
     return { resources };
   });
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const uri = req.params.uri;
+
+    // Operator health digest. Fixed singleton URI, computed on read,
+    // tenant-scoped via the principal. Gated on `stats:read` to match the
+    // HTTP `/v1/operator/health-digest` surface — this exposes
+    // cross-workflow operational posture, not a single object.
+    if (uri === OPERATOR_HEALTH_DIGEST_URI) {
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "stats:read",
+      });
+      if (!decision.allow) {
+        const err = new Error(decision.reason ?? "permission_denied") as Error & { code?: number };
+        err.code = -32001;
+        throw err;
+      }
+      const digest = await buildOperatorHealthDigest(db, principal.tenant_id);
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(digest, null, 2),
+          },
+        ],
+      };
+    }
 
     // Files. Streams content from the object store after a
     // tenant-isolated lookup. `requireFileForTenant` is the single

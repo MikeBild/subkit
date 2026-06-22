@@ -6,7 +6,7 @@
 // `closeAllPools()` to reset.
 
 import pg from "pg";
-import { logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 import type { DriverProbeResult } from "./index.ts";
@@ -39,7 +39,7 @@ export function getPoolForConnector(connector: ConnectorView): pg.Pool {
       action: "pg.pool.error",
       msg: "postgres driver pool emitted error",
       connector_id: connector.id,
-      error: err.message,
+      ...errorFields(err),
     });
   });
   pools.set(key, pool);

@@ -7,7 +7,12 @@
 //     immediately, returns on first success, rethrows the last transient error
 //     once exhausted.
 
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
+import {
+  getMetrics,
+  METRIC_NAMES,
+  resetMetricsRegistryForTests,
+} from "../../observability/metrics.ts";
 import { isTransientDbError, retryTransient } from "../transient.ts";
 
 describe("isTransientDbError — transient codes", () => {
@@ -138,5 +143,38 @@ describe("retryTransient", () => {
       ),
     ).rejects.toThrow("conn lost");
     expect(calls).toBe(3);
+  });
+});
+
+describe("retryTransient — predictive metric", () => {
+  beforeEach(() => {
+    resetMetricsRegistryForTests();
+  });
+
+  const transient = () => Object.assign(new Error("conn lost"), { code: "57P01" });
+
+  test("increments db_transient_retries_total once per backoff, labelled by pass", async () => {
+    await expect(
+      retryTransient(
+        async () => {
+          throw transient();
+        },
+        { tries: 3, startMs: 1, maxMs: 2, label: "drift_scan" },
+      ),
+    ).rejects.toThrow("conn lost");
+    // 3 tries → 2 backoffs (the final try rethrows without a retry).
+    const entry = getMetrics()
+      .snapshot()
+      .find((s) => s.name === METRIC_NAMES.DB_TRANSIENT_RETRIES_TOTAL);
+    const sample = entry?.samples.find((s) => s.labels.label === "drift_scan");
+    expect(sample?.value).toBe(2);
+  });
+
+  test("does not increment when the first attempt succeeds", async () => {
+    await retryTransient(async () => "ok");
+    const entry = getMetrics()
+      .snapshot()
+      .find((s) => s.name === METRIC_NAMES.DB_TRANSIENT_RETRIES_TOTAL);
+    expect(entry?.samples.length ?? 0).toBe(0);
   });
 });
