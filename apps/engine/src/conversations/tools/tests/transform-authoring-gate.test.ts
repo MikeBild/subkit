@@ -431,6 +431,40 @@ describe("detectHandRolledCodec", () => {
       kind: null,
     });
   });
+
+  // Concatenation-evasion: an author (or LLM) can split the alphabet across
+  // adjacent string/object literals joined by `+`. normalizeAdjacentStringLiterals
+  // collapses the seams for detection so the anchored regexes still fire.
+  test("flags a base64 alphabet split across concatenated string literals", () => {
+    const split = `const B="ABCDEFGHIJKLM"+"NOPQRSTUVWXYZ"+"abcdefghijklm"+"nopqrstuvwxyz"+"0123456789+/";`;
+    expect(detectHandRolledCodec(split)).toEqual({ found: true, kind: "base64" });
+  });
+
+  test("flags a base32 alphabet split across concatenated string literals", () => {
+    expect(detectHandRolledCodec(`const B="ABCDEFGHIJKLMNOPQRSTUVWXYZ"+"234567";`)).toEqual({
+      found: true,
+      kind: "base32",
+    });
+  });
+
+  test("flags a hex table split across concatenated string literals", () => {
+    expect(detectHandRolledCodec(`const H="0123456789"+"abcdef";`)).toEqual({
+      found: true,
+      kind: "hex_table",
+    });
+  });
+
+  test("flags a reverse-lookup table split across concatenated object literals", () => {
+    const split = "const r={A:0,B:1,C:2,D:3}+{E:4,F:5,G:6,H:7,I:8};return r;";
+    expect(detectHandRolledCodec(split)).toEqual({ found: true, kind: "reverse_lookup" });
+  });
+
+  test("does NOT flag ordinary string concatenation (no codec alphabet)", () => {
+    expect(detectHandRolledCodec(`const msg="Hello "+"world, "+"all good";return msg;`)).toEqual({
+      found: false,
+      kind: null,
+    });
+  });
 });
 
 describe("evaluateTransformAuthoringGate — hand-rolled codec", () => {

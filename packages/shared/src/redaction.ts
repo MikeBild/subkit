@@ -239,13 +239,47 @@ function isCodeLiteral(text: string, start: number, match: string): boolean {
 // `AKIA…`, a JWT `eyJ…`, etc.) is matched by the `SECRET_PATTERNS` loop
 // FIRST and redacts INSIDE any assignment regardless of the variable name,
 // because those patterns fire on the value's shape, not its code framing.
-function redactGenericTokens(value: string): string {
+/**
+ * Single source of truth for the code-context-suppressed generic token scan.
+ *
+ * Both the user-text scrubber (`scrubString` → `redactGenericTokens`) and the
+ * assistant-text span pass (`findSecretSpans`) consume this so they can NEVER
+ * diverge — divergence is exactly what reopened the redaction-corruption class.
+ * Returns every high-entropy run that should redact: not a code literal, not a
+ * presentable token, and not already covered by the caller (vendor spans /
+ * prior `***REDACTED***` markers). `GENERIC_TOKEN_RE.exec` advances past each
+ * match, so returned spans never overlap each other.
+ */
+function scanGenericTokens(
+  text: string,
+  isCovered: (start: number, end: number) => boolean,
+): Array<{ start: number; end: number; match: string }> {
+  const out: Array<{ start: number; end: number; match: string }> = [];
   GENERIC_TOKEN_RE.lastIndex = 0;
-  return value.replace(GENERIC_TOKEN_RE, (match, offset: number) =>
-    !isCodeLiteral(value, offset, match) && !isPresentableToken(match)
-      ? REDACTED("generic")
-      : match,
-  );
+  let g: RegExpExecArray | null = GENERIC_TOKEN_RE.exec(text);
+  while (g !== null) {
+    const start = g.index;
+    const end = g.index + g[0].length;
+    if (!isCodeLiteral(text, start, g[0]) && !isPresentableToken(g[0]) && !isCovered(start, end)) {
+      out.push({ start, end, match: g[0] });
+    }
+    g = GENERIC_TOKEN_RE.exec(text);
+  }
+  GENERIC_TOKEN_RE.lastIndex = 0;
+  return out;
+}
+
+function redactGenericTokens(value: string): string {
+  // scrubString runs this AFTER the vendor loop has already replaced its
+  // secrets with markers, so there are no caller-covered spans to honour here.
+  const spans = scanGenericTokens(value, () => false);
+  if (spans.length === 0) return value;
+  let out = value;
+  for (let i = spans.length - 1; i >= 0; i--) {
+    const s = spans[i] as { start: number; end: number };
+    out = out.slice(0, s.start) + REDACTED("generic") + out.slice(s.end);
+  }
+  return out;
 }
 
 /**
@@ -383,28 +417,17 @@ export function findSecretSpans(text: string): SecretSpan[] {
     regex.lastIndex = 0;
   }
 
-  // Parallel code-context-suppressed generic pass — kept byte-identical
-  // to `scrubString`'s `redactGenericTokens` so user-text (scrubString)
-  // and assistant-text (this) redact the same runs. Vendor spans were
-  // pushed first above, so a candidate overlapping one is skipped. A run
-  // that is a codec alphabet or a non-secret `var/const/let = "..."`
-  // literal is NOT reported; every other high-entropy run IS.
-  GENERIC_TOKEN_RE.lastIndex = 0;
-  let g: RegExpExecArray | null = GENERIC_TOKEN_RE.exec(text);
-  while (g !== null) {
-    const start = g.index;
-    const end = g.index + g[0].length;
-    if (
-      !isCodeLiteral(text, start, g[0]) &&
-      !isPresentableToken(g[0]) &&
-      !overlapsAny(start, end, markers) &&
-      !overlapsAny(start, end, spans)
-    ) {
-      spans.push({ start, end, kind: "generic", match: g[0] });
-    }
-    g = GENERIC_TOKEN_RE.exec(text);
+  // Code-context-suppressed generic pass — shares `scanGenericTokens` with
+  // `scrubString`'s `redactGenericTokens` so user-text and assistant-text
+  // redact the same runs (the consolidation that prevents divergence). Vendor
+  // spans were pushed first above, so a candidate overlapping one (or a prior
+  // marker) is skipped.
+  for (const s of scanGenericTokens(
+    text,
+    (start, end) => overlapsAny(start, end, markers) || overlapsAny(start, end, spans),
+  )) {
+    spans.push({ start: s.start, end: s.end, kind: "generic", match: s.match });
   }
-  GENERIC_TOKEN_RE.lastIndex = 0;
 
   return spans.sort((a, b) => a.start - b.start);
 }

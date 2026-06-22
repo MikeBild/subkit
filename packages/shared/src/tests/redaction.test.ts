@@ -283,3 +283,37 @@ describe("presentable tokens — OAuth start grants stay visible", () => {
     expect(out).toContain("***REDACTED:bearer***");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Generic-scan parity: `scrubString` (user-text) and `findSecretSpans`
+// (assistant-text) now share one `scanGenericTokens` helper, so they must
+// redact the SAME generic runs. This is the permanent guard that replaced the
+// "kept byte-identical by comment" duplication (the redaction-corruption class).
+// ---------------------------------------------------------------------------
+describe("generic-scan parity (scrubString ⇄ findSecretSpans)", () => {
+  // Generic-only inputs (no vendor-prefixed secrets) so the only redactions in
+  // play are generic — lets us compare the two code paths directly.
+  const corpus = [
+    "plain prose with a bare token Xk9Qw3Zr7Lm2Vt8Yb4Nc6Hd1Pf5Sg0 inside",
+    "two tokens Ab1Cd2Ef3Gh4Ij5Kl6Mn7Op8 and Qr9St0Uv1Wx2Yz3Ab4Cd5Ef6",
+    'a codec alphabet const A="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" survives',
+    'neutrally-named const data = "Zz9Yy8Xx7Ww6Vv5Uu4Tt3Ss2Rr1Qq0" survives',
+    "a presentable grant=skog_abcdefghijklmnopqrstuvwx survives",
+    "no secrets here at all, just words and numbers 12345",
+  ];
+
+  for (const text of corpus) {
+    test(`generic redactions align for: ${text.slice(0, 40)}…`, () => {
+      // Apply findSecretSpans' generic spans manually (right-to-left) and
+      // assert the result equals scrubString's output.
+      const spans = findSecretSpans(text).filter((s) => s.kind === "generic");
+      let viaSpans = text;
+      for (let i = spans.length - 1; i >= 0; i--) {
+        const s = spans[i];
+        if (!s) continue;
+        viaSpans = viaSpans.slice(0, s.start) + "***REDACTED:generic***" + viaSpans.slice(s.end);
+      }
+      expect(viaSpans).toBe(scrubString(text));
+    });
+  }
+});
