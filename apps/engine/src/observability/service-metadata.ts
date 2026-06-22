@@ -41,6 +41,10 @@ export const RequestSourceSchema = z.enum([
   "tool-chain",
   "ui",
   "chat",
+  // Worker-driven: a pg-boss handler running a job under the enqueuing
+  // request's correlation context (set by queue/job-context.ts). Kept in
+  // lockstep with the LogContext.request_source union in logging/context.ts.
+  "queue",
 ]);
 export type RequestSource = z.infer<typeof RequestSourceSchema>;
 

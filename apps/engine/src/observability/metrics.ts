@@ -1,291 +1,22 @@
-// Hand-rolled Prometheus-compatible metrics registry.
+// Metric CATALOG — the canonical series definitions (`METRIC_NAMES`),
+// `buildRegistry()` that registers them, and the process-scoped singleton
+// accessor. The registry ENGINE (the `MetricsRegistry` class + label
+// normalization + Prometheus render) lives in ./metrics-registry.ts; this file
+// was split out of it to keep each under the 1000-LOC ceiling. The catalog
+// grows by a few lines per new metric — the engine does not.
 //
 // Why hand-rolled?
 //   - Avoids pulling in `prom-client` (or any equivalent) as a runtime
 //     dep — keeps the engine binary lean and drift-free.
 //   - The set of series we emit is small + bounded; a real client would
 //     be overkill.
-//
-// Concurrency: Bun runs every request on the same thread, so we get
-// safe arithmetic without mutexes. The collector is process-scoped via
-// a module-level instance.
 
-import { logger } from "../logging/logger.ts";
+// Re-export MetricsRegistry so existing `import { MetricsRegistry } from
+// "./metrics.ts"` callers are unaffected by the split.
+import { MetricsRegistry } from "./metrics-registry.ts";
 import { registerRuntimeTelemetryMetrics } from "./runtime-metrics.ts";
-import type { LabelValues, MetricDefinition, SampleSnapshot, SeriesSnapshot } from "./types.ts";
 
-const DROPPED_LABEL_WARNINGS = new Set<string>();
-
-function sortObjectKeys(obj: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const key of Object.keys(obj).sort()) {
-    out[key] = obj[key] as string;
-  }
-  return out;
-}
-
-function normalizeLabels(
-  metric: MetricDefinition,
-  raw: LabelValues | undefined,
-): Record<string, string> {
-  const allowed = new Set(metric.labels);
-  const result: Record<string, string> = {};
-  if (!raw) {
-    for (const k of metric.labels) result[k] = "";
-    return sortObjectKeys(result);
-  }
-  for (const [k, v] of Object.entries(raw)) {
-    if (!allowed.has(k)) {
-      const warnKey = `${metric.name}::${k}`;
-      if (!DROPPED_LABEL_WARNINGS.has(warnKey)) {
-        DROPPED_LABEL_WARNINGS.add(warnKey);
-        logger.warn({
-          module: "observability",
-          action: "metrics.label_dropped",
-          msg: "metric label dropped (not in allow-list)",
-          metric: metric.name,
-          label: k,
-        });
-      }
-      continue;
-    }
-    result[k] = String(v ?? "");
-  }
-  // Fill missing allow-list keys with an empty string so the series
-  // shape stays consistent across writes.
-  for (const k of metric.labels) {
-    if (!(k in result)) result[k] = "";
-  }
-  return sortObjectKeys(result);
-}
-
-function labelKey(labels: Record<string, string>): string {
-  return Object.entries(labels)
-    .map(([k, v]) => `${k}=${v}`)
-    .join(",");
-}
-
-interface CounterSeries {
-  def: MetricDefinition;
-  values: Map<string, { labels: Record<string, string>; value: number }>;
-}
-
-interface GaugeSeries {
-  def: MetricDefinition;
-  values: Map<string, { labels: Record<string, string>; value: number }>;
-}
-
-interface HistogramSeries {
-  def: MetricDefinition;
-  buckets: number[]; // ascending, no +Inf
-  values: Map<
-    string,
-    {
-      labels: Record<string, string>;
-      counts: number[]; // length == buckets.length + 1 (+Inf)
-      sum: number;
-      count: number;
-    }
-  >;
-}
-
-export class MetricsRegistry {
-  private counters: Map<string, CounterSeries> = new Map();
-  private gauges: Map<string, GaugeSeries> = new Map();
-  private histograms: Map<string, HistogramSeries> = new Map();
-
-  registerCounter(def: Omit<MetricDefinition, "kind">): void {
-    const full: MetricDefinition = { ...def, kind: "counter" };
-    this.counters.set(def.name, { def: full, values: new Map() });
-  }
-
-  registerGauge(def: Omit<MetricDefinition, "kind">): void {
-    const full: MetricDefinition = { ...def, kind: "gauge" };
-    this.gauges.set(def.name, { def: full, values: new Map() });
-  }
-
-  registerHistogram(def: Omit<MetricDefinition, "kind">): void {
-    if (!def.buckets || def.buckets.length === 0) {
-      throw new Error(`histogram ${def.name} requires non-empty buckets`);
-    }
-    const buckets = [...def.buckets].sort((a, b) => a - b);
-    const full: MetricDefinition = { ...def, kind: "histogram", buckets };
-    this.histograms.set(def.name, { def: full, buckets, values: new Map() });
-  }
-
-  inc(name: string, labels?: LabelValues, by = 1): void {
-    const series = this.counters.get(name);
-    if (!series) {
-      this.warnUnknown("counter", name);
-      return;
-    }
-    const norm = normalizeLabels(series.def, labels);
-    const key = labelKey(norm);
-    const existing = series.values.get(key);
-    if (existing) {
-      existing.value += by;
-    } else {
-      series.values.set(key, { labels: norm, value: by });
-    }
-  }
-
-  set(name: string, value: number, labels?: LabelValues): void {
-    const series = this.gauges.get(name);
-    if (!series) {
-      this.warnUnknown("gauge", name);
-      return;
-    }
-    const norm = normalizeLabels(series.def, labels);
-    series.values.set(labelKey(norm), { labels: norm, value });
-  }
-
-  observe(name: string, value: number, labels?: LabelValues): void {
-    const series = this.histograms.get(name);
-    if (!series) {
-      this.warnUnknown("histogram", name);
-      return;
-    }
-    const norm = normalizeLabels(series.def, labels);
-    const key = labelKey(norm);
-    let entry = series.values.get(key);
-    if (!entry) {
-      entry = {
-        labels: norm,
-        counts: new Array(series.buckets.length + 1).fill(0),
-        sum: 0,
-        count: 0,
-      };
-      series.values.set(key, entry);
-    }
-    entry.sum += value;
-    entry.count += 1;
-    let landed = false;
-    for (let i = 0; i < series.buckets.length; i++) {
-      const upper = series.buckets[i] as number;
-      if (value <= upper) {
-        entry.counts[i] = (entry.counts[i] ?? 0) + 1;
-        landed = true;
-        // Buckets are cumulative — `_bucket{le="x"}` includes everything
-        // that landed in any earlier bucket, so we need to bump every
-        // bucket from this index upwards. We do that during render so we
-        // only pay it on scrape.
-        break;
-      }
-    }
-    if (!landed) {
-      entry.counts[series.buckets.length] = (entry.counts[series.buckets.length] ?? 0) + 1;
-    }
-  }
-
-  /** Returns the structured snapshot. Mostly used by tests + render(). */
-  snapshot(): SeriesSnapshot[] {
-    const out: SeriesSnapshot[] = [];
-    for (const c of this.counters.values()) {
-      const samples: SampleSnapshot[] = [];
-      for (const v of c.values.values()) {
-        samples.push({ name: c.def.name, labels: v.labels, value: v.value });
-      }
-      out.push({ name: c.def.name, help: c.def.help, kind: "counter", samples });
-    }
-    for (const g of this.gauges.values()) {
-      const samples: SampleSnapshot[] = [];
-      for (const v of g.values.values()) {
-        samples.push({ name: g.def.name, labels: v.labels, value: v.value });
-      }
-      out.push({ name: g.def.name, help: g.def.help, kind: "gauge", samples });
-    }
-    for (const h of this.histograms.values()) {
-      const samples: SampleSnapshot[] = [];
-      for (const entry of h.values.values()) {
-        // Cumulative bucket counts.
-        let running = 0;
-        for (let i = 0; i < h.buckets.length; i++) {
-          running += entry.counts[i] ?? 0;
-          samples.push({
-            name: `${h.def.name}_bucket`,
-            labels: { ...entry.labels, le: String(h.buckets[i]) },
-            value: running,
-          });
-        }
-        running += entry.counts[h.buckets.length] ?? 0;
-        samples.push({
-          name: `${h.def.name}_bucket`,
-          labels: { ...entry.labels, le: "+Inf" },
-          value: running,
-        });
-        samples.push({
-          name: `${h.def.name}_sum`,
-          labels: entry.labels,
-          value: entry.sum,
-        });
-        samples.push({
-          name: `${h.def.name}_count`,
-          labels: entry.labels,
-          value: entry.count,
-        });
-      }
-      out.push({ name: h.def.name, help: h.def.help, kind: "histogram", samples });
-    }
-    return out;
-  }
-
-  /** Render in the Prometheus text exposition format (v0.0.4). */
-  render(): string {
-    const parts: string[] = [];
-    for (const series of this.snapshot()) {
-      parts.push(`# HELP ${series.name} ${series.help}`);
-      parts.push(`# TYPE ${series.name} ${series.kind}`);
-      if (series.samples.length === 0) {
-        // Print a zero sample so scrape tools show the series exists.
-        parts.push(`${series.name} 0`);
-        continue;
-      }
-      for (const s of series.samples) {
-        const labelKeys = Object.keys(s.labels);
-        if (labelKeys.length === 0) {
-          parts.push(`${s.name} ${formatNumber(s.value)}`);
-        } else {
-          const inner = labelKeys
-            .map((k) => `${k}="${escapeLabelValue(s.labels[k] ?? "")}"`)
-            .join(",");
-          parts.push(`${s.name}{${inner}} ${formatNumber(s.value)}`);
-        }
-      }
-    }
-    return `${parts.join("\n")}\n`;
-  }
-
-  /** Test helper — wipes every series. */
-  reset(): void {
-    for (const c of this.counters.values()) c.values.clear();
-    for (const g of this.gauges.values()) g.values.clear();
-    for (const h of this.histograms.values()) h.values.clear();
-  }
-
-  private warnUnknown(kind: string, name: string): void {
-    logger.warn({
-      module: "observability",
-      action: "metrics.unknown",
-      msg: "attempt to write to an unregistered metric",
-      kind,
-      name,
-    });
-  }
-}
-
-function escapeLabelValue(v: string): string {
-  return v.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
-}
-
-function formatNumber(n: number): string {
-  if (!Number.isFinite(n)) {
-    if (n === Number.POSITIVE_INFINITY) return "+Inf";
-    if (n === Number.NEGATIVE_INFINITY) return "-Inf";
-    return "NaN";
-  }
-  if (Number.isInteger(n)) return n.toString();
-  return n.toString();
-}
+export { MetricsRegistry } from "./metrics-registry.ts";
 
 // -----------------------------------------------------------------------
 // Process-scoped registry + canonical series definitions
@@ -321,6 +52,22 @@ export const METRIC_NAMES = {
   PROCESS_MEMORY_HEAP_USED_BYTES: "process_memory_heap_used_bytes",
   PROCESS_MEMORY_HEAP_TOTAL_BYTES: "process_memory_heap_total_bytes",
   PROCESS_MEMORY_EXTERNAL_BYTES: "process_memory_external_bytes",
+  // Phase 2 — predictive-maintenance series. These feed the operator's
+  // leading indicators (pool saturation, DLQ growth, transient-retry rate,
+  // RSS high-water vs. the configured cap) rather than recording a fault
+  // after it lands. Sampled on the EXISTING tickers (memory 60s for the
+  // pool gauges + RSS high-water, queue-depth 15s for the DLQ gauge); the
+  // counters fire inline at the contract boundary they describe.
+  DB_POOL_TOTAL_CONNECTIONS: "db_pool_total_connections",
+  DB_POOL_IDLE_CONNECTIONS: "db_pool_idle_connections",
+  DB_POOL_WAITING_CONNECTIONS: "db_pool_waiting_connections",
+  DB_TRANSIENT_RETRIES_TOTAL: "db_transient_retries_total",
+  DB_TRANSIENT_RETRY_RATE_PER_MIN: "db_transient_retry_rate_per_min",
+  DLQ_JOB_COUNT: "dlq_job_count",
+  CONNECTOR_CALL_TOTAL: "connector_call_total",
+  LLM_CALL_DURATION_MS: "llm_call_duration_ms",
+  LLM_FALLBACK_INVOCATIONS_TOTAL: "llm_fallback_invocations_total",
+  PROCESS_MEMORY_RSS_HIGH_WATER_BYTES: "process_memory_rss_high_water_bytes",
   EVENT_LOOP_LAG_MS: "event_loop_lag_ms",
   BOOT_PHASE_DURATION_MS: "boot_phase_duration_ms",
   OPERATION_DURATION_MS: "operation_duration_ms",
@@ -676,6 +423,60 @@ function buildRegistry(): MetricsRegistry {
   });
   // Runtime-telemetry series live in runtime-metrics.ts.
   registerRuntimeTelemetryMetrics(reg);
+
+  // ----- Phase 2: predictive-maintenance series -----------------------
+  reg.registerGauge({
+    name: METRIC_NAMES.DB_POOL_TOTAL_CONNECTIONS,
+    help: "Total connections in the shared Postgres pool (sampled every 60s).",
+    labels: [],
+  });
+  reg.registerGauge({
+    name: METRIC_NAMES.DB_POOL_IDLE_CONNECTIONS,
+    help: "Idle connections in the shared Postgres pool (sampled every 60s).",
+    labels: [],
+  });
+  reg.registerGauge({
+    name: METRIC_NAMES.DB_POOL_WAITING_CONNECTIONS,
+    help: "Clients waiting for a connection from the shared Postgres pool — the leading saturation signal (sampled every 60s).",
+    labels: [],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.DB_TRANSIENT_RETRIES_TOTAL,
+    help: "Transient-database-error retries performed by retryTransient, partitioned by the caller's pass label. A rising rate flags a flapping Postgres before the pass exhausts its tries.",
+    labels: ["label"],
+  });
+  reg.registerGauge({
+    name: METRIC_NAMES.DB_TRANSIENT_RETRY_RATE_PER_MIN,
+    help: "Transient-DB-retry rate over the last sampler window (retries since the previous 60s tick ÷ elapsed minutes). A windowed leading indicator — unlike the cumulative total ÷ uptime, a one-off blip decays within a window instead of latching.",
+    labels: [],
+  });
+  reg.registerGauge({
+    name: METRIC_NAMES.DLQ_JOB_COUNT,
+    help: "Jobs parked in each pg-boss dead-letter (`*.dlq`) queue (sampled every 15s). Growth here means a worker is failing every attempt for some payload class.",
+    labels: ["queue"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.CONNECTOR_CALL_TOTAL,
+    help: "call_connector invocations partitioned by connector slug + response health (ok / auth_failed / endpoint_gone / deprecated / not_found / rate_limited / degraded). A climbing non-ok share is the leading signal of connector drift.",
+    labels: ["slug", "health"],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.LLM_CALL_DURATION_MS,
+    help: "Wall-clock duration of a single LLM invoke() round-trip in milliseconds, partitioned by provider + model + flow.",
+    labels: ["provider", "model", "flow"],
+    buckets: HISTOGRAM_DURATION_BUCKETS_MS,
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LLM_FALLBACK_INVOCATIONS_TOTAL,
+    help: "LLM fallback engagements partitioned by from-model, to-model, and the provider-error reason (rate_limit / overloaded / context_length_exceeded / …). A rising rate flags primary-model instability before it surfaces as user-facing errors.",
+    labels: ["from", "to", "reason"],
+  });
+  reg.registerGauge({
+    name: METRIC_NAMES.PROCESS_MEMORY_RSS_HIGH_WATER_BYTES,
+    help: "Maximum-ever resident set size of the engine process in bytes, tracked by the memory sampler. Charted against the memory cap to flag a host approaching OOM.",
+    labels: [],
+  });
+
   reg.registerCounter({
     name: METRIC_NAMES.HTTP_REQUESTS_TOTAL,
     help: "HTTP requests served by the engine HTTP layer.",

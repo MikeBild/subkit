@@ -25,6 +25,7 @@ import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { getMcpTask, setMcpTaskFailureIfNotTerminal } from "../../mcp/tasks/store.ts";
+import { withJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_DLQ, type ConversationRunTurnJob } from "../queues.ts";
 
 /** Machine-readable failure code stamped on a worker-expired task. */
@@ -105,7 +106,7 @@ export async function registerConversationRunTurnDlqHandler(
     { batchSize: 1, pollingIntervalSeconds: 5 },
     async (jobs: Job<ConversationRunTurnJob>[]) => {
       for (const job of jobs) {
-        await handleOne(job, db);
+        await withJobContext(job.data, () => handleOne(job, db));
       }
     },
   );

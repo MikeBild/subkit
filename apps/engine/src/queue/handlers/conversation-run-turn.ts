@@ -39,6 +39,7 @@ import {
   setMcpTaskFailure,
   setMcpTaskResult,
 } from "../../mcp/tasks/store.ts";
+import { withJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_QUEUE, type ConversationRunTurnJob } from "../queues.ts";
 
 export interface RegisterConversationRunTurnOptions {
@@ -301,7 +302,9 @@ export async function registerConversationRunTurnHandler(
     { batchSize: 1, pollingIntervalSeconds: 2 },
     async (jobs: Job<ConversationRunTurnJob>[]) => {
       for (const job of jobs) {
-        await handleOne(job, db);
+        // Bridge the enqueuing tenant across the queue boundary so every
+        // downstream conversation.* log inherits the originating context.
+        await withJobContext(job.data, () => handleOne(job, db));
       }
     },
   );

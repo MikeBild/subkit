@@ -50,7 +50,7 @@ import {
   workflows as workflowsTable,
 } from "../db/schema/index.ts";
 import { createExecution } from "../execution/state.ts";
-import { log, logger } from "../logging/logger.ts";
+import { errorFields, log, logger } from "../logging/logger.ts";
 import { tryAcquire } from "../notifications/rate-limit.ts";
 import { recordChatDelivery } from "../observability/instrumentation.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
@@ -170,7 +170,7 @@ async function sendTracked(
       msg: "chat adapter send failed",
       platform,
       channel: delivery.channel_id,
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
     throw err;
   }

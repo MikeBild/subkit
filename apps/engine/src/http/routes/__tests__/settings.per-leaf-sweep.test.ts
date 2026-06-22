@@ -116,9 +116,11 @@ function pickValue(leaf: ConfigLeaf, salt: number): unknown {
     }
     case "number": {
       // Candidate ladder for leaves with high min() bounds (web-scraper
-      // max_chars_*, robots_cache.ttl_ms) or tight max() bounds
-      // (min_runs_before_proposing max 50).
+      // max_chars_*, robots_cache.ttl_ms), tight max() bounds
+      // (min_runs_before_proposing max 50), or sub-unit fractions
+      // (observability.predictive.memory_cap_fraction min 0.1 max 1).
       const numCandidates = [
+        0.5,
         Math.max(1, Math.min(50, salt + 1)),
         200,
         1_000,

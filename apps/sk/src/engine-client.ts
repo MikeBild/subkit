@@ -199,12 +199,23 @@ export interface DigestPatch {
   classification: "safe" | "unsafe";
   summary: string;
 }
+export type RiskSeverity = "warn" | "critical";
+export interface RiskSignal {
+  kind: string;
+  severity: RiskSeverity;
+  headline: string;
+  detail: string;
+  metric: string;
+  value: number;
+  threshold: number;
+}
 export interface OperatorHealthDigest {
   generated_at: string;
   window_hours: number;
   headline: string;
   failure_groups: DigestFailureGroup[];
   patch_candidates: { pending: number; items: DigestPatch[] };
+  risk: RiskSignal[];
   rendered: string;
   all_clear: boolean;
 }

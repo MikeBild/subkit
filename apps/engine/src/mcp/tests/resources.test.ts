@@ -1,6 +1,22 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { executionFixtures, executions } from "../../db/schema/index.ts";
+import { createHash } from "node:crypto";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { apiKeys, executionFixtures, executions, users } from "../../db/schema/index.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
+
+function sha256Hex(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
+
+function mintKey(): { plaintext: string; prefix: string; hash: string } {
+  // Deterministic literal — randomBytes is banned in *.test.ts by the
+  // determinism gate. One member key per file, inserted into this file's own
+  // isolated test DB, so a fixed value is unique where it matters.
+  const plaintext = "wf_live_negres_member_0001";
+  return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
+}
 
 let suite: McpTestSuite;
 
@@ -99,5 +115,55 @@ describe("mcp resources", () => {
     await expect(
       client.readResource({ uri: "fixture://00000000-0000-0000-0000-000000000000" }),
     ).rejects.toThrow(/fixture not found/i);
+  });
+
+  test("operator health digest is neither enumerated nor readable without stats:read", async () => {
+    // Insert a member-role user. The member role excludes stats:read
+    // (see apps/engine/src/rbac/seed.ts memberPermissionFilter), so the
+    // digest must not appear in listResources and readResource must throw.
+    const [memberUser] = await suite.http.db
+      .insert(users)
+      .values({
+        tenant_id: suite.http.tenantId,
+        email: "member-resources@test.local",
+        role: "member",
+      })
+      .returning();
+    if (!memberUser) throw new Error("seed member user failed");
+
+    const memberKey = mintKey();
+    await suite.http.db.insert(apiKeys).values({
+      tenant_id: suite.http.tenantId,
+      user_id: memberUser.id,
+      prefix: memberKey.prefix,
+      token_sha256: memberKey.hash,
+      scopes: ["*"],
+    });
+
+    const transport = new StreamableHTTPClientTransport(new URL(`${suite.http.baseUrl}/mcp`), {
+      requestInit: {
+        headers: { authorization: `Bearer ${memberKey.plaintext}` },
+      },
+    });
+    const memberClient = new Client({ name: "subkit-mcp-tests-member-res", version: "0.0.0" });
+    await memberClient.connect(transport as unknown as Transport);
+
+    try {
+      // The digest URI must not appear in the member's resource list.
+      const list = await memberClient.listResources();
+      expect(list.resources.map((r) => r.uri)).not.toContain("subkit://operator/health-digest");
+
+      // A direct read must be rejected with a permission_denied JSON-RPC error.
+      await expect(
+        memberClient.readResource({ uri: "subkit://operator/health-digest" }),
+      ).rejects.toThrow();
+    } finally {
+      await memberClient.close();
+    }
+
+    // Confirm the gate is permission-based: admin sees the digest URI.
+    const adminClient = await suite.connect();
+    const adminList = await adminClient.listResources();
+    expect(adminList.resources.map((r) => r.uri)).toContain("subkit://operator/health-digest");
   });
 });

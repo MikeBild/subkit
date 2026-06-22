@@ -29,6 +29,7 @@ import { tenantLlmSettings, tenants } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import {
   recordLlmCacheUsage,
+  recordLlmCallDuration,
   recordLlmQuotaExhausted,
   recordLlmTokens,
 } from "../../observability/instrumentation.ts";
@@ -523,6 +524,12 @@ async function dispatchMock<T>(
     prompt_tokens: res.prompt_tokens,
     completion_tokens: res.completion_tokens,
   });
+  recordLlmCallDuration({
+    provider: route.provider,
+    model: modelUsed,
+    flow: params.flow,
+    duration_ms: latency,
+  });
   recordLlmCacheUsage({
     tenant_id: params.tenant_id,
     model: modelUsed,
@@ -712,6 +719,12 @@ async function dispatchReal<T>(
     flow: params.flow,
     prompt_tokens: usage.input_tokens,
     completion_tokens: usage.output_tokens,
+  });
+  recordLlmCallDuration({
+    provider: route.provider,
+    model: modelUsed,
+    flow: params.flow,
+    duration_ms: latency,
   });
   recordLlmCacheUsage({
     tenant_id: params.tenant_id,

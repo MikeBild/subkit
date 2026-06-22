@@ -95,6 +95,8 @@ function pickOverrideValue(leaf: ConfigLeaf, salt: number): string {
       // max() bounds (min_runs_before_proposing max 50).
       const numCandidates = [
         Math.max(1, Math.min(50, salt + 1)),
+        // `0.5` covers fractional leaves (memory_cap_fraction, min 0.1 / max 1).
+        0.5,
         200,
         1_000,
         60_000,

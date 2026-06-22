@@ -467,6 +467,81 @@ const ObservabilitySection = z
       })
       .prefault({})
       .describe("OpenTelemetry OTLP exporter"),
+    // Phase 1 (logging) per-field string cap, now config-driven. The
+    // logger hot-reloads this via reconfigureObservability() on any
+    // observability.* write; it falls back to 2048 when the loader is not
+    // initialised (boot, unit tests).
+    field_truncation_chars: z
+      .number()
+      .int()
+      .min(256)
+      .max(65_536)
+      .default(2048)
+      .describe(
+        "Per-field cap (in characters / UTF-16 code units, not bytes) applied to structured log fields after redaction.",
+      )
+      .meta(global()),
+    // Phase 2 predictive-maintenance thresholds. These are the leading
+    // indicators the operator health-digest evaluates against the live
+    // gauges/counters; tuning them is an operator decision, not a code
+    // change. They are advisory inputs — the metrics flow to /metrics
+    // unconditionally regardless of these values.
+    predictive: z
+      .object({
+        pool_saturation_pct: z
+          .number()
+          .min(1)
+          .max(100)
+          .default(80)
+          .describe(
+            "Percent of the Postgres pool in use (or any waiting clients) above which saturation is flagged.",
+          )
+          .meta(global()),
+        dlq_critical_depth: z
+          .number()
+          .int()
+          .min(1)
+          .default(5)
+          .describe(
+            "Standing dead-letter-queue depth at or above which DLQ accumulation is flagged critical (a worker-failure backlog, not a per-window delta).",
+          )
+          .meta(global()),
+        transient_retry_rate: z
+          .number()
+          .min(0)
+          .default(1)
+          .describe("Transient-DB-retries-per-minute above which a flapping Postgres is flagged.")
+          .meta(global()),
+        memory_cap_fraction: z
+          .number()
+          .min(0.1)
+          .max(1)
+          .default(0.9)
+          .describe(
+            "Fraction of the host memory cap the RSS high-water may reach before an OOM-risk warning.",
+          )
+          .meta(global()),
+        connector_unhealthy_pct: z
+          .number()
+          .min(1)
+          .max(100)
+          .default(80)
+          .describe(
+            "Percent of recent connector calls returning a non-ok health verdict above which connector drift is flagged.",
+          )
+          .meta(global()),
+        llm_fallback_pct: z
+          .number()
+          .min(1)
+          .max(100)
+          .default(80)
+          .describe(
+            "Percent of LLM calls falling back to the secondary provider above which primary-provider degradation is flagged.",
+          )
+          .meta(global()),
+      })
+      .prefault({})
+      .describe("Predictive-maintenance thresholds (advisory leading indicators)"),
   })
   .prefault({})
   .describe("Observability");

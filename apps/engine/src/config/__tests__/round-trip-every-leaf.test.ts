@@ -73,8 +73,18 @@ function pickNumberCandidate(leaf: ConfigLeaf, salt: number): number {
   // OR tight max() bounds (min_runs_before_proposing max 50) still
   // resolve to a parsable value without baking path-name knowledge
   // into the test. The first candidate is bounded to 1..50 so leaves
-  // with a low ceiling have at least one in-range entry.
-  const candidates = [Math.max(1, Math.min(50, salt + 1)), 100, 1_000, 60_000, 100_000, 3_600_000];
+  // with a low ceiling have at least one in-range entry; `0.5` covers
+  // fractional leaves (observability.predictive.memory_cap_fraction,
+  // min 0.1 / max 1).
+  const candidates = [
+    Math.max(1, Math.min(50, salt + 1)),
+    0.5,
+    100,
+    1_000,
+    60_000,
+    100_000,
+    3_600_000,
+  ];
   for (const c of candidates) {
     if (leaf.schema.safeParse(c).success) return c;
   }

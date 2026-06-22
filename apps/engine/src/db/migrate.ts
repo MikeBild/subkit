@@ -28,7 +28,7 @@
 
 import { sql } from "drizzle-orm";
 import { z } from "zod";
-import { logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/logger.ts";
 import type { Db } from "./client.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runItemvarBackfill } from "./migrations/itemvar-backfill.ts";
@@ -204,7 +204,7 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
       module: "db",
       action: "migrate.code_backfill_failed",
       msg: "item_var backfill failed (non-fatal; retried on next boot)",
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
   try {
@@ -214,7 +214,7 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
       module: "db",
       action: "migrate.code_backfill_failed",
       msg: "loop→for_each backfill failed (non-fatal; retried on next boot)",
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
 

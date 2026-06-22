@@ -25,7 +25,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const server = createMcpServer({ db, principal, transport: "stdio" });
+  const server = await createMcpServer({ db, principal, transport: "stdio" });
   const transport = new StdioServerTransport();
   await server.connect(transport);
 

@@ -98,7 +98,7 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!session) {
       // Spin up a new stateful transport. Per-session server so handlers
       // close over the current principal.
-      const server = createMcpServer({ db, principal, transport: "http" });
+      const server = await createMcpServer({ db, principal, transport: "http" });
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         // OFF — see the header note: mid-tool-call `elicitation/create`
