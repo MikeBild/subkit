@@ -482,6 +482,37 @@ export const ConnectorTemplateSchema = z
           message: `template "${t.slug}" has invalid url_pattern: ${String(e)}`,
         });
       }
+      // Semantic guard: a backslash-escaped character class (`\[\^…`) compiles
+      // fine but matches the *literal* string "[^/]+" instead of "any host" —
+      // so the pattern silently never matches a real URL. This over-escape is a
+      // generation typo that the compile check above cannot catch; reject it at
+      // the boundary so a malformed pattern can never reach `matchTemplateByUrl`.
+      if (/\\\[\\?\^/.test(t.url_pattern)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["url_pattern"],
+          message:
+            `template "${t.slug}" has an over-escaped character class in url_pattern ` +
+            `(found \\[\\^ — this matches the literal text "[^...]", never a real host). ` +
+            `Use an unescaped class such as [^/]+ instead.`,
+        });
+      }
+    }
+    // Every template that authenticates must document at least one auth path in
+    // `auth_options` so the LLM/UI can present a deliberate choice instead of an
+    // opaque fallback. Empty `auth_options` is only legitimate for
+    // `auth_type === "none"`. (Whether the listed options must include the
+    // primary `auth_type` is intentionally not enforced — a few templates, e.g.
+    // gitlab/zendesk, use `bearer` as a fallback default while documenting only
+    // header/basic/oauth2 paths.)
+    if (t.auth_type !== "none" && t.auth_options.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["auth_options"],
+        message:
+          `template "${t.slug}" has auth_type=${t.auth_type} but empty auth_options — ` +
+          `add at least one entry documenting an auth path.`,
+      });
     }
     // credential_hints.field must be unique per template.
     const fields = t.credential_hints.map((h) => h.field);

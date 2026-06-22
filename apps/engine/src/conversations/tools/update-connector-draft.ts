@@ -92,18 +92,20 @@ function containsCredentialShape(value: unknown, path: string, depth: number): s
  * in the credential's `param` field, never in config.
  *
  * Matched by regex rather than a fixed deny-list so future LLM inventions
- * (`query_arg_name`, `query_string_param`, `auth_query_param`, …) are
- * caught without a redeploy. The pattern requires the key to START with
- * an auth/query/param/token/key/arg token (after an optional `auth_`/
- * `query_` prefix), so it never collides with a real HTTP-config key
- * (static_headers, static_query, query_defaults, timeout_ms, oauth, …).
+ * (`query_arg_name`, `auth_query_param`, …) are caught without a redeploy.
+ * To match, a key must carry a *qualifier* — either an `auth_`/`query_`
+ * prefix OR at least one `_name`/`_param`/`_parameter`/`_key`/`_arg`
+ * trailing segment. A bare generic token on its own (`key`, `token`,
+ * `query`, `param`, `arg`) does NOT match, so the detector never collides
+ * with an ordinary config key (static_headers, static_query, query_defaults,
+ * timeout_ms, oauth, key, token, …).
  * Known matches: query_param_name, query_parameter_name, query_param,
  * param_name, query_key, auth_param, auth_query_param, token_param.
  */
 const AUTH_PARAM_CONFIG_KEY_RE =
-  /^(auth_|query_)?(param|parameter|query|token|key|arg)(_?(name|param|parameter|key|arg))*$/i;
+  /^((auth_|query_)(param|parameter|query|token|key|arg)(_(name|param|parameter|key|arg))*|(param|parameter|query|token|key|arg)(_(name|param|parameter|key|arg))+)$/i;
 
-function findAuthParamConfigKey(config: Record<string, unknown>): string | null {
+export function findAuthParamConfigKey(config: Record<string, unknown>): string | null {
   for (const key of Object.keys(config)) {
     if (AUTH_PARAM_CONFIG_KEY_RE.test(key)) return key;
   }

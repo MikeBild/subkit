@@ -15,7 +15,13 @@
     "category": "productivity",
     "tags": ["rest", "spreadsheet-db", "formulas"],
     "setup_instructions": "Create a personal access token at airtable.com/create/tokens with scopes for the bases you need.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
     "url_pattern": "^https:\\/\\/api\\.airtable\\.com\\/v[0-9]+(\\/|$)",
     "keywords": ["bases", "tables", "records", "fields", "views", "comments"],
     "inline_schema": null,
@@ -450,7 +456,13 @@
     "category": "scraping",
     "tags": ["rest", "web-scraping", "actors", "crawlee", "automation"],
     "setup_instructions": "Sign up at apify.com, get API token from Console > Settings > Integrations. Pass as Bearer token. Runs Crawlee-based actors in the cloud.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
     "url_pattern": "^https://api\\.apify\\.com/v2(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -491,7 +503,13 @@
     "category": "productivity",
     "tags": ["caldav", "calendar", "apple", "ics"],
     "setup_instructions": "Apple iCloud CalDAV requires an app-specific password: go to appleid.apple.com > Sign-In and Security > App-Specific Passwords. Use Apple ID email + app-specific password as Basic Auth.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Basic auth",
+        "description": "Authenticate with HTTP Basic credentials (username and password)."
+      }
+    ],
     "url_pattern": "^https://caldav\\.icloud\\.com(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -539,7 +557,13 @@
     "category": "productivity",
     "tags": ["carddav", "contacts", "apple", "vcard"],
     "setup_instructions": "Apple iCloud CardDAV requires an app-specific password: go to appleid.apple.com > Sign-In and Security > App-Specific Passwords.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Basic auth",
+        "description": "Authenticate with HTTP Basic credentials (username and password)."
+      }
+    ],
     "url_pattern": "^https://contacts\\.icloud\\.com(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -1576,8 +1600,26 @@
     "category": "enterprise",
     "tags": ["rest", "identity", "oauth2", "management-api"],
     "setup_instructions": "Create a Machine-to-Machine app in Auth0 Dashboard, authorize for Management API with scopes, use client_credentials grant.",
-    "auth_options": [],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.auth0\\.com/api/v2(\\/|$)",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Authenticate via the OAuth 2.0 flow configured on this template.",
+        "oauth": {
+          "issuer_url": "https://{tenant}.auth0.com",
+          "authorization_endpoint": "https://{tenant}.auth0.com/authorize",
+          "token_endpoint": "https://{tenant}.auth0.com/oauth/token",
+          "scopes": "read:users create:users read:connections read:logs",
+          "grant_type": "client_credentials",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {}
+        }
+      }
+    ],
+    "url_pattern": "^https://[^/]+\\.auth0\\.com/api/v2(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -3931,7 +3973,13 @@
     "category": "cloud",
     "tags": ["s3", "object-storage", "aws", "sigv4"],
     "setup_instructions": "Create an IAM user, generate Access Key ID + Secret Access Key, note target S3 region and bucket.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "API key header",
+        "description": "Authenticate with an API key sent in a request header."
+      }
+    ],
     "url_pattern": "^https://s3\\.us\\-east\\-1\\.amazonaws\\.com(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -4846,8 +4894,14 @@
     "category": "cloud",
     "tags": ["rest", "object-storage", "azure", "sas"],
     "setup_instructions": "Create Storage Account in Azure Portal, find access keys under 'Access keys', or generate SAS token.",
-    "auth_options": [],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.blob\\.core\\.windows\\.net(\\/|$)",
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "API key header",
+        "description": "Authenticate with an API key sent in a request header."
+      }
+    ],
+    "url_pattern": "^https://[^/]+\\.blob\\.core\\.windows\\.net(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -4912,7 +4966,7 @@
         }
       }
     ],
-    "url_pattern": "^https://dev\\.azure\\.com/\\[\\^/\\]\\+/_apis(\\/|$)",
+    "url_pattern": "^https://dev\\.azure\\.com/[^/]+/_apis(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -4970,7 +5024,25 @@
     "category": "cloud",
     "tags": ["rest", "serverless", "azure", "arm"],
     "setup_instructions": "Register app in Microsoft Entra ID, grant Contributor role on Function App, obtain client ID, secret, tenant ID.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Authenticate via the OAuth 2.0 flow configured on this template.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "https://management.azure.com/.default",
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {}
+        }
+      }
+    ],
     "url_pattern": "^https://management\\.azure\\.com(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -5043,7 +5115,7 @@
         }
       }
     ],
-    "url_pattern": "^https://api\\.bamboohr\\.com/api/gateway\\.php/\\[\\^/\\]\\+/v1(\\/|$)",
+    "url_pattern": "^https://api\\.bamboohr\\.com/api/gateway\\.php/[^/]+/v1(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -5184,7 +5256,25 @@
     "category": "storage",
     "tags": ["rest", "file-storage", "enterprise"],
     "setup_instructions": "Create a Box app at app.box.com/developers/console, choose OAuth 2.0, configure redirect URI, note Client ID and Secret.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Authenticate via the OAuth 2.0 flow configured on this template.",
+        "oauth": {
+          "issuer_url": "https://account.box.com",
+          "authorization_endpoint": "https://account.box.com/api/oauth2/authorize",
+          "token_endpoint": "https://api.box.com/oauth2/token",
+          "scopes": "root_readwrite",
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {}
+        }
+      }
+    ],
     "url_pattern": "^https://api\\.box\\.com/2\\.0(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -5232,7 +5322,13 @@
     "category": "scraping",
     "tags": ["rest", "web-scraping", "proxy", "enterprise", "anti-bot"],
     "setup_instructions": "Sign up at brightdata.com, get API key from Control Panel > Settings > Users. 660+ pre-built dataset scrapers available. Pass as Bearer token.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
     "url_pattern": "^https://api\\.brightdata\\.com(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -5273,7 +5369,13 @@
     "category": "scraping",
     "tags": ["rest", "headless-chrome", "query-auth", "screenshots", "pdf", "docker"],
     "setup_instructions": "Get a token at browserless.io (or self-host: `docker run -p 3000:3000 -e TOKEN=my-token ghcr.io/browserless/chrome`). Authenticate with the token as the `?token=` query parameter — the query parameter name is exactly `token`. The SaaS hosts reject Authorization: Bearer (HTTP 500), so always use query auth.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "query",
+        "label": "API key query parameter",
+        "description": "Authenticate with an API key sent as a URL query parameter."
+      }
+    ],
     "url_pattern": "^https://production\\-sfo\\.browserless\\.io(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -5328,7 +5430,7 @@
         "oauth": null
       }
     ],
-    "url_pattern": "^https://\\[\\^/\\]\\+/remote\\.php/dav(\\/|$)",
+    "url_pattern": "^https://[^/]+/remote\\.php/dav(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -5375,7 +5477,13 @@
     "category": "devops",
     "tags": ["rest", "ci-cd", "pipelines"],
     "setup_instructions": "Generate a Personal API Token from User Settings in CircleCI, pass as `Circle-Token` header.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "API key header",
+        "description": "Authenticate with an API key sent in a request header."
+      }
+    ],
     "url_pattern": "^https://circleci\\.com/api/v2(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -5492,7 +5600,13 @@
     "category": "devops",
     "tags": ["rest", "cdn", "dns", "workers", "security"],
     "setup_instructions": "Go to My Profile > API Tokens in Cloudflare dashboard, create a scoped API Token, use as Bearer.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
     "url_pattern": "^https://api\\.cloudflare\\.com/client/v4(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -5602,7 +5716,7 @@
         }
       }
     ],
-    "url_pattern": "^https://api\\.atlassian\\.com/ex/confluence/\\[\\^/\\]\\+/wiki/api/v2(\\/|$)",
+    "url_pattern": "^https://api\\.atlassian\\.com/ex/confluence/[^/]+/wiki/api/v2(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -5703,7 +5817,13 @@
     "category": "analytics",
     "tags": ["rest", "monitoring", "metrics", "apm"],
     "setup_instructions": "In Datadog Org Settings, create API key and Application key; pass as `DD-API-KEY` and `DD-APPLICATION-KEY` headers.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "API key header",
+        "description": "Authenticate with an API key sent in a request header."
+      }
+    ],
     "url_pattern": "^https://api\\.datadoghq\\.com(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -5744,7 +5864,13 @@
     "category": "cloud",
     "tags": ["rest", "droplets", "kubernetes", "databases"],
     "setup_instructions": "In DigitalOcean Control Panel, go to API > Tokens, generate PAT (dop_v1_) with read/write scope.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
     "url_pattern": "^https://api\\.digitalocean\\.com/v2(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -5957,7 +6083,25 @@
     "category": "database",
     "tags": ["rest", "google", "nosql", "realtime"],
     "setup_instructions": "Enable Firestore in Firebase Console, create service account with Firestore Admin role.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Authenticate via the OAuth 2.0 flow configured on this template.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/datastore",
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {}
+        }
+      }
+    ],
     "url_pattern": "^https://firestore\\.googleapis\\.com/v1(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -6161,8 +6305,14 @@
     "category": "enterprise",
     "tags": ["rest", "ticketing", "help-desk", "support"],
     "setup_instructions": "In Freshdesk, click Profile > Profile Settings, find API key on right sidebar, use as Basic Auth username with 'X' as password.",
-    "auth_options": [],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.freshdesk\\.com/api/v2(\\/|$)",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Basic auth",
+        "description": "Authenticate with HTTP Basic credentials (username and password)."
+      }
+    ],
+    "url_pattern": "^https://[^/]+\\.freshdesk\\.com/api/v2(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -6223,7 +6373,7 @@
         "oauth": null
       }
     ],
-    "url_pattern": "^ftp://\\[\\^/\\]\\+:21(\\/|$)",
+    "url_pattern": "^ftp://[^/]+:21(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -8379,8 +8529,14 @@
     "category": "protocol",
     "tags": ["grpc", "connect-rpc", "protobuf", "http"],
     "setup_instructions": "Connect RPC services expose gRPC over standard HTTP/1.1. Provide the base URL and an auth token if required. Uses JSON encoding by default (protobuf optional).",
-    "auth_options": [],
-    "url_pattern": "^https://\\[\\^/\\]\\+(\\/|$)",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
+    "url_pattern": "^https://[^/]+(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -8420,8 +8576,14 @@
     "category": "protocol",
     "tags": ["grpc", "protobuf", "http2", "streaming"],
     "setup_instructions": "Provide the gRPC server address (host:port). If the server has reflection enabled, operations are auto-discovered. Otherwise, provide .proto files.",
-    "auth_options": [],
-    "url_pattern": "^grpc://\\[\\^/\\]\\+:50051(\\/|$)",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
+    "url_pattern": "^grpc://[^/]+:50051(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -9065,7 +9227,7 @@
         "oauth": null
       }
     ],
-    "url_pattern": "^imaps://\\[\\^/\\]\\+:993(\\/|$)",
+    "url_pattern": "^imaps://[^/]+:993(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -9772,7 +9934,7 @@
         }
       }
     ],
-    "url_pattern": "^https://api\\.atlassian\\.com/ex/jira/\\[\\^/\\]\\+/rest/api/3(\\/|$)",
+    "url_pattern": "^https://api\\.atlassian\\.com/ex/jira/[^/]+/rest/api/3(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": {
@@ -10454,7 +10616,7 @@
         }
       }
     ],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.api\\.mailchimp\\.com/3\\.0(\\/|$)",
+    "url_pattern": "^https://[^/]+\\.api\\.mailchimp\\.com/3\\.0(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -11699,7 +11861,7 @@
         "oauth": null
       }
     ],
-    "url_pattern": "^mqtt://\\[\\^/\\]\\+:1883(\\/|$)",
+    "url_pattern": "^mqtt://[^/]+:1883(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -13284,7 +13446,7 @@
         }
       }
     ],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.okta\\.com/api/v1(\\/|$)",
+    "url_pattern": "^https://[^/]+\\.okta\\.com/api/v1(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -13324,7 +13486,13 @@
     "category": "ai",
     "tags": ["rest", "llm", "structured-output", "embeddings"],
     "setup_instructions": "Create an API key in the OpenAI dashboard and store it as a bearer token credential. Use project-scoped keys where possible.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
     "url_pattern": "^https:\\/\\/api\\.openai\\.com\\/v1(\\/|$)",
     "keywords": [
       "responses",
@@ -13574,7 +13742,7 @@
         "oauth": null
       }
     ],
-    "url_pattern": "^https://\\[\\^/\\]\\+/ords/\\[\\^/\\]\\+(\\/|$)",
+    "url_pattern": "^https://[^/]+/ords/[^/]+(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -13697,7 +13865,25 @@
     "category": "payments",
     "tags": ["rest", "webhooks", "client-credentials"],
     "setup_instructions": "Create a PayPal app at developer.paypal.com to get client_id and secret; exchange via Basic Auth at /v1/oauth2/token for a Bearer token.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Authenticate via the OAuth 2.0 flow configured on this template.",
+        "oauth": {
+          "issuer_url": "https://api-m.paypal.com",
+          "authorization_endpoint": "https://www.paypal.com/signin/authorize",
+          "token_endpoint": "https://api-m.paypal.com/v1/oauth2/token",
+          "scopes": "openid https://uri.paypal.com/services/reporting/search/read",
+          "grant_type": "client_credentials",
+          "token_auth_method": "basic_auth",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {}
+        }
+      }
+    ],
     "url_pattern": "^https:\\/\\/api[-.]m?\\.(sandbox\\.)?paypal\\.com(\\/|$)",
     "keywords": ["orders", "payments", "payouts", "subscriptions", "products", "invoices"],
     "inline_schema": null,
@@ -14521,8 +14707,14 @@
     "category": "enterprise",
     "tags": ["soap", "sap", "erp", "wsdl"],
     "setup_instructions": "SAP exposes SOAP services via /sap/bc/srt/. Find your WSDL at the service endpoint + ?wsdl. Use SAP technical user credentials for Basic Auth.",
-    "auth_options": [],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.s4hana\\.cloud\\.sap/sap/bc/srt/scs_ext/\\[\\^/\\]\\+(\\/|$)",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Basic auth",
+        "description": "Authenticate with HTTP Basic credentials (username and password)."
+      }
+    ],
+    "url_pattern": "^https://[^/]+\\.s4hana\\.cloud\\.sap/sap/bc/srt/scs_ext/[^/]+(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -14569,7 +14761,13 @@
     "category": "scraping",
     "tags": ["rest", "web-scraping", "proxy", "js-rendering"],
     "setup_instructions": "Sign up at scrapingbee.com, get API key. Pass as `api_key` query parameter. Single endpoint: GET /api/v1?api_key=KEY&url=TARGET.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "query",
+        "label": "API key query parameter",
+        "description": "Authenticate with an API key sent as a URL query parameter."
+      }
+    ],
     "url_pattern": "^https://app\\.scrapingbee\\.com/api/v1(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -14610,7 +14808,13 @@
     "category": "communication",
     "tags": ["rest", "email", "templates"],
     "setup_instructions": "Generate an API key under Settings > API Keys (starts with SG.), pass as Bearer token.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
     "url_pattern": "^https://api\\.sendgrid\\.com(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -15016,7 +15220,13 @@
     "category": "analytics",
     "tags": ["rest", "error-tracking", "performance", "releases"],
     "setup_instructions": "Create auth token at sentry.io Settings > Auth Tokens with needed scopes, pass as Bearer.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
     "url_pattern": "^https://sentry\\.io/api/0(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -15093,7 +15303,7 @@
         }
       }
     ],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.service\\-now\\.com/api/now(\\/|$)",
+    "url_pattern": "^https://[^/]+\\.service\\-now\\.com/api/now(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -15140,8 +15350,14 @@
     "category": "enterprise",
     "tags": ["soap", "itsm", "servicenow", "wsdl"],
     "setup_instructions": "ServiceNow exposes SOAP via /{tableName}.do?WSDL. Use admin credentials for Basic Auth.",
-    "auth_options": [],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.service\\-now\\.com(\\/|$)",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Basic auth",
+        "description": "Authenticate with HTTP Basic credentials (username and password)."
+      }
+    ],
+    "url_pattern": "^https://[^/]+\\.service\\-now\\.com(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -15188,7 +15404,13 @@
     "category": "ecommerce",
     "tags": ["rest", "graphql", "webhooks", "versioned-api"],
     "setup_instructions": "Create a custom app in Shopify Admin > Settings > Apps and development; copy the Admin API access token (header: X-Shopify-Access-Token).",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "API key header",
+        "description": "Authenticate with an API key sent in a request header."
+      }
+    ],
     "url_pattern": "^https:\\/\\/[^/]+\\.myshopify\\.com\\/admin\\/api(\\/|$)",
     "keywords": [
       "orders",
@@ -16016,8 +16238,14 @@
     "category": "database",
     "tags": ["rest", "data-warehouse", "sql", "analytics"],
     "setup_instructions": "Generate RSA key pair, assign public key via ALTER USER SET RSA_PUBLIC_KEY, sign JWTs with private key; or create OAuth security integration.",
-    "auth_options": [],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.snowflakecomputing\\.com/api/v2(\\/|$)",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
+    "url_pattern": "^https://[^/]+\\.snowflakecomputing\\.com/api/v2(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -16077,7 +16305,7 @@
         "oauth": null
       }
     ],
-    "url_pattern": "^https://\\[\\^/\\]\\+(\\/|$)",
+    "url_pattern": "^https://[^/]+(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -16679,7 +16907,13 @@
     "category": "payments",
     "tags": ["rest", "webhooks", "idempotent", "form-encoded"],
     "setup_instructions": "Create a Stripe Secret Key at Dashboard > Developers > API keys (starts with sk_live_ or sk_test_).",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
     "url_pattern": "^https:\\/\\/api\\.stripe\\.com\\/v[0-9]+(\\/|$)",
     "keywords": [
       "customers",
@@ -17834,8 +18068,14 @@
     "category": "database",
     "tags": ["rest", "postgrest", "realtime", "auth"],
     "setup_instructions": "Get project URL and API keys from Dashboard > Settings > API. Use `apikey` header with anon or service_role key.",
-    "auth_options": [],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.supabase\\.co/rest/v1(\\/|$)",
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "API key header",
+        "description": "Authenticate with an API key sent in a request header."
+      }
+    ],
+    "url_pattern": "^https://[^/]+\\.supabase\\.co/rest/v1(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -17929,7 +18169,13 @@
     "category": "project-management",
     "tags": ["rest", "query-auth", "atlassian"],
     "setup_instructions": "Create a Power-Up at trello.com/power-ups/admin to get an API key, then authorize a token via /1/authorize URL.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "query",
+        "label": "API key query parameter",
+        "description": "Authenticate with an API key sent as a URL query parameter."
+      }
+    ],
     "url_pattern": "^https://api\\.trello\\.com/1(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -17970,7 +18216,13 @@
     "category": "communication",
     "tags": ["rest", "webhooks", "sms", "voice"],
     "setup_instructions": "Sign up at twilio.com, grab Account SID + Auth Token from Console, use as Basic Auth (SID=username, token=password).",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Basic auth",
+        "description": "Authenticate with HTTP Basic credentials (username and password)."
+      }
+    ],
     "url_pattern": "^https://api\\.twilio\\.com/2010\\-04\\-01(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -18375,7 +18627,13 @@
     "category": "devops",
     "tags": ["rest", "deployments", "serverless", "edge"],
     "setup_instructions": "Create an access token at vercel.com/account/tokens. For team resources, append `?teamId={id}`.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      }
+    ],
     "url_pattern": "^https://api\\.vercel\\.com(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -18552,7 +18810,7 @@
         "oauth": null
       }
     ],
-    "url_pattern": "^https://\\[\\^/\\]\\+/remote\\.php/dav/files/\\[\\^/\\]\\+(\\/|$)",
+    "url_pattern": "^https://[^/]+/remote\\.php/dav/files/[^/]+(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -18635,7 +18893,7 @@
         }
       }
     ],
-    "url_pattern": "^https://\\[\\^/\\]\\+\\.zendesk\\.com/api/v2(\\/|$)",
+    "url_pattern": "^https://[^/]+\\.zendesk\\.com/api/v2(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -18686,7 +18944,25 @@
     "category": "crm",
     "tags": ["rest", "oauth2-only", "region-specific"],
     "setup_instructions": "Register a self-client at Zoho API Console, generate a grant token with CRM scopes, exchange for tokens. Access tokens expire in 1 hour.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Authenticate via the OAuth 2.0 flow configured on this template.",
+        "oauth": {
+          "issuer_url": "https://accounts.zoho.com",
+          "authorization_endpoint": "https://accounts.zoho.com/oauth/v2/auth",
+          "token_endpoint": "https://accounts.zoho.com/oauth/v2/token",
+          "scopes": "ZohoCRM.modules.ALL ZohoCRM.settings.ALL",
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {}
+        }
+      }
+    ],
     "url_pattern": "^https://www\\.zohoapis\\.com/crm/v7(\\/|$)",
     "keywords": [],
     "inline_schema": null,
@@ -19031,7 +19307,25 @@
     "category": "communication",
     "tags": ["rest", "linkedin", "social", "oauth2", "openid"],
     "setup_instructions": "Create an app at linkedin.com/developers. Add the 'Sign In with LinkedIn using OpenID Connect' and 'Share on LinkedIn' products. Under Auth, add the redirect URL https://subkit-api.example.com/v1/oauth/callback (exact match, no trailing slash). Copy the Client ID and Client Secret.",
-    "auth_options": [],
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Authenticate via the OAuth 2.0 flow configured on this template.",
+        "oauth": {
+          "issuer_url": "https://www.linkedin.com/oauth",
+          "authorization_endpoint": "https://www.linkedin.com/oauth/v2/authorization",
+          "token_endpoint": "https://www.linkedin.com/oauth/v2/accessToken",
+          "scopes": "openid profile email w_member_social",
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {}
+        }
+      }
+    ],
     "url_pattern": "^https://api\\.linkedin\\.com(\\/|$)",
     "keywords": ["linkedin", "post", "share", "social", "userinfo", "ugc"],
     "inline_schema": null,
