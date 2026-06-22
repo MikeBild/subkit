@@ -14,7 +14,9 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { OperatorHealthDigest } from "../engine-client.ts";
+import type { PersonaProbe } from "../slash.ts";
 import { NeedsAttentionPanel } from "./needs-attention-panel.tsx";
+import { buildStarterActions } from "./starter-action-injection.ts";
 
 const ANSI_RE = /\[[0-9;]*m/g;
 function snapshot(ui: ReturnType<typeof render>): string {
@@ -31,6 +33,24 @@ function makeDigest(overrides: Partial<OperatorHealthDigest> = {}): OperatorHeal
     risk: [],
     rendered: "",
     all_clear: false,
+    ...overrides,
+  };
+}
+
+function mkGroup(
+  overrides: Partial<OperatorHealthDigest["failure_groups"][number]> = {},
+): OperatorHealthDigest["failure_groups"][number] {
+  return {
+    signature: "sig",
+    workflow_id: "wf",
+    workflow_name: "Workflow",
+    step_key: "step",
+    error_code: "ERR",
+    origin: "manual",
+    count: 1,
+    last_seen: "2026-06-22T07:30:00Z",
+    cause: "Something failed",
+    guidance: null,
     ...overrides,
   };
 }
@@ -405,6 +425,25 @@ describe("NeedsAttentionPanel — empty digest", () => {
     expect(frame).not.toContain("failed");
     expect(frame).not.toContain("self-healing fix");
     expect(frame).not.toContain("Risk signals");
+    ui.unmount();
+  });
+});
+
+describe("NeedsAttentionPanel — count matches the starter-action label", () => {
+  // The header count and the injected "Fix N failures" label both come from
+  // totalFailureCount(digest). Lock in that they never drift.
+  test("panel header N equals buildStarterActions label N for the same digest", () => {
+    const allowAll: PersonaProbe = { allows: () => true };
+    const digest = makeDigest({
+      failure_groups: [
+        mkGroup({ signature: "g1", count: 2 }),
+        mkGroup({ signature: "g2", count: 3 }),
+      ],
+    });
+    const ui = render(<NeedsAttentionPanel digest={digest} />);
+    expect(snapshot(ui)).toContain("5 failures");
+    const actions = buildStarterActions("admin", allowAll, digest);
+    expect(actions[0]?.label).toBe("Fix 5 failures");
     ui.unmount();
   });
 });

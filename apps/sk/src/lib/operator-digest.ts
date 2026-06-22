@@ -40,8 +40,8 @@ export async function fetchOperatorDigest(
     if (digest.all_clear) return null;
     // Normalize at the chokepoint: an engine older than the risk[] field (a
     // rolling-deploy version skew) omits `risk`, and every caller reads
-    // `digest.risk.length` outside a guard. Default to [] here so the REPL
-    // banner / context render can never throw on a missing field.
+    // `digest.risk.length` outside a guard. Default to [] here so the chrome
+    // / context render can never throw on a missing field.
     return { ...digest, risk: digest.risk ?? [] };
   } catch {
     return null;

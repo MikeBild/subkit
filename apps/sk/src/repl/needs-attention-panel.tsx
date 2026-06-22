@@ -82,10 +82,10 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
             <Text>Risk signals</Text>
             <Text dimColor> (leading indicators)</Text>
           </Box>
-          {digest.risk.map((r) => {
+          {digest.risk.map((r, idx) => {
             const color = r.severity === "critical" ? "red" : "yellow";
             return (
-              <Box key={`${r.kind}:${r.headline}`} flexDirection="column">
+              <Box key={`${r.kind}:${r.headline}:${idx}`} flexDirection="column">
                 <Box>
                   <Text color={color}>● </Text>
                   <Text>{r.headline}</Text>

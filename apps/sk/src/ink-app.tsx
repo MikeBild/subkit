@@ -51,7 +51,6 @@ import type {
   StatusSummary,
 } from "./engine-client.ts";
 import { readExtendedTurnUsage } from "./engine-client.ts";
-import { totalFailureCount } from "./lib/operator-digest.ts";
 import { renderSuspiciousCodepoints, sanitizePathInput } from "./lib/path-input.ts";
 import { autoUploadLocalPaths } from "./lib/path-preprocessor.ts";
 import {
@@ -114,11 +113,7 @@ import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash/handler.ts";
 import { SlashSuggest } from "./repl/slash/SlashSuggest.tsx";
 import { Spinner } from "./repl/spinner.tsx";
-import {
-  buildStarterActions,
-  buildStarterTaskActions,
-  shouldInjectTriage,
-} from "./repl/starter-action-injection.ts";
+import { buildStarterActions, buildStarterTaskActions } from "./repl/starter-action-injection.ts";
 import { StarterActions } from "./repl/starter-actions.tsx";
 import {
   buildStatusLine,
@@ -1519,18 +1514,18 @@ export const InkApp: React.FC<InkAppProps> = ({
         digestSnapshot.risk.length > 0 ||
         digestSnapshot.patch_candidates.pending > 0),
   );
-  const digestFailCount = digestSnapshot ? totalFailureCount(digestSnapshot) : 0;
-  const injectTriage = shouldInjectTriage(digestSnapshot, persona.probe);
   const digestNode =
     hasDigest && digestSnapshot ? <NeedsAttentionPanel digest={digestSnapshot} /> : null;
 
+  // Render + dispatch lists derive injection (and the RBAC gate) from the same
+  // (probe, digest) inputs inside the shared helpers, so they can't drift.
   const starterActions = useMemo(
-    () => buildStarterActions(persona.label, { injectTriage, digestFailCount }),
-    [persona.label, injectTriage, digestFailCount],
+    () => buildStarterActions(persona.label, persona.probe, digestSnapshot),
+    [persona.label, persona.probe, digestSnapshot],
   );
   const starterTaskActions = useMemo(
-    () => buildStarterTaskActions(persona.label, persona.probe, { injectTriage }),
-    [persona.label, persona.probe, injectTriage],
+    () => buildStarterTaskActions(persona.label, persona.probe, digestSnapshot),
+    [persona.label, persona.probe, digestSnapshot],
   );
   const availableTaskActions = useMemo(
     () =>

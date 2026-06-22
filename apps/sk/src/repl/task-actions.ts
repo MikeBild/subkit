@@ -59,7 +59,7 @@ export const TRIAGE_STARTER_PROMPT = [
   "Walk through each failure in the engine health digest you were just given.",
   "For each one, triage the root cause and propose the smallest fix.",
   "Validate before committing any draft change.",
-  "Act only on the issues in the digest - do not invent problems beyond it.",
+  "Act only on the issues in the digest — do not invent problems beyond it.",
 ].join("\n");
 
 export const TASK_ACTIONS: readonly TaskAction[] = [

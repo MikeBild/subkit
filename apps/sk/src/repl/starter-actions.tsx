@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+import type { PersonaProbe } from "../slash.ts";
 import { starterTaskActionsForPersona, TASK_ACTIONS, type TaskAction } from "./task-actions.ts";
 
 export interface StarterAction {
@@ -30,8 +31,13 @@ export const DEFAULT_STARTER_ACTIONS: readonly StarterAction[] = [
   .filter((action): action is TaskAction => Boolean(action))
   .map(starterActionFromTask);
 
-export function starterActionsForPersona(persona: string): readonly StarterAction[] {
-  return starterTaskActionsForPersona(persona).map(starterActionFromTask);
+export function starterActionsForPersona(
+  persona: string,
+  probe?: PersonaProbe,
+): readonly StarterAction[] {
+  // Pass the probe through so the rendered list is RBAC-filtered the same way
+  // the dispatch list is — render and dispatch must show the same entries.
+  return starterTaskActionsForPersona(persona, probe).map(starterActionFromTask);
 }
 
 interface StarterActionsProps {
