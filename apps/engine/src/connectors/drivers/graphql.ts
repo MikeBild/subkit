@@ -12,7 +12,7 @@
 
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
@@ -395,7 +395,7 @@ export async function probeGraphQLConnector(p: {
       action: "graphql.probe.failed",
       connector_id: p.connector.id,
       latency_ms,
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
     // Consistent with the other drivers' catch paths: a transport failure is
     // not a credential verdict, so it must NOT flag — but stamp the neutral

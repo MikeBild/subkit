@@ -290,6 +290,15 @@ describe("classifySftpProbeError — ssh2 error levels", () => {
   test("Error with no level → unknown_upstream_error", () => {
     expect(classifySftpProbeError(new Error("ECONNREFUSED"))).toBe("unknown_upstream_error");
   });
+
+  // The ssh2-sftp-client wrapper STRIPS `.level`, so a real auth rejection
+  // arrives with no level — only ssh2's stable message survives. Without the
+  // message fallback this regressed to unknown_upstream_error.
+  test("wrapper-stripped auth failure (message only) → credential_invalid", () => {
+    expect(classifySftpProbeError(new Error("All configured authentication methods failed"))).toBe(
+      "credential_invalid",
+    );
+  });
 });
 
 describe("classifySftpProbeError — defensive: null / undefined / empty", () => {

@@ -16,7 +16,7 @@
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
@@ -536,7 +536,7 @@ export async function probeS3Connector(p: {
       action: "s3.probe.failed",
       connector_id: p.connector.id,
       latency_ms,
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
     return {
       ok: false,

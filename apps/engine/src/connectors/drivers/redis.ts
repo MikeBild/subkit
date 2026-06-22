@@ -15,7 +15,7 @@
 // Connection string shape: redis://[:password@]host[:port][/db]
 
 import { createClient, type RedisClientType } from "redis";
-import { logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 import type { DriverProbeResult } from "./index.ts";
@@ -44,7 +44,7 @@ async function getClient(connector: ConnectorView): Promise<RedisClientType> {
       action: "redis.client.error",
       msg: "redis driver client emitted error",
       connector_id: connector.id,
-      error: err.message,
+      ...errorFields(err),
     });
   });
   await client.connect();
