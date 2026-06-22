@@ -11,7 +11,7 @@ import { createConversation } from "../../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
-import { updateConnectorDraftTool } from "../update-connector-draft.ts";
+import { findAuthParamConfigKey, updateConnectorDraftTool } from "../update-connector-draft.ts";
 
 // ---------------------------------------------------------------------------
 // Pure unit tests — credential-shape rejection (no DB required)
@@ -27,6 +27,50 @@ const stubCtx = {
   getDraft: () => createEmptyDraftDocument(),
   setDraft: async () => {},
 } as unknown as ToolContext;
+
+describe("findAuthParamConfigKey — auth-param-name key detection", () => {
+  // Intended matches: a qualifier (auth_/query_ prefix OR a _name/_param/_key/
+  // _arg suffix) must be present.
+  const positives = [
+    "query_param_name",
+    "query_parameter_name",
+    "query_param",
+    "param_name",
+    "query_key",
+    "auth_param",
+    "auth_query_param",
+    "token_param",
+    "query_arg_name",
+    "key_name",
+  ];
+  // Bare generic tokens and ordinary HTTP-config keys must NOT match, or the
+  // detector would mis-flag a real config key as the auth param name.
+  const negatives = [
+    "key",
+    "token",
+    "arg",
+    "query",
+    "param",
+    "parameter",
+    "timeout_ms",
+    "static_headers",
+    "static_query",
+    "query_defaults",
+    "query_timeout",
+    "oauth",
+  ];
+
+  for (const k of positives) {
+    it(`matches auth-param key "${k}"`, () => {
+      expect(findAuthParamConfigKey({ [k]: "x" })).toBe(k);
+    });
+  }
+  for (const k of negatives) {
+    it(`does NOT match ordinary key "${k}"`, () => {
+      expect(findAuthParamConfigKey({ [k]: "x" })).toBeNull();
+    });
+  }
+});
 
 describe("update_connector_draft — credential-shape rejection", () => {
   it("rejects a top-level credential key in config", async () => {

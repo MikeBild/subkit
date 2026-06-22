@@ -17,7 +17,7 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { _resetRssHighWaterForTests, setDlqJobCount } from "../observability/instrumentation.ts";
 import { resetMetricsRegistryForTests } from "../observability/metrics.ts";
 import { buildOperatorHealthDigest, buildOperatorHealthSummary } from "./health-digest.ts";
-import { _resetCriticalEdgeTrackerForTests } from "./risk-signals.ts";
+import { _resetRiskSignalEdgesForTests, type RiskSignal, takeRiskEdges } from "./risk-signals.ts";
 
 let testDb: TestDb;
 let tenant_id: string;
@@ -47,7 +47,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
   test("risk[] is empty when all metrics are below thresholds", async () => {
     resetMetricsRegistryForTests();
     _resetRssHighWaterForTests();
-    _resetCriticalEdgeTrackerForTests();
+    await _resetRiskSignalEdgesForTests(testDb.db);
     const digest = await buildOperatorHealthDigest(testDb.db, tenant_id);
     expect(digest.risk).toEqual([]);
     // With no failures and no risks the digest should be all clear.
@@ -57,7 +57,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
   test("risk[] is populated when a DLQ threshold is crossed", async () => {
     resetMetricsRegistryForTests();
     _resetRssHighWaterForTests();
-    _resetCriticalEdgeTrackerForTests();
+    await _resetRiskSignalEdgesForTests(testDb.db);
     // Default dlq_critical_depth = 5; set DLQ depth to exactly 5 → triggers.
     setDlqJobCount("execution.dlq", 5);
 
@@ -73,7 +73,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
   test("headline carries the critical risk signal when DLQ is over threshold", async () => {
     resetMetricsRegistryForTests();
     _resetRssHighWaterForTests();
-    _resetCriticalEdgeTrackerForTests();
+    await _resetRiskSignalEdgesForTests(testDb.db);
     setDlqJobCount("execution.dlq", 10);
 
     const digest = await buildOperatorHealthDigest(testDb.db, tenant_id);
@@ -84,7 +84,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
   test("rendered digest includes the [critical] risk tag when DLQ is over threshold", async () => {
     resetMetricsRegistryForTests();
     _resetRssHighWaterForTests();
-    _resetCriticalEdgeTrackerForTests();
+    await _resetRiskSignalEdgesForTests(testDb.db);
     setDlqJobCount("execution.dlq", 5);
 
     const digest = await buildOperatorHealthDigest(testDb.db, tenant_id);
@@ -94,7 +94,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
   test("wrong tenant sees its own (empty) result — isolation", async () => {
     resetMetricsRegistryForTests();
     _resetRssHighWaterForTests();
-    _resetCriticalEdgeTrackerForTests();
+    await _resetRiskSignalEdgesForTests(testDb.db);
     setDlqJobCount("execution.dlq", 5);
 
     const [other] = await testDb.db
@@ -120,7 +120,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
   test("buildOperatorHealthSummary writes no risk-signal audit on a critical state", async () => {
     resetMetricsRegistryForTests();
     _resetRssHighWaterForTests();
-    _resetCriticalEdgeTrackerForTests();
+    await _resetRiskSignalEdgesForTests(testDb.db);
     setDlqJobCount("execution.dlq", 10); // crosses the critical DLQ edge
 
     const countRaised = async (): Promise<number> => {
@@ -155,5 +155,42 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
       raised = await countRaised();
     }
     expect(raised).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// #7: cross-replica edge dedup. The shared risk_signal_edges CAS must claim each
+// false→true edge exactly once even when called repeatedly (simulating multiple
+// replicas reading the same digest), and re-fire only after recovery.
+describe("takeRiskEdges — shared-table CAS dedup (cross-replica exactly-once)", () => {
+  const critical: RiskSignal = {
+    kind: "dlq_growth",
+    severity: "critical",
+    headline: "x",
+    detail: "x",
+    metric: "subkit_dlq_jobs",
+    value: 10,
+    threshold: 5,
+  };
+
+  test("a standing critical raises once across repeated reads; recovers; re-fires", async () => {
+    await _resetRiskSignalEdgesForTests(testDb.db);
+
+    // Two sequential reads of the SAME standing critical (as two replicas would):
+    // first claims the edge, second sees it already active → no duplicate.
+    const first = await takeRiskEdges(testDb.db, [critical]);
+    expect(first.raised.map((s) => s.kind)).toEqual(["dlq_growth"]);
+    const second = await takeRiskEdges(testDb.db, [critical]);
+    expect(second.raised).toEqual([]);
+    expect(second.cleared).toEqual([]);
+
+    // Recovery: no critical signals → the edge clears exactly once.
+    const recover = await takeRiskEdges(testDb.db, []);
+    expect(recover.cleared).toEqual(["dlq_growth"]);
+    const recoverAgain = await takeRiskEdges(testDb.db, []);
+    expect(recoverAgain.cleared).toEqual([]);
+
+    // Recurrence after recovery re-fires the raise edge.
+    const again = await takeRiskEdges(testDb.db, [critical]);
+    expect(again.raised.map((s) => s.kind)).toEqual(["dlq_growth"]);
   });
 });

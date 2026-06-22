@@ -6,13 +6,18 @@
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import type { RunLlmBudget } from "../llm/accounting/index.ts";
+// The single canonical RequestSource, derived from the Zod RequestSourceSchema.
+import type { RequestSource } from "../observability/service-metadata.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
 
 /** Discriminates how the execution definition was sourced.
  *  Persisted verbatim into `executions.source_kind`. */
 export type ExecutionSourceKind = "saved" | "draft" | "step";
 
-export type RequestSource = "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
+// Re-export the canonical RequestSource so this module's many consumers keep
+// importing it from here, but can never drift from the wire enum again. A
+// hand-maintained copy here previously lagged by two members ("ui", "queue").
+export type { RequestSource };
 
 export type ExecutionMode = "dev" | "prod";
 

@@ -93,12 +93,41 @@ const HAND_ROLLED_HEX_ALPHABET_RE: RegExp = /["'`]0123456789[aA][bB][cC][dD][eE]
 const REVERSE_LOOKUP_TABLE_RE: RegExp = /(?:["']?[A-Za-z0-9+/]["']?\s*:\s*\d+\s*,\s*){8,}/;
 
 /**
+ * Collapse adjacent string- and object-literal concatenation FOR DETECTION
+ * ONLY (the authored source is never mutated). The alphabet regexes anchor on
+ * a contiguous run inside one quoted literal / one object scope, so splitting
+ * the alphabet across `"ABC" + "DEF"` (or a lookup table across `{…} + {…}`)
+ * would otherwise evade the gate and reopen the Gmail-outage codec class.
+ * Iterates until no concat seam remains so a 3+-way split collapses fully.
+ */
+export function normalizeAdjacentStringLiterals(src: string): string {
+  // Join two adjacent string literals (same or mixed quote styles) separated
+  // by `+`. `(?:\\.|[^\\])*?` consumes escapes so the closing quote backref
+  // lands on a real terminator.
+  const STR_CONCAT = /(['"`])((?:\\.|[^\\])*?)\1\s*\+\s*(['"`])((?:\\.|[^\\])*?)\3/g;
+  let out = src;
+  let prev: string;
+  do {
+    prev = out;
+    out = out.replace(
+      STR_CONCAT,
+      (_m, q1: string, a: string, _q2: string, b: string) => `${q1}${a}${b}${q1}`,
+    );
+  } while (out !== prev);
+  // Merge object-literal concatenation `} + {` into one scope so a
+  // reverse-lookup table assembled from several object pieces reads as one.
+  return out.replace(/\}\s*\+\s*\{/g, ",");
+}
+
+/**
  * Pure detector for a hand-rolled codec embedded in a transform's
  * source. Returns the first codec class found (or `null`). Used by the
  * authoring gate to refuse transforms that re-implement base64/base32/
  * hex encoding instead of calling the deterministic `sk.*` primitives —
  * the failure class behind the Gmail send outage (a redaction-corrupted
  * alphabet literal drove a hand-rolled encoder to emit 43k `undefined`s).
+ * Normalizes concatenated string/object literals first so the alphabet
+ * cannot be split across `+` seams to evade the anchored regexes.
  */
 export function detectHandRolledCodec(expression: string): {
   found: boolean;
@@ -107,10 +136,11 @@ export function detectHandRolledCodec(expression: string): {
   if (typeof expression !== "string" || expression.length === 0) {
     return { found: false, kind: null };
   }
-  if (HAND_ROLLED_B64_ALPHABET_RE.test(expression)) return { found: true, kind: "base64" };
-  if (HAND_ROLLED_B32_ALPHABET_RE.test(expression)) return { found: true, kind: "base32" };
-  if (HAND_ROLLED_HEX_ALPHABET_RE.test(expression)) return { found: true, kind: "hex_table" };
-  if (REVERSE_LOOKUP_TABLE_RE.test(expression)) return { found: true, kind: "reverse_lookup" };
+  const src = normalizeAdjacentStringLiterals(expression);
+  if (HAND_ROLLED_B64_ALPHABET_RE.test(src)) return { found: true, kind: "base64" };
+  if (HAND_ROLLED_B32_ALPHABET_RE.test(src)) return { found: true, kind: "base32" };
+  if (HAND_ROLLED_HEX_ALPHABET_RE.test(src)) return { found: true, kind: "hex_table" };
+  if (REVERSE_LOOKUP_TABLE_RE.test(src)) return { found: true, kind: "reverse_lookup" };
   return { found: false, kind: null };
 }
 

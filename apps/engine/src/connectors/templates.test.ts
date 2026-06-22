@@ -94,6 +94,77 @@ describe("connector-template catalog — cross-reference invariants", () => {
     }
   });
 
+  test("no url_pattern contains an over-escaped character class (compiles but never matches)", () => {
+    // A backslash-escaped class like `\[\^/\]\+` compiles fine but matches the
+    // literal text "[^/]+", so the pattern silently never matches a real host
+    // (the v7.x outage where 24 templates were unreachable via URL match).
+    const offenders = templates
+      .filter((t) => t.url_pattern !== null && /\\\[\\?\^/.test(t.url_pattern as string))
+      .map((t) => t.slug);
+    expect(offenders).toEqual([]);
+  });
+
+  test("formerly over-escaped templates now match realistic hosts (not the literal class)", () => {
+    // Closes the gap between "compiles" and "actually matches" for the 24
+    // templates whose host class was over-escaped. Curated real URLs are more
+    // robust than reverse-engineering each regex.
+    const cases: Record<string, string> = {
+      auth0: "https://example.auth0.com/api/v2",
+      okta: "https://dev.okta.com/api/v1",
+      zendesk: "https://acme.zendesk.com/api/v2",
+      freshdesk: "https://acme.freshdesk.com/api/v2",
+      servicenow: "https://acme.service-now.com/api/now",
+      "servicenow-soap": "https://acme.service-now.com",
+      snowflake: "https://acme.snowflakecomputing.com/api/v2",
+      mailchimp: "https://us21.api.mailchimp.com/3.0",
+      "azure-blob-storage": "https://acct.blob.core.windows.net",
+      "azure-devops": "https://dev.azure.com/myorg/_apis",
+      bamboohr: "https://api.bamboohr.com/api/gateway.php/acme/v1",
+      confluence: "https://api.atlassian.com/ex/confluence/abc/wiki/api/v2",
+      jira: "https://api.atlassian.com/ex/jira/abc/rest/api/3",
+      supabase: "https://abcdef.supabase.co/rest/v1",
+    };
+    for (const [slug, url] of Object.entries(cases)) {
+      const t = templates.find((x) => x.slug === slug);
+      expect(t, `template ${slug} missing`).toBeDefined();
+      const re = new RegExp(t?.url_pattern as string);
+      expect(re.test(url), `${slug} should match ${url}`).toBe(true);
+      // The literal-class form (the bug signature) must NOT match.
+      expect(
+        re.test((t?.url_pattern as string).replace(/^\^/, "").replace(/\[\^\/\]\+/g, "[^/]+")),
+      ).toBe(false);
+    }
+  });
+
+  test("no url_pattern is a greedy host wildcard that matches an arbitrary unknown URL", () => {
+    // A pattern like `^https://[^/]+(/|$)` matches EVERY https URL, so it would
+    // hijack auto-detection for every unknown connector (regression: un-escaping
+    // the broken `\[\^/\]\+` patterns turned grpc-connect/soap-generic into
+    // match-everything). Generic protocol templates carry url_pattern=null and
+    // are selected by slug instead.
+    const arbitrary = [
+      "https://totally-unknown-domain-xyz.example.com/api/foo",
+      "https://another-random-host.test/v1",
+    ];
+    const offenders = templates
+      .filter(
+        (t) =>
+          t.url_pattern !== null &&
+          arbitrary.every((u) => new RegExp(t.url_pattern as string).test(u)),
+      )
+      .map((t) => t.slug);
+    expect(offenders).toEqual([]);
+  });
+
+  test("every auth-requiring template documents at least one auth_options path", () => {
+    // Empty auth_options is only legitimate for auth_type === "none"; every
+    // other template must present at least one deliberate auth path to the LLM/UI.
+    const offenders = templates
+      .filter((t) => t.auth_type !== "none" && t.auth_options.length === 0)
+      .map((t) => t.slug);
+    expect(offenders).toEqual([]);
+  });
+
   test("base_url_options entries each carry a non-empty environment label and base_url", () => {
     for (const t of templates) {
       for (const opt of t.base_url_options) {
@@ -446,9 +517,13 @@ describe("connector-template catalog — browserless query-auth hardening", () =
     expect(t?.auth_type).toBe("query");
   });
 
-  test("browserless auth_options is intentionally empty (no broken bearer path offered)", () => {
+  test("browserless documents its query auth path in auth_options (no broken bearer path offered)", () => {
     const t = templates.find((x) => x.slug === "browserless");
-    expect(t?.auth_options ?? []).toEqual([]);
+    const opts = t?.auth_options ?? [];
+    expect(opts.length).toBeGreaterThan(0);
+    // Only the query path is offered — bearer is explicitly NOT listed.
+    expect(opts.every((o) => o.auth_type === "query")).toBe(true);
+    expect(opts.some((o) => o.auth_type === "bearer")).toBe(false);
   });
 
   test("browserless credential hint is the canonical query shape (field `value`)", () => {

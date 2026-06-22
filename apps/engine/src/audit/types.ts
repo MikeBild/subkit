@@ -242,6 +242,12 @@ export const AuditAction = {
   CONVERSATION_UPDATED: "conversation.updated",
   CONVERSATION_MEMORY_INJECTED: "conversation.memory_injected",
   CONVERSATION_RESUMED: "conversation.resumed",
+  // An explicit `load_skill` tool call mutated the conversation's persisted
+  // `loaded_skills` palette (tenant-visible state that survives session
+  // resumption). Metadata carries skill_slug / skill_id / already_loaded so
+  // operators can trace which skills a conversation pulled into context.
+  // Per-turn recency demotions are derived/automatic and are NOT audited.
+  CONVERSATION_SKILL_LOADED: "conversation.skill_loaded",
   // A backgrounded conversation turn (MCP async Tasks, SEP-1686) threw
   // inside the `conversation.run-turn` pg-boss worker. Metadata carries
   // the `mcp_task_id` + the `failure_reason` code so operators can

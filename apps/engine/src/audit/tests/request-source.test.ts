@@ -53,3 +53,27 @@ describe("readRequestSource", () => {
     expect(readRequestSource(fakeContext({}))).toBeUndefined();
   });
 });
+
+// Drift guard: execution/types.ts must re-export the SAME RequestSource the
+// canonical RequestSourceSchema defines. A hand-maintained copy there once
+// lagged by two members ("ui", "queue"); this locks the two in lockstep.
+describe("RequestSource ⇄ RequestSourceSchema lockstep", () => {
+  test("execution/types RequestSource equals the canonical schema members", async () => {
+    const { RequestSourceSchema } = await import("../../observability/service-metadata.ts");
+    type FromExecution = import("../../execution/types.ts").RequestSource;
+    // Compile-time exhaustiveness: every schema member must be a valid
+    // RequestSource and vice versa, or this table fails to type-check.
+    const table = {
+      api: true,
+      cli: true,
+      scheduler: true,
+      mcp: true,
+      webhook: true,
+      "tool-chain": true,
+      ui: true,
+      chat: true,
+      queue: true,
+    } satisfies Record<FromExecution, true>;
+    expect(new Set(Object.keys(table))).toEqual(new Set(RequestSourceSchema.options));
+  });
+});

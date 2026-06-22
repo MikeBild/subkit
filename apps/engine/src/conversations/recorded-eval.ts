@@ -34,6 +34,7 @@
 // PROPOSE, don't apply — the draft is never mutated here; the model
 // applies an accepted repair via a normal edit.
 
+import { z } from "@hono/zod-openapi";
 import { buildJsonataBindings } from "../execution/jsonata-bindings.ts";
 import {
   compile as compileJsonata,
@@ -145,22 +146,31 @@ export interface RecordedEvalScopeRef {
 }
 
 // Wire contract for `missing_evidence[].next_action`, read by downstream
-// tools/clients. Pinned as a typed const map so a rename changes one place.
+// tools/clients. Backed by a Zod enum so the value is runtime-validated at the
+// boundary (the union was previously a bare TS `as const`, so a widening — e.g.
+// adding "rewrite_with_sk_base64" — shipped with no runtime guard). The const
+// map and the type both derive from the schema, so they cannot drift.
 // PREVIEW_GAP = upstream step has no recorded preview (re-run to record it);
 // CODEC_REWRITE = transform hand-rolls a codec alphabet (swap for `sk.*`).
+export const MissingEvidenceNextActionSchema = z.enum([
+  "dry_run_workflow",
+  "rewrite_with_sk_base64",
+]);
+
+export type MissingEvidenceNextAction = z.infer<typeof MissingEvidenceNextActionSchema>;
+
 export const MISSING_EVIDENCE_NEXT_ACTIONS = {
   PREVIEW_GAP: "dry_run_workflow",
   CODEC_REWRITE: "rewrite_with_sk_base64",
-} as const;
+} as const satisfies Record<string, MissingEvidenceNextAction>;
 
-export type MissingEvidenceNextAction =
-  (typeof MISSING_EVIDENCE_NEXT_ACTIONS)[keyof typeof MISSING_EVIDENCE_NEXT_ACTIONS];
+export const RecordedEvalMissingEvidenceSchema = z.object({
+  step_id: z.string(),
+  reason: z.string(),
+  next_action: MissingEvidenceNextActionSchema,
+});
 
-export interface RecordedEvalMissingEvidence {
-  step_id: string;
-  reason: string;
-  next_action: MissingEvidenceNextAction;
-}
+export type RecordedEvalMissingEvidence = z.infer<typeof RecordedEvalMissingEvidenceSchema>;
 
 export interface RecordedEvalReport {
   /** True when no compile/eval/empty findings and both gates pass. */
@@ -844,7 +854,11 @@ export async function runRecordedEval(
         : MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP,
     });
   }
-  const missing_evidence = [...missingByStep.values()];
+  // Validate the wire shape at the boundary: every entry (incl. its
+  // next_action enum) must parse before the report crosses to a tool result.
+  const missing_evidence = z
+    .array(RecordedEvalMissingEvidenceSchema)
+    .parse([...missingByStep.values()]);
 
   const languageOf = (f: RecordedEvalExpressionFinding): "jsonata" | "javascript" =>
     siteByName.get(f.site)?.language ?? "javascript";

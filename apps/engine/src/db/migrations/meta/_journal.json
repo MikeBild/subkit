@@ -15,6 +15,13 @@
       "when": 1782114365573,
       "tag": "0001_condemned_maestro",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782137986221,
+      "tag": "0002_kind_human_robot",
+      "breakpoints": true
     }
   ]
 }

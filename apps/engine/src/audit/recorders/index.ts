@@ -23,6 +23,10 @@ export {
   recordConnectorUpdated,
 } from "./connector.ts";
 export {
+  type RecordConversationSkillLoadedParams,
+  recordConversationSkillLoaded,
+} from "./conversation.ts";
+export {
   type RecordCredentialAttachedParams,
   type RecordCredentialDeletedParams,
   type RecordCredentialRotatedParams,
