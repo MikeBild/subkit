@@ -14,7 +14,8 @@ import { createHash, createHmac } from "node:crypto";
 import { evaluate as jsonataEval } from "../../../../execution/jsonata-engine.ts";
 import { runJs } from "../../runtime.ts";
 
-const b64 = (code: string, input: unknown) => runJs<string>({ code, input }).then((r) => r.output);
+const b64 = (code: string, input: unknown) =>
+  runJs<string>({ code, input, clock: null }).then((r) => r.output);
 
 describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () => {
   const cases = [
@@ -121,7 +122,7 @@ describe("base64 decode + btoa/atob globals (stdlib v1.3.0)", () => {
   test("btoa throws on code points > 255 (Web parity; use sk.base64EncodeUtf8 for Unicode)", async () => {
     // "€" is U+20AC (8364 > 255). runJs surfaces an in-sandbox throw by rejecting.
     await expect(
-      runJs<string>({ code: "return btoa(input.s);", input: { s: "€" } }),
+      runJs<string>({ code: "return btoa(input.s);", input: { s: "€" }, clock: null }),
     ).rejects.toThrow();
   });
 
@@ -164,8 +165,12 @@ describe("sk.hexEncode / sk.hexDecode (stdlib v1.4.0)", () => {
   test("hexDecode tolerates whitespace and rejects odd-length / non-hex", async () => {
     const padded = await b64("return sk.hexDecode('68 65 6c 6c 6f');", {});
     expect(padded).toBe("hello");
-    await expect(runJs({ code: "return sk.hexDecode('abc');", input: {} })).rejects.toThrow();
-    await expect(runJs({ code: "return sk.hexDecode('zz');", input: {} })).rejects.toThrow();
+    await expect(
+      runJs({ code: "return sk.hexDecode('abc');", input: {}, clock: null }),
+    ).rejects.toThrow();
+    await expect(
+      runJs({ code: "return sk.hexDecode('zz');", input: {}, clock: null }),
+    ).rejects.toThrow();
   });
 });
 
@@ -232,7 +237,7 @@ describe("sk.now / sk.nowIso / sk.uuid (deterministic, stdlib v1.4.0)", () => {
   });
 
   test("now() defaults to 0 when no clock context is injected", async () => {
-    const out = await runJs<number>({ code: "return sk.now();", input: {} });
+    const out = await runJs<number>({ code: "return sk.now();", input: {}, clock: null });
     expect(out.output).toBe(0);
   });
 

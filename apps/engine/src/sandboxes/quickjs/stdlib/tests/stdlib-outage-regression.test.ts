@@ -20,7 +20,7 @@ import { createHash, createHmac } from "node:crypto";
 import { runJs } from "../../runtime.ts";
 
 const run = <T>(code: string, input: unknown = {}) =>
-  runJs<T>({ code, input }).then((r) => r.output);
+  runJs<T>({ code, input, clock: null }).then((r) => r.output);
 
 const runWithClock = <T>(code: string, clock: { now_ms: number; seed: string }) =>
   runJs<T>({ code, input: {}, clock }).then((r) => r.output);

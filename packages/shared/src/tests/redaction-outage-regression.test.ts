@@ -231,3 +231,121 @@ describe("scrubString — bare vendor-less secrets STILL redact (shape only)", (
     expect(scrubString(code)).toBe(code);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Credential-named variables redact even in code-assignment shape. A
+// high-entropy literal assigned to a `bearer` / `jwt` / `pat` / `key` /
+// `session` / `cookie` / `signature` / `sig` variable is a credential in
+// source, not codec data — it must STILL redact even though the value sits
+// in a `const <name> = "..."` code-assignment shape. A neutral name
+// (`data` / `raw`) is code context and survives — that survival IS the
+// outage fix and must not regress.
+// ---------------------------------------------------------------------------
+
+describe("scrubString — credential-named variables still redact in code context", () => {
+  for (const name of ["bearer", "jwt", "pat", "key", "session", "cookie", "signature", "sig"]) {
+    test(`const ${name} = "<hi-entropy>" IS redacted (credential var name)`, () => {
+      const code = `const ${name} = "${BARE_VENDORLESS_TOKEN}";`;
+      const out = scrubString(code);
+      expect(out).toContain("***REDACTED:generic***");
+      expect(out).not.toContain(BARE_VENDORLESS_TOKEN);
+    });
+  }
+
+  // The guard against re-breaking the outage fix: neutrally-named variables
+  // holding a high-entropy / codec-alphabet literal MUST survive verbatim.
+  // `const raw = "<base64>"` is the exact corruption class this PR fixes —
+  // adding `raw|data|payload|…` to the allowlist would reopen the outage.
+  test('const data = "<hi-entropy>" is NOT redacted (neutral name, code context)', () => {
+    const code = `const data = "${BARE_VENDORLESS_TOKEN}";`;
+    expect(scrubString(code)).toBe(code);
+  });
+
+  test('const raw = "<base64url alphabet>" survives verbatim (neutral name)', () => {
+    const code = `const raw = "${BASE64_URL_SAFE}";`;
+    expect(scrubString(code)).toBe(code);
+  });
+
+  test('const data = "<base64 alphabet>" survives verbatim (neutral name)', () => {
+    const code = `const data = "${BASE64_ALPHABET}";`;
+    expect(scrubString(code)).toBe(code);
+  });
+
+  // The residual-evasion backstop: a VENDOR-PREFIXED secret redacts INSIDE
+  // any assignment regardless of the variable name — the SECRET_PATTERNS
+  // loop fires on the value's shape before the code-context suppression can
+  // protect it. A neutral name does NOT smuggle a vendor token past it.
+  test('const data = "ghp_<...>" IS redacted (vendor prefix beats neutral name)', () => {
+    const vendorToken = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    const code = `const data = "${vendorToken}";`;
+    const out = scrubString(code);
+    expect(out).toContain("***REDACTED:");
+    expect(out).not.toContain(vendorToken);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Long inline comment before a codec literal: a long inline comment between
+// the keyword and the literal must not push the code-assignment lookback
+// past its window and re-trigger the outage. The lookback scans to the
+// nearest newline (capped at 256), and the assignment regex tolerates the
+// inline comment — so the alphabet survives.
+// ---------------------------------------------------------------------------
+
+describe("scrubString — long inline comment before a codec literal", () => {
+  test('var /* long comment */ B = "<alphabet>" is NOT redacted', () => {
+    const longComment = `/* ${"x".repeat(120)} */`;
+    const code = `var ${longComment} B = "${BASE64_ALPHABET}";`;
+    // The whole line stays intact: the assignment is still recognized
+    // despite the >64-char comment between `var` and the variable name.
+    expect(scrubString(code)).toBe(code);
+  });
+
+  test("a credential-named var with a long inline comment STILL redacts", () => {
+    const longComment = `/* ${"y".repeat(120)} */`;
+    const code = `var ${longComment} apiKey = "${BARE_VENDORLESS_TOKEN}";`;
+    const out = scrubString(code);
+    expect(out).toContain("***REDACTED:generic***");
+    expect(out).not.toContain(BARE_VENDORLESS_TOKEN);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Boundary lock on the 256-char code-context lookback. The assignment
+// suppression scans back from the token to the nearest newline, capped at
+// CODE_CONTEXT_MAX_LOOKBACK (256). When the `var <name> = "` prefix (here
+// stretched by an inline comment) starts <= 256 chars before the token, the
+// assignment is recognized and a neutral-named literal survives; once the
+// prefix is pushed past 256, the lookback can no longer see the `var`
+// keyword so the high-entropy run redacts on shape. We pin the exact
+// crossover at 254 / 255 / 256 / 257 chars of prefix.
+// ---------------------------------------------------------------------------
+
+describe("scrubString — code-context lookback boundary (256-char window)", () => {
+  // Build `var /* <filler> */ x = "<TOKEN>"` where the distance from the `v`
+  // of `var` to the first token char is exactly `prefixLen`. Fixed framing
+  // (`var ` + `/* ` + ` */ ` + `x = "`) totals 16 chars, so the comment
+  // filler is `prefixLen - 16`.
+  const FRAMING = "var ".length + "/* ".length + " */ ".length + 'x = "'.length; // 16
+  const lineWithPrefixLen = (prefixLen: number, token: string): string => {
+    const fillerLen = prefixLen - FRAMING;
+    return `var /* ${"z".repeat(fillerLen)} */ x = "${token}";`;
+  };
+
+  // A neutral var name with a NON-codec high-entropy value: survival here
+  // depends solely on the lookback finding the assignment, not on the codec
+  // alphabet allowlist.
+  for (const prefixLen of [254, 255, 256]) {
+    test(`prefix length ${prefixLen} (<=256): the literal survives`, () => {
+      const code = lineWithPrefixLen(prefixLen, BARE_VENDORLESS_TOKEN);
+      expect(scrubString(code)).toBe(code);
+    });
+  }
+
+  test("prefix length 257 (>256): the lookback can no longer see `var`, so it redacts", () => {
+    const code = lineWithPrefixLen(257, BARE_VENDORLESS_TOKEN);
+    const out = scrubString(code);
+    expect(out).toContain("***REDACTED:generic***");
+    expect(out).not.toContain(BARE_VENDORLESS_TOKEN);
+  });
+});

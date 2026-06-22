@@ -18,7 +18,7 @@ import { runJs } from "../runtime.ts";
 import { DEFAULT_LIMITS } from "../types.ts";
 
 async function ticksFor(code: string): Promise<number> {
-  const { stats } = await runJs({ code, input: null });
+  const { stats } = await runJs({ code, input: null, clock: null });
   return stats.ticks;
 }
 
@@ -71,6 +71,7 @@ describe("opcode-tick calibration", () => {
       `,
       input: { request: { method: "POST" } },
       limits: { tick_budget: 100_000, wall_ms: 2_000 },
+      clock: null,
     });
     // Realistic hook runs should come in well under 1 % of the hook budget.
     expect(stats.ticks).toBeLessThan(100_000 / 100);

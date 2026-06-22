@@ -154,13 +154,11 @@ export async function appendUserMessage(
   // equals the persisted row; `persist.ts appendMessage` re-scrubs as
   // idempotent defense-in-depth underneath.
   // `persistedText` is the persisted replay + transcript source. The
-  // generic high-entropy matcher in `findSecretSpans` / `scrubString` is
-  // code-context-suppressed: pasted workflow / code definitions (codec
-  // alphabets, and non-secret `var/const/let = "..."` literals) survive
-  // verbatim, while a bare standalone secret — including the lone-paste /
-  // `here you go: <token>` shape — still trips a span here, so it is both
-  // captured into the draft-credential cache and scrubbed before the row
-  // persists. Vendor-prefixed credential capture is unaffected.
+  // generic matcher in `findSecretSpans` / `scrubString` is
+  // code-context-suppressed — see the authoritative redaction contract
+  // above `redactGenericTokens` in `packages/shared/src/redaction.ts`. A
+  // bare standalone secret still trips a span here, so it is both captured
+  // into the draft-credential cache and scrubbed before the row persists.
   let persistedText = rewrite.text;
   if (findSecretSpans(persistedText).length > 0) {
     const draftConnector = conv.draft?.connector ?? null;

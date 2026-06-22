@@ -167,6 +167,13 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   const parent_execution_id = opts.parent_execution_id ?? null;
   const execution_mode = opts.execution_mode ?? "dev";
 
+  // Execution-level fixed instant for the workflow-scope JS sandboxes
+  // (output_transform_function / validation_function). Captured once so a
+  // replayed run reproduces the same `sk.now()`/`sk.uuid()` values; the
+  // per-step transforms thread their own step-scoped clock from
+  // `ctx.started_at` instead.
+  const execution_started_at = Date.now();
+
   // Persist queued execution row (unless one already exists — the queue
   // worker passes `existing_execution_id` so the HTTP-created row is
   // reused instead of spawning a new one). For draft / step runs the
@@ -458,6 +465,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         step.id,
         scope,
         forEachStart,
+        // Deterministic clock/id for `sk.now()`/`sk.uuid()` in the
+        // selector — the execution's fixed instant + a per-step seed, same
+        // wiring as steps/transform.ts.
+        { now_ms: ctx.started_at.getTime(), seed: `${execution_id}:${step.id}` },
       );
       if (collectionResult.kind === "failure") {
         // Collection resolution failed — record the failure as the step
@@ -1269,6 +1280,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         const result = await runJs<unknown>({
           code: def.output_transform_function,
           input: lastOutput,
+          clock: { now_ms: execution_started_at, seed: `${execution_id}:output_transform` },
         });
         if (result.output !== undefined) lastOutput = result.output;
       } catch (err) {
@@ -1446,6 +1458,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       const result = await runJs<unknown>({
         code: def.validation_function,
         input: lastOutput,
+        clock: { now_ms: execution_started_at, seed: `${execution_id}:validation` },
       });
       const verdict = result.output;
       if (verdict === false) {

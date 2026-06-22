@@ -365,7 +365,10 @@ export const updateParamTool: ConversationTool = {
                 error_code: "transform_hand_rolled_codec",
                 message: `update would embed a hand-rolled base64/base32/hex codec in a transform's source. ${summary}. Rewrite the expression to call the deterministic sk.* encoders (sk.base64Encode / sk.base64UrlEncode / sk.base64EncodeUtf8 / sk.base64Decode, or sk.hexEncode / sk.hexDecode) instead of an alphabet literal or reverse-lookup table.`,
                 recommended_mode: "workflow",
-                next_best_actions: ["inspect_workflow_draft"],
+                // The corrective action is to re-apply the rewritten
+                // expression via update_param — lead with it so the steer
+                // matches the message (inspect is the secondary fallback).
+                next_best_actions: ["update_param", "inspect_workflow_draft"],
                 extra: {
                   gate_blocks: transformGate.blocks,
                   step_id: args.step_id,

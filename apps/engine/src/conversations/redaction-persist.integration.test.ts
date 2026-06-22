@@ -195,14 +195,28 @@ describe("appendMessage — tenant isolation", () => {
       .returning();
     if (!tB) throw new Error("tenant B seed failed");
 
+    // Seed tenant A's conversation with a user message …
     const conv_id = await makeConversation();
     await appendMessage(ctx.db, tenant_id, conv_id, "user", { text: "tenant A message" });
 
-    // buildModelMessages with tenant B's id and tenant A's conv_id should
-    // return an empty history (the query is tenant-scoped).
+    // … and give tenant B its OWN conversation + message so the DB is not
+    // trivially empty for tenant B. A buggy query that ignored the tenant
+    // scope would surface tenant A's row here.
+    const [convB] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id: tB.id, status: "active" })
+      .returning({ id: conversations.id });
+    if (!convB) throw new Error("tenant B conversation seed failed");
+    await appendMessage(ctx.db, tB.id, convB.id, "user", { text: "tenant B message" });
+
+    // buildModelMessages with tenant B's id and tenant A's conv_id must
+    // return ZERO messages — the query is tenant-scoped, so the mismatched
+    // (tenant B, conv A) pair selects nothing. A positive empty assertion,
+    // not an empty-by-accident pass.
     const msgs = await buildModelMessages(ctx.db, tB.id, conv_id);
-    // No user messages from tenant A should appear.
     const userMsgs = msgs.filter((m) => m.role === "user");
+    expect(userMsgs).toHaveLength(0);
+    // And specifically none of tenant A's content leaked through.
     expect(userMsgs.every((m) => !JSON.stringify(m.content).includes("tenant A message"))).toBe(
       true,
     );

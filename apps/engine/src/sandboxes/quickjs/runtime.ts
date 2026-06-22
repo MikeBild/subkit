@@ -121,19 +121,28 @@ export interface RunJsOptions {
    * the execution's `started_at`) backs `sk.now()`/`sk.nowIso()`, and the
    * stable `seed` (e.g. the execution id) backs `sk.uuid()`. Both are
    * injected as VM globals (`__sandbox_now__`, `__sandbox_seed__`) BEFORE
-   * the stdlib installs, so the stdlib closure captures them. Omitting
-   * `clock` leaves `sk.now()` at 0 and `sk.uuid()` seeded from a constant
-   * — callers that want reproducible-yet-meaningful values (every
-   * execution path) must pass it. Keeping it deterministic is the whole
-   * point: self-healing dry-runs replay the same context and get the same
-   * output.
+   * the stdlib installs; the stdlib captures them into closure consts
+   * once and deletes the globals so user code cannot mutate them.
+   *
+   * REQUIRED — and `null` is a deliberate choice, not a default. Every
+   * caller must state which world it is in:
+   *   - A production execution path passes the real clock (the execution's
+   *     fixed `started_at` + a per-run seed) so a replayed run reproduces
+   *     byte-identical `sk.now()`/`sk.uuid()` values — the whole point of
+   *     self-healing dry-runs replaying the same context.
+   *   - A pure lint / syntax-check / preview path that has no execution
+   *     context passes `null` (the "intentionally constant" case): `sk.now()`
+   *     reads 0 and `sk.uuid()` seeds from a constant, identical to the
+   *     historical omission behavior.
+   * Making the field required turns a forgotten execution-clock wiring into
+   * a COMPILE error instead of a silent epoch read at runtime.
    */
-  clock?: {
+  clock: {
     /** Fixed instant in epoch milliseconds. */
     now_ms: number;
     /** Stable per-run seed for deterministic id derivation. */
     seed: string;
-  };
+  } | null;
 }
 
 /**
@@ -213,11 +222,13 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
   });
 
   try {
-    // Inject the deterministic clock/id context BEFORE the stdlib runs so
-    // the stdlib closure captures `__sandbox_now__`/`__sandbox_seed__`
-    // (which back `sk.now()`/`sk.uuid()`). No host clock or RNG crosses
-    // the boundary — only the host-fixed values the caller chose, keeping
-    // the run reproducible.
+    // Inject the deterministic clock/id context BEFORE the stdlib runs.
+    // The stdlib reads `__sandbox_now__`/`__sandbox_seed__` exactly ONCE
+    // at install time, captures them into closure consts (which back
+    // `sk.now()`/`sk.uuid()`), and then DELETEs the writable globals — so
+    // user code cannot overwrite them between calls and corrupt
+    // determinism. No host clock or RNG crosses the boundary — only the
+    // host-fixed values the caller chose, keeping the run reproducible.
     const nowMs = opts.clock?.now_ms ?? 0;
     const seed = opts.clock?.seed ?? "";
     const nowHandle = context.newNumber(Number.isFinite(nowMs) ? nowMs : 0);

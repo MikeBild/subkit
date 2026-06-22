@@ -144,13 +144,22 @@ export interface RecordedEvalScopeRef {
   evidence: "recorded" | "stale" | "missing";
 }
 
+// Wire contract for `missing_evidence[].next_action`, read by downstream
+// tools/clients. Pinned as a typed const map so a rename changes one place.
+// PREVIEW_GAP = upstream step has no recorded preview (re-run to record it);
+// CODEC_REWRITE = transform hand-rolls a codec alphabet (swap for `sk.*`).
+export const MISSING_EVIDENCE_NEXT_ACTIONS = {
+  PREVIEW_GAP: "dry_run_workflow",
+  CODEC_REWRITE: "rewrite_with_sk_base64",
+} as const;
+
+export type MissingEvidenceNextAction =
+  (typeof MISSING_EVIDENCE_NEXT_ACTIONS)[keyof typeof MISSING_EVIDENCE_NEXT_ACTIONS];
+
 export interface RecordedEvalMissingEvidence {
   step_id: string;
   reason: string;
-  // `dry_run_workflow` for preview-evidence gaps; `rewrite_with_sk_base64`
-  // for a hand-rolled-codec block, where re-running fixes nothing (the
-  // author must swap the alphabet literal for an `sk.*` encoder).
-  next_action: "dry_run_workflow" | "rewrite_with_sk_base64";
+  next_action: MissingEvidenceNextAction;
 }
 
 export interface RecordedEvalReport {
@@ -819,7 +828,7 @@ export async function runRecordedEval(
     missingByStep.set(b.referenced_step_id, {
       step_id: b.referenced_step_id,
       reason: describeLoopGateBlock(b),
-      next_action: "dry_run_workflow",
+      next_action: MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP,
     });
   }
   for (const b of transformGate.blocks) {
@@ -830,7 +839,9 @@ export async function runRecordedEval(
     missingByStep.set(key, {
       step_id: key,
       reason: describeTransformGateBlock(b),
-      next_action: isCodec ? "rewrite_with_sk_base64" : "dry_run_workflow",
+      next_action: isCodec
+        ? MISSING_EVIDENCE_NEXT_ACTIONS.CODEC_REWRITE
+        : MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP,
     });
   }
   const missing_evidence = [...missingByStep.values()];
@@ -882,7 +893,7 @@ export async function runRecordedEval(
   // Truncated-evidence empties resolve with a faithful full-data run, not a
   // transform rewrite. A preview-gap missing_evidence entry also wants a run.
   const hasDryRunMissingEvidence = missing_evidence.some(
-    (m) => m.next_action === "dry_run_workflow",
+    (m) => m.next_action === MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP,
   );
   if (hasTruncatedEmptyResults || hasPreviewGap || hasDryRunMissingEvidence) {
     next_actions.push("dry_run_workflow");

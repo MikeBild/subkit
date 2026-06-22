@@ -464,19 +464,45 @@
   // ── Deterministic clock / id ───────────────────────────────────────
   // The host injects a fixed per-execution timestamp (`__sandbox_now__`,
   // epoch ms) and a stable seed (`__sandbox_seed__`, e.g. the execution
-  // id). `now()` returns the SAME instant for every call in a run, and
-  // `uuid()` is a deterministic v4-shaped id derived from the seed plus a
-  // per-context call counter — so authors stop reaching for the banned
-  // `new Date()` / `Date.now()` / `Math.random()` and the run stays
-  // reproducible under self-healing dry-runs.
-  function injectedNow() {
+  // id) as VM globals BEFORE this stdlib runs. `now()` returns the SAME
+  // instant for every call in a run, and `uuid()` is a deterministic
+  // v4-shaped id derived from the seed plus a per-context call counter —
+  // so authors stop reaching for the banned `new Date()` / `Date.now()` /
+  // `Math.random()` and the run stays reproducible under self-healing
+  // dry-runs.
+  //
+  // SECURITY: capture the injected values ONCE here at install time into
+  // closure consts, then DELETE the writable globals. If we instead read
+  // `globalThis.__sandbox_now__` / `__sandbox_seed__` on every call,
+  // untrusted user JS could overwrite them between `sk.now()` /
+  // `sk.uuid()` calls (`globalThis.__sandbox_now__ = 0`) and corrupt
+  // determinism — two calls in the same run would observe different
+  // clocks. Captured-then-deleted, the user cannot reach or change them.
+  const __CAPTURED_NOW = (function captureNow() {
     const n = globalThis.__sandbox_now__;
     return typeof n === "number" && Number.isFinite(n) ? n : 0;
+  })();
+  const __CAPTURED_SEED = (function captureSeed() {
+    const s = globalThis.__sandbox_seed__;
+    return typeof s === "string" && s.length > 0 ? s : "sk-stdlib";
+  })();
+  try {
+    delete globalThis.__sandbox_now__;
+  } catch (_e) {
+    /* non-configurable in some hosts — the capture above still wins */
+  }
+  try {
+    delete globalThis.__sandbox_seed__;
+  } catch (_e) {
+    /* non-configurable in some hosts — the capture above still wins */
+  }
+
+  function injectedNow() {
+    return __CAPTURED_NOW;
   }
 
   function injectedSeed() {
-    const s = globalThis.__sandbox_seed__;
-    return typeof s === "string" && s.length > 0 ? s : "sk-stdlib";
+    return __CAPTURED_SEED;
   }
 
   function now() {

@@ -151,15 +151,51 @@ function isCodecAlphabet(match: string): boolean {
 // opening quote. We re-walk that window here. A secret-named variable
 // (`const apiKey = "..."`) is deliberately NOT suppressed — that is a
 // credential literal, not codec source.
-const CODE_ASSIGNMENT_RE: RegExp = /\b(?:var|const|let)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*["'`]$/;
-const SECRET_VAR_NAME_RE: RegExp = /token|secret|api[_-]?key|password|credential|auth/i;
+// `var/const/let <name> = "` with an OPTIONAL inline block comment after
+// the keyword and around the `=` — `var /* note */ B = "…"` is the same
+// code-assignment shape and must be recognized so a long comment cannot
+// smuggle the alphabet literal past the suppression (the outage shape).
+// `(?:\s|\/\*[\s\S]*?\*\/)+` matches a run of whitespace and/or block
+// comments (`[\s\S]` is the lint-clean match-any so a comment can span
+// newlines).
+const CODE_ASSIGNMENT_RE: RegExp =
+  /\b(?:var|const|let)(?:\s|\/\*[\s\S]*?\*\/)+([A-Za-z_$][A-Za-z0-9_$]*)(?:\s|\/\*[\s\S]*?\*\/)*=(?:\s|\/\*[\s\S]*?\*\/)*["'`]$/;
+// Secret-named variables whose high-entropy literal value is a real
+// credential in source, not codec data — keep redacting those. `bearer`,
+// `jwt`, `pat`, a standalone `key`, plus `session`/`cookie`/`signature`/
+// `sig`, are common credential variable names that the original allowlist
+// (`token|secret|api_key|password|credential|auth`) missed, so a
+// `const bearer = "<hi-entropy>"` slipped through the code-context
+// suppression and survived unredacted.
+//
+// DELIBERATELY EXCLUDED: `data|raw|payload|body|value|blob|hash` and the
+// like. Those are ordinary code-literal variable names — `const raw =
+// "<base64>"` is exactly the outage class this whole pass exists to protect
+// (a hand-rolled encoder's alphabet must survive verbatim). Adding them
+// would re-introduce the corruption regression, so the allowlist only ever
+// grows with names that do NOT collide with legitimate code literals.
+const SECRET_VAR_NAME_RE: RegExp =
+  /token|secret|api[_-]?key|password|credential|auth|bearer|jwt|pat\b|\bkey\b|session|cookie|signature|\bsig\b/i;
 
-// Window large enough to span `const <reasonable-name> = "` ahead of the
-// run's opening quote.
-const CODE_CONTEXT_WINDOW = 64;
+// Hard cap on the assignment lookback. A `const <name> = "` prefix is
+// short, but a long inline comment between the keyword and the literal
+// (`var /* …very long… */ B = "<alphabet>"`) can push the assignment
+// further back than a small fixed window — exactly the shape that would
+// re-trigger the outage if the window were too tight. We instead scan
+// back to the nearest newline (an assignment lives on one logical source
+// line), capped here so a pathological comment-free line can't blow up
+// the regex scan.
+const CODE_CONTEXT_MAX_LOOKBACK = 256;
 
 function isCodeAssignmentValue(text: string, start: number): boolean {
-  const window = text.slice(Math.max(0, start - CODE_CONTEXT_WINDOW), start);
+  // Walk back to the start of the current source line (nearest newline),
+  // bounded by CODE_CONTEXT_MAX_LOOKBACK so a long inline comment between
+  // the `var`/`const`/`let` keyword and the opening quote still lands
+  // inside the window instead of being truncated past it.
+  const floor = Math.max(0, start - CODE_CONTEXT_MAX_LOOKBACK);
+  const newline = text.lastIndexOf("\n", start - 1);
+  const windowStart = Math.max(floor, newline + 1);
+  const window = text.slice(windowStart, start);
   const m = CODE_ASSIGNMENT_RE.exec(window);
   if (!m) return false;
   const varName = m[1] ?? "";
@@ -174,6 +210,35 @@ function isCodeLiteral(text: string, start: number, match: string): boolean {
   return isCodecAlphabet(match) || isCodeAssignmentValue(text, start);
 }
 
+// ── REDACTION CONTRACT (authoritative) ─────────────────────────────────
+// The generic high-entropy matcher is CODE-CONTEXT-SUPPRESSED. It redacts
+// a bare high-entropy run on shape by default — including the lone-paste /
+// `here you go: <token>` shape with no keyword and no vendor prefix — but
+// it leaves a known codec alphabet or a non-secret `var/const/let = "..."`
+// literal alone, so a pasted workflow / code definition survives VERBATIM
+// (into replay, transcripts, and assistant output) while a genuine pasted
+// secret still scrubs. Vendor-prefixed credential capture is unaffected.
+// This is the contract `redactGenericTokens` (string scrub) and the
+// parallel pass in `findSecretSpans` (span detection for assistant text)
+// both implement; call sites that scrub user/assistant text MUST NOT
+// re-describe it — point here instead. Reopening it (e.g. a too-tight code
+// lookback window) is the v7.5 Gmail-send outage.
+//
+// RESIDUAL EVASION CLASS (known and accepted). The code-context
+// suppression keys on the variable NAME of a `var/const/let <name> = "..."`
+// assignment: a secret-named variable (`apiKey`, `bearer`, `session`, …)
+// still redacts, but a neutrally-named one (`const data = "<token>"`,
+// `const raw = "<token>"`) survives. That means a high-entropy secret
+// DELIBERATELY pasted into a neutrally-named string literal will pass
+// through unredacted. This is accepted on purpose: the suppression is
+// best-effort against HONEST mistakes (a user pasting a real codec
+// alphabet / SHA / lookup table), NOT a defense against adversarial paste —
+// trying to redact `const data = "<base64-shaped>"` is precisely what
+// corrupted authored encoders in the outage. The backstop that does NOT
+// depend on the variable name: a VENDOR-PREFIXED secret (`ghp_`, `sk-ant`,
+// `AKIA…`, a JWT `eyJ…`, etc.) is matched by the `SECRET_PATTERNS` loop
+// FIRST and redacts INSIDE any assignment regardless of the variable name,
+// because those patterns fire on the value's shape, not its code framing.
 function redactGenericTokens(value: string): string {
   GENERIC_TOKEN_RE.lastIndex = 0;
   return value.replace(GENERIC_TOKEN_RE, (match, offset: number) =>

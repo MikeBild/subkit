@@ -1395,11 +1395,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             // list so replay tests + the capability-gap analytics can
             // read them back without re-scanning.
             // The guard's secret pre-pass uses the code-context-suppressed
-            // `findSecretSpans` (generic kind redacts a high-entropy run on
-            // shape, but leaves a codec alphabet or a non-secret
-            // `var/const/let = "..."` literal alone), so a code literal the
-            // assistant echoes survives, while a bare secret it echoes —
-            // including the lone-paste shape with no keyword — still redacts.
+            // `findSecretSpans` — see the authoritative redaction contract
+            // above `redactGenericTokens` in
+            // `packages/shared/src/redaction.ts`.
             const guarded = hasText
               ? runOutputGuard(step.text, {
                   ...(p.runtime_context?.engine_url

@@ -21,6 +21,7 @@ describe("sk-stdlib injection", () => {
         http: typeof sk.http.isMutating === 'function'
       };`,
       input: null,
+      clock: null,
     });
     expect(output.hasSk).toBe(true);
     expect(output.frozen).toBe(true);
@@ -53,6 +54,7 @@ describe("sk-stdlib injection", () => {
                  ? sk.deny('mutating_denied')
                  : sk.allow();`,
         input: { request: { method: c.method } },
+        clock: null,
       });
       expect(output.allow).toBe(c.allow);
       if (!c.allow) {
@@ -72,6 +74,7 @@ describe("sk-stdlib injection", () => {
         sk: typeof sk
       };`,
       input: null,
+      clock: null,
     });
     expect(output.fetch).toBe("undefined");
     expect(output.process).toBe("undefined");
@@ -86,10 +89,12 @@ describe("sk-stdlib injection", () => {
     await runJs({
       code: "try { sk.allow = function(){ return { allow: false } }; } catch(e){} return null;",
       input: null,
+      clock: null,
     });
     const { output } = await runJs<{ allow: boolean }>({
       code: "return sk.allow();",
       input: null,
+      clock: null,
     });
     expect(output).toEqual({ allow: true });
   });

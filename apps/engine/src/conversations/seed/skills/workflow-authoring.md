@@ -1006,6 +1006,11 @@ into a malformed payload in production. Likewise never reach for `new Date()`,
 `Date.now()`, or `Math.random()` — they are absent by design; use `sk.now()`,
 `sk.nowIso()`, and `sk.uuid()`.
 
+- The gate detects the literal alphabet form (a base64/base32/hex sequence
+  pasted as a string), not chained string concatenations or
+  `String.fromCharCode` tricks — don't try to evade it, just call the
+  `sk.base64*` / `sk.hex*` helpers.
+
 ## Common pitfalls
 
 - **Micro-iterating a new workflow with `propose_step`.** Initial authoring

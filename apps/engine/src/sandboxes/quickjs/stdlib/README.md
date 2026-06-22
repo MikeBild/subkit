@@ -114,8 +114,10 @@ new ambient value, inject it from the host execution context the same way
 ## Size budget
 
 The stdlib source is evaluated afresh on every `runJs` call (QuickJS does
-not share bytecode across contexts). Current size is ~20 KB — the SHA-256
-implementation (constant table + round function) dominates. That sits at
-the 20 KB soft ceiling: the next additive surface should be split into an
-optional sub-module injected on demand rather than inflating the default
-preamble for every transform that never touches crypto.
+not share bytecode across contexts). Current size is ~21 KB (`wc -c
+stdlib.js` ≈ 20.7 KB) — the SHA-256 implementation (constant table +
+round function) dominates. A size tripwire (`tests/size.test.ts`) fails
+the build if the source crosses **25 KB**: the next additive surface
+should be split into an optional sub-module injected on demand rather than
+inflating the default preamble for every transform that never touches
+crypto.
