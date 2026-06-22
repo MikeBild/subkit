@@ -45,6 +45,28 @@ async function tick(ms = 30): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Poll the frame until a predicate matches, then return. Replaces the
+ * brittle `tick(N) + assertion` pattern where render timing depends on
+ * chained async work (prompt → stream event → render). Locally a fixed
+ * tick is plenty; on CI under `bun test --max-concurrency=4` the same
+ * code can take 200+ ms wall-clock to land the frame and a fixed tick
+ * races past it (see the same helper in ink-app.test.tsx).
+ */
+async function waitForFrame(
+  instance: ReturnType<typeof render>,
+  pred: (frame: string) => boolean,
+  { maxMs = 2000, stepMs = 20 }: { maxMs?: number; stepMs?: number } = {},
+): Promise<void> {
+  const deadline = Date.now() + maxMs; // allow-wall-clock: budget is real ms (CI scheduler pressure, not fake time)
+  while (Date.now() < deadline) {
+    // allow-wall-clock: see comment above
+    const frame = instance.lastFrame() ?? "";
+    if (pred(frame)) return;
+    await new Promise((r) => setTimeout(r, stepMs)); // allow-wall-clock: paced poll; the ink render commit + scheduler yield need real wall time
+  }
+}
+
 async function type(instance: ReturnType<typeof render>, text: string): Promise<void> {
   for (const ch of text) {
     instance.stdin.write(ch);
@@ -93,7 +115,7 @@ describe("chat-first UX", () => {
     await tick();
     await type(instance, "hi");
     await pressEnter(instance);
-    await tick(60);
+    await waitForFrame(instance, (f) => f.includes("ok"));
     const frame = instance.lastFrame() ?? "";
     // The banner is now part of the static scrollback (it scrolls up
     // with history rather than re-rendering as a floating chip every
@@ -164,7 +186,7 @@ describe("chat-first UX", () => {
     await tick();
     await type(instance, "show code");
     await pressEnter(instance);
-    await tick(80);
+    await waitForFrame(instance, (f) => stripAnsi(f).includes('{"ok":true}'));
     const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain('{"ok":true}');
     expect(frame).not.toContain("```json");

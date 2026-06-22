@@ -1033,13 +1033,13 @@ describe("ink-app: journey 10 — onSlash callback dispatch", () => {
     await tick();
     await type(instance, "/actions");
     await pressEnter(instance);
-    await tick(30);
+    await waitForFrame(instance, (f) => stripAnsi(f).includes("actions"));
     expect(stripAnsi(instance.lastFrame() ?? "")).toContain("actions");
     await type(instance, "diagnose");
-    await tick(50);
+    await waitForFrame(instance, (f) => stripAnsi(f).includes("Repair latest failure"));
     expect(stripAnsi(instance.lastFrame() ?? "")).toContain("Repair latest failure");
     await type(instance, "1");
-    await tick(100);
+    await waitForFrame(instance, (f) => stripAnsi(f).includes("Diagnose"));
     expect(stripAnsi(instance.lastFrame() ?? "")).toContain("Diagnose");
     expect(submitted).toContain("Diagnose the latest failed workflow execution");
     instance.unmount();
@@ -1600,7 +1600,7 @@ describe("ink-app: journey 12 — onboarding and transcript controls", () => {
     expect(frame).not.toContain("background actions");
     expect(frame).not.toContain("list_workflows");
     instance.stdin.write("\x0f");
-    await tick(40);
+    await waitForFrame(instance, (f) => f.includes("background actions"));
     frame = instance.lastFrame() ?? "";
     expect(frame).toContain("background actions");
     expect(frame).toContain("list_workflows");
