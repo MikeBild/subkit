@@ -8,6 +8,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { recordConversationSkillLoaded } from "../../audit/recorders/index.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { parseLoadedSkills } from "../loop/skill-recency.ts";
@@ -48,7 +49,9 @@ export const loadSkillTool: ConversationTool = {
   ],
   example_input: { slug: "workflow-authoring" },
   inputSchema: Input,
-  category: "tenant_read",
+  // Mutates persisted conversations.loaded_skills — a tenant-visible write, so
+  // it must audit and must NOT be treated as a read by the confirmation gate.
+  category: "tenant_write",
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
     const wanted = args.slug.toLowerCase();
@@ -129,6 +132,16 @@ export const loadSkillTool: ConversationTool = {
             eq(conversations.id, ctx.conversation_id),
           ),
         );
+      await recordConversationSkillLoaded({
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.actor_id,
+        conversation_id: ctx.conversation_id,
+        skill_id: match.id,
+        skill_slug: key,
+        skill_title: match.title,
+        already_loaded: true,
+        executor: ctx.db,
+      });
       return {
         ok: true,
         data: { slug: key, already_loaded: true, skill: { id: match.id, title: match.title } },
@@ -141,6 +154,16 @@ export const loadSkillTool: ConversationTool = {
       .where(
         and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
       );
+    await recordConversationSkillLoaded({
+      tenant_id: ctx.tenant_id,
+      actor_id: ctx.actor_id,
+      conversation_id: ctx.conversation_id,
+      skill_id: match.id,
+      skill_slug: key,
+      skill_title: match.title,
+      already_loaded: false,
+      executor: ctx.db,
+    });
 
     return {
       ok: true,
