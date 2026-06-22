@@ -2,7 +2,7 @@
 // See apps/engine/src/db/audit.ts for the write-only interface.
 
 import { sql } from "drizzle-orm";
-import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const auditLog = pgTable(
   "audit_log",
@@ -40,3 +40,18 @@ export const auditLog = pgTable(
     check("audit_log_result_check", sql`${t.result} IN ('success','denied','error')`),
   ],
 );
+
+// Cross-replica dedup for critical risk-signal edge audits. The risk signals
+// describe shared host infrastructure (one Postgres pool, one set of DLQs, one
+// engine RSS), so a standing critical must be audited exactly ONCE per false→true
+// edge — across the whole deployment, not once per process. A per-process Map
+// duplicated the RISK_SIGNAL_RAISED/CLEARED audit row N× in an N-replica deploy.
+// This table is the shared edge state: keyed by signal `kind`, every replica
+// claims the edge through an atomic INSERT…ON CONFLICT…WHERE CAS so exactly one
+// wins. Host-global (no tenant_id) — the edge is a property of the host, and the
+// resulting audit row lands under SYSTEM_TENANT_ID.
+export const riskSignalEdges = pgTable("risk_signal_edges", {
+  kind: text("kind").primaryKey(),
+  active: boolean("active").notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});

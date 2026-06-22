@@ -19,6 +19,7 @@
 import { createHash } from "node:crypto";
 import sql0000V6Baseline from "./0000_v6_baseline.sql" with { type: "text" };
 import sql0001CondemnedMaestro from "./0001_condemned_maestro.sql" with { type: "text" };
+import sql0002KindHumanRobot from "./0002_kind_human_robot.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -45,6 +46,7 @@ export interface EmbeddedMigration {
 const SQL_BY_TAG: Record<string, string> = {
   "0000_v6_baseline": sql0000V6Baseline,
   "0001_condemned_maestro": sql0001CondemnedMaestro,
+  "0002_kind_human_robot": sql0002KindHumanRobot,
 };
 
 const journal = journalMeta as unknown as Journal;
