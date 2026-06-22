@@ -51,4 +51,16 @@ describe("driver egress · no connection pooling (keepalive:false)", () => {
     // be reused. Pooled fetch would yield 1.
     expect(connections).toBe(N);
   });
+
+  test("the keepalive:false policy wins even when a caller passes keepalive:true", async () => {
+    // The override is unconditional; a caller-supplied keepalive:true must NOT
+    // re-enable pooling (it only triggers the fetch.keepalive_override warn).
+    const fetchImpl = getDriverFetch();
+    const N = 4;
+    for (let i = 0; i < N; i++) {
+      const res = await fetchImpl(baseUrl, { keepalive: true });
+      await res.text();
+    }
+    expect(connections).toBe(N);
+  });
 });

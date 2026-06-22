@@ -36,8 +36,15 @@
 // go through `test-helpers/driver-fetch.ts`).
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { logger } from "../../logging/logger.ts";
 
 const LOAD_TIME_FETCH: typeof fetch = globalThis.fetch.bind(globalThis);
+
+// Driver egress is ALWAYS non-keepalive — this is the load-bearing Gmail-outage
+// fix (see the block comment below), not a default a caller may opt out of.
+// Named so the policy is explicit at the override site rather than an inline
+// literal that silently wins over `init.keepalive`.
+const KEEPALIVE_POLICY = false as const;
 
 // Production egress wrapper — forces a FRESH connection per request
 // (`keepalive: false`) instead of reusing Bun's pooled keep-alive
@@ -62,8 +69,19 @@ const LOAD_TIME_FETCH: typeof fetch = globalThis.fetch.bind(globalThis);
 // multi-hour silent send outage. Test overrides bypass this wrapper so
 // mocks see exactly what they stub.
 const DRIVER_FETCH: typeof fetch = Object.assign(
-  (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
-    LOAD_TIME_FETCH(input, { ...(init ?? {}), keepalive: false }),
+  (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    // The override is unconditional and load-bearing. Make it AUDIBLE rather
+    // than silent: if a caller ever supplies keepalive:true (none does today),
+    // warn so the override is observable instead of a confusing no-op.
+    if (init?.keepalive === true) {
+      logger.warn({
+        module: "driver",
+        action: "fetch.keepalive_override",
+        msg: "caller requested keepalive:true but driver egress forces keepalive:false (pooled-connection poisoning guard, fetch-seam.ts)",
+      });
+    }
+    return LOAD_TIME_FETCH(input, { ...(init ?? {}), keepalive: KEEPALIVE_POLICY });
+  },
   // `typeof fetch` (Bun) also carries `preconnect`; delegate it to the real
   // implementation so the wrapper remains a drop-in. Optional-chained so a
   // non-Bun runtime (no `fetch.preconnect`) doesn't crash module import.

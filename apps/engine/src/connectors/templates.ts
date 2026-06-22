@@ -482,7 +482,28 @@ export const ConnectorTemplateSchema = z
           message: `template "${t.slug}" has invalid url_pattern: ${String(e)}`,
         });
       }
+      // Semantic guard: a backslash-escaped character class (`\[\^…`) compiles
+      // fine but matches the *literal* string "[^/]+" instead of "any host" —
+      // so the pattern silently never matches a real URL. This over-escape is a
+      // generation typo that the compile check above cannot catch; reject it at
+      // the boundary so a malformed pattern can never reach `matchTemplateByUrl`.
+      if (/\\\[\\?\^/.test(t.url_pattern)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["url_pattern"],
+          message:
+            `template "${t.slug}" has an over-escaped character class in url_pattern ` +
+            `(found \\[\\^ — this matches the literal text "[^...]", never a real host). ` +
+            `Use an unescaped class such as [^/]+ instead.`,
+        });
+      }
     }
+    // NB: "every auth-requiring template documents an auth path in auth_options"
+    // is enforced for the BUILT-IN catalog by templates.test.ts, NOT here — the
+    // same schema validates tenant-authored templates on read, and an empty
+    // auth_options is a legitimate (if terse) tenant shape we must not reject
+    // retroactively. The builtin catalog is curated, so the test is the right
+    // chokepoint for it.
     // credential_hints.field must be unique per template.
     const fields = t.credential_hints.map((h) => h.field);
     if (new Set(fields).size !== fields.length) {

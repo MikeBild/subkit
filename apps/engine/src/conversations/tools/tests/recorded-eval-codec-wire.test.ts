@@ -67,3 +67,33 @@ describe("runRecordedEval — hand-rolled-codec block next-action wire shape", (
     expect(report.next_actions).not.toContain("dry_run_workflow");
   });
 });
+
+// #5: the next_action union is Zod-backed, so an out-of-contract value is
+// rejected at the boundary instead of silently riding the wire.
+describe("MissingEvidenceNextActionSchema — runtime guard at the wire boundary", () => {
+  test("accepts the two canonical next-actions", async () => {
+    const { MissingEvidenceNextActionSchema, MISSING_EVIDENCE_NEXT_ACTIONS } = await import(
+      "../../recorded-eval.ts"
+    );
+    expect(MissingEvidenceNextActionSchema.parse(MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP)).toBe(
+      "dry_run_workflow",
+    );
+    expect(MissingEvidenceNextActionSchema.parse(MISSING_EVIDENCE_NEXT_ACTIONS.CODEC_REWRITE)).toBe(
+      "rewrite_with_sk_base64",
+    );
+  });
+
+  test("rejects an unknown next-action (the gap the bare TS union left open)", async () => {
+    const { MissingEvidenceNextActionSchema, RecordedEvalMissingEvidenceSchema } = await import(
+      "../../recorded-eval.ts"
+    );
+    expect(MissingEvidenceNextActionSchema.safeParse("inspect_workflow_draft").success).toBe(false);
+    expect(
+      RecordedEvalMissingEvidenceSchema.safeParse({
+        step_id: "s1",
+        reason: "x",
+        next_action: "not_a_real_action",
+      }).success,
+    ).toBe(false);
+  });
+});

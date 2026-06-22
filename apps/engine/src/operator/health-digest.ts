@@ -266,7 +266,7 @@ export async function buildOperatorHealthDigest(
   // digest read must not block on the audit write.
   if (opts?.audit !== false) {
     const requestSource = getContext().request_source;
-    const edges = takeRiskEdges(risk);
+    const edges = await takeRiskEdges(db, risk);
     // Bind the audit insert to the SAME `db` the digest read from — not the
     // global `getDb()` pool the bare `audit()` would reach for. The digest is
     // already fully parameterised on `db`; letting its audit side-effect drift
