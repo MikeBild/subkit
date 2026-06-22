@@ -272,6 +272,13 @@ function pickFields(input: unknown, fields: ReadonlyArray<string>): Record<strin
 }
 
 export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
+  // load_skill mutates conversations.loaded_skills (category tenant_write, so it
+  // audits), but it is a benign, reversible context-load the autonomous loop and
+  // MCP clients must dispatch WITHOUT a confirm step. Pin no_confirm so the
+  // tenant_write category default (confirm_before_execution) does not gate it.
+  load_skill: {
+    defaultMode: "no_confirm",
+  },
   run_workflow: {
     defaultMode: "confirm_before_execution",
     computeModeFromInput: (input) => {
