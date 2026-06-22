@@ -44,7 +44,12 @@ import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useSta
 import { uploadPath } from "./commands/files.ts";
 import { debugLog, serializeDebugError } from "./debug.ts";
 import { looksLikeAssistantConfirmRequest } from "./elicitation-intent.ts";
-import type { EngineClient, SetupValidationResponse, StatusSummary } from "./engine-client.ts";
+import type {
+  EngineClient,
+  OperatorHealthDigest,
+  SetupValidationResponse,
+  StatusSummary,
+} from "./engine-client.ts";
 import { readExtendedTurnUsage } from "./engine-client.ts";
 import { renderSuspiciousCodepoints, sanitizePathInput } from "./lib/path-input.ts";
 import { autoUploadLocalPaths } from "./lib/path-preprocessor.ts";
@@ -87,6 +92,7 @@ import {
   MentionPicker,
 } from "./repl/mention-picker.tsx";
 import { MessageContent } from "./repl/message-content.tsx";
+import { NeedsAttentionPanel } from "./repl/needs-attention-panel.tsx";
 import {
   inQuietHoursWindow,
   isOsDoNotDisturb,
@@ -107,7 +113,11 @@ import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash/handler.ts";
 import { SlashSuggest } from "./repl/slash/SlashSuggest.tsx";
 import { Spinner } from "./repl/spinner.tsx";
-import { StarterActions, starterActionsForPersona } from "./repl/starter-actions.tsx";
+import {
+  type StarterAction,
+  StarterActions,
+  starterActionsForPersona,
+} from "./repl/starter-actions.tsx";
 import {
   buildStatusLine,
   type PermissionMode,
@@ -116,6 +126,7 @@ import {
   type StatusLineInput,
 } from "./repl/status-line/render.ts";
 import {
+  findTaskActionById,
   resolveTaskActionSuggestion,
   starterTaskActionsForPersona,
   type TaskAction,
@@ -172,6 +183,11 @@ export interface InkAppProps {
     last_ok_at: number | null;
     last_error_at: number | null;
   } | null;
+  /** Engine operator health digest fetched once at REPL open. Rendered as
+   *  the in-context needs-attention panel below the welcome box and used
+   *  to inject the "guided triage" starter action. `null` when the tenant
+   *  is all-clear or the engine is unreachable. */
+  digestSnapshot?: OperatorHealthDigest | null;
   /** Active permission mode for the status line badge. */
   permissionMode?: PermissionMode;
   /**
@@ -1375,6 +1391,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   statusSnapshot,
   setupSnapshot,
   connectionSnapshot,
+  digestSnapshot,
   permissionMode = "ask",
   historyPath,
   onPrompt,
@@ -1494,11 +1511,42 @@ export const InkApp: React.FC<InkAppProps> = ({
       cancelled = true;
     };
   }, []);
-  const starterActions = useMemo(() => starterActionsForPersona(persona.label), [persona.label]);
-  const starterTaskActions = useMemo(
-    () => starterTaskActionsForPersona(persona.label, persona.probe),
-    [persona.label, persona.probe],
+  // The startup health digest renders as in-context chrome below the
+  // welcome box (not a faux conversation turn). When it carries failures
+  // we also prepend a "guided triage" starter action keyed "1" and
+  // renumber the persona defaults so the number-key handler stays aligned.
+  const hasDigest = Boolean(
+    digestSnapshot &&
+      (digestSnapshot.failure_groups.length > 0 ||
+        digestSnapshot.risk.length > 0 ||
+        digestSnapshot.patch_candidates.pending > 0),
   );
+  const digestFailCount = digestSnapshot
+    ? digestSnapshot.failure_groups.reduce((acc, g) => acc + g.count, 0)
+    : 0;
+  const injectTriage = hasDigest && (digestSnapshot?.failure_groups.length ?? 0) > 0;
+  const digestNode = hasDigest ? <NeedsAttentionPanel digest={digestSnapshot!} /> : null;
+
+  const starterActions = useMemo(() => {
+    const base = starterActionsForPersona(persona.label);
+    if (!injectTriage) return base;
+    const triage: StarterAction = {
+      key: "1",
+      label: `Fix ${digestFailCount} failure${digestFailCount === 1 ? "" : "s"}`,
+      detail: "guided triage",
+      actionId: "triage-digest-failures",
+    };
+    const renumbered = base.map((action, i) => ({ ...action, key: String(Math.min(i + 2, 9)) }));
+    return [triage, ...renumbered];
+  }, [persona.label, injectTriage, digestFailCount, digestSnapshot]);
+  const starterTaskActions = useMemo(() => {
+    const base = starterTaskActionsForPersona(persona.label, persona.probe);
+    if (!injectTriage) return base;
+    const triageAction = findTaskActionById("triage-digest-failures");
+    if (!triageAction) return base;
+    const renumbered = base.map((action, i) => ({ ...action, key: String(Math.min(i + 2, 9)) }));
+    return [{ ...triageAction, key: "1" }, ...renumbered];
+  }, [persona.label, persona.probe, injectTriage, digestSnapshot]);
   const availableTaskActions = useMemo(
     () =>
       taskActionsForContext(
@@ -3981,6 +4029,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         whatsNew={whatsNew}
         signedIn={Boolean(statusSnapshot?.user.email) || persona.tenant !== null}
       />
+      {digestNode}
       {starterActions.length > 0 ? <StarterActions actions={starterActions} /> : null}
       {resumeSummary ? (
         <ResumeSummaryCard

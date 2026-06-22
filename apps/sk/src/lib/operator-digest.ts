@@ -2,11 +2,11 @@
 //
 // The engine computes a deterministic health digest (failed runs grouped
 // by root cause + tagged by origin, plus self-healing fixes awaiting
-// review). At REPL open we fetch it once and render it as a colored,
-// assistant-voiced block — subkit speaking first — then offer to walk
-// through the fixes. The structured digest is also folded into the first
-// turn's memory so replying "yes" actually grounds the LLM in the same
-// issues. Best-effort: any failure here must never block the REPL.
+// review). At REPL open we fetch it once: the structured digest is
+// rendered as in-context chrome by repl/needs-attention-panel.tsx, and
+// folded into the first turn's memory via digestAsContext so the injected
+// "guided triage" starter action grounds the LLM in the same issues.
+// Best-effort: any failure here must never block the REPL.
 
 import pc from "picocolors";
 import type { EngineClient, OperatorHealthDigest, RiskSeverity } from "../engine-client.ts";
@@ -47,68 +47,6 @@ export async function riskSummaryLine(client: EngineClient): Promise<string | nu
   const color = RISK_COLOR[top.severity];
   const more = digest.risk.length > 1 ? pc.dim(` (+${digest.risk.length - 1} more)`) : "";
   return `${color("●")} ${color(`[${top.severity}]`)} ${top.headline}${more}`;
-}
-
-const ORIGIN_LABEL: Record<string, string> = {
-  authoring: "authoring",
-  manual: "test run",
-  scheduled: "scheduled",
-  mixed: "mixed",
-};
-
-/** Colored, assistant-voiced render for the terminal. Scheduled failures
- *  (real production incidents) lead in red; authoring/manual trial-runs
- *  are yellow; self-healing fixes are cyan. */
-export function renderDigestBanner(digest: OperatorHealthDigest): string {
-  const lines: string[] = [];
-  lines.push(pc.bold(pc.cyan("subkit")) + pc.dim("  ·  startup health check"));
-  lines.push("");
-
-  const scheduled = digest.failure_groups.filter((g) => g.origin === "scheduled");
-  const headlineColor = scheduled.length > 0 ? pc.red : pc.yellow;
-  lines.push(headlineColor(`I noticed a few things since we last talked — ${digest.headline}`));
-  lines.push("");
-
-  for (const g of digest.failure_groups) {
-    const sev = g.origin === "scheduled" ? pc.red : pc.yellow;
-    const label = g.workflow_name ?? g.workflow_id ?? "(draft)";
-    const tag = pc.dim(`[${ORIGIN_LABEL[g.origin] ?? g.origin}]`);
-    const times = g.count === 1 ? "failed once" : `failed ${g.count}×`;
-    lines.push(`  ${sev("●")} ${tag} ${pc.bold(label)} — ${times}`);
-    lines.push(`      ${pc.dim(g.cause)}`);
-  }
-
-  if (digest.patch_candidates.pending > 0) {
-    lines.push("");
-    const n = digest.patch_candidates.pending;
-    lines.push(pc.cyan(`  ${n} self-healing fix${n === 1 ? "" : "es"} awaiting your review:`));
-    for (const p of digest.patch_candidates.items.slice(0, 5)) {
-      const label = p.workflow_name ?? p.workflow_id ?? "(workflow)";
-      lines.push(
-        `      ${pc.cyan("•")} ${pc.bold(label)} ${pc.dim(`[${p.classification}]`)} — ${p.summary}`,
-      );
-    }
-  }
-
-  // Leading-indicator risk signals — the things trending toward an incident
-  // that haven't failed a run yet. Severity-colored so a critical stands out.
-  if (digest.risk.length > 0) {
-    lines.push("");
-    lines.push(pc.bold("  Risk signals") + pc.dim("  (leading indicators):"));
-    for (const r of digest.risk) {
-      const color = RISK_COLOR[r.severity];
-      lines.push(`      ${color("●")} ${color(`[${r.severity}]`)} ${pc.bold(r.headline)}`);
-      lines.push(`        ${pc.dim(r.detail)}`);
-    }
-  }
-
-  lines.push("");
-  lines.push(
-    pc.dim("  Want me to walk through fixes? Reply ") +
-      pc.bold("yes") +
-      pc.dim(" — or just start typing."),
-  );
-  return lines.join("\n");
 }
 
 /** Plain-text context block folded into the first turn's memory so the

@@ -53,7 +53,7 @@ import { loadBootstrap, type SkBootstrapSnapshot } from "./lib/bootstrap.ts";
 // full UX-gating allow-set) and fall back to the legacy tier-filtered
 // `whoami + rbac:can` fan-out for older engines. `loadBootstrap` owns
 // the disk cache + 3-tier resolution.
-import { digestAsContext, fetchOperatorDigest, renderDigestBanner } from "./lib/operator-digest.ts";
+import { digestAsContext, fetchOperatorDigest } from "./lib/operator-digest.ts";
 
 interface ResolvedPersona {
   label: string;
@@ -863,6 +863,20 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     }
   }
 
+  // Engine-seeded startup health check. Fetch the deterministic operator
+  // digest (failed runs grouped by root cause + tagged by origin, plus
+  // self-healing fixes awaiting review and leading-indicator risk
+  // signals). It renders as in-context chrome below the welcome box via
+  // <NeedsAttentionPanel> (threaded in as digestSnapshot), and its
+  // context is stashed so the injected "guided triage" starter action
+  // grounds the LLM's first turn in the same issues. Best-effort; never
+  // blocks startup. Fetched here (before RootApp) so there is no TDZ
+  // ambiguity when RootApp's render references operatorDigest.
+  const operatorDigest = await fetchOperatorDigest(client);
+  if (operatorDigest) {
+    pendingDigestContext = digestAsContext(operatorDigest);
+  }
+
   // Small root wrapper that subscribes to status + persona updates and
   // feeds the latest snapshots into <InkApp> as props. The `key` is
   // bumped on every /profile switch so React fully remounts the app —
@@ -922,6 +936,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       statusSnapshot: snap,
       setupSnapshot: setup,
       connectionSnapshot: conn,
+      digestSnapshot: operatorDigest ?? null,
       onPrompt,
       onElicitResponse,
       onSlash,
@@ -941,18 +956,6 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       pushNotifyOverride,
     });
   };
-
-  // Engine-seeded startup health check — subkit speaks first. Fetch the
-  // deterministic operator digest (failed runs grouped by root cause +
-  // tagged by origin, plus self-healing fixes awaiting review), render
-  // it as a colored assistant-voiced block above the live UI, and stash
-  // its context so the operator's first reply ("yes") grounds the LLM in
-  // the same issues. Best-effort; never blocks startup.
-  const operatorDigest = await fetchOperatorDigest(client);
-  if (operatorDigest) {
-    process.stdout.write(`\n${renderDigestBanner(operatorDigest)}\n\n`);
-    pendingDigestContext = digestAsContext(operatorDigest);
-  }
 
   // Enable bracketed paste mode before mounting Ink so terminal wraps
   // multi-line pastes with ESC[200~/ESC[201~ markers — the input

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  findTaskActionById,
   resolveTaskActionSuggestion,
   searchTaskActions,
   starterTaskActionsForPersona,
+  TASK_ACTIONS,
   taskActionsForContext,
   taskActionsForPersona,
 } from "../repl/task-actions.ts";
@@ -63,5 +65,58 @@ describe("task action catalog", () => {
     }).map((action) => action.id);
     expect(visible).toContain("preview-draft");
     expect(visible).not.toContain("probe-draft");
+  });
+});
+
+describe("triage-digest-failures TaskAction", () => {
+  test("action exists in the TASK_ACTIONS catalog", () => {
+    const action = TASK_ACTIONS.find((a) => a.id === "triage-digest-failures");
+    expect(action).toBeDefined();
+  });
+
+  test("invoke.kind is 'prompt' (not slash or builtin)", () => {
+    const action = findTaskActionById("triage-digest-failures");
+    expect(action?.invoke.kind).toBe("prompt");
+  });
+
+  test("invoke.prompt is non-empty and references triage / digest", () => {
+    const action = findTaskActionById("triage-digest-failures");
+    expect(action?.invoke.kind).toBe("prompt");
+    if (action?.invoke.kind === "prompt") {
+      expect(action.invoke.prompt.length).toBeGreaterThan(0);
+      // The prompt must direct the LLM toward the digest content, not invent issues
+      expect(action.invoke.prompt).toContain("digest");
+    }
+  });
+
+  test("action has 'conversation:write' permission requirement", () => {
+    const action = findTaskActionById("triage-digest-failures");
+    expect(action?.requires).toBe("conversation:write");
+  });
+
+  test("action is findable by its 'triage' alias", () => {
+    const found = resolveTaskActionSuggestion("triage");
+    expect(found?.id).toBe("triage-digest-failures");
+  });
+
+  test("action is findable by 'fix failures' alias", () => {
+    const found = resolveTaskActionSuggestion("fix failures");
+    expect(found?.id).toBe("triage-digest-failures");
+  });
+
+  test("action is hidden from an enduser persona lacking conversation:write", () => {
+    const noWrite: PersonaProbe = {
+      allows: (permission) => new Set(["conversation:read", "conversation:list"]).has(permission),
+    };
+    const visible = taskActionsForPersona(noWrite).map((action) => action.id);
+    expect(visible).not.toContain("triage-digest-failures");
+  });
+
+  test("action is visible to a persona with conversation:write", () => {
+    const withWrite: PersonaProbe = {
+      allows: (permission) => new Set(["conversation:read", "conversation:write"]).has(permission),
+    };
+    const visible = taskActionsForPersona(withWrite).map((action) => action.id);
+    expect(visible).toContain("triage-digest-failures");
   });
 });
