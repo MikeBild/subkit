@@ -314,6 +314,26 @@ is one of `success`, `failed`, `rollback` — kept in lockstep with the
 audit-action vocabulary so a SRE joining the metric to `audit_log`
 doesn't have to remember an off-by-one.
 
+### Risk-signal edges (`risk_signal_edges`)
+
+Added in v7.8.0 (`db/schema/audit.ts`, used by `operator/risk-signals.ts`),
+`risk_signal_edges` is the shared, cross-replica edge-state store that
+backs risk-signal raising. Risk signals describe host-global infrastructure
+(one Postgres pool, one set of DLQs, one engine RSS), so a standing
+critical must be audited exactly once per `false→true` edge across the
+whole deployment — not once per digest read, per reading tenant, or per
+replica. The signal builder runs on every MCP connect, resource read, REPL
+start, and status call, so auditing inline would otherwise flood `audit_log`.
+
+The table is keyed by signal `kind` (host-global, no `tenant_id`). Each
+replica claims an edge through a microsecond-safe `INSERT … ON CONFLICT …
+WHERE` CAS (`operator/risk-signals.ts` around lines 234–251) so exactly one
+replica wins the `false→true` transition and the others observe no edge —
+two replicas cannot double-raise the same edge. The winning replica audits
+`RISK_SIGNAL_RAISED` (under the system tenant, since the signal is
+host-scoped). Recovery clears the row, so a recovered-then-recurring signal
+re-fires exactly once on its next occurrence.
+
 ### Rollback
 
 The updater retains the last 3 signed binaries under

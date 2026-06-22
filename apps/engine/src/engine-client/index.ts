@@ -277,8 +277,11 @@ export class EngineClient {
   };
 
   audit = {
+    // tenant_id is injected here from the bound principal — callers must NOT
+    // supply it (Omit keeps it off the caller-facing type so a tenant can never
+    // query another tenant's audit log).
     query: (
-      filters?: Parameters<typeof queryAuditLog>[1],
+      filters?: Omit<Parameters<typeof queryAuditLog>[1], "tenant_id">,
       opts?: Parameters<typeof queryAuditLog>[2],
     ) => queryAuditLog(this.db, { ...(filters ?? {}), tenant_id: this.tenant_id }, opts),
     get: (id: string) => getAuditRowById(this.db, this.tenant_id, id),

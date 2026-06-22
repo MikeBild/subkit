@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import type { AuditQueryFilters } from "../../../audit/index.ts";
 import type { ConversationTool } from "../index.ts";
 
 const QueryInput = z
@@ -19,13 +20,12 @@ export const queryAuditTool: ConversationTool = {
   category: "tenant_read",
   async execute(ctx, rawArgs) {
     const args = QueryInput.parse(rawArgs);
-    const filters: Record<string, string> = {};
+    const filters: Partial<Omit<AuditQueryFilters, "tenant_id">> = {};
     if (args.resource_type) filters.resource_type = args.resource_type;
     if (args.resource_id) filters.resource_id = args.resource_id;
-    if (args.action) filters.action = args.action;
+    if (args.action) filters.actions = [args.action];
     const { items, next_cursor } = await ctx.engineClient.audit.query(
-      // biome-ignore lint/suspicious/noExplicitAny: audit query filter shape
-      filters as any,
+      filters,
       args.limit !== undefined ? { limit: args.limit } : undefined,
     );
     return { ok: true, data: { entries: items, next_cursor } };
