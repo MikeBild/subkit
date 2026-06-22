@@ -16,6 +16,10 @@ import {
   setDbPoolStats,
   setDlqJobCount,
 } from "./instrumentation.ts";
+import {
+  _resetConnectorSlugBudgetForTests,
+  boundedConnectorSlug,
+} from "./metric-label-allowlists.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "./metrics.ts";
 import {
   _resetTransientRetryRateForTests,
@@ -26,6 +30,7 @@ beforeEach(() => {
   resetMetricsRegistryForTests();
   _resetRssHighWaterForTests();
   _resetTransientRetryRateForTests();
+  _resetConnectorSlugBudgetForTests();
 });
 
 describe("setDbPoolStats", () => {
@@ -166,6 +171,19 @@ describe("recordProcessRssHighWater", () => {
     const snap = getMetrics().snapshot();
     const entry = snap.find((s) => s.name === METRIC_NAMES.PROCESS_MEMORY_RSS_HIGH_WATER_BYTES);
     expect(entry?.samples[0]?.value).toBe(3000);
+  });
+});
+
+describe("boundedConnectorSlug (cardinality cap)", () => {
+  test("passes through known slugs and collapses overflow to 'other'", () => {
+    // First 200 distinct slugs each keep their identity.
+    for (let i = 0; i < 200; i++) {
+      expect(boundedConnectorSlug(`slug-${i}`)).toBe(`slug-${i}`);
+    }
+    // An already-seen slug still passes through (idempotent).
+    expect(boundedConnectorSlug("slug-0")).toBe("slug-0");
+    // The 201st DISTINCT slug overflows the budget → "other".
+    expect(boundedConnectorSlug("slug-200")).toBe("other");
   });
 });
 

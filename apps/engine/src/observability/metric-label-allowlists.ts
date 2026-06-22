@@ -35,3 +35,27 @@ export const CONNECTOR_HEALTH_VALUES = new Set<string>([
   "rate_limited",
   "degraded",
 ]);
+
+// The connector `slug` on `connector_call_total` is tenant-controlled (a tenant
+// mints its own connectors), so unlike a fixed enum it can't use a static
+// allow-list. Bound it with a per-process cardinality cap instead: the first N
+// distinct slugs seen each get their own series; everything past the cap
+// collapses to "other". This caps the slug dimension at N+1 series per process
+// regardless of adversarial connector churn or a typoed-slug storm — the same
+// "unknown → other" guarantee the static allow-lists give, sized for a label
+// whose vocabulary is open. N is generous: a real tenant has tens of connectors.
+const CONNECTOR_SLUG_CARDINALITY_CAP = 200;
+const _seenConnectorSlugs = new Set<string>();
+export function boundedConnectorSlug(slug: string): string {
+  if (_seenConnectorSlugs.has(slug)) return slug;
+  if (_seenConnectorSlugs.size < CONNECTOR_SLUG_CARDINALITY_CAP) {
+    _seenConnectorSlugs.add(slug);
+    return slug;
+  }
+  return "other";
+}
+
+/** Test-only — reset the per-process slug cardinality budget. */
+export function _resetConnectorSlugBudgetForTests(): void {
+  _seenConnectorSlugs.clear();
+}

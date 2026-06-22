@@ -6,7 +6,11 @@
 // observability code from ever taking down a request path.
 
 import { errorFields, logger } from "../logging/logger.ts";
-import { CONNECTOR_HEALTH_VALUES, DB_TRANSIENT_RETRY_LABELS } from "./metric-label-allowlists.ts";
+import {
+  boundedConnectorSlug,
+  CONNECTOR_HEALTH_VALUES,
+  DB_TRANSIENT_RETRY_LABELS,
+} from "./metric-label-allowlists.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 
 function safe(fn: () => void): void {
@@ -196,7 +200,9 @@ export function setDlqJobCount(queue: string, count: number): void {
 export function recordConnectorCall(args: { slug: string; health: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.CONNECTOR_CALL_TOTAL, {
-      slug: args.slug,
+      // `slug` is tenant-controlled; bound its cardinality (overflow → "other")
+      // so connector churn can't blow up the Prometheus series count.
+      slug: boundedConnectorSlug(args.slug),
       health: CONNECTOR_HEALTH_VALUES.has(args.health) ? args.health : "other",
     });
   });

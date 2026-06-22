@@ -289,6 +289,10 @@ export async function buildOperatorHealthDigest(
             metric: r.metric,
             value: r.value,
             threshold: r.threshold,
+            // Boot-artifact discriminator: a low uptime means this raise is the
+            // first digest read after a restart re-firing a standing critical,
+            // not a fresh live transition.
+            uptime_s: Math.round(process.uptime()),
             ...(requestSource ? { request_source: requestSource } : {}),
           }),
         },

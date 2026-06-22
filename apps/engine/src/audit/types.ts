@@ -963,6 +963,9 @@ export const RiskSignalRaisedMetadataSchema = z.object({
   metric: z.string(),
   value: z.number(),
   threshold: z.number(),
+  /** Process uptime (s) at the edge — a low value flags a post-restart
+   *  re-raise of a standing critical vs. a live transition (see call site). */
+  uptime_s: z.number().optional(),
   request_source: RequestSourceSchema.optional(),
 });
 export type RiskSignalRaisedMetadata = z.infer<typeof RiskSignalRaisedMetadataSchema>;

@@ -23,10 +23,12 @@ import {
   recordLlmFallbackInvocation,
   setDlqJobCount,
 } from "./instrumentation.ts";
+import { _resetConnectorSlugBudgetForTests } from "./metric-label-allowlists.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "./metrics.ts";
 
 beforeEach(() => {
   resetMetricsRegistryForTests();
+  _resetConnectorSlugBudgetForTests();
   _resetRssHighWaterForTests();
 });
 
