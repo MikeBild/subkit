@@ -50,8 +50,7 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
               <Text bold>{label}</Text>
               <Text> — {times}</Text>
             </Box>
-            <Box>
-              <Text dimColor>{"    "}</Text>
+            <Box paddingLeft={4}>
               <Text dimColor>{g.cause}</Text>
             </Box>
           </Box>
@@ -91,8 +90,7 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
                   <Text color={color}>● </Text>
                   <Text>{r.headline}</Text>
                 </Box>
-                <Box>
-                  <Text dimColor>{"    "}</Text>
+                <Box paddingLeft={4}>
                   <Text dimColor>{r.detail}</Text>
                 </Box>
               </Box>
