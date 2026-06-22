@@ -3,8 +3,9 @@
 // Reproduces the real bug we hit in production: drizzle-orm's stock
 // migrator skipped migrations silently when journal timestamps were
 // non-monotonic ("reported success, applied nothing"). Our custom
-// migrator uses hash-set membership and treats position-greater-than-
-// count as an already-applied marker.
+// migrator identifies an applied migration by its stable `tag` (a row in
+// `drizzle.__drizzle_migrations`), so an edited .sql backfills its hash
+// without re-running, and a genuinely-new migration always applies.
 //
 // Scope:
 //   1. re-running the migrator on an already-migrated DB is a no-op
@@ -52,9 +53,9 @@ describe("migration runner", () => {
 
   test("hash drift — a mutated stored hash is backfilled, not re-applied", async () => {
     // Mutate the highest-id row's stored hash. runMigrations should
-    // see "hash not in table" BUT positional fallback (count > idx)
-    // says "already applied" — so it updates the hash to the current
-    // file hash and returns without running the SQL.
+    // still recognise the migration by its `tag` (unchanged) — so it
+    // updates the stored hash back to the current file hash and returns
+    // without re-running the SQL.
     await ctx.db.execute(
       sql`UPDATE drizzle.__drizzle_migrations SET hash = 'deadbeef_fake_hash_drift' WHERE id = (SELECT max(id) FROM drizzle.__drizzle_migrations)`,
     );

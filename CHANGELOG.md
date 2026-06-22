@@ -1,5 +1,27 @@
 # Changelog
 
+## [7.7.1]
+
+Fixes a latent migration-runner bug that let a new migration silently skip on
+long-lived databases — the one that left v7.7.0's `conversations.turn_count`
+uncreated on prod.
+
+- **Migrations are tracked by stable tag, not row position.** `migrate.ts`
+  previously recognised an already-applied migration with a positional fallback
+  (`tracking-row-count > migration-idx`). On any database whose
+  `drizzle.__drizzle_migrations` carries more rows than the embedded set — the
+  normal state after the v6 baseline squash, which left the pre-squash rows in
+  place — that fallback mis-fired and skipped every genuinely-new migration. The
+  runner now records and matches each migration by its `tag`: an edited `.sql`
+  still backfills its hash without re-running, the synthetic squashed baseline is
+  stamped rather than re-run, and a genuinely-new migration always applies
+  regardless of how many historical rows the tracking table holds. Legacy
+  hash-only rows are adopted (tag stamped) on first boot. Adds a regression test
+  that reproduces the inflated-count state fresh test DBs never exhibited.
+- Prod was hot-patched for v7.7.0 (the `turn_count` column + `loaded_skills`
+  conversion applied by hand); this release prevents recurrence on the next
+  migration.
+
 ## [7.7.0]
 
 The conversation prompt stops paying the full cost of every skill it has ever
