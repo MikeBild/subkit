@@ -85,26 +85,40 @@ async function ensureMigrationsTable(db: Db): Promise<void> {
       )
     `,
   );
+  // Migration IDENTITY column. drizzle's stock table tracks only `hash`,
+  // which forces a positional (row-count) fallback to recognise a
+  // migration whose .sql was edited after it was applied. That fallback
+  // mis-fires on any DB whose `__drizzle_migrations` carries MORE rows
+  // than the embedded set — exactly the post-baseline-squash state of a
+  // long-lived DB (its pre-squash rows were never collapsed). The result
+  // was that every genuinely-new migration was silently skipped on such a
+  // DB (prod shipped v7.7.0 with `conversations.turn_count` never
+  // created). Tracking the stable `tag` removes the positional guess: a
+  // migration is applied iff its tag is recorded, full stop.
+  await db.execute(
+    sql`ALTER TABLE "drizzle"."__drizzle_migrations" ADD COLUMN IF NOT EXISTS tag text`,
+  );
 }
 
 interface AppliedState {
   hashes: Set<string>;
-  /**
-   * Count of applied migrations — used as a positional fallback for
-   * migrations whose file was edited after they were applied (hash no
-   * longer matches). The drizzle table's `id` is a SERIAL that
-   * increments in journal-idx order, so the Nth-inserted row
-   * corresponds to journal idx `N-1`.
-   */
+  /** Tags of migrations already recorded as applied — the authoritative
+   *  applied-set. A migration is applied iff its tag is here. */
+  tags: Set<string>;
+  /** Total tracking rows. Used only to recognise the synthetic squashed
+   *  baseline (idx 0): a DB with any migration history already has the
+   *  baseline schema, so the baseline is stamped rather than re-run. */
   count: number;
 }
 
 async function readAppliedHashes(db: Db): Promise<AppliedState> {
   const rows = (await db.execute(
-    sql`SELECT hash FROM "drizzle"."__drizzle_migrations"`,
-  )) as unknown as { rows: Array<{ hash: string }> };
-  const hashes = new Set((rows.rows ?? []).map((r) => r.hash));
-  return { hashes, count: hashes.size };
+    sql`SELECT hash, tag FROM "drizzle"."__drizzle_migrations"`,
+  )) as unknown as { rows: Array<{ hash: string; tag: string | null }> };
+  const dbRows = rows.rows ?? [];
+  const hashes = new Set(dbRows.map((r) => r.hash));
+  const tags = new Set(dbRows.map((r) => r.tag).filter((t): t is string => t != null));
+  return { hashes, tags, count: dbRows.length };
 }
 
 /**
@@ -129,30 +143,59 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
   let skippedCount = 0;
   let hashDriftCount = 0;
   for (const m of EMBEDDED_MIGRATIONS) {
-    if (applied.hashes.has(m.hash)) {
-      skippedCount++;
+    // Authoritative: a migration is applied iff its tag is recorded.
+    if (applied.tags.has(m.tag)) {
+      if (applied.hashes.has(m.hash)) {
+        skippedCount++;
+      } else {
+        // Tag recorded but hash differs → the .sql was edited after it was
+        // applied. Backfill the stored hash; never re-run.
+        hashDriftCount++;
+        logger.warn({
+          module: "db",
+          action: "migrate.hash_drift",
+          msg: "migration file hash changed since it was applied — backfilling stored hash",
+          idx: m.idx,
+          tag: m.tag,
+          new_hash: m.hash,
+        });
+        await db.execute(
+          sql`UPDATE "drizzle"."__drizzle_migrations" SET hash = ${m.hash} WHERE tag = ${m.tag}`,
+        );
+        applied.hashes.add(m.hash);
+      }
       continue;
     }
-    // Positional fallback: the drizzle.__drizzle_migrations table's
-    // SERIAL id increments in journal-idx order, so if `count` already
-    // covers this migration's idx, it was applied under a different
-    // file hash (someone edited the .sql after it was applied). Treat
-    // as applied but backfill the current hash so subsequent runs see
-    // hash parity.
-    if (applied.count > m.idx) {
+    // Legacy adoption: a row from before tag-tracking whose hash matches
+    // this migration. It IS applied — stamp its tag so future boots match
+    // by identity, then skip.
+    if (applied.hashes.has(m.hash)) {
+      skippedCount++;
+      await db.execute(
+        sql`UPDATE "drizzle"."__drizzle_migrations" SET tag = ${m.tag} WHERE hash = ${m.hash} AND tag IS NULL`,
+      );
+      applied.tags.add(m.tag);
+      continue;
+    }
+    // Synthetic squashed baseline (idx 0): its hash is never present on a
+    // DB migrated through the pre-squash lineage, but the schema already
+    // exists whenever the DB has any migration history. Stamp it instead
+    // of re-running the huge, non-idempotent baseline body.
+    if (m.idx === 0 && applied.count > 0) {
       hashDriftCount++;
       logger.warn({
         module: "db",
         action: "migrate.hash_drift",
-        msg: "migration file hash changed since it was applied — backfilling stored hash",
+        msg: "baseline already applied under a pre-squash lineage — stamping tag + hash",
         idx: m.idx,
         tag: m.tag,
         new_hash: m.hash,
       });
       await db.execute(
-        sql`UPDATE "drizzle"."__drizzle_migrations" SET hash = ${m.hash} WHERE id = ${m.idx + 1}`,
+        sql`INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at, tag) VALUES (${m.hash}, ${m.when}, ${m.tag})`,
       );
       applied.hashes.add(m.hash);
+      applied.tags.add(m.tag);
       continue;
     }
     logger.info({
@@ -174,10 +217,11 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
         await tx.execute(sql.raw(stmt));
       }
       await tx.execute(
-        sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at") VALUES (${m.hash}, ${m.when})`,
+        sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at", "tag") VALUES (${m.hash}, ${m.when}, ${m.tag})`,
       );
     });
     applied.hashes.add(m.hash);
+    applied.tags.add(m.tag);
     applied.count += 1;
     appliedCount++;
     // Per-migration timing — a slow migration on boot used to be an
