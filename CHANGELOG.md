@@ -1,5 +1,37 @@
 # Changelog
 
+## [7.6.0]
+
+Runtime incidents become diagnosable in one pass, and the engine now warns
+operators *before* a failure — the bounce that took manual `journalctl` grepping
+to root-cause is now a structured, classified, correlated log line plus a
+leading-indicator risk surfaced at the `sk` REPL, in `/v1/operator/health-digest`,
+and to a connecting MCP client.
+
+- **Errors are discoverable.** Every `errorFields(err)` log now carries an
+  `error_class` facet (`transient` / `upstream_4xx` / `timeout` / `validation` /
+  `logic` / …, mapped from the existing DB/HTTP/provider classifiers) plus the
+  error's `cause` and `stack` — so "all transient DB errors" or "the real reason
+  behind a DrizzleQueryError" is a single grep, not a forensic reconstruction.
+- **A request's trace survives the queue boundary.** Worker handlers re-establish
+  the enqueuing request's `trace_id` / `tenant_id` and a `request_source:"queue"`
+  via a context bridge, so one trace_id now stitches HTTP → queued job → execution.
+  A configurable per-field log truncation cap bounds a tool that interpolates a
+  large payload into a message.
+- **Predictive-maintenance telemetry.** New gauges/counters for DB-pool
+  saturation, a *windowed* transient-retry rate, dead-letter-queue depth,
+  connector health mix, LLM latency + fallback fraction, and RSS high-water —
+  all on `/metrics`. They feed six leading-indicator risk signals (pool, DLQ,
+  retry-rate, connector-unhealthy, LLM-fallback, memory) computed once in the
+  operator health digest.
+- **The digest speaks first.** `GET /v1/operator/health-digest` gains a
+  deterministic `risk[]` block (gated on `stats:read`); the `sk` REPL renders it
+  at startup and `sk login` shows a one-line risk summary; a connecting MCP
+  client receives the same summary as `initialize` instructions and can pull the
+  live `subkit://operator/health-digest` resource — all RBAC-gated, with
+  `operator.risk_signal_raised` / `_cleared` audited on the transition edge under
+  the system tenant.
+
 ## [7.4.0]
 
 Runtime-log hardening, authoring-quality lints, and a count-consistency critic check — all grounded in production runtime-log analysis.
