@@ -44,7 +44,12 @@ import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useSta
 import { uploadPath } from "./commands/files.ts";
 import { debugLog, serializeDebugError } from "./debug.ts";
 import { looksLikeAssistantConfirmRequest } from "./elicitation-intent.ts";
-import type { EngineClient, SetupValidationResponse, StatusSummary } from "./engine-client.ts";
+import type {
+  EngineClient,
+  OperatorHealthDigest,
+  SetupValidationResponse,
+  StatusSummary,
+} from "./engine-client.ts";
 import { readExtendedTurnUsage } from "./engine-client.ts";
 import { renderSuspiciousCodepoints, sanitizePathInput } from "./lib/path-input.ts";
 import { autoUploadLocalPaths } from "./lib/path-preprocessor.ts";
@@ -87,6 +92,7 @@ import {
   MentionPicker,
 } from "./repl/mention-picker.tsx";
 import { MessageContent } from "./repl/message-content.tsx";
+import { NeedsAttentionPanel } from "./repl/needs-attention-panel.tsx";
 import {
   inQuietHoursWindow,
   isOsDoNotDisturb,
@@ -107,7 +113,8 @@ import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash/handler.ts";
 import { SlashSuggest } from "./repl/slash/SlashSuggest.tsx";
 import { Spinner } from "./repl/spinner.tsx";
-import { StarterActions, starterActionsForPersona } from "./repl/starter-actions.tsx";
+import { buildStarterActions, buildStarterTaskActions } from "./repl/starter-action-injection.ts";
+import { StarterActions } from "./repl/starter-actions.tsx";
 import {
   buildStatusLine,
   type PermissionMode,
@@ -117,7 +124,6 @@ import {
 } from "./repl/status-line/render.ts";
 import {
   resolveTaskActionSuggestion,
-  starterTaskActionsForPersona,
   type TaskAction,
   taskActionsForContext,
 } from "./repl/task-actions.ts";
@@ -172,6 +178,11 @@ export interface InkAppProps {
     last_ok_at: number | null;
     last_error_at: number | null;
   } | null;
+  /** Engine operator health digest fetched once at REPL open. Rendered as
+   *  the in-context needs-attention panel below the welcome box and used
+   *  to inject the "guided triage" starter action. `null` when the tenant
+   *  is all-clear or the engine is unreachable. */
+  digestSnapshot?: OperatorHealthDigest | null;
   /** Active permission mode for the status line badge. */
   permissionMode?: PermissionMode;
   /**
@@ -1375,6 +1386,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   statusSnapshot,
   setupSnapshot,
   connectionSnapshot,
+  digestSnapshot,
   permissionMode = "ask",
   historyPath,
   onPrompt,
@@ -1494,10 +1506,26 @@ export const InkApp: React.FC<InkAppProps> = ({
       cancelled = true;
     };
   }, []);
-  const starterActions = useMemo(() => starterActionsForPersona(persona.label), [persona.label]);
+  // Digest = in-context chrome below the welcome box; with failures (and the
+  // permission to act) it also injects a key-"1" guided-triage starter action.
+  const hasDigest = Boolean(
+    digestSnapshot &&
+      (digestSnapshot.failure_groups.length > 0 ||
+        digestSnapshot.risk.length > 0 ||
+        digestSnapshot.patch_candidates.pending > 0),
+  );
+  const digestNode =
+    hasDigest && digestSnapshot ? <NeedsAttentionPanel digest={digestSnapshot} /> : null;
+
+  // Render + dispatch lists derive injection (and the RBAC gate) from the same
+  // (probe, digest) inputs inside the shared helpers, so they can't drift.
+  const starterActions = useMemo(
+    () => buildStarterActions(persona.label, persona.probe, digestSnapshot),
+    [persona.label, persona.probe, digestSnapshot],
+  );
   const starterTaskActions = useMemo(
-    () => starterTaskActionsForPersona(persona.label, persona.probe),
-    [persona.label, persona.probe],
+    () => buildStarterTaskActions(persona.label, persona.probe, digestSnapshot),
+    [persona.label, persona.probe, digestSnapshot],
   );
   const availableTaskActions = useMemo(
     () =>
@@ -3981,6 +4009,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         whatsNew={whatsNew}
         signedIn={Boolean(statusSnapshot?.user.email) || persona.tenant !== null}
       />
+      {digestNode}
       {starterActions.length > 0 ? <StarterActions actions={starterActions} /> : null}
       {resumeSummary ? (
         <ResumeSummaryCard
