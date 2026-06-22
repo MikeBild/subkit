@@ -241,6 +241,13 @@ export type ToolCategory = "draft_write" | "tenant_read" | "tenant_write";
 export interface ConversationTool {
   readonly name: string;
   readonly description: string;
+  // No `outputSchema` field by design. Tools return an ok/data envelope the
+  // LLM reads as free-form context, not a strict wire contract — so blanket
+  // per-tool output validation across ~60 tools would buy near-zero safety
+  // while adding constant Zod-drift and maintenance. The one place a strict
+  // output shape genuinely matters — the recorded-eval evidence — is already
+  // Zod-validated at its own boundary (see conversations/recorded-eval.ts).
+  // Keep output validation targeted there; do not generalise it here.
   readonly inputSchema: z.ZodTypeAny;
   readonly category: ToolCategory;
   execute(ctx: ToolContext, args: unknown): Promise<ToolResult>;
