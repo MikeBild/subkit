@@ -11,6 +11,7 @@ import type { Db } from "../../db/client.ts";
 import { errorFields, log, logger } from "../../logging/logger.ts";
 import type { AdapterResolver } from "../../notifications/service.ts";
 import { fanoutEventRow, makeRegistryAdapterResolver } from "../../webhooks/outbound/fanout.ts";
+import { withJobContext } from "../job-context.ts";
 
 export const EVENT_FANOUT_QUEUE = "event.fanout" as const;
 
@@ -39,37 +40,45 @@ export async function registerEventFanoutHandler(
     { batchSize: 5, pollingIntervalSeconds: 1 },
     async (jobs: Job<EventFanoutJob>[]) => {
       for (const j of jobs) {
-        const started = Date.now();
-        try {
-          await fanoutEventRow(
-            db,
-            boss,
-            j.data.event_row_id,
-            resolver ? { notificationAdapterResolver: resolver } : {},
-          );
-          log.queue.job.completed({
-            msg: "event.fanout job completed",
-            queue: EVENT_FANOUT_QUEUE,
-            job_id: j.id,
-            event_row_id: j.data.event_row_id,
-            duration_ms: Date.now() - started,
-          });
-        } catch (err) {
-          log.queue.job.failed({
-            msg: "event.fanout job failed",
-            queue: EVENT_FANOUT_QUEUE,
-            job_id: j.id,
-            event_row_id: j.data.event_row_id,
-            ...errorFields(err),
-            duration_ms: Date.now() - started,
-          });
-          logger.error({
-            module: "webhooks.outbound",
-            action: "fanout.handler_error",
-            msg: "event.fanout handler threw",
-            ...errorFields(err),
-          });
-        }
+        // Wrap the per-job body in the queue context bridge like every other
+        // handler. The envelope ({ event_row_id }) carries no trace_id/tenant_id,
+        // so this only stamps request_source:"queue" on the worker's own
+        // queue-level logs — fanoutEventRow re-establishes the per-row tenant
+        // from the outbox row itself — but it keeps the correlation surface
+        // uniform so these lines aren't request_source-blind.
+        await withJobContext(j.data, async () => {
+          const started = Date.now();
+          try {
+            await fanoutEventRow(
+              db,
+              boss,
+              j.data.event_row_id,
+              resolver ? { notificationAdapterResolver: resolver } : {},
+            );
+            log.queue.job.completed({
+              msg: "event.fanout job completed",
+              queue: EVENT_FANOUT_QUEUE,
+              job_id: j.id,
+              event_row_id: j.data.event_row_id,
+              duration_ms: Date.now() - started,
+            });
+          } catch (err) {
+            log.queue.job.failed({
+              msg: "event.fanout job failed",
+              queue: EVENT_FANOUT_QUEUE,
+              job_id: j.id,
+              event_row_id: j.data.event_row_id,
+              ...errorFields(err),
+              duration_ms: Date.now() - started,
+            });
+            logger.error({
+              module: "webhooks.outbound",
+              action: "fanout.handler_error",
+              msg: "event.fanout handler threw",
+              ...errorFields(err),
+            });
+          }
+        });
       }
     },
   );

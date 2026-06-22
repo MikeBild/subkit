@@ -9,12 +9,14 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
+import { AuditAction } from "../audit/index.ts";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
-import { tenants } from "../db/schema/index.ts";
+import { auditLog, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { _resetRssHighWaterForTests, setDlqJobCount } from "../observability/instrumentation.ts";
 import { resetMetricsRegistryForTests } from "../observability/metrics.ts";
-import { buildOperatorHealthDigest } from "./health-digest.ts";
+import { buildOperatorHealthDigest, buildOperatorHealthSummary } from "./health-digest.ts";
 import { _resetCriticalEdgeTrackerForTests } from "./risk-signals.ts";
 
 let testDb: TestDb;
@@ -108,5 +110,47 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
     expect(digestOther.patch_candidates.pending).toBe(0);
     // Risk signals are process-scoped (shared infrastructure), not tenant-scoped.
     expect(digestOther.risk.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // Regression lock for the read-only `audit: false` contract. The summary path
+  // (MCP `initialize` instructions, `sk login`) must NEVER write a
+  // RISK_SIGNAL_RAISED edge audit or advance the edge tracker — a connect/login
+  // is a pure read. If a refactor flips the inverted default, every MCP connect
+  // would audit + consume the edge, swallowing the next real one.
+  test("buildOperatorHealthSummary writes no risk-signal audit on a critical state", async () => {
+    resetMetricsRegistryForTests();
+    _resetRssHighWaterForTests();
+    _resetCriticalEdgeTrackerForTests();
+    setDlqJobCount("execution.dlq", 10); // crosses the critical DLQ edge
+
+    const countRaised = async (): Promise<number> => {
+      const rows = await testDb.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, AuditAction.RISK_SIGNAL_RAISED));
+      return rows.length;
+    };
+
+    // Earlier tests in this file share the same testDb and write RISK_SIGNAL_*
+    // rows via the audited digest path; clear them so this case measures only
+    // its own writes. Those earlier fire-and-forget writes have long settled
+    // (many event-loop turns / awaited tests since), so the delete is clean.
+    await testDb.db.delete(auditLog).where(eq(auditLog.action, AuditAction.RISK_SIGNAL_RAISED));
+
+    // Read-only summary: deterministic — `audit: false` skips the whole edge
+    // block, so no audit call is even issued (no fire-and-forget race to wait on).
+    const summary = await buildOperatorHealthSummary(testDb.db, tenant_id);
+    expect(summary.text).toContain("dead-letter");
+    expect(await countRaised()).toBe(0);
+
+    // Non-vacuous: the SAME critical state on the audited path DOES raise the
+    // edge audit. The write is fire-and-forget; each awaited DB read yields, so
+    // a bounded poll (no setTimeout — banned in tests) lets it land.
+    await buildOperatorHealthDigest(testDb.db, tenant_id); // audit defaults to true
+    let raised = 0;
+    for (let i = 0; i < 100 && raised === 0; i++) {
+      raised = await countRaised();
+    }
+    expect(raised).toBeGreaterThanOrEqual(1);
   });
 });
