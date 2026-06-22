@@ -10,7 +10,7 @@
 // resolving the final per-turn status.
 
 import { hasToolCall, stepCountIs, streamText, type ToolSet } from "ai";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
@@ -85,7 +85,7 @@ import {
   MAX_REPAIRS_PER_TURN,
   resolveLanguageModel,
 } from "./loop/model-resolver.ts";
-import { applyRecency, type LoadedSkillEntry } from "./loop/skill-recency.ts";
+import { applyRecency, parseLoadedSkills } from "./loop/skill-recency.ts";
 import {
   committedStopCondition,
   noProgressRepairStopCondition,
@@ -406,28 +406,44 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // used before A5.
   const currentUserText = ingestedUserMessage ?? "continue";
   // Single consolidated read of the conversation row: loaded_skills (new
-  // {slug,last_turn} recency shape), the turn counter, tool_policies, and
-  // the persisted target_connector_id (folds three prior separate SELECTs
-  // — the two old loaded_skills reads and the activeConnectorId lookup).
+  // {slug,last_turn} recency shape), tool_policies, and the persisted
+  // target_connector_id (folds the prior separate SELECTs — the two old
+  // loaded_skills reads and the activeConnectorId lookup). The turn
+  // counter is NOT read here: it is bumped atomically below via UPDATE …
+  // RETURNING so concurrent turns cannot collapse a recency index.
   const convRow = await p.db
     .select({
       loaded_skills: conversations.loaded_skills,
-      turn_count: conversations.turn_count,
       tool_policies: conversations.tool_policies,
       target_connector_id: conversations.target_connector_id,
     })
     .from(conversations)
     .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
-  const loadedEntries = (convRow[0]?.loaded_skills ?? []) as LoadedSkillEntry[];
+  const loadedEntries = parseLoadedSkills(convRow[0]?.loaded_skills, ({ dropped, raw }) =>
+    logger.warn({
+      module: "conversation",
+      action: "skill_recency.malformed_loaded_skills",
+      msg: "dropped malformed loaded_skills entries while reading recency state",
+      conversation_id: p.conversation_id,
+      tenant_id: p.tenant_id,
+      dropped,
+      raw,
+    }),
+  );
   // Increment the recency clock exactly once per turn, BEFORE any tool can
   // run, and persist it immediately so mid-turn writers (load_skill, the
   // tool-call autoload) stamp `last_turn` against the same turn index.
-  const currentTurn = (convRow[0]?.turn_count ?? 0) + 1;
-  await p.db
+  // Atomic increment + RETURNING in one round-trip: a read-modify-write
+  // would let two concurrent turns on the same conversation both read N and
+  // both write N+1 (webhook + chat dual delivery, double-tapped send),
+  // collapsing two turns into one recency index.
+  const [turnRow] = await p.db
     .update(conversations)
-    .set({ turn_count: currentTurn })
-    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)));
+    .set({ turn_count: sql`${conversations.turn_count} + 1` })
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
+    .returning({ turn_count: conversations.turn_count });
+  const currentTurn = turnRow?.turn_count ?? 1;
   const loopToolPolicies = (convRow[0]?.tool_policies ?? {}) as Record<
     string,
     "no_confirm" | "confirm_before_execution" | "confirm_after_execution"

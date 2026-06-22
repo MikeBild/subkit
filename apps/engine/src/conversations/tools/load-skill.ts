@@ -9,6 +9,8 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { conversations } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
+import { parseLoadedSkills } from "../loop/skill-recency.ts";
 import type { ConversationTool } from "./index.ts";
 
 const Input = z.object({ slug: z.string().min(1) }).openapi("LoadSkillToolInput");
@@ -91,7 +93,17 @@ export const loadSkillTool: ConversationTool = {
         and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
       )
       .limit(1);
-    const current = (rows[0]?.loaded_skills ?? []) as Array<{ slug: string; last_turn: number }>;
+    const current = parseLoadedSkills(rows[0]?.loaded_skills, ({ dropped, raw }) =>
+      logger.warn({
+        module: "conversation",
+        action: "skill_recency.malformed_loaded_skills",
+        msg: "dropped malformed loaded_skills entries in load_skill",
+        conversation_id: ctx.conversation_id,
+        tenant_id: ctx.tenant_id,
+        dropped,
+        raw,
+      }),
+    );
     // The loop increments `turn_count` at turn start, before any tool can
     // run, so the persisted value IS the current turn — stamp `last_turn`
     // with it so the freshly-loaded skill is full-body this turn and for

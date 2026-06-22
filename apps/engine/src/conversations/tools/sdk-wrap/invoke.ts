@@ -37,6 +37,7 @@ import { recordTransition } from "../../confirmation.ts";
 import { isDangerousTool } from "../../dangerous-tools.ts";
 import { createDraftSnapshot } from "../../draft-checkpoints.ts";
 import { createElicitation } from "../../elicitations.ts";
+import { parseLoadedSkills } from "../../loop/skill-recency.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import { findPriorSaveWorkflowApproval } from "../../persistence/save-workflow-approval.ts";
 import { resolveScopeFactsForConversation } from "../../scope-facts.ts";
@@ -1226,10 +1227,17 @@ export function wrapOne(
               ),
             )
             .limit(1);
-          const currentEntries = (convRow[0]?.loaded_skills ?? []) as Array<{
-            slug: string;
-            last_turn: number;
-          }>;
+          const currentEntries = parseLoadedSkills(convRow[0]?.loaded_skills, ({ dropped, raw }) =>
+            logger.warn({
+              module: "conversation",
+              action: "skill_recency.malformed_loaded_skills",
+              msg: "dropped malformed loaded_skills entries during tool-call autoload",
+              conversation_id: ctx.conversation_id,
+              tenant_id: ctx.tenant_id,
+              dropped,
+              raw,
+            }),
+          );
           // The loop increments `turn_count` at turn start, before any tool
           // runs, so the persisted value is the current turn — stamp both
           // new additions and tool-driven re-touches with it.

@@ -17,10 +17,56 @@
 // This module owns the pure recency math so the loop can stay thin and
 // the algorithm stays unit-testable without the full `streamText` loop.
 
+import { z } from "zod";
+
 /** One persisted `loaded_skills` entry. */
 export interface LoadedSkillEntry {
   slug: string;
   last_turn: number;
+}
+
+/** Runtime guard for a single persisted entry (the `jsonb` column shape). */
+const loadedSkillEntrySchema = z.object({
+  slug: z.string().min(1),
+  last_turn: z.number().int().nonnegative(),
+});
+
+/**
+ * Validate a raw `conversations.loaded_skills` value into typed entries,
+ * DROPPING anything malformed.
+ *
+ * The column is `jsonb`. Migration `0001_condemned_maestro` converts the
+ * legacy `string[]` ratchet to the `{slug,last_turn}` shape, but a row can
+ * still escape it (rollback, restore-from-old-backup, a dev DB on a stale
+ * branch). Casting such a row straight to `LoadedSkillEntry[]` poisons the
+ * prompt silently — `.map((e) => e.slug)` yields `undefined` for the
+ * string form, which then breaks membership and the rendered context. A
+ * degraded recency window is recoverable; a corrupt prompt is not, so
+ * validate at every read boundary and drop bad entries rather than trust
+ * the cast (AGENTS.md "Zod at boundaries" — DB shape that crosses into LLM
+ * context is a boundary too).
+ *
+ * `onInvalid` lets the impure caller emit a structured-logger warning
+ * without this pure module taking a logger dependency.
+ */
+export function parseLoadedSkills(
+  raw: unknown,
+  onInvalid?: (info: { dropped: number; raw: unknown }) => void,
+): LoadedSkillEntry[] {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) {
+    onInvalid?.({ dropped: 0, raw });
+    return [];
+  }
+  const out: LoadedSkillEntry[] = [];
+  let dropped = 0;
+  for (const item of raw) {
+    const parsed = loadedSkillEntrySchema.safeParse(item);
+    if (parsed.success) out.push(parsed.data);
+    else dropped++;
+  }
+  if (dropped > 0) onInvalid?.({ dropped, raw });
+  return out;
 }
 
 /**

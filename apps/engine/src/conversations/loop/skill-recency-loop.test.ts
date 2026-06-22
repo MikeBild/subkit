@@ -28,19 +28,15 @@
 // to skip in environments without a DB.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import {
-  applyRecency,
-  type LoadedSkillEntry,
-  SKILL_FULL_BODY_RECENCY_K,
-} from "../../conversations/loop/skill-recency.ts";
+import { connectors, skills, tenants } from "../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { assembleEnhancedPrompt } from "../../llm/core/context-assembler.ts";
 import {
   listBaselineSlugs,
   loadActivationCatalog,
   reaffirmLoadedForTurn,
-} from "../../conversations/skill-autoload.ts";
-import { connectors, skills, tenants } from "../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
+} from "../skill-autoload.ts";
+import { applyRecency, type LoadedSkillEntry, SKILL_FULL_BODY_RECENCY_K } from "./skill-recency.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 const K = SKILL_FULL_BODY_RECENCY_K;

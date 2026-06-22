@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import {
   applyRecency,
   type LoadedSkillEntry,
+  parseLoadedSkills,
   SKILL_FULL_BODY_RECENCY_K,
   SKILL_RETENTION_TURNS,
 } from "./skill-recency.ts";
@@ -231,5 +232,88 @@ describe("applyRecency — recency window across turns (K=3 stepping)", () => {
     expect(r.membership).toContain("base");
     expect(r.fullBodySet).not.toContain("base");
     expect(r.fullBodySet).toContain("fresh");
+  });
+
+  test("duplicate-slug input collapses to one entry; last writer's last_turn wins", () => {
+    // The persisted array is merge-by-slug everywhere it is written, but
+    // applyRecency is defensive about a degenerate duplicate input. Pin the
+    // last-writer-wins policy so a future refactor cannot silently flip it.
+    const currentTurn = 10;
+    const loaded: LoadedSkillEntry[] = [
+      { slug: "a", last_turn: 2 },
+      { slug: "a", last_turn: 5 },
+    ];
+    const r = applyRecency(loaded, currentTurn, new Set(), [], new Set());
+    // Collapsed to exactly one "a".
+    expect(r.next.filter((e) => e.slug === "a")).toHaveLength(1);
+    // The LAST entry in the array wins (last_turn = 5, age 5 → demoted).
+    expect(r.next.find((e) => e.slug === "a")?.last_turn).toBe(5);
+    expect(r.membership).toEqual(["a"]);
+    expect(r.fullBodySet).toEqual([]);
+  });
+
+  test("refresh of a duplicated slug promotes to currentTurn regardless of input order", () => {
+    const currentTurn = 10;
+    const loaded: LoadedSkillEntry[] = [
+      { slug: "a", last_turn: 5 },
+      { slug: "a", last_turn: 2 },
+    ];
+    // Refresh wins over either stale last_turn.
+    const r = applyRecency(loaded, currentTurn, new Set(["a"]), [], new Set());
+    expect(r.next.filter((e) => e.slug === "a")).toHaveLength(1);
+    expect(r.next.find((e) => e.slug === "a")?.last_turn).toBe(currentTurn);
+    expect(r.fullBodySet).toEqual(["a"]);
+  });
+});
+
+describe("parseLoadedSkills — boundary validation", () => {
+  test("valid {slug,last_turn} array passes through unchanged", () => {
+    const raw = [
+      { slug: "a", last_turn: 0 },
+      { slug: "b", last_turn: 3 },
+    ];
+    expect(parseLoadedSkills(raw)).toEqual(raw);
+  });
+
+  test("null / undefined → empty array, no onInvalid call", () => {
+    let invalidCalls = 0;
+    expect(parseLoadedSkills(null, () => invalidCalls++)).toEqual([]);
+    expect(parseLoadedSkills(undefined, () => invalidCalls++)).toEqual([]);
+    expect(invalidCalls).toBe(0);
+  });
+
+  test("legacy string[] ratchet rows are dropped (not cast to undefined slugs)", () => {
+    const seen: Array<{ dropped: number; raw: unknown }> = [];
+    // The pre-migration shape: a bare array of slug strings.
+    const out = parseLoadedSkills(["http-connectors", "gmail"], (info) => seen.push(info));
+    expect(out).toEqual([]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.dropped).toBe(2);
+  });
+
+  test("mixed valid + malformed entries keeps the valid ones and reports the drops", () => {
+    const seen: Array<{ dropped: number; raw: unknown }> = [];
+    const out = parseLoadedSkills(
+      [
+        { slug: "ok", last_turn: 1 },
+        { slug: "", last_turn: 2 }, // empty slug → invalid
+        { slug: "bad-turn", last_turn: "x" }, // non-numeric → invalid
+        "legacy-string", // wrong shape → invalid
+        { slug: "ok2", last_turn: 4 },
+      ],
+      (info) => seen.push(info),
+    );
+    expect(out).toEqual([
+      { slug: "ok", last_turn: 1 },
+      { slug: "ok2", last_turn: 4 },
+    ]);
+    expect(seen[0]?.dropped).toBe(3);
+  });
+
+  test("a non-array value reports invalid and yields empty", () => {
+    const seen: Array<{ dropped: number; raw: unknown }> = [];
+    expect(parseLoadedSkills({ slug: "a", last_turn: 0 }, (info) => seen.push(info))).toEqual([]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.dropped).toBe(0);
   });
 });
