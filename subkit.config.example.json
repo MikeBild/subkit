@@ -139,6 +139,15 @@
     "otlp": {
       "endpoint": "",
       "service_name": "subkit"
+    },
+    "field_truncation_chars": 2048,
+    "predictive": {
+      "pool_saturation_pct": 80,
+      "dlq_critical_depth": 5,
+      "transient_retry_rate": 1,
+      "memory_cap_fraction": 0.9,
+      "connector_unhealthy_pct": 80,
+      "llm_fallback_pct": 80
     }
   },
   "egress": {

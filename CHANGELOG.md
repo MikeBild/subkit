@@ -1,5 +1,32 @@
 # Changelog
 
+## [7.7.0]
+
+The conversation prompt stops paying the full cost of every skill it has ever
+loaded. Loaded skills now render their full body only while they are *relevant
+to the current turn*, and fall back to a one-line index entry once they age out
+— so a long session keeps its skill palette without the prompt growing without
+bound.
+
+- **Recency-gated skill loading (K=3).** `conversations.loaded_skills` moves
+  from a one-way `string[]` ratchet to `{slug, last_turn}` recency entries with
+  a new monotonic `turn_count` clock. A skill renders its full body while it
+  was touched within the last K=3 turns; beyond that it is demoted to the
+  "Loaded" index (one line) but stays referenceable and `load_skill`-reaffirmable
+  until a wider retention horizon (K·8 = 24 turns). Nothing disappears, nothing
+  is truncated — the dominant controllable LLM cost (full skill bodies) is now
+  bounded by recency.
+- **Tenant-isolation hardening.** The `load_skill` and tool-call autoload writes
+  to `loaded_skills` are now scoped on `(tenant_id, id)`, not `id` alone, and
+  every read validates the persisted shape at the boundary (malformed/legacy
+  rows are dropped with a structured warning instead of poisoning the prompt).
+- **Atomic per-turn clock.** `turn_count` is incremented via a single
+  `UPDATE … RETURNING`, so concurrent turns on one conversation can no longer
+  collapse a recency index.
+
+Also includes the Gmail-send redaction fix (#239) and the `sk` startup
+health-digest in-context chrome (#240).
+
 ## [7.6.0]
 
 Runtime incidents become diagnosable in one pass, and the engine now warns

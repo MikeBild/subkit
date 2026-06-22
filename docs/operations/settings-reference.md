@@ -136,11 +136,18 @@ Observability
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `observability.field_truncation_chars` | number | `2048` | global | no | no | Per-field cap (in characters / UTF-16 code units, not bytes) applied to structured log fields after redaction. |
 | `observability.langfuse.host` | string | `""` | global | no | no |  |
 | `observability.langfuse.public_key` | string | `""` | global | no | no |  |
 | `observability.langfuse.secret_key` | string | `""` | global | yes | no |  |
 | `observability.otlp.endpoint` | string | `""` | global | no | no |  |
 | `observability.otlp.service_name` | string | `"subkit"` | global | no | no |  |
+| `observability.predictive.connector_unhealthy_pct` | number | `80` | global | no | no | Percent of recent connector calls returning a non-ok health verdict above which connector drift is flagged. |
+| `observability.predictive.dlq_critical_depth` | number | `5` | global | no | no | Standing dead-letter-queue depth at or above which DLQ accumulation is flagged critical (a worker-failure backlog, not a per-window delta). |
+| `observability.predictive.llm_fallback_pct` | number | `80` | global | no | no | Percent of LLM calls falling back to the secondary provider above which primary-provider degradation is flagged. |
+| `observability.predictive.memory_cap_fraction` | number | `0.9` | global | no | no | Fraction of the host memory cap the RSS high-water may reach before an OOM-risk warning. |
+| `observability.predictive.pool_saturation_pct` | number | `80` | global | no | no | Percent of the Postgres pool in use (or any waiting clients) above which saturation is flagged. |
+| `observability.predictive.transient_retry_rate` | number | `1` | global | no | no | Transient-DB-retries-per-minute above which a flapping Postgres is flagged. |
 
 ## egress
 Egress filter
