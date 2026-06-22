@@ -863,15 +863,8 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     }
   }
 
-  // Engine-seeded startup health check. Fetch the deterministic operator
-  // digest (failed runs grouped by root cause + tagged by origin, plus
-  // self-healing fixes awaiting review and leading-indicator risk
-  // signals). It renders as in-context chrome below the welcome box via
-  // <NeedsAttentionPanel> (threaded in as digestSnapshot), and its
-  // context is stashed so the injected "guided triage" starter action
-  // grounds the LLM's first turn in the same issues. Best-effort; never
-  // blocks startup. Fetched here (before RootApp) so there is no TDZ
-  // ambiguity when RootApp's render references operatorDigest.
+  // Fetch the operator digest before RootApp (no TDZ on the render closure);
+  // it threads in as digestSnapshot chrome and seeds the first turn's memory.
   const operatorDigest = await fetchOperatorDigest(client);
   if (operatorDigest) {
     pendingDigestContext = digestAsContext(operatorDigest);

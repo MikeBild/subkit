@@ -16,21 +16,15 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
-import type { FailureOrigin, OperatorHealthDigest } from "../engine-client.ts";
-
-const ORIGIN_LABEL: Record<FailureOrigin, string> = {
-  authoring: "authoring",
-  manual: "test run",
-  scheduled: "scheduled",
-  mixed: "mixed",
-};
+import type { OperatorHealthDigest } from "../engine-client.ts";
+import { FAILURE_ORIGIN_LABEL, totalFailureCount } from "../lib/operator-digest.ts";
 
 interface NeedsAttentionPanelProps {
   digest: OperatorHealthDigest;
 }
 
 const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest }) => {
-  const failCount = digest.failure_groups.reduce((acc, g) => acc + g.count, 0);
+  const failCount = totalFailureCount(digest);
   const pending = digest.patch_candidates.pending;
 
   return (
@@ -52,7 +46,7 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
           <Box key={g.signature} flexDirection="column">
             <Box>
               <Text color={sev}>● </Text>
-              <Text dimColor>[{ORIGIN_LABEL[g.origin]}] </Text>
+              <Text dimColor>[{FAILURE_ORIGIN_LABEL[g.origin]}] </Text>
               <Text bold>{label}</Text>
               <Text> — {times}</Text>
             </Box>

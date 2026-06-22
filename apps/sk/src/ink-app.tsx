@@ -51,6 +51,7 @@ import type {
   StatusSummary,
 } from "./engine-client.ts";
 import { readExtendedTurnUsage } from "./engine-client.ts";
+import { totalFailureCount } from "./lib/operator-digest.ts";
 import { renderSuspiciousCodepoints, sanitizePathInput } from "./lib/path-input.ts";
 import { autoUploadLocalPaths } from "./lib/path-preprocessor.ts";
 import {
@@ -114,10 +115,11 @@ import type { PaneSpec } from "./repl/slash/handler.ts";
 import { SlashSuggest } from "./repl/slash/SlashSuggest.tsx";
 import { Spinner } from "./repl/spinner.tsx";
 import {
-  type StarterAction,
-  StarterActions,
-  starterActionsForPersona,
-} from "./repl/starter-actions.tsx";
+  buildStarterActions,
+  buildStarterTaskActions,
+  shouldInjectTriage,
+} from "./repl/starter-action-injection.ts";
+import { StarterActions } from "./repl/starter-actions.tsx";
 import {
   buildStatusLine,
   type PermissionMode,
@@ -126,9 +128,7 @@ import {
   type StatusLineInput,
 } from "./repl/status-line/render.ts";
 import {
-  findTaskActionById,
   resolveTaskActionSuggestion,
-  starterTaskActionsForPersona,
   type TaskAction,
   taskActionsForContext,
 } from "./repl/task-actions.ts";
@@ -1511,42 +1511,27 @@ export const InkApp: React.FC<InkAppProps> = ({
       cancelled = true;
     };
   }, []);
-  // The startup health digest renders as in-context chrome below the
-  // welcome box (not a faux conversation turn). When it carries failures
-  // we also prepend a "guided triage" starter action keyed "1" and
-  // renumber the persona defaults so the number-key handler stays aligned.
+  // Digest = in-context chrome below the welcome box; with failures (and the
+  // permission to act) it also injects a key-"1" guided-triage starter action.
   const hasDigest = Boolean(
     digestSnapshot &&
       (digestSnapshot.failure_groups.length > 0 ||
         digestSnapshot.risk.length > 0 ||
         digestSnapshot.patch_candidates.pending > 0),
   );
-  const digestFailCount = digestSnapshot
-    ? digestSnapshot.failure_groups.reduce((acc, g) => acc + g.count, 0)
-    : 0;
-  const injectTriage = hasDigest && (digestSnapshot?.failure_groups.length ?? 0) > 0;
-  const digestNode = hasDigest ? <NeedsAttentionPanel digest={digestSnapshot!} /> : null;
+  const digestFailCount = digestSnapshot ? totalFailureCount(digestSnapshot) : 0;
+  const injectTriage = shouldInjectTriage(digestSnapshot, persona.probe);
+  const digestNode =
+    hasDigest && digestSnapshot ? <NeedsAttentionPanel digest={digestSnapshot} /> : null;
 
-  const starterActions = useMemo(() => {
-    const base = starterActionsForPersona(persona.label);
-    if (!injectTriage) return base;
-    const triage: StarterAction = {
-      key: "1",
-      label: `Fix ${digestFailCount} failure${digestFailCount === 1 ? "" : "s"}`,
-      detail: "guided triage",
-      actionId: "triage-digest-failures",
-    };
-    const renumbered = base.map((action, i) => ({ ...action, key: String(Math.min(i + 2, 9)) }));
-    return [triage, ...renumbered];
-  }, [persona.label, injectTriage, digestFailCount, digestSnapshot]);
-  const starterTaskActions = useMemo(() => {
-    const base = starterTaskActionsForPersona(persona.label, persona.probe);
-    if (!injectTriage) return base;
-    const triageAction = findTaskActionById("triage-digest-failures");
-    if (!triageAction) return base;
-    const renumbered = base.map((action, i) => ({ ...action, key: String(Math.min(i + 2, 9)) }));
-    return [{ ...triageAction, key: "1" }, ...renumbered];
-  }, [persona.label, persona.probe, injectTriage, digestSnapshot]);
+  const starterActions = useMemo(
+    () => buildStarterActions(persona.label, { injectTriage, digestFailCount }),
+    [persona.label, injectTriage, digestFailCount],
+  );
+  const starterTaskActions = useMemo(
+    () => buildStarterTaskActions(persona.label, persona.probe, { injectTriage }),
+    [persona.label, persona.probe, injectTriage],
+  );
   const availableTaskActions = useMemo(
     () =>
       taskActionsForContext(

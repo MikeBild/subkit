@@ -16,7 +16,6 @@ import { render } from "ink-testing-library";
 import type { OperatorHealthDigest } from "../engine-client.ts";
 import { NeedsAttentionPanel } from "./needs-attention-panel.tsx";
 
-// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes
 const ANSI_RE = /\[[0-9;]*m/g;
 function snapshot(ui: ReturnType<typeof render>): string {
   return (ui.lastFrame() ?? "").replace(ANSI_RE, "");
@@ -393,6 +392,19 @@ describe("NeedsAttentionPanel — totals header", () => {
     const frame = snapshot(ui);
     expect(frame).toContain("1 failure");
     expect(frame).not.toContain("1 failures");
+    ui.unmount();
+  });
+});
+
+describe("NeedsAttentionPanel — empty digest", () => {
+  test("renders only the header (0 failures) with no failure / patch / risk rows", () => {
+    const ui = render(<NeedsAttentionPanel digest={makeDigest()} />);
+    const frame = snapshot(ui);
+    expect(frame).toContain("needs attention");
+    expect(frame).toContain("0 failures");
+    expect(frame).not.toContain("failed");
+    expect(frame).not.toContain("self-healing fix");
+    expect(frame).not.toContain("Risk signals");
     ui.unmount();
   });
 });

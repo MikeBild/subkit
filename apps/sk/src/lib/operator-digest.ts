@@ -9,7 +9,28 @@
 // Best-effort: any failure here must never block the REPL.
 
 import pc from "picocolors";
-import type { EngineClient, OperatorHealthDigest, RiskSeverity } from "../engine-client.ts";
+import type {
+  EngineClient,
+  FailureOrigin,
+  OperatorHealthDigest,
+  RiskSeverity,
+} from "../engine-client.ts";
+
+/** Friendly label per failure origin. Shared by the needs-attention panel so
+ *  the chrome and any future context render stay in sync. */
+export const FAILURE_ORIGIN_LABEL: Record<FailureOrigin, string> = {
+  authoring: "authoring",
+  manual: "test run",
+  scheduled: "scheduled",
+  mixed: "mixed",
+};
+
+/** Total failing runs across all groups (sum of per-group counts). The single
+ *  source for both the panel header and the guided-triage starter label so the
+ *  two can never drift. */
+export function totalFailureCount(digest: OperatorHealthDigest): number {
+  return digest.failure_groups.reduce((acc, g) => acc + g.count, 0);
+}
 
 export async function fetchOperatorDigest(
   client: EngineClient,
