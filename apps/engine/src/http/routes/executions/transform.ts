@@ -88,6 +88,9 @@ export function registerTransformRoute(app: OpenAPIHono<AppEnv>): void {
         const result = await runJs<unknown>({
           code: body.output_transform_function,
           input: output,
+          // Ad-hoc transform preview endpoint — no execution context,
+          // intentionally constant clock.
+          clock: null,
         });
         if (result.output !== undefined) output = result.output;
       }

@@ -529,6 +529,7 @@ const AUTHORING_GATE_CODES = new Set<string>([
   "workflow_unresolved_step_reference",
   "loop_authoring_requires_inspect",
   "transform_authoring_requires_inspect",
+  "transform_hand_rolled_codec",
   "repair_loop_detected",
   "critic_rejected",
   "principal_required",

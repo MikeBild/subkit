@@ -7,6 +7,7 @@ describe("sk.allow / sk.deny", () => {
     const { output } = await runJs<{ allow: boolean }>({
       code: "return sk.allow();",
       input: null,
+      clock: null,
     });
     expect(output).toEqual({ allow: true });
   });
@@ -15,6 +16,7 @@ describe("sk.allow / sk.deny", () => {
     const { output } = await runJs<{ allow: boolean; reason: string }>({
       code: "return sk.deny('mutating_denied');",
       input: null,
+      clock: null,
     });
     expect(output).toEqual({ allow: false, reason: "mutating_denied" });
   });
@@ -22,7 +24,7 @@ describe("sk.allow / sk.deny", () => {
   test("deny() without reason throws TypeError", async () => {
     let threw: unknown = null;
     try {
-      await runJs({ code: "return sk.deny();", input: null });
+      await runJs({ code: "return sk.deny();", input: null, clock: null });
     } catch (err) {
       threw = err;
     }
@@ -33,7 +35,7 @@ describe("sk.allow / sk.deny", () => {
   test("deny('') is rejected as empty", async () => {
     let threw: unknown = null;
     try {
-      await runJs({ code: "return sk.deny('');", input: null });
+      await runJs({ code: "return sk.deny('');", input: null, clock: null });
     } catch (err) {
       threw = err;
     }

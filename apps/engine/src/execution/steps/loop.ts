@@ -64,6 +64,14 @@ async function runLoopBody(
           code: wrapped,
           input: { scope: p.scope },
           limits: { wall_ms: 5_000 },
+          // Deterministic clock/id for `sk.now()`/`sk.uuid()` in the
+          // selector — the execution's fixed `started_at` + a per-step
+          // seed, same wiring as steps/transform.ts. Without it an author
+          // calling `sk.now()` in a data_selector silently gets the epoch.
+          clock: {
+            now_ms: p.ctx.started_at.getTime(),
+            seed: `${p.ctx.execution_id}:${p.step.id}`,
+          },
         });
         collection = (out as { output: unknown }).output;
       } catch (err) {

@@ -78,7 +78,11 @@ describe("audit append-only surface", () => {
 
   test("the only writers are audit() and auditAwait()", () => {
     const writers = Object.keys(auditModule).filter(
-      (k) => typeof (auditModule as Record<string, unknown>)[k] === "function",
+      (k) =>
+        typeof (auditModule as Record<string, unknown>)[k] === "function" &&
+        // `_`-prefixed are test seams (e.g. `_drainAuditWritesForTests`), not
+        // write paths — the invariant guards against a new PUBLIC writer.
+        !k.startsWith("_"),
     );
     expect(writers.sort()).toEqual(["audit", "auditAwait"].sort());
   });

@@ -7,6 +7,7 @@ describe("quickjs runtime", () => {
     const { output, stats } = await runJs<number>({
       code: "return input.a + input.b;",
       input: { a: 2, b: 3 },
+      clock: null,
     });
     expect(output).toBe(5);
     expect(stats.ticks).toBeGreaterThan(0);
@@ -16,6 +17,7 @@ describe("quickjs runtime", () => {
     const { output } = await runJs<{ doubled: number[]; sum: number }>({
       code: "const doubled = input.items.map(n => n * 2); return { doubled, sum: doubled.reduce((a, b) => a + b, 0) };",
       input: { items: [1, 2, 3, 4] },
+      clock: null,
     });
     expect(output.doubled).toEqual([2, 4, 6, 8]);
     expect(output.sum).toBe(20);
@@ -28,6 +30,7 @@ describe("quickjs runtime", () => {
         code: "const big = new Uint8Array(200 * 1024 * 1024); big[0] = 1; return big.length;",
         input: null,
         limits: { memory_bytes: 128 * 1024 * 1024, wall_ms: 5_000 },
+        clock: null,
       });
     } catch (err) {
       threw = err;
@@ -50,6 +53,7 @@ describe("quickjs runtime", () => {
         code: "let i = 0; while (true) { i += 1; }",
         input: null,
         limits: { tick_budget: 1_000_000, wall_ms: 3_000 },
+        clock: null,
       });
     } catch (err) {
       threw = err;
@@ -70,6 +74,7 @@ describe("quickjs runtime", () => {
         globalThis_fetch: typeof globalThis.fetch,
       };`,
       input: null,
+      clock: null,
     });
     expect(output.fetch).toBe("undefined");
     expect(output.process).toBe("undefined");
@@ -84,6 +89,7 @@ describe("quickjs runtime", () => {
       code: "var bucket = []; for (var i = 0; i < 64; i++) { bucket.push(new Array(1024).join('x')); } return bucket.length;",
       input: null,
       limits: { memory_bytes: 32 * 1024 * 1024, wall_ms: 3_000 },
+      clock: null,
     });
     expect(stats.peak_memory_bytes).not.toBeNull();
     expect(stats.peak_memory_bytes! > 0).toBe(true);

@@ -153,6 +153,12 @@ export async function appendUserMessage(
   // the password form per prompt rule. The returned in-flight `message`
   // equals the persisted row; `persist.ts appendMessage` re-scrubs as
   // idempotent defense-in-depth underneath.
+  // `persistedText` is the persisted replay + transcript source. The
+  // generic matcher in `findSecretSpans` / `scrubString` is
+  // code-context-suppressed — see the authoritative redaction contract
+  // above `redactGenericTokens` in `packages/shared/src/redaction.ts`. A
+  // bare standalone secret still trips a span here, so it is both captured
+  // into the draft-credential cache and scrubbed before the row persists.
   let persistedText = rewrite.text;
   if (findSecretSpans(persistedText).length > 0) {
     const draftConnector = conv.draft?.connector ?? null;

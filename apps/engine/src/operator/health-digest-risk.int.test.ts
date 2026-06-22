@@ -10,7 +10,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { AuditAction } from "../audit/index.ts";
+import { _drainAuditWritesForTests, AuditAction } from "../audit/index.ts";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
 import { auditLog, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -133,8 +133,11 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
 
     // Earlier tests in this file share the same testDb and write RISK_SIGNAL_*
     // rows via the audited digest path; clear them so this case measures only
-    // its own writes. Those earlier fire-and-forget writes have long settled
-    // (many event-loop turns / awaited tests since), so the delete is clean.
+    // its own writes. Those writes are fire-and-forget, so under load one can
+    // still be in flight here — draining first makes the delete deterministic
+    // (the "long settled" assumption flaked in CI: a late insert landed after
+    // the delete and the count read 1 instead of 0).
+    await _drainAuditWritesForTests();
     await testDb.db.delete(auditLog).where(eq(auditLog.action, AuditAction.RISK_SIGNAL_RAISED));
 
     // Read-only summary: deterministic — `audit: false` skips the whole edge

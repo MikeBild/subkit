@@ -21,7 +21,28 @@ Encoding helpers carry migration-sensitive semantics. `base64Encode` and
 `base64UrlEncode` intentionally match JSONata `$base64encode` low-8-bit
 binary-string behavior so JSONata-to-JavaScript migrations can prove
 byte-identical output. Use `base64EncodeUtf8` and `base64UrlEncodeUtf8`
-for new Unicode text payloads.
+for new Unicode text payloads. The inverse decoders (`base64Decode`,
+`base64DecodeUtf8`) and the Web `btoa` / `atob` globals are installed too,
+so author code never hand-rolls a codec.
+
+As of **v1.4.0** the surface also includes:
+
+- `hexEncode` / `hexDecode` — lowercase-hex codec (same byte convention as
+  `base64Encode`).
+- `sha256(input)` / `hmacSha256(key, msg)` — pure FIPS-180-4 SHA-256 and
+  HMAC-SHA-256 over the UTF-8 bytes, returning lowercase hex. No host
+  crypto, no `Buffer`, no `crypto.subtle` — implemented in-sandbox so a
+  signed-payload transform reproduces byte-for-byte under self-healing
+  dry-runs.
+- `now()` / `nowIso()` — the execution's **fixed** timestamp (epoch ms /
+  ISO string). The host injects it via `RunJsOptions.clock`; every call in
+  a run sees the same instant.
+- `uuid()` — a deterministic UUIDv4-shaped id derived from the injected
+  per-execution seed plus a per-context call counter. Distinct on each
+  call within a run, identical across replays.
+
+These let authors stop hand-rolling encoders and stop reaching for the
+banned `new Date()` / `Date.now()` / `Math.random()`.
 
 ## Layout
 
@@ -77,9 +98,26 @@ host I/O, no async. Self-healing dry-runs depend on sandbox execution
 being reproducible; any non-determinism here leaks into the whole
 governance pipeline.
 
+`now()`, `nowIso()`, and `uuid()` are deterministic *by construction*:
+they do not read a live clock or RNG. The host injects a fixed per-run
+timestamp and seed through `RunJsOptions.clock` (`__sandbox_now__` /
+`__sandbox_seed__`), and the stdlib derives every value from those. A run
+replayed with the same execution context yields byte-identical output.
+
+There is intentionally **no** unseeded `now()` or `uuid()`, and there are
+**no** `crypto.subtle`, `Buffer`, or host-clock primitives — the sandbox
+injects only `input` plus the fixed `clock` context, so a non-deterministic
+clock/seed source simply does not exist inside the VM. If you ever need a
+new ambient value, inject it from the host execution context the same way
+`clock` is injected; never read it from inside the stdlib.
+
 ## Size budget
 
 The stdlib source is evaluated afresh on every `runJs` call (QuickJS does
-not share bytecode across contexts). Current size is ~5 KB; treat 20 KB
-as a soft ceiling. If the stdlib grows beyond that, split into optional
-sub-modules injected on demand rather than inflating the default preamble.
+not share bytecode across contexts). Current size is ~21 KB (`wc -c
+stdlib.js` ≈ 20.7 KB) — the SHA-256 implementation (constant table +
+round function) dominates. A size tripwire (`tests/size.test.ts`) fails
+the build if the source crosses **25 KB**: the next additive surface
+should be split into an optional sub-module injected on demand rather than
+inflating the default preamble for every transform that never touches
+crypto.

@@ -94,6 +94,8 @@ async function runSmoke(): Promise<void> {
     code: "return input.scope.v.data * 2;",
     input: { scope: { v: { data: 21 } }, input: null },
     limits: { wall_ms: 1000 },
+    // Smoke check with no execution context — intentionally-constant clock.
+    clock: null,
   });
   if (js.output !== 42) {
     logger.error({

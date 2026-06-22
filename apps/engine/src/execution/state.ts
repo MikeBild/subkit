@@ -81,11 +81,15 @@ export async function markExecutionRunning(
   db: Db,
   tenant_id: string,
   execution_id: string,
+  // Caller-captured run instant — persisted as `started_at` AND reused as the
+  // single sandbox clock (per-step + workflow-scope) so `sk.now()` mirrors the
+  // row's `started_at` and every sandbox in the run shares one instant.
+  started_at: Date,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await tx
       .update(executions)
-      .set({ status: "running", started_at: new Date() })
+      .set({ status: "running", started_at })
       .where(eq(executions.id, execution_id));
     await writeEvent(tx, {
       tenant_id,

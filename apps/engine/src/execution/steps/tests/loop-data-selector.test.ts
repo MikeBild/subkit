@@ -9,10 +9,14 @@ import { LoopStepSchema } from "../../../workflows/types.ts";
 import { runLoopStep } from "../loop.ts";
 
 function ctx() {
-  // Per-step run context — a stub abort signal that never fires.
-  return { signal: new AbortController().signal } as unknown as Parameters<
-    typeof runLoopStep
-  >[0]["ctx"];
+  // Per-step run context — a stub abort signal that never fires, plus the
+  // execution fields the data_selector path threads into the sandbox clock
+  // (`started_at` / `execution_id`); the production ctx always carries them.
+  return {
+    signal: new AbortController().signal,
+    started_at: new Date(1_700_000_000_000),
+    execution_id: "00000000-0000-0000-0000-000000000099",
+  } as unknown as Parameters<typeof runLoopStep>[0]["ctx"];
 }
 
 describe("loop step · data_selector (JS expression form)", () => {

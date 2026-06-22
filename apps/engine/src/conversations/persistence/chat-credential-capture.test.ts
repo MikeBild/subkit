@@ -28,6 +28,10 @@ const stubDb = {} as unknown as Db;
 // ATATT… (Atlassian pat) and ghp_… (GitHub pat).
 const FAKE_ATLASSIAN_TOKEN = "ATATTfake3xBfGH0aaaabbbbccccdddd1234";
 const FAKE_GITHUB_TOKEN = "ghp_fakeFAKEfakeFAKEfakeFAKEfake123456";
+// A vendor-less high-entropy token: no `ghp_`/`ATATT…` prefix and no
+// keyword. It is caught by the generic shape matcher alone, so capture
+// must still fire on it (the missing-direction case).
+const FAKE_VENDORLESS_TOKEN = "Xy9KqLm2NpRsTuVwAbCdEfGhJkMnPqRsTuVwXyZ1";
 
 afterEach(() => {
   _resetDraftCredentialCacheForTests();
@@ -69,6 +73,17 @@ describe("extractChatPastedCredential — pure parse/capture decision", () => {
     const text = `token: ${FAKE_GITHUB_TOKEN}`;
     const out = extractChatPastedCredential("bearer", {}, text, findSecretSpans(text));
     expect(out).toEqual({ mode: "bearer", token: FAKE_GITHUB_TOKEN });
+  });
+
+  it("maps a lone BARE VENDOR-LESS token (no prefix, no keyword) onto the bearer slot", () => {
+    // The generic shape matcher catches this with no vendor prefix — proves
+    // the span gate fires for the lone-paste class, not just `ghp_`/`ATATT…`.
+    const text = `here you go: ${FAKE_VENDORLESS_TOKEN}`;
+    const spans = findSecretSpans(text);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.kind).toBe("generic");
+    const out = extractChatPastedCredential("bearer", {}, text, spans);
+    expect(out).toEqual({ mode: "bearer", token: FAKE_VENDORLESS_TOKEN });
   });
 
   it("maps a lone bare secret onto header_value when the draft is header-auth (seeded name)", () => {
@@ -130,6 +145,26 @@ describe("captureDraftCredentialFromChatText — cache write", () => {
     expect(getDraftCredential(conversation_id)).toEqual({
       mode: "bearer",
       token: FAKE_GITHUB_TOKEN,
+    });
+  });
+
+  it("caches a lone BARE VENDOR-LESS token as bearer on a bearer draft", async () => {
+    // Regression for finding 2: the capture branch is gated on
+    // findSecretSpans length. With the redactor restored, a vendor-less
+    // token produces a span, so capture re-fires (and append.ts scrubs the
+    // raw value before persisting).
+    const conversation_id = "convo-chat-capture-vendorless";
+    const res = await captureDraftCredentialFromChatText({
+      tenant_id: "t-1",
+      conversation_id,
+      rawText: `here you go: ${FAKE_VENDORLESS_TOKEN}`,
+      connector: { auth_type: "bearer" },
+      db: stubDb,
+    });
+    expect(res).toEqual({ captured: true, mode: "bearer" });
+    expect(getDraftCredential(conversation_id)).toEqual({
+      mode: "bearer",
+      token: FAKE_VENDORLESS_TOKEN,
     });
   });
 

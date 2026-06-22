@@ -161,6 +161,9 @@ async function runHook(
       code: source,
       input: hookInput,
       limits: HOOK_LIMITS,
+      // Before-request hooks are policy predicates, not execution
+      // transforms — no fixed instant to thread, intentionally constant.
+      clock: null,
     });
     if (!output || typeof output !== "object") {
       return { allowed: false, reason: "hook_error" };
@@ -199,6 +202,8 @@ export async function lintHookSource(
       code: source,
       input: { lint: true },
       limits: { tick_budget: 50_000, wall_ms: 1_000, memory_bytes: 16 * 1024 * 1024 },
+      // Syntax lint only — no execution context, intentionally constant.
+      clock: null,
     });
     return { ok: true };
   } catch (err) {

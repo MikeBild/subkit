@@ -44,10 +44,64 @@ describe("scrubString — vendor pattern positives", () => {
   });
 });
 
-describe("scrubString — generic high-entropy pattern", () => {
-  test("40-char mixed-case blob with >=2 digits → ***REDACTED:generic***", () => {
+describe("scrubString — generic high-entropy pattern (code-context-suppressed)", () => {
+  // The generic matcher redacts a high-entropy run on SHAPE by default: a
+  // pasted credential carries no vendor prefix and no keyword, so shape is
+  // the only signal. Suppression is narrow and CODE-context-based — only a
+  // known codec alphabet (an ordered base64/base32/hex sequence) or the
+  // full value of a non-secret `var/const/let = "..."` assignment survives.
+  // This is the validated v7.5 outage fix: over-redaction of a quoted
+  // alphabet literal corrupted an authored workflow into a malformed body,
+  // WITHOUT reopening redaction on standalone pasted secrets.
+  test("bare 40-char mixed-case blob IS redacted (shape-only, no code framing)", () => {
     const out = scrubString(`the value ${GENERIC_BLOB} leaked`);
     expect(out).toBe("the value ***REDACTED:generic*** leaked");
+  });
+
+  test("prose-embedded lone-paste token IS redacted (`here you go: <token>`)", () => {
+    const out = scrubString(`here you go: ${GENERIC_BLOB}`);
+    expect(out).toBe("here you go: ***REDACTED:generic***");
+    expect(findSecretSpans(`here you go: ${GENERIC_BLOB}`)).toHaveLength(1);
+  });
+
+  test("the bare base64 alphabet passes through unchanged (codec alphabet)", () => {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    expect(scrubString(alphabet)).toBe(alphabet);
+    expect(scrubStringsDeep(alphabet)).toBe(alphabet);
+    expect(findSecretSpans(alphabet)).toHaveLength(0);
+  });
+
+  test("base64 alphabet as a non-secret var assignment passes through (the outage shape)", () => {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const code = `var B="${alphabet}";`;
+    expect(scrubString(code)).toBe(code);
+  });
+
+  test("non-secret var holding a random high-entropy literal passes through", () => {
+    const code = `const seed = "${GENERIC_BLOB}";`;
+    expect(scrubString(code)).toBe(code);
+  });
+
+  test("a SECRET-named var holding a high-entropy literal IS redacted", () => {
+    // `const apiKey = "<token>"` is a credential in source, not codec data.
+    const out = scrubString(`const apiKey = "${GENERIC_BLOB}";`);
+    expect(out).toContain("***REDACTED:generic***");
+    expect(out).not.toContain(GENERIC_BLOB);
+  });
+
+  test("keyword-anchored run → ***REDACTED:generic***", () => {
+    expect(scrubString(`token: ${GENERIC_BLOB}`)).toBe("token: ***REDACTED:generic***");
+    expect(scrubString(`client_secret=${GENERIC_BLOB}`)).toBe("***REDACTED:generic***");
+    expect(scrubString(`password "${GENERIC_BLOB}"`)).toBe('password "***REDACTED:generic***"');
+  });
+
+  test("URL signature/grant/token param run → ***REDACTED:generic***", () => {
+    expect(scrubString(`https://x.test/y?sig=${GENERIC_BLOB}`)).toBe(
+      "https://x.test/y?***REDACTED:generic***",
+    );
+    expect(scrubString(`https://x.test/y?token=${GENERIC_BLOB}`)).toContain(
+      "***REDACTED:generic***",
+    );
   });
 
   test("lowercase UUID is NOT matched (no uppercase)", () => {
@@ -132,7 +186,7 @@ describe("findSecretSpans", () => {
   });
 
   test("multiple secrets are returned sorted by start, earlier pattern owning overlaps", () => {
-    const text = `${STRIPE_LIVE} and ${GENERIC_BLOB}`;
+    const text = `${STRIPE_LIVE} and token=${GENERIC_BLOB}`;
     const spans = findSecretSpans(text);
     expect(spans.map((s) => s.kind)).toEqual(["pat", "generic"]);
     expect(spans[0]!.start).toBeLessThan(spans[1]!.start);
@@ -140,17 +194,32 @@ describe("findSecretSpans", () => {
     // pattern owns that span — generic must not double-report it.
     expect(spans.filter((s) => s.match.includes("sk_live"))).toHaveLength(1);
   });
+
+  test("a bare high-entropy blob with no code framing IS reported (shape-only)", () => {
+    const spans = findSecretSpans(`the value ${GENERIC_BLOB} leaked`);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.kind).toBe("generic");
+  });
+
+  test("a codec alphabet / non-secret var literal is NOT reported", () => {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    expect(findSecretSpans(alphabet)).toHaveLength(0);
+    expect(findSecretSpans(`const seed = "${GENERIC_BLOB}";`)).toHaveLength(0);
+  });
 });
 
 describe("scrubStringsDeep — pattern-only walk", () => {
   test("scrubs secret-shaped string leaves at any depth, keys untouched", () => {
     const out = scrubStringsDeep({
       summary: `token ${ATLASSIAN_TOKEN}`,
-      fields: [{ name: "token", label: `paste ${ATLASSIAN_TOKEN}`, default: [GENERIC_BLOB] }],
+      fields: [
+        { name: "token", label: `paste ${ATLASSIAN_TOKEN}`, default: [`secret=${GENERIC_BLOB}`] },
+      ],
     }) as { summary: string; fields: Array<{ name: string; label: string; default: string[] }> };
     expect(out.summary).toBe("token ***REDACTED:pat***");
     expect(out.fields[0]!.name).toBe("token"); // key-named value survives
     expect(out.fields[0]!.label).toBe("paste ***REDACTED:pat***");
+    // Keyword-anchored generic blob is redacted.
     expect(out.fields[0]!.default).toEqual(["***REDACTED:generic***"]);
   });
 
