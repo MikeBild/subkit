@@ -84,6 +84,15 @@ function logEntry(filled: AuditEntry): void {
   });
 }
 
+// In-flight fire-and-forget audit writes, tracked so tests can await them
+// deterministically. A fire-and-forget audit otherwise races test assertions
+// that count `audit_log` rows (e.g. the operator risk-signal edge audits
+// written by `buildOperatorHealthDigest`): under load the write can land after
+// a test has already snapshotted the table. The set holds only transient
+// promises — each removes itself on settle — so production cost is one add +
+// one finally per audit, with no behavioural change.
+const _pendingAuditWrites = new Set<Promise<unknown>>();
+
 export function audit(entry: Partial<AuditEntry>, executor?: Executor): AuditEntry {
   const filled = buildEntry(entry);
   logEntry(filled);
@@ -91,7 +100,7 @@ export function audit(entry: Partial<AuditEntry>, executor?: Executor): AuditEnt
   // Fire-and-forget persist. If a caller needs the audit row bound to a
   // domain transaction they should call `auditAwait` (or `writeAudit`
   // directly) with the executor they already hold.
-  void writeAudit(filled, executor).catch((err) => {
+  const persist = writeAudit(filled, executor).catch((err) => {
     logger.error({
       module: "audit",
       action: "audit.persist_failed",
@@ -100,8 +109,21 @@ export function audit(entry: Partial<AuditEntry>, executor?: Executor): AuditEnt
       error: err instanceof Error ? err.message : String(err),
     });
   });
+  _pendingAuditWrites.add(persist);
+  void persist.finally(() => {
+    _pendingAuditWrites.delete(persist);
+  });
 
   return filled;
+}
+
+/** Test seam: await every in-flight fire-and-forget `audit()` write to settle.
+ *  Production never calls this. Use before asserting on `audit_log` contents
+ *  that a prior fire-and-forget `audit()` may still be persisting. */
+export async function _drainAuditWritesForTests(): Promise<void> {
+  while (_pendingAuditWrites.size > 0) {
+    await Promise.allSettled([..._pendingAuditWrites]);
+  }
 }
 
 /**
