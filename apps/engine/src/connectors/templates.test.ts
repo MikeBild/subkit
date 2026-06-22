@@ -136,6 +136,26 @@ describe("connector-template catalog — cross-reference invariants", () => {
     }
   });
 
+  test("no url_pattern is a greedy host wildcard that matches an arbitrary unknown URL", () => {
+    // A pattern like `^https://[^/]+(/|$)` matches EVERY https URL, so it would
+    // hijack auto-detection for every unknown connector (regression: un-escaping
+    // the broken `\[\^/\]\+` patterns turned grpc-connect/soap-generic into
+    // match-everything). Generic protocol templates carry url_pattern=null and
+    // are selected by slug instead.
+    const arbitrary = [
+      "https://totally-unknown-domain-xyz.example.com/api/foo",
+      "https://another-random-host.test/v1",
+    ];
+    const offenders = templates
+      .filter(
+        (t) =>
+          t.url_pattern !== null &&
+          arbitrary.every((u) => new RegExp(t.url_pattern as string).test(u)),
+      )
+      .map((t) => t.slug);
+    expect(offenders).toEqual([]);
+  });
+
   test("every auth-requiring template documents at least one auth_options path", () => {
     // Empty auth_options is only legitimate for auth_type === "none"; every
     // other template must present at least one deliberate auth path to the LLM/UI.

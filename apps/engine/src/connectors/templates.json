@@ -8536,7 +8536,7 @@
         "description": "Authenticate with a bearer token sent in the Authorization header."
       }
     ],
-    "url_pattern": "^https://[^/]+(\\/|$)",
+    "url_pattern": null,
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -16305,7 +16305,7 @@
         "oauth": null
       }
     ],
-    "url_pattern": "^https://[^/]+(\\/|$)",
+    "url_pattern": null,
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
