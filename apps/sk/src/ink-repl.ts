@@ -30,7 +30,12 @@ import {
   newDebugTurnId,
   serializeDebugError,
 } from "./debug.ts";
-import { EngineClient, type SetupValidationResponse, type StatusSummary } from "./engine-client.ts";
+import {
+  EngineClient,
+  type OperatorHealthDigest,
+  type SetupValidationResponse,
+  type StatusSummary,
+} from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { enableBracketedPaste } from "./repl/bracketed-paste.ts";
@@ -53,7 +58,7 @@ import { loadBootstrap, type SkBootstrapSnapshot } from "./lib/bootstrap.ts";
 // full UX-gating allow-set) and fall back to the legacy tier-filtered
 // `whoami + rbac:can` fan-out for older engines. `loadBootstrap` owns
 // the disk cache + 3-tier resolution.
-import { digestAsContext, fetchOperatorDigest, renderDigestBanner } from "./lib/operator-digest.ts";
+import { digestAsContext, fetchOperatorDigest } from "./lib/operator-digest.ts";
 
 interface ResolvedPersona {
   label: string;
@@ -119,6 +124,10 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // memory so replying "yes" grounds the LLM in the same digest, then
   // cleared so later turns aren't re-seeded.
   let pendingDigestContext: string | null = null;
+  // Live operator-digest snapshot for the in-context chrome. Refreshed on
+  // every /profile switch so the panel and first-turn memory always describe
+  // the ACTIVE tenant — never tenant-A's failures leaking into tenant-B.
+  let operatorDigestSnapshot: OperatorHealthDigest | null = null;
 
   const client = new EngineClient({
     engine_url: opts.profile.engine_url,
@@ -759,6 +768,15 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     setupSnapshot = canReadSetup(currentPersona)
       ? await newClient.setupValidation().catch(() => null)
       : null;
+    // Re-seed the digest for the NEW tenant before notifying listeners.
+    // Clearing first guarantees tenant-A's failures/context can never render
+    // (chrome) or fold into tenant-B's first turn (memory) if the refetch
+    // fails. Best-effort, like the boot-time call.
+    pendingDigestContext = null;
+    operatorDigestSnapshot = await fetchOperatorDigest(newClient);
+    if (operatorDigestSnapshot) {
+      pendingDigestContext = digestAsContext(operatorDigestSnapshot);
+    }
     profileVersion += 1;
     for (const listener of personaListeners) {
       listener({ persona: currentPersona, profile: newProfile, version: profileVersion });
@@ -863,6 +881,13 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     }
   }
 
+  // Fetch the operator digest before RootApp (no TDZ on the render closure);
+  // it threads in as digestSnapshot chrome and seeds the first turn's memory.
+  operatorDigestSnapshot = await fetchOperatorDigest(client);
+  if (operatorDigestSnapshot) {
+    pendingDigestContext = digestAsContext(operatorDigestSnapshot);
+  }
+
   // Small root wrapper that subscribes to status + persona updates and
   // feeds the latest snapshots into <InkApp> as props. The `key` is
   // bumped on every /profile switch so React fully remounts the app —
@@ -872,6 +897,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     const [snap, setSnap] = React.useState<StatusSummary | null>(statusSnapshot);
     const [setup, setSetup] = React.useState<SetupValidationResponse | null>(setupSnapshot);
     const [conn, setConn] = React.useState<ConnectionSnapshot>(connectionSnapshot);
+    const [digest, setDigest] = React.useState<OperatorHealthDigest | null>(operatorDigestSnapshot);
     const [active, setActive] = React.useState<{
       persona: ResolvedPersona;
       profile: ResolvedProfile;
@@ -887,6 +913,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         setActive(next);
         setSnap(statusSnapshot);
         setSetup(setupSnapshot);
+        setDigest(operatorDigestSnapshot);
       };
       const sul = (next: SetupValidationResponse | null): void => setSetup(next);
       const cl = (next: ConnectionSnapshot): void => setConn(next);
@@ -922,6 +949,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       statusSnapshot: snap,
       setupSnapshot: setup,
       connectionSnapshot: conn,
+      digestSnapshot: digest,
       onPrompt,
       onElicitResponse,
       onSlash,
@@ -941,18 +969,6 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       pushNotifyOverride,
     });
   };
-
-  // Engine-seeded startup health check — subkit speaks first. Fetch the
-  // deterministic operator digest (failed runs grouped by root cause +
-  // tagged by origin, plus self-healing fixes awaiting review), render
-  // it as a colored assistant-voiced block above the live UI, and stash
-  // its context so the operator's first reply ("yes") grounds the LLM in
-  // the same issues. Best-effort; never blocks startup.
-  const operatorDigest = await fetchOperatorDigest(client);
-  if (operatorDigest) {
-    process.stdout.write(`\n${renderDigestBanner(operatorDigest)}\n\n`);
-    pendingDigestContext = digestAsContext(operatorDigest);
-  }
 
   // Enable bracketed paste mode before mounting Ink so terminal wraps
   // multi-line pastes with ESC[200~/ESC[201~ markers — the input
