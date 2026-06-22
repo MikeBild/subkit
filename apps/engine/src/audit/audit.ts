@@ -90,7 +90,10 @@ function logEntry(filled: AuditEntry): void {
 // written by `buildOperatorHealthDigest`): under load the write can land after
 // a test has already snapshotted the table. The set holds only transient
 // promises — each removes itself on settle — so production cost is one add +
-// one finally per audit, with no behavioural change.
+// one finally per audit, with no behavioural change. Size is bounded by the
+// number of in-flight `writeAudit` calls (i.e. by the DB pool + write timeout):
+// it cannot grow without bound unless the DB stalls every write indefinitely,
+// which is already the existing fire-and-forget failure mode.
 const _pendingAuditWrites = new Set<Promise<unknown>>();
 
 export function audit(entry: Partial<AuditEntry>, executor?: Executor): AuditEntry {

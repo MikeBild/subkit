@@ -55,11 +55,12 @@ export async function resolveForEachCollection(
   start: number,
   // Deterministic clock/id context for `sk.now()`/`sk.uuid()` inside the
   // selector — mirrors how `steps/transform.ts` wires the execution's
-  // fixed `started_at` and a per-scope seed so a replayed run reproduces
-  // the same values. Without it an author calling `sk.now()` here would
-  // silently get the epoch (0). Optional so pure lint/preview callers that
-  // have no execution context can omit it.
-  clock?: { now_ms: number; seed: string },
+  // fixed `started_at` and a per-scope seed. Required-with-explicit-null
+  // (same contract as `RunJsOptions.clock`): a real execution passes the
+  // clock; a pure lint/preview caller passes `null` to opt into the
+  // constant-epoch case. Making it required keeps a forgotten wiring a
+  // COMPILE error instead of a silent epoch read at runtime.
+  clock: { now_ms: number; seed: string } | null,
 ): Promise<
   | { kind: "collection"; items: unknown[] }
   | { kind: "failure"; result: StepResult }
@@ -72,10 +73,7 @@ export async function resolveForEachCollection(
       code: wrapped,
       input: { scope },
       limits: { wall_ms: 5_000 },
-      // A caller with execution context passes the real clock; one without
-      // (the param is optional) is the intentionally-constant case and
-      // threads `null` explicitly.
-      clock: clock ?? null,
+      clock,
     });
     collection = (out as { output: unknown }).output;
   } catch (err) {
