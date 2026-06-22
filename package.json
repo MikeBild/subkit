@@ -26,7 +26,7 @@
     "build:sk": "bun build apps/sk/src/index.ts --compile --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/sk && sh scripts/codesign-macos.sh dist/sk",
     "build:all": "bun run build:engine && bun run build:sk",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
+    "lint": "biome check . --no-errors-on-unmatched",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "test": "bun test",
