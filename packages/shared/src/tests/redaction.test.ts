@@ -311,7 +311,7 @@ describe("generic-scan parity (scrubString ⇄ findSecretSpans)", () => {
       for (let i = spans.length - 1; i >= 0; i--) {
         const s = spans[i];
         if (!s) continue;
-        viaSpans = viaSpans.slice(0, s.start) + "***REDACTED:generic***" + viaSpans.slice(s.end);
+        viaSpans = `${viaSpans.slice(0, s.start)}***REDACTED:generic***${viaSpans.slice(s.end)}`;
       }
       expect(viaSpans).toBe(scrubString(text));
     });

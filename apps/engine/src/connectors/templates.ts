@@ -498,22 +498,12 @@ export const ConnectorTemplateSchema = z
         });
       }
     }
-    // Every template that authenticates must document at least one auth path in
-    // `auth_options` so the LLM/UI can present a deliberate choice instead of an
-    // opaque fallback. Empty `auth_options` is only legitimate for
-    // `auth_type === "none"`. (Whether the listed options must include the
-    // primary `auth_type` is intentionally not enforced — a few templates, e.g.
-    // gitlab/zendesk, use `bearer` as a fallback default while documenting only
-    // header/basic/oauth2 paths.)
-    if (t.auth_type !== "none" && t.auth_options.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["auth_options"],
-        message:
-          `template "${t.slug}" has auth_type=${t.auth_type} but empty auth_options — ` +
-          `add at least one entry documenting an auth path.`,
-      });
-    }
+    // NB: "every auth-requiring template documents an auth path in auth_options"
+    // is enforced for the BUILT-IN catalog by templates.test.ts, NOT here — the
+    // same schema validates tenant-authored templates on read, and an empty
+    // auth_options is a legitimate (if terse) tenant shape we must not reject
+    // retroactively. The builtin catalog is curated, so the test is the right
+    // chokepoint for it.
     // credential_hints.field must be unique per template.
     const fields = t.credential_hints.map((h) => h.field);
     if (new Set(fields).size !== fields.length) {
