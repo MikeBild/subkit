@@ -51,6 +51,36 @@ export interface Sk {
   /** UTF-8 base64url (`+`→`-`, `/`→`_`, padding kept). */
   base64UrlEncodeUtf8(input: unknown): string;
 
+  /** Inverse of `base64Encode` — Web `atob` (binary-string) semantics. */
+  base64Decode(input: unknown): string;
+  /** Inverse of `base64EncodeUtf8` — decodes the bytes as UTF-8. */
+  base64DecodeUtf8(input: unknown): string;
+
+  /** Lowercase hex of `input` (one low-8-bit byte per UTF-16 code unit). */
+  hexEncode(input: unknown): string;
+  /** Inverse of `hexEncode` — returns a binary string. */
+  hexDecode(input: unknown): string;
+
+  /** Deterministic SHA-256 over the UTF-8 bytes of `input`, lowercase hex. */
+  sha256(input: unknown): string;
+  /** Deterministic HMAC-SHA-256(`key`, `msg`) over UTF-8 bytes, lowercase hex. */
+  hmacSha256(key: unknown, msg: unknown): string;
+
+  /**
+   * Fixed execution timestamp in epoch milliseconds. Deterministic — the
+   * same instant for every call in a run. Use instead of the banned
+   * `Date.now()` / `new Date()`.
+   */
+  now(): number;
+  /** ISO-8601 string of `now()` (the fixed execution timestamp). */
+  nowIso(): string;
+  /**
+   * Deterministic UUIDv4-shaped id derived from the per-execution seed and
+   * a per-context call counter — distinct on each call within a run,
+   * identical across replays. Use instead of `Math.random()`-based ids.
+   */
+  uuid(): string;
+
   isString(v: unknown): v is string;
   isNumber(v: unknown): v is number;
   isArray(v: unknown): v is unknown[];
@@ -62,4 +92,8 @@ export interface Sk {
 
 declare global {
   const sk: Sk;
+  /** Web `btoa` — base64 of a binary string (each char one low-8-bit byte). Throws on code points > 255; use `sk.base64EncodeUtf8` for Unicode. */
+  function btoa(input: unknown): string;
+  /** Web `atob` — inverse of `btoa`, returns a binary string. */
+  function atob(input: unknown): string;
 }

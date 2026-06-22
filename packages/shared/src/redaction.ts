@@ -79,30 +79,109 @@ export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
     kind: "bearer",
     regex: /Bearer\s+(?=[A-Za-z0-9._-]*[0-9._-])[A-Za-z0-9._-]{8,}/gi,
   },
-  // Generic high-entropy token: a contiguous 32+ char run over the
-  // token charset that mixes lower case, upper case, and at least two
-  // digits. The lookaheads are confined to the token charset itself,
-  // so they can never cross whitespace — the assertions hold *within*
-  // the contiguous run. Deliberately excluded by construction:
-  //   - hex SHAs / lowercase UUIDs (no uppercase),
-  //   - uppercase UUIDs / ULIDs / SCREAMING_SNAKE constants (no lowercase),
-  //   - camelCase identifiers (no digits / too short),
-  //   - Mustache placeholders like `{{token}}` (`{`/`}` not in charset),
-  //   - file paths: `/` is NOT in the charset — with it, adjacent path
-  //     segments fuse into one span and whole paths get redacted
-  //     (`/var/folders/k8/<rand>/T/sk-…` → `/***REDACTED:generic***`,
-  //     caught live via config.loaded's config_path). Each segment is
-  //     evaluated alone and almost never satisfies the envelope; a true
-  //     base64 secret containing `/` still has its ≥32-char segments
-  //     redacted individually.
-  // MUST stay last: a vendor-prefixed pattern above should own the span
-  // (and its kind) when both match.
-  {
-    kind: "generic",
-    regex:
-      /\b(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*\d[A-Za-z0-9+=_-]*\d)[A-Za-z0-9+=_-]{32,}/g,
-  },
+  // NOTE: the `generic` high-entropy matcher is NOT in this flat-replace
+  // loop. It lives in `GENERIC_TOKEN_RE` and runs through a separate,
+  // code-context-suppressed pass (`redactGenericTokens` / the parallel
+  // scan in `findSecretSpans`) so it redacts a bare high-entropy run on
+  // shape but leaves codec alphabets and non-secret `var/const/let = "..."`
+  // literals alone. See `GENERIC_TOKEN_RE` below.
 ];
+
+// Generic high-entropy token: a contiguous 32+ char run over the token
+// charset that mixes lower case, upper case, and at least two digits.
+// Deliberately excluded by construction: hex SHAs / lowercase UUIDs (no
+// uppercase), SCREAMING_SNAKE constants (no lowercase), camelCase ids
+// (no digits / too short), Mustache `{{token}}` (`{`/`}` not in charset),
+// and individual file-path segments (`/` not in charset).
+//
+// A run of this shape with no surrounding context is treated as a secret
+// and redacted — a real opaque credential pasted into chat (`here you
+// go: <token>`, a lone-paste) carries no vendor prefix and no keyword,
+// so shape is the only signal we have. The redactor therefore fires on
+// shape by default.
+//
+// The shape alone is, however, too broad: a base64 / base32 / hex
+// *alphabet* literal, a content hash, or a reverse-lookup table all
+// satisfy it. Redacting those corrupted authored workflow / code
+// definitions into a malformed body (the validated v7.5 outage). The
+// outage literal was always inside source: the bare standard alphabet
+// assigned as the full value of a quoted string (`var B="<alphabet>"`).
+// So this matcher is CODE-CONTEXT-SUPPRESSED — a candidate run is
+// redacted UNLESS it is a known codec alphabet (an ordered base64 /
+// base32 / hex sequence) or it sits as the entire value of a
+// `var/const/let <non-secret-name> = "..."` assignment. A bare token
+// with no such code framing still redacts. Vendor-prefixed kinds above
+// are unaffected and still own their span/kind when both shapes match
+// (run them first, then this).
+const GENERIC_TOKEN_RE: RegExp =
+  /\b(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*\d[A-Za-z0-9+=_-]*\d)[A-Za-z0-9+=_-]{32,}/g;
+
+// Known codec alphabets, ordered. These are the literals a hand-rolled
+// base64 / base32 / hex encoder embeds as a lookup table; redacting one
+// corrupts the encoder (the validated outage). Compared against the
+// matched run directly so only an exact ordered alphabet is suppressed —
+// a credential that merely reuses the same charset (random order) does
+// not match.
+const CODEC_ALPHABETS: ReadonlyArray<string> = [
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", // base32 RFC 4648
+  "0123456789abcdefghijklmnopqrstuvwxyz", // base36
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", // base36 upper
+];
+
+function isCodecAlphabet(match: string): boolean {
+  // The trailing `/` of the standard base64 alphabet is not in the token
+  // charset, so the matched run is the alphabet truncated at the first
+  // out-of-charset character. Treat the run as a codec alphabet when it
+  // is a contiguous prefix of a known ordered alphabet AND covers the
+  // bulk of it (≥ 32 chars already guaranteed by the matcher) — this
+  // recognizes `…789+` (standard) and the url-safe `…789-_` form alike
+  // while a random credential reusing the charset will not be an ordered
+  // prefix.
+  return CODEC_ALPHABETS.some((a) => a.startsWith(match));
+}
+
+// A high-entropy run is part of source code — NOT a pasted secret — when
+// it is the entire value of a `var/const/let <name> = "..."` assignment
+// whose variable name is not itself a secret keyword. The outage shape
+// was `var B="<alphabet>"`: the quote characters break the token charset
+// (quotes are not in `[A-Za-z0-9+=_-]`), so the matched run is the
+// alphabet content only and the lookback window ends just before the
+// opening quote. We re-walk that window here. A secret-named variable
+// (`const apiKey = "..."`) is deliberately NOT suppressed — that is a
+// credential literal, not codec source.
+const CODE_ASSIGNMENT_RE: RegExp = /\b(?:var|const|let)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*["'`]$/;
+const SECRET_VAR_NAME_RE: RegExp = /token|secret|api[_-]?key|password|credential|auth/i;
+
+// Window large enough to span `const <reasonable-name> = "` ahead of the
+// run's opening quote.
+const CODE_CONTEXT_WINDOW = 64;
+
+function isCodeAssignmentValue(text: string, start: number): boolean {
+  const window = text.slice(Math.max(0, start - CODE_CONTEXT_WINDOW), start);
+  const m = CODE_ASSIGNMENT_RE.exec(window);
+  if (!m) return false;
+  const varName = m[1] ?? "";
+  // A secret-named variable holding a high-entropy literal is a real
+  // credential in source, not codec data — keep redacting it.
+  return !SECRET_VAR_NAME_RE.test(varName);
+}
+
+// True when the run is code, not a secret: an ordered codec alphabet, or
+// the full value of a non-secret `var/const/let = "..."` assignment.
+function isCodeLiteral(text: string, start: number, match: string): boolean {
+  return isCodecAlphabet(match) || isCodeAssignmentValue(text, start);
+}
+
+function redactGenericTokens(value: string): string {
+  GENERIC_TOKEN_RE.lastIndex = 0;
+  return value.replace(GENERIC_TOKEN_RE, (match, offset: number) =>
+    !isCodeLiteral(value, offset, match) && !isPresentableToken(match)
+      ? REDACTED("generic")
+      : match,
+  );
+}
 
 /**
  * Presigned-URL query-string detector. Matches any URL whose query
@@ -174,6 +253,12 @@ export function scrubString(value: string): string {
     regex.lastIndex = 0;
     out = out.replace(regex, (match) => (isPresentableToken(match) ? match : REDACTED(kind)));
   }
+  // Code-context-suppressed generic pass runs AFTER the vendor-prefixed
+  // loop so a vendor pattern already owns its span (and the `?` skip +
+  // the marker it left keeps this pass from re-touching it). A bare
+  // high-entropy token redacts on shape; a codec alphabet or a
+  // non-secret `var/const/let = "..."` literal survives.
+  out = redactGenericTokens(out);
   return out;
 }
 
@@ -232,6 +317,30 @@ export function findSecretSpans(text: string): SecretSpan[] {
     }
     regex.lastIndex = 0;
   }
+
+  // Parallel code-context-suppressed generic pass — kept byte-identical
+  // to `scrubString`'s `redactGenericTokens` so user-text (scrubString)
+  // and assistant-text (this) redact the same runs. Vendor spans were
+  // pushed first above, so a candidate overlapping one is skipped. A run
+  // that is a codec alphabet or a non-secret `var/const/let = "..."`
+  // literal is NOT reported; every other high-entropy run IS.
+  GENERIC_TOKEN_RE.lastIndex = 0;
+  let g: RegExpExecArray | null = GENERIC_TOKEN_RE.exec(text);
+  while (g !== null) {
+    const start = g.index;
+    const end = g.index + g[0].length;
+    if (
+      !isCodeLiteral(text, start, g[0]) &&
+      !isPresentableToken(g[0]) &&
+      !overlapsAny(start, end, markers) &&
+      !overlapsAny(start, end, spans)
+    ) {
+      spans.push({ start, end, kind: "generic", match: g[0] });
+    }
+    g = GENERIC_TOKEN_RE.exec(text);
+  }
+  GENERIC_TOKEN_RE.lastIndex = 0;
+
   return spans.sort((a, b) => a.start - b.start);
 }
 

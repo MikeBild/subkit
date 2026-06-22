@@ -400,7 +400,7 @@ describe("auto-persist on confirmation — save_connector_draft basic-auth", () 
     // basic-auth draft. That field matched no extractor alias → the
     // submit-time extraction returned null → auto-persist failed with
     // `credential_required` AFTER the operator had already typed the
-    // secret. The form-creation gate (WS3 / credential-form-contract.ts)
+    // secret. The form-creation gate (credential-form-contract.ts)
     // now blocks mis-named fields at creation time. This test exercises
     // the full resume path: canonical `username` + `password` form
     // fields → elicitation resolved → credential cached with

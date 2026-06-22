@@ -261,6 +261,16 @@ export function formatError(err: unknown, source: string): JSONataError {
   // every JSONataError carries a useful string.
   const baseMessage = coerceMessage(e?.message);
   const location = lineNumber !== undefined ? ` at L${lineNumber}:${column}` : "";
+  // The U+2588 (█) is a deliberate parse-error caret marker injected ONLY into
+  // this error *message* string — it points at JSONata's `position`. It is NOT
+  // redaction/encoding corruption (those markers are asterisk-delimited
+  // `***REDACTED:<kind>***`) and it is NEVER written back into a stored
+  // `output_transform` or any workflow definition: the clean source lives on
+  // `JSONataError.source` and in `validationError.details.expression`
+  // (engine.ts). When `█` shows up next to a saved expression in a failure
+  // report (e.g. execution 1b0627ab: `… ~>█ { … }`), it is this caret echoed
+  // through `err.message` interpolation, flagging an authoring-time JSONata
+  // syntax error — not a mutated definition.
   const caret =
     position !== undefined ? `\n  ${source.slice(0, position)}█${source.slice(position)}` : "";
   return new JSONataError(

@@ -982,10 +982,29 @@ Available calls:
   preserving byte-identical output matters
 - `sk.base64EncodeUtf8(input)` / `sk.base64UrlEncodeUtf8(input)` — UTF-8
   base64 helpers; prefer for new Unicode text payloads such as MIME/API bodies
+- `sk.base64Decode(input)` / `sk.base64DecodeUtf8(input)` — inverse decoders
+  (binary-string and UTF-8); tolerate url-safe alphabet and missing padding
+- `btoa(input)` / `atob(input)` — Web-standard binary-string base64 globals
+  (`btoa` throws on code points > 255 — use `sk.base64EncodeUtf8` for Unicode)
+- `sk.hexEncode(input)` / `sk.hexDecode(input)` — lowercase-hex codec
+- `sk.sha256(input)` — SHA-256 of `input` (UTF-8), lowercase hex
+- `sk.hmacSha256(key, msg)` — HMAC-SHA-256, lowercase hex (signed-request auth)
+- `sk.now()` / `sk.nowIso()` — the execution's fixed timestamp (epoch ms / ISO);
+  use these instead of `Date.now()` / `new Date()`, which are not available
+- `sk.uuid()` — deterministic per-step UUID; use instead of `Math.random()` ids
 - `sk.isString / isNumber / isArray / isObject / isNil` — type guards
 - `sk.version` — stdlib version (persisted for drift detection)
 
 Prefer the stdlib over raw comparisons so hook + transform code stays uniform.
+
+**Never hand-roll base64, hex, or crypto.** Do not paste a base64/base32/hex
+alphabet string or build a reverse-lookup table inside a transform — use
+`sk.base64Encode` / `sk.base64Decode` / `sk.hexEncode` / `sk.hexDecode` /
+`sk.sha256` / `sk.hmacSha256`. A hand-rolled encoder is rejected by the
+authoring gate, and a redacted alphabet literal has corrupted authored code
+into a malformed payload in production. Likewise never reach for `new Date()`,
+`Date.now()`, or `Math.random()` — they are absent by design; use `sk.now()`,
+`sk.nowIso()`, and `sk.uuid()`.
 
 ## Common pitfalls
 

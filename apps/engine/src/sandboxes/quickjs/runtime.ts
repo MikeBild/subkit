@@ -116,6 +116,24 @@ export interface RunJsOptions {
   input: unknown;
   /** Optional per-call limit overrides. */
   limits?: SandboxLimits;
+  /**
+   * Deterministic clock/id context. The fixed `now_ms` (epoch ms, e.g.
+   * the execution's `started_at`) backs `sk.now()`/`sk.nowIso()`, and the
+   * stable `seed` (e.g. the execution id) backs `sk.uuid()`. Both are
+   * injected as VM globals (`__sandbox_now__`, `__sandbox_seed__`) BEFORE
+   * the stdlib installs, so the stdlib closure captures them. Omitting
+   * `clock` leaves `sk.now()` at 0 and `sk.uuid()` seeded from a constant
+   * — callers that want reproducible-yet-meaningful values (every
+   * execution path) must pass it. Keeping it deterministic is the whole
+   * point: self-healing dry-runs replay the same context and get the same
+   * output.
+   */
+  clock?: {
+    /** Fixed instant in epoch milliseconds. */
+    now_ms: number;
+    /** Stable per-run seed for deterministic id derivation. */
+    seed: string;
+  };
 }
 
 /**
@@ -195,6 +213,20 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
   });
 
   try {
+    // Inject the deterministic clock/id context BEFORE the stdlib runs so
+    // the stdlib closure captures `__sandbox_now__`/`__sandbox_seed__`
+    // (which back `sk.now()`/`sk.uuid()`). No host clock or RNG crosses
+    // the boundary — only the host-fixed values the caller chose, keeping
+    // the run reproducible.
+    const nowMs = opts.clock?.now_ms ?? 0;
+    const seed = opts.clock?.seed ?? "";
+    const nowHandle = context.newNumber(Number.isFinite(nowMs) ? nowMs : 0);
+    context.setProp(context.global, "__sandbox_now__", nowHandle);
+    nowHandle.dispose();
+    const seedHandle = context.newString(seed);
+    context.setProp(context.global, "__sandbox_seed__", seedHandle);
+    seedHandle.dispose();
+
     // Install the sk-Stdlib global (sk.http, sk.get, sk.allow, …)
     // before any user code runs. Failure here is an engine bug, not a
     // user error — surface it as a distinct sandbox kind so callers

@@ -123,6 +123,15 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
       code: p.step.expression,
       input: { scope: p.scope, input: p.input },
       limits: { wall_ms: timeoutMs },
+      // Deterministic clock/id: `sk.now()` reads the execution's fixed
+      // `started_at`, `sk.uuid()` derives from a per-step seed (execution
+      // id + step id) so a replayed run reproduces the same ids. This is
+      // why authors must use `sk.now()`/`sk.uuid()` instead of the banned
+      // `new Date()`/`Date.now()`/`Math.random()`.
+      clock: {
+        now_ms: p.ctx.started_at.getTime(),
+        seed: `${p.ctx.execution_id}:${p.step.id}`,
+      },
     });
     const raced = await Promise.race([
       jsPromise,

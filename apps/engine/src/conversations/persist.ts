@@ -236,6 +236,12 @@ export async function appendMessage(
   // leaf at the single insert chokepoint — covers `service/append.ts`,
   // `service/create.ts`, and the loop's user-row inserts.
   // Capture-to-credential-cache happens upstream in `service/append.ts`.
+  // This row is the persisted REPLAY source. `scrubString`'s generic
+  // high-entropy matcher is code-context-suppressed (it redacts a run on
+  // shape by default but leaves a codec alphabet or a non-secret
+  // `var/const/let = "..."` literal alone), so a pasted workflow / code
+  // definition survives VERBATIM into replay while a bare pasted secret —
+  // including the lone-paste shape with no keyword — still scrubs.
   if (role === "user" && content && typeof content === "object") {
     const c = content as Record<string, unknown>;
     if (typeof c.text === "string") content = { ...c, text: scrubString(c.text) };
