@@ -35,6 +35,20 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     expect(mode).toBe("no_confirm");
   });
 
+  it("load_skill stays no_confirm despite tenant_write category (benign context-load, must not gate)", () => {
+    // Regression: flipping load_skill to tenant_write (so it audits its
+    // loaded_skills write) must NOT make the autonomous loop / MCP clients hit a
+    // confirm gate — an explicit no_confirm policy overrides the tenant_write
+    // category default.
+    const mode = resolveToolMode({
+      tool: "load_skill",
+      category: "tenant_write",
+      input: { slug: "workflow-authoring" },
+      overrides: {},
+    });
+    expect(mode).toBe("no_confirm");
+  });
+
   it("run_workflow environment=prod requires confirm", () => {
     const mode = resolveToolMode({
       tool: "run_workflow",
