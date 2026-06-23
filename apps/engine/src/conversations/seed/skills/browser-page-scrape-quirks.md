@@ -39,19 +39,31 @@ external browserless service** — page.goto, page.waitForSelector,
 page.waitForTimeout, and all Puppeteer page APIs work exactly as
 documented. They are not silently swallowed by subkit.
 
+**The `code` MUST be an ES-module default export** — `export default
+async function ({ page, context }) { … }`. NOT CommonJS: `module.exports`,
+`require()`, and `import` statements all make browserless reject the
+request with HTTP 400 `{ "error": "module is not defined" }` even though
+the call reached the service. Pass runtime inputs (URL, selectors, filter
+values) through the POST body's **`context`** field and read them as the
+second destructured argument — do **not** string-interpolate them into
+the code or capture them from an outer closure (the function runs in a
+fresh module scope where those names are undefined).
+
 ## Reliable scrape pattern
 
 ```javascript
-// page-function body (runs inside browserless)
-export default async ({ page }) => {
-  await page.goto(TARGET_URL, { waitUntil: 'networkidle2' });
+// page-function body (runs inside browserless). Inputs arrive via `context`,
+// supplied in the POST body: { "code": "…", "context": { "url": "…", "rowSelector": ".row" } }
+export default async function ({ page, context }) {
+  const { url, rowSelector } = context;
+  await page.goto(url, { waitUntil: 'networkidle2' });
 
   // Wait for the primary content selector.
   try {
-    await page.waitForSelector(ROW_SELECTOR, { timeout: 15000 });
+    await page.waitForSelector(rowSelector, { timeout: 15000 });
   } catch (_) {
     return {
-      data: { error: 'selector_missing', selector: ROW_SELECTOR, url: page.url() },
+      data: { error: 'selector_missing', selector: rowSelector, url: page.url() },
       type: 'application/json',
     };
   }
@@ -61,7 +73,7 @@ export default async ({ page }) => {
     rows = await page.evaluate((sel) =>
       Array.from(document.querySelectorAll(sel)).map((r) => ({
         text: r.textContent.trim(),
-      })), ROW_SELECTOR);
+      })), rowSelector);
     if (rows.length > 0) break;
     // Section present in DOM but empty — reload and retry.
     if (attempt < 2) await page.reload({ waitUntil: 'networkidle2' });
@@ -69,13 +81,13 @@ export default async ({ page }) => {
 
   if (rows.length === 0) {
     return {
-      data: { error: 'no_rows_after_retries', selector: ROW_SELECTOR, url: page.url() },
+      data: { error: 'no_rows_after_retries', selector: rowSelector, url: page.url() },
       type: 'application/json',
     };
   }
 
   return { data: rows, type: 'application/json' };
-};
+}
 ```
 
 The three-reload poll is the known-good fix for pages that render
