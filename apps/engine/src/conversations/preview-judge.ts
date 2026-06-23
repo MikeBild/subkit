@@ -51,6 +51,7 @@ import { z } from "zod";
 import type { Executor } from "../db/client.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
+import { detectNamedOutputFormat, outputMatchesFormat } from "./output-format.ts";
 import { canonicalJson } from "./text-line-diff.ts";
 import { truncateStepPreviewForLlm } from "./tools/truncate.ts";
 
@@ -240,14 +241,43 @@ function buildJudgePrompt(params: JudgePreviewParams): string {
     "```",
     "",
     "Verdict rules:",
-    '- "passes": the output satisfies the goal. Minor format differences are fine.',
+    '- "passes": the output satisfies the goal. Minor cosmetic differences are fine — EXCEPT output format (see below).',
     '- "partial": the output mostly satisfies the goal, but something the goal explicitly asks for is missing or empty.',
     '- "failed": the output does not satisfy the goal.',
     '- `missing` lists each concrete item the goal asks for that is absent or empty in the output (e.g. "project names are empty strings", "droplet specs (CPU/memory/disk) absent"). Empty when the verdict is "passes".',
-    "- Judge CONTENT, not style. An empty value where the goal requires data is never a pass.",
+    "- Judge CONTENT, not cosmetic style. An empty value where the goal requires data is never a pass.",
+    '- OUTPUT FORMAT IS PART OF THE GOAL when the goal names one. If the goal asks for "a markdown table", "CSV", "an HTML body", or "a bulleted list", the rendered output MUST be in that exact format (a markdown table needs a header row, a `| --- |` separator, and one row per record). Correct data returned in the wrong shape (e.g. a JSON array when a markdown table was asked for) is "partial", NOT "passes" — list the missing format in `missing`.',
     "",
     "Return ONLY the JSON object { verdict, reason, missing }.",
   ].join("\n");
+}
+
+/**
+ * The rendered final output the caller will see, coerced to a string for
+ * the deterministic format check. Prefers the LAST transform artifact (the
+ * shaped result), falling back to the last artifact overall. A structured
+ * (object/array) output is JSON-stringified, so it correctly fails a
+ * "markdown table" / "CSV" format check rather than slipping through.
+ */
+function extractRenderedOutput(artifacts: JudgeStepArtifact[]): string {
+  // The FINAL output the caller sees — the LAST step's output_preview, which
+  // is exactly what `dry_run_workflow` returns as its `preview` and what a
+  // reader receives. Format fidelity is about THAT output, not an
+  // intermediate step: a workflow can render a markdown table in a middle
+  // `render` step yet return structured data as its final output — that does
+  // NOT satisfy "return a markdown table". Checking only the last artifact
+  // keeps the judge aligned with the user-visible result. Artifacts arrive
+  // in definition order (`buildJudgeStepArtifacts` restores it). A structured
+  // (object) output is JSON-stringified, so it correctly fails the check.
+  const last = artifacts[artifacts.length - 1];
+  const value = last?.output_preview;
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
 }
 
 /**
@@ -277,6 +307,48 @@ export async function judgePreview(params: JudgePreviewParams): Promise<PreviewJ
         tenant_id: params.tenant_id,
       });
       return { verdict: "skipped", reason: "judge_unavailable" };
+    }
+    // Deterministic format-fidelity guard. When the goal NAMES a concrete
+    // output format and the judge would otherwise pass, verify the rendered
+    // output actually carries that format's structural signature. A miss
+    // downgrades passes→partial so it flows through the existing block path
+    // (never silent) and feeds `missing` into the repair loop. Gated on the
+    // goal naming a format, so plain-data goals are untouched (no false
+    // blocks). The LLM rubric alone is unreliable here — this is the hard,
+    // unit-testable guard.
+    if (parsed.data.verdict === "passes") {
+      const fmt = detectNamedOutputFormat(params.goal);
+      if (fmt) {
+        const rendered = extractRenderedOutput(params.step_artifacts);
+        const check = outputMatchesFormat(fmt, rendered);
+        // Always log the format-check decision (greppable diagnosis of this
+        // exact failure class): the named format, whether the rendered
+        // output matched, and which checks failed on a miss.
+        logger.info({
+          module: "conversations",
+          action: "preview_judge.format_check",
+          msg: "goal names an output format — checked the rendered preview output for that format",
+          tenant_id: params.tenant_id,
+          named_format: fmt,
+          matched: check.ok,
+          ...(check.ok ? {} : { failed_checks: check.missing }),
+        });
+        if (!check.ok) {
+          logger.warn({
+            module: "conversations",
+            action: "preview_judge.format_mismatch",
+            msg: "goal names an output format but the previewed output is not rendered as that format — verdict downgraded passes→partial",
+            tenant_id: params.tenant_id,
+            named_format: fmt,
+            failed_checks: check.missing,
+          });
+          return {
+            verdict: "partial",
+            reason: `The goal asks for output as a ${fmt.replace("_", " ")}, but the previewed output is not rendered in that format.`,
+            missing: check.missing,
+          };
+        }
+      }
     }
     return {
       verdict: parsed.data.verdict,

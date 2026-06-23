@@ -47,6 +47,7 @@ import { logger } from "../logging/logger.ts";
 import { TriggerSchema } from "../workflows/types.ts";
 import { type ValidationError, validateWorkflowDef } from "../workflows/validator.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
+import { detectNamedOutputFormat } from "./output-format.ts";
 import { type RecordedEvalReport, runRecordedEval } from "./recorded-eval.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { getLastPreview } from "./tools/last-preview-store.ts";
@@ -301,6 +302,7 @@ export function buildGenerationPrompt(args: {
     "- Prefer ONE bulk list endpoint over a nested per-item loop: when the vendor offers an endpoint that returns the collection with the fields you need, fetch it once and reshape with a single transform instead of looping a detail endpoint per item.",
     "- Every step output is uniformly enveloped as `{ data, … }` — downstream reads go through `.data`.",
     "- When the goal implies a concrete output shape, declare a minimal `output_schema` (JSON Schema: `type`/`properties`/`required` for exactly the fields the user asked for) — previews validate the real output against it, giving the loop a mechanical done-signal.",
+    '- When the goal NAMES a concrete output FORMAT ("a markdown table", "CSV", "an HTML body", "a bulleted list"), the final `output_transform` (or the last transform feeding it) MUST RENDER that format as a STRING — correct data returned as a JSON array does NOT satisfy "return a markdown table". A markdown table needs a header row, a `| --- |` separator row, and one row per record; CSV needs a header line + comma-separated rows; a bulleted list needs `- ` per line.',
     '- When the goal phrases a recurring cadence ("daily at 9am", "täglich um 18 Uhr", "every 10 minutes"), bind `trigger: { "kind": "schedule", "cron": "<cron>", "tz": "<IANA tz>" }` as part of the definition.',
     "- `slug` is lowercase-hyphenated and derived from the name; step ids are short snake_case nouns.",
   );
@@ -393,6 +395,24 @@ export async function runAuthoringPipeline(
    *  signal — the pipeline returns the best draft so far with a clear
    *  note instead of throwing or hanging. */
   let deadlineExceeded = false;
+
+  // Output-format grounding signal: when the goal names a concrete output
+  // format, the design rule in `buildGenerationPrompt` carries the
+  // fidelity instruction into generation (the on-demand skill loader does
+  // NOT inject the workflow-authoring skill in this single-shot path, so the
+  // rule must live in always-present grounding). Logged once per run when a
+  // format is named — greppable, and silent on plain-data goals.
+  const namedOutputFormat = detectNamedOutputFormat(goal);
+  if (namedOutputFormat) {
+    logger.info({
+      module: "conversations",
+      action: "authoring_pipeline.output_format_grounded",
+      msg: "goal names a concrete output format — fidelity rule grounded into generation",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      named_format: namedOutputFormat,
+    });
+  }
 
   for (let pass = 1; pass <= MAX_GENERATION_PASSES; pass++) {
     if (deadlineSignal.aborted) {
