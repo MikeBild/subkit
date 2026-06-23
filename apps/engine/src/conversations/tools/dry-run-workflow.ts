@@ -588,6 +588,11 @@ export const dryRunWorkflowTool: ConversationTool = {
         definition,
         steps: steps as unknown as Array<Record<string, unknown>>,
         run_steps: run.steps,
+        // The resolved final output (post output_transform) — the judge's
+        // format check evaluates THIS, not intermediate steps. A markdown
+        // table rendered in a middle step that output_transform discards must
+        // not satisfy a "return a markdown table" goal.
+        final_output: run.output,
         prior_breaker: ctx.getDraft().state?.judge_breaker ?? null,
         ...(signal ? { signal } : {}),
       });

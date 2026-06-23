@@ -520,6 +520,56 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
     expect(outcome.verdict).toBe("passes");
   });
 
+  test("markdown in an intermediate STEP but final_output is structured → downgraded (judge checks final_output, NOT step artifacts)", async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "The rendered step looks right.",
+      missing: [],
+    });
+
+    const outcome = await judgePreview({
+      goal: MARKDOWN_GOAL,
+      definition_summary: "- render (transform): build table; - wrap: output_transform",
+      // The render STEP produced a proper markdown table…
+      step_artifacts: markdownTableArtifacts,
+      // …but the workflow's FINAL output (post output_transform) is a JSON
+      // array — exactly the real defect this fix targets.
+      final_output: [
+        { rank: 1, city: "Berlin", max_temp_c: 25 },
+        { rank: 2, city: "Hamburg", max_temp_c: 23 },
+      ],
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    // Must downgrade: the caller receives structured data, not a markdown table.
+    expect(outcome.verdict).toBe("partial");
+    if (outcome.verdict === "partial") {
+      expect(outcome.missing.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('final_output IS a markdown string → stays "passes" even when step artifacts are structured', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "Final output is a markdown table.",
+      missing: [],
+    });
+
+    const outcome = await judgePreview({
+      goal: MARKDOWN_GOAL,
+      definition_summary: "- collect (transform); - render: output_transform",
+      // Steps are structured…
+      step_artifacts: jsonArrayArtifacts,
+      // …but the FINAL output is a proper markdown table string.
+      final_output: "| rank | city |\n| ---: | --- |\n| 1 | Berlin |\n| 2 | Hamburg |",
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    expect(outcome.verdict).toBe("passes");
+  });
+
   test('judge returns "passes" + plain-data goal naming NO format → stays "passes" regardless of output shape (no false block)', async () => {
     getMockProvider().generateOverrides.judge = () => ({
       verdict: "passes",

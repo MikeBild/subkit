@@ -105,6 +105,14 @@ export interface JudgePreviewParams {
   /** Compact definition summary — step ids / kinds / descriptions. */
   definition_summary: string;
   step_artifacts: JudgeStepArtifact[];
+  /** The workflow's RESOLVED final output (post `output_transform` /
+   *  response_filters) — what the caller actually receives. The format check
+   *  evaluates THIS, not the step artifacts: a workflow can render a markdown
+   *  table in an intermediate step that a later output_transform discards, so
+   *  the steps can show the format while the final output does not. `null` /
+   *  undefined for a hold-writes preview where no real final output exists →
+   *  the check falls back to the last step artifact. */
+  final_output?: unknown;
   tenant_id: string;
   db?: Executor;
   /** Turn/pipeline abort signal (P1) — threaded into the judge's
@@ -252,25 +260,7 @@ function buildJudgePrompt(params: JudgePreviewParams): string {
   ].join("\n");
 }
 
-/**
- * The rendered final output the caller will see, coerced to a string for
- * the deterministic format check. Prefers the LAST transform artifact (the
- * shaped result), falling back to the last artifact overall. A structured
- * (object/array) output is JSON-stringified, so it correctly fails a
- * "markdown table" / "CSV" format check rather than slipping through.
- */
-function extractRenderedOutput(artifacts: JudgeStepArtifact[]): string {
-  // The FINAL output the caller sees — the LAST step's output_preview, which
-  // is exactly what `dry_run_workflow` returns as its `preview` and what a
-  // reader receives. Format fidelity is about THAT output, not an
-  // intermediate step: a workflow can render a markdown table in a middle
-  // `render` step yet return structured data as its final output — that does
-  // NOT satisfy "return a markdown table". Checking only the last artifact
-  // keeps the judge aligned with the user-visible result. Artifacts arrive
-  // in definition order (`buildJudgeStepArtifacts` restores it). A structured
-  // (object) output is JSON-stringified, so it correctly fails the check.
-  const last = artifacts[artifacts.length - 1];
-  const value = last?.output_preview;
+function coerceToString(value: unknown): string {
   if (value === undefined || value === null) return "";
   if (typeof value === "string") return value;
   try {
@@ -278,6 +268,30 @@ function extractRenderedOutput(artifacts: JudgeStepArtifact[]): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * The rendered output the format check evaluates, coerced to a string.
+ *
+ * Prefers the workflow's RESOLVED final output (`params.final_output`, post
+ * output_transform / response_filters) — that is what the caller actually
+ * receives. This matters because a workflow can render a markdown table in an
+ * intermediate `render` step that a later output_transform then discards: the
+ * step artifacts would show the format while the final output does not, and
+ * the goal ("return a markdown table") is about the final output. Falls back
+ * to the last step artifact only when no final output exists (a hold-writes
+ * preview). A structured (object) output is JSON-stringified, so it correctly
+ * fails a "markdown table" / "CSV" check rather than slipping through.
+ */
+function extractRenderedOutput(params: JudgePreviewParams): {
+  rendered: string;
+  source: "final_output" | "step_artifacts";
+} {
+  if (params.final_output !== undefined && params.final_output !== null) {
+    return { rendered: coerceToString(params.final_output), source: "final_output" };
+  }
+  const last = params.step_artifacts[params.step_artifacts.length - 1];
+  return { rendered: coerceToString(last?.output_preview), source: "step_artifacts" };
 }
 
 /**
@@ -319,17 +333,19 @@ export async function judgePreview(params: JudgePreviewParams): Promise<PreviewJ
     if (parsed.data.verdict === "passes") {
       const fmt = detectNamedOutputFormat(params.goal);
       if (fmt) {
-        const rendered = extractRenderedOutput(params.step_artifacts);
+        const { rendered, source } = extractRenderedOutput(params);
         const check = outputMatchesFormat(fmt, rendered);
         // Always log the format-check decision (greppable diagnosis of this
-        // exact failure class): the named format, whether the rendered
-        // output matched, and which checks failed on a miss.
+        // exact failure class): the named format, whether the FINAL output
+        // matched, which corpus was checked (final_output vs the step-artifact
+        // fallback), and which checks failed on a miss.
         logger.info({
           module: "conversations",
           action: "preview_judge.format_check",
-          msg: "goal names an output format — checked the rendered preview output for that format",
+          msg: "goal names an output format — checked the final output for that format",
           tenant_id: params.tenant_id,
           named_format: fmt,
+          checked_source: source,
           matched: check.ok,
           ...(check.ok ? {} : { failed_checks: check.missing }),
         });
