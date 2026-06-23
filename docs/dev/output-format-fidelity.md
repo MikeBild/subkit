@@ -86,15 +86,28 @@ intermediate step (or returns structured data) while the workflow's final
 string. The grounding block is correct domain guidance and modestly more
 efficient (2 vs 3 tool calls, faster), but it is **not** the fidelity fix.
 
-**The effective lever is the preview judge, not generation grounding.** Today
-the judge evaluates `step_artifacts` and sees the intermediate markdown step →
-`format_check matched:true` → `passes` → auto-commits a non-markdown final
-output. The evidence-indicated fix is to make the judge check the **final
-output** (the `output_transform` result the caller receives) rather than the
-last step artifact; a miss then downgrades `passes→partial`, blocks the
-auto-commit, and feeds the repair loop. That is a bounded follow-up (plumb the
-resolved final output through `dry_run_workflow → runPreviewJudgeGate →
-judgePreview`), not done here — flagged by this experiment.
+**The effective lever is the preview judge, not generation grounding — and it
+is now wired to the FINAL output.** The judge previously evaluated
+`step_artifacts`, so an intermediate markdown step gave `format_check
+matched:true → passes` even when a later `output_transform` discarded it and the
+caller received structured data. The fix plumbs the run's resolved final output
+(`RunResult.output`) through `dry_run_workflow → runPreviewJudgeGate →
+judgePreview`; the format check evaluates that (falling back to the last step
+artifact only for a hold-writes preview), and `format_check` logs
+`checked_source: final_output | step_artifacts`.
+
+Proof (deterministic, the clean A/B for this fix — `preview-judge.test.ts`):
+identical inputs — a markdown table in the step artifact + a structured
+(JSON-array) `final_output` — now downgrade `passes→partial` (checks
+`final_output`), whereas checking the step artifact would have passed. A
+markdown-string `final_output` still passes even when the steps are structured.
+A live run confirms `checked_source: final_output`.
+
+The live content benchmark is NOT a clean A/B vehicle for this fix: the
+`dry_run_workflow` tool's `preview` field still surfaces the *last step*, not
+`RunResult.output`, so the benchmark's content check (and the chat preview a
+user sees) measures the wrong corpus. Aligning the dry-run preview with the
+final output is a separate, bounded follow-up.
 
 **Breadth:** only `markdown_table` (the hardest string-rendered case) was
 trialed; `json` is the degenerate default (structured output already serialises
