@@ -51,6 +51,17 @@ export interface LiveScenarioSpec {
    *  the preview judge BLOCKS instead of content passing. */
   expect_judge_block: boolean;
   content_checks: ContentCheck[];
+  /**
+   * Which corpus the content_checks run against:
+   *  - "envelope" (default): the whole first-preview envelope (step traces,
+   *    held requests, final_output). Correct for SEND/hold-writes workflows
+   *    whose reviewable content is the held request, not a returned value.
+   *  - "final_output": ONLY the resolved final output (post output_transform).
+   *    Strict — a broken transform yields null/absent → corpus is "null"/""
+   *    → discriminating checks fail. Required for data-returning scenarios so
+   *    a check cannot pass off the definition echo or a request trace.
+   */
+  content_source?: "envelope" | "final_output";
 }
 
 /** Minimal projection of the engine's turn events / conversation
@@ -221,12 +232,39 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
   if (previews.length === 0) notes.push("no dry_run_workflow preview observed");
 
   const firstPreview = previews[0];
-  const firstCorpus = firstPreview ? (JSON.stringify(firstPreview) ?? "") : "";
+  // Corpus selection (evidence discipline): "final_output" scenarios score the
+  // resolved final output ONLY — never the whole envelope, which also carries
+  // step traces, the definition echo, and per-step output_preview that regexes
+  // leak onto (request coords, field names in the transform source) and pass
+  // even when the produced output is null. "envelope" (default) keeps the
+  // whole-preview corpus for SEND/hold-writes scenarios whose reviewable
+  // content is the held request, not a returned value.
+  let firstCorpus = "";
+  if (firstPreview) {
+    if (spec.content_source === "final_output") {
+      const fo = (firstPreview as Record<string, unknown>).final_output;
+      firstCorpus = fo === undefined ? "" : (JSON.stringify(fo) ?? "");
+    } else {
+      firstCorpus = JSON.stringify(firstPreview) ?? "";
+    }
+  }
   const firstContent = runContentChecks(firstCorpus, spec.content_checks);
   if (!firstContent.pass && firstPreview) {
     notes.push(`first preview failed content checks: ${firstContent.failed.join(", ")}`);
   }
   const first_preview_content_pass = previews.length > 0 && firstContent.pass;
+
+  // Isolation guard (T-A): if a draft-mutating tool fired BEFORE the first
+  // dry_run_workflow, the first preview reflects a repair-proposal edit
+  // (path 3), not raw GENERATE (path 2). Flag the trial so analysis can drop
+  // it — a content win must be attributable to generation, not repair.
+  const firstPreviewIdx = obs.results.findIndex((r) => r.tool === "dry_run_workflow");
+  const editedBeforePreview = obs.results
+    .slice(0, firstPreviewIdx < 0 ? obs.results.length : firstPreviewIdx)
+    .some((r) => ["edit_workflow_patch", "update_param", "connect_steps"].includes(r.tool));
+  if (editedBeforePreview) {
+    notes.push("NON-ISOLATED: edit tool fired before first preview — exclude trial");
+  }
 
   const firstVerdict = extractJudgeVerdict(firstPreview);
   const lastVerdict = extractJudgeVerdict(previews[previews.length - 1]);
@@ -369,6 +407,59 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       { name: "markdown separator", pattern: "\\|\\s*:?-{3,}" },
       { name: "warmest_day date", pattern: "20\\d\\d-\\d\\d-\\d\\d" },
       { name: "temperature value", pattern: "\\d+(\\.\\d+)?" },
+    ],
+  },
+  {
+    // T-A scenario A — JS-transform scope addressing (a data-handling body gap).
+    // Without the data-handling rules the model writes `$scope.<id>.data`
+    // (JSONata) inside a JS transform; `$scope` is undefined in QuickJS → the
+    // transform returns undefined → the final output has no real spread_c.
+    // Scored against final_output ONLY (content_source) with VALUE checks: the
+    // fields must hold real decimals, and a serialized `"spread_c": null` must
+    // be ABSENT. These cannot pass off the definition echo or a request trace.
+    slug: "ta-js-transform-input-scope",
+    goal:
+      "Author a workflow that fetches the 7-day forecast for Berlin (latitude 52.52, longitude 13.41) " +
+      "from the open-meteo connector's /v1/forecast endpoint using daily=temperature_2m_max,temperature_2m_min " +
+      "and forecast_days=7. Add a JavaScript transform step (language: javascript) that reads the fetched " +
+      "arrays from scope, finds the single highest value in temperature_2m_max and the single lowest value " +
+      "in temperature_2m_min across all 7 days, and computes the weekly temperature spread " +
+      "(highest_max minus lowest_min). Shape the final output using output_transform_function so the " +
+      "workflow returns a JSON object with fields highest_max_c, lowest_min_c, and spread_c " +
+      "(all numbers rounded to one decimal place). Preview it and save it when the preview is correct.",
+    connectors: ["open-meteo"],
+    expect_judge_block: false,
+    content_source: "final_output",
+    // Numeric checks are self-discriminating: a broken transform serializes
+    // `"spread_c": null`, which does NOT match `-?\d+` → the check fails. (No
+    // negative "must-not-contain-null" check — runContentChecks treats a regex
+    // MATCH as PASS, so a negation would invert; the numeric match covers it.)
+    content_checks: [
+      { name: "spread_c numeric", pattern: '"spread_c"\\s*:\\s*-?\\d+(\\.\\d+)?' },
+      { name: "highest_max_c numeric", pattern: '"highest_max_c"\\s*:\\s*-?\\d+(\\.\\d+)?' },
+      { name: "lowest_min_c numeric", pattern: '"lowest_min_c"\\s*:\\s*-?\\d+(\\.\\d+)?' },
+    ],
+  },
+  {
+    // T-A scenario B — JSONata variable-block in output_transform (a
+    // workflow-authoring/data-handling JSONata-syntax gap). A bare `:=` in an
+    // object constructor is a compile error → output_transform fails → final
+    // output is null/absent. Scored against final_output ONLY with VALUE checks.
+    slug: "ta-jsonata-variable-block",
+    goal:
+      "Author a workflow that fetches the 7-day forecast for Berlin (latitude 52.52, longitude 13.41) " +
+      "from the open-meteo connector's /v1/forecast endpoint using daily=temperature_2m_max,temperature_2m_min,time " +
+      "and forecast_days=7. Use a single request step and no separate transform step. Shape the final output " +
+      "with a JSONata output_transform expression (not output_transform_function) that produces a JSON object " +
+      "with two fields: hottest_day (the date string from daily.time at the index of the maximum value in " +
+      "daily.temperature_2m_max) and hottest_temp_c (the maximum value in daily.temperature_2m_max). " +
+      "Preview it and save it when the preview is correct.",
+    connectors: ["open-meteo"],
+    expect_judge_block: false,
+    content_source: "final_output",
+    content_checks: [
+      { name: "hottest_temp_c numeric", pattern: '"hottest_temp_c"\\s*:\\s*-?\\d+(\\.\\d+)?' },
+      { name: "hottest_day iso date", pattern: '"hottest_day"\\s*:\\s*"20\\d\\d-\\d\\d-\\d\\d"' },
     ],
   },
 ];
