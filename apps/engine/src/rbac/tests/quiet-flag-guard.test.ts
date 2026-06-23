@@ -51,11 +51,15 @@ const QUIET_TRUE = /quiet\s*:\s*true\b/;
 
 // The ONLY files allowed to contain `quiet: true`:
 //   - the production caller (`permittedMcpScopes`)
+//   - the MCP-connect operator-digest probe (`stats:read` capability check on
+//     every connect — a user without it is normal, not an incident, so the
+//     denial logs at DEBUG instead of flooding `rbac.denied` WARN)
 //   - the evaluator's own type definition (the `quiet?: boolean` doc)
 //   - the evaluator's own unit tests (exercise the probe path)
 //   - this guard test itself (references the literal in prose/regex)
 const ALLOWED = new Set<string>([
   "apps/engine/src/http/routes/oauth/shared.ts",
+  "apps/engine/src/mcp/server.ts",
   "apps/engine/src/rbac/evaluator.ts",
   "apps/engine/src/rbac/tests/evaluator.test.ts",
   "apps/engine/src/rbac/tests/quiet-flag-guard.test.ts",
