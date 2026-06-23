@@ -19,7 +19,7 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { recordKnowledgeSourceRefreshed } from "../../audit/recorders/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { logger } from "../../logging/logger.ts";
 import { applyAuthMaterial, resolveConnectorCredential } from "../drivers/http.ts";
@@ -117,7 +117,11 @@ interface CachedResult {
   fetched_at: string;
 }
 
-async function readCache(db: Db, tenant_id: string, slug: string): Promise<CachedResult | null> {
+async function readCache(
+  db: Db | Executor,
+  tenant_id: string,
+  slug: string,
+): Promise<CachedResult | null> {
   const rows = await db
     .select()
     .from(knowledgeSources)
@@ -148,6 +152,29 @@ async function readCache(db: Db, tenant_id: string, slug: string): Promise<Cache
   } catch {
     return null;
   }
+}
+
+/**
+ * OPT-E: read the cached discovery/introspection index for a connector's
+ * base_url — the slug the discover tool persists under. Lets the authoring
+ * context surface a connector's known operations WITHOUT re-introspecting (and
+ * without an agent round-trip). Returns null on miss / stale (24h TTL); the
+ * agent's on-demand `discover_connector_endpoints` is the fallback. Generic over
+ * REST + GraphQL — both store the same `discovery_endpoint_index` shape.
+ */
+export async function readDiscoveryIndexForBaseUrl(
+  db: Executor,
+  tenant_id: string,
+  base_url: string,
+): Promise<DiscoveryResult | null> {
+  let slug: string;
+  try {
+    slug = deriveCacheKey({ base_url }).slug;
+  } catch {
+    return null;
+  }
+  const cached = await readCache(db, tenant_id, slug);
+  return cached?.result ?? null;
 }
 
 async function writeCache(

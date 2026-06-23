@@ -3,6 +3,7 @@
 // empty array and the assembled prompt simply omits the section.
 
 import { and, desc, eq } from "drizzle-orm";
+import { readDiscoveryIndexForBaseUrl } from "../../../connectors/discovery/service.ts";
 import type { Executor } from "../../../db/client.ts";
 import { connectors, conversationElicitations, conversations } from "../../../db/schema/index.ts";
 import { searchDocs } from "../../../docs-ingestion/service.ts";
@@ -258,6 +259,78 @@ export async function loadProbeShapeExamples(
       module: "llm",
       action: "llm.context.probe_shapes_skipped",
       msg: "recorded endpoint shapes query failed; prompt assembled without them",
+      tenant_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
+
+/** OPT-E: a connector's known operations, projected compactly from its cached
+ *  discovery/introspection index. */
+export interface ConnectorSchemaSummary {
+  connector_slug: string;
+  /** `op(arg: Type, …)` signatures — operation + argument names + argument
+   *  type names. Enough to stop the model guessing field/arg names; the deep
+   *  shapes (enum values, input-object fields) stay one `discover_connector_endpoints`
+   *  / `search_knowledge` drill-down away. */
+  operations: string[];
+}
+
+/** Per-connector caps — this rides EVERY authoring turn for a connector in
+ *  scope, so the budget is deliberately tight to avoid context bloat. */
+const SCHEMA_MAX_CONNECTORS = 3;
+const SCHEMA_MAX_OPERATIONS = 24;
+const SCHEMA_CHARS_BUDGET = 1800;
+
+/**
+ * OPT-E: for the connectors bound to the active conversation, surface their
+ * KNOWN OPERATIONS (from the discovery index OPT-D warms at create / the agent
+ * warms on demand) directly in the authoring context — so the model sees the
+ * real operation + argument names without a discover_connector_endpoints
+ * round-trip. Generic over REST + GraphQL (both store the same flattened
+ * endpoint shape). Best-effort: a miss/stale index just yields []. Tenant-safe
+ * (the connector + its index are both tenant-scoped).
+ */
+export async function loadConnectorSchemaSummaries(
+  tenant_id: string,
+  connector_ids: string[],
+  exec: Executor,
+): Promise<ConnectorSchemaSummary[]> {
+  try {
+    const ids = [...new Set(connector_ids)]
+      .filter((id) => UUID_RE.test(id))
+      .slice(0, SCHEMA_MAX_CONNECTORS);
+    if (ids.length === 0) return [];
+    const out: ConnectorSchemaSummary[] = [];
+    for (const connector_id of ids) {
+      const rows = await exec
+        .select({ slug: connectors.slug, base_url: connectors.base_url })
+        .from(connectors)
+        .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.id, connector_id)))
+        .limit(1);
+      const c = rows[0];
+      if (!c?.base_url) continue;
+      const index = await readDiscoveryIndexForBaseUrl(exec, tenant_id, c.base_url);
+      if (!index || index.endpoints.length === 0) continue;
+      const operations: string[] = [];
+      let budget = SCHEMA_CHARS_BUDGET;
+      for (const e of index.endpoints.slice(0, SCHEMA_MAX_OPERATIONS)) {
+        const args = (e.params ?? []).map((p) => `${p.name}: ${p.type ?? "?"}`).join(", ");
+        const name = e.operation_id ?? `${e.method} ${e.path}`;
+        const sig = `${name}(${args})`;
+        if (sig.length > budget) break;
+        budget -= sig.length;
+        operations.push(sig);
+      }
+      if (operations.length > 0) out.push({ connector_slug: c.slug, operations });
+    }
+    return out;
+  } catch (err) {
+    logger.warn({
+      module: "llm",
+      action: "llm.context.connector_schema_skipped",
+      msg: "connector discovery-index summary failed; prompt assembled without it",
       tenant_id,
       error: err instanceof Error ? err.message : String(err),
     });

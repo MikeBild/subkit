@@ -60,6 +60,7 @@ import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
 import {
   formatChunk,
   formatConnectorRecipes,
+  formatConnectorSchemaSummaries,
   formatFailure,
   formatInteractionLog,
   formatKnowledgeChunk,
@@ -79,6 +80,7 @@ import {
   type InteractionLogEntry,
   type LatestPreviewEntry,
   loadChunks,
+  loadConnectorSchemaSummaries,
   loadInteractionLog,
   loadKnowledgeChunks,
   loadLatestPreview,
@@ -373,15 +375,25 @@ export async function assembleEnhancedPrompt(
   // request paths and transforms, and the shapes must reach it BEFORE
   // it authors — not as an after-the-fact validation finding.
   let probeShapeExamplesBlock: string | null = null;
+  // OPT-E: the in-scope connectors' KNOWN OPERATIONS from their discovery index
+  // (introspected at create / on demand), so the model has the real operation +
+  // argument names in context without a discover_connector_endpoints round-trip.
+  let connectorSchemaBlock: string | null = null;
   if (
     p.flow === "converse" &&
     p.authoring_hint?.mode === "workflow" &&
     p.authoring_connector_ids &&
     p.authoring_connector_ids.length > 0
   ) {
-    const shapeExamples = await loadProbeShapeExamples(p.tenant_id, p.authoring_connector_ids, db);
+    const [shapeExamples, schemaSummaries] = await Promise.all([
+      loadProbeShapeExamples(p.tenant_id, p.authoring_connector_ids, db),
+      loadConnectorSchemaSummaries(p.tenant_id, p.authoring_connector_ids, db),
+    ]);
     if (shapeExamples.length > 0) {
       probeShapeExamplesBlock = formatProbeShapeExamples(shapeExamples);
+    }
+    if (schemaSummaries.length > 0) {
+      connectorSchemaBlock = formatConnectorSchemaSummaries(schemaSummaries);
     }
   }
 
@@ -624,6 +636,9 @@ export async function assembleEnhancedPrompt(
     // the model reads "what the endpoints return" → "what the last
     // dry-run actually produced" together, in the same `$scope.<id>.data…`
     // addressing vocabulary.
+    // OPT-E: known operations (what CAN be called) just above the recorded
+    // samples (what calls already returned) — same authoring vocabulary.
+    if (connectorSchemaBlock) sections.push(connectorSchemaBlock);
     if (probeShapeExamplesBlock) sections.push(probeShapeExamplesBlock);
     if (latestPreviewEntries.length > 0) {
       sections.push(formatLatestPreview(latestPreviewEntries));
@@ -691,6 +706,13 @@ export async function assembleEnhancedPrompt(
     } else if (failures.length > 0) {
       failures = [];
       trimmed.push("failures");
+    } else if (connectorSchemaBlock) {
+      // OPT-E connector-operations summary drops FIRST among the authoring
+      // aids: it is the most cheaply re-derivable (one
+      // discover_connector_endpoints call re-warms the exact same index), so
+      // it is the first thing to shed under budget pressure.
+      connectorSchemaBlock = null;
+      trimmed.push("connector_schema_summary");
     } else if (probeShapeExamplesBlock) {
       // Recorded endpoint samples drop EARLY — well before any skill
       // section. They are a grounding aid the model can re-derive on

@@ -17,7 +17,7 @@ import type {
   IncludedKnowledgeChunk,
   PriorFailure,
 } from "../../types.ts";
-import type { InteractionLogEntry, LatestPreviewEntry } from "./loaders.ts";
+import type { ConnectorSchemaSummary, InteractionLogEntry, LatestPreviewEntry } from "./loaders.ts";
 
 /**
  * Substitute whitelisted runtime-context tokens in a skill body at
@@ -430,6 +430,25 @@ export function formatProbeShapeExamples(examples: ProbeShapeExample[]): string 
       }
       lines.push(`- ${example.endpoint_key}: ${summary}`);
     }
+  }
+  return lines.join("\n");
+}
+
+/** OPT-E: the in-scope connectors' KNOWN OPERATIONS from their introspected /
+ *  discovered schema — operation + argument names + argument types, so the model
+ *  uses real names instead of guessing. Complements "Recorded endpoint samples"
+ *  (which shows shapes of calls that ALREADY ran); this shows what CAN be called. */
+export function formatConnectorSchemaSummaries(summaries: ConnectorSchemaSummary[]): string | null {
+  if (summaries.length === 0) return null;
+  const lines: string[] = [
+    "# Connector operations (from the connector's schema)",
+    "Operations available on this conversation's connector(s), introspected/discovered from the real schema, with argument names + types. Use these EXACT operation and argument names — do not invent or guess them.",
+    "For deeper shapes the signatures don't show (enum VALUES, input-object fields, relay connection field layout), drill in with `search_knowledge` or `discover_connector_endpoints`.",
+    "",
+  ];
+  for (const s of summaries) {
+    lines.push(`## ${s.connector_slug}`);
+    for (const op of s.operations) lines.push(`- ${op}`);
   }
   return lines.join("\n");
 }
