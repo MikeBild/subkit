@@ -111,6 +111,29 @@ export async function refreshIfStale(
   if (expiresMs > 0 && expiresMs - now > bufferMs) {
     return decrypted; // still fresh
   }
+  // A connector already flagged needs_reauth has a credential believed dead:
+  // a prior auth failure (here or at a request site) set the flag, and only a
+  // re-issue (`request_connector_reauth`) clears it. Re-attempting the IdP
+  // refresh now burns a doomed call PER request step — within one run of an
+  // N-item workflow that is N identical refresh attempts against the IdP even
+  // though the first failure already flagged the connector. Prod saw exactly
+  // this: a single SICharge run fired 7 `ListChargers` steps → 7 dead Cognito
+  // refreshes (7× `oauth2.refresh_error` at error) + 7×401, all after the
+  // connector was already needs_reauth. Skip the IdP call: return the stale
+  // credential so the request still gets its 401 (the connector is already
+  // flagged, so the request-site handler dedups — no re-flag, no re-notify),
+  // and record the skip once at debug. A later run, after the user re-issues
+  // the credential, sees needs_reauth cleared and refreshes normally.
+  if (connector.needs_reauth === true) {
+    logger.debug({
+      module: "oauth2",
+      action: "oauth2.refresh_skipped_needs_reauth",
+      msg: "connector already flagged needs_reauth; skipping doomed inline refresh until the credential is re-issued",
+      credential_id: credRow.id,
+      connector_id: connector.id,
+    });
+    return decrypted;
+  }
   try {
     // Branch on grant_type. Cognito's `InitiateAuth` (`USER_PASSWORD_AUTH`
     // + `REFRESH_TOKEN_AUTH`) doesn't speak the OAuth2 spec — it has its
