@@ -359,6 +359,57 @@ export function scenarioPassed(score: LiveScenarioScore): boolean {
   return score.content_pass && Object.values(score.targets).every((t) => t === "PASS");
 }
 
+/** Per-scenario aggregate across N trials — the "report a RATE, not a single
+ *  run" practice (LLM output is stochastic; a 1-few-trial verdict is
+ *  underpowered). NON-ISOLATED trials (a draft-mutating tool fired before the
+ *  first preview) are EXCLUDED from the rates. Pure — the run.sh delta loop and
+ *  a future `sk eval` feed it the per-trial scores for one scenario. */
+export interface TrialAggregate {
+  scenario: string;
+  /** Isolated trials counted (excludes NON-ISOLATED). */
+  n_trials: number;
+  excluded_non_isolated: number;
+  content_pass_rate: number;
+  converged_rate: number;
+  /** Over trials where probe_before_author is non-null (something authored). */
+  probe_before_author_rate: number;
+  dry_run_before_save_rate: number;
+  median_previews_to_pass: number | null;
+  median_tool_calls: number | null;
+}
+
+function median(xs: number[]): number | null {
+  if (xs.length === 0) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? (s[m] ?? null) : ((s[m - 1] ?? 0) + (s[m] ?? 0)) / 2;
+}
+
+export function aggregateTrials(scores: LiveScenarioScore[]): TrialAggregate {
+  const scenario = scores[0]?.scenario ?? "(none)";
+  const isolated = scores.filter((s) => !s.notes.some((n) => n.includes("NON-ISOLATED")));
+  const n = isolated.length;
+  const rate = (pred: (s: LiveScenarioScore) => boolean): number =>
+    n === 0 ? 0 : isolated.filter(pred).length / n;
+  const probeEligible = isolated.filter((s) => s.probe_before_author !== null);
+  return {
+    scenario,
+    n_trials: n,
+    excluded_non_isolated: scores.length - n,
+    content_pass_rate: rate((s) => s.content_pass),
+    converged_rate: rate((s) => s.converged),
+    probe_before_author_rate:
+      probeEligible.length === 0
+        ? 0
+        : probeEligible.filter((s) => s.probe_before_author === true).length / probeEligible.length,
+    dry_run_before_save_rate: rate((s) => s.dry_run_before_save),
+    median_previews_to_pass: median(
+      isolated.map((s) => s.previews_to_pass).filter((p): p is number => p !== null),
+    ),
+    median_tool_calls: median(isolated.map((s) => s.tool_calls)),
+  };
+}
+
 export function buildLiveReport(args: {
   scores: LiveScenarioScore[];
   engine_host: string;

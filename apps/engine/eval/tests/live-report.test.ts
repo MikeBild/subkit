@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  aggregateTrials,
   BENCHMARK_TARGETS,
   buildLiveReport,
   evaluateBenchmarkTargets,
@@ -387,5 +388,55 @@ describe("scoreScenario · trajectory metrics (probe_before_author / dry_run_bef
     expect(
       scoreScenario(SPEC2, obs(["author_workflow", "dry_run_workflow"])).dry_run_before_save,
     ).toBe(true);
+  });
+});
+
+describe("aggregateTrials · rates, not a single run", () => {
+  const mk = (over: Partial<LiveScenarioScore>): LiveScenarioScore => ({
+    scenario: "s",
+    tool_calls: 10,
+    llm_passes: 1,
+    judge: "passes",
+    wall_ms: 1,
+    content_pass: true,
+    previews: 1,
+    first_preview_content_pass: true,
+    converged: true,
+    previews_to_pass: 1,
+    probe_before_author: true,
+    dry_run_before_save: true,
+    expect_judge_block: false,
+    status: "committed",
+    targets: {
+      pipeline_llm_calls_le_3: "PASS",
+      single_preview: "PASS",
+      tool_calls_le_15: "PASS",
+      content_correct_first_preview: "PASS",
+    },
+    notes: [],
+    ...over,
+  });
+
+  test("rates over isolated trials; NON-ISOLATED excluded; median previews_to_pass", () => {
+    const agg = aggregateTrials([
+      mk({ content_pass: true, previews_to_pass: 1 }),
+      mk({ content_pass: false, converged: false, previews_to_pass: null }),
+      mk({ content_pass: true, previews_to_pass: 3 }),
+      mk({ notes: ["NON-ISOLATED: edit before preview"], content_pass: false }),
+    ]);
+    expect(agg.n_trials).toBe(3);
+    expect(agg.excluded_non_isolated).toBe(1);
+    expect(agg.content_pass_rate).toBeCloseTo(2 / 3, 5);
+    expect(agg.converged_rate).toBeCloseTo(2 / 3, 5);
+    expect(agg.median_previews_to_pass).toBe(2);
+  });
+
+  test("probe_before_author_rate counts only non-null (authored) trials", () => {
+    const agg = aggregateTrials([
+      mk({ probe_before_author: true }),
+      mk({ probe_before_author: false }),
+      mk({ probe_before_author: null }),
+    ]);
+    expect(agg.probe_before_author_rate).toBeCloseTo(1 / 2, 5);
   });
 });
