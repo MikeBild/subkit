@@ -47,7 +47,7 @@ import { logger } from "../logging/logger.ts";
 import { TriggerSchema } from "../workflows/types.ts";
 import { type ValidationError, validateWorkflowDef } from "../workflows/validator.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
-import { detectNamedOutputFormat } from "./output-format.ts";
+import { detectNamedOutputFormat, formatGuidance } from "./output-format.ts";
 import { type RecordedEvalReport, runRecordedEval } from "./recorded-eval.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { getLastPreview } from "./tools/last-preview-store.ts";
@@ -306,6 +306,20 @@ export function buildGenerationPrompt(args: {
     '- When the goal phrases a recurring cadence ("daily at 9am", "täglich um 18 Uhr", "every 10 minutes"), bind `trigger: { "kind": "schedule", "cron": "<cron>", "tz": "<IANA tz>" }` as part of the definition.',
     "- `slug` is lowercase-hyphenated and derived from the name; step ids are short snake_case nouns.",
   );
+
+  // Focused per-format grounding block when the goal names an output format.
+  // Richer than the generic design rule above — it spells out the exact
+  // FINAL-output shape for that format (the "small output-format skill",
+  // inlined here because the on-demand skill loader does not inject skills in
+  // the single-shot generation path).
+  const namedFormat = detectNamedOutputFormat(args.goal);
+  if (namedFormat) {
+    lines.push(
+      "",
+      "## Output format (the goal names one — this is part of the contract)",
+      formatGuidance(namedFormat),
+    );
+  }
 
   if (args.priorFindings && args.priorFindings.length > 0) {
     lines.push(

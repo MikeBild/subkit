@@ -4,7 +4,12 @@
 // Tests run in `bun run test:unit` without any external dependencies.
 
 import { describe, expect, test } from "bun:test";
-import { detectNamedOutputFormat, outputMatchesFormat } from "../output-format.ts";
+import {
+  detectNamedOutputFormat,
+  formatGuidance,
+  type NamedOutputFormat,
+  outputMatchesFormat,
+} from "../output-format.ts";
 
 describe("detectNamedOutputFormat", () => {
   test('"...return a markdown table that ranks..." → "markdown_table"', () => {
@@ -139,5 +144,54 @@ describe("outputMatchesFormat — bulleted_list", () => {
     expect(result.ok).toBe(false);
     expect(result.missing).toHaveLength(1);
     expect(result.missing[0]).toContain("bulleted");
+  });
+});
+
+describe("detectNamedOutputFormat · json", () => {
+  test('"return the result as JSON" → "json"', () => {
+    expect(detectNamedOutputFormat("return the result as JSON")).toBe("json");
+  });
+  test('"a json object with fields" → "json"', () => {
+    expect(detectNamedOutputFormat("produce a json object with fields x and y")).toBe("json");
+  });
+  test('incidental "the API returns JSON" does NOT trigger json (no output-intent)', () => {
+    // "returns json" is not an output-intent phrasing the gate matches.
+    expect(detectNamedOutputFormat("call the endpoint that returns json from the vendor")).toBe(
+      null,
+    );
+  });
+});
+
+describe("outputMatchesFormat · json", () => {
+  test("a JSON object string → ok", () => {
+    expect(outputMatchesFormat("json", '{"city":"Berlin","max":25}').ok).toBe(true);
+  });
+  test("a JSON array string → ok", () => {
+    expect(outputMatchesFormat("json", '[{"a":1}]').ok).toBe(true);
+  });
+  test("a markdown table (not JSON) → ok:false", () => {
+    const r = outputMatchesFormat("json", "| a | b |\n| --- | --- |\n| 1 | 2 |");
+    expect(r.ok).toBe(false);
+    expect(r.missing[0]).toContain("JSON");
+  });
+});
+
+describe("formatGuidance", () => {
+  const formats: NamedOutputFormat[] = ["markdown_table", "csv", "html", "bulleted_list", "json"];
+  for (const fmt of formats) {
+    test(`${fmt} → non-empty, format-relevant guidance`, () => {
+      const g = formatGuidance(fmt);
+      expect(g.length).toBeGreaterThan(20);
+    });
+  }
+  // The string-rendered formats must steer the FINAL output (json is the
+  // structured default and is phrased around output_schema instead).
+  for (const fmt of ["markdown_table", "csv", "html", "bulleted_list"] as NamedOutputFormat[]) {
+    test(`${fmt} guidance steers the FINAL output`, () => {
+      expect(formatGuidance(fmt).toUpperCase()).toContain("FINAL");
+    });
+  }
+  test("markdown guidance names the separator row", () => {
+    expect(formatGuidance("markdown_table")).toContain("| --- |");
   });
 });

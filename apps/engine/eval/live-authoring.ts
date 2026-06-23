@@ -220,9 +220,16 @@ async function main(): Promise<void> {
   console.log(`live-authoring eval → ${args.engine_url} (${specs.length} scenario(s))\n`);
 
   const scores = [];
+  // Raw per-scenario observations (the actual tool outputs the model
+  // produced), dumped alongside the report. This is the ground truth for the
+  // evidence process: the scored row tells you PASS/FAIL, this file tells you
+  // WHY — e.g. whether the rendered output really is a markdown table, or
+  // whether a content-check failure is a measurement artifact vs a real defect.
+  const observations: ScenarioObservation[] = [];
   for (const spec of specs) {
     console.log(`▶ ${spec.slug}`);
     const obs = await runScenario(args, spec);
+    observations.push(obs);
     const score = scoreScenario(spec, obs);
     scores.push(score);
     const targetLine = Object.entries(score.targets)
@@ -247,7 +254,12 @@ async function main(): Promise<void> {
 
   mkdirSync(dirname(args.out), { recursive: true });
   writeFileSync(args.out, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  // Sibling raw-observations dump (`<out>.results.json`) — the unscored tool
+  // outputs, for evidence inspection. Same basename so it pairs with the report.
+  const resultsOut = args.out.replace(/\.json$/, "") + ".results.json";
+  writeFileSync(resultsOut, `${JSON.stringify(observations, null, 2)}\n`, "utf8");
   console.log(`Report: ${args.out}`);
+  console.log(`Raw observations: ${resultsOut}`);
   console.log(`Scenarios: ${report.total}   PASS: ${report.passed}   FAIL: ${report.failed}`);
 
   let passed = report.scenarios.every((s) => scenarioPassed(s));
