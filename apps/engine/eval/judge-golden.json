@@ -1,0 +1,133 @@
+{
+  "_about": "Judge-calibration golden set. Each case is a (goal, final_output) pair with a HUMAN label. The calibration runner (eval/judge-calibration.ts, `bun run eval:judge`) calls the REAL preview judge on each and reports agreement vs these labels — the judge must agree >= AGREEMENT_THRESHOLD (0.80). Cases are grounded in real benchmark outputs (browserless + SICharge GraphQL A/Bs) and the deterministic eval fixtures. Labels reflect: does the FINAL output satisfy the goal? passes = yes; partial = right shape, missing/empty required content; failed = wrong/empty/format-mismatch.",
+  "cases": [
+    {
+      "name": "gql-digest-correct",
+      "goal": "Produce an HTML email digest of offline chargers: to/cc/subject and an html <table> with serial number, customer, location, health state, and recent-error count, plus a summary line of total offline by health state.",
+      "definition_summary": "query_offline (graphql) -> fetch_errors (graphql) -> aggregate (graphql) -> compose (transform)",
+      "final_output": {
+        "to": "ops@example.com",
+        "cc": "oncall@example.com",
+        "subject": "SICharge: offline chargers digest",
+        "html": "<html><body><p>Total offline chargers: <strong>30</strong>. By health state: DEGRADED 12, FAULTED 18.</p><table><tr><th>Serial</th><th>Customer</th><th>Location</th><th>Health</th><th>Recent errors</th></tr><tr><td>SN-CP-1001</td><td>ACME Mobility</td><td>Berlin HQ</td><td>FAULTED</td><td>4</td></tr></table></body></html>"
+      },
+      "label": "passes",
+      "note": "All requested fields present: to/cc/subject, summary line with per-health counts, table with all 5 columns."
+    },
+    {
+      "name": "gql-digest-empty-edges",
+      "goal": "Produce an HTML email digest of offline chargers with a table of serial, customer, location, health, recent-error count.",
+      "definition_summary": "query_offline (graphql) -> compose (transform)",
+      "final_output": {
+        "to": "ops@example.com",
+        "subject": "SICharge: offline chargers digest",
+        "html": "<html><body><p>Total offline chargers: 0.</p><table><tr><th>Serial</th></tr></table></body></html>"
+      },
+      "label": "failed",
+      "note": "The relay shape was read wrong (edges undefined) so zero rows surfaced; the digest is empty and missing cc + most columns."
+    },
+    {
+      "name": "gql-digest-wrong-filter",
+      "goal": "Digest of OFFLINE (not connected) chargers only.",
+      "definition_summary": "query_all (graphql) -> compose (transform)",
+      "final_output": {
+        "to": "ops@example.com",
+        "subject": "Charger digest",
+        "html": "<table><tr><td>SN-CP-1001</td><td>HEALTHY</td><td>connected</td></tr><tr><td>SN-CP-1002</td><td>HEALTHY</td><td>connected</td></tr></table>"
+      },
+      "label": "failed",
+      "note": "Lists connected/healthy chargers — the offline filter was not applied, so it does not satisfy the goal."
+    },
+    {
+      "name": "quotes-einstein-correct",
+      "goal": "Return an email object with to='reader@example.com', subject='Einstein quotes', and html containing a <ul> of Einstein quotes with their tags.",
+      "definition_summary": "scrape (request) -> filter (transform) -> compose (transform)",
+      "final_output": {
+        "to": "reader@example.com",
+        "subject": "Einstein quotes",
+        "html": "<ul><li>“The world as we have created it is a process of our thinking.” [change, thinking]</li><li>“Try not to become a man of success.” [success, value]</li></ul>"
+      },
+      "label": "passes",
+      "note": "Correct recipient, subject, and a <ul> of Einstein quotes with tags."
+    },
+    {
+      "name": "hn-github-table-correct",
+      "goal": "HTML email with subject 'HN front page: GitHub repos', cc 'leads@example.com', and a <table> (Title, HN points, GitHub stars, Language) sorted by stars desc.",
+      "definition_summary": "scrape_hn -> filter_github -> fetch_stars (per row) -> compose",
+      "final_output": {
+        "to": "team@example.com",
+        "cc": "leads@example.com",
+        "subject": "HN front page: GitHub repos",
+        "html": "<table><tr><th>Title</th><th>HN points</th><th>GitHub stars</th><th>Language</th></tr><tr><td>F3</td><td>292</td><td>1500</td><td>Rust</td></tr></table>"
+      },
+      "label": "passes",
+      "note": "Subject, cc, and a 4-column table sorted by stars all present."
+    },
+    {
+      "name": "hn-github-missing-stars-column",
+      "goal": "HTML <table> with columns Title, HN points, GitHub stars, Language.",
+      "definition_summary": "scrape_hn -> filter_github -> compose",
+      "final_output": {
+        "to": "team@example.com",
+        "subject": "HN repos",
+        "html": "<table><tr><th>Title</th><th>HN points</th></tr><tr><td>F3</td><td>292</td></tr></table>"
+      },
+      "label": "partial",
+      "note": "Table is present but missing the GitHub stars and Language columns (the correlation step was dropped)."
+    },
+    {
+      "name": "weather-table-correct",
+      "goal": "Return a markdown table ranking cities by temperature, hottest first.",
+      "definition_summary": "fetch_weather -> rank (transform)",
+      "final_output": "| City | Temp (°C) |\n| --- | --- |\n| Madrid | 34 |\n| Berlin | 27 |",
+      "label": "passes",
+      "note": "A correct markdown table, ranked hottest-first."
+    },
+    {
+      "name": "weather-table-format-mismatch",
+      "goal": "Return a MARKDOWN TABLE ranking cities by temperature.",
+      "definition_summary": "fetch_weather -> rank (transform)",
+      "final_output": [{ "city": "Madrid", "temp_c": 34 }, { "city": "Berlin", "temp_c": 27 }],
+      "label": "failed",
+      "note": "Data is correct but the goal demanded a markdown table; a JSON array does not satisfy the named output format."
+    },
+    {
+      "name": "single-value-correct",
+      "goal": "Return the hottest day's date and temperature for the next week.",
+      "definition_summary": "fetch_forecast -> argmax (transform)",
+      "final_output": { "hottest_day": "2026-06-28", "hottest_temp_c": 31.2 },
+      "label": "passes",
+      "note": "Exactly the requested fields with plausible values."
+    },
+    {
+      "name": "digest-null-output",
+      "goal": "Return an email object with to, subject, and an html body summarizing results.",
+      "definition_summary": "fetch -> compose (transform)",
+      "final_output": null,
+      "label": "failed",
+      "note": "No output at all — the compose step produced null; nothing satisfies the goal."
+    },
+    {
+      "name": "list-correct-count",
+      "goal": "Return the 5 most-recently-updated repositories with name and star count.",
+      "definition_summary": "list_repos (graphql) -> shape (transform)",
+      "final_output": [
+        { "name": "a", "stars": 10 },
+        { "name": "b", "stars": 9 },
+        { "name": "c", "stars": 8 },
+        { "name": "d", "stars": 7 },
+        { "name": "e", "stars": 6 }
+      ],
+      "label": "passes",
+      "note": "Five repos, each with name + stars, ordered by recency/stars."
+    },
+    {
+      "name": "list-truncated-one-item",
+      "goal": "Return the 5 most-recently-updated repositories with name and star count.",
+      "definition_summary": "list_repos (graphql) -> shape (transform)",
+      "final_output": [{ "name": "a", "stars": 10 }],
+      "label": "partial",
+      "note": "Right shape but only 1 of the 5 requested repositories — pagination/first arg was wrong."
+    }
+  ]
+}
