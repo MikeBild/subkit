@@ -43,7 +43,11 @@ export const MAX_REPAIRS_PER_TURN = 2;
  */
 export type LoopProviderKind = LlmProviderKind | "mock";
 
-export async function resolveLanguageModel(provider: LoopProviderKind, modelId: string) {
+export async function resolveLanguageModel(
+  provider: LoopProviderKind,
+  modelId: string,
+  tenantId?: string,
+) {
   if (provider === "mock") return createMockLanguageModel(modelId);
-  return await resolveSdkModel(provider, modelId);
+  return await resolveSdkModel(provider, modelId, tenantId);
 }

@@ -251,14 +251,12 @@ function serialize(config: Config): string {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-// Mirror the generic (llm.provider, llm.api_key, llm.model) leaves into the
-// provider-specific llm.providers.<provider>.* leaves that the model resolver
-// actually reads (see llm/core/model-init.ts ENV_TO_CONFIG_PATH). `sk init`,
-// `sk settings set llm.api_key`, and SK_OVERRIDE_LLM_API_KEY all write the
-// generic leaf; without this mirror the first AI call fails with
-// ProviderMisconfiguredError even though the key is plainly set. Only fills an
-// empty provider-specific leaf, so an explicit per-provider value always wins.
-function mirrorGenericLlmKey(cfg: Config): void {
+// Mirror generic LLM leaves into the active provider leaf that the model
+// resolver reads (see llm/core/model-init.ts ENV_TO_CONFIG_PATH).
+function mirrorGenericLlmKey(
+  cfg: Config,
+  opts: { overwriteApiKey?: boolean; overwriteModel?: boolean } = {},
+): void {
   const provider = cfg.llm.provider;
   const providers = cfg.llm.providers as Record<
     string,
@@ -266,11 +264,19 @@ function mirrorGenericLlmKey(cfg: Config): void {
   >;
   const target = providers[provider];
   if (!target || typeof target !== "object") return;
-  if (cfg.llm.api_key && "api_key" in target && !target.api_key) {
-    target.api_key = cfg.llm.api_key;
+  if ("api_key" in target) {
+    if (opts.overwriteApiKey) {
+      target.api_key = cfg.llm.api_key;
+    } else if (cfg.llm.api_key && !target.api_key) {
+      target.api_key = cfg.llm.api_key;
+    }
   }
-  if (cfg.llm.model && "model" in target && !target.model) {
-    target.model = cfg.llm.model;
+  if ("model" in target) {
+    if (opts.overwriteModel) {
+      target.model = cfg.llm.model;
+    } else if (cfg.llm.model && !target.model) {
+      target.model = cfg.llm.model;
+    }
   }
 }
 
@@ -657,6 +663,24 @@ export async function setConfigKey(
       setDeep(newOverlay, leafPath, validatedValue);
       tenants[opts.tenantId] = newOverlay as never;
       updatedConfig = { ...state.config, tenants };
+
+      if (
+        leafPath.length === 2 &&
+        leafPath[0] === "llm" &&
+        leafPath[1] === "provider" &&
+        beforeValue !== validatedValue
+      ) {
+        setDeep(newOverlay, ["llm", "api_key"], "");
+      }
+      if (
+        leafPath.length === 2 &&
+        leafPath[0] === "llm" &&
+        (leafPath[1] === "api_key" || leafPath[1] === "model")
+      ) {
+        const provider = applyTenantOverlay(updatedConfig, opts.tenantId).llm.provider;
+        const targetLeaf = leafPath[1];
+        setDeep(newOverlay, ["llm", "providers", provider, targetLeaf], validatedValue);
+      }
     } else {
       const next = JSON.parse(JSON.stringify(state.config)) as Config;
       beforeValue = getDeep(next as unknown as Record<string, unknown>, leafPath);
@@ -664,14 +688,10 @@ export async function setConfigKey(
       updatedConfig = next;
     }
 
-    // A1: switching the active LLM provider must not let a stale generic
-    // `llm.api_key` (set for the PREVIOUS provider) mirror into the newly
-    // selected provider's empty leaf. Clear the generic key on a real
-    // provider change; the prior provider keeps its own provider-specific
-    // leaf, and the new provider stays unset until the operator supplies its
-    // key (yielding a clear ProviderMisconfigured error rather than a
-    // wrong-key auth failure). Global scope only — tenant overlays are rare
-    // and handled explicitly.
+    // Switching the active LLM provider must not mirror the previous
+    // provider's generic key into the newly selected provider's empty leaf.
+    // Clear the generic key on a real provider change; the prior provider
+    // keeps its provider-specific leaf, and the new provider stays unset.
     if (
       !opts.tenantId &&
       leafPath.length === 2 &&
@@ -694,14 +714,23 @@ export async function setConfigKey(
       );
     }
 
-    // Keep the provider-specific LLM leaves in sync when the generic
-    // llm.provider/llm.api_key/llm.model leaves are edited at runtime.
-    mirrorGenericLlmKey(fullParse.data);
+    // Keep the active provider leaf in sync when the operator edits the
+    // generic LLM leaf through settings. Otherwise a stale provider-specific
+    // key remains the one used by the SDK even though llm.api_key changed.
+    mirrorGenericLlmKey(fullParse.data, {
+      overwriteApiKey:
+        !opts.tenantId &&
+        leafPath.length === 2 &&
+        leafPath[0] === "llm" &&
+        leafPath[1] === "api_key",
+      overwriteModel:
+        !opts.tenantId && leafPath.length === 2 && leafPath[0] === "llm" && leafPath[1] === "model",
+    });
 
     await atomicWrite(state.configPath, serialize(fullParse.data));
 
     state.config = fullParse.data;
-    state.globalSourceMap[dottedPath(leaf)] = opts.tenantId ? "tenant" : "global";
+    if (!opts.tenantId) state.globalSourceMap[dottedPath(leaf)] = "global";
     if (requiresRestart) state.pendingRestartKeys.add(dottedPath(leaf));
 
     // Structured runtime log — one line per applied setting so an

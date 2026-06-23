@@ -166,6 +166,19 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
   return cursor;
 }
 
+function sourceForLeaf(
+  leaf: ConfigLeaf,
+  tenantId: string | undefined,
+  globalSourceMap: Record<string, "override" | "tenant" | "global" | "default">,
+): "override" | "tenant" | "global" | "default" {
+  const dotted = dottedPath(leaf);
+  if (!tenantId) return globalSourceMap[dotted] ?? "default";
+  const tenantOverlay = getConfig().tenants?.[tenantId];
+  return readDeep(tenantOverlay, leaf.path) !== undefined
+    ? "tenant"
+    : (globalSourceMap[dotted] ?? "default");
+}
+
 function buildLeafEntries(tenantId: string | undefined): Array<z.infer<typeof LeafEntrySchema>> {
   const cfg = getConfig(tenantId);
   const sourceMap = getDiagnostics().source_map;
@@ -178,7 +191,7 @@ function buildLeafEntries(tenantId: string | undefined): Array<z.infer<typeof Le
       path: dotted,
       value: maskedValue(leaf, liveValue),
       meta: {
-        source: sourceMap[dotted] ?? "default",
+        source: sourceForLeaf(leaf, tenantId, sourceMap),
         scope: leaf.meta.scope ?? "global",
         sensitive: !!leaf.meta.secret,
         requiresRestart: !!leaf.meta.requiresRestart,
@@ -277,11 +290,18 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const { tenant } = c.req.valid("query");
     const targetTenant = tenant ?? undefined;
-    if (targetTenant && targetTenant !== principal.tenant_id) {
-      // Cross-tenant view requires the system tenant role; until granular
-      // RBAC scopes land we approximate by requiring settings:write on the
-      // caller (system operators have it; tenant-scoped roles do not).
-      // The resolved set below applies regardless.
+    if (
+      targetTenant &&
+      targetTenant !== principal.tenant_id &&
+      !principal.roles.includes("admin")
+    ) {
+      return c.json(
+        {
+          code: "scope_violation" as const,
+          message: `cannot read settings for tenant ${targetTenant} (admin role required for cross-tenant reads)`,
+        },
+        403,
+      );
     }
     const items = buildLeafEntries(targetTenant);
     const diagnostics = getDiagnostics();
@@ -298,8 +318,18 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   app.openapi(getRoute, async (c) => {
+    const principal = requireAuth(c);
     const { path } = c.req.valid("param");
     const { tenant } = c.req.valid("query");
+    if (tenant && tenant !== principal.tenant_id && !principal.roles.includes("admin")) {
+      return c.json(
+        {
+          code: "scope_violation" as const,
+          message: `cannot read settings for tenant ${tenant} (admin role required for cross-tenant reads)`,
+        },
+        403,
+      );
+    }
     const leaf = findLeafByPath(path);
     if (!leaf) {
       return c.json({ code: "not_found", message: `unknown setting path: ${path}` }, 404);
@@ -312,7 +342,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
         path: dotted,
         value: maskedValue(leaf, readDeep(cfg, leaf.path)),
         meta: {
-          source: sourceMap[dotted] ?? "default",
+          source: sourceForLeaf(leaf, tenant, sourceMap),
           scope: leaf.meta.scope ?? "global",
           sensitive: !!leaf.meta.secret,
           requiresRestart: !!leaf.meta.requiresRestart,

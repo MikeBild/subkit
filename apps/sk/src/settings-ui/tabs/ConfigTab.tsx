@@ -22,7 +22,7 @@ import {
 } from "../components/ValuePickers.tsx";
 import { resolveAction } from "../keybindings/useKeybinding.ts";
 import { labelForPath, sectionLabel } from "../lib/config-labels.ts";
-import type { FormField } from "../lib/zod-to-form-fields.ts";
+import { type FormField, leafToFormField } from "../lib/zod-to-form-fields.ts";
 
 // Single registry mapping a setting path to the Ink picker component
 // that renders it. Adding a row here is the *only* hook needed to
@@ -185,13 +185,18 @@ export const ConfigTab: React.FC<Props> = ({
       if (tenant) setOpts.tenant = tenant;
       if (opts.force) setOpts.force = true;
       const res = await client.setSetting(field.path, value, setOpts);
-      setFields((prev) =>
-        prev.map((f) =>
-          f.path === field.path
-            ? { ...f, value: res.value, source: tenant ? "tenant" : "global" }
-            : f,
-        ),
-      );
+      try {
+        const refreshed = await client.listSettings(tenant ? { tenant } : {});
+        setFields(refreshed.items.map(leafToFormField));
+      } catch {
+        setFields((prev) =>
+          prev.map((f) =>
+            f.path === field.path
+              ? { ...f, value: res.value, source: tenant ? "tenant" : "global" }
+              : f,
+          ),
+        );
+      }
       setFlash({
         kind: res.requiresRestart ? "info" : "ok",
         msg: res.requiresRestart

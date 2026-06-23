@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { _resetConfigForTests } from "../../../config/loader.ts";
-import { initializeModel, ProviderMisconfiguredError } from "../model-init.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { _resetConfigForTests, loadConfig, setConfigKey } from "../../../config/loader.ts";
+import {
+  detectConfiguredProvider,
+  initializeModel,
+  ProviderMisconfiguredError,
+} from "../model-init.ts";
 
 const SAVED_ENV: Record<string, string | undefined> = {};
 const TRACKED = [
@@ -57,6 +64,8 @@ function modelTransport(model: unknown): string {
 }
 
 describe("initializeModel", () => {
+  let configDir: string | null = null;
+
   beforeEach(() => {
     snapshotEnv();
     clearEnv();
@@ -68,6 +77,10 @@ describe("initializeModel", () => {
   afterEach(() => {
     restoreEnv();
     _resetConfigForTests();
+    if (configDir) {
+      rmSync(configDir, { recursive: true, force: true });
+      configDir = null;
+    }
   });
 
   it("returns the mock sentinel when LLM_PROVIDER=mock", async () => {
@@ -170,5 +183,45 @@ describe("initializeModel", () => {
     const r = await initializeModel({ providerEnvVar: "CUSTOM_PROVIDER" });
     expect(r.provider).toBe("mock");
     delete process.env.CUSTOM_PROVIDER;
+  });
+
+  it("uses tenant-effective provider selection and credentials", async () => {
+    configDir = mkdtempSync(join(tmpdir(), "sk-model-init-tenant-"));
+    await loadConfig({
+      env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
+      configPathOverride: join(configDir, "subkit.config.json"),
+    });
+
+    await setConfigKey("llm.provider", "anthropic", { tenantId: "tenant-a", force: true });
+    await setConfigKey("llm.api_key", "tenant-ant-key", { tenantId: "tenant-a", force: true });
+    await setConfigKey("llm.model", "claude-sonnet-4-5", { tenantId: "tenant-a", force: true });
+
+    expect(detectConfiguredProvider()).toBe("mock");
+    expect(detectConfiguredProvider({ tenantId: "tenant-a" })).toBe("anthropic");
+
+    const r = await initializeModel({ tenantId: "tenant-a" });
+    expect(r.provider).toBe("anthropic");
+    expect(r.modelId).toBe("claude-sonnet-4-5");
+    expect(typeof r.model).toBe("object");
+  });
+
+  it("does not fall back to legacy env vars after config has explicitly cleared a leaf", async () => {
+    process.env.LLM_PROVIDER = "anthropic";
+    process.env.ANTHROPIC_API_KEY = "env-ant-key";
+    configDir = mkdtempSync(join(tmpdir(), "sk-model-init-cleared-"));
+    await loadConfig({
+      env: {
+        DATABASE_URL: "postgres://x",
+        NODE_ENV: "test",
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+        LLM_PROVIDER: process.env.LLM_PROVIDER,
+      },
+      configPathOverride: join(configDir, "subkit.config.json"),
+    });
+
+    await setConfigKey("llm.provider", "anthropic", { force: true });
+    await setConfigKey("llm.api_key", "", { force: true });
+
+    await expect(initializeModel()).rejects.toBeInstanceOf(ProviderMisconfiguredError);
   });
 });

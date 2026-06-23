@@ -50,7 +50,7 @@ import type { SubkitLlmMessage } from "./base-types.ts";
 import { toSystemMessages } from "./cache-blocks.ts";
 import { type AssembledContext, assembleContext } from "./context-assembler.ts";
 import { maybeWrapForDevtools } from "./devtools-wrap.ts";
-import { detectConfiguredProvider, initializeModel } from "./model-init.ts";
+import { detectConfiguredProvider, initializeModel, type ModelInitOptions } from "./model-init.ts";
 import { safeParseJson } from "./safe-json.ts";
 
 /**
@@ -66,13 +66,16 @@ import { safeParseJson } from "./safe-json.ts";
 export async function resolveLanguageModel(
   provider: LlmProviderKind,
   modelId: string,
+  tenantId?: string,
 ): Promise<LanguageModel | string> {
   const bare = modelId.includes(":") ? modelId.slice(modelId.indexOf(":") + 1) : modelId;
-  const resolved = await initializeModel({
+  const initOptions: ModelInitOptions = {
     providerOverride: provider,
     defaultModel: bare,
     modelOverride: bare,
-  });
+    ...(tenantId ? { tenantId } : {}),
+  };
+  const resolved = await initializeModel(initOptions);
   return await maybeWrapForDevtools(resolved.model);
 }
 
@@ -156,13 +159,19 @@ export function globalLlmStatus(): GlobalLlmStatus {
   };
 }
 
-function currentProvider(): LlmProviderKind {
-  const detected = detectConfiguredProvider();
+function currentProvider(tenantId?: string): LlmProviderKind {
+  const detected = detectConfiguredProvider(tenantId ? { tenantId } : {});
   return detected === "unconfigured" ? "gateway" : detected;
 }
 
-function currentFallbackProvider(primaryProvider: LlmProviderKind): LlmProviderKind {
-  const detected = detectConfiguredProvider({ providerEnvVar: "LLM_FALLBACK_PROVIDER" });
+function currentFallbackProvider(
+  primaryProvider: LlmProviderKind,
+  tenantId?: string,
+): LlmProviderKind {
+  const detected = detectConfiguredProvider({
+    providerEnvVar: "LLM_FALLBACK_PROVIDER",
+    ...(tenantId ? { tenantId } : {}),
+  });
   return detected === "unconfigured" ? primaryProvider : detected;
 }
 
@@ -191,7 +200,7 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
   let cfgModel: string | undefined;
   let cfgFallback: string | undefined;
   try {
-    const cfg = getConfig().llm;
+    const cfg = getConfig(tenant_id).llm;
     if (cfg.model) cfgModel = cfg.model;
     if (cfg.fallback_model) cfgFallback = cfg.fallback_model;
   } catch {
@@ -200,8 +209,9 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
   const primary = settings?.llm_primary_model ?? tenant?.llm_primary ?? cfgModel ?? DEFAULT_PRIMARY;
   const fallback =
     settings?.llm_fallback_model ?? tenant?.llm_fallback ?? cfgFallback ?? DEFAULT_FALLBACK;
-  const provider = (settings?.llm_provider as LlmProviderKind | undefined) ?? currentProvider();
-  const fallback_provider = currentFallbackProvider(provider);
+  const provider =
+    (settings?.llm_provider as LlmProviderKind | undefined) ?? currentProvider(tenant_id);
+  const fallback_provider = currentFallbackProvider(provider, tenant_id);
   const monthly_budget =
     settings?.llm_monthly_token_budget ??
     (tenant?.llm_monthly_token_budget != null ? Number(tenant.llm_monthly_token_budget) : null);
@@ -602,10 +612,12 @@ async function dispatchReal<T>(
   ];
 
   const model = new AiSdkModel({
+    tenantId: params.tenant_id,
     providerOverride: route.provider,
     defaultModel: route.primary,
     modelOverride: route.primary,
     fallback: {
+      tenantId: params.tenant_id,
       providerOverride: route.fallback_provider,
       defaultModel: route.fallback,
       modelOverride: route.fallback,

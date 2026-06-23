@@ -51,6 +51,23 @@ describe("/config — deep-link into SettingsModal Config tab", () => {
   });
 });
 
+describe("/settings — opens the tenant-scoped SettingsModal", () => {
+  test("carries the active tenant id into the pane", async () => {
+    const { ctx, panes } = buildCtx();
+    ctx.statusSnapshot = {
+      tenant: { id: "11111111-1111-1111-1111-111111111111", slug: "default" },
+    } as NonNullable<SlashHandlerContext["statusSnapshot"]>;
+
+    const out = await handleSlash("settings", [], ctx);
+    expect(out).toBeNull();
+    expect(panes.length).toBe(1);
+    expect(panes[0]).toEqual({
+      kind: "settings",
+      tenant: "11111111-1111-1111-1111-111111111111",
+    });
+  });
+});
+
 describe("/usage — deep-link into SettingsModal Usage tab", () => {
   test("opens kind:'settings' with initialTab:'Usage'", async () => {
     const { ctx, panes } = buildCtx();

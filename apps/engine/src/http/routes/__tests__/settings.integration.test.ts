@@ -97,6 +97,67 @@ describe("GET /v1/settings", () => {
     expect(llmKey!.meta.sensitive).toBe(true);
     expect(llmKey!.meta.scope).toBe("tenant");
   });
+
+  test("tenant source metadata is scoped to the requested tenant", async () => {
+    const path = "tokens.monthly_budget";
+    const put = await authedFetch(`/v1/settings/${path}?tenant=${server.tenantId}`, {
+      method: "PUT",
+      body: JSON.stringify({ value: 123 }),
+    });
+    expect(put.status).toBe(200);
+
+    const globalRes = await authedFetch(`/v1/settings/${path}`);
+    expect(globalRes.status).toBe(200);
+    const globalBody = (await globalRes.json()) as {
+      value: unknown;
+      meta: { source: string };
+    };
+    expect(globalBody.value).toBe(0);
+    expect(globalBody.meta.source).toBe("default");
+
+    const tenantRes = await authedFetch(`/v1/settings/${path}?tenant=${server.tenantId}`);
+    expect(tenantRes.status).toBe(200);
+    const tenantBody = (await tenantRes.json()) as {
+      value: unknown;
+      meta: { source: string };
+    };
+    expect(tenantBody.value).toBe(123);
+    expect(tenantBody.meta.source).toBe("tenant");
+  });
+
+  test("cross-tenant read rejects non-admin callers", async () => {
+    const seqTag = nextSeq();
+    const [otherTenant] = await server.db
+      .insert(tenants)
+      .values({ slug: `reader-${seqTag}`, display_name: "Reader Tenant" })
+      .returning();
+    const [otherUser] = await server.db
+      .insert(users)
+      .values({
+        tenant_id: otherTenant!.id,
+        email: `reader-${seqTag}@test.local`,
+        role: "member",
+      })
+      .returning();
+    const plaintext = `wf_live_${det(16)}`;
+    await server.db.insert(apiKeys).values({
+      tenant_id: otherTenant!.id,
+      user_id: otherUser!.id,
+      prefix: plaintext.slice(0, 12),
+      token_sha256: createHash("sha256").update(plaintext).digest("hex"),
+      scopes: ["*"],
+    });
+
+    const res = await fetch(`${server.baseUrl}/v1/settings?tenant=${server.tenantId}`, {
+      headers: { authorization: `Bearer ${plaintext}` },
+    });
+    expect(res.status).toBe(403);
+    const leafRes = await fetch(
+      `${server.baseUrl}/v1/settings/tokens.monthly_budget?tenant=${server.tenantId}`,
+      { headers: { authorization: `Bearer ${plaintext}` } },
+    );
+    expect(leafRes.status).toBe(403);
+  });
 });
 
 describe("GET /v1/settings/{path}", () => {
@@ -429,9 +490,9 @@ describe("PUT /v1/settings/{path}", () => {
     // restart. Catches a regression where the route forgets to surface
     // the flag and defaults to undefined → upstream JSON-strict
     // consumers (TS clients, Ink form) would mishandle it.
-    const res = await authedFetch("/v1/settings/errors.ring_size", {
+    const res = await authedFetch("/v1/settings/log.level", {
       method: "PUT",
-      body: JSON.stringify({ value: 175 }),
+      body: JSON.stringify({ value: "debug" }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as PutResult;

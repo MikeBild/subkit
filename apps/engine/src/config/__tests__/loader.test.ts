@@ -142,6 +142,7 @@ describe("setConfigKey", () => {
     expect(getConfig("tenant-x").llm.api_key).toBe("tenant-key");
     expect(getConfig().llm.api_key).toBe("");
     expect(getConfig("tenant-y").llm.api_key).toBe("");
+    expect(getDiagnostics().source_map["llm.api_key"]).toBe("default");
   });
 
   test("scope violation: tenant scope on a global leaf throws", async () => {
