@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 11
+version: 12
 ---
 
 # Authoring Workflows In A Conversation
@@ -401,6 +401,35 @@ Three places to reshape data — pick the smallest one that fits:
 - **`output_transform_function`** (JS, preferred for new workflows) or **`output_transform`** (JSONata, legacy) — workflow-level final payload the caller sees (hide internals). Pick exactly one — the schema rejects setting both. Same affordance pattern as `validation_expression` (JSONata) vs `validation_function` (JS).
 
 See `data-handling.md` for full examples.
+
+## Output format fidelity — emit the format the goal names, as a string
+
+When the goal names a concrete output FORMAT — "a markdown table", "CSV",
+"a bulleted list", "an HTML email body", "a slack message" — the final
+payload (`output_transform_function`, or the last transform that feeds it)
+MUST RENDER that format as a STRING. The correct data returned as a JSON
+array/object does NOT satisfy "return a markdown table": the caller asked for
+the table, not the rows behind it. This is a real miss — a single-shot build
+can compute a correct ranking yet hand back structured data, and a reader
+expecting markdown gets none.
+
+Render the format explicitly in JS. A markdown table from an array of rows:
+
+```json
+{
+  "id": "render_table",
+  "kind": "transform",
+  "language": "javascript",
+  "expression": "const rows = input.scope.rank_cities.data; const head = '| rank | city | warmest_day | max_temp_c |\\n| ---: | --- | --- | ---: |'; const body = rows.map((r, i) => `| ${i + 1} | ${r.city} | ${r.warmest_day} | ${r.max_temp_c} |`).join('\\n'); return head + '\\n' + body;"
+}
+```
+
+The rule generalizes: CSV → a header line + `\n`-joined comma rows; a bulleted
+list → `lines.map(l => '- ' + l).join('\\n')`; HTML → the actual tag string.
+The deterministic shape (a header, a separator row for markdown tables, one
+row per record) is what a downstream reader — and the preview judge — checks
+for. When the goal is format-specific, treat the rendered string as the
+output contract, not an afterthought.
 
 ## `input_schema` vs `input_schema_sample`
 
