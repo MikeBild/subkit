@@ -7,12 +7,43 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import { CreateConnectorSchema, UpdateConnectorSchema } from "../../../connectors/index.ts";
+import { logger } from "../../../logging/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { ConnectorListResponse, ConnectorSchema, serialize } from "./schemas.ts";
+
+/** OPT-D: warm a GraphQL connector's schema at creation. A GraphQL API is
+ *  introspectable, so the moment a connector is created we run `__schema`
+ *  introspection and ingest the SDL as searchable knowledge — the authoring
+ *  agent then has the relay/enum/filter shapes in context WITHOUT a
+ *  discover_connector_endpoints round-trip (it still works on demand and hits
+ *  this warmed cache). Bounded + non-fatal: connector creation must never block
+ *  on, or fail because of, a slow/unreachable introspection endpoint. */
+async function warmGraphqlSchema(
+  db: AppEnv["Variables"]["db"],
+  tenant_id: string,
+  actor_id: string | null,
+  connector: { id: string; driver: string; base_url: string | null },
+): Promise<void> {
+  if (connector.driver !== "graphql" || !connector.base_url) return;
+  try {
+    await runDiscoveryCached(
+      { db, tenant_id, actor_id, abortSignal: AbortSignal.timeout(6_000) },
+      { base_url: connector.base_url },
+    );
+  } catch (err) {
+    logger.warn({
+      module: "connectors",
+      action: "graphql_schema_warm.failed",
+      connector_id: connector.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 const listRoute = createRoute({
   method: "get",
@@ -104,6 +135,9 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       { tenant_id: principal.tenant_id, input: body, actor_id: principal.id },
       db,
     );
+    // OPT-D: introspect + ingest the schema for a GraphQL connector so the SDL
+    // is searchable knowledge before any authoring. Bounded + non-fatal.
+    await warmGraphqlSchema(db, principal.tenant_id, principal.id, created);
     return c.json(serialize(created), 201);
   });
 
