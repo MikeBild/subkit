@@ -131,7 +131,11 @@ describe.skipIf(skip)("loadConnectorSchemaSummaries (OPT-E)", () => {
   });
 
   test("non-UUID ids are filtered without error", async () => {
-    const out = await loadConnectorSchemaSummaries(tenantA, ["${recipe-placeholder}"], ctx.db);
+    const out = await loadConnectorSchemaSummaries(
+      tenantA,
+      ["not-a-uuid-recipe-placeholder"],
+      ctx.db,
+    );
     expect(out).toEqual([]);
   });
 
