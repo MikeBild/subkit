@@ -109,16 +109,31 @@ function errorData(result: { ok: boolean; data?: unknown }): {
     .data;
 }
 
+/** The recorded-evaluation report update_param now returns inline:
+ *  the loop/transform authoring gates are non-blocking — the edit is
+ *  accepted (`ok:true`) and the verdict rides back here, symmetric with
+ *  edit_workflow_patch, so the model repairs without thrashing. */
+function recordedEval(result: { ok: boolean; data?: unknown }): {
+  ok: boolean;
+  gates: { loop: { blocks: Array<{ reason?: string }> } };
+} {
+  return (result as { data: { recorded_eval: ReturnType<typeof recordedEval> } }).data
+    .recorded_eval;
+}
+
 describe("update_param · loop-gate refinement (still pinned)", () => {
-  test("fires when editing the loop step's `over` field with no preview", async () => {
+  test("reports a loop finding (non-blocking) when editing `over` with no preview", async () => {
     const ctx = makeCtx(draftWithoutEvidence());
     const result = await updateParamTool.execute(ctx, {
       step_id: "iter",
       param: "over",
       value: "$scope.fetch.data.items",
     });
-    expect(result.ok).toBe(false);
-    expect(errorData(result).error_code).toBe("loop_authoring_requires_inspect");
+    // the edit is accepted; the missing-evidence verdict is a finding.
+    expect(result.ok).toBe(true);
+    const re = recordedEval(result);
+    expect(re.ok).toBe(false);
+    expect(re.gates.loop.blocks.length).toBeGreaterThan(0);
   });
 
   test("does NOT fire when editing a request step's headers (unrelated to loop)", async () => {
@@ -183,17 +198,18 @@ describe("update_param · fingerprint-keyed evidence retention", () => {
     const traces = ctx._draft.value.latest_preview?.step_traces ?? [];
     expect(traces.some((t) => t.step_id === "fetch")).toBe(false);
 
-    // Now the loop edit must block: the evidence for fetch is gone.
+    // The evidence for fetch is gone, so the loop edit now carries a
+    // missing-evidence finding (accepted, not refused).
     const result = await updateParamTool.execute(ctx, {
       step_id: "iter",
       param: "over",
       value: "$scope.fetch.data.items",
     });
-    expect(result.ok).toBe(false);
-    expect(errorData(result).error_code).toBe("loop_authoring_requires_inspect");
+    expect(result.ok).toBe(true);
+    expect(recordedEval(result).gates.loop.blocks.length).toBeGreaterThan(0);
   });
 
-  test("stale fingerprint (evidence recorded against a different definition) blocks with the stale reason", async () => {
+  test("stale fingerprint (evidence recorded against a different definition) is reported as a finding", async () => {
     const draft = normalizeDraftDocument({
       workflow: {
         name: "t",
@@ -227,9 +243,12 @@ describe("update_param · fingerprint-keyed evidence retention", () => {
       param: "over",
       value: "$scope.fetch.data.items",
     });
-    expect(result.ok).toBe(false);
-    const err = errorData(result);
-    expect(err.error_code).toBe("loop_authoring_requires_inspect");
-    expect(err.gate_blocks?.[0]?.reason).toBe("preview_stale_for_referenced_step");
+    // Accepted: the stale trace is pruned by fingerprint-keyed
+    // retention, so recorded-eval reports the loop reference as needing a
+    // dry-run — the same verdict edit_workflow_patch produces. The exact
+    // reason ("no usable evidence") folds stale-vs-never; both require a
+    // dry-run, so the test asserts a finding is surfaced, not its precise tag.
+    expect(result.ok).toBe(true);
+    expect(recordedEval(result).gates.loop.blocks.length).toBeGreaterThan(0);
   });
 });

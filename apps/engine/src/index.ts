@@ -41,6 +41,8 @@ const CHECK_UPDATE_FLAG = "--check-update";
 const MIGRATE_FLAG = "--migrate";
 const SEED_FLAG = "--seed";
 const ISSUE_ADMIN_KEY_FLAG = "--issue-admin-key";
+const VERSION_FLAG = "--version";
+const HELP_FLAG = "--help";
 
 async function runSmoke(): Promise<void> {
   // Read raw process.env. Importing `./env.ts` would trigger the lazy
@@ -155,15 +157,19 @@ async function runServer(): Promise<void> {
     });
   }
 
-  // Scanner sanity: the default `getScanner()` returns `NoopScanner`,
-  // which reports every upload as clean. Acceptable in dev/test, a
-  // compliance hole in production — surface it loudly at boot so the
-  // operator wires a real scanner before accepting tenant content.
+  // Scanner posture: `getScanner()` returns `NoopScanner` (reports every
+  // upload as clean). this is a DOCUMENTED, accepted risk (see
+  // "File scanning" under Architectural decisions in apps/engine/AGENTS.md):
+  // tenant uploads are not a primary attack surface today, so no clamd
+  // sidecar is wired (keeps the deployment self-contained). Recorded at INFO
+  // for traceability — it is a known posture, not an unhandled compliance
+  // hole. Revisit (wire a clamd-backed scanner via getConfig().storage.scanner.*)
+  // before tenant-uploaded binaries become a revenue/compliance surface.
   if (getScanner() === NoopScanner && process.env.NODE_ENV === "production") {
-    logger.warn({
+    logger.info({
       module: "files",
       action: "scanner.noop_in_production",
-      msg: "FileScanner is NoopScanner in production. Every upload is reported as clean until a real scanner is wired. Replace getScanner() with a clamd-backed implementation before accepting tenant content.",
+      msg: "FileScanner is NoopScanner (accepted risk, see AGENTS.md). Uploads are reported clean without AV scanning; tenant uploads are not a primary attack surface today.",
     });
   }
 
@@ -563,6 +569,10 @@ async function runServer(): Promise<void> {
     module: "engine",
     action: "ready",
     msg: `engine listening on http://${opts.hostname}:${port}`,
+    // stamp the running version on the ready banner so a prod log line
+    // can be correlated to a release (previously impossible — the boot
+    // sequence never logged its own version).
+    version: OPENAPI_INFO.version,
     port,
     hostname: opts.hostname,
     public_base_url: getConfig().server.public_base_url || null,
@@ -710,6 +720,32 @@ async function runSeedOnce(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // --version / --help: print and exit BEFORE any config/crypto/db work.
+  // The engine binary otherwise faults in loadConfig (`database.url is
+  // required`) when invoked with a bare flag from an unconfigured shell —
+  // a version probe must never need a configured environment.
+  if (process.argv.includes(VERSION_FLAG)) {
+    process.stdout.write(`${OPENAPI_INFO.version}\n`);
+    process.exit(0);
+  }
+  if (process.argv.includes(HELP_FLAG)) {
+    process.stdout.write(
+      `subkit engine ${OPENAPI_INFO.version}\n\n` +
+        "Usage: engine [flags]\n\n" +
+        "Flags:\n" +
+        "  --version          print the engine version and exit\n" +
+        "  --help             print this help and exit\n" +
+        "  --smoke            validate logger/audit/redaction and exit\n" +
+        "  --migrate          run pending database migrations and exit\n" +
+        "  --seed             seed the database and exit\n" +
+        "  --check-update     check for a newer binary and exit\n" +
+        "  --self-update      download + install a newer binary and exit\n" +
+        "  --rollback         roll back to the previous binary and exit\n" +
+        "  --issue-admin-key  issue an admin API key and exit\n",
+    );
+    process.exit(0);
+  }
+
   // --check-update: check for updates without installing, exit.
   if (process.argv.includes(CHECK_UPDATE_FLAG)) {
     const info = await checkForUpdate(defaultUpdaterConfig("engine", OPENAPI_INFO.version), true);

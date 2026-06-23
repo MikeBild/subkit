@@ -32,6 +32,7 @@ import { logger } from "../../logging/logger.ts";
 import { recordConnectorCall } from "../../observability/instrumentation.ts";
 import { query as graphqlQuery } from "../drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../drivers/http.ts";
+import { extractCreatedResourceId } from "../egress.ts";
 import {
   type ConnectorHealth,
   classifyConnectorHealth,
@@ -343,6 +344,12 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
   // endpoint, vendor degradation) before it cascades into failed workflows.
   recordConnectorCall({ slug: connector.slug, health });
 
+  // for a write call (non-idempotent method) lift the created/sent
+  // resource id from the response so the audit row records WHAT went out.
+  const createdResourceId = dispatch
+    ? extractCreatedResourceId(req.method, dispatch.body)
+    : undefined;
+
   await recordConnectorInvoked({
     tenant_id: req.tenant_id,
     actor_id: req.actor_id,
@@ -360,6 +367,7 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
     // removal — it must audit as success, not error.
     outcome: errorDetail || (health !== "ok" && health !== "deprecated") ? "error" : "success",
     ...(req.conversation_id ? { conversation_id: req.conversation_id } : {}),
+    ...(createdResourceId ? { created_resource_id: createdResourceId } : {}),
   });
 
   if (errorDetail || !dispatch) {

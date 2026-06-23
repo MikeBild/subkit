@@ -314,6 +314,14 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           execution_mode = normalized;
         }
       }
+      // a `wf_<slug>` run holds write-classified steps (sends, writes)
+      // by default; they resolve but never dispatch, so the authoring agent
+      // verifying a workflow cannot fire a real send. A live run is the
+      // deliberate `_meta.execute_writes:true` opt-in (set only after the
+      // user confirms a real run). The scheduler/HTTP run paths don't route
+      // through here, so production runs still send.
+      const executeWrites =
+        (request.params._meta as { execute_writes?: unknown } | undefined)?.execute_writes === true;
       const started = Date.now();
       logger.info({
         module: "mcp",
@@ -604,6 +612,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           trace_id: null,
           principal,
           execution_mode,
+          ...(executeWrites ? {} : { hold_writes: true }),
         },
       });
 

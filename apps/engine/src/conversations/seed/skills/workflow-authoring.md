@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 10
+version: 11
 ---
 
 # Authoring Workflows In A Conversation
@@ -351,6 +351,32 @@ already saved. If `run_workflow` returns `workflow_not_persisted`, do
 **not** retry it — switch to `author_workflow`. Repeating `run_workflow`
 after that error trips the loop-detector and wastes the entire turn.
 
+**Never use `run_workflow` / `wf_<slug>` to TEST a workflow while
+authoring — that is what `dry_run_workflow` is for.** Both run tools now
+HOLD write-classified steps by default: a send/post/publish is fully
+resolved but NOT dispatched, the held step shows `writes_held: true` and
+the held step ids in the envelope, and the audit row records
+`execute_writes: false`. So a verification run cannot fire a real email —
+but it also is not the verification path. Verify a draft with
+`dry_run_workflow` (it holds writes AND runs the instruction judge); use
+`run_workflow` only to actually RUN a saved workflow for the user. A real
+live send happens only when the user explicitly asks to run for real and
+you pass `execute_writes: true` — that path requires a confirmation even
+in dev (a real send must be human-approved). `inspect_workflow_draft`
+labels every step `side_effect: "read" | "write"`, so you can see which
+steps would dispatch before you ever run.
+
+**A green preview auto-commits ONLY when it was judged against a stashed
+goal.** `author_workflow` stashes the goal, so its green dry-run is judged
+and auto-commits (`auto_committed: true`). If you reach a green preview
+with no stashed goal (e.g. a bare `dry_run_workflow` after micro-edits),
+the judge is skipped and the preview is NOT auto-committed — the envelope
+returns `save_required: true` and `next_best_actions: ["save_workflow_draft"]`.
+Persist it deliberately with `save_workflow_draft` (one commit), rather
+than re-running dry-run hoping for an auto-commit that will not come. This
+is what stops a single authoring session from minting a dozen intermediate
+versions.
+
 ## `author_workflow` vs `build_workflow` vs the micro-tools
 
 | Situation | Tool |
@@ -413,18 +439,21 @@ edits to OTHER steps and goes stale only when X's own definition
 changed since the last dry-run (gate reason
 `preview_stale_for_referenced_step`). Enforcement differs by tool:
 
-- `author_workflow`, `build_workflow`, `propose_step`, and
-  `edit_workflow_patch` ACCEPT the mutation and return a
-  `recorded_eval` findings block in the same result: per-expression
-  compile/eval status (caret-pointed JSONata errors; sandboxed JS
-  evaluation), scope-reference evidence states (recorded / stale /
-  missing), the loop/transform gate verdicts, `missing_evidence`, and
-  ordered `next_actions`. Read it — acceptance is not proof the
-  expressions resolve. Probed connectors count as shape evidence.
-- `update_param` still REFUSES with error code
-  `loop_authoring_requires_inspect` when the edited param is the
-  loop's `over` / `data_selector` and the referenced step's evidence
-  is missing or stale.
+- ALL authoring tools — `author_workflow`, `build_workflow`,
+  `propose_step`, `edit_workflow_patch`, AND `update_param` — ACCEPT
+  the mutation and return a `recorded_eval` findings block in the same
+  result: per-expression compile/eval status (caret-pointed JSONata
+  errors; sandboxed JS evaluation), scope-reference evidence states
+  (recorded / stale / missing), the loop/transform gate verdicts,
+  `missing_evidence`, and ordered `next_actions`. Read it — acceptance
+  is not proof the expressions resolve. Probed connectors count as
+  shape evidence.
+- `update_param` no longer REFUSES a loop `over` / `data_selector`
+  edit with missing/stale evidence: it accepts the edit and surfaces
+  the `loop_authoring_requires_inspect` verdict as a NON-BLOCKING
+  `recorded_eval` finding (symmetric with the other tools, so the model
+  repairs on the next call instead of thrashing on an identical retry).
+  The fix is unchanged — dry-run once to record the shape, then re-apply.
 
 Recovery is one round-trip, never a rebuild: call `dry_run_workflow`
 once so the engine records `scope_at_step` for the changed step, then
@@ -440,9 +469,10 @@ how 4–9× retry spirals start.
 
 **Same rule for `transform` steps.** A transform whose expression
 cites a sibling X (`$scope.<X>` in JSONata, `input.scope.<X>` in JS)
-with missing or stale evidence is surfaced the same way: `update_param`
-refuses with error code `transform_authoring_requires_inspect`; the
-other tools report it in `recorded_eval`. Same fix: `dry_run_workflow`
+with missing or stale evidence is surfaced the same way: ALL authoring
+tools — INCLUDING `update_param` — accept the edit and report it in
+`recorded_eval` as a NON-BLOCKING `transform_authoring_requires_inspect`
+finding (no tool hard-refuses it any more). Same fix: `dry_run_workflow`
 once, then author the transform against the recorded `output_preview`
 (visible via `inspect_workflow_draft`). Hard-coding placeholder
 strings (`"item 1"`, `"unknown"`) as defaults to dodge the gate is

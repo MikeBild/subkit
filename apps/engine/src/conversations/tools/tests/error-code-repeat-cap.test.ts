@@ -63,12 +63,14 @@ function makeToolCtx(): ToolContext {
     actor_type: "system",
     db: ctx.testDb.db as unknown as Db,
   });
-  // Draft with a transform step referencing an unrun upstream step.
-  // update_param("format", "expression", ...) will predictably return
-  // error_code: "transform_authoring_requires_inspect" because no
-  // dry-run has recorded a preview for "fetch". The `latest_preview`
-  // slot (no traces) is stage evidence so the Fix-A initial-stage gate
-  // doesn't short-circuit the repair flow under test.
+  // Draft with a request + transform step. The repeated "code A" failure
+  // is driven by update_param("fetch", "headers", "{...}") — a
+  // JSON-encoded-string passed where a header object is required
+  // predictably returns error_code: "step_update_invalid" (the transform
+  // authoring gate is non-blocking now, so it can no longer serve as
+  // the stable repeated error). The `latest_preview` slot (no traces) is
+  // stage evidence so the Fix-A initial-stage gate doesn't short-circuit
+  // the repair flow under test.
   const draft = {
     workflow: {
       name: "test-wf",
@@ -123,33 +125,33 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     expect(updateParam).toBeDefined();
 
     // Calls 1–MAX_ERROR_CODE_REPEAT: inner tool runs and returns
-    // transform_authoring_requires_inspect. Each call uses a different
+    // step_update_invalid. Each call uses a different
     // expression value to prove args vary.
     for (let i = 1; i <= MAX_ERROR_CODE_REPEAT; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       const result = await (updateParam!.execute as any)(
-        { step_id: "format", param: "expression", value: `input.scope.fetch.data.variant_${i}` },
+        { step_id: "fetch", param: "headers", value: `{"v":"${i}"}` },
         { toolCallId: `t${i}`, messages: [] },
       );
       const errCode = result.data?.error_code ?? result.error_code;
       // The inner tool runs and returns the authoring gate refusal — NOT
       // the loop-breaker envelope yet.
-      expect(errCode).toBe("transform_authoring_requires_inspect");
+      expect(errCode).toBe("step_update_invalid");
     }
     // After MAX_ERROR_CODE_REPEAT failures the streak is at MAX_ERROR_CODE_REPEAT.
     const streak = signals.toolErrorCodeRepeat.get("update_param");
     expect(streak?.count).toBe(MAX_ERROR_CODE_REPEAT);
-    expect(streak?.code).toBe("transform_authoring_requires_inspect");
+    expect(streak?.code).toBe("step_update_invalid");
 
     // Call MAX_ERROR_CODE_REPEAT+1: the breaker fires BEFORE the inner tool
     // runs. We confirm by checking the returned error_code is the breaker
-    // code, not the inner gate code (transform_authoring_requires_inspect).
+    // code, not the inner gate code (step_update_invalid).
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const resultTrip = await (updateParam!.execute as any)(
       {
-        step_id: "format",
-        param: "expression",
-        value: `input.scope.fetch.data.variant_${MAX_ERROR_CODE_REPEAT + 1}`,
+        step_id: "fetch",
+        param: "headers",
+        value: `{"v":"${MAX_ERROR_CODE_REPEAT + 1}"}`,
       },
       { toolCallId: `t${MAX_ERROR_CODE_REPEAT + 1}`, messages: [] },
     );
@@ -192,7 +194,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
       // Failure i on update_param.
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       await (updateParam!.execute as any)(
-        { step_id: "format", param: "expression", value: `input.scope.fetch.data.v${i}` },
+        { step_id: "fetch", param: "headers", value: `{"v":"${i}"}` },
         { toolCallId: `u${i}`, messages: [] },
       );
       expect(signals.toolErrorCodeRepeat.get("update_param")?.count).toBe(i);
@@ -222,9 +224,9 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (updateParam!.execute as any)(
       {
-        step_id: "format",
-        param: "expression",
-        value: `input.scope.fetch.data.v${MAX_ERROR_CODE_REPEAT + 1}`,
+        step_id: "fetch",
+        param: "headers",
+        value: `{"v":"${MAX_ERROR_CODE_REPEAT + 1}"}`,
       },
       { toolCallId: `u${MAX_ERROR_CODE_REPEAT + 1}`, messages: [] },
     );
@@ -233,7 +235,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     // The breaker envelope names the repeated code so the model can
     // surface a concrete blocker message.
     expect(result.data?.repeated_error_code ?? result.repeated_error_code).toBe(
-      "transform_authoring_requires_inspect",
+      "step_update_invalid",
     );
   });
 
@@ -259,18 +261,16 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     expect(updateParam).toBeDefined();
     expect(inspectWorkflow).toBeDefined();
 
-    // Two failures with transform_authoring_requires_inspect (code A).
+    // Two failures with step_update_invalid (code A).
     for (let i = 1; i <= 2; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       await (updateParam!.execute as any)(
-        { step_id: "format", param: "expression", value: `input.scope.fetch.data.x${i}` },
+        { step_id: "fetch", param: "headers", value: `{"x":"${i}"}` },
         { toolCallId: `ta${i}`, messages: [] },
       );
     }
     expect(signals.toolErrorCodeRepeat.get("update_param")?.count).toBe(2);
-    expect(signals.toolErrorCodeRepeat.get("update_param")?.code).toBe(
-      "transform_authoring_requires_inspect",
-    );
+    expect(signals.toolErrorCodeRepeat.get("update_param")?.code).toBe("step_update_invalid");
 
     // Reset the global consecutive-failures counter via a successful
     // inspect call so it doesn't interfere with the error_code streak
@@ -340,7 +340,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     const signals = freshSignals();
     // Pre-load the streak to MAX and warnings to the threshold.
     signals.toolErrorCodeRepeat.set("update_param", {
-      code: "transform_authoring_requires_inspect",
+      code: "step_update_invalid",
       count: MAX_ERROR_CODE_REPEAT,
     });
     signals.totalLoopWarnings = 1;
@@ -394,7 +394,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
   test("inspect_workflow bypasses the breaker even when streak is at cap", async () => {
     const signals = freshSignals();
     signals.toolErrorCodeRepeat.set("update_param", {
-      code: "transform_authoring_requires_inspect",
+      code: "step_update_invalid",
       count: MAX_ERROR_CODE_REPEAT,
     });
     const events: TurnEvent[] = [];

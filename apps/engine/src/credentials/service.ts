@@ -15,7 +15,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import { type Executor, getDb } from "../db/client.ts";
-import { credentials } from "../db/schema/index.ts";
+import { connectors, credentials } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -773,8 +773,26 @@ export async function resolveDryRunEnvironment(p: {
     ),
   ];
   if (connectorIds.length === 0) return "dev";
+  // Keyless connectors (auth_type "none" — public APIs like open-meteo) need
+  // no credential, so they must not count toward the "no credential found"
+  // check. Without this, a workflow built only from keyless connectors warns
+  // "the run may fail with 401/404" even though the run cannot fail on auth —
+  // a false positive that mislabels a perfectly healthy dry-run.
+  const db = p.exec ?? getDb();
+  const uuidIds = connectorIds.filter((id) => UUID_RE.test(id));
+  const authRows = uuidIds.length
+    ? await db
+        .select({ id: connectors.id, auth_type: connectors.auth_type })
+        .from(connectors)
+        .where(and(eq(connectors.tenant_id, p.tenant_id), inArray(connectors.id, uuidIds)))
+    : [];
+  const keyless = new Set(authRows.filter((r) => r.auth_type === "none").map((r) => r.id));
+  const authRequiringIds = connectorIds.filter((id) => !keyless.has(id));
+  // Every referenced connector is keyless → no credential is ever needed.
+  if (authRequiringIds.length === 0) return "dev";
+
   const envResults = await Promise.all(
-    connectorIds.map((id) =>
+    authRequiringIds.map((id) =>
       resolveDefaultEnvironmentForConnector(p.tenant_id, id, p.exec).catch(() => null),
     ),
   );
@@ -783,14 +801,14 @@ export async function resolveDryRunEnvironment(p: {
     logger.warn({
       module: "conversation_tool",
       action: "dry_run_workflow.no_credential_found",
-      msg: "none of the draft's connector(s) have a credential in any environment; defaulting to dev — the run may fail with 401/404",
+      msg: "none of the draft's auth-requiring connector(s) have a credential in any environment; defaulting to dev — the run may fail with 401/404",
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
-      connector_ids: connectorIds,
+      connector_ids: authRequiringIds,
     });
     p.onLog?.(
       "warn",
-      `no credential found for connector(s) [${connectorIds.join(", ")}] in dev or prod — the run may fail with 401/404`,
+      `no credential found for connector(s) [${authRequiringIds.join(", ")}] in dev or prod — the run may fail with 401/404`,
     );
     return "dev";
   }

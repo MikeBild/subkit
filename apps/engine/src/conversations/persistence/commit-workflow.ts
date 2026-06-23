@@ -393,6 +393,56 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   const draft = getWorkflowDraft(fullDraft);
   const def = workflowDefFromDraft(draft);
 
+  // projection-integrity guard. `workflowDefFromDraft` is a
+  // hand-maintained top-level field projection (steps pass through by
+  // reference, but optional fields are copied one by one). A persistable
+  // field present on the draft that the projection forgot is SILENTLY
+  // dropped on commit — the exact regression class that broke chat-authored
+  // schedules end-to-end (a saved workflow that lost its trigger). Assert the
+  // projection carried every meaningful top-level field so a drop fails
+  // loudly here instead of persisting a partial workflow. The field list is
+  // intentionally co-located with `workflowDefFromDraft` above; keep them in
+  // sync. `isMeaningful` mirrors the projection's own truthy/`!== undefined`
+  // conditions, so a field the projection legitimately omits (empty string /
+  // undefined) is never falsely flagged.
+  {
+    const draftRecord = draft as unknown as Record<string, unknown>;
+    const defRecord = def as unknown as Record<string, unknown>;
+    const isMeaningful = (v: unknown): boolean => v !== undefined && v !== null && v !== "";
+    const PROJECTED_OPTIONAL_FIELDS = [
+      "slug",
+      "description",
+      "input_schema",
+      "output_schema",
+      "output_transform",
+      "edges",
+      "derived_from_skill_id",
+      "trigger",
+    ] as const;
+    const droppedFields = PROJECTED_OPTIONAL_FIELDS.filter(
+      (k) => isMeaningful(draftRecord[k]) && !isMeaningful(defRecord[k]),
+    );
+    if (droppedFields.length > 0) {
+      logger.error({
+        module: "conversation_persistence",
+        action: "commit.projection_dropped_field",
+        msg: "commit would silently drop draft fields — workflowDefFromDraft projection is incomplete",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        dropped_fields: droppedFields,
+      });
+      return {
+        ok: false,
+        data: buildGateError(fullDraft, {
+          error_code: "commit_projection_incomplete",
+          message: `commit would silently drop draft field(s): ${droppedFields.join(", ")} — the workflowDefFromDraft projection is missing them. This is an engine bug, not an authoring mistake; do not retry blindly.`,
+          recommended_mode: "workflow",
+          extra: { dropped_fields: droppedFields },
+        }),
+      };
+    }
+  }
+
   const convRows = await ctx.db
     .select({ target_workflow_id: conversations.target_workflow_id })
     .from(conversations)
@@ -827,6 +877,26 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       updated_at: new Date(),
     })
     .where(eq(conversations.id, ctx.conversation_id));
+
+  // commit telemetry: record exactly what was persisted so a partial or
+  // wrong commit is never silent. The step id list + present-field summary
+  // makes "what did this commit actually write?" answerable from logs alone
+  // (the corsica session committed a draft missing its build_email edits with
+  // no log to show it). Pairs with the projection-integrity guard above.
+  logger.info({
+    module: "conversation_persistence",
+    action: "commit.persisted",
+    msg: "workflow draft committed",
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    workflow_id: workflow.id,
+    slug: workflow.slug,
+    version: workflow.current_version,
+    step_count: def.steps.length,
+    step_ids: def.steps.map((s) => (typeof s.id === "string" ? s.id : null)).filter(Boolean),
+    reason: p.reason ?? null,
+    commit_intent_kind: p.commitIntentKind ?? null,
+  });
 
   if (p.emitAutoPersistAudit) {
     if (targetWorkflowId) {

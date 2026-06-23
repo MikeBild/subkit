@@ -9,6 +9,9 @@
 // README.md intentionally has no entry — the loader filters it out.
 
 import authFlows from "../conversations/seed/skills/auth-flows.md" with { type: "text" };
+import browserPageScrapeQuirks from "../conversations/seed/skills/browser-page-scrape-quirks.md" with {
+  type: "text",
+};
 import connectorCreationGuidance from "../conversations/seed/skills/connector-creation-guidance.md" with {
   type: "text",
 };
@@ -72,6 +75,7 @@ export interface EmbeddedSeedFile {
  */
 export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "auth-flows.md", content: authFlows },
+  { file: "browser-page-scrape-quirks.md", content: browserPageScrapeQuirks },
   { file: "connector-creation-guidance.md", content: connectorCreationGuidance },
   { file: "data-handling.md", content: dataHandling },
   { file: "document-analysis-guidance.md", content: documentAnalysisGuidance },

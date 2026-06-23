@@ -256,12 +256,24 @@ export const buildWorkflowTool: ConversationTool = {
       steps: args.steps,
     });
     if (!defValidation.success) {
+      const issues = defValidation.error.issues;
+      // hoist the FIRST concrete issue into the top-level message.
+      // `summarizeToolFailure` (sdk-wrap) only logs the top-level
+      // `message`/`error_code`, so a generic "failed schema validation"
+      // string left the prod `tool.failed` line undiagnosable (the real
+      // reason was buried in `extra.errors[0]`).
+      const first = issues[0];
+      const firstDetail = first ? `${first.path.join(".") || "(root)"}: ${first.message}` : null;
       const gateError = buildGateError(currentDraft, {
         error_code: "workflow_schema_invalid",
-        message: "workflow definition failed schema validation",
+        message: firstDetail
+          ? `workflow definition failed schema validation — ${firstDetail}${
+              issues.length > 1 ? ` (+${issues.length - 1} more issue(s))` : ""
+            }`
+          : "workflow definition failed schema validation",
         recommended_mode: "workflow",
         extra: {
-          errors: defValidation.error.issues.map((issue) => ({
+          errors: issues.map((issue) => ({
             path: issue.path.join("."),
             message: issue.message,
             code: issue.code,

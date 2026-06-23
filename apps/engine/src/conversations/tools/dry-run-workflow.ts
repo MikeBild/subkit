@@ -787,21 +787,35 @@ export const dryRunWorkflowTool: ConversationTool = {
     // hint stays on the envelope so the chat renderer's lifecycle line
     // and the never-silent guard in loop.ts both have something to
     // anchor on.
-    const cleanPreview = dryRunGreen && !judgeBlocked;
-    const previewNextActions = cleanPreview
-      ? ["save_workflow_draft"]
-      : judgeBlocked
-        ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
-        : dryRunRequiresRepair
-          ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
-          : ["inspect_workflow_draft", "edit_workflow_patch"];
+    // a green dry-run auto-commits ONLY when the preview judge actually
+    // rendered a verdict against a stashed goal. With no goal the judge is
+    // skipped (`judge.no_goal`); a bare verification dry-run during iteration
+    // must NOT mint a new workflow version every call (the corsica session
+    // churned v6→v12 this way, six `auto_persist_on_green_dry_run` commits in
+    // 36 min). A green-but-unjudged preview is still `ok` — it just returns the
+    // `save_workflow_draft` next-action so the model/user persists once,
+    // deliberately, when they mean to.
+    const judgeSkippedNoGoal =
+      judgeOutcome?.verdict === "skipped" && judgeOutcome?.reason === "no_goal";
+    const cleanPreview = dryRunGreen && !judgeBlocked && !judgeSkippedNoGoal;
+    const greenPendingSave = dryRunGreen && !judgeBlocked && judgeSkippedNoGoal;
+    const previewNextActions =
+      cleanPreview || greenPendingSave
+        ? ["save_workflow_draft"]
+        : judgeBlocked
+          ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
+          : dryRunRequiresRepair
+            ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
+            : ["inspect_workflow_draft", "edit_workflow_patch"];
     const previewNextPrompt = cleanPreview
       ? "Committing the workflow"
-      : judgeBlocked
-        ? "Revise the workflow so the preview satisfies the goal (edit_workflow_patch), then re-run dry_run_workflow"
-        : dryRunRequiresRepair
-          ? "Open diagnosis to see why the preview needs repair"
-          : `Re-run preview after fixing step \`${stoppedForDraft}\``;
+      : greenPendingSave
+        ? "Preview is green — call save_workflow_draft to persist it (no goal was set, so it is not auto-committed)"
+        : judgeBlocked
+          ? "Revise the workflow so the preview satisfies the goal (edit_workflow_patch), then re-run dry_run_workflow"
+          : dryRunRequiresRepair
+            ? "Open diagnosis to see why the preview needs repair"
+            : `Re-run preview after fixing step \`${stoppedForDraft}\``;
     const warningSummary = runWarnings.length > 0 ? (warningsBanner?.summary ?? null) : null;
 
     // Auto-commit on green dry-run. A clean preview means the draft
@@ -904,6 +918,43 @@ export const dryRunWorkflowTool: ConversationTool = {
         ...(typeof commitResult.committed_workflow_id === "string"
           ? { committed_workflow_id: commitResult.committed_workflow_id }
           : {}),
+      };
+    }
+
+    // Green preview, but no goal was stashed so the judge was skipped:
+    // do NOT auto-persist a workflow version. Return the green result with an
+    // explicit `save_workflow_draft` next-action so the model/user commits
+    // once, deliberately — instead of every iteration dry-run minting a new
+    // version. This is still a success envelope (the run was green); it is the
+    // auto-commit that is withheld, not the preview.
+    if (greenPendingSave) {
+      const totalDryRunMs = run.steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0);
+      logger.info({
+        module: "conversation_tool",
+        action: "dry_run_workflow.green_pending_save",
+        msg: "green dry-run not auto-persisted — no goal stashed; awaiting explicit save",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        steps_ran: run.steps.length,
+        dry_run_duration_ms: totalDryRunMs,
+        execution_id: run.execution_id,
+        warnings_count: runWarnings.length,
+      });
+      return {
+        ok: true,
+        data: {
+          auto_committed: false,
+          save_required: true,
+          next_best_actions: previewNextActions,
+          next_prompt: previewNextPrompt,
+          ...(judgeOutcome ? { judge: judgeOutcome } : {}),
+          dry_run_summary: {
+            steps_ran: run.steps.length,
+            duration_ms: totalDryRunMs,
+            execution_id: run.execution_id,
+          },
+          step_trace: stepTrace,
+        },
       };
     }
 

@@ -101,6 +101,27 @@ If Postgres is not already listening on `localhost:5432`, start it first:
 These are choices that look arbitrary at first glance; documenting them once
 here saves a future maintainer the reverse-engineering trip.
 
+### File scanning — `NoopScanner` is an accepted posture
+
+`getScanner()` (`files/scanner.ts`) returns `NoopScanner`, which reports every
+uploaded file as `clean` without antivirus scanning. This is a **deliberate,
+accepted risk**, not an oversight:
+
+1. **Tenant uploads are not a primary attack surface today.** Files are ingested
+   for parsing (csv/xlsx/pdf → workflow input), not redistributed or executed.
+2. **No external infra by default.** A real scanner means a `clamd` sidecar —
+   external infrastructure the single-binary deployment deliberately avoids
+   (see the engine's self-contained boot model). Wiring it for a surface that
+   isn't yet a revenue/compliance driver would be premature.
+3. **The seam exists.** `getScanner()` is the single swap point; a clamd-backed
+   implementation reads `getConfig().storage.scanner.*` and drops in without
+   touching call sites. Boot logs `scanner.noop_in_production` at INFO so the
+   posture stays visible.
+
+**Revisit when** tenant-uploaded binaries become a redistribution/execution
+surface, or a compliance regime (SOC2/ISO) requires AV on ingested content —
+then wire the clamd-backed scanner behind `getScanner()`.
+
 ### Runtime stats (`stats/` + `http/routes/stats/`)
 
 Read-time aggregation over `executions` / `audit_log` / `llm_usage` — no new

@@ -18,9 +18,13 @@ import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 
 function templatePath(c: { req: { routePath?: string; url: string } }): string {
   // Hono exposes `routePath` on the Context once the matcher resolves.
-  // Fall back to the raw pathname if the matcher missed (404).
+  // Fall back to the raw pathname if the matcher missed (404). The
+  // catch-all route is registered as `/*` (and Hono may also expose a bare
+  // `*`), so BOTH sentinels must fall through — otherwise every unmatched
+  // request logs the literal route pattern `/*` instead of the URL the
+  // caller actually hit, hiding the source of 404 traffic.
   const direct = c.req.routePath;
-  if (direct && direct !== "*") return direct;
+  if (direct && direct !== "*" && direct !== "/*") return direct;
   try {
     return new URL(c.req.url).pathname;
   } catch {

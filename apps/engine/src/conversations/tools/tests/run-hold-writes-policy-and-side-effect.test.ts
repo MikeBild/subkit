@@ -1,0 +1,270 @@
+// authoring-flow hold_writes policy gate + inspect-workflow-draft
+// side_effect label (unit layer, no DB).
+//
+// Coverage:
+//   C. Policy gate: `run_workflow` with execute_writes:true → confirm_before_execution
+//      even in dev; without it in dev → no_confirm/auto.
+//   D. inspect_workflow_draft marks POST/send steps side_effect:"write" and
+//      GET/transform steps side_effect:"read".
+
+import { describe, expect, it } from "bun:test";
+import { createEmptyDraftDocument, withWorkflowDraft } from "../../authoring-state.ts";
+import type { DraftDocument } from "../../types.ts";
+import type { ToolContext } from "../index.ts";
+import { inspectWorkflowDraftTool } from "../inspect-workflow-draft.ts";
+import { confirmIfLiveWritesOrNonDevEnv, resolveExecutionMode } from "../tool-policies.ts";
+
+// ---------------------------------------------------------------------------
+// C. Policy predicate: confirmIfLiveWritesOrNonDevEnv
+// ---------------------------------------------------------------------------
+
+const DEV_CTX = { tenant_id: "t-unit-test", environment: "dev" as const };
+const PROD_CTX = { tenant_id: "t-unit-test", environment: "prod" as const };
+
+describe("confirmIfLiveWritesOrNonDevEnv predicate", () => {
+  it("execute_writes:true always demands confirmation, even in dev", () => {
+    expect(
+      confirmIfLiveWritesOrNonDevEnv({ execute_writes: true, environment: "dev" }, DEV_CTX),
+    ).toBe("confirm_before_execution");
+  });
+
+  it("execute_writes:true with no environment still demands confirmation", () => {
+    expect(confirmIfLiveWritesOrNonDevEnv({ execute_writes: true }, DEV_CTX)).toBe(
+      "confirm_before_execution",
+    );
+  });
+
+  it("execute_writes:false in dev → auto (hold-writes default path)", () => {
+    expect(
+      confirmIfLiveWritesOrNonDevEnv({ execute_writes: false, environment: "dev" }, DEV_CTX),
+    ).toBe("auto");
+  });
+
+  it("execute_writes omitted in dev → auto (hold-writes is the default)", () => {
+    expect(confirmIfLiveWritesOrNonDevEnv({ environment: "dev" }, DEV_CTX)).toBe("auto");
+  });
+
+  it("execute_writes omitted in prod → confirm (env rule fires as fallback)", () => {
+    expect(confirmIfLiveWritesOrNonDevEnv({ environment: "prod" }, PROD_CTX)).toBe(
+      "confirm_before_execution",
+    );
+  });
+
+  it("execute_writes:true in prod → confirm (execute_writes rule wins before env check)", () => {
+    expect(
+      confirmIfLiveWritesOrNonDevEnv({ execute_writes: true, environment: "prod" }, PROD_CTX),
+    ).toBe("confirm_before_execution");
+  });
+
+  it("null input → auto (env defaults to dev)", () => {
+    expect(confirmIfLiveWritesOrNonDevEnv(null, DEV_CTX)).toBe("auto");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C continued: resolveExecutionMode for run_workflow via TOOL_POLICIES
+// ---------------------------------------------------------------------------
+
+describe("resolveExecutionMode for run_workflow (tool-policies table)", () => {
+  it("run_workflow with execute_writes:true in dev → confirm_before_execution", () => {
+    const result = resolveExecutionMode(
+      "run_workflow",
+      { workflow: "my-wf", execute_writes: true, environment: "dev" },
+      DEV_CTX,
+    );
+    expect(result.mode).toBe("confirm_before_execution");
+    expect(result.confirmationKind).toBe("external_call");
+  });
+
+  it("run_workflow without execute_writes in dev → auto (hold-writes, no confirm)", () => {
+    const result = resolveExecutionMode(
+      "run_workflow",
+      { workflow: "my-wf", environment: "dev" },
+      DEV_CTX,
+    );
+    expect(result.mode).toBe("auto");
+  });
+
+  it("run_workflow without execute_writes in prod → confirm_before_execution (env rule)", () => {
+    const result = resolveExecutionMode(
+      "run_workflow",
+      { workflow: "my-wf", environment: "prod" },
+      PROD_CTX,
+    );
+    expect(result.mode).toBe("confirm_before_execution");
+  });
+
+  it("run_workflow execute_writes:false in dev → auto", () => {
+    const result = resolveExecutionMode(
+      "run_workflow",
+      { workflow: "my-wf", execute_writes: false, environment: "dev" },
+      DEV_CTX,
+    );
+    expect(result.mode).toBe("auto");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D. inspect_workflow_draft side_effect labels
+// ---------------------------------------------------------------------------
+
+function makeDraftCtx(draft: DraftDocument): ToolContext {
+  return {
+    db: {} as ToolContext["db"],
+    tenant_id: "t-unit-test",
+    conversation_id: "conv-unit-test",
+    actor_id: null,
+    connector_id: null,
+    workflow_id: null,
+    engineClient: {} as ToolContext["engineClient"],
+    getDraft: () => draft,
+    setDraft: async () => {},
+  } as ToolContext;
+}
+
+function draftWithSteps(steps: Array<Record<string, unknown>>): DraftDocument {
+  const empty = createEmptyDraftDocument();
+  return withWorkflowDraft(
+    empty,
+    {
+      ...empty.workflow,
+      name: "side-effect test workflow",
+      slug: "side-effect-test",
+      steps,
+    } as never,
+    "t15_seed",
+  );
+}
+
+describe("inspect_workflow_draft side_effect labels", () => {
+  it("GET request step → side_effect: 'read'", async () => {
+    const draft = draftWithSteps([
+      { id: "fetch", kind: "request", method: "GET", url: "https://api.example.com/data" },
+    ]);
+    const result = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {});
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      workflow?: { steps?: Array<{ id: string; side_effect: string }> };
+    };
+    const step = data.workflow?.steps?.find((s) => s.id === "fetch");
+    expect(step).toBeDefined();
+    expect(step?.side_effect).toBe("read");
+  });
+
+  it("POST request step → side_effect: 'write'", async () => {
+    const draft = draftWithSteps([
+      { id: "send", kind: "request", method: "POST", url: "https://api.example.com/send" },
+    ]);
+    const result = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {});
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      workflow?: { steps?: Array<{ id: string; side_effect: string }> };
+    };
+    const step = data.workflow?.steps?.find((s) => s.id === "send");
+    expect(step).toBeDefined();
+    expect(step?.side_effect).toBe("write");
+  });
+
+  it("PUT request step → side_effect: 'write'", async () => {
+    const draft = draftWithSteps([
+      { id: "update", kind: "request", method: "PUT", url: "https://api.example.com/items/1" },
+    ]);
+    const result = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {});
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      workflow?: { steps?: Array<{ id: string; side_effect: string }> };
+    };
+    const step = data.workflow?.steps?.find((s) => s.id === "update");
+    expect(step?.side_effect).toBe("write");
+  });
+
+  it("transform step → side_effect: 'read' (non-request steps have no external side effect)", async () => {
+    const draft = draftWithSteps([
+      {
+        id: "extract",
+        kind: "transform",
+        language: "javascript",
+        expression: "return input.data;",
+      },
+    ]);
+    const result = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {});
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      workflow?: { steps?: Array<{ id: string; side_effect: string }> };
+    };
+    const step = data.workflow?.steps?.find((s) => s.id === "extract");
+    expect(step?.side_effect).toBe("read");
+  });
+
+  it("mixed workflow — GET is read, POST is write in same result", async () => {
+    const draft = draftWithSteps([
+      { id: "fetch", kind: "request", method: "GET", url: "https://api.example.com/data" },
+      { id: "send", kind: "request", method: "POST", url: "https://api.example.com/send" },
+    ]);
+    const result = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {});
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      workflow?: { steps?: Array<{ id: string; side_effect: string }> };
+    };
+    const steps = data.workflow?.steps ?? [];
+    const fetchStep = steps.find((s) => s.id === "fetch");
+    const sendStep = steps.find((s) => s.id === "send");
+    expect(fetchStep?.side_effect).toBe("read");
+    expect(sendStep?.side_effect).toBe("write");
+  });
+
+  it("explicit side_effects override wins: POST forced to read", async () => {
+    const draft = draftWithSteps([
+      {
+        id: "search",
+        kind: "request",
+        method: "POST",
+        url: "https://api.example.com/search",
+        side_effects: "read",
+      },
+    ]);
+    const result = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {});
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      workflow?: { steps?: Array<{ id: string; side_effect: string }> };
+    };
+    const step = data.workflow?.steps?.find((s) => s.id === "search");
+    expect(step?.side_effect).toBe("read");
+  });
+
+  it("loop step → side_effect: 'read' (non-request steps have no external side effect)", async () => {
+    const draft = draftWithSteps([
+      {
+        id: "each_item",
+        kind: "loop",
+        over: "$scope.fetch.data.items",
+        body: ["process_item"],
+      },
+    ]);
+    const result = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {});
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      workflow?: { steps?: Array<{ id: string; side_effect: string }> };
+    };
+    const step = data.workflow?.steps?.find((s) => s.id === "each_item");
+    expect(step?.side_effect).toBe("read");
+  });
+
+  it("DELETE request step → side_effect: 'write'", async () => {
+    const draft = draftWithSteps([
+      {
+        id: "remove",
+        kind: "request",
+        method: "DELETE",
+        url: "https://api.example.com/items/1",
+      },
+    ]);
+    const result = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {});
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      workflow?: { steps?: Array<{ id: string; side_effect: string }> };
+    };
+    const step = data.workflow?.steps?.find((s) => s.id === "remove");
+    expect(step?.side_effect).toBe("write");
+  });
+});

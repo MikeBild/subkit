@@ -4,7 +4,8 @@
 //     names + droplet specs, output has empty names) → `failed` with
 //     missing items, auto-commit BLOCKED, result carries the verdict,
 //   - passing fixture → auto-commits with `judge.verdict: "passes"`,
-//   - goal absent → `skipped`/`no_goal` and commits exactly as before,
+//   - goal absent → `skipped`/`no_goal`, green preview is NOT auto-committed
+//     (returns save_required so the user/model persists deliberately),
 //   - judge infrastructure error → `skipped`/`judge_unavailable` and
 //     commits (the judge never blocks on an infra failure),
 //   - circuit-breaker: two blocks per definition fingerprint, the
@@ -163,7 +164,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(toolCtx.current().state?.judge_breaker ?? null).toBeNull();
   });
 
-  test("goal absent: judge skipped with no_goal, commit proceeds as today", async () => {
+  test("goal absent: judge skipped with no_goal, green preview is NOT auto-committed", async () => {
     // Override would FAIL the preview if the judge ran — proving the
     // skip really skipped the LLM call rather than passing by luck.
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
@@ -171,9 +172,17 @@ describe("preview judge · dry_run_workflow wiring", () => {
 
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
 
+    // a green dry-run with no stashed goal is no longer auto-persisted —
+    // the judge is skipped, so the engine cannot vouch for the result. The
+    // preview is still `ok` and returns the save_workflow_draft next-action so
+    // the model/user commits once, deliberately (no per-iteration version churn).
     expect(result.ok).toBe(true);
     const data = result.data as JudgeEnvelope;
-    expect(data.auto_committed).toBe(true);
+    expect(data.auto_committed).toBe(false);
+    expect((data as { save_required?: boolean }).save_required).toBe(true);
+    expect((data as { next_best_actions?: string[] }).next_best_actions).toEqual([
+      "save_workflow_draft",
+    ]);
     expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(0);
   });

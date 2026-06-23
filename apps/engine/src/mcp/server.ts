@@ -52,6 +52,12 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
       tenant_id: principal.tenant_id,
       principal,
       permission: "stats:read",
+      // this is a capability PROBE run on every MCP connect to decide
+      // whether to attach the operator digest to `initialize`; a user without
+      // stats:read is normal, not an incident. Mark it quiet so it logs at
+      // DEBUG instead of emitting an `rbac.denied` WARN on every connection
+      // (52×/day in prod), which drowned out real denials.
+      quiet: true,
     });
     if (decision.allow) {
       // If the timeout wins the race the digest query keeps running; map its
