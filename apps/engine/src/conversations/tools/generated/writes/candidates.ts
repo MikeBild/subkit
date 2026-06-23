@@ -1,7 +1,7 @@
 // approve_* / dismiss_* write tools for skill + patch candidates.
 
 import { z } from "@hono/zod-openapi";
-import { approvePatchCandidate } from "../../../../self-healing/service.ts";
+import { approvePatchCandidate } from "../../../../self-healing/candidate-decision.ts";
 import { approveSkillCandidate } from "../../../../skill-candidates/service.ts";
 import type { ConversationTool } from "../../index.ts";
 

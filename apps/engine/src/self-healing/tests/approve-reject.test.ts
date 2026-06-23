@@ -23,7 +23,8 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
-import { approvePatchCandidate, rejectPatchCandidate, runSelfHealingLoop } from "../service.ts";
+import { approvePatchCandidate, rejectPatchCandidate } from "../candidate-decision.ts";
+import { runSelfHealingLoop } from "../service.ts";
 import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";
 
 let ctx: SelfHealingTestCtx;
