@@ -335,14 +335,37 @@ export function summarizeToolFailure(result: {
   ok: boolean;
   error_code?: string;
   message?: string;
+  data?: unknown;
 }): Record<string, string> {
   if (result.ok) return {};
   const out: Record<string, string> = {};
+  // Most authoring tools pack the rejection reason INTO `data` (e.g.
+  // run_workflow's `data.error_code`, dry_run_workflow's `data.summary`)
+  // rather than at the top level — without a `data` fallback the tool.failed
+  // log read `undefined` for every one of them. Read top-level first (the
+  // canonical place), then fall back to the well-known `data` fields so the
+  // log carries WHY regardless of where the tool put it.
+  const data = (result.data ?? {}) as {
+    error_code?: unknown;
+    reason?: unknown;
+    message?: unknown;
+    summary?: unknown;
+    error?: unknown;
+  };
+  const code =
+    result.error_code ??
+    (typeof data.error_code === "string" ? data.error_code : undefined) ??
+    (typeof data.reason === "string" ? data.reason : undefined);
+  const message =
+    result.message ??
+    (typeof data.message === "string" ? data.message : undefined) ??
+    (typeof data.summary === "string" ? data.summary : undefined) ??
+    (typeof data.error === "string" ? data.error : undefined);
   // Bound both fields: a tool may interpolate an arbitrarily large payload
   // (e.g. an upstream response body) into its rejection message, and this
   // lands verbatim in the structured log. The field-level redactor still
   // scrubs credential-shaped substrings; the cap just stops log bloat.
-  if (typeof result.error_code === "string") out.error_code = result.error_code.slice(0, 80);
-  if (typeof result.message === "string") out.error = result.message.slice(0, 500);
+  if (typeof code === "string") out.error_code = code.slice(0, 80);
+  if (typeof message === "string") out.error = message.slice(0, 500);
   return out;
 }

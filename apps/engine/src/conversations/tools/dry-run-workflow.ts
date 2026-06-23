@@ -398,11 +398,18 @@ export const dryRunWorkflowTool: ConversationTool = {
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        const reason = (err as { code?: string }).code ?? "draft_run_failed";
+        // Top-level error_code/message so `summarizeToolFailure` lifts the WHY
+        // into the tool.failed log AND the error_code-repeat breaker can track
+        // a draft that keeps throwing the same way (it reads top-level
+        // error_code/message, not nested data).
         return {
           ok: false,
+          error_code: reason,
+          message: msg,
           data: {
             error: msg,
-            reason: (err as { code?: string }).code ?? "draft_run_failed",
+            reason,
           },
         };
       }
@@ -1012,8 +1019,39 @@ export const dryRunWorkflowTool: ConversationTool = {
       ...(signal ? { signal } : {}),
     });
     const repairCount = repairWarnings.length;
+    // The failing step's driver error_code (e.g. `http_4xx`), when the run
+    // stopped on a step rather than on the judge — suffixed into the tool-level
+    // error_code so an operator (and the error_code-repeat breaker) sees the
+    // SHAPE of the failure, not just "needs repair".
+    const failedStepErrorCode =
+      run.status !== "succeeded"
+        ? (run.steps.find((s) => s.status !== "succeeded")?.error as { code?: string } | undefined)
+            ?.code
+        : undefined;
+    // Stable top-level error_code for the ok:false envelope. judge block,
+    // step failure, or structural repair-needed — each gets a distinct code.
+    const previewErrorCode = judgeBlocked
+      ? "preview_judge_failed"
+      : run.status !== "succeeded"
+        ? failedStepErrorCode
+          ? `draft_step_failed:${failedStepErrorCode}`
+          : "draft_step_failed"
+        : "preview_needs_repair";
+    // Hoisted so it serves BOTH the lifecycle payload's `summary` AND the
+    // top-level `message` summarizeToolFailure lifts into the tool.failed log.
+    const previewSummary =
+      run.status !== "succeeded"
+        ? `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`
+        : judgeBlocked && judgeOutcome && judgeOutcome.verdict !== "skipped"
+          ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but the preview does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} Fix via edit_workflow_patch and re-run dry_run_workflow — or, after the user explicitly confirms, commit anyway via save_workflow_draft.`
+          : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`;
     return {
       ok: cleanPreview,
+      // This path is always ok:false (cleanPreview returned early). The
+      // top-level error_code/message let `summarizeToolFailure` log the WHY
+      // and let the error_code-repeat breaker (which reads top-level fields,
+      // not nested data) track a model re-issuing the same failing preview.
+      ...(cleanPreview ? {} : { error_code: previewErrorCode, message: previewSummary }),
       data: buildLifecyclePayload(
         nextDraft,
         {
@@ -1024,12 +1062,7 @@ export const dryRunWorkflowTool: ConversationTool = {
               ? "needs_repair"
               : (lastStep?.classification ?? (run.status === "succeeded" ? "ok" : "driver_error")),
           stopped_at_step_id: stoppedId,
-          summary:
-            run.status !== "succeeded"
-              ? `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`
-              : judgeBlocked && judgeOutcome && judgeOutcome.verdict !== "skipped"
-                ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but the preview does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} Fix via edit_workflow_patch and re-run dry_run_workflow — or, after the user explicitly confirms, commit anyway via save_workflow_draft.`
-                : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`,
+          summary: previewSummary,
           execution_id: run.execution_id,
           next_best_actions: previewNextActions,
           next_prompt: previewNextPrompt,

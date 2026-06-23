@@ -47,4 +47,41 @@ describe("summarizeToolFailure", () => {
   test("ok:false with neither field → {} (nothing to add)", () => {
     expect(summarizeToolFailure({ ok: false })).toEqual({});
   });
+
+  // Most authoring tools pack the reason INTO `data` (run_workflow's
+  // data.error_code, dry_run_workflow's data.summary). Without a data fallback
+  // these logged `undefined` — the exact gap the keyed benchmark surfaced
+  // (tool.failed [dry_run_workflow] — undefined).
+  test("ok:false with error_code in data → surfaced via fallback", () => {
+    expect(
+      summarizeToolFailure({
+        ok: false,
+        data: { error_code: "workflow_not_persisted", message: "commit the draft first" },
+      }),
+    ).toEqual({ error_code: "workflow_not_persisted", error: "commit the draft first" });
+  });
+
+  test("ok:false dry-run-shaped data (reason + summary) → reason as code, summary as error", () => {
+    expect(
+      summarizeToolFailure({
+        ok: false,
+        data: {
+          reason: "draft_step_failed",
+          summary: "Run stopped at step `scrape`: http 400",
+          classification: "needs_repair",
+        },
+      }),
+    ).toEqual({ error_code: "draft_step_failed", error: "Run stopped at step `scrape`: http 400" });
+  });
+
+  test("top-level error_code wins over data when both present", () => {
+    expect(
+      summarizeToolFailure({
+        ok: false,
+        error_code: "preview_judge_failed",
+        message: "judge blocked",
+        data: { error_code: "ignored", summary: "ignored too" },
+      }),
+    ).toEqual({ error_code: "preview_judge_failed", error: "judge blocked" });
+  });
 });
