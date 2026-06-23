@@ -67,7 +67,18 @@ async function main(): Promise<void> {
       const outcome = await judgePreview({
         goal: c.goal,
         definition_summary: c.definition_summary,
-        step_artifacts: [],
+        // The LLM judge reads step_artifacts (the rendered step outputs). In the
+        // real gate the final step's output_preview carries the content; mirror
+        // that so the judge actually sees the output it is meant to grade
+        // (passing [] would test the judge against an empty preview).
+        step_artifacts: [
+          {
+            step_id: "output",
+            kind: "transform",
+            status: "succeeded",
+            output_preview: c.final_output,
+          },
+        ],
         final_output: c.final_output,
         tenant_id: tenant.id,
         db: testDb.db,
