@@ -67,7 +67,7 @@ function maybeSuggestEndpoints(
 export const discoverConnectorEndpointsTool: ConversationTool = {
   name: "discover_connector_endpoints",
   description:
-    "Fetches the OpenAPI/Swagger spec for a connector template (or any URL) and returns a curated list of endpoints with auth schemes, parameters, and pagination hints. Call this **before** probing or proposing workflow steps so endpoint choices are grounded in real spec data instead of guesses. Cached per-tenant for 24h; pass `force_refresh: true` to re-fetch.",
+    "Discovers what an API can do BEFORE you author against it. For REST it fetches the OpenAPI/Swagger spec; for a GraphQL connector it runs `__schema` introspection (pass the GraphQL endpoint as `base_url`) and returns every query/mutation root field flattened with its args, enum values, and input-field shapes — AND ingests the full schema (SDL) as searchable knowledge you can then `search_knowledge`. Either way you get a curated list of endpoints with auth schemes, parameters, and pagination hints. Call this **before** probing or proposing workflow steps so field names, enum values (casing matters), and filter/connection shapes come from the real schema instead of guesses — essential for GraphQL, where list fields are usually Relay connections (`edges{node}`) and orderBy/enum values are schema-defined. Cached per-tenant for 24h; pass `force_refresh: true` to re-fetch.",
   inputSchema,
   category: "tenant_read",
   use_case:
