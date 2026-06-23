@@ -395,6 +395,19 @@ export async function assembleEnhancedPrompt(
     if (schemaSummaries.length > 0) {
       connectorSchemaBlock = formatConnectorSchemaSummaries(schemaSummaries);
     }
+    // Observability for the workflow-authoring connector-context gate (shared by
+    // OPT-E's operations block + the recorded-endpoint-samples block). Confirms
+    // whether the gate fires in the real converse flow — a 0-summary log on a
+    // connector with a warmed schema points at the upstream authoring_hint.mode
+    // population, not the loaders.
+    logger.info({
+      module: "llm",
+      action: "context.connector_authoring_aids",
+      tenant_id: p.tenant_id,
+      connector_ids: p.authoring_connector_ids.length,
+      schema_summaries: schemaSummaries.length,
+      probe_shapes: shapeExamples.length,
+    });
   }
 
   // Operator quirks for the in-scope connector. Loaded once per
