@@ -41,56 +41,11 @@ export function detectNamedOutputFormat(goal: string): NamedOutputFormat | null 
   return null;
 }
 
-/**
- * Focused per-format generation guidance — the "small output-format skill"
- * content, inlined into always-present generation grounding. (The single-shot
- * author_workflow generate flow renders skills only as the one-line INDEX;
- * full skill BODIES render solely for `loaded_skill_slugs`, which is empty
- * there — no tool loop loads any — so a skill body never reaches generation.)
- * Returned only when the goal names a format. Each block tells the
- * model to render that format as the FINAL workflow output (the
- * output_transform / last step result the caller receives), with a concrete
- * shape — not in an intermediate step that a later transform discards.
- */
-export function formatGuidance(format: NamedOutputFormat): string {
-  switch (format) {
-    case "markdown_table":
-      return [
-        "The goal asks for a MARKDOWN TABLE. The workflow's FINAL output (the",
-        "`output_transform_function`, or the last transform whose result is the",
-        "output) MUST be a STRING containing: a header row, a `| --- |`",
-        "separator row, then one `| … |` row per record. Do NOT return the rows",
-        "as a JSON array and do NOT leave the markdown in an intermediate step",
-        "that a later transform replaces — the caller receives the final output.",
-        "Render it in JS by joining, with newlines, the header line, the",
-        "separator line, then one piped line per row.",
-      ].join(" ");
-    case "csv":
-      return [
-        "The goal asks for CSV. The FINAL output MUST be a STRING: a header line",
-        "of comma-separated column names, then one comma-separated line per",
-        "record (escape values containing commas/quotes). Not a JSON array.",
-      ].join(" ");
-    case "html":
-      return [
-        "The goal asks for HTML. The FINAL output MUST be a STRING of HTML",
-        "markup (real tags: `<table>`/`<tr>`/`<td>`, `<ul>`/`<li>`, etc.) — the",
-        "actual rendered markup the caller will display, not structured data.",
-      ].join(" ");
-    case "bulleted_list":
-      return [
-        "The goal asks for a BULLETED LIST. The FINAL output MUST be a STRING",
-        "with one `- ` prefixed line per item (`items.map(i => '- ' + i).join('\\n')`),",
-        "not a JSON array.",
-      ].join(" ");
-    case "json":
-      return [
-        "The goal asks for JSON. Declare a minimal `output_schema` for exactly",
-        "the fields requested and return a structured object/array matching it",
-        "(the engine serialises it) — do NOT hand-render JSON as a string.",
-      ].join(" ");
-  }
-}
+// (A per-format generation-guidance helper `formatGuidance` lived here. It was
+// rolled back after a local A/B showed it did not improve output-format
+// fidelity over the one-line design rule + the final-output surfacing fix — the
+// model already renders the named format. The detector + matcher below remain:
+// they power the FORMAT-AWARE PREVIEW JUDGE, which is the verified lever.)
 
 // Markdown signatures are kept BYTE-IDENTICAL to the live benchmark's content
 // checks (apps/engine/eval/live-report.ts) so the format contract is

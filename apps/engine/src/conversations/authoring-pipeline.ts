@@ -47,7 +47,7 @@ import { logger } from "../logging/logger.ts";
 import { TriggerSchema } from "../workflows/types.ts";
 import { type ValidationError, validateWorkflowDef } from "../workflows/validator.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
-import { detectNamedOutputFormat, formatGuidance } from "./output-format.ts";
+import { detectNamedOutputFormat } from "./output-format.ts";
 import { type RecordedEvalReport, runRecordedEval } from "./recorded-eval.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { getLastPreview } from "./tools/last-preview-store.ts";
@@ -307,24 +307,11 @@ export function buildGenerationPrompt(args: {
     "- `slug` is lowercase-hyphenated and derived from the name; step ids are short snake_case nouns.",
   );
 
-  // Focused per-format grounding block when the goal names an output format.
-  // Richer than the generic design rule above — it spells out the exact
-  // FINAL-output shape for that format. Inlined as grounding because the
-  // single-shot generate flow renders skills only as the one-line INDEX: the
-  // assembler body-renders solely `loaded_skill_slugs`, and generate has no
-  // tool loop to load any, so a skill's BODY (where this rule would otherwise
-  // live) never reaches generation. (Evidence note: a controlled A/B showed
-  // injecting the full skill body did NOT improve single-shot results — the
-  // model already holds the rule-knowledge — so this stays a tight grounding
-  // line, not a skill-body dump.)
-  const namedFormat = detectNamedOutputFormat(args.goal);
-  if (namedFormat) {
-    lines.push(
-      "",
-      "## Output format (the goal names one — this is part of the contract)",
-      formatGuidance(namedFormat),
-    );
-  }
+  // Output-format fidelity is grounded by the one-line design rule above. A
+  // richer per-format block was trialed and rolled back: a local A/B (with vs
+  // without it, on a markdown scenario) showed no content_pass difference —
+  // the model already renders the format, and the real fix was surfacing the
+  // FINAL output to the judge + preview, not more generation prose.
 
   if (args.priorFindings && args.priorFindings.length > 0) {
     lines.push(

@@ -17,25 +17,23 @@ Two pure, deterministic, unit-tested helpers + one guidance map:
 - `detectNamedOutputFormat(goal): NamedOutputFormat | null` — literal-phrase
   match on the goal's own wording (naming-gated; a plain-data goal returns
   `null`, so nothing below ever fires for it — no false blocks).
-- `formatGuidance(fmt): string` — the focused per-format generation block (the
-  "small output-format skill" content). Inlined into always-present generation
-  grounding because the single-shot `author_workflow` generate flow renders
-  skills only as the one-line INDEX: the context assembler body-renders solely
-  `loaded_skill_slugs`, and generate has no tool loop to load any, so a skill's
-  BODY (where this rule would otherwise live) never reaches generation — only
-  its index entry does. (A controlled A/B later showed injecting the *full*
-  skill body did not improve single-shot results either — the model already
-  holds the rule-knowledge — so this stays a tight grounding line.)
 - `outputMatchesFormat(fmt, rendered): { ok, missing }` — structural-signature
   check; the markdown signatures are byte-identical to the live benchmark's
   content checks so the contract is single-sourced.
 
-Wired in two places:
+> **Rolled back:** a `formatGuidance(fmt)` helper (a richer per-format
+> generation block) once existed and was injected into `buildGenerationPrompt`.
+> An A/B (below) showed it did not improve format fidelity over the one-line
+> design rule + the final-output surfacing fix — the model already renders the
+> format — so it was removed (no-overkill). What remains is a single design-rule
+> line in `buildGenerationPrompt` plus the verified lever: the format-aware
+> judge. (The single-shot generate flow renders skills only as the one-line
+> INDEX — bodies render solely for `loaded_skill_slugs`, empty there — which is
+> why a generation-prompt line, not a skill, carries the residual signal.)
 
-1. **Generation grounding** — `authoring-pipeline.ts#buildGenerationPrompt`
-   appends `formatGuidance(fmt)` when the goal names a format, and
-   `runAuthoringPipeline` logs `authoring_pipeline.output_format_grounded`.
-2. **Format-aware preview judge** — `preview-judge.ts#judgePreview`, on a
+Wired in one place (plus a cheap grounding line):
+
+1. **Format-aware preview judge** — `preview-judge.ts#judgePreview`, on a
    `passes` verdict where the goal names a format, checks the rendered final
    output and downgrades `passes→partial` on a miss (logged as
    `preview_judge.format_check` / `preview_judge.format_mismatch`), routing
@@ -73,21 +71,26 @@ several trials and look at the rate, not one outcome.
 
 ### Findings (`weather-ranking-table` scenario, open-meteo, Sonnet 4.6)
 
-| Variant | trials | `content_pass` true | tool_calls | wall |
-|---|---|---|---|---|
-| OLD — generic one-line rule | 1 | 0/1 | 3 | ~53s |
-| NEW — `formatGuidance` block | 3 (1 delta + 2 bench) | **0/3** | 2 | ~35–45s |
+This experiment ran TWICE — and the first run was a cautionary tale in measuring
+the wrong thing:
 
-Raw-output inspection (`out/new.report.results.json`) on every NEW trial: the
-`dry_run_workflow` final output carried **no** pipe-row and **no** separator —
-i.e. not a markdown table.
+- **First run (INVALID):** scored `content_pass` off the whole preview envelope
+  while `formatGuidance` was present → an early `0/3` that *looked* like a clean
+  refutation. It was a measurement artifact: the metric scored the whole
+  envelope (step traces, definition echo), and separately the `dry_run` preview
+  surfaced the LAST STEP, not the resolved final output — so the markdown the
+  workflow actually produced was invisible. (Both gaps are now fixed: per-scenario
+  `content_source:"final_output"` scoring + the final-output surfacing fix.)
+- **Clean A/B (valid):** `formatGuidance` ON (OLD) vs OFF (NEW), markdown
+  scenario, fixed metric. Clean trials (excluding one key-extraction flake):
+  OLD `content_pass` **3/3 true** = NEW **3/3 true**, single preview each.
+  **No difference.**
 
-**Verdict:** richer per-format generation guidance does **not** flip single-shot
-output-format fidelity. The model consistently renders the table in an
-intermediate step (or returns structured data) while the workflow's final
-`output_transform` result — what the caller receives — is not the markdown
-string. The grounding block is correct domain guidance and modestly more
-efficient (2 vs 3 tool calls, faster), but it is **not** the fidelity fix.
+**Verdict:** `formatGuidance` does not change output-format fidelity — removing
+it leaves `content_pass` at 3/3. The model already renders the named format; the
+real fix was surfacing the FINAL output to the judge + preview (so it is no
+longer hidden behind the last step), not more generation prose. `formatGuidance`
+was therefore **rolled back** (no-overkill); a one-line design rule remains.
 
 **The effective lever is the preview judge, not generation grounding — and it
 is now wired to the FINAL output.** The judge previously evaluated

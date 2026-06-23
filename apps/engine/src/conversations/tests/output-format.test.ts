@@ -4,12 +4,7 @@
 // Tests run in `bun run test:unit` without any external dependencies.
 
 import { describe, expect, test } from "bun:test";
-import {
-  detectNamedOutputFormat,
-  formatGuidance,
-  type NamedOutputFormat,
-  outputMatchesFormat,
-} from "../output-format.ts";
+import { detectNamedOutputFormat, outputMatchesFormat } from "../output-format.ts";
 
 describe("detectNamedOutputFormat", () => {
   test('"...return a markdown table that ranks..." → "markdown_table"', () => {
@@ -176,22 +171,6 @@ describe("outputMatchesFormat · json", () => {
   });
 });
 
-describe("formatGuidance", () => {
-  const formats: NamedOutputFormat[] = ["markdown_table", "csv", "html", "bulleted_list", "json"];
-  for (const fmt of formats) {
-    test(`${fmt} → non-empty, format-relevant guidance`, () => {
-      const g = formatGuidance(fmt);
-      expect(g.length).toBeGreaterThan(20);
-    });
-  }
-  // The string-rendered formats must steer the FINAL output (json is the
-  // structured default and is phrased around output_schema instead).
-  for (const fmt of ["markdown_table", "csv", "html", "bulleted_list"] as NamedOutputFormat[]) {
-    test(`${fmt} guidance steers the FINAL output`, () => {
-      expect(formatGuidance(fmt).toUpperCase()).toContain("FINAL");
-    });
-  }
-  test("markdown guidance names the separator row", () => {
-    expect(formatGuidance("markdown_table")).toContain("| --- |");
-  });
-});
+// (formatGuidance tests removed with the helper — rolled back after the A/B
+// showed it did not improve format fidelity. The detector + matcher tests above
+// remain; they cover the format-aware judge's logic.)
