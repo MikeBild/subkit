@@ -44,6 +44,15 @@ export interface LiveScenarioSpec {
   slug: string;
   /** The goal sent verbatim as the conversation's initial message. */
   goal: string;
+  /**
+   * Optional multi-turn script. When present, `goal` is the FIRST user message
+   * and each entry here is a follow-up message appended to the SAME conversation
+   * (POST /v1/conversations/{id}/messages) in order — exercising ITERATIVE
+   * authoring (turn 2+), where context that depends on the connector already
+   * being in scope (e.g. OPT-E's injected operations) actually applies. Scoring
+   * runs against the final accumulated state.
+   */
+  follow_up_turns?: string[];
   /** Connector slugs the goal references — documentation only; the
    *  conversation model names them via `author_workflow`. */
   connectors: string[];

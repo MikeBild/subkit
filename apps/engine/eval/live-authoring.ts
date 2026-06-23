@@ -119,6 +119,7 @@ const ContentCheckSchema = z.object({
 const ScenarioFileEntrySchema = z.object({
   slug: z.string().min(1),
   goal: z.string().min(1),
+  follow_up_turns: z.array(z.string().min(1)).optional(),
   connectors: z.array(z.string()),
   expect_judge_block: z.boolean(),
   content_checks: z.array(ContentCheckSchema),
@@ -195,7 +196,6 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
         title: `eval-live · ${spec.slug}`,
       }),
     });
-    const wall_ms = Date.now() - started;
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       return {
@@ -203,33 +203,67 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
         tool_calls: 0,
         results: [],
         status: "error",
-        wall_ms,
+        wall_ms: Date.now() - started,
         error: `POST /v1/conversations → ${res.status}: ${body.slice(0, 300)}`,
       };
     }
-    const outcome = (await res.json()) as {
+    let outcome = (await res.json()) as {
       conversation?: { id?: string };
       events?: TurnEventLike[];
       status?: string;
     };
+    const conversationId = outcome.conversation?.id;
+
+    // Multi-turn: append each follow-up to the SAME conversation, in order.
+    // Exercises iterative authoring (turn 2+). The final outcome/status is the
+    // last turn's; tool calls accumulate across turns (read from the detail
+    // below). A failed append surfaces as an error observation.
+    let tokensAcrossTurns = projectEvents(outcome.events ?? []).tokens;
+    if (conversationId && spec.follow_up_turns && spec.follow_up_turns.length > 0) {
+      for (const turn of spec.follow_up_turns) {
+        const turnRes = await engineFetch(args, `/v1/conversations/${conversationId}/messages`, {
+          method: "POST",
+          body: JSON.stringify({ message: turn, permission_mode: "auto" }),
+        });
+        if (!turnRes.ok) {
+          const body = await turnRes.text().catch(() => "");
+          return {
+            scenario: spec.slug,
+            tool_calls: 0,
+            results: [],
+            status: "error",
+            wall_ms: Date.now() - started,
+            error: `POST …/messages → ${turnRes.status}: ${body.slice(0, 300)}`,
+          };
+        }
+        outcome = (await turnRes.json()) as typeof outcome;
+        const t = projectEvents(outcome.events ?? []).tokens;
+        if (t !== undefined) tokensAcrossTurns = (tokensAcrossTurns ?? 0) + t;
+      }
+    }
+
+    const wall_ms = Date.now() - started;
     let projected = projectEvents(outcome.events ?? []);
 
-    // Fallback: some surfaces omit tool frames from the outcome events —
-    // re-read the persisted conversation detail (messages + tool_calls).
-    if (projected.tool_calls === 0 && outcome.conversation?.id) {
-      const detailRes = await engineFetch(args, `/v1/conversations/${outcome.conversation.id}`);
+    // Read the persisted conversation detail — for a multi-turn run it carries
+    // the FULL tool-call history across every turn (the per-turn events only
+    // cover the last turn). Single-turn runs also benefit when a surface omits
+    // tool frames from the outcome events.
+    if (conversationId && (projected.tool_calls === 0 || (spec.follow_up_turns?.length ?? 0) > 0)) {
+      const detailRes = await engineFetch(args, `/v1/conversations/${conversationId}`);
       if (detailRes.ok) {
         const detail = (await detailRes.json()) as {
           tool_calls?: Array<{ tool?: string; output?: unknown }>;
         };
         const calls = detail.tool_calls ?? [];
-        projected = {
-          tool_calls: calls.length,
-          results: calls
-            .filter((c): c is { tool: string; output: unknown } => typeof c.tool === "string")
-            .map((c) => ({ tool: c.tool, output: c.output })),
-          ...(projected.tokens !== undefined ? { tokens: projected.tokens } : {}),
-        };
+        if (calls.length > 0) {
+          projected = {
+            tool_calls: calls.length,
+            results: calls
+              .filter((c): c is { tool: string; output: unknown } => typeof c.tool === "string")
+              .map((c) => ({ tool: c.tool, output: c.output })),
+          };
+        }
       }
     }
 
@@ -239,7 +273,7 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
       results: projected.results,
       status: outcome.status ?? "unknown",
       wall_ms,
-      ...(projected.tokens !== undefined ? { tokens: projected.tokens } : {}),
+      ...(tokensAcrossTurns !== undefined ? { tokens: tokensAcrossTurns } : {}),
     };
   } catch (err) {
     return {

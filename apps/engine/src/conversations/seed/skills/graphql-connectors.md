@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, graphql]
-version: 7
+version: 8
 ---
 
 # GraphQL Connectors
@@ -29,6 +29,12 @@ step and surfaces on the step error channel — read it via
 Do NOT guess field names, argument names, enum values, or response shapes.
 GraphQL is introspectable, so the exact schema is one tool call away:
 
+0. **Check context first.** If a "Connector operations (from the connector's
+   schema)" block is already present for this connector, USE those operation +
+   argument names directly — do not call `discover_connector_endpoints` again
+   just to re-list them. Only reach for the tools below when you need a shape
+   that block does NOT show (the connection's `edges/node` layout, an enum's
+   VALUES, an input object's fields) or when no such block is present.
 1. **`discover_connector_endpoints`** — pass the **`connector_id`** of the
    GraphQL connector you are authoring against (NOT `template_id`, which is only
    for built-in templates; passing a custom connector's slug there fails with
