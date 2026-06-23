@@ -124,10 +124,11 @@ jobs:
     name: judge calibration (real LLM)
     runs-on: ubuntu-24.04
     if: ${{ github.repository_owner == 'MikeBild' }}
-    # Advisory while the judge is below the 80% target. The first run measured
-    # ~67% lenient agreement — the preview judge passes some incomplete/
-    # wrong-filtered outputs. Once a judge-prompt improvement lands and the
-    # measured rate clears the threshold, flip continue-on-error to false so a
+    # Advisory. After the verdict-rule + golden-label fixes the judge clears the
+    # 80% target (~83% lenient), but the margin is thin and the judge is
+    # stochastic (single-trial), and two residual misses (wrong-filter,
+    # missing-columns) persist. Keep continue-on-error until a multi-trial run
+    # confirms a comfortable, stable margin — then flip to false so a
     # judge-calibration REGRESSION blocks the nightly.
     continue-on-error: true
     services:
