@@ -147,14 +147,14 @@ export function findMissingNamedFields(goal: string, rendered: string): string[]
   for (const m of goal.matchAll(
     /\b(?:table|columns?|fields?|rows?)\b[^.(]{0,40}?\(([^)]{3,200})\)/gi,
   )) {
-    if (m[1] && m[1].includes(",")) fields.push(...splitEnumeration(m[1]));
+    if (m[1]?.includes(",")) fields.push(...splitEnumeration(m[1]));
   }
   // (b) `columns`/`fields` keyword introducing a comma/and list, up to a
   //     sentence/clause boundary.
   for (const m of goal.matchAll(
     /\b(?:columns?|fields?)\b[:\s]+([A-Za-z0-9][A-Za-z0-9 ,&'-]+?)(?=[.;:)]|\s+(?:sorted|ordered|grouped|and one|per |with )|$)/gi,
   )) {
-    if (m[1] && m[1].includes(",")) fields.push(...splitEnumeration(m[1]));
+    if (m[1]?.includes(",")) fields.push(...splitEnumeration(m[1]));
   }
   // Dedup by keyword; need a real enumeration (>= 2 fields) to act.
   const byKeyword = new Map<string, string>();
