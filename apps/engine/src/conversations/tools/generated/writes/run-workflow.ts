@@ -121,6 +121,18 @@ const Input = z
      * this off costs nothing on the happy path.
      */
     include_step_trace: z.boolean().optional(),
+    /**
+     * side-effect safety. By DEFAULT a `run_workflow` from the
+     * authoring surface HOLDS write-classified steps (sends, POST/PUT/
+     * DELETE, non-SELECT SQL/GraphQL mutations): they are fully resolved
+     * (URL/headers/body materialized) but NOT dispatched, so verifying a
+     * saved workflow during authoring can never fire a real email/write.
+     * Set `execute_writes: true` ONLY after the user explicitly confirmed a
+     * real, live run — the policy gate then requires a confirmation. The
+     * scheduler and the HTTP run endpoint are unaffected (they never route
+     * through this tool), so production runs still send.
+     */
+    execute_writes: z.boolean().optional(),
   })
   .openapi("RunWorkflowToolInput");
 
@@ -148,7 +160,7 @@ function withStatus(
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
-    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `build_workflow` or `propose_step`.",
+    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. WRITE-classified steps (email sends, posts, publishes) are HELD by default — resolved but NOT dispatched — so a run is side-effect-safe; the envelope reports `writes_held` + `held_step_ids`. Do a real live send ONLY after the user confirms, by passing `execute_writes: true` (which then requires a confirmation even in dev). To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `build_workflow` or `propose_step`.",
   inputSchema: Input,
   category: "tenant_write",
   requires_persisted_workflow: true,
@@ -466,6 +478,11 @@ export const runWorkflowTool: ConversationTool = {
         "info",
         `running workflow ${wf.slug} (v${wf.current_version}) in env=${args.environment}`,
       );
+      // hold write-classified steps unless the caller explicitly opted
+      // into a live run. The engine resolves writes (materializes the
+      // would-be request) but does not dispatch them, so an authoring-time
+      // verification of a saved workflow cannot fire a real send.
+      const holdWrites = args.execute_writes !== true;
       const result = await runExecution({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
@@ -476,8 +493,23 @@ export const runWorkflowTool: ConversationTool = {
           trace_id: null,
           principal: ctx.principal,
           execution_mode: args.environment,
+          ...(holdWrites ? { hold_writes: true } : {}),
         },
       });
+      // A held write step carries `held: true` (it resolved but did not
+      // dispatch); a downstream step blocked by the hold is `skipped` with
+      // code `skipped_dependency_held`. Both count as "not actually run".
+      const heldStepIds = holdWrites
+        ? result.steps
+            .filter(
+              (s) =>
+                (s as { held?: boolean }).held === true ||
+                (s.error &&
+                  typeof s.error === "object" &&
+                  (s.error as { code?: unknown }).code === "skipped_dependency_held"),
+            )
+            .map((s) => s.step_key)
+        : [];
       // Emit per-step progress logs so the user sees what each step
       // did during the run (status, kind, duration). Without this the
       // chat shows a single "Execution complete" badge and the loop's
@@ -516,6 +548,11 @@ export const runWorkflowTool: ConversationTool = {
           workflow_id: workflowId,
           environment: args.environment,
           final_status: result.status,
+          // a held run vs a live (writes-dispatched) run must be
+          // distinguishable in the audit log so "did this run actually
+          // send?" is answerable.
+          execute_writes: args.execute_writes === true,
+          ...(heldStepIds.length > 0 ? { held_step_ids: heldStepIds } : {}),
         },
       });
       await ctx.db
@@ -811,6 +848,16 @@ export const runWorkflowTool: ConversationTool = {
             workflow_id: workflowId,
             workflow_version_id: wf.current_version_id,
             workflow_version: wf.current_version,
+            // make the held writes unmistakable to the agent so it
+            // never reads a verification run as a real send (the corsica
+            // session mailed stale snapshots this way).
+            ...(heldStepIds.length > 0
+              ? {
+                  writes_held: true,
+                  held_step_ids: heldStepIds,
+                  writes_held_note: `${heldStepIds.length} write step(s) were resolved but NOT dispatched — no real send/write happened, so this run is safe for verification. To actually execute the writes, ask the user to confirm a live run, then call run_workflow again with execute_writes:true.`,
+                }
+              : {}),
             ...(failureStepKey ? { failure_step_key: failureStepKey } : {}),
             ...(failureReason ? { failure_reason: failureReason } : {}),
             // G1: tell the LLM the run accepted no inputs so the next

@@ -40,6 +40,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   // surface (HTTP/MCP route, not a raw in-process invocation).
   principal_required:
     "this tool requires an authenticated principal on the ToolContext — re-issue the call from the HTTP / MCP / sk-cli surface so the auth resolution threads through, instead of invoking the tool directly in-process",
+  // authenticate_oauth was used on a non-browser grant (Cognito
+  // USER_PASSWORD_AUTH or client_credentials_json). Those rotate in chat.
+  wrong_reauth_flow:
+    "this connector does NOT use a browser authorization-code flow — it is Cognito USER_PASSWORD_AUTH or a client-credentials (M2M) grant, which have no sign-in page. Do not call authenticate_oauth. Call request_connector_reauth instead: it re-collects the credential (email + password, or the M2M secret) in chat and rotates it in place",
   // Initial-stage gate (Fix A): micro-tools are repair-stage only.
   authoring_stage_violation:
     "propose_step / update_param are repair-stage tools — the draft has no recorded preview and no recorded-eval/judge findings yet. Author the complete workflow in ONE call via author_workflow (or build_workflow), then dry_run_workflow; either unlocks the micro-tools",
@@ -97,6 +101,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "this exact probe already failed and nothing changed since — do NOT re-probe with the same draft. Change the base_url / credential / config via update_connector_draft, or verify the endpoint via fetch_connector_docs / search_docs first",
   connector_not_found:
     "the connector id is unknown — call find_connector or list_connectors to discover the correct id",
+  connector_has_no_base_url:
+    "this connector has no base_url to introspect — pass base_url (the API endpoint) or ingestion_url explicitly to discover_connector_endpoints, or set the connector's base_url first",
   connector_missing:
     "no connector is bound for this operation — call find_connector or start_connector_from_description to create one",
   oauth_requires_template:

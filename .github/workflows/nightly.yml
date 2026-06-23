@@ -120,6 +120,61 @@ jobs:
           echo "::error::Tier 1.x e2e failed all 3 attempts — likely a real LLM-quality regression, not flake"
           exit 1
 
+  judge-calibration:
+    name: judge calibration (real LLM)
+    runs-on: ubuntu-24.04
+    if: ${{ github.repository_owner == 'MikeBild' }}
+    # Advisory. After the verdict-rule + golden-label fixes the judge clears the
+    # 80% target (~83% lenient), but the margin is thin and the judge is
+    # stochastic (single-trial), and two residual misses (wrong-filter,
+    # missing-columns) persist. Keep continue-on-error until a multi-trial run
+    # confirms a comfortable, stable margin — then flip to false so a
+    # judge-calibration REGRESSION blocks the nightly.
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: subkit
+          POSTGRES_PASSWORD: subkit
+          POSTGRES_DB: subkit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U subkit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
+      MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SKIP_DOCKER: "1"
+      TZ: UTC
+      LANG: C.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - name: Cache Bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      - name: Verify ANTHROPIC_API_KEY is set
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "ANTHROPIC_API_KEY secret is not configured for this repo."
+            exit 1
+          fi
+      - name: Judge calibration vs golden set
+        run: bun run eval:judge
+
   flake:
     name: flake (5 reseeded runs)
     runs-on: ubuntu-24.04

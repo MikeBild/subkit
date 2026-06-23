@@ -64,6 +64,7 @@ import {
   OAUTH_AUTHORIZATION_FAILED,
   OAUTH_ELICITATION_TRANSPORT_FAILED,
   OAUTH_TIMEOUT,
+  WRONG_REAUTH_FLOW,
 } from "./error-codes.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 
@@ -346,6 +347,38 @@ export const authenticateOAuthTool: ConversationTool = {
           error: "oauth_not_configured",
           message:
             "this connector is not configured for OAuth2 authentication. Either pick a template with OAuth or save the draft with credential.mode='oauth2'.",
+        },
+      };
+    }
+    // Grant-type gate. `authenticate_oauth` is for the BROWSER
+    // authorization-code dance only. Cognito USER_PASSWORD_AUTH and
+    // client_credentials_json (M2M) have no authorization endpoint, so
+    // starting the dance throws opaquely ("unexpected HTTP response status
+    // code") — the exact failure that sent a whole debugging session down a
+    // content-type rabbit hole. Fail fast with an actionable redirect to
+    // `request_connector_reauth`, which re-collects the credential in chat and
+    // rotates it in place. Mirrors the guard in
+    // `connectors/oauth-start.ts:beginConnectorOAuthDance` so the two entry
+    // points can't drift.
+    if (cfg.grant_type === "cognito_user_password") {
+      return {
+        ok: false,
+        data: {
+          error_code: WRONG_REAUTH_FLOW,
+          message:
+            "connector uses Cognito USER_PASSWORD_AUTH (cognito_user_password), not a browser authorization-code flow — call request_connector_reauth to re-issue its credential (email + password) in chat instead of authenticate_oauth.",
+          next_best_actions: ["request_connector_reauth"],
+        },
+      };
+    }
+    if (cfg.grant_type === "client_credentials_json") {
+      return {
+        ok: false,
+        data: {
+          error_code: WRONG_REAUTH_FLOW,
+          message:
+            "connector uses a client-credentials (M2M) grant (client_credentials_json), not a browser authorization-code flow — call request_connector_reauth to re-run the credential exchange instead of authenticate_oauth.",
+          next_best_actions: ["request_connector_reauth"],
         },
       };
     }

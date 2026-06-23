@@ -1,4 +1,6 @@
 import { z } from "@hono/zod-openapi";
+import { classifyRequestStepSideEffects } from "../../execution/steps/request/side-effects.ts";
+import type { RequestStep } from "../../workflows/types.ts";
 import { getWorkflowDraft, withWorkflowInspection } from "../authoring-state.ts";
 import type { WorkflowDraftStepPreview } from "../types.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
@@ -48,10 +50,27 @@ export const inspectWorkflowDraftTool: ConversationTool = {
             steps: workflow.steps.map((step, index) => {
               const id = typeof step.id === "string" ? step.id : `step-${index + 1}`;
               const trace = traceById.get(id);
+              // surface each step's side-effect class so the agent
+              // knows which steps DISPATCH (sends, writes) and never
+              // live-tests them (it verifies via dry_run_workflow / a held
+              // run instead). Reuses the engine's canonical classifier — the
+              // same one hold_writes uses — so the label can't drift from
+              // what the engine actually holds. A `call` step runs a
+              // sub-workflow whose own steps may write, so it is marked
+              // "write" conservatively (the agent should not blind-live-test
+              // it). Pure-compute / control-flow steps (transform, loop,
+              // branch, parallel, wait) have no external side effect → "read".
+              const sideEffect =
+                step.kind === "request"
+                  ? classifyRequestStepSideEffects(step as unknown as RequestStep)
+                  : step.kind === "call"
+                    ? "write"
+                    : "read";
               return {
                 index,
                 id,
                 kind: typeof step.kind === "string" ? step.kind : "unknown",
+                side_effect: sideEffect,
                 fields: Object.keys(step).sort(),
                 ...(trace
                   ? {

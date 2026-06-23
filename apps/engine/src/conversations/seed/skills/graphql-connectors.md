@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, graphql]
-version: 5
+version: 8
 ---
 
 # GraphQL Connectors
@@ -23,6 +23,47 @@ exactly like the REST driver. There is **no** double `data.data`.
 GraphQL `errors` are not on `.data`. A non-empty `errors` array fails the
 step and surfaces on the step error channel — read it via
 `$scope.<step_id>.error`.
+
+## Step 0 — learn the schema by introspection BEFORE writing any query
+
+Do NOT guess field names, argument names, enum values, or response shapes.
+GraphQL is introspectable, so the exact schema is one tool call away:
+
+0. **Check context first.** If a "Connector operations (from the connector's
+   schema)" block is already present for this connector, USE those operation +
+   argument names directly — do not call `discover_connector_endpoints` again
+   just to re-list them. Only reach for the tools below when you need a shape
+   that block does NOT show (the connection's `edges/node` layout, an enum's
+   VALUES, an input object's fields) or when no such block is present.
+1. **`discover_connector_endpoints`** — pass the **`connector_id`** of the
+   GraphQL connector you are authoring against (NOT `template_id`, which is only
+   for built-in templates; passing a custom connector's slug there fails with
+   `template_not_found`). The tool uses that connector's stored endpoint, runs
+   `__schema` introspection, and returns every query/mutation root field
+   flattened with its **args, enum values, and input-field shapes** — AND
+   ingests the full schema (SDL) as a searchable knowledge source.
+2. **`search_knowledge`** the ingested SDL for the specific types you will
+   touch — the connection type, the filter input, the orderBy enum — to read
+   their EXACT field names and enum values.
+
+Two schema shapes you must read from introspection, never assume:
+
+- **Relay connections.** A list field usually returns a `*Connection`, not a
+  flat array: `things(first, after, filter, orderBy) { edges { node { … } }
+  pageInfo { hasNextPage endCursor } totalCount }`. The rows live at
+  `edges[].node` — a transform/`for_each` that reads the field as a flat array
+  fails with `cannot read property 'edges' of undefined` or drops every row.
+  Paginate with `first` + `after: pageInfo.endCursor`.
+- **Enum values are case-sensitive and schema-defined.** `orderBy: { field:
+  <enum>, direction: ASC|DESC }` — the enum value casing (`updatedAt` vs
+  `UPDATED_AT`, `direction` vs `dir`) comes from the schema, not convention.
+  Filter args are input objects whose field names + value types you read from
+  the schema's input type.
+
+Skipping introspection is the #1 cause of GraphQL authoring churn: the model
+guesses a flat list / wrong enum / wrong filter field, the query 400s or the
+`for_each` reads `undefined`, and it re-edits blindly. One introspection pass
+up front removes the whole loop.
 
 ## Step shape
 

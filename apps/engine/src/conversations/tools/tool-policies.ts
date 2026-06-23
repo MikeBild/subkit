@@ -134,6 +134,18 @@ export function confirmIfNonDevEnv(input: unknown, ctx: ToolPolicyContext): Exec
   return env === "dev" ? "auto" : "confirm_before_execution";
 }
 
+/** `run_workflow`: a live write run (`execute_writes: true`) ALWAYS
+ *  confirms, even in dev — dispatching real sends/writes must be
+ *  human-approved. Default runs hold writes and need no confirm. Outside
+ *  dev, fall back to the standard env rule. */
+export function confirmIfLiveWritesOrNonDevEnv(
+  input: unknown,
+  ctx: ToolPolicyContext,
+): ExecutionMode {
+  if (isPlainObject(input) && input.execute_writes === true) return "confirm_before_execution";
+  return confirmIfNonDevEnv(input, ctx);
+}
+
 const PLACEHOLDER_PATTERN = /\$\{[^}]*\}/;
 
 function stringHasPlaceholder(value: string): boolean {
@@ -313,9 +325,9 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   {
     name: "run_workflow",
     defaultMode: "auto",
-    computeModeFromInput: confirmIfNonDevEnv,
+    computeModeFromInput: confirmIfLiveWritesOrNonDevEnv,
     confirmationKind: "external_call",
-    reason: "Confirms when running outside dev",
+    reason: "Confirms when running a live write (execute_writes) or outside dev",
   },
   {
     name: "rerun_execution",

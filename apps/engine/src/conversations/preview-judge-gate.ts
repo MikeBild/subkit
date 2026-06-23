@@ -82,6 +82,9 @@ export async function runPreviewJudgeGate(p: {
   definition: WorkflowDef;
   steps: ReadonlyArray<Record<string, unknown>>;
   run_steps: Parameters<typeof buildJudgeStepArtifacts>[0];
+  /** The run's resolved final output (post output_transform) — the format
+   *  check evaluates this, not the step artifacts. */
+  final_output?: unknown;
   prior_breaker: JudgeBreakerState | null;
   /** Turn/pipeline abort signal (P1) threaded into the judge call. */
   signal?: AbortSignal;
@@ -126,6 +129,7 @@ export async function runPreviewJudgeGate(p: {
       goal: p.goal,
       definition_summary: buildJudgeDefinitionSummary(p.steps as Array<Record<string, unknown>>),
       step_artifacts: buildJudgeStepArtifacts(p.run_steps),
+      final_output: p.final_output,
       tenant_id: p.tenant_id,
       db: p.db,
       ...(p.signal ? { signal: p.signal } : {}),

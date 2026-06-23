@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "7.8.2",
+  "version": "7.9.0",
   "private": true,
   "type": "module",
   "description": "A self-hostable, multi-tenant engine for governed, versioned, AI-assisted workflow execution against connected systems.",
@@ -44,6 +44,7 @@
     "eval": "bun run apps/engine/eval/runner.ts",
     "eval:baseline": "bun run apps/engine/eval/runner.ts --write-baseline",
     "eval:live": "bun run apps/engine/eval/live-authoring.ts",
+    "eval:judge": "bun run apps/engine/eval/judge-calibration.ts",
     "bench:transforms": "bun run scripts/benchmark-transforms.ts",
     "verify:estate-migration": "bun run scripts/verify-estate-migration.ts",
     "verify:ai": "bun run eval",

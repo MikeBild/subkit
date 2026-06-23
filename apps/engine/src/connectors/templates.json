@@ -5396,6 +5396,134 @@
       "webhook_events": [],
       "rate_limits": null
     },
+    "operator_quirks": {
+      "general": "Use /chrome/function (not /chrome/content) for any page that loads rows via client-side JS. /chrome/content captures the HTML shell at load-time — late-rendered rows are absent. The page-function runs INSIDE the browserless service; page.waitForSelector and page.waitForTimeout work as documented. For pages with multiple independently-rendered sections, poll with page.reload() (up to 3 times) until all sections have rows. Always return a structured error ({ error: 'selector_missing', selector, url }) from the page-function when expected rows are absent so the workflow fails explicitly instead of sending a silent empty digest."
+    },
+    "recipes": [
+      {
+        "slug": "scrape-then-email-digest",
+        "title": "Scrape a late-rendered page and email a digest",
+        "description": "Reliable scrape-then-email pattern for pages that load content via client-side JS. Uses /chrome/function with page.waitForSelector and a bounded reload-poll (up to 3 reloads) so all expected sections are present before extraction. A JS transform normalises the rows (including time-format quirks such as single-digit hour prefixes) and guards against empty results. The final step sends the digest via SendGrid. Target URL, CSS selector, and recipient are passed via workflow inputs and forwarded to the page-function through the browserless context object.",
+        "intent_keywords": [
+          "scrape and email",
+          "page scrape digest",
+          "scheduled web scrape email",
+          "late render scrape",
+          "spa scrape email"
+        ],
+        "derived_from_skill": "browserless-basics",
+        "category": "scraping",
+        "tags": ["trigger:schedule", "daily-digest", "scraping", "notification"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 15,
+        "prerequisites": [
+          "Browserless connector with a valid API token",
+          "SendGrid connector with a verified sender address and Mail Send permission",
+          "Target page URL and the CSS selector for the expected content rows — probe /chrome/function with a minimal page-function first to confirm the selector returns rows before saving this workflow"
+        ],
+        "sample_input": {
+          "target_url": "https://example.com/schedule",
+          "row_selector": ".schedule-row",
+          "digest_recipient": "operator@example.com",
+          "digest_sender": "alerts@example.com",
+          "digest_subject": "Daily schedule digest"
+        },
+        "expected_output_preview": {
+          "rows_found": 6,
+          "digest_sent": true
+        },
+        "required_connectors": [
+          { "placeholder": "b8000000-0000-4000-8000-000000000001", "template": "browserless" },
+          { "placeholder": "b8000000-0000-4000-8000-000000000002", "template": "sendgrid" }
+        ],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "browserless-scrape-then-email-digest",
+          "description": "Scrape a late-rendered page via /chrome/function with bounded reload-polling, normalise rows in JS, send a digest email via SendGrid.",
+          "trigger": {
+            "kind": "schedule",
+            "cron": "0 7 * * *",
+            "tz": "Europe/Berlin"
+          },
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "target_url",
+              "row_selector",
+              "digest_recipient",
+              "digest_sender",
+              "digest_subject"
+            ],
+            "properties": {
+              "target_url": { "type": "string", "description": "Full URL of the page to scrape" },
+              "row_selector": {
+                "type": "string",
+                "description": "CSS selector matching each result row"
+              },
+              "digest_recipient": {
+                "type": "string",
+                "description": "Email address to send the digest to"
+              },
+              "digest_sender": {
+                "type": "string",
+                "description": "Verified sender address for SendGrid"
+              },
+              "digest_subject": {
+                "type": "string",
+                "description": "Subject line of the digest email"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "scrape",
+              "method": "POST",
+              "connector_id": "b8000000-0000-4000-8000-000000000001",
+              "url": "${connector.browserless.base_url}/chrome/function",
+              "headers": { "Content-Type": "application/json" },
+              "side_effects": "read",
+              "body": {
+                "code": "export default async ({ page }) => { const url = process.env.TARGET_URL; const sel = process.env.ROW_SELECTOR; await page.goto(url, { waitUntil: 'networkidle2' }); let rows = []; for (let i = 0; i < 3; i++) { try { await page.waitForSelector(sel, { timeout: 15000 }); } catch (_) { return { data: { error: 'selector_missing', selector: sel, url: page.url() }, type: 'application/json' }; } rows = await page.evaluate((s) => Array.from(document.querySelectorAll(s)).map((r) => ({ text: r.textContent.trim() })), sel); if (rows.length > 0) break; if (i < 2) await page.reload({ waitUntil: 'networkidle2' }); } if (!rows.length) return { data: { error: 'no_rows_after_retries', selector: sel, url: page.url() }, type: 'application/json' }; return { data: rows, type: 'application/json' }; }",
+                "context": {
+                  "TARGET_URL": "${input.target_url}",
+                  "ROW_SELECTOR": "${input.row_selector}"
+                }
+              }
+            },
+            {
+              "kind": "transform",
+              "id": "normalise",
+              "language": "javascript",
+              "expression": "const result = input.scope.scrape.data; if (result && result.error) { throw new Error('Scrape failed: ' + result.error + ' (selector: ' + result.selector + ')'); } const rawRows = Array.isArray(result) ? result : []; const fixedRows = rawRows.map((r) => { const t = (r.text || '').trim(); return { text: t.replace(/\\b(\\d):/g, '0$1:') }; }); if (!fixedRows.length) { throw new Error('Scrape returned 0 rows — verify the selector and retry'); } return { rows: fixedRows, count: fixedRows.length };"
+            },
+            {
+              "kind": "request",
+              "id": "send_digest",
+              "method": "POST",
+              "connector_id": "b8000000-0000-4000-8000-000000000002",
+              "url": "${connector.sendgrid.base_url}/v3/mail/send",
+              "headers": { "Content-Type": "application/json" },
+              "body": {
+                "personalizations": [{ "to": [{ "email": "${input.digest_recipient}" }] }],
+                "from": { "email": "${input.digest_sender}" },
+                "subject": "${input.digest_subject}",
+                "content": [
+                  {
+                    "type": "text/plain",
+                    "value": "${scope.normalise.data.count} rows scraped."
+                  }
+                ]
+              }
+            }
+          ],
+          "output_transform_function": "return { rows_found: input.scope.normalise.data.count, digest_sent: (input.scope.send_digest.status_code >= 200 && input.scope.send_digest.status_code < 300) };"
+        }
+      }
+    ],
     "aws_service": null,
     "aws_region": null,
     "verified_at": null

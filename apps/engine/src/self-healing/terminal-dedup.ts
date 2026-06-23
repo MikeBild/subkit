@@ -16,9 +16,20 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function candidateDriftFingerprint(candidate: typeof patchCandidates.$inferSelect): string | null {
+/** Fingerprint of the drift a candidate was created to heal — read from the
+ *  `drift_signal` the candidate stored at creation. `null` for candidates
+ *  with no recorded signal (legacy rows, workflow-scoped signals). */
+export function candidateDriftFingerprint(
+  candidate: typeof patchCandidates.$inferSelect,
+): string | null {
   const diff = candidate.diff as { drift_signal?: unknown } | null;
   return diff?.drift_signal == null ? null : stableStringify(diff.drift_signal);
+}
+
+/** Fingerprint of a live drift signal — the same canonical form candidates
+ *  store, so a candidate and a fresh signal are directly comparable. */
+export function signalFingerprint(signal: DriftSignal): string {
+  return stableStringify(signal);
 }
 
 export function candidateProposal(candidate: typeof patchCandidates.$inferSelect): PatchProposal {

@@ -18,6 +18,7 @@ import { patchCandidates, workflowVersions } from "../../db/schema/index.ts";
 import { getLatestShape } from "../../schema-versions/service.ts";
 import { analyzeStepFailure } from "../drift-detector.ts";
 import { processDriftSignal } from "../service.ts";
+import { signalFingerprint } from "../terminal-dedup.ts";
 import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";
 
 let ctx: SelfHealingTestCtx;
@@ -167,6 +168,113 @@ describe("processDriftSignal — proactive endpoint dedup", () => {
     expect(result.auto_applied).toBe(false); // skipped, not re-applied
     expect(await endpointCandidateCount()).toBe(1);
     expect(await versionCount()).toBe(versionsBefore); // no new version
+  });
+});
+
+describe("processDriftSignal — new drift on a healed endpoint is NOT masked", () => {
+  test("a DIFFERENT drift shape after a patch is applied proposes a fresh candidate, not skipped", async () => {
+    const local = await createSelfHealingCtx("t10-new-drift");
+    try {
+      const db = local.testDb.db;
+      const lastShape = await getLatestShape(
+        {
+          tenant_id: local.tenant_id,
+          connector_id: local.connector_id,
+          endpoint_key: local.endpoint_key,
+        },
+        db,
+      );
+      const signalCtx = {
+        tenant_id: local.tenant_id,
+        workflow_id: local.workflow_id,
+        execution_id: local.execution_id,
+        step_id: local.step_id,
+        connector_id: local.connector_id,
+        endpoint_key: local.endpoint_key,
+        actor_id: null,
+        source: "proactive_scheduler" as const,
+        repair_input: {
+          failing_step_id: `proactive:test:${local.step_id}`,
+          response: { data: { id: 1 } },
+        },
+      };
+      const mkSignal = (body: unknown) => {
+        const signal = analyzeStepFailure(
+          {
+            id: local.step_id,
+            kind: "request" as const,
+            status: "failed",
+            error: { kind: "http", status: 404, body },
+            request_meta: null,
+            output_preview: { data: { id: 1 } },
+          },
+          lastShape,
+        );
+        if (!signal) throw new Error("expected drift signal");
+        return signal;
+      };
+
+      // Two genuinely different drifts on the SAME endpoint. The drift
+      // signal fingerprints by SHAPE, so driftB must have a different body
+      // structure (different keys / nesting), not just different values.
+      const driftA = mkSignal({ error: { code: "not_found", detail: "User not found" } });
+      const driftB = mkSignal({ message: "gone", retry_after: 30, details: ["a", "b"] });
+      expect(signalFingerprint(driftA)).not.toBe(signalFingerprint(driftB));
+
+      // Heal drift A (auto-applies the safe patch).
+      const a = await processDriftSignal(driftA, signalCtx, { allowAutoApply: true }, db);
+      expect(a.status).toBe("applied");
+
+      const countAfterA = await (async () => {
+        const rows = await db
+          .select()
+          .from(patchCandidates)
+          .where(
+            and(
+              eq(patchCandidates.tenant_id, local.tenant_id),
+              eq(patchCandidates.endpoint_key, local.endpoint_key),
+            ),
+          );
+        return rows.length;
+      })();
+      expect(countAfterA).toBe(1);
+
+      // NEW drift B on the now-healed endpoint must NOT be masked by the
+      // applied A candidate — it must propose a FRESH candidate (the bug:
+      // the applied short-circuit skipped it, leaving B unhealed).
+      const b = await processDriftSignal(driftB, signalCtx, { allowAutoApply: false }, db);
+      expect(b.candidate_id).not.toBe(a.candidate_id);
+      expect(b.status).toBe("proposed");
+
+      const rowsAfterB = await db
+        .select()
+        .from(patchCandidates)
+        .where(
+          and(
+            eq(patchCandidates.tenant_id, local.tenant_id),
+            eq(patchCandidates.endpoint_key, local.endpoint_key),
+          ),
+        );
+      expect(rowsAfterB.length).toBe(2); // A (applied) + B (proposed) — B was healed
+
+      // Re-observing drift A (the SAME, already-healed shape) is still
+      // deduped: no third candidate, the applied A is skipped.
+      const aAgain = await processDriftSignal(driftA, signalCtx, { allowAutoApply: true }, db);
+      expect(aAgain.candidate_id).toBe(a.candidate_id);
+      expect(aAgain.auto_applied).toBe(false);
+      const rowsFinal = await db
+        .select()
+        .from(patchCandidates)
+        .where(
+          and(
+            eq(patchCandidates.tenant_id, local.tenant_id),
+            eq(patchCandidates.endpoint_key, local.endpoint_key),
+          ),
+        );
+      expect(rowsFinal.length).toBe(2); // still A + B, no churn from A
+    } finally {
+      await local.cleanup();
+    }
   });
 });
 

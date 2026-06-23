@@ -51,6 +51,11 @@ import { z } from "zod";
 import type { Executor } from "../db/client.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
+import {
+  detectNamedOutputFormat,
+  findMissingNamedFields,
+  outputMatchesFormat,
+} from "./output-format.ts";
 import { canonicalJson } from "./text-line-diff.ts";
 import { truncateStepPreviewForLlm } from "./tools/truncate.ts";
 
@@ -104,6 +109,14 @@ export interface JudgePreviewParams {
   /** Compact definition summary — step ids / kinds / descriptions. */
   definition_summary: string;
   step_artifacts: JudgeStepArtifact[];
+  /** The workflow's RESOLVED final output (post `output_transform` /
+   *  response_filters) — what the caller actually receives. The format check
+   *  evaluates THIS, not the step artifacts: a workflow can render a markdown
+   *  table in an intermediate step that a later output_transform discards, so
+   *  the steps can show the format while the final output does not. `null` /
+   *  undefined for a hold-writes preview where no real final output exists →
+   *  the check falls back to the last step artifact. */
+  final_output?: unknown;
   tenant_id: string;
   db?: Executor;
   /** Turn/pipeline abort signal (P1) — threaded into the judge's
@@ -240,14 +253,51 @@ function buildJudgePrompt(params: JudgePreviewParams): string {
     "```",
     "",
     "Verdict rules:",
-    '- "passes": the output satisfies the goal. Minor format differences are fine.',
+    '- "passes": the output satisfies the goal. Minor cosmetic differences are fine — EXCEPT output format (see below).',
     '- "partial": the output mostly satisfies the goal, but something the goal explicitly asks for is missing or empty.',
     '- "failed": the output does not satisfy the goal.',
     '- `missing` lists each concrete item the goal asks for that is absent or empty in the output (e.g. "project names are empty strings", "droplet specs (CPU/memory/disk) absent"). Empty when the verdict is "passes".',
-    "- Judge CONTENT, not style. An empty value where the goal requires data is never a pass.",
+    "- Judge CONTENT, not cosmetic style. An empty value where the goal requires data is never a pass.",
+    '- NAMED-FIELD COMPLETENESS: every field, column, or property the goal EXPLICITLY names must be present in the output. A table missing a column the goal listed, or an object missing a key the goal asked for, is at most "partial", never "passes" — list each absent named field in `missing`. Concretely: if the goal names four columns and the output table\'s header row carries only two of them, that is "partial" (the other two are missing) — do NOT pass it just because the rows present look well-formed. (Only judge fields the goal actually names; do not invent requirements. An EMPTY result set — zero data rows — is exempt: there is no data for the columns to carry.)',
+    '- CRITERIA/FILTER CONSISTENCY: if the goal restricts the result to a subset (any "only X" / "where Y" / "by <whom>" / "in <category>" qualifier), the output must not contain items whose own values VISIBLY CONTRADICT that restriction — that means the filter was not applied → "failed". Concretely: if the goal asks only for items in a particular state and an output row plainly shows the OPPOSITE state, the filter was not applied → "failed", even if the table itself is well-formed. Judge only against restrictions the goal states and values visible in the output; an unverifiable count (the goal asks for N and fewer are shown, with no way to know how many exist) is NOT a violation on its own.',
+    '- OUTPUT FORMAT IS PART OF THE GOAL when the goal names one. If the goal asks for "a markdown table", "CSV", "an HTML body", or "a bulleted list", the rendered output MUST be in that exact format (a markdown table needs a header row, a `| --- |` separator, and one row per record). Correct data returned in the wrong shape (e.g. a JSON array when a markdown table was asked for) is "partial", NOT "passes" — list the missing format in `missing`.',
     "",
     "Return ONLY the JSON object { verdict, reason, missing }.",
   ].join("\n");
+}
+
+function coerceToString(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The rendered output the format check evaluates, coerced to a string.
+ *
+ * Prefers the workflow's RESOLVED final output (`params.final_output`, post
+ * output_transform / response_filters) — that is what the caller actually
+ * receives. This matters because a workflow can render a markdown table in an
+ * intermediate `render` step that a later output_transform then discards: the
+ * step artifacts would show the format while the final output does not, and
+ * the goal ("return a markdown table") is about the final output. Falls back
+ * to the last step artifact only when no final output exists (a hold-writes
+ * preview). A structured (object) output is JSON-stringified, so it correctly
+ * fails a "markdown table" / "CSV" check rather than slipping through.
+ */
+function extractRenderedOutput(params: JudgePreviewParams): {
+  rendered: string;
+  source: "final_output" | "step_artifacts";
+} {
+  if (params.final_output !== undefined && params.final_output !== null) {
+    return { rendered: coerceToString(params.final_output), source: "final_output" };
+  }
+  const last = params.step_artifacts[params.step_artifacts.length - 1];
+  return { rendered: coerceToString(last?.output_preview), source: "step_artifacts" };
 }
 
 /**
@@ -277,6 +327,73 @@ export async function judgePreview(params: JudgePreviewParams): Promise<PreviewJ
         tenant_id: params.tenant_id,
       });
       return { verdict: "skipped", reason: "judge_unavailable" };
+    }
+    // Deterministic format-fidelity guard. When the goal NAMES a concrete
+    // output format and the judge would otherwise pass, verify the rendered
+    // output actually carries that format's structural signature. A miss
+    // downgrades passes→partial so it flows through the existing block path
+    // (never silent) and feeds `missing` into the repair loop. Gated on the
+    // goal naming a format, so plain-data goals are untouched (no false
+    // blocks). The LLM rubric alone is unreliable here — this is the hard,
+    // unit-testable guard.
+    if (parsed.data.verdict === "passes") {
+      const fmt = detectNamedOutputFormat(params.goal);
+      if (fmt) {
+        const { rendered, source } = extractRenderedOutput(params);
+        const check = outputMatchesFormat(fmt, rendered);
+        // Always log the format-check decision (greppable diagnosis of this
+        // exact failure class): the named format, whether the FINAL output
+        // matched, which corpus was checked (final_output vs the step-artifact
+        // fallback), and which checks failed on a miss.
+        logger.info({
+          module: "conversations",
+          action: "preview_judge.format_check",
+          msg: "goal names an output format — checked the final output for that format",
+          tenant_id: params.tenant_id,
+          named_format: fmt,
+          checked_source: source,
+          matched: check.ok,
+          ...(check.ok ? {} : { failed_checks: check.missing }),
+        });
+        if (!check.ok) {
+          logger.warn({
+            module: "conversations",
+            action: "preview_judge.format_mismatch",
+            msg: "goal names an output format but the previewed output is not rendered as that format — verdict downgraded passes→partial",
+            tenant_id: params.tenant_id,
+            named_format: fmt,
+            failed_checks: check.missing,
+          });
+          return {
+            verdict: "partial",
+            reason: `The goal asks for output as a ${fmt.replace("_", " ")}, but the previewed output is not rendered in that format.`,
+            missing: check.missing,
+          };
+        }
+      }
+      // Deterministic named-field completeness guard. Same hard-guard rationale
+      // as the format check (the LLM rubric is unreliable about completeness):
+      // when the goal EXPLICITLY enumerates fields/columns and any are absent
+      // from the rendered output, downgrade passes→partial and feed `missing`
+      // into the repair loop. Conservative — only fires on explicit
+      // (parenthesized / `columns`-keyed) enumerations, so plain-data and
+      // empty-result goals are never falsely downgraded.
+      const { rendered: renderedForFields } = extractRenderedOutput(params);
+      const missingFields = findMissingNamedFields(params.goal, renderedForFields);
+      if (missingFields.length > 0) {
+        logger.warn({
+          module: "conversations",
+          action: "preview_judge.named_field_incomplete",
+          msg: "goal enumerates fields/columns absent from the previewed output — verdict downgraded passes→partial",
+          tenant_id: params.tenant_id,
+          missing_fields: missingFields,
+        });
+        return {
+          verdict: "partial",
+          reason: `The goal asks for ${missingFields.join(", ")}, but ${missingFields.length === 1 ? "it is" : "they are"} absent from the previewed output.`,
+          missing: missingFields,
+        };
+      }
     }
     return {
       verdict: parsed.data.verdict,

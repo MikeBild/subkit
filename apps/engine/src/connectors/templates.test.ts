@@ -567,4 +567,44 @@ describe("connector-template catalog — browserless query-auth hardening", () =
     expect(blob).toContain("500");
     expect(blob).not.toContain("/smart-scrape");
   });
+
+  test("browserless-basics skill steers authors to /chrome/function for late-rendered pages", async () => {
+    const skillsModule = (await import("./template-skills.json", { with: { type: "json" } })) as {
+      default: Record<string, { body: string; best_practices?: string[]; pitfalls?: string[] }>;
+    };
+    const skill = skillsModule.default["browserless-basics"];
+    if (!skill) throw new Error("browserless-basics skill missing");
+    const blob = [skill.body, ...(skill.best_practices ?? []), ...(skill.pitfalls ?? [])]
+      .join("\n")
+      .toLowerCase();
+    // Must explain that /chrome/content is wrong for late-render pages.
+    expect(blob).toContain("/chrome/content");
+    expect(blob).toContain("/chrome/function");
+    // Must mention the poll/reload pattern and structured errors.
+    expect(blob).toContain("reload");
+    expect(blob).toContain("selector_missing");
+    // Must warn against returning empty arrays silently.
+    expect(blob).toContain("empty");
+  });
+
+  test("browserless template ships the scrape-then-email-digest recipe", () => {
+    const t = templates.find((x) => x.slug === "browserless");
+    expect(t).toBeDefined();
+    const recipe = t?.recipes.find((r) => r.slug === "scrape-then-email-digest");
+    expect(recipe).toBeDefined();
+    // Multi-connector: browserless + sendgrid.
+    expect(recipe?.required_connectors).toHaveLength(2);
+    expect(recipe?.required_connectors.map((c) => c.template).sort()).toEqual([
+      "browserless",
+      "sendgrid",
+    ]);
+    // Recipe uses /chrome/function (not /chrome/content) for the scrape step.
+    const scrapeStep = recipe?.workflow.steps.find((s) => s.id === "scrape");
+    expect(JSON.stringify(scrapeStep)).toContain("/chrome/function");
+    // Recipe has a transform step that guards empty results.
+    const transformStep = recipe?.workflow.steps.find((s) => s.id === "normalise");
+    expect(transformStep?.kind).toBe("transform");
+    // Recipe has a schedule trigger.
+    expect(recipe?.workflow.trigger?.kind).toBe("schedule");
+  });
 });

@@ -335,28 +335,37 @@ const PlatformSection = z
         signing_secret: z
           .string()
           .default("")
-          .meta(global({ secret: true })),
-        client_id: z.string().default("").meta(global()),
+          .meta(global({ requiresRestart: true, secret: true })),
+        client_id: z
+          .string()
+          .default("")
+          .meta(global({ requiresRestart: true })),
         client_secret: z
           .string()
           .default("")
-          .meta(global({ secret: true })),
+          .meta(global({ requiresRestart: true, secret: true })),
       })
       .prefault({})
       .describe("Slack app"),
     teams: z
       .object({
-        app_id: z.string().default("").meta(global()),
+        app_id: z
+          .string()
+          .default("")
+          .meta(global({ requiresRestart: true })),
         app_password: z
           .string()
           .default("")
-          .meta(global({ secret: true })),
+          .meta(global({ requiresRestart: true, secret: true })),
       })
       .prefault({})
       .describe("Microsoft Teams"),
     googlechat: z
       .object({
-        project_id: z.string().default("").meta(global()),
+        project_id: z
+          .string()
+          .default("")
+          .meta(global({ requiresRestart: true })),
       })
       .prefault({})
       .describe("Google Chat"),
@@ -368,31 +377,34 @@ const StorageSection = z
   .object({
     s3: z
       .object({
-        endpoint: optionalUrl.default("").meta(global()),
+        endpoint: optionalUrl.default("").meta(global({ requiresRestart: true })),
         access_key: z
           .string()
           .default("")
-          .meta(global({ secret: true })),
+          .meta(global({ requiresRestart: true, secret: true })),
         secret_key: z
           .string()
           .default("")
-          .meta(global({ secret: true })),
+          .meta(global({ requiresRestart: true, secret: true })),
       })
       .prefault({})
       .describe("S3-compatible object store"),
     files: z
       .object({
-        backend: z.enum(["local", "s3"]).default("local").meta(global()),
+        backend: z
+          .enum(["local", "s3"])
+          .default("local")
+          .meta(global({ requiresRestart: true })),
         dir: z
           .string()
           .default("")
           .describe("Local-disk root when backend=local. Ignored when backend=s3.")
-          .meta(global()),
+          .meta(global({ requiresRestart: true })),
         bucket: z
           .string()
           .default("")
           .describe("S3 bucket name when backend=s3. Ignored when backend=local.")
-          .meta(global()),
+          .meta(global({ requiresRestart: true })),
       })
       .prefault({})
       .describe(
@@ -673,7 +685,12 @@ export type McpServerDecl = z.infer<typeof McpServerDeclSchema>;
 
 const ErrorsSection = z
   .object({
-    ring_size: z.number().int().positive().default(100).meta(global()),
+    ring_size: z
+      .number()
+      .int()
+      .positive()
+      .default(100)
+      .meta(global({ requiresRestart: true })),
   })
   .prefault({})
   .describe("Error ring buffer");

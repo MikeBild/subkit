@@ -24,6 +24,7 @@ import { Checks, withAuthoringEvalEnv, withEgressTripwire } from "./shared/autho
 
 interface Input {
   workflow_input: Record<string, unknown>;
+  goal: string;
   steps: Array<Record<string, unknown>>;
   expect: {
     held_step: string;
@@ -90,8 +91,18 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
     if (c.failed) return { pass: false, reason: c.failed };
 
     // ── 2. Conversation surface: dry_run_workflow hold-preview ──
+    // The draft carries a stashed goal so the post-preview judge runs and a
+    // green hold-preview auto-commits (T4: auto-persist is gated on a judged
+    // goal — a bare verification dry-run with no goal yields green_pending_save,
+    // not a commit). The default mock judge passes (content-driven; override
+    // only when asserting judge behaviour).
     const toolCtx = env.makeToolCtx({
-      workflow: { name: "eval-hold-writes", slug: "eval-hold-writes", steps: input.steps },
+      workflow: {
+        name: "eval-hold-writes",
+        slug: "eval-hold-writes",
+        goal: input.goal,
+        steps: input.steps,
+      },
     } as unknown as DraftDocument);
     const { result, fetch_calls } = await withEgressTripwire(() =>
       dryRunWorkflowTool.execute(toolCtx, { input: input.workflow_input }),
@@ -114,7 +125,8 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       confirmTrace?.error_code === input.expect.skipped_error_code,
       `dependent trace carries ${String(confirmTrace?.error_code)}, expected ${input.expect.skipped_error_code}`,
     );
-    // Green + held still auto-commits (Fix G keeps the save contract).
+    // Green + held + judged-against-a-goal still auto-commits (Fix G keeps the
+    // save contract; T4 gates the auto-persist on that judged goal).
     c.check(data.auto_committed === true, "green hold-writes preview did not auto-commit");
 
     if (c.failed) return { pass: false, reason: c.failed };

@@ -4,6 +4,7 @@
   "flow": "infra",
   "input": {
     "workflow_input": { "recipient": "ops@example.com", "subject": "Daily digest" },
+    "goal": "Compose and send a daily digest email to the recipient.",
     "steps": [
       {
         "id": "compose",

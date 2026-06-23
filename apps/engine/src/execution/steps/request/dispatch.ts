@@ -31,7 +31,7 @@ import {
   pgTransaction,
 } from "../../../connectors/drivers/postgres.ts";
 import { executeS3Request, type S3Method } from "../../../connectors/drivers/s3.ts";
-import { withEgressAudit } from "../../../connectors/egress.ts";
+import { extractCreatedResourceId, withEgressAudit } from "../../../connectors/egress.ts";
 import { EgressBlockedError, RobotsDisallowedError } from "../../../connectors/egress-guard.ts";
 import {
   classifyConnectorHealth,
@@ -1726,10 +1726,18 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           ...(idempotencyBase ? { idempotency_key_base: idempotencyBase } : {}),
         });
       const res = httpEgressInput
-        ? await withEgressAudit(httpEgressInput, callDoOnePage, (out) => ({
-            status: out.status,
-            bytes_in: out.bytes_in,
-          }))
+        ? await withEgressAudit(httpEgressInput, callDoOnePage, (out) => {
+            // record the created/sent resource id (e.g. the provider
+            // message id of an email send) so the EXECUTION audit row says
+            // WHAT went out, not just host+status. This is the path real
+            // workflow sends take (source:"execution").
+            const createdId = extractCreatedResourceId(p.step.method ?? "GET", out.body);
+            return {
+              status: out.status,
+              bytes_in: out.bytes_in,
+              ...(createdId ? { created_resource_id: createdId } : {}),
+            };
+          })
         : await callDoOnePage();
       // Per-run LLM-token budget — post-call accounting. Parse the
       // provider's `usage` envelope, fold the prompt + completion

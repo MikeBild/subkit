@@ -137,6 +137,37 @@ export interface EgressOutcome {
   ok?: boolean;
   /** Short reason surfaced on the audit row when `ok` is false. */
   reason?: string;
+  /**
+   * id of the resource a write call created/sent, lifted from the
+   * response body (e.g. a Gmail message id from `POST .../messages/send`).
+   * Makes "WHAT did this outbound call produce?" answerable from the audit
+   * row. Populated by the driver's `extract` callback via
+   * `extractCreatedResourceId`; scrubbed like every other metadata field.
+   */
+  created_resource_id?: string;
+}
+
+/**
+ * generic created/sent-resource id for the `CONNECTOR_INVOKED` audit
+ * row. Only meaningful for writes (non-idempotent methods create or send),
+ * so reads/deletes return nothing. Pulls the FIRST id-like top-level field
+ * of the response body — the cross-vendor convention for a create/send
+ * response (`id`, `messageId`, `name`, …). Deliberately generic: no vendor
+ * string is hardcoded, so it covers Gmail message ids, Stripe object ids,
+ * Linear issue ids, etc. without special-casing any one.
+ */
+const CREATED_RESOURCE_ID_KEYS = ["id", "messageId", "message_id", "name", "key", "uuid"] as const;
+export function extractCreatedResourceId(method: string, body: unknown): string | undefined {
+  const m = method.toUpperCase();
+  if (m !== "POST" && m !== "PUT" && m !== "PATCH") return undefined;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return undefined;
+  const obj = body as Record<string, unknown>;
+  for (const key of CREATED_RESOURCE_ID_KEYS) {
+    const v = obj[key];
+    if (typeof v === "string" && v.length > 0 && v.length <= 256) return v;
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return undefined;
 }
 
 type EgressAuditWriter = (entry: Partial<AuditEntry>) => Promise<unknown>;
@@ -221,6 +252,9 @@ export async function withEgressAudit<T>(
           : {}),
         ...(outcome.bytes_in !== undefined && outcome.bytes_in !== null
           ? { bytes_in: outcome.bytes_in }
+          : {}),
+        ...(outcome.created_resource_id
+          ? { created_resource_id: outcome.created_resource_id }
           : {}),
         duration_ms: Date.now() - start,
         ...(input.credential_id || lateCredentialId

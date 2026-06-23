@@ -212,3 +212,33 @@ describe("postgres-connectors.md · cursor caveat", () => {
     expect(body).toMatch(/cursor.*expected_row_count|expected_row_count.*cursor/s);
   });
 });
+
+describe("browser-page-scrape-quirks.md · endpoint selection and reliability", () => {
+  const body = read("browser-page-scrape-quirks.md");
+  test("explains /chrome/function vs /chrome/content selection rule", () => {
+    expect(body).toContain("/chrome/function");
+    expect(body).toContain("/chrome/content");
+    // Must make clear that /chrome/content is wrong for late-rendered pages.
+    expect(body).toMatch(/\/chrome\/content.*static|static.*\/chrome\/content/is);
+  });
+  test("documents page.waitForSelector running inside browserless (not swallowed)", () => {
+    expect(body).toContain("page.waitForSelector");
+    expect(body).toContain("browserless service");
+  });
+  test("documents the bounded reload-poll pattern for multi-section pages", () => {
+    expect(body).toContain("page.reload");
+    expect(body).toMatch(/reload.*until|until.*reload/is);
+  });
+  test("documents structured error return from the page-function", () => {
+    expect(body).toContain("selector_missing");
+    expect(body).toContain("no_rows_after_retries");
+  });
+  test("documents the row-count guard before downstream send", () => {
+    expect(body).toMatch(/row.*count.*guard|guard.*row.*count|verify.*row|rows.*0/is);
+    expect(body).toContain("throw new Error");
+  });
+  test("documents time-format normalisation for abbreviated hours", () => {
+    // The '9:' -> '09:' pattern is a concrete documented quirk.
+    expect(body).toMatch(/9:.*09:|single.digit|replace.*\\b.*\\d/is);
+  });
+});

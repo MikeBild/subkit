@@ -5,6 +5,7 @@
 // Wire shape embedded in the candidate preview response — re-exported
 // so route files can stay on the subsystem entry point (route_layering).
 export { PatchProposalSchema } from "../llm/flows/repair.ts";
+export { approvePatchCandidate, rejectPatchCandidate } from "./candidate-decision.ts";
 export * from "./candidate-review.ts";
 export type { RateLimitPatchCandidate } from "./classifier.ts";
 export { classifyPatch, classifyRateLimitFromTemplate } from "./classifier.ts";
@@ -39,12 +40,7 @@ export type {
   SignalSource,
 } from "./service.ts";
 export * from "./service.ts";
-export {
-  approvePatchCandidate,
-  processDriftSignal,
-  rejectPatchCandidate,
-  runSelfHealingLoop,
-} from "./service.ts";
+export { processDriftSignal, runSelfHealingLoop } from "./service.ts";
 export { scanStdlibDrift } from "./stdlib-drift-scan.ts";
 export { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
 export type {

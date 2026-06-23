@@ -398,11 +398,18 @@ export const dryRunWorkflowTool: ConversationTool = {
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        const reason = (err as { code?: string }).code ?? "draft_run_failed";
+        // Top-level error_code/message so `summarizeToolFailure` lifts the WHY
+        // into the tool.failed log AND the error_code-repeat breaker can track
+        // a draft that keeps throwing the same way (it reads top-level
+        // error_code/message, not nested data).
         return {
           ok: false,
+          error_code: reason,
+          message: msg,
           data: {
             error: msg,
-            reason: (err as { code?: string }).code ?? "draft_run_failed",
+            reason,
           },
         };
       }
@@ -530,6 +537,28 @@ export const dryRunWorkflowTool: ConversationTool = {
     const lastStep: PreviewStepSummary | undefined =
       lastStepSummary && matchedStep ? classifyRunResult(matchedStep, run) : undefined;
 
+    // The workflow's RESOLVED final output (post output_transform /
+    // response_filters) — what the caller actually receives. The preview must
+    // surface THIS, not the last step: with an output_transform the two differ,
+    // and a user/judge/benchmark inspecting the last step would see the wrong
+    // thing (a markdown table rendered in a step that the transform discards).
+    // `null` for a hold-writes preview where no real final output exists → fall
+    // back to the last step's output for the preview field.
+    const finalOutputForLlm =
+      run.output !== undefined && run.output !== null
+        ? truncateStepPreviewForLlm(run.output)
+        : null;
+    // The response field carrying that final output to the model/user — same
+    // truncation discipline as every other LLM-visible preview. Spread into
+    // each success/blocked envelope so the caller always sees the actual
+    // result, not just the last step.
+    const finalOutputField = finalOutputForLlm
+      ? {
+          final_output: finalOutputForLlm.data,
+          ...(finalOutputForLlm.raw_ref ? { final_output_ref: finalOutputForLlm.raw_ref } : {}),
+        }
+      : {};
+
     const stoppedForDraft = stoppedId ?? lastStep?.step_id ?? "(end)";
     const runWarnings = (run.warnings ?? []).map((w) => ({
       step_key: (w as { step_key?: string | null }).step_key ?? null,
@@ -588,6 +617,11 @@ export const dryRunWorkflowTool: ConversationTool = {
         definition,
         steps: steps as unknown as Array<Record<string, unknown>>,
         run_steps: run.steps,
+        // The resolved final output (post output_transform) — the judge's
+        // format check evaluates THIS, not intermediate steps. A markdown
+        // table rendered in a middle step that output_transform discards must
+        // not satisfy a "return a markdown table" goal.
+        final_output: run.output,
         prior_breaker: ctx.getDraft().state?.judge_breaker ?? null,
         ...(signal ? { signal } : {}),
       });
@@ -675,7 +709,9 @@ export const dryRunWorkflowTool: ConversationTool = {
         ok: run.status === "succeeded",
         step_id: stoppedForDraft,
         summary: lastStep?.summary ?? `Run completed with status ${run.status}.`,
-        preview: lastStep?.output_preview ?? null,
+        // Prefer the resolved final output (post output_transform) — that is
+        // what the caller receives and what the judge now evaluates.
+        preview: finalOutputForLlm?.data ?? lastStep?.output_preview ?? null,
         ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
         // A judge block joins the requires_repair path so its blocking
         // semantics (no auto-commit; explicit save / force_commit stays
@@ -787,21 +823,35 @@ export const dryRunWorkflowTool: ConversationTool = {
     // hint stays on the envelope so the chat renderer's lifecycle line
     // and the never-silent guard in loop.ts both have something to
     // anchor on.
-    const cleanPreview = dryRunGreen && !judgeBlocked;
-    const previewNextActions = cleanPreview
-      ? ["save_workflow_draft"]
-      : judgeBlocked
-        ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
-        : dryRunRequiresRepair
-          ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
-          : ["inspect_workflow_draft", "edit_workflow_patch"];
+    // a green dry-run auto-commits ONLY when the preview judge actually
+    // rendered a verdict against a stashed goal. With no goal the judge is
+    // skipped (`judge.no_goal`); a bare verification dry-run during iteration
+    // must NOT mint a new workflow version every call (the corsica session
+    // churned v6→v12 this way, six `auto_persist_on_green_dry_run` commits in
+    // 36 min). A green-but-unjudged preview is still `ok` — it just returns the
+    // `save_workflow_draft` next-action so the model/user persists once,
+    // deliberately, when they mean to.
+    const judgeSkippedNoGoal =
+      judgeOutcome?.verdict === "skipped" && judgeOutcome?.reason === "no_goal";
+    const cleanPreview = dryRunGreen && !judgeBlocked && !judgeSkippedNoGoal;
+    const greenPendingSave = dryRunGreen && !judgeBlocked && judgeSkippedNoGoal;
+    const previewNextActions =
+      cleanPreview || greenPendingSave
+        ? ["save_workflow_draft"]
+        : judgeBlocked
+          ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
+          : dryRunRequiresRepair
+            ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
+            : ["inspect_workflow_draft", "edit_workflow_patch"];
     const previewNextPrompt = cleanPreview
       ? "Committing the workflow"
-      : judgeBlocked
-        ? "Revise the workflow so the preview satisfies the goal (edit_workflow_patch), then re-run dry_run_workflow"
-        : dryRunRequiresRepair
-          ? "Open diagnosis to see why the preview needs repair"
-          : `Re-run preview after fixing step \`${stoppedForDraft}\``;
+      : greenPendingSave
+        ? "Preview is green — call save_workflow_draft to persist it (no goal was set, so it is not auto-committed)"
+        : judgeBlocked
+          ? "Revise the workflow so the preview satisfies the goal (edit_workflow_patch), then re-run dry_run_workflow"
+          : dryRunRequiresRepair
+            ? "Open diagnosis to see why the preview needs repair"
+            : `Re-run preview after fixing step \`${stoppedForDraft}\``;
     const warningSummary = runWarnings.length > 0 ? (warningsBanner?.summary ?? null) : null;
 
     // Auto-commit on green dry-run. A clean preview means the draft
@@ -900,10 +950,49 @@ export const dryRunWorkflowTool: ConversationTool = {
           // step-by-step shape + status to author downstream
           // transforms or to debug a follow-up run.
           step_trace: stepTrace,
+          ...finalOutputField,
         },
         ...(typeof commitResult.committed_workflow_id === "string"
           ? { committed_workflow_id: commitResult.committed_workflow_id }
           : {}),
+      };
+    }
+
+    // Green preview, but no goal was stashed so the judge was skipped:
+    // do NOT auto-persist a workflow version. Return the green result with an
+    // explicit `save_workflow_draft` next-action so the model/user commits
+    // once, deliberately — instead of every iteration dry-run minting a new
+    // version. This is still a success envelope (the run was green); it is the
+    // auto-commit that is withheld, not the preview.
+    if (greenPendingSave) {
+      const totalDryRunMs = run.steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0);
+      logger.info({
+        module: "conversation_tool",
+        action: "dry_run_workflow.green_pending_save",
+        msg: "green dry-run not auto-persisted — no goal stashed; awaiting explicit save",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        steps_ran: run.steps.length,
+        dry_run_duration_ms: totalDryRunMs,
+        execution_id: run.execution_id,
+        warnings_count: runWarnings.length,
+      });
+      return {
+        ok: true,
+        data: {
+          auto_committed: false,
+          save_required: true,
+          next_best_actions: previewNextActions,
+          next_prompt: previewNextPrompt,
+          ...(judgeOutcome ? { judge: judgeOutcome } : {}),
+          dry_run_summary: {
+            steps_ran: run.steps.length,
+            duration_ms: totalDryRunMs,
+            execution_id: run.execution_id,
+          },
+          step_trace: stepTrace,
+          ...finalOutputField,
+        },
       };
     }
 
@@ -930,8 +1019,55 @@ export const dryRunWorkflowTool: ConversationTool = {
       ...(signal ? { signal } : {}),
     });
     const repairCount = repairWarnings.length;
+    // The failing step's driver error_code (e.g. `http_4xx`), when the run
+    // stopped on a step rather than on the judge — suffixed into the tool-level
+    // error_code so an operator (and the error_code-repeat breaker) sees the
+    // SHAPE of the failure, not just "needs repair".
+    const failedStepErrorCode =
+      run.status !== "succeeded"
+        ? (run.steps.find((s) => s.status !== "succeeded")?.error as { code?: string } | undefined)
+            ?.code
+        : undefined;
+    // Stable top-level error_code for the ok:false envelope. judge block,
+    // step failure, or structural repair-needed — each gets a distinct code.
+    const previewErrorCode = judgeBlocked
+      ? "preview_judge_failed"
+      : run.status !== "succeeded"
+        ? failedStepErrorCode
+          ? `draft_step_failed:${failedStepErrorCode}`
+          : "draft_step_failed"
+        : "preview_needs_repair";
+    // Hoisted so it serves BOTH the lifecycle payload's `summary` AND the
+    // top-level `message` summarizeToolFailure lifts into the tool.failed log.
+    const previewSummary =
+      run.status !== "succeeded"
+        ? `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`
+        : judgeBlocked && judgeOutcome && judgeOutcome.verdict !== "skipped"
+          ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but the preview does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} Fix via edit_workflow_patch and re-run dry_run_workflow — or, after the user explicitly confirms, commit anyway via save_workflow_draft.`
+          : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`;
+    // Held-read nudge: when holding a step skipped its dependents and the
+    // preview is therefore incomplete, the held step is often a READ
+    // misclassified as a write (e.g. a scrape that uses POST). Surface a hint
+    // to set side_effects:read so the preview executes it. Message-only — never
+    // auto-reclassify, because a POST can be a genuine write. Fires ONLY when
+    // holding actually broke the preview (held + skipped dependents), so a
+    // legitimate held-write preview that still produces output stays quiet.
+    const heldStepCount = run.steps.filter((s) => s.held).length;
+    const skippedDependentCount = run.steps.filter(
+      (s) => (s.error as { code?: string } | undefined)?.code === "skipped_dependency_held",
+    ).length;
+    const heldReadHint =
+      heldStepCount > 0 && skippedDependentCount > 0
+        ? `${heldStepCount} step(s) were HELD as writes and ${skippedDependentCount} dependent step(s) were skipped, so the preview could not produce a complete result. If a held step only READS data (e.g. a scrape or fetch that does not mutate state), set \`side_effects: "read"\` on it so the preview runs it instead of holding it.`
+        : null;
+    const previewMessage = heldReadHint ? `${previewSummary} ${heldReadHint}` : previewSummary;
     return {
       ok: cleanPreview,
+      // This path is always ok:false (cleanPreview returned early). The
+      // top-level error_code/message let `summarizeToolFailure` log the WHY
+      // and let the error_code-repeat breaker (which reads top-level fields,
+      // not nested data) track a model re-issuing the same failing preview.
+      ...(cleanPreview ? {} : { error_code: previewErrorCode, message: previewMessage }),
       data: buildLifecyclePayload(
         nextDraft,
         {
@@ -942,12 +1078,8 @@ export const dryRunWorkflowTool: ConversationTool = {
               ? "needs_repair"
               : (lastStep?.classification ?? (run.status === "succeeded" ? "ok" : "driver_error")),
           stopped_at_step_id: stoppedId,
-          summary:
-            run.status !== "succeeded"
-              ? `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`
-              : judgeBlocked && judgeOutcome && judgeOutcome.verdict !== "skipped"
-                ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but the preview does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} Fix via edit_workflow_patch and re-run dry_run_workflow — or, after the user explicitly confirms, commit anyway via save_workflow_draft.`
-                : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`,
+          summary: previewSummary,
+          ...(heldReadHint ? { held_read_hint: heldReadHint } : {}),
           execution_id: run.execution_id,
           next_best_actions: previewNextActions,
           next_prompt: previewNextPrompt,
@@ -967,6 +1099,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           // re-preview. The draft was not changed.
           ...(repairProposals.length > 0 ? { repair_proposals: repairProposals } : {}),
           step_trace: stepTrace,
+          ...finalOutputField,
           ...(lastStep
             ? (() => {
                 // Same per-step LLM cap as the step_trace assembler

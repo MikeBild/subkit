@@ -149,6 +149,17 @@ export interface RecordConnectorInvokedParams extends RecorderBase {
   /** "error" rows ALSO get audited — the call happened, only the upstream failed. */
   outcome: AuditOutcome;
   conversation_id?: string;
+  /**
+   * the id of the resource a write call created/sent, lifted from the
+   * response body (e.g. a Gmail message id from `POST .../messages/send`).
+   * Makes "WHAT did this outbound call actually produce?" answerable from
+   * the audit log alone — previously the row carried only host/status, so a
+   * stale-send incident (corsica) left no record of which message went out.
+   * Generic (first id-like field of a non-idempotent response), never
+   * vendor-specific. Runs through the metadata secret-scrubber like every
+   * other field.
+   */
+  created_resource_id?: string;
 }
 
 export async function recordConnectorInvoked(
@@ -175,6 +186,7 @@ export async function recordConnectorInvoked(
         url_host: p.url_host,
         status_code: p.status_code,
         latency_ms: p.latency_ms,
+        ...(p.created_resource_id ? { created_resource_id: p.created_resource_id } : {}),
       },
     },
     p.executor,

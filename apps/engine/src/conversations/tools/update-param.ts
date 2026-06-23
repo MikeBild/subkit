@@ -9,16 +9,12 @@ import {
 } from "../../workflows/reference-validator.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
+import { emitRecordedEvalSignals, runRecordedEval } from "../recorded-eval.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import { evaluateAuthoringStageGate } from "./authoring-stage-gate.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
-import { describeLoopGateBlock, evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
+import { getLastPreview } from "./last-preview-store.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
-import {
-  describeTransformGateBlock,
-  evaluateTransformAuthoringGate,
-  isHandRolledCodecBlock,
-} from "./transform-authoring-gate.ts";
 
 const inputSchema = z
   .object({
@@ -267,144 +263,31 @@ export const updateParamTool: ConversationTool = {
         };
       }
     }
-    {
-      // Loop-authoring gate. Refine: only enforce when the EDITED
-      // step is the loop being authored AND the param being mutated
-      // is `over` / `data_selector` (the only fields that introduce a
-      // new $scope reference). Pre-fix this gate fired for every
-      // update_param against a workflow that had any loop step,
-      // including param edits that didn't touch the loop at all —
-      // making update_param unusable as the documented fix path for
-      // a prior loop_authoring_requires_inspect rejection.
-      const editedStepIsLoop = typeof step.kind === "string" && step.kind === "loop";
-      const paramTouchesLoopSource =
-        args.param === "over" ||
-        args.param === "data_selector" ||
-        args.param.startsWith("over.") ||
-        args.param.startsWith("data_selector.");
-      const gateIsRelevant = editedStepIsLoop && paramTouchesLoopSource;
-      const probedConnectorSlugs = gateIsRelevant
-        ? await collectProbedConnectorSlugs(ctx, workflowDraft.steps)
-        : new Set<string>();
-      const gate = gateIsRelevant
-        ? evaluateLoopAuthoringGate(workflowDraft, currentDraft.latest_preview ?? null, {
-            probedConnectorSlugs,
-          })
-        : { ok: true as const, blocks: [] };
-      if (!gate.ok) {
-        const summary = gate.blocks.map(describeLoopGateBlock).join("; ");
-        recordAuthoringGateBlock({
-          code: "loop_authoring_requires_inspect",
-          tool: "update_param",
-        });
-        return {
-          ok: false,
-          data: buildGateError(currentDraft, {
-            error_code: "loop_authoring_requires_inspect",
-            message: `update would leave a loop step depending on data the upstream preview never recorded. ${summary}. Dry-run once so the scope is published, then re-apply.`,
-            recommended_mode: "workflow",
-            next_best_actions: [
-              "dry_run_workflow",
-              "inspect_workflow_draft",
-              "suggest_jsonata_paths",
-            ],
-            extra: {
-              gate_blocks: gate.blocks,
-              step_id: args.step_id,
-              param: args.param,
-            },
-          }),
-        };
-      }
-
-      // Transform-authoring gate — symmetric narrow scope: only enforce
-      // when the edited step is a `transform` and the param touches the
-      // expression body (`expression`, `body`, `language`). Any other
-      // param on a transform — `id`, `silence_warnings`, etc. — must
-      // pass cleanly. The gate itself self-skips non-transform steps,
-      // but the relevance test keeps update_param usable as the
-      // documented fix path for a prior `transform_authoring_requires_inspect`
-      // rejection (mirror of the loop narrowing above).
-      const editedStepIsTransform = typeof step.kind === "string" && step.kind === "transform";
-      const paramTouchesTransformExpr =
-        args.param === "expression" ||
-        args.param === "body" ||
-        args.param === "language" ||
-        args.param.startsWith("expression.") ||
-        args.param.startsWith("body.");
-      if (editedStepIsTransform && paramTouchesTransformExpr) {
-        // Reuse the probe-evidence slug set the loop gate already
-        // collected above when relevant; otherwise compute fresh for
-        // this branch. Same exemption contract: a transform reading
-        // from a probed-connector request step is exempt.
-        const transformProbedSlugs = gateIsRelevant
-          ? probedConnectorSlugs
-          : await collectProbedConnectorSlugs(ctx, workflowDraft.steps);
-        const transformGate = evaluateTransformAuthoringGate(
-          workflowDraft,
-          currentDraft.latest_preview ?? null,
-          { probedConnectorSlugs: transformProbedSlugs },
-        );
-        if (!transformGate.ok) {
-          const summary = transformGate.blocks.map(describeTransformGateBlock).join("; ");
-          const codecBlocks = transformGate.blocks.filter(isHandRolledCodecBlock);
-          // A hand-rolled-codec block is a source mistake, not a missing-
-          // preview gap: re-running a dry-run fixes nothing. Surface a
-          // distinct typed refusal that steers to the `sk.*` encoders. A
-          // mixed verdict (codec + inspect) still leads with the codec
-          // steer because the source must be rewritten before any re-run
-          // is meaningful.
-          if (codecBlocks.length > 0) {
-            recordAuthoringGateBlock({
-              code: "transform_hand_rolled_codec",
-              tool: "update_param",
-            });
-            return {
-              ok: false,
-              data: buildGateError(currentDraft, {
-                error_code: "transform_hand_rolled_codec",
-                message: `update would embed a hand-rolled base64/base32/hex codec in a transform's source. ${summary}. Rewrite the expression to call the deterministic sk.* encoders (sk.base64Encode / sk.base64UrlEncode / sk.base64EncodeUtf8 / sk.base64Decode, or sk.hexEncode / sk.hexDecode) instead of an alphabet literal or reverse-lookup table.`,
-                recommended_mode: "workflow",
-                // The corrective action is to re-apply the rewritten
-                // expression via update_param — lead with it so the steer
-                // matches the message (inspect is the secondary fallback).
-                next_best_actions: ["update_param", "inspect_workflow_draft"],
-                extra: {
-                  gate_blocks: transformGate.blocks,
-                  step_id: args.step_id,
-                  param: args.param,
-                },
-              }),
-            };
-          }
-          recordAuthoringGateBlock({
-            code: "transform_authoring_requires_inspect",
-            tool: "update_param",
-          });
-          return {
-            ok: false,
-            data: buildGateError(currentDraft, {
-              error_code: "transform_authoring_requires_inspect",
-              message: `update would leave a transform step depending on data the upstream preview never recorded. ${summary}. Dry-run once so the scope is published, then re-apply.`,
-              recommended_mode: "workflow",
-              next_best_actions: [
-                "dry_run_workflow",
-                "inspect_workflow_draft",
-                "suggest_jsonata_paths",
-              ],
-              extra: {
-                gate_blocks: transformGate.blocks,
-                step_id: args.step_id,
-                param: args.param,
-              },
-            }),
-          };
-        }
-      }
-    }
-
     const nextDraft = withWorkflowDraft(currentDraft, workflowDraft, "workflow_step_updated");
     await ctx.setDraft(nextDraft);
+
+    // Authoring gates (loop / transform missing-preview, hand-rolled codec)
+    // are NON-blocking findings, symmetric with edit_workflow_patch: the edit
+    // is accepted and the recorded-evaluation verdicts ride back in the payload
+    // so the model repairs on the next call instead of thrashing through a
+    // dry-run detour. The prior hard `*_requires_inspect` refusals produced 8×
+    // identical retries → loop-abort in the field. No live HTTP fires here.
+    const probedConnectorSlugs = await collectProbedConnectorSlugs(ctx, workflowDraft.steps);
+    const lastPreview = getLastPreview({
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+    });
+    const recordedEval = await runRecordedEval(workflowDraft, {
+      latest_preview: nextDraft.latest_preview ?? null,
+      scope: lastPreview?.scope ?? null,
+      input: lastPreview?.input ?? nextDraft.latest_preview?.input ?? null,
+      probedConnectorSlugs,
+    });
+    emitRecordedEvalSignals({
+      tool: "update_param",
+      conversation_id: ctx.conversation_id,
+      report: recordedEval,
+    });
     return {
       ok: true,
       data: buildDraftMutationPayload(nextDraft, {
@@ -415,6 +298,7 @@ export const updateParamTool: ConversationTool = {
           steps: workflowDraft.steps.length,
           step_type: typeof step.kind === "string" ? step.kind : null,
           last_step_id: workflowDraft.steps[workflowDraft.steps.length - 1]?.id ?? null,
+          recorded_eval: recordedEval,
         },
       }),
     };

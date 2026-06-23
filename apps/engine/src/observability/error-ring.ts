@@ -46,10 +46,8 @@ export interface ErrorRing {
   clear(): void;
 }
 
-// errors.ring_size lives in subkit.config.json and is read at the boot
-// path — the engine swaps the singleton ring after loadConfig() via
-// `replaceErrorRing(getConfig().errors.ring_size)`. Until then this
-// default is in effect.
+// errors.ring_size lives in subkit.config.json but the process-wide ring is a
+// singleton, so settings writes require restart before the capacity changes.
 
 function truncateStack(stack: string | null | undefined): string | null {
   if (!stack) return null;

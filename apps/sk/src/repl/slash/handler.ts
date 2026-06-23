@@ -233,6 +233,7 @@ export type PaneSpec =
       permissionMode?: "ask" | "auto" | "plan" | "yolo";
       sessionTokens?: number | null;
       weekTokens?: number | null;
+      tenant?: string | null;
     }
   | {
       // The portal-token mint flow never returns the plaintext token
@@ -1473,6 +1474,7 @@ export async function handleSlash(
       }
       const pane: Extract<PaneSpec, { kind: "settings" }> = { kind: "settings" };
       if (rawArgs[0]) pane.initialTab = rawArgs[0];
+      pane.tenant = ctx.statusSnapshot?.tenant.id ?? ctx.profile.active_tenant_id ?? null;
       if (ctx.session.conversationId) pane.sessionId = ctx.session.conversationId;
       if (ctx.session.usage && typeof ctx.session.usage.turn_tokens === "number") {
         pane.sessionTokens = ctx.session.usage.turn_tokens;

@@ -11,6 +11,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "b
 import { and, eq } from "drizzle-orm";
 import * as discoveryModule from "../../connectors/discovery/index.ts";
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
+import { createConnector } from "../../connectors/service.ts";
 import { tenants } from "../../db/schema/identity.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -278,6 +279,60 @@ describe("discover_connector_endpoints — force_refresh", () => {
       expect(data.source).toBe("fresh");
       expect(data.result.title).toBe("Refreshed Title");
       expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("discover_connector_endpoints — connector_id resolution", () => {
+  test("resolves the connector's stored base_url and discovers against it", async () => {
+    const connector = await createConnector(
+      {
+        tenant_id,
+        actor_id: null,
+        input: {
+          slug: "gql-conn",
+          name: "GQL Conn",
+          driver: "graphql",
+          environment: "dev",
+          base_url: "https://api.example.test/graphql",
+          auth_type: "none",
+        },
+      },
+      ctx.db,
+    );
+    const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
+      SAMPLE_RESULT,
+    );
+    try {
+      const r = await discoverConnectorEndpointsTool.execute(makeCtx(), {
+        connector_id: connector.id,
+        force_refresh: false,
+      });
+      expect(r.ok).toBe(true);
+      // Discovery ran against the connector's own base_url — the agent never
+      // had to re-type the URL or (wrongly) pass the slug as template_id.
+      expect(spy.mock.calls[0]?.[0]).toMatchObject({
+        base_url: "https://api.example.test/graphql",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("unknown connector_id → structured connector_not_found (no discovery call)", async () => {
+    const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
+      SAMPLE_RESULT,
+    );
+    try {
+      const r = await discoverConnectorEndpointsTool.execute(makeCtx(), {
+        connector_id: "00000000-0000-4000-8000-0000000000ff",
+        force_refresh: false,
+      });
+      expect(r.ok).toBe(false);
+      expect((r as { error_code?: string }).error_code).toBe("connector_not_found");
+      expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
     }
