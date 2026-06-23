@@ -1045,13 +1045,29 @@ export const dryRunWorkflowTool: ConversationTool = {
         : judgeBlocked && judgeOutcome && judgeOutcome.verdict !== "skipped"
           ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but the preview does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} Fix via edit_workflow_patch and re-run dry_run_workflow — or, after the user explicitly confirms, commit anyway via save_workflow_draft.`
           : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`;
+    // Held-read nudge: when holding a step skipped its dependents and the
+    // preview is therefore incomplete, the held step is often a READ
+    // misclassified as a write (e.g. a scrape that uses POST). Surface a hint
+    // to set side_effects:read so the preview executes it. Message-only — never
+    // auto-reclassify, because a POST can be a genuine write. Fires ONLY when
+    // holding actually broke the preview (held + skipped dependents), so a
+    // legitimate held-write preview that still produces output stays quiet.
+    const heldStepCount = run.steps.filter((s) => s.held).length;
+    const skippedDependentCount = run.steps.filter(
+      (s) => (s.error as { code?: string } | undefined)?.code === "skipped_dependency_held",
+    ).length;
+    const heldReadHint =
+      heldStepCount > 0 && skippedDependentCount > 0
+        ? `${heldStepCount} step(s) were HELD as writes and ${skippedDependentCount} dependent step(s) were skipped, so the preview could not produce a complete result. If a held step only READS data (e.g. a scrape or fetch that does not mutate state), set \`side_effects: "read"\` on it so the preview runs it instead of holding it.`
+        : null;
+    const previewMessage = heldReadHint ? `${previewSummary} ${heldReadHint}` : previewSummary;
     return {
       ok: cleanPreview,
       // This path is always ok:false (cleanPreview returned early). The
       // top-level error_code/message let `summarizeToolFailure` log the WHY
       // and let the error_code-repeat breaker (which reads top-level fields,
       // not nested data) track a model re-issuing the same failing preview.
-      ...(cleanPreview ? {} : { error_code: previewErrorCode, message: previewSummary }),
+      ...(cleanPreview ? {} : { error_code: previewErrorCode, message: previewMessage }),
       data: buildLifecyclePayload(
         nextDraft,
         {
@@ -1063,6 +1079,7 @@ export const dryRunWorkflowTool: ConversationTool = {
               : (lastStep?.classification ?? (run.status === "succeeded" ? "ok" : "driver_error")),
           stopped_at_step_id: stoppedId,
           summary: previewSummary,
+          ...(heldReadHint ? { held_read_hint: heldReadHint } : {}),
           execution_id: run.execution_id,
           next_best_actions: previewNextActions,
           next_prompt: previewNextPrompt,
