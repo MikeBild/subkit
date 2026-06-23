@@ -263,9 +263,13 @@ describe("buildLiveReport", () => {
 });
 
 describe("live scenario specs", () => {
-  test("3-5 estate-derived scenarios with exactly one judge-block probe and valid regexes", () => {
+  test("curated estate scenarios + bounded probe scenarios, exactly one judge-block probe, valid regexes", () => {
+    // Core estate-derived scenarios plus a few `ta-*` probe scenarios (added
+    // for the skills-in-authoring evidence experiments) — kept bounded so the
+    // live eval stays cheap. Exactly one deliberately under-specified
+    // judge-block probe.
     expect(LIVE_SCENARIOS.length).toBeGreaterThanOrEqual(3);
-    expect(LIVE_SCENARIOS.length).toBeLessThanOrEqual(5);
+    expect(LIVE_SCENARIOS.length).toBeLessThanOrEqual(8);
     expect(LIVE_SCENARIOS.filter((s) => s.expect_judge_block)).toHaveLength(1);
     for (const spec of LIVE_SCENARIOS) {
       for (const check of spec.content_checks) {
@@ -278,5 +282,62 @@ describe("live scenario specs", () => {
   test("the droplet-specs scenario goal names the recipient (fabricated-recipient regression)", () => {
     const spec = LIVE_SCENARIOS.find((s) => s.slug === "droplet-specs-email");
     expect(spec?.goal).toContain("user@example.com");
+  });
+});
+
+describe("scoreScenario · convergence metric (previews_to_pass / converged)", () => {
+  const FINAL_SPEC: LiveScenarioSpec = {
+    slug: "conv-probe",
+    goal: "return an object with spread_c",
+    connectors: ["open-meteo"],
+    expect_judge_block: false,
+    content_source: "final_output",
+    content_checks: [{ name: "spread numeric", pattern: '"spread_c"\\s*:\\s*-?\\d+(\\.\\d+)?' }],
+  };
+  const preview = (final_output: unknown) => ({
+    tool: "dry_run_workflow",
+    output: { final_output },
+  });
+
+  test("first preview wrong, second correct → converged, previews_to_pass=2, first-shot still false", () => {
+    const score = scoreScenario(FINAL_SPEC, {
+      scenario: FINAL_SPEC.slug,
+      tool_calls: 6,
+      status: "committed",
+      wall_ms: 1,
+      results: [
+        { tool: "author_workflow", output: { attempts: 1 } },
+        preview({ spread_c: null }),
+        preview({ spread_c: 3.4 }),
+      ],
+    });
+    expect(score.first_preview_content_pass).toBe(false);
+    expect(score.converged).toBe(true);
+    expect(score.previews_to_pass).toBe(2);
+  });
+
+  test("all previews wrong → not converged, previews_to_pass null", () => {
+    const score = scoreScenario(FINAL_SPEC, {
+      scenario: FINAL_SPEC.slug,
+      tool_calls: 4,
+      status: "awaiting_input",
+      wall_ms: 1,
+      results: [preview({ spread_c: null }), preview({ spread_c: null })],
+    });
+    expect(score.converged).toBe(false);
+    expect(score.previews_to_pass).toBeNull();
+  });
+
+  test("right first shot → previews_to_pass=1", () => {
+    const score = scoreScenario(FINAL_SPEC, {
+      scenario: FINAL_SPEC.slug,
+      tool_calls: 2,
+      status: "committed",
+      wall_ms: 1,
+      results: [preview({ spread_c: 5.5 })],
+    });
+    expect(score.previews_to_pass).toBe(1);
+    expect(score.converged).toBe(true);
+    expect(score.first_preview_content_pass).toBe(true);
   });
 });

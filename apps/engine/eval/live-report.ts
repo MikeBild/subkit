@@ -112,6 +112,13 @@ export interface LiveScenarioScore {
   previews: number;
   /** Whether the FIRST preview's artifacts passed the content checks. */
   first_preview_content_pass: boolean;
+  /** Whether ANY preview reached a passing output (repair convergence).
+   *  Null-equivalent (false) for judge-block scenarios. */
+  converged: boolean;
+  /** 1-based index of the first passing preview, or null if none passed.
+   *  `previews_to_pass === 1` means it was right first shot; `> 1` means it
+   *  took that many repair iterations. */
+  previews_to_pass: number | null;
   expect_judge_block: boolean;
   status: string;
   targets: ScenarioTargets;
@@ -240,19 +247,34 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
   // whole-preview corpus for SEND/hold-writes scenarios whose reviewable
   // content is the held request, not a returned value.
   let firstCorpus = "";
-  if (firstPreview) {
+  // Corpus for one preview, honoring content_source (final_output-only vs the
+  // whole envelope). Shared by the first-preview check and the convergence scan.
+  const corpusOf = (pv: Record<string, unknown>): string => {
     if (spec.content_source === "final_output") {
-      const fo = (firstPreview as Record<string, unknown>).final_output;
-      firstCorpus = fo === undefined ? "" : (JSON.stringify(fo) ?? "");
-    } else {
-      firstCorpus = JSON.stringify(firstPreview) ?? "";
+      const fo = pv.final_output;
+      return fo === undefined ? "" : (JSON.stringify(fo) ?? "");
     }
-  }
+    return JSON.stringify(pv) ?? "";
+  };
+  if (firstPreview) firstCorpus = corpusOf(firstPreview);
   const firstContent = runContentChecks(firstCorpus, spec.content_checks);
   if (!firstContent.pass && firstPreview) {
     notes.push(`first preview failed content checks: ${firstContent.failed.join(", ")}`);
   }
   const first_preview_content_pass = previews.length > 0 && firstContent.pass;
+
+  // Convergence (T-B metric): the FIRST preview (1-based) whose output passes
+  // the content checks — captures repair convergence across iterations, not
+  // just the first shot. `converged` is whether ANY preview reached a passing
+  // output. Meaningless for judge-block scenarios (no content target).
+  let previews_to_pass: number | null = null;
+  if (!spec.expect_judge_block) {
+    const idx = previews.findIndex(
+      (pv) => runContentChecks(corpusOf(pv), spec.content_checks).pass,
+    );
+    previews_to_pass = idx >= 0 ? idx + 1 : null;
+  }
+  const converged = previews_to_pass !== null;
 
   // Isolation guard (T-A): if a draft-mutating tool fired BEFORE the first
   // dry_run_workflow, the first preview reflects a repair-proposal edit
@@ -293,6 +315,8 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
     ...(obs.tokens !== undefined ? { tokens: obs.tokens } : {}),
     previews: previews.length,
     first_preview_content_pass,
+    converged,
+    previews_to_pass,
     expect_judge_block: spec.expect_judge_block,
     status: obs.status,
     targets: evaluateBenchmarkTargets(partial),
