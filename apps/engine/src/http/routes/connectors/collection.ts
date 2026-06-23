@@ -33,7 +33,9 @@ async function warmGraphqlSchema(
   try {
     await runDiscoveryCached(
       { db, tenant_id, actor_id, abortSignal: AbortSignal.timeout(6_000) },
-      { base_url: connector.base_url },
+      // connector_id links the introspected schema knowledge to THIS connector
+      // so the authoring context can associate it with the connector in scope.
+      { base_url: connector.base_url, connector_id: connector.id },
     );
   } catch (err) {
     logger.warn({
