@@ -4,7 +4,11 @@
 // Tests run in `bun run test:unit` without any external dependencies.
 
 import { describe, expect, test } from "bun:test";
-import { detectNamedOutputFormat, outputMatchesFormat } from "../output-format.ts";
+import {
+  detectNamedOutputFormat,
+  findMissingNamedFields,
+  outputMatchesFormat,
+} from "../output-format.ts";
 
 describe("detectNamedOutputFormat", () => {
   test('"...return a markdown table that ranks..." → "markdown_table"', () => {
@@ -174,3 +178,42 @@ describe("outputMatchesFormat · json", () => {
 // (formatGuidance tests removed with the helper — rolled back after the A/B
 // showed it did not improve format fidelity. The detector + matcher tests above
 // remain; they cover the format-aware judge's logic.)
+
+describe("findMissingNamedFields", () => {
+  // CATCHES the miss: a "columns A, B, C, D" enumeration with a column absent.
+  test("flags columns named in the goal that are absent from the output", () => {
+    const goal = "HTML <table> with columns Title, HN points, GitHub stars, Language.";
+    const out =
+      "<table><tr><th>Title</th><th>HN points</th></tr><tr><td>F3</td><td>292</td></tr></table>";
+    const missing = findMissingNamedFields(goal, out);
+    expect(missing.some((m) => /stars/i.test(m))).toBe(true);
+    expect(missing.some((m) => /language/i.test(m))).toBe(true);
+  });
+
+  // PASSES a complete parenthesized enumeration — no false downgrade.
+  test("parenthesized column list, all present → []", () => {
+    const goal = "a <table> (Title, HN points, GitHub stars, Language) sorted by stars desc.";
+    const out =
+      "<table><tr><th>Title</th><th>HN points</th><th>GitHub stars</th><th>Language</th></tr><tr><td>F3</td><td>292</td><td>1500</td><td>Rust</td></tr></table>";
+    expect(findMissingNamedFields(goal, out)).toEqual([]);
+  });
+
+  // DOES NOT FIRE on an inline list without a parenthesized/`columns` signal —
+  // left to the LLM, so plain-data and EMPTY-result goals are never downgraded.
+  test("inline 'table with A, B, C' (no parens/columns keyword) → [] (not parsed)", () => {
+    const goal =
+      "an html <table> with serial number, customer, location, health state, and recent-error count.";
+    const completeOut = "<table><tr><td>SN-1</td><td>ACME</td></tr></table>";
+    const emptyOut = "<table><tr><th>Serial</th></tr></table>";
+    expect(findMissingNamedFields(goal, completeOut)).toEqual([]);
+    expect(findMissingNamedFields(goal, emptyOut)).toEqual([]);
+  });
+
+  test("goal with no field enumeration → []", () => {
+    expect(findMissingNamedFields("return the hottest day and temperature", '{"d":1}')).toEqual([]);
+  });
+
+  test("trivial/empty rendered output → [] (an empty result is not incomplete)", () => {
+    expect(findMissingNamedFields("table with columns A, B, C", "")).toEqual([]);
+  });
+});

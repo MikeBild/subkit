@@ -99,3 +99,74 @@ export function outputMatchesFormat(
   }
   return { ok: missing.length === 0, missing };
 }
+
+// ---------------------------------------------------------------------------
+// Named-field completeness — deterministic guard for the preview judge.
+//
+// The LLM judge is unreliable about a table/object being COMPLETE: it passed
+// outputs missing columns the goal explicitly listed. This is the hard,
+// unit-testable guard for the subset that is robustly detectable: a goal that
+// EXPLICITLY ENUMERATES the fields — either parenthesized after the structure
+// noun, `… table (A, B, C, D) …`, or introduced by a `columns`/`fields`
+// keyword, `… with columns A, B, C and D …`. Inline lists without those signals
+// (`a table with A, B, C`) are NOT parsed — they're left to the LLM, so a
+// plain-data or empty-result goal is never falsely downgraded.
+// ---------------------------------------------------------------------------
+
+/** Last distinctive word of a field phrase ("GitHub stars" → "stars",
+ *  "recent-error count" → "count"). Lowercased; punctuation stripped. */
+function fieldKeyword(phrase: string): string {
+  const words = phrase
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  return words[words.length - 1] ?? "";
+}
+
+/** Split an enumeration body ("A, B, C and D") into trimmed short field
+ *  phrases. Rejects items longer than 4 words (those are sentences, not
+ *  field names). */
+function splitEnumeration(body: string): string[] {
+  return body
+    .split(/\s*,\s*|\s+and\s+|\s*&\s*/i)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s.split(/\s+/).length <= 4);
+}
+
+/**
+ * Returns the field names a goal EXPLICITLY enumerates that are ABSENT from the
+ * rendered output. Empty when the goal carries no explicit enumeration, when the
+ * output is empty/trivial (an empty result set is not "incomplete"), or when
+ * every enumerated field is present. Pure + deterministic.
+ */
+export function findMissingNamedFields(goal: string, rendered: string): string[] {
+  if (typeof rendered !== "string" || rendered.trim().length < 12) return [];
+  const fields: string[] = [];
+  // (a) Parenthesized list following a structure noun: `table (A, B, C, D)`.
+  for (const m of goal.matchAll(
+    /\b(?:table|columns?|fields?|rows?)\b[^.(]{0,40}?\(([^)]{3,200})\)/gi,
+  )) {
+    if (m[1] && m[1].includes(",")) fields.push(...splitEnumeration(m[1]));
+  }
+  // (b) `columns`/`fields` keyword introducing a comma/and list, up to a
+  //     sentence/clause boundary.
+  for (const m of goal.matchAll(
+    /\b(?:columns?|fields?)\b[:\s]+([A-Za-z0-9][A-Za-z0-9 ,&'-]+?)(?=[.;:)]|\s+(?:sorted|ordered|grouped|and one|per |with )|$)/gi,
+  )) {
+    if (m[1] && m[1].includes(",")) fields.push(...splitEnumeration(m[1]));
+  }
+  // Dedup by keyword; need a real enumeration (>= 2 fields) to act.
+  const byKeyword = new Map<string, string>();
+  for (const f of fields) {
+    const kw = fieldKeyword(f);
+    if (kw.length >= 3 && !byKeyword.has(kw)) byKeyword.set(kw, f);
+  }
+  if (byKeyword.size < 2) return [];
+  const hay = rendered.toLowerCase();
+  const missing: string[] = [];
+  for (const [kw, phrase] of byKeyword) {
+    if (!hay.includes(kw)) missing.push(phrase);
+  }
+  return missing;
+}

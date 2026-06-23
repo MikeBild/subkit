@@ -51,7 +51,11 @@ import { z } from "zod";
 import type { Executor } from "../db/client.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
-import { detectNamedOutputFormat, outputMatchesFormat } from "./output-format.ts";
+import {
+  detectNamedOutputFormat,
+  findMissingNamedFields,
+  outputMatchesFormat,
+} from "./output-format.ts";
 import { canonicalJson } from "./text-line-diff.ts";
 import { truncateStepPreviewForLlm } from "./tools/truncate.ts";
 
@@ -366,6 +370,29 @@ export async function judgePreview(params: JudgePreviewParams): Promise<PreviewJ
             missing: check.missing,
           };
         }
+      }
+      // Deterministic named-field completeness guard. Same hard-guard rationale
+      // as the format check (the LLM rubric is unreliable about completeness):
+      // when the goal EXPLICITLY enumerates fields/columns and any are absent
+      // from the rendered output, downgrade passes→partial and feed `missing`
+      // into the repair loop. Conservative — only fires on explicit
+      // (parenthesized / `columns`-keyed) enumerations, so plain-data and
+      // empty-result goals are never falsely downgraded.
+      const { rendered: renderedForFields } = extractRenderedOutput(params);
+      const missingFields = findMissingNamedFields(params.goal, renderedForFields);
+      if (missingFields.length > 0) {
+        logger.warn({
+          module: "conversations",
+          action: "preview_judge.named_field_incomplete",
+          msg: "goal enumerates fields/columns absent from the previewed output — verdict downgraded passes→partial",
+          tenant_id: params.tenant_id,
+          missing_fields: missingFields,
+        });
+        return {
+          verdict: "partial",
+          reason: `The goal asks for ${missingFields.join(", ")}, but ${missingFields.length === 1 ? "it is" : "they are"} absent from the previewed output.`,
+          missing: missingFields,
+        };
       }
     }
     return {
