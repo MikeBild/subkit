@@ -234,7 +234,7 @@ export const askUserFormTool: ConversationTool = {
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = inputSchema.parse(rawArgs);
+    let args = inputSchema.parse(rawArgs);
     // Gate: if the form collects a sensitive credential (password field or
     // sensitive: true) AND a connector draft is active BUT its auth_type has
     // not been set yet, refuse early. The connector's auth shape must be
@@ -329,6 +329,36 @@ export const askUserFormTool: ConversationTool = {
                 expected_fields: verdict.expected_fields,
                 optional_fields: verdict.optional_fields,
                 ...(setupInstructions ? { setup_instructions: setupInstructions } : {}),
+              },
+            };
+          }
+          // Re-issue draft: when `request_connector_reauth` staged this
+          // draft (last_action = "connector_reauth_started") and the LLM
+          // did NOT attach its own commit_intent, stamp one
+          // deterministically so the existing `save_connector_draft`
+          // dispatch path fires on submit instead of silently no-opping.
+          // Without this stamp `extractCommitIntent` returns null,
+          // `maybeAutoPersistFromElicitation` logs `auto_persist.skipped`,
+          // and only the credential cache is populated — `saveConnectorAtomic`
+          // (which calls `clearConnectorReauth` + emits `credential_rotated`
+          // + `connector.reauth_cleared`) is never reached.
+          // We derive the intent from live draft state, not from LLM input,
+          // so it is always correct regardless of what the model writes.
+          if (
+            !args.commit_intent &&
+            ctx.getDraft().summary?.last_action === "connector_reauth_started"
+          ) {
+            const reauthEnvironment: "dev" | "prod" =
+              draftConnector.environment === "prod" ? "prod" : "dev";
+            args = {
+              ...args,
+              commit_intent: {
+                kind: "save_connector_draft",
+                payload: {
+                  environment: reauthEnvironment,
+                  credential: { mode: resolution.seedMode },
+                },
+                description: `Re-issue credential for connector '${draftConnector.slug ?? draftConnector.name ?? ""}' (${reauthEnvironment})`,
               },
             };
           }

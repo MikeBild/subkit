@@ -38,3 +38,11 @@ export const OAUTH_TIMEOUT = "oauth_timeout";
 /** The OAuth authorization-code dance produced an explicit
  *  `callback_failed` signal — no credential was persisted. */
 export const OAUTH_AUTHORIZATION_FAILED = "oauth_authorization_failed";
+
+/** `authenticate_oauth` was called on a connector whose grant is NOT a
+ *  browser authorization-code flow (Cognito USER_PASSWORD_AUTH or
+ *  client_credentials_json). Those grants have no authorization endpoint, so
+ *  starting the browser dance throws opaquely ("unexpected HTTP response
+ *  status code"). The right path is `request_connector_reauth`, which
+ *  re-collects the credential in chat and rotates it in place. */
+export const WRONG_REAUTH_FLOW = "wrong_reauth_flow";

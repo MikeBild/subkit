@@ -93,7 +93,13 @@ const CallConnectorInput = z
       .describe(
         "Additional headers; the connector's auth header is auto-injected from the saved credential.",
       ),
-    body: z.unknown().optional(),
+    // A concrete (non-empty) JSON Schema. `z.unknown()` serialized to `{}`,
+    // which makes some MCP clients stringify the object — the GraphQL body
+    // `{query, variables}` then arrived as a JSON STRING and the guard below
+    // rejected it. A `union(object, string)` emits `anyOf[object, string]`, so
+    // clients send a real object; a still-stringified body is accepted here
+    // and JSON-parsed at the dispatch guard.
+    body: z.union([z.object({}).passthrough(), z.string()]).optional(),
     timeout_ms: z.number().int().min(1000).max(60_000).default(30_000),
 
     // Postgres fields.
@@ -508,8 +514,21 @@ export const callConnectorTool: ConversationTool = {
     try {
       if (driver === "graphql") {
         // GraphQL connectors: callers pass the operation as
-        // `body: { query, variables }`. Anything else is an input error.
-        const b = args.body as
+        // `body: { query, variables }`. An MCP client that stringified the
+        // object sends a JSON string — parse it back before the shape check
+        // so the call still dispatches (defensive; the schema above already
+        // steers clients to a real object).
+        const rawBody =
+          typeof args.body === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(args.body as string);
+                } catch {
+                  return args.body;
+                }
+              })()
+            : args.body;
+        const b = rawBody as
           | { query?: unknown; variables?: unknown; operation?: unknown }
           | null
           | undefined;

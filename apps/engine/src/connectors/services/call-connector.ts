@@ -170,8 +170,20 @@ async function dispatchGraphql(
   req: CallConnectorRequest,
   connector: ConnectorView,
 ): Promise<DispatchSuccess | { invalid_input: string }> {
-  // GraphQL connectors expect `body: { query, variables?, operation? }`.
-  const b = req.body as
+  // GraphQL connectors expect `body: { query, variables?, operation? }`. A
+  // caller (or an MCP client that stringified the object) may pass it as a
+  // JSON string — parse it back before the shape check so the call dispatches.
+  const rawBody =
+    typeof req.body === "string"
+      ? (() => {
+          try {
+            return JSON.parse(req.body as string);
+          } catch {
+            return req.body;
+          }
+        })()
+      : req.body;
+  const b = rawBody as
     | { query?: unknown; variables?: unknown; operation?: unknown }
     | null
     | undefined;

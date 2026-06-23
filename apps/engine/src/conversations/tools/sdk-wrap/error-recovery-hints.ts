@@ -40,6 +40,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   // surface (HTTP/MCP route, not a raw in-process invocation).
   principal_required:
     "this tool requires an authenticated principal on the ToolContext — re-issue the call from the HTTP / MCP / sk-cli surface so the auth resolution threads through, instead of invoking the tool directly in-process",
+  // authenticate_oauth was used on a non-browser grant (Cognito
+  // USER_PASSWORD_AUTH or client_credentials_json). Those rotate in chat.
+  wrong_reauth_flow:
+    "this connector does NOT use a browser authorization-code flow — it is Cognito USER_PASSWORD_AUTH or a client-credentials (M2M) grant, which have no sign-in page. Do not call authenticate_oauth. Call request_connector_reauth instead: it re-collects the credential (email + password, or the M2M secret) in chat and rotates it in place",
   // Initial-stage gate (Fix A): micro-tools are repair-stage only.
   authoring_stage_violation:
     "propose_step / update_param are repair-stage tools — the draft has no recorded preview and no recorded-eval/judge findings yet. Author the complete workflow in ONE call via author_workflow (or build_workflow), then dry_run_workflow; either unlocks the micro-tools",
