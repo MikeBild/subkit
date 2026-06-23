@@ -119,6 +119,12 @@ export interface LiveScenarioScore {
    *  `previews_to_pass === 1` means it was right first shot; `> 1` means it
    *  took that many repair iterations. */
   previews_to_pass: number | null;
+  /** Trajectory: did a probe_connector/call_connector precede the first
+   *  author step? null when nothing was authored. */
+  probe_before_author: boolean | null;
+  /** Trajectory: did a dry_run_workflow precede the first explicit
+   *  save_workflow_draft? true when there was no explicit save. */
+  dry_run_before_save: boolean;
   expect_judge_block: boolean;
   status: string;
   targets: ScenarioTargets;
@@ -288,6 +294,27 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
     notes.push("NON-ISOLATED: edit tool fired before first preview — exclude trial");
   }
 
+  // Trajectory metrics (orchestration eval): score the tool-call SEQUENCE, not
+  // just the final output — the harness for the T-C question (do loop skills
+  // steer better tool choice?). Pure ordering reads of the existing tool stream.
+  const AUTHOR_TOOLS = ["author_workflow", "build_workflow"];
+  const authorIdx = obs.results.findIndex((r) => AUTHOR_TOOLS.includes(r.tool));
+  // probe_before_author: did a probe_connector/call_connector precede the FIRST
+  // author step? Authoring against real recorded shapes (vs guesses) is the
+  // single biggest authoring-failure lever. Null when nothing was authored.
+  const probe_before_author =
+    authorIdx < 0
+      ? null
+      : obs.results
+          .slice(0, authorIdx)
+          .some((r) => r.tool === "probe_connector" || r.tool === "call_connector");
+  // dry_run_before_save: did a dry_run_workflow precede the first explicit
+  // save_workflow_draft (verify-before-persist)? True when there is no explicit
+  // save (a green, judged dry-run auto-commits — the verified path).
+  const saveIdx = obs.results.findIndex((r) => r.tool === "save_workflow_draft");
+  const dry_run_before_save =
+    saveIdx < 0 ? true : obs.results.slice(0, saveIdx).some((r) => r.tool === "dry_run_workflow");
+
   const firstVerdict = extractJudgeVerdict(firstPreview);
   const lastVerdict = extractJudgeVerdict(previews[previews.length - 1]);
   const judge = spec.expect_judge_block ? firstVerdict : (lastVerdict ?? firstVerdict);
@@ -317,6 +344,8 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
     first_preview_content_pass,
     converged,
     previews_to_pass,
+    probe_before_author,
+    dry_run_before_save,
     expect_judge_block: spec.expect_judge_block,
     status: obs.status,
     targets: evaluateBenchmarkTargets(partial),

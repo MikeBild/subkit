@@ -341,3 +341,51 @@ describe("scoreScenario · convergence metric (previews_to_pass / converged)", (
     expect(score.first_preview_content_pass).toBe(true);
   });
 });
+
+describe("scoreScenario · trajectory metrics (probe_before_author / dry_run_before_save)", () => {
+  const SPEC2: LiveScenarioSpec = {
+    slug: "traj",
+    goal: "build something",
+    connectors: ["x"],
+    expect_judge_block: false,
+    content_checks: [],
+  };
+  const obs = (tools: string[]): ScenarioObservation => ({
+    scenario: SPEC2.slug,
+    tool_calls: tools.length,
+    status: "committed",
+    wall_ms: 1,
+    results: tools.map((t) => ({ tool: t, output: {} })),
+  });
+
+  test("probe before author → true", () => {
+    expect(
+      scoreScenario(SPEC2, obs(["probe_connector", "author_workflow"])).probe_before_author,
+    ).toBe(true);
+  });
+  test("author before any probe → false", () => {
+    expect(
+      scoreScenario(SPEC2, obs(["author_workflow", "probe_connector"])).probe_before_author,
+    ).toBe(false);
+  });
+  test("no author step → null", () => {
+    expect(
+      scoreScenario(SPEC2, obs(["probe_connector", "list_connectors"])).probe_before_author,
+    ).toBeNull();
+  });
+  test("dry_run before save → true", () => {
+    expect(
+      scoreScenario(SPEC2, obs(["dry_run_workflow", "save_workflow_draft"])).dry_run_before_save,
+    ).toBe(true);
+  });
+  test("save with no preceding dry_run → false", () => {
+    expect(
+      scoreScenario(SPEC2, obs(["author_workflow", "save_workflow_draft"])).dry_run_before_save,
+    ).toBe(false);
+  });
+  test("no explicit save (auto-commit path) → true", () => {
+    expect(
+      scoreScenario(SPEC2, obs(["author_workflow", "dry_run_workflow"])).dry_run_before_save,
+    ).toBe(true);
+  });
+});
