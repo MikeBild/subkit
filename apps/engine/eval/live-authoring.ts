@@ -24,6 +24,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 import { compareLiveAuthoringReports } from "./live-benchmark.ts";
 import {
   buildLiveReport,
@@ -46,6 +47,7 @@ interface CliArgs {
   engine_url: string;
   api_key: string;
   scenarios: string[] | null;
+  scenarios_file: string | null;
   out: string;
   baseline: string | null;
 }
@@ -54,9 +56,11 @@ function usage(): never {
   console.error(
     [
       "Usage: bun run apps/engine/eval/live-authoring.ts --engine-url <url> --api-key <key>",
-      "         [--scenario <slug>[,<slug>…]] [--out <report.json>] [--baseline <report.json>]",
+      "         [--scenario <slug>[,<slug>…]] [--scenarios-file <scenarios.json>]",
+      "         [--out <report.json>] [--baseline <report.json>]",
       "",
       `Scenarios: ${LIVE_SCENARIOS.map((s) => s.slug).join(", ")}`,
+      "  (--scenarios-file merges local-only scenarios; same JSON shape as LIVE_SCENARIOS entries)",
       "",
       "Env fallbacks: SK_ENGINE_URL, SK_API_KEY. No .env file is ever read.",
     ].join("\n"),
@@ -68,6 +72,7 @@ function parseArgs(argv: string[]): CliArgs {
   let engine_url = process.env.SK_ENGINE_URL ?? "";
   let api_key = process.env.SK_API_KEY ?? "";
   let scenarios: string[] | null = null;
+  let scenarios_file: string | null = null;
   let out = DEFAULT_OUT;
   let baseline: string | null = null;
   for (let i = 0; i < argv.length; i++) {
@@ -85,13 +90,56 @@ function parseArgs(argv: string[]): CliArgs {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+    else if (arg === "--scenarios-file") scenarios_file = next();
     else if (arg === "--out") out = next();
     else if (arg === "--baseline") baseline = next();
     else if (arg === "--help" || arg === "-h") usage();
     else usage();
   }
   if (!engine_url || !api_key) usage();
-  return { engine_url: engine_url.replace(/\/+$/, ""), api_key, scenarios, out, baseline };
+  return {
+    engine_url: engine_url.replace(/\/+$/, ""),
+    api_key,
+    scenarios,
+    scenarios_file,
+    out,
+    baseline,
+  };
+}
+
+// Local-only scenario file (`--scenarios-file`). Lets a gitignored benchmark
+// (e.g. a keyed connector against real sites) add scenarios WITHOUT polluting
+// the committed `LIVE_SCENARIOS` gate. Validated at this CLI boundary; entries
+// merge into the candidate set and are otherwise scored identically.
+const ContentCheckSchema = z.object({
+  name: z.string(),
+  pattern: z.string(),
+  flags: z.string().optional(),
+});
+const ScenarioFileEntrySchema = z.object({
+  slug: z.string().min(1),
+  goal: z.string().min(1),
+  connectors: z.array(z.string()),
+  expect_judge_block: z.boolean(),
+  content_checks: z.array(ContentCheckSchema),
+  content_source: z.enum(["envelope", "final_output"]).optional(),
+});
+const ScenarioFileSchema = z.array(ScenarioFileEntrySchema);
+
+function loadScenariosFile(path: string): LiveScenarioSpec[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    console.error(`--scenarios-file: cannot read/parse ${path}: ${(e as Error).message}`);
+    process.exit(2);
+  }
+  const parsed = ScenarioFileSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.error(`--scenarios-file: invalid scenario file ${path}:\n${parsed.error.message}`);
+    process.exit(2);
+  }
+  return parsed.data;
 }
 
 interface TurnEventLike {
@@ -207,11 +255,19 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  // Committed gate scenarios + any local-only ones (`--scenarios-file`). A
+  // local entry with a slug already in LIVE_SCENARIOS overrides the committed
+  // one (lets a benchmark pin a harder variant of a named scenario).
+  const fileScenarios = args.scenarios_file ? loadScenariosFile(args.scenarios_file) : [];
+  const candidates: LiveScenarioSpec[] = [
+    ...LIVE_SCENARIOS.filter((s) => !fileScenarios.some((f) => f.slug === s.slug)),
+    ...fileScenarios,
+  ];
   const specs = args.scenarios
-    ? LIVE_SCENARIOS.filter((s) => args.scenarios?.includes(s.slug))
-    : LIVE_SCENARIOS;
+    ? candidates.filter((s) => args.scenarios?.includes(s.slug))
+    : candidates;
   if (args.scenarios && specs.length !== args.scenarios.length) {
-    const known = new Set(LIVE_SCENARIOS.map((s) => s.slug));
+    const known = new Set(candidates.map((s) => s.slug));
     console.error(`unknown scenario(s): ${args.scenarios.filter((s) => !known.has(s)).join(", ")}`);
     usage();
   }
