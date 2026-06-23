@@ -22,6 +22,8 @@ import type {
   UserTurn,
 } from "../../types.ts";
 import {
+  formatConnectorSchemaSummaries,
+  formatProbeShapeExamples,
   formatSkillCandidates,
   PRIOR_WORKFLOWS_TOP_K,
   PROBE_SHAPE_MAX_CONNECTORS,
@@ -34,6 +36,51 @@ import {
   renderRecipeBody,
   SKILL_CANDIDATES_SECTION_CAP,
 } from "./formatters.ts";
+
+/**
+ * Workflow-authoring connector-context aids: the in-scope connectors' KNOWN
+ * OPERATIONS (OPT-E, from the discovery index) + RECORDED ENDPOINT SAMPLES (from
+ * real calls). Gated on workflow-authoring mode with bound connectors; returns
+ * both formatted blocks (or null). Logs `context.connector_authoring_aids` so a
+ * benchmark run shows whether the gate fires in the real converse flow. Lives
+ * here (not inline in the assembler) to keep that orchestrator under the LOC cap.
+ */
+export async function loadConnectorAuthoringAids(
+  p: {
+    flow: string;
+    tenant_id: string;
+    authoring_hint?: { mode?: string } | null;
+    authoring_connector_ids?: string[];
+  },
+  exec: Executor,
+): Promise<{ probeShapeExamplesBlock: string | null; connectorSchemaBlock: string | null }> {
+  if (
+    p.flow !== "converse" ||
+    p.authoring_hint?.mode !== "workflow" ||
+    !p.authoring_connector_ids ||
+    p.authoring_connector_ids.length === 0
+  ) {
+    return { probeShapeExamplesBlock: null, connectorSchemaBlock: null };
+  }
+  const [shapeExamples, schemaSummaries] = await Promise.all([
+    loadProbeShapeExamples(p.tenant_id, p.authoring_connector_ids, exec),
+    loadConnectorSchemaSummaries(p.tenant_id, p.authoring_connector_ids, exec),
+  ]);
+  logger.info({
+    module: "llm",
+    action: "context.connector_authoring_aids",
+    tenant_id: p.tenant_id,
+    connector_ids: p.authoring_connector_ids.length,
+    schema_summaries: schemaSummaries.length,
+    probe_shapes: shapeExamples.length,
+  });
+  return {
+    probeShapeExamplesBlock:
+      shapeExamples.length > 0 ? formatProbeShapeExamples(shapeExamples) : null,
+    connectorSchemaBlock:
+      schemaSummaries.length > 0 ? formatConnectorSchemaSummaries(schemaSummaries) : null,
+  };
+}
 
 export interface InteractionLogEntry {
   tool_name: string;

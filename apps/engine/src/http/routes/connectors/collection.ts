@@ -7,9 +7,12 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
-import { CreateConnectorSchema, UpdateConnectorSchema } from "../../../connectors/index.ts";
+import {
+  CreateConnectorSchema,
+  runDiscoveryCached,
+  UpdateConnectorSchema,
+} from "../../../connectors/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";

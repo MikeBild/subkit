@@ -60,13 +60,11 @@ import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
 import {
   formatChunk,
   formatConnectorRecipes,
-  formatConnectorSchemaSummaries,
   formatFailure,
   formatInteractionLog,
   formatKnowledgeChunk,
   formatLatestPreview,
   formatOperatorQuirks,
-  formatProbeShapeExamples,
   formatSkill,
   formatSkillIndex,
   formatUserMemory,
@@ -80,12 +78,11 @@ import {
   type InteractionLogEntry,
   type LatestPreviewEntry,
   loadChunks,
-  loadConnectorSchemaSummaries,
+  loadConnectorAuthoringAids,
   loadInteractionLog,
   loadKnowledgeChunks,
   loadLatestPreview,
   loadPriorWorkflows,
-  loadProbeShapeExamples,
   loadProposedCandidates,
   loadTopRecipeBodies,
   logRecipeBodyFallbacks,
@@ -374,41 +371,10 @@ export async function assembleEnhancedPrompt(
   // workflow-authoring mode: that is the moment the model writes
   // request paths and transforms, and the shapes must reach it BEFORE
   // it authors — not as an after-the-fact validation finding.
-  let probeShapeExamplesBlock: string | null = null;
-  // OPT-E: the in-scope connectors' KNOWN OPERATIONS from their discovery index
-  // (introspected at create / on demand), so the model has the real operation +
-  // argument names in context without a discover_connector_endpoints round-trip.
-  let connectorSchemaBlock: string | null = null;
-  if (
-    p.flow === "converse" &&
-    p.authoring_hint?.mode === "workflow" &&
-    p.authoring_connector_ids &&
-    p.authoring_connector_ids.length > 0
-  ) {
-    const [shapeExamples, schemaSummaries] = await Promise.all([
-      loadProbeShapeExamples(p.tenant_id, p.authoring_connector_ids, db),
-      loadConnectorSchemaSummaries(p.tenant_id, p.authoring_connector_ids, db),
-    ]);
-    if (shapeExamples.length > 0) {
-      probeShapeExamplesBlock = formatProbeShapeExamples(shapeExamples);
-    }
-    if (schemaSummaries.length > 0) {
-      connectorSchemaBlock = formatConnectorSchemaSummaries(schemaSummaries);
-    }
-    // Observability for the workflow-authoring connector-context gate (shared by
-    // OPT-E's operations block + the recorded-endpoint-samples block). Confirms
-    // whether the gate fires in the real converse flow — a 0-summary log on a
-    // connector with a warmed schema points at the upstream authoring_hint.mode
-    // population, not the loaders.
-    logger.info({
-      module: "llm",
-      action: "context.connector_authoring_aids",
-      tenant_id: p.tenant_id,
-      connector_ids: p.authoring_connector_ids.length,
-      schema_summaries: schemaSummaries.length,
-      probe_shapes: shapeExamples.length,
-    });
-  }
+  // Workflow-authoring connector aids: OPT-E's known-operations block + recorded
+  // endpoint samples. Both `let` so the budget ladder can shed them under
+  // pressure. (Loader gates + logs; see loaders.ts.)
+  let { probeShapeExamplesBlock, connectorSchemaBlock } = await loadConnectorAuthoringAids(p, db);
 
   // Operator quirks for the in-scope connector. Loaded once per
   // assembly; the picker `selectOperatorQuirkCategories` reads the
