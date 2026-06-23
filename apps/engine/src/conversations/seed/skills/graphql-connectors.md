@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, graphql]
-version: 6
+version: 7
 ---
 
 # GraphQL Connectors
@@ -29,11 +29,13 @@ step and surfaces on the step error channel — read it via
 Do NOT guess field names, argument names, enum values, or response shapes.
 GraphQL is introspectable, so the exact schema is one tool call away:
 
-1. **`discover_connector_endpoints`** with the connector's GraphQL endpoint as
-   `base_url`. For a GraphQL connector this runs `__schema` introspection and
-   returns every query/mutation root field flattened with its **args, enum
-   values, and input-field shapes** — AND ingests the full schema (SDL) as a
-   searchable knowledge source.
+1. **`discover_connector_endpoints`** — pass the **`connector_id`** of the
+   GraphQL connector you are authoring against (NOT `template_id`, which is only
+   for built-in templates; passing a custom connector's slug there fails with
+   `template_not_found`). The tool uses that connector's stored endpoint, runs
+   `__schema` introspection, and returns every query/mutation root field
+   flattened with its **args, enum values, and input-field shapes** — AND
+   ingests the full schema (SDL) as a searchable knowledge source.
 2. **`search_knowledge`** the ingested SDL for the specific types you will
    touch — the connection type, the filter input, the orderBy enum — to read
    their EXACT field names and enum values.
