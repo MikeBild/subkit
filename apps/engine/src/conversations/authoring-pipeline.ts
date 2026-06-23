@@ -309,9 +309,14 @@ export function buildGenerationPrompt(args: {
 
   // Focused per-format grounding block when the goal names an output format.
   // Richer than the generic design rule above — it spells out the exact
-  // FINAL-output shape for that format (the "small output-format skill",
-  // inlined here because the on-demand skill loader does not inject skills in
-  // the single-shot generation path).
+  // FINAL-output shape for that format. Inlined as grounding because the
+  // single-shot generate flow renders skills only as the one-line INDEX: the
+  // assembler body-renders solely `loaded_skill_slugs`, and generate has no
+  // tool loop to load any, so a skill's BODY (where this rule would otherwise
+  // live) never reaches generation. (Evidence note: a controlled A/B showed
+  // injecting the full skill body did NOT improve single-shot results — the
+  // model already holds the rule-knowledge — so this stays a tight grounding
+  // line, not a skill-body dump.)
   const namedFormat = detectNamedOutputFormat(args.goal);
   if (namedFormat) {
     lines.push(

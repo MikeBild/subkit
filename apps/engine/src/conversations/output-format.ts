@@ -43,9 +43,11 @@ export function detectNamedOutputFormat(goal: string): NamedOutputFormat | null 
 
 /**
  * Focused per-format generation guidance — the "small output-format skill"
- * content, inlined into always-present generation grounding (the on-demand
- * skill loader does NOT inject skills in the single-shot author_workflow
- * path). Returned only when the goal names a format. Each block tells the
+ * content, inlined into always-present generation grounding. (The single-shot
+ * author_workflow generate flow renders skills only as the one-line INDEX;
+ * full skill BODIES render solely for `loaded_skill_slugs`, which is empty
+ * there — no tool loop loads any — so a skill body never reaches generation.)
+ * Returned only when the goal names a format. Each block tells the
  * model to render that format as the FINAL workflow output (the
  * output_transform / last step result the caller receives), with a concrete
  * shape — not in an intermediate step that a later transform discards.

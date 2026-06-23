@@ -19,10 +19,13 @@ Two pure, deterministic, unit-tested helpers + one guidance map:
   `null`, so nothing below ever fires for it — no false blocks).
 - `formatGuidance(fmt): string` — the focused per-format generation block (the
   "small output-format skill" content). Inlined into always-present generation
-  grounding because the on-demand skill loader does NOT inject skills in the
-  single-shot `author_workflow` path (a workflow-authoring skill is
-  `skill.created` but never `skill.loaded` there — that is *why* the guidance
-  lives in `buildGenerationPrompt`, not only in the seed skill).
+  grounding because the single-shot `author_workflow` generate flow renders
+  skills only as the one-line INDEX: the context assembler body-renders solely
+  `loaded_skill_slugs`, and generate has no tool loop to load any, so a skill's
+  BODY (where this rule would otherwise live) never reaches generation — only
+  its index entry does. (A controlled A/B later showed injecting the *full*
+  skill body did not improve single-shot results either — the model already
+  holds the rule-knowledge — so this stays a tight grounding line.)
 - `outputMatchesFormat(fmt, rendered): { ok, missing }` — structural-signature
   check; the markdown signatures are byte-identical to the live benchmark's
   content checks so the contract is single-sourced.
