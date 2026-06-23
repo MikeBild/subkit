@@ -125,8 +125,11 @@ afterAll(async () => {
 // getCredentialForConnector, exactly as refresh.test.ts does it.
 // ---------------------------------------------------------------------------
 async function seedExpiredCredential(connId: string, accessToken: string) {
-  // expires_at in the past so refreshIfStale considers the token stale.
-  const expiredAt = new Date(Date.now() - 5_000);
+  // A fixed far-past expiry so refreshIfStale always considers the token
+  // stale, regardless of wall-clock. (Deterministic — no Date.now() in tests:
+  // refreshIfStale's own `expiresMs - now > bufferMs` check is always false
+  // for a year-2000 timestamp.)
+  const expiredAt = new Date("2000-01-01T00:00:00.000Z");
   await upsertCredential(
     {
       tenant_id: tenantId,
