@@ -530,6 +530,28 @@ export const dryRunWorkflowTool: ConversationTool = {
     const lastStep: PreviewStepSummary | undefined =
       lastStepSummary && matchedStep ? classifyRunResult(matchedStep, run) : undefined;
 
+    // The workflow's RESOLVED final output (post output_transform /
+    // response_filters) — what the caller actually receives. The preview must
+    // surface THIS, not the last step: with an output_transform the two differ,
+    // and a user/judge/benchmark inspecting the last step would see the wrong
+    // thing (a markdown table rendered in a step that the transform discards).
+    // `null` for a hold-writes preview where no real final output exists → fall
+    // back to the last step's output for the preview field.
+    const finalOutputForLlm =
+      run.output !== undefined && run.output !== null
+        ? truncateStepPreviewForLlm(run.output)
+        : null;
+    // The response field carrying that final output to the model/user — same
+    // truncation discipline as every other LLM-visible preview. Spread into
+    // each success/blocked envelope so the caller always sees the actual
+    // result, not just the last step.
+    const finalOutputField = finalOutputForLlm
+      ? {
+          final_output: finalOutputForLlm.data,
+          ...(finalOutputForLlm.raw_ref ? { final_output_ref: finalOutputForLlm.raw_ref } : {}),
+        }
+      : {};
+
     const stoppedForDraft = stoppedId ?? lastStep?.step_id ?? "(end)";
     const runWarnings = (run.warnings ?? []).map((w) => ({
       step_key: (w as { step_key?: string | null }).step_key ?? null,
@@ -680,7 +702,9 @@ export const dryRunWorkflowTool: ConversationTool = {
         ok: run.status === "succeeded",
         step_id: stoppedForDraft,
         summary: lastStep?.summary ?? `Run completed with status ${run.status}.`,
-        preview: lastStep?.output_preview ?? null,
+        // Prefer the resolved final output (post output_transform) — that is
+        // what the caller receives and what the judge now evaluates.
+        preview: finalOutputForLlm?.data ?? lastStep?.output_preview ?? null,
         ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
         // A judge block joins the requires_repair path so its blocking
         // semantics (no auto-commit; explicit save / force_commit stays
@@ -919,6 +943,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           // step-by-step shape + status to author downstream
           // transforms or to debug a follow-up run.
           step_trace: stepTrace,
+          ...finalOutputField,
         },
         ...(typeof commitResult.committed_workflow_id === "string"
           ? { committed_workflow_id: commitResult.committed_workflow_id }
@@ -959,6 +984,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             execution_id: run.execution_id,
           },
           step_trace: stepTrace,
+          ...finalOutputField,
         },
       };
     }
@@ -1023,6 +1049,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           // re-preview. The draft was not changed.
           ...(repairProposals.length > 0 ? { repair_proposals: repairProposals } : {}),
           step_trace: stepTrace,
+          ...finalOutputField,
           ...(lastStep
             ? (() => {
                 // Same per-step LLM cap as the step_trace assembler
