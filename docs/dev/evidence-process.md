@@ -2,8 +2,8 @@
 
 How to prove a change to an LLM-driven path (authoring generation, the preview
 judge, repair loops) actually does what you claim — with real evidence, not
-intuition. This is the discipline behind the v7.9.0 format-aware-judge work; it
-caught a wrong self-diagnosis mid-flight (see the worked example below).
+intuition. This is the discipline behind the format-aware-judge work; it caught
+a wrong self-diagnosis mid-flight (see the worked example below).
 
 > **Rule:** evidence MUST be confirmed by real tests. Never state that a metric
 > moved unless a test or the benchmark shows it. Separate "logic verified by a
@@ -19,7 +19,7 @@ caught a wrong self-diagnosis mid-flight (see the worked example below).
 2. **Instrument first.** Add structured `logger` lines at every decision point
    of the change *before* you trust it — a greppable `action` name plus the
    deciding fields. These stay in the code so the failure class is findable
-   later. Examples shipped in v7.9.0:
+   later. Examples in the format-aware-judge path:
    - `authoring_pipeline.output_format_grounded` — `{ named_format }`
    - `preview_judge.format_check` — `{ named_format, matched, failed_checks }`
    - `preview_judge.format_mismatch` — emitted on a `passes→partial` downgrade
@@ -77,7 +77,7 @@ caught a wrong self-diagnosis mid-flight (see the worked example below).
    Name which one. Do not bolt on speculative code to chase a number
    (benchmarks are review scaffolding; permanent regressions go in unit tests).
 
-## Worked example (v7.9.0, format-aware judge)
+## Worked example (format-aware judge)
 
 The first conclusion was "the benchmark's `content_pass=false` is a measurement
 artifact — the judge logged `format_check matched:true`, so generation IS

@@ -68,7 +68,7 @@ artifact.
 Because generation is stochastic, a single A/B run is weak evidence — run
 several trials and look at the rate, not one outcome.
 
-### Findings (2026-06-23, `weather-ranking-table`, open-meteo, Sonnet 4.6)
+### Findings (`weather-ranking-table` scenario, open-meteo, Sonnet 4.6)
 
 | Variant | trials | `content_pass` true | tool_calls | wall |
 |---|---|---|---|---|
