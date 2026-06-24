@@ -1,41 +1,36 @@
-// Every subkit tool in `tools/list` must carry a `_meta.subkit`
-// envelope so clients can show destructive hints and skip
-// self-authored pre-confirms.
+// Every subkit conversation tool rendered into `tools/list` carries a
+// `_meta.subkit` envelope (category + confirm/destructive hints) so
+// clients can show destructive hints and skip self-authored pre-confirms.
+// The envelope is built by `buildConversationToolMeta`, which the MCP
+// adapter (`descriptorToMcpTool`) applies to every bare-name tool. This
+// test pins that builder directly — the same contract the (now removed)
+// tenant.* alias path used to assert.
 
 import { describe, expect, it } from "bun:test";
-import { listTenantTools } from "../capabilities/tenant-tools.ts";
-
-type Subkit = { category: string; confirm_required: boolean; destructive: boolean };
-type WithMeta = { name: string; _meta?: { subkit?: Subkit } };
+import { buildConversationToolMeta } from "../capabilities/tool-meta.ts";
 
 describe("MCP tool listing _meta.subkit", () => {
-  it("flags tenant_delete_workflow as confirm_required + destructive", () => {
-    const tools = listTenantTools({ allowWrites: true }) as WithMeta[];
-    const del = tools.find((t) => t.name === "tenant_delete_workflow");
-    expect(del).toBeDefined();
-    expect(del?._meta?.subkit).toEqual({
+  it("flags delete_workflow as confirm_required + destructive", () => {
+    const meta = buildConversationToolMeta("tenant_write", "delete_workflow").subkit;
+    expect(meta).toEqual({
       category: "tenant_write",
       confirm_required: true,
       destructive: true,
     });
   });
 
-  it("leaves tenant_list_workflows as a plain read", () => {
-    const tools = listTenantTools({ allowWrites: true }) as WithMeta[];
-    const list = tools.find((t) => t.name === "tenant_list_workflows");
-    expect(list).toBeDefined();
-    expect(list?._meta?.subkit).toEqual({
+  it("leaves list_workflows as a plain read", () => {
+    const meta = buildConversationToolMeta("tenant_read", "list_workflows").subkit;
+    expect(meta).toEqual({
       category: "tenant_read",
       confirm_required: false,
       destructive: false,
     });
   });
 
-  it("flags revoke_api_key as confirm_required even though not destructive-prefixed", () => {
-    const tools = listTenantTools({ allowWrites: true }) as WithMeta[];
-    const rev = tools.find((t) => t.name === "tenant_revoke_api_key");
-    expect(rev).toBeDefined();
-    expect(rev?._meta?.subkit?.confirm_required).toBe(true);
-    expect(rev?._meta?.subkit?.destructive).toBe(true);
+  it("flags revoke_api_key as confirm_required + destructive", () => {
+    const meta = buildConversationToolMeta("tenant_write", "revoke_api_key").subkit;
+    expect(meta.confirm_required).toBe(true);
+    expect(meta.destructive).toBe(true);
   });
 });
