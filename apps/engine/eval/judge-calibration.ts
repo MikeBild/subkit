@@ -15,18 +15,27 @@
 // pre-release / nightly (see .github/workflows/nightly-eval.yml). Exit 0 when
 // agreement >= AGREEMENT_THRESHOLD, else 1.
 
-// Config overrides MUST be set before any import that reads getConfig().
-process.env.SK_OVERRIDE_LLM_PROVIDER = "anthropic";
+// This runner exercises the REAL preview judge WITHOUT booting the engine, so it
+// must initialise config exactly as the boot does — `await loadConfig()` in
+// main(). Until that runs, config is uninitialised and `readEnv` falls back to
+// bare `process.env`, where only `SK_OVERRIDE_*` (never bare `LLM_PROVIDER`) is
+// set — so `detectConfiguredProvider` reads an empty `LLM_PROVIDER`, resolves to
+// the `gateway` provider, and every verdict comes back `skipped` (0 agreement).
+// Translate a local-dev ANTHROPIC_API_KEY into the path-addressed SK_OVERRIDE_*
+// overlays that loadConfig() merges (CI sets these directly in the OS env).
+process.env.SK_OVERRIDE_LLM_PROVIDER ??= "anthropic";
 if (process.env.ANTHROPIC_API_KEY) {
-  process.env.SK_OVERRIDE_LLM_API_KEY = process.env.ANTHROPIC_API_KEY;
+  process.env.SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY ??= process.env.ANTHROPIC_API_KEY;
 }
 process.env.SK_OVERRIDE_LLM_MODEL ??= "claude-sonnet-4-6";
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { loadConfig } from "../src/config/loader.ts";
 import { judgePreview } from "../src/conversations/preview-judge.ts";
 import { tenants } from "../src/db/schema/index.ts";
 import { createTestDb } from "../src/db/tests/setup.ts";
+import { validateProviderSetup } from "../src/llm/core/model-init.ts";
 
 const AGREEMENT_THRESHOLD = 0.8;
 
@@ -48,6 +57,19 @@ function loadGolden(): GoldenCase[] {
 async function main(): Promise<void> {
   if (!process.env.ANTHROPIC_API_KEY) {
     console.error("judge-calibration: ANTHROPIC_API_KEY is required (real judge, not mock).");
+    process.exit(2);
+  }
+  // Initialise config the way the engine boot does. Without this the judge's
+  // `readEnv` sees an uninitialised config and silently resolves to the
+  // `gateway` provider — every verdict `skipped`, a bogus 0% agreement.
+  await loadConfig();
+  const setup = validateProviderSetup();
+  if (setup.detected !== "anthropic" || !setup.ok) {
+    console.error(
+      `judge-calibration: LLM provider must resolve to a ready anthropic, got ` +
+        `detected=${setup.detected} ok=${setup.ok} missing=${JSON.stringify(setup.missing)}. ` +
+        `Set SK_OVERRIDE_LLM_PROVIDER=anthropic + SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY.`,
+    );
     process.exit(2);
   }
   const cases = loadGolden();
