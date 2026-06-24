@@ -99,19 +99,19 @@ describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
     }
   });
 
-  test("static read tools ride alongside wf_ entries; draft_write tools stay hidden", async () => {
+  test("conversation tools are present alongside wf_ entries; draft_write is hidden on MCP", async () => {
     const client = await connect();
     try {
       const list = await client.listTools();
       const names = new Set(list.tools.map((t) => t.name));
-      // Static tenant_read tools (list_recipes, test_connector) ride in the
-      // live tools/list alongside the dynamic wf_<slug> entries. draft_write
-      // authoring tools (propose_step, save_workflow_draft) are
-      // in-conversation only and must NOT leak into the MCP catalog — see
-      // tenant-tools.ts (a draft_write category returns false from the
-      // exposure gate).
+      // Static/product tools coexist with wf_<slug> entries: list_recipes +
+      // test_connector remain visible alongside the dynamic catalog.
       expect(names.has("list_recipes")).toBe(true);
       expect(names.has("test_connector")).toBe(true);
+      // draft_write authoring tools are conversation-scoped and HIDDEN from
+      // the MCP catalog in every mode (a direct tools/call short-circuits to
+      // not_available_on_surface — see tools-list-disabled.test.ts). They
+      // used to surface here as disabled-badged descriptors.
       expect(names.has("propose_step")).toBe(false);
       expect(names.has("save_workflow_draft")).toBe(false);
     } finally {

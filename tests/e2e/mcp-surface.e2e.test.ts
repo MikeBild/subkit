@@ -1,8 +1,10 @@
-// MCP tenant surface E2E.
+// MCP tool surface E2E.
 //
-// Confirms that a live engine's MCP endpoint advertises the tenant_*
-// tools with populated input schemas and that the `conversation_*`
-// helper set is still present.
+// Confirms that a live engine's MCP endpoint advertises the conversation
+// tools under their bare names with populated input schemas, that the
+// `conversation_*` helper set is present, and that destructive writes go
+// through the unified dispatcher's confirm gate. The legacy `tenant_*`
+// prefix aliases were removed — every tool surfaces under its bare name.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
@@ -12,8 +14,8 @@ const TEST_NOW_MS = getTestNow();
 
 let env: E2EEnv;
 beforeAll(async () => {
-  // The mode-split MCP catalog hides conversation_* and tenant_* from
-  // the default product surface; this suite validates the combined
+  // The mode-split MCP catalog hides conversation tools + tenant writes
+  // from the default product surface; this suite validates the combined
   // authoring+admin surface, so opt in explicitly.
   process.env.SK_MCP_MODE = "admin";
   env = await boot("mcp-surface");
@@ -62,8 +64,8 @@ class McpSession {
   }
 }
 
-describe("MCP tenant tool surface", () => {
-  test("initialize + tools/list returns wf_*, conversation_*, and tenant_* tools", async () => {
+describe("MCP tool surface", () => {
+  test("initialize + tools/list returns conversation_* + bare tools, and NO tenant_* aliases", async () => {
     const session = new McpSession(env);
     await session.call("initialize", {
       protocolVersion: "2024-11-05",
@@ -81,13 +83,17 @@ describe("MCP tenant tool surface", () => {
     for (const n of ["conversation_start", "conversation_append", "conversation_commit"]) {
       expect(names.has(n)).toBe(true);
     }
-    // Must expose the generated read family under tenant_*.
-    const tenantReads = [...names].filter((n) => n.startsWith("tenant_")).length;
-    expect(tenantReads).toBeGreaterThan(3);
+    // Read family surfaces under bare names (admin mode).
+    const bareReads = ["list_workflows", "list_connectors", "get_engine_status"].filter((n) =>
+      names.has(n),
+    ).length;
+    expect(bareReads).toBeGreaterThan(2);
+    // The legacy tenant_* alias surface is gone.
+    expect([...names].filter((n) => n.startsWith("tenant_")).length).toBe(0);
 
-    // Input schema conversion is real — list_workflows has populated
-    // properties via zodToMcpSchema.
-    const listWorkflows = result.tools.find((t) => t.name === "tenant_list_workflows");
+    // Input schema conversion is real — list_workflows has a populated
+    // object schema via zodToMcpSchema.
+    const listWorkflows = result.tools.find((t) => t.name === "list_workflows");
     expect(listWorkflows).toBeDefined();
     const schema = listWorkflows?.inputSchema as {
       type?: string;
@@ -96,7 +102,7 @@ describe("MCP tenant tool surface", () => {
     expect(schema.type).toBe("object");
   }, 60_000);
 
-  test("tenant_* write tools are visible by default and carry _meta.subkit hints", async () => {
+  test("write tools are visible by default and carry _meta.subkit hints", async () => {
     const session = new McpSession(env);
     await session.call("initialize", {
       protocolVersion: "2024-11-05",
@@ -111,26 +117,24 @@ describe("MCP tenant tool surface", () => {
       }>;
     };
     const byName = new Map(result.tools.map((t) => [t.name, t]));
-    // Post-flip (SK_MCP_READ_ONLY unset = writes visible), destructive
-    // tenant_write tools are listed and advertise confirm_required.
-    expect(byName.has("tenant_delete_workflow")).toBe(true);
-    expect(byName.get("tenant_delete_workflow")?._meta?.subkit).toEqual({
+    // Writes visible (SK_MCP_READ_ONLY unset); destructive tenant_write
+    // tools advertise confirm_required via _meta.subkit.
+    expect(byName.has("delete_workflow")).toBe(true);
+    expect(byName.get("delete_workflow")?._meta?.subkit).toEqual({
       category: "tenant_write",
       confirm_required: true,
       destructive: true,
     });
-    expect(byName.get("tenant_list_workflows")?._meta?.subkit).toEqual({
+    expect(byName.get("list_workflows")?._meta?.subkit).toEqual({
       category: "tenant_read",
       confirm_required: false,
       destructive: false,
     });
   }, 30_000);
 
-  test("destructive tenant_* call returns confirm_required, then completes with _meta.sk_confirm", async () => {
-    // Seed a workflow so the delete has a real target. Driving the
-    // full authoring surface (`author_workflow` → `dry_run_workflow` →
-    // `save_workflow_draft`) is out of scope for this e2e, so we use a
-    // throwaway workflow created via the API instead.
+  test("destructive call returns needs_confirm, then completes with _meta.sk_confirm", async () => {
+    // Seed a workflow so the delete has a real target. Driving the full
+    // authoring surface is out of scope here, so create one via the API.
     const createRes = await fetch(`${env.baseUrl}/v1/workflows`, {
       method: "POST",
       headers: {
@@ -162,9 +166,10 @@ describe("MCP tenant tool surface", () => {
       clientInfo: { name: "e2e-test", version: "0.0.0" },
     });
 
-    // First call — expect pending envelope.
+    // First call — expect a needs_confirm envelope from the unified
+    // dispatcher (rendered as isError:false with the ConfirmEnvelope JSON).
     const first = await session.call("tools/call", {
-      name: "tenant_delete_workflow",
+      name: "delete_workflow",
       arguments: { id: workflowId },
     });
     const firstResult = first.result as {
@@ -172,21 +177,21 @@ describe("MCP tenant tool surface", () => {
       content?: Array<{ type: string; text: string }>;
     };
     expect(firstResult.isError).toBeFalsy();
-    const firstEnvelope = JSON.parse(firstResult.content![0]!.text) as {
-      pending?: boolean;
-      confirm_required?: boolean;
-      target?: { tool?: string };
+    const confirm = JSON.parse(firstResult.content![0]!.text) as {
+      tool?: string;
+      policy_mode?: string;
       tool_call_id?: string;
     };
-    expect(firstEnvelope.pending).toBe(true);
-    expect(firstEnvelope.confirm_required).toBe(true);
-    expect(firstEnvelope.target?.tool).toBe("tenant_delete_workflow");
+    expect(confirm.tool).toBe("delete_workflow");
+    expect(confirm.policy_mode).toBe("confirm_before_execution");
+    expect(typeof confirm.tool_call_id).toBe("string");
 
-    // Second call — re-issue with _meta.sk_confirm = true.
+    // Second call — re-issue with _meta.sk_confirm = true (carry the id so
+    // the approval is audited).
     const second = await session.call("tools/call", {
-      name: "tenant_delete_workflow",
+      name: "delete_workflow",
       arguments: { id: workflowId },
-      _meta: { sk_confirm: true },
+      _meta: { sk_confirm: true, sk_confirm_id: confirm.tool_call_id },
     });
     const secondResult = second.result as {
       isError?: boolean;
@@ -198,7 +203,7 @@ describe("MCP tenant tool surface", () => {
     expect(secondPayload).toBeTruthy();
   }, 60_000);
 
-  test("tenant_get_engine_status call returns a JSON summary", async () => {
+  test("get_engine_status call returns a JSON summary", async () => {
     const session = new McpSession(env);
     await session.call("initialize", {
       protocolVersion: "2024-11-05",
@@ -206,7 +211,7 @@ describe("MCP tenant tool surface", () => {
       clientInfo: { name: "e2e-test", version: "0.0.0" },
     });
     const call = await session.call("tools/call", {
-      name: "tenant_get_engine_status",
+      name: "get_engine_status",
       arguments: {},
     });
     const result = call.result as {
