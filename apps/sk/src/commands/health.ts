@@ -190,7 +190,11 @@ export const healthCommand = defineCommand({
     ]);
 
     if (args.json) {
-      printJson({ liveness, status, digest, drift, runtime });
+      // Superset of the original liveness contract: spread `liveness`
+      // (status, db_connected, version) at the top level so existing
+      // machine consumers — and the CLI e2e contract — keep working,
+      // then attach the richer composite sections.
+      printJson({ ...liveness, budget: status, digest, drift, runtime });
       return;
     }
 
