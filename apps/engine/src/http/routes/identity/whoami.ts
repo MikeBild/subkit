@@ -24,8 +24,11 @@ const WhoamiSchema = z
      */
     base_url: z.string().nullable(),
     /**
-     * Effective scopes carried by the calling credential. `null` for
-     * sessions where scopes are not enumerable; `["*"]` for full access.
+     * The RAW scopes the calling credential carries — NOT the enforced
+     * permission set. `null` for sessions where scopes are not enumerable;
+     * `["*"]` for full access. `mcp:*` scopes select the MCP catalog mode
+     * and do not bound REST permissions. For the ENFORCED effective rights
+     * on a resource, call `GET /v1/identity/permissions`.
      */
     scopes: z.array(z.string()).nullable(),
   })

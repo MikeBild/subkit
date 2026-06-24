@@ -32,7 +32,9 @@ import { runPreviewJudgeGate } from "../preview-judge-gate.ts";
 import { computeScopeDriftWarnings } from "../scope-drift.ts";
 import { stampStepTraceFingerprints } from "../step-fingerprint.ts";
 import type { JudgeBreakerState } from "../types.ts";
+import { authorConnectorWriteWarnings } from "./author-build-warnings.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
+import { resolveConversationPrincipal } from "./call-connector.ts";
 import {
   buildDryRunCacheKey,
   buildStepPrefixHash,
@@ -209,6 +211,20 @@ export const dryRunWorkflowTool: ConversationTool = {
         };
       }
     }
+
+    // Author build-time permission pre-flight (Stream 4) — best-effort,
+    // non-blocking. Computed on the static draft; merged into the surfaced
+    // `warnings` below so the author learns at authoring time that a write
+    // step targets a connector they cannot write, instead of failing live.
+    const author = await resolveConversationPrincipal(ctx);
+    const authorPermissionWarnings = author
+      ? await authorConnectorWriteWarnings(
+          ctx.db,
+          author,
+          ctx.tenant_id,
+          steps as unknown as Array<Record<string, unknown>>,
+        )
+      : [];
 
     // Circuit-breaker — same as run-workflow. Three consecutive
     // dry-runs producing the same authoring-bug warning code mean the
@@ -565,6 +581,9 @@ export const dryRunWorkflowTool: ConversationTool = {
       code: (w as { code?: string }).code ?? "unknown",
       message: (w as { message?: string }).message ?? "",
     }));
+    // Author build-time permission warnings (Stream 4), surfaced alongside
+    // the runtime warnings.
+    runWarnings.push(...authorPermissionWarnings);
     recordExecutionDryRun({ tenant_id: ctx.tenant_id, source_kind: "workflow" });
     if (runWarnings.length > 0) {
       recordExecutionWarningsEmitted({

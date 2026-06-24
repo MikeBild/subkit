@@ -2341,6 +2341,22 @@ export class EngineClient {
   listPermissions(): Promise<{ items: string[] }> {
     return this.request("GET", "/v1/rbac/permissions");
   }
+  /** The caller's own effective access level on a resource (currently
+   *  connectors). Self-introspection — no permission required. */
+  getEffectivePermissions(
+    resource_type: string,
+    resource_id: string,
+  ): Promise<{
+    resource_type: string;
+    resource_id: string;
+    level: "none" | "read-only" | "read-write";
+    credential_scopes: unknown;
+  }> {
+    return this.request("GET", "/v1/identity/permissions", undefined, {
+      resource_type,
+      resource_id,
+    });
+  }
   listRoles(
     query: Record<string, string | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[] }> {

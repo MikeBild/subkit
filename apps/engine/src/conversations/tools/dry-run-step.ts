@@ -16,7 +16,9 @@ import type { StepDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
 import { stepFingerprint } from "../step-fingerprint.ts";
+import { authorConnectorWriteWarnings } from "./author-build-warnings.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
+import { resolveConversationPrincipal } from "./call-connector.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { pickProbeRecoveryActions } from "./probe-recovery.ts";
 import { truncateStepPreviewForLlm } from "./truncate.ts";
@@ -102,6 +104,21 @@ export const dryRunStepTool: ConversationTool = {
       code: (w as { code?: string }).code ?? "unknown",
       message: (w as { message?: string }).message ?? "",
     }));
+    // Author build-time permission warning (Stream 4) — non-blocking; warns
+    // when this step writes a connector the author cannot write.
+    const author = await resolveConversationPrincipal(ctx);
+    if (author) {
+      const authorWarnings = await authorConnectorWriteWarnings(ctx.db, author, ctx.tenant_id, [
+        rawStep,
+      ]);
+      runWarnings.push(
+        ...authorWarnings.map((w) => ({
+          step_key: w.step_key ?? args.step_id,
+          code: w.code,
+          message: w.message,
+        })),
+      );
+    }
     recordExecutionDryRun({ tenant_id: ctx.tenant_id, source_kind: "step" });
     if (runWarnings.length > 0) {
       recordExecutionWarningsEmitted({

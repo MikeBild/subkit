@@ -20,7 +20,8 @@ import type { PermissionMode } from "../conversations/tool-policies.ts";
 import type { ToolContext, ToolResult } from "../conversations/tools/index.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
-import { can } from "../rbac/evaluator.ts";
+import { denialDetails, denialHint } from "../rbac/denial.ts";
+import { type ConnectorAccessLevel, can, connectorAccessLevel } from "../rbac/evaluator.ts";
 import {
   ARGS_CONFIRM_ID_KEY,
   isConfirmedRequest,
@@ -238,10 +239,24 @@ export async function dispatchTool(
           reason,
           resource ?? null,
         );
+        let level: ConnectorAccessLevel | undefined;
+        if (resource?.type === "connector") {
+          level = await connectorAccessLevel(
+            deps.db,
+            deps.principal,
+            resource.id,
+            deps.principal.tenant_id,
+          );
+        }
+        const details = denialDetails(decision.detail, level);
+        // The LLM/operator reads `message` — surface the actionable hint,
+        // not the bare `permission_denied:…` code. The machine reason is
+        // recoverable from `details.cause`.
         envelope = {
           status: "error",
           error_code: "policy_denied",
-          message: reason,
+          message: denialHint(decision.detail, level),
+          ...(details ? { details } : {}),
         };
         decisionLabel = "policy_denied";
         rbacDenied = true;
