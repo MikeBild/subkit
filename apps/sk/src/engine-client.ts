@@ -174,6 +174,7 @@ export interface StatsQuery {
   class?: string;
   model?: string;
   flow?: string;
+  user_id?: string;
 }
 
 export interface StatsDurationAgg {
@@ -2967,5 +2968,10 @@ export interface StatusSummary {
   tokens_month: number;
   monthly_budget_tokens: number | null;
   remaining_monthly_budget_tokens: number | null;
+  /** The caller's own figures (null for system_account principals). */
+  tokens_today_user: number | null;
+  tokens_month_user: number | null;
+  user_monthly_budget_tokens: number | null;
+  user_remaining_monthly_budget_tokens: number | null;
   version: string;
 }

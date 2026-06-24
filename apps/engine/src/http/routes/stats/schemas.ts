@@ -198,6 +198,9 @@ export const LlmStatsQuery = BucketWindowQuery.extend({
   model: CsvOrArray,
   flow: CsvOrArray,
   group_by: CsvOrArray,
+  // Narrow to one user. Reading another user (or `group_by=user`) requires
+  // the `stats:read:all` permission; own-usage reads need only `stats:read`.
+  user_id: z.string().uuid().optional(),
 }).openapi("StatsLlmQuery");
 
 const LlmBucket = z.object({

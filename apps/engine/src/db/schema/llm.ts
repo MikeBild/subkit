@@ -117,6 +117,14 @@ export const llmUsage = pgTable(
     latency_ms: integer("latency_ms").notNull().default(0),
     result: text("result").notNull(),
     error: text("error"),
+    // The acting end-user, if any. NULLABLE: scheduled executions, queue
+    // jobs, and proactive self-healing have no user. NO FK (mirrors
+    // audit_log.actor_id) so a user hard-delete never destroys the
+    // append-only financial ledger.
+    user_id: uuid("user_id"),
+    // user | system_account | system (mirrors AuditActorType). Defaults to
+    // 'system' so historical/backfilled rows read as unattributed.
+    actor_type: text("actor_type").notNull().default("system"),
     created_at: timestamps.created_at,
     // month bucket used by the budget accumulator. Stored as a bigint of
     // YYYYMM so we can `sum(total_tokens) where month_bucket = ?` cheaply.
@@ -131,5 +139,25 @@ export const llmUsage = pgTable(
     index("llm_usage_tenant_month_idx").on(t.tenant_id, t.month_bucket),
     index("llm_usage_execution_idx").on(t.tenant_id, t.execution_id),
     index("llm_usage_conversation_idx").on(t.tenant_id, t.conversation_id),
+    // Self/admin per-user report queries. Tenant predicate stays leftmost.
+    index("llm_usage_tenant_user_month_idx").on(t.tenant_id, t.user_id, t.month_bucket),
+    index("llm_usage_tenant_user_created_idx").on(t.tenant_id, t.user_id, t.created_at),
   ],
+);
+
+// Per-user monthly token budget. Kept separate from tenant_llm_settings
+// (which is unique per tenant) so a single user can carry their own cap.
+// `user_id` has NO FK (mirrors llm_usage / audit_log) so user hard-delete
+// never destroys this config. A null `llm_monthly_token_budget` means the
+// user has no explicit per-user cap (only the tenant budget applies).
+export const userLlmSettings = pgTable(
+  "user_llm_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    user_id: uuid("user_id").notNull(),
+    llm_monthly_token_budget: integer("llm_monthly_token_budget"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("user_llm_settings_tenant_user_uq").on(t.tenant_id, t.user_id)],
 );

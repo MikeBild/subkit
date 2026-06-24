@@ -104,13 +104,14 @@ describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
     try {
       const list = await client.listTools();
       const names = new Set(list.tools.map((t) => t.name));
-      // Static tenant_read tools (e.g. list_recipes) ride in the live
-      // tools/list alongside the dynamic wf_<slug> entries. draft_write
+      // Static tenant_read tools (list_recipes, test_connector) ride in the
+      // live tools/list alongside the dynamic wf_<slug> entries. draft_write
       // authoring tools (propose_step, save_workflow_draft) are
       // in-conversation only and must NOT leak into the MCP catalog — see
       // tenant-tools.ts (a draft_write category returns false from the
       // exposure gate).
       expect(names.has("list_recipes")).toBe(true);
+      expect(names.has("test_connector")).toBe(true);
       expect(names.has("propose_step")).toBe(false);
       expect(names.has("save_workflow_draft")).toBe(false);
     } finally {

@@ -23,6 +23,7 @@ import {
   files,
 } from "../db/schema/index.ts";
 import {
+  actorFields,
   checkAndDecrement,
   checkBudget,
   contextCapFor,
@@ -350,14 +351,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     engineClient: new EngineClient({
       tenant_id: p.tenant_id,
       actor_id: p.actor_id,
-      // The loop is driven by HTTP/MCP requests whose principal may be a
-      // human user (session) or a system_account (API key). We don't
-      // plumb the principal kind through RunLoopParams yet — default to
-      // `user` when actor_id is set (chat sessions), `system` otherwise.
-      // API-key driven conversations get the correct "system_account"
-      // actor_type once the principal is threaded through, tracked as a
-      // follow-up.
-      actor_type: p.actor_id ? "user" : "system",
+      // Single-source the attribution class from the resolved principal:
+      // a user session → "user", an API-key (system_account) → "system_account",
+      // and an absent principal (resume / chat-adapter paths) → "system".
+      actor_type: actorFields(p.principal).actor_type,
       db: p.db,
     }),
     getDraft: () => draft,
@@ -849,15 +846,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     });
   }
 
+  const actor = actorFields(p.principal);
   try {
     await checkBudget(p.tenant_id, estimated, route.monthly_budget, p.db);
-    const verdict = await checkAndDecrement(p.tenant_id, estimated, p.db);
+    const verdict = await checkAndDecrement(p.tenant_id, estimated, p.db, actor.user_id);
     if (!verdict.ok) {
       throw new LlmQuotaExhausted("llm_quota_exhausted", {
         used: verdict.used,
         projected_tokens: verdict.projected_tokens,
         budget: verdict.budget,
         remaining: verdict.remaining,
+        scope: verdict.scope ?? "tenant",
       });
     }
   } catch (err) {
@@ -873,6 +872,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           result: "quota_exhausted",
           error: "llm_quota_exhausted",
           conversation_id: p.conversation_id,
+          ...actor,
         },
         p.db,
       );
@@ -1525,6 +1525,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               latency_ms,
               result: "success",
               conversation_id: p.conversation_id,
+              ...actorFields(p.principal),
             },
             p.db,
           );
@@ -1781,6 +1782,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           result: "error",
           error: msg,
           conversation_id: p.conversation_id,
+          ...actorFields(p.principal),
         },
         p.db,
       );
@@ -1830,6 +1832,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               result: "error",
               error: fbMsg,
               conversation_id: p.conversation_id,
+              ...actorFields(p.principal),
             },
             p.db,
           );

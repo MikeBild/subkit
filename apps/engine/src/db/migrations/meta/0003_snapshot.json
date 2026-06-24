@@ -1,5 +1,5 @@
 {
-  "id": "4d0dde03-5970-494b-a77c-30d1f5aeec1c",
+  "id": "52d7802d-f56c-4b42-b1db-08142bdf3b2e",
   "prevId": "b2dde622-a569-4529-aec3-d21ea5ad2e22",
   "version": "7",
   "dialect": "postgresql",
@@ -4914,18 +4914,6 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
-        },
-        "execution_id": {
-          "name": "execution_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -4967,27 +4955,6 @@
             },
             {
               "expression": "month_bucket",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "external_call_metering_execution_idx": {
-          "name": "external_call_metering_execution_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "execution_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -6989,6 +6956,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'system'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -7001,18 +6981,6 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
-        },
-        "execution_id": {
-          "name": "execution_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -7058,8 +7026,8 @@
           "method": "btree",
           "with": {}
         },
-        "llm_usage_execution_idx": {
-          "name": "llm_usage_execution_idx",
+        "llm_usage_tenant_user_month_idx": {
+          "name": "llm_usage_tenant_user_month_idx",
           "columns": [
             {
               "expression": "tenant_id",
@@ -7068,7 +7036,13 @@
               "nulls": "last"
             },
             {
-              "expression": "execution_id",
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "month_bucket",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -7079,8 +7053,8 @@
           "method": "btree",
           "with": {}
         },
-        "llm_usage_conversation_idx": {
-          "name": "llm_usage_conversation_idx",
+        "llm_usage_tenant_user_created_idx": {
+          "name": "llm_usage_tenant_user_created_idx",
           "columns": [
             {
               "expression": "tenant_id",
@@ -7089,7 +7063,13 @@
               "nulls": "last"
             },
             {
-              "expression": "conversation_id",
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -7357,6 +7337,90 @@
         "tenant_llm_settings_tenant_id_tenants_id_fk": {
           "name": "tenant_llm_settings_tenant_id_tenants_id_fk",
           "tableFrom": "tenant_llm_settings",
+          "tableTo": "tenants",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_llm_settings": {
+      "name": "user_llm_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "llm_monthly_token_budget": {
+          "name": "llm_monthly_token_budget",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "user_llm_settings_tenant_user_uq": {
+          "name": "user_llm_settings_tenant_user_uq",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "user_llm_settings_tenant_id_tenants_id_fk": {
+          "name": "user_llm_settings_tenant_id_tenants_id_fk",
+          "tableFrom": "user_llm_settings",
           "tableTo": "tenants",
           "columnsFrom": ["tenant_id"],
           "columnsTo": ["id"],
