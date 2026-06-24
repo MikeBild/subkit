@@ -65,7 +65,6 @@ import {
   formatKnowledgeChunk,
   formatLatestPreview,
   formatOperatorQuirks,
-  formatProbeShapeExamples,
   formatSkill,
   formatSkillIndex,
   formatUserMemory,
@@ -79,11 +78,11 @@ import {
   type InteractionLogEntry,
   type LatestPreviewEntry,
   loadChunks,
+  loadConnectorAuthoringAids,
   loadInteractionLog,
   loadKnowledgeChunks,
   loadLatestPreview,
   loadPriorWorkflows,
-  loadProbeShapeExamples,
   loadProposedCandidates,
   loadTopRecipeBodies,
   logRecipeBodyFallbacks,
@@ -372,18 +371,10 @@ export async function assembleEnhancedPrompt(
   // workflow-authoring mode: that is the moment the model writes
   // request paths and transforms, and the shapes must reach it BEFORE
   // it authors — not as an after-the-fact validation finding.
-  let probeShapeExamplesBlock: string | null = null;
-  if (
-    p.flow === "converse" &&
-    p.authoring_hint?.mode === "workflow" &&
-    p.authoring_connector_ids &&
-    p.authoring_connector_ids.length > 0
-  ) {
-    const shapeExamples = await loadProbeShapeExamples(p.tenant_id, p.authoring_connector_ids, db);
-    if (shapeExamples.length > 0) {
-      probeShapeExamplesBlock = formatProbeShapeExamples(shapeExamples);
-    }
-  }
+  // Workflow-authoring connector aids: OPT-E's known-operations block + recorded
+  // endpoint samples. Both `let` so the budget ladder can shed them under
+  // pressure. (Loader gates + logs; see loaders.ts.)
+  let { probeShapeExamplesBlock, connectorSchemaBlock } = await loadConnectorAuthoringAids(p, db);
 
   // Operator quirks for the in-scope connector. Loaded once per
   // assembly; the picker `selectOperatorQuirkCategories` reads the
@@ -624,6 +615,9 @@ export async function assembleEnhancedPrompt(
     // the model reads "what the endpoints return" → "what the last
     // dry-run actually produced" together, in the same `$scope.<id>.data…`
     // addressing vocabulary.
+    // OPT-E: known operations (what CAN be called) just above the recorded
+    // samples (what calls already returned) — same authoring vocabulary.
+    if (connectorSchemaBlock) sections.push(connectorSchemaBlock);
     if (probeShapeExamplesBlock) sections.push(probeShapeExamplesBlock);
     if (latestPreviewEntries.length > 0) {
       sections.push(formatLatestPreview(latestPreviewEntries));
@@ -691,6 +685,13 @@ export async function assembleEnhancedPrompt(
     } else if (failures.length > 0) {
       failures = [];
       trimmed.push("failures");
+    } else if (connectorSchemaBlock) {
+      // OPT-E connector-operations summary drops FIRST among the authoring
+      // aids: it is the most cheaply re-derivable (one
+      // discover_connector_endpoints call re-warms the exact same index), so
+      // it is the first thing to shed under budget pressure.
+      connectorSchemaBlock = null;
+      trimmed.push("connector_schema_summary");
     } else if (probeShapeExamplesBlock) {
       // Recorded endpoint samples drop EARLY — well before any skill
       // section. They are a grounding aid the model can re-derive on

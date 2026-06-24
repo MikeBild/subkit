@@ -106,30 +106,30 @@ Chat platform integrations
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `platform.googlechat.project_id` | string | `""` | global | no | no |  |
-| `platform.slack.client_id` | string | `""` | global | no | no |  |
-| `platform.slack.client_secret` | string | `""` | global | yes | no |  |
-| `platform.slack.signing_secret` | string | `""` | global | yes | no |  |
-| `platform.teams.app_id` | string | `""` | global | no | no |  |
-| `platform.teams.app_password` | string | `""` | global | yes | no |  |
+| `platform.googlechat.project_id` | string | `""` | global | no | yes |  |
+| `platform.slack.client_id` | string | `""` | global | no | yes |  |
+| `platform.slack.client_secret` | string | `""` | global | yes | yes |  |
+| `platform.slack.signing_secret` | string | `""` | global | yes | yes |  |
+| `platform.teams.app_id` | string | `""` | global | no | yes |  |
+| `platform.teams.app_password` | string | `""` | global | yes | yes |  |
 
 ## storage
 Storage backends
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `storage.files.backend` | enum("local" \| "s3") | `"local"` | global | no | no |  |
-| `storage.files.bucket` | string | `""` | global | no | no | S3 bucket name when backend=s3. Ignored when backend=local. |
-| `storage.files.dir` | string | `""` | global | no | no | Local-disk root when backend=local. Ignored when backend=s3. |
+| `storage.files.backend` | enum("local" \| "s3") | `"local"` | global | no | yes |  |
+| `storage.files.bucket` | string | `""` | global | no | yes | S3 bucket name when backend=s3. Ignored when backend=local. |
+| `storage.files.dir` | string | `""` | global | no | yes | Local-disk root when backend=local. Ignored when backend=s3. |
 | `storage.offload.access_key` | string | `""` | global | yes | no |  |
 | `storage.offload.bucket` | string | `""` | global | no | no | S3 bucket for execution-payload offload; empty disables offload |
 | `storage.offload.endpoint` | string | `""` | global | no | no | Optional S3 endpoint override (MinIO, R2, etc.) |
 | `storage.offload.key_prefix` | string | `"offload"` | global | no | no |  |
 | `storage.offload.region` | string | `""` | global | no | no |  |
 | `storage.offload.secret_key` | string | `""` | global | yes | no |  |
-| `storage.s3.access_key` | string | `""` | global | yes | no |  |
-| `storage.s3.endpoint` | string | `""` | global | no | no |  |
-| `storage.s3.secret_key` | string | `""` | global | yes | no |  |
+| `storage.s3.access_key` | string | `""` | global | yes | yes |  |
+| `storage.s3.endpoint` | string | `""` | global | no | yes |  |
+| `storage.s3.secret_key` | string | `""` | global | yes | yes |  |
 
 ## observability
 Observability
@@ -172,7 +172,7 @@ Error ring buffer
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `errors.ring_size` | number | `100` | global | no | no |  |
+| `errors.ring_size` | number | `100` | global | no | yes |  |
 
 ## spec
 Spec fetcher

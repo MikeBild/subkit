@@ -41,7 +41,7 @@
 // enumerated lifecycle events in docs/19.
 
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { audit, auditAwait } from "../audit/audit.ts";
+import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
@@ -67,7 +67,12 @@ import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from ".
 import { runFixtureDryRun } from "./fixture-runner.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
-import { candidateProposal, findMatchingTerminalEndpointCandidate } from "./terminal-dedup.ts";
+import {
+  candidateDriftFingerprint,
+  candidateProposal,
+  findMatchingTerminalEndpointCandidate,
+  signalFingerprint,
+} from "./terminal-dedup.ts";
 import type { DriftSignal, DryRunStep, WorkflowRepairJob } from "./types.ts";
 
 export interface SelfHealingResult {
@@ -215,10 +220,22 @@ async function refreshOrSkipExistingCandidate(
   const proposal = diff.proposal as PatchProposal | undefined;
   if (!proposal) return null;
 
+  // `existing` is already guaranteed (by findActiveEndpointCandidate) to be
+  // the candidate that heals THIS drift's fingerprint — a genuinely new drift
+  // shape on the same endpoint never reaches here, so this dedup can
+  // never mask new breakage.
   const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);
 
   if (existing.status === "applied") {
-    logger.info({
+    // an already-healed endpoint re-diffs the same two schema_versions
+    // rows on EVERY proactive scan (the applied patch heals the workflow but
+    // does not rewrite the observed schema), so this short-circuit fires
+    // hourly per healed endpoint while the drift is UNCHANGED (the fingerprint
+    // guard above already let genuinely new drift through). That is the dedup
+    // working as designed — an expected, idempotent, non-actionable outcome —
+    // so it logs at DEBUG, not INFO: at INFO it flooded the operator log
+    // (24×/day) and buried signals that actually need attention.
+    logger.debug({
       module: "self-healing",
       action: "patch.already_applied",
       msg: "endpoint already healed by an applied patch — skipping re-proposal",
@@ -325,8 +342,22 @@ async function refreshOrSkipExistingCandidate(
  */
 async function findActiveEndpointCandidate(
   exec: Executor,
-  params: { tenant_id: string; workflow_id: string; connector_id: string; endpoint_key: string },
+  params: {
+    tenant_id: string;
+    workflow_id: string;
+    connector_id: string;
+    endpoint_key: string;
+    signal: DriftSignal;
+  },
 ) {
+  // return the active candidate that heals THIS drift's fingerprint,
+  // not merely the most-recent candidate on the endpoint. The pre-fix
+  // single-row lookup masked new breakage: when an endpoint had an applied
+  // candidate for drift A and a genuinely different drift B appeared, the
+  // lookup returned A and the `status==="applied"` short-circuit skipped B —
+  // so B was never proposed or healed. Matching by fingerprint (the same
+  // canonical form findMatchingTerminalEndpointCandidate uses) lets a new
+  // drift fall through to a fresh proposal while the same drift still dedups.
   const rows = await exec
     .select()
     .from(patchCandidates)
@@ -340,8 +371,16 @@ async function findActiveEndpointCandidate(
       ),
     )
     .orderBy(desc(patchCandidates.created_at))
-    .limit(1);
-  return rows[0] ?? null;
+    .limit(10);
+  const fingerprint = signalFingerprint(params.signal);
+  const match = rows.find((r) => candidateDriftFingerprint(r) === fingerprint);
+  if (match) return match;
+  // No fingerprint match. A legacy candidate (created before drift_signal was
+  // stored) carries no fingerprint to compare — dedup against it to preserve
+  // the old endpoint-only behaviour and avoid re-proposal flood for those
+  // rows. If every active candidate is fingerprinted and none match, this is
+  // a NEW drift → return null so it gets a fresh proposal.
+  return rows.find((r) => candidateDriftFingerprint(r) === null) ?? null;
 }
 
 /**
@@ -379,6 +418,7 @@ export async function processDriftSignal(
       workflow_id: ctx.workflow_id,
       connector_id: ctx.connector_id,
       endpoint_key: ctx.endpoint_key,
+      signal,
     });
     if (existing) {
       const dedup = await refreshOrSkipExistingCandidate(db, existing, ctx, options);
@@ -868,111 +908,4 @@ function emptyResult(reason: string): SelfHealingResult {
     auto_applied: false,
     reason,
   };
-}
-
-/**
- * Convenience helper used by reviewer HTTP routes. Applies a pending
- * candidate manually and writes the `patch_candidate.approved` audit
- * row. Returns the new workflow_versions id, or null if the candidate
- * could not be found.
- */
-export async function approvePatchCandidate(
-  params: { tenant_id: string; candidate_id: string; actor_id: string | null },
-  exec?: Db,
-): Promise<string | null> {
-  const db = exec ?? getDb();
-  return db.transaction(async (tx) => {
-    const rows = await tx
-      .select()
-      .from(patchCandidates)
-      .where(
-        and(
-          eq(patchCandidates.tenant_id, params.tenant_id),
-          eq(patchCandidates.id, params.candidate_id),
-        ),
-      )
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    if (row.status !== "proposed") return null;
-
-    const diff = (row.diff ?? {}) as Record<string, unknown>;
-    const proposalRaw = diff.proposal as PatchProposal | undefined;
-    if (!proposalRaw) return null;
-
-    const applied = await autoApplyPatch(tx, {
-      tenant_id: params.tenant_id,
-      workflow_id: row.workflow_id,
-      candidate_id: row.id,
-      proposal: proposalRaw,
-    });
-    await auditAwait(
-      {
-        tenant_id: params.tenant_id,
-        actor_type: params.actor_id ? "user" : "system",
-        actor_id: params.actor_id,
-        action: AuditAction.PATCH_CANDIDATE_APPROVED,
-        resource_type: "patch_candidate",
-        resource_id: row.id,
-        result: "success",
-        metadata: { workflow_id: row.workflow_id, new_workflow_version_id: applied },
-      },
-      tx,
-    );
-    recordPatchCandidate({ classification: "manual", decision: "approved" });
-    log.selfHealing.patch.applied({
-      candidate_id: row.id,
-      workflow_id: row.workflow_id,
-      new_workflow_version_id: applied,
-      actor_id: params.actor_id,
-      decision: "manual_approve",
-    });
-    return applied;
-  });
-}
-
-export async function rejectPatchCandidate(
-  params: {
-    tenant_id: string;
-    candidate_id: string;
-    actor_id: string | null;
-    reason?: string;
-  },
-  exec?: Db,
-): Promise<boolean> {
-  const db = exec ?? getDb();
-  return db.transaction(async (tx) => {
-    const rows = await tx
-      .update(patchCandidates)
-      .set({ status: "rejected", updated_at: new Date() })
-      .where(
-        and(
-          eq(patchCandidates.tenant_id, params.tenant_id),
-          eq(patchCandidates.id, params.candidate_id),
-          eq(patchCandidates.status, "proposed"),
-        ),
-      )
-      .returning();
-    if (rows.length === 0) return false;
-    audit(
-      {
-        tenant_id: params.tenant_id,
-        actor_type: params.actor_id ? "user" : "system",
-        actor_id: params.actor_id,
-        action: AuditAction.PATCH_CANDIDATE_REJECTED,
-        resource_type: "patch_candidate",
-        resource_id: params.candidate_id,
-        result: "success",
-        ...(params.reason ? { reason: params.reason } : {}),
-      },
-      tx,
-    );
-    recordPatchCandidate({ classification: "manual", decision: "rejected" });
-    log.selfHealing.patch.rejected({
-      candidate_id: params.candidate_id,
-      actor_id: params.actor_id,
-      reason: params.reason ?? null,
-    });
-    return true;
-  });
 }

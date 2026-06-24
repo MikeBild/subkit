@@ -239,8 +239,19 @@ async function executeSyntheticRun(
 
   // Strip the marker before handing the args to runExecution so its
   // input contract stays clean.
-  const { __policy_confirmed: _confirmed, ...workflowInput } = rawArgs;
+  const { __policy_confirmed: confirmed, ...workflowInput } = rawArgs;
   const inputForRun = Object.keys(workflowInput).length > 0 ? workflowInput : null;
+
+  // HOLD write-classified steps unless this run was explicitly
+  // confirmed. In dev the policy resolves to `no_confirm`, so without this a
+  // chat `wf_<slug>` would dispatch real sends silently — the exact way the
+  // MCP `wf_<slug>` mailed stale snapshots during the corsica authoring
+  // session. A confirmed run (`__policy_confirmed: true`, set when the user
+  // approves the pending envelope) IS the explicit "send for real" signal;
+  // an unconfirmed dev run resolves + holds the writes so verification is
+  // side-effect-safe. Keeps this surface consistent with `run_workflow` and
+  // the MCP `wf_<slug>` hold-by-default contract.
+  const executeWrites = confirmed === true;
 
   ctx.onLog?.("info", `running workflow ${entry.slug} in env=dev`);
   try {
@@ -254,6 +265,7 @@ async function executeSyntheticRun(
         trace_id: null,
         principal,
         execution_mode: "dev",
+        ...(executeWrites ? {} : { hold_writes: true }),
       },
     });
     // Mirror run-workflow.ts:306-329 per-step log emission so the user

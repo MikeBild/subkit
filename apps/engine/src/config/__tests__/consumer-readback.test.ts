@@ -18,6 +18,7 @@ import {
   loadConfig,
   setConfigKey,
 } from "../loader.ts";
+import { findLeafByPath } from "../walk.ts";
 
 let dir: string;
 
@@ -89,7 +90,7 @@ describe("consumer read-back per subsystem", () => {
     expect(detectConfiguredProvider()).toBe("anthropic");
   });
 
-  test("F1: generic llm.api_key is mirrored into the active provider's leaf", async () => {
+  test("generic llm.api_key is mirrored into the active provider's leaf", async () => {
     const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
     // Mirrors `sk init --llm-provider anthropic --llm-api-key …`, which writes
     // ONLY the generic leaves. The provider-specific leaf the resolver reads
@@ -102,15 +103,50 @@ describe("consumer read-back per subsystem", () => {
     expect(globalLlmStatus().anthropic_key_set).toBe(true);
   });
 
-  test("F1: an explicit provider-specific key is never overwritten by the generic one", async () => {
-    await setConfigKey("llm.providers.anthropic.api_key", "explicit-key", { force: true });
+  test("editing generic llm.api_key updates the active provider's effective key", async () => {
+    await setConfigKey("llm.providers.anthropic.api_key", "old-provider-key", { force: true });
     await setConfigKey("llm.provider", "anthropic", { force: true });
-    await setConfigKey("llm.api_key", "generic-key", { force: true });
+    await setConfigKey("llm.api_key", "fresh-primary-key", { force: true });
 
-    expect(getConfig().llm.providers.anthropic.api_key).toBe("explicit-key");
+    expect(getConfig().llm.providers.anthropic.api_key).toBe("fresh-primary-key");
   });
 
-  test("A1: switching provider does not leak the previous provider's generic key", async () => {
+  test("clearing generic llm.api_key clears the active provider's effective key", async () => {
+    await setConfigKey("llm.providers.anthropic.api_key", "old-provider-key", { force: true });
+    await setConfigKey("llm.provider", "anthropic", { force: true });
+    await setConfigKey("llm.api_key", "", { force: true });
+
+    expect(getConfig().llm.providers.anthropic.api_key).toBe("");
+  });
+
+  test("tenant generic llm.api_key updates the tenant active provider leaf", async () => {
+    await setConfigKey("llm.provider", "anthropic", { tenantId: "tenant-a", force: true });
+    await setConfigKey("llm.providers.anthropic.api_key", "old-tenant-key", {
+      tenantId: "tenant-a",
+      force: true,
+    });
+    await setConfigKey("llm.api_key", "fresh-tenant-key", {
+      tenantId: "tenant-a",
+      force: true,
+    });
+
+    expect(getConfig("tenant-a").llm.api_key).toBe("fresh-tenant-key");
+    expect(getConfig("tenant-a").llm.providers.anthropic.api_key).toBe("fresh-tenant-key");
+    expect(getConfig().llm.providers.anthropic.api_key).toBe("");
+  });
+
+  test("tenant provider switch does not leak the previous provider key", async () => {
+    await setConfigKey("llm.provider", "anthropic", { tenantId: "tenant-a", force: true });
+    await setConfigKey("llm.api_key", "tenant-ant-key", { tenantId: "tenant-a", force: true });
+
+    await setConfigKey("llm.provider", "openai", { tenantId: "tenant-a", force: true });
+
+    expect(getConfig("tenant-a").llm.api_key).toBe("");
+    expect(getConfig("tenant-a").llm.providers.openai.api_key).toBe("");
+    expect(getConfig("tenant-a").llm.providers.anthropic.api_key).toBe("tenant-ant-key");
+  });
+
+  test("switching provider does not leak the previous provider's generic key", async () => {
     // Bootstrap anthropic with a generic key → mirrored to the anthropic leaf.
     await setConfigKey("llm.provider", "anthropic", { force: true });
     await setConfigKey("llm.api_key", "ant-key", { force: true });
@@ -240,6 +276,28 @@ describe("consumer read-back per subsystem", () => {
     expect(cfg!.region).toBe("eu-central-1");
     expect(cfg!.accessKey).toBe("ak");
     expect(cfg!.secretKey).toBe("sk");
+  });
+
+  test("cached process-wide settings are marked as restart-required", () => {
+    const restartRequired = [
+      "storage.files.backend",
+      "storage.files.dir",
+      "storage.files.bucket",
+      "storage.s3.endpoint",
+      "storage.s3.access_key",
+      "storage.s3.secret_key",
+      "platform.slack.signing_secret",
+      "platform.slack.client_id",
+      "platform.slack.client_secret",
+      "platform.teams.app_id",
+      "platform.teams.app_password",
+      "platform.googlechat.project_id",
+      "errors.ring_size",
+    ];
+
+    for (const path of restartRequired) {
+      expect(findLeafByPath(path)?.meta.requiresRestart).toBe(true);
+    }
   });
 
   test("read sampling proves consumers actually re-read after a write", async () => {

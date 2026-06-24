@@ -24,6 +24,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 import { compareLiveAuthoringReports } from "./live-benchmark.ts";
 import {
   buildLiveReport,
@@ -46,6 +47,7 @@ interface CliArgs {
   engine_url: string;
   api_key: string;
   scenarios: string[] | null;
+  scenarios_file: string | null;
   out: string;
   baseline: string | null;
 }
@@ -54,9 +56,11 @@ function usage(): never {
   console.error(
     [
       "Usage: bun run apps/engine/eval/live-authoring.ts --engine-url <url> --api-key <key>",
-      "         [--scenario <slug>[,<slug>…]] [--out <report.json>] [--baseline <report.json>]",
+      "         [--scenario <slug>[,<slug>…]] [--scenarios-file <scenarios.json>]",
+      "         [--out <report.json>] [--baseline <report.json>]",
       "",
       `Scenarios: ${LIVE_SCENARIOS.map((s) => s.slug).join(", ")}`,
+      "  (--scenarios-file merges local-only scenarios; same JSON shape as LIVE_SCENARIOS entries)",
       "",
       "Env fallbacks: SK_ENGINE_URL, SK_API_KEY. No .env file is ever read.",
     ].join("\n"),
@@ -68,6 +72,7 @@ function parseArgs(argv: string[]): CliArgs {
   let engine_url = process.env.SK_ENGINE_URL ?? "";
   let api_key = process.env.SK_API_KEY ?? "";
   let scenarios: string[] | null = null;
+  let scenarios_file: string | null = null;
   let out = DEFAULT_OUT;
   let baseline: string | null = null;
   for (let i = 0; i < argv.length; i++) {
@@ -85,13 +90,57 @@ function parseArgs(argv: string[]): CliArgs {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+    else if (arg === "--scenarios-file") scenarios_file = next();
     else if (arg === "--out") out = next();
     else if (arg === "--baseline") baseline = next();
     else if (arg === "--help" || arg === "-h") usage();
     else usage();
   }
   if (!engine_url || !api_key) usage();
-  return { engine_url: engine_url.replace(/\/+$/, ""), api_key, scenarios, out, baseline };
+  return {
+    engine_url: engine_url.replace(/\/+$/, ""),
+    api_key,
+    scenarios,
+    scenarios_file,
+    out,
+    baseline,
+  };
+}
+
+// Local-only scenario file (`--scenarios-file`). Lets a gitignored benchmark
+// (e.g. a keyed connector against real sites) add scenarios WITHOUT polluting
+// the committed `LIVE_SCENARIOS` gate. Validated at this CLI boundary; entries
+// merge into the candidate set and are otherwise scored identically.
+const ContentCheckSchema = z.object({
+  name: z.string(),
+  pattern: z.string(),
+  flags: z.string().optional(),
+});
+const ScenarioFileEntrySchema = z.object({
+  slug: z.string().min(1),
+  goal: z.string().min(1),
+  follow_up_turns: z.array(z.string().min(1)).optional(),
+  connectors: z.array(z.string()),
+  expect_judge_block: z.boolean(),
+  content_checks: z.array(ContentCheckSchema),
+  content_source: z.enum(["envelope", "final_output"]).optional(),
+});
+const ScenarioFileSchema = z.array(ScenarioFileEntrySchema);
+
+function loadScenariosFile(path: string): LiveScenarioSpec[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    console.error(`--scenarios-file: cannot read/parse ${path}: ${(e as Error).message}`);
+    process.exit(2);
+  }
+  const parsed = ScenarioFileSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.error(`--scenarios-file: invalid scenario file ${path}:\n${parsed.error.message}`);
+    process.exit(2);
+  }
+  return parsed.data;
 }
 
 interface TurnEventLike {
@@ -147,7 +196,6 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
         title: `eval-live · ${spec.slug}`,
       }),
     });
-    const wall_ms = Date.now() - started;
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       return {
@@ -155,33 +203,67 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
         tool_calls: 0,
         results: [],
         status: "error",
-        wall_ms,
+        wall_ms: Date.now() - started,
         error: `POST /v1/conversations → ${res.status}: ${body.slice(0, 300)}`,
       };
     }
-    const outcome = (await res.json()) as {
+    let outcome = (await res.json()) as {
       conversation?: { id?: string };
       events?: TurnEventLike[];
       status?: string;
     };
+    const conversationId = outcome.conversation?.id;
+
+    // Multi-turn: append each follow-up to the SAME conversation, in order.
+    // Exercises iterative authoring (turn 2+). The final outcome/status is the
+    // last turn's; tool calls accumulate across turns (read from the detail
+    // below). A failed append surfaces as an error observation.
+    let tokensAcrossTurns = projectEvents(outcome.events ?? []).tokens;
+    if (conversationId && spec.follow_up_turns && spec.follow_up_turns.length > 0) {
+      for (const turn of spec.follow_up_turns) {
+        const turnRes = await engineFetch(args, `/v1/conversations/${conversationId}/messages`, {
+          method: "POST",
+          body: JSON.stringify({ message: turn, permission_mode: "auto" }),
+        });
+        if (!turnRes.ok) {
+          const body = await turnRes.text().catch(() => "");
+          return {
+            scenario: spec.slug,
+            tool_calls: 0,
+            results: [],
+            status: "error",
+            wall_ms: Date.now() - started,
+            error: `POST …/messages → ${turnRes.status}: ${body.slice(0, 300)}`,
+          };
+        }
+        outcome = (await turnRes.json()) as typeof outcome;
+        const t = projectEvents(outcome.events ?? []).tokens;
+        if (t !== undefined) tokensAcrossTurns = (tokensAcrossTurns ?? 0) + t;
+      }
+    }
+
+    const wall_ms = Date.now() - started;
     let projected = projectEvents(outcome.events ?? []);
 
-    // Fallback: some surfaces omit tool frames from the outcome events —
-    // re-read the persisted conversation detail (messages + tool_calls).
-    if (projected.tool_calls === 0 && outcome.conversation?.id) {
-      const detailRes = await engineFetch(args, `/v1/conversations/${outcome.conversation.id}`);
+    // Read the persisted conversation detail — for a multi-turn run it carries
+    // the FULL tool-call history across every turn (the per-turn events only
+    // cover the last turn). Single-turn runs also benefit when a surface omits
+    // tool frames from the outcome events.
+    if (conversationId && (projected.tool_calls === 0 || (spec.follow_up_turns?.length ?? 0) > 0)) {
+      const detailRes = await engineFetch(args, `/v1/conversations/${conversationId}`);
       if (detailRes.ok) {
         const detail = (await detailRes.json()) as {
           tool_calls?: Array<{ tool?: string; output?: unknown }>;
         };
         const calls = detail.tool_calls ?? [];
-        projected = {
-          tool_calls: calls.length,
-          results: calls
-            .filter((c): c is { tool: string; output: unknown } => typeof c.tool === "string")
-            .map((c) => ({ tool: c.tool, output: c.output })),
-          ...(projected.tokens !== undefined ? { tokens: projected.tokens } : {}),
-        };
+        if (calls.length > 0) {
+          projected = {
+            tool_calls: calls.length,
+            results: calls
+              .filter((c): c is { tool: string; output: unknown } => typeof c.tool === "string")
+              .map((c) => ({ tool: c.tool, output: c.output })),
+          };
+        }
       }
     }
 
@@ -191,7 +273,7 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
       results: projected.results,
       status: outcome.status ?? "unknown",
       wall_ms,
-      ...(projected.tokens !== undefined ? { tokens: projected.tokens } : {}),
+      ...(tokensAcrossTurns !== undefined ? { tokens: tokensAcrossTurns } : {}),
     };
   } catch (err) {
     return {
@@ -207,11 +289,19 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  // Committed gate scenarios + any local-only ones (`--scenarios-file`). A
+  // local entry with a slug already in LIVE_SCENARIOS overrides the committed
+  // one (lets a benchmark pin a harder variant of a named scenario).
+  const fileScenarios = args.scenarios_file ? loadScenariosFile(args.scenarios_file) : [];
+  const candidates: LiveScenarioSpec[] = [
+    ...LIVE_SCENARIOS.filter((s) => !fileScenarios.some((f) => f.slug === s.slug)),
+    ...fileScenarios,
+  ];
   const specs = args.scenarios
-    ? LIVE_SCENARIOS.filter((s) => args.scenarios?.includes(s.slug))
-    : LIVE_SCENARIOS;
+    ? candidates.filter((s) => args.scenarios?.includes(s.slug))
+    : candidates;
   if (args.scenarios && specs.length !== args.scenarios.length) {
-    const known = new Set(LIVE_SCENARIOS.map((s) => s.slug));
+    const known = new Set(candidates.map((s) => s.slug));
     console.error(`unknown scenario(s): ${args.scenarios.filter((s) => !known.has(s)).join(", ")}`);
     usage();
   }
@@ -220,9 +310,16 @@ async function main(): Promise<void> {
   console.log(`live-authoring eval → ${args.engine_url} (${specs.length} scenario(s))\n`);
 
   const scores = [];
+  // Raw per-scenario observations (the actual tool outputs the model
+  // produced), dumped alongside the report. This is the ground truth for the
+  // evidence process: the scored row tells you PASS/FAIL, this file tells you
+  // WHY — e.g. whether the rendered output really is a markdown table, or
+  // whether a content-check failure is a measurement artifact vs a real defect.
+  const observations: ScenarioObservation[] = [];
   for (const spec of specs) {
     console.log(`▶ ${spec.slug}`);
     const obs = await runScenario(args, spec);
+    observations.push(obs);
     const score = scoreScenario(spec, obs);
     scores.push(score);
     const targetLine = Object.entries(score.targets)
@@ -247,7 +344,12 @@ async function main(): Promise<void> {
 
   mkdirSync(dirname(args.out), { recursive: true });
   writeFileSync(args.out, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  // Sibling raw-observations dump (`<out>.results.json`) — the unscored tool
+  // outputs, for evidence inspection. Same basename so it pairs with the report.
+  const resultsOut = args.out.replace(/\.json$/, "") + ".results.json";
+  writeFileSync(resultsOut, `${JSON.stringify(observations, null, 2)}\n`, "utf8");
   console.log(`Report: ${args.out}`);
+  console.log(`Raw observations: ${resultsOut}`);
   console.log(`Scenarios: ${report.total}   PASS: ${report.passed}   FAIL: ${report.failed}`);
 
   let passed = report.scenarios.every((s) => scenarioPassed(s));

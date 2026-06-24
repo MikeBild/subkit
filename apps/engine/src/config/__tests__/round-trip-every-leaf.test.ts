@@ -181,15 +181,14 @@ describe("ConfigSchema round-trip — every leaf", () => {
     expect(getDiagnostics().source_map["errors.ring_size"]).toBe("global");
   });
 
-  test("source_map flips to tenant for a tenant-scope leaf set with tenantId", async () => {
+  test("tenant write leaves the global source_map untouched", async () => {
     expect(getDiagnostics().source_map["llm.api_key"]).toBe("default");
     await setConfigKey("llm.api_key", "tenant-only", {
       tenantId: "tenant-x",
       force: true,
     });
-    // Source map remains "tenant" for the leaf — same key, tenant
-    // overlay applied.
-    expect(getDiagnostics().source_map["llm.api_key"]).toBe("tenant");
+    // Diagnostics source_map describes the global config view only.
+    expect(getDiagnostics().source_map["llm.api_key"]).toBe("default");
     // The global value stays at the schema default (empty string).
     expect(getConfig().llm.api_key).toBe("");
     // The tenant overlay carries the new value.

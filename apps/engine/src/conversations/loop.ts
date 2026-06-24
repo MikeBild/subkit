@@ -1007,7 +1007,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     // here and re-throw it on drain failure. See
     // apps/engine/src/llm/errors.ts for our classification taxonomy.
     let capturedError: unknown;
-    const resolvedModel = await resolveLanguageModel(route.provider, modelId);
+    const resolvedModel = await resolveLanguageModel(route.provider, modelId, p.tenant_id);
     const streamAbortSignal = mergeAbortSignals([
       turnAbortCtrl.signal,
       AbortSignal.timeout(Math.min(10 * 60_000, 30_000 * budget)),
@@ -1299,7 +1299,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           const result: Record<string, unknown> = elision ? { messages: elision.messages } : {};
           if (decision.modelId && decision.modelId !== modelId) {
             try {
-              result.model = await resolveLanguageModel(route.provider, decision.modelId);
+              result.model = await resolveLanguageModel(
+                route.provider,
+                decision.modelId,
+                p.tenant_id,
+              );
               logger.info({
                 module: "llm",
                 action: "step_router.model_swapped",

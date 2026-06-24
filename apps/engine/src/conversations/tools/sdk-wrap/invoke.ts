@@ -1381,7 +1381,21 @@ export function wrapOne(
         const resultPayload: unknown = result.ok
           ? result.data
           : result.data !== undefined
-            ? result.data
+            ? // ok:false WITH a data payload: surface the tool's top-level
+              // error_code/message ALONGSIDE the data. The error-shape breaker
+              // and the model both read this payload — a tool that set the
+              // failure reason only at top-level (e.g. dry_run_workflow's
+              // needs-repair / judge-failed returns) was previously invisible
+              // to the breaker, which reads `reason ?? error_code` off here.
+              // Data's own fields win on conflict (a tool that already nested
+              // error_code in `data` keeps it).
+              typeof result.data === "object" && result.data !== null
+              ? {
+                  ...(result.error_code !== undefined ? { error_code: result.error_code } : {}),
+                  ...(result.message !== undefined ? { message: result.message } : {}),
+                  ...(result.data as Record<string, unknown>),
+                }
+              : result.data
             : {
                 ok: false,
                 ...(result.error_code !== undefined ? { error_code: result.error_code } : {}),

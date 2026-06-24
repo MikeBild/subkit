@@ -4154,6 +4154,11 @@ export const InkApp: React.FC<InkAppProps> = ({
       {pane?.kind === "settings" && engineClient ? (
         <SettingsPane
           client={engineClient}
+          {...(pane.tenant
+            ? { tenant: pane.tenant }
+            : statusSnapshot?.tenant.id
+              ? { tenant: statusSnapshot.tenant.id }
+              : {})}
           {...(pane.initialTab !== undefined ? { initialTab: pane.initialTab } : {})}
           sessionId={pane.sessionId ?? session.conversationId ?? null}
           sessionTitle={pane.sessionTitle ?? null}

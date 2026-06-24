@@ -6,9 +6,10 @@
 //   - carries the field-level `$output/...` paths in the warning
 //     entries / banner.
 // Once the draft produces the contracted shape the same dry-run goes
-// green and auto-commits. `output_transform` travels with the dry-run
-// definition so the contract validates the TRUE final payload —
-// execution parity with live runs.
+// green and is ready to save (a goal-less green preview returns
+// save_required rather than auto-committing). `output_transform` travels
+// with the dry-run definition so the contract validates the TRUE final
+// payload — execution parity with live runs.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -103,12 +104,18 @@ describe("dry_run_workflow · output contract", () => {
     expect(data.warnings_banner?.codes).toContain("output_contract_violation");
   });
 
-  test("contracted shape: same draft goes green and auto-commits", async () => {
+  test("contracted shape: same draft goes green and is ready to save", async () => {
     const toolCtx = makeCtx(draftWith("contract-passes", "return { total: 1, items: ['a'] };"));
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(result.ok).toBe(true);
-    const data = result.data as { auto_committed?: boolean };
-    expect(data.auto_committed).toBe(true);
+    // this fixture stashes no goal, so the green preview is NOT
+    // auto-committed — it returns save_required. The contract distinction
+    // under test (bad output_schema → needs_repair vs good → green) is
+    // unchanged; only the persistence outcome moved behind explicit save.
+    // (The goal-present auto-commit path is covered in preview-judge.test.ts.)
+    const data = result.data as { auto_committed?: boolean; save_required?: boolean };
+    expect(data.auto_committed).toBe(false);
+    expect(data.save_required).toBe(true);
   });
 
   test("output_transform shapes the payload the contract validates (execution parity)", async () => {
@@ -122,7 +129,11 @@ describe("dry_run_workflow · output contract", () => {
     );
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(result.ok).toBe(true);
-    const data = result.data as { auto_committed?: boolean };
-    expect(data.auto_committed).toBe(true);
+    // green, no goal stashed → ready to save (not auto-committed). The
+    // execution-parity point under test is that the POST-transform payload
+    // satisfies the contract (the preview goes green), which it does.
+    const data = result.data as { auto_committed?: boolean; save_required?: boolean };
+    expect(data.auto_committed).toBe(false);
+    expect(data.save_required).toBe(true);
   });
 });

@@ -4,7 +4,8 @@
 //     names + droplet specs, output has empty names) → `failed` with
 //     missing items, auto-commit BLOCKED, result carries the verdict,
 //   - passing fixture → auto-commits with `judge.verdict: "passes"`,
-//   - goal absent → `skipped`/`no_goal` and commits exactly as before,
+//   - goal absent → `skipped`/`no_goal`, green preview is NOT auto-committed
+//     (returns save_required so the user/model persists deliberately),
 //   - judge infrastructure error → `skipped`/`judge_unavailable` and
 //     commits (the judge never blocks on an infra failure),
 //   - circuit-breaker: two blocks per definition fingerprint, the
@@ -32,6 +33,8 @@ import {
 import {
   buildJudgeDefinitionSummary,
   buildJudgeStepArtifacts,
+  type JudgeStepArtifact,
+  judgePreview,
   workflowDefinitionFingerprint,
 } from "../preview-judge.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
@@ -163,7 +166,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(toolCtx.current().state?.judge_breaker ?? null).toBeNull();
   });
 
-  test("goal absent: judge skipped with no_goal, commit proceeds as today", async () => {
+  test("goal absent: judge skipped with no_goal, green preview is NOT auto-committed", async () => {
     // Override would FAIL the preview if the judge ran — proving the
     // skip really skipped the LLM call rather than passing by luck.
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
@@ -171,9 +174,17 @@ describe("preview judge · dry_run_workflow wiring", () => {
 
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
 
+    // a green dry-run with no stashed goal is no longer auto-persisted —
+    // the judge is skipped, so the engine cannot vouch for the result. The
+    // preview is still `ok` and returns the save_workflow_draft next-action so
+    // the model/user commits once, deliberately (no per-iteration version churn).
     expect(result.ok).toBe(true);
     const data = result.data as JudgeEnvelope;
-    expect(data.auto_committed).toBe(true);
+    expect(data.auto_committed).toBe(false);
+    expect((data as { save_required?: boolean }).save_required).toBe(true);
+    expect((data as { next_best_actions?: string[] }).next_best_actions).toEqual([
+      "save_workflow_draft",
+    ]);
     expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(0);
   });
@@ -434,6 +445,190 @@ describe("preview judge · goal stash round-trip", () => {
     });
     expect(normalized.state?.judge_breaker?.blocks_since_commit).toBe(2);
     expect(normalized.state?.judge_breaker?.last_verdict ?? null).toBeNull();
+  });
+});
+
+describe("preview judge · format-fidelity downgrade wiring", () => {
+  // These tests call judgePreview() directly to isolate the format-mismatch
+  // guard from the dry_run_workflow tool machinery. The mock provider's
+  // generateOverrides.judge controls what the LLM "returns", and the
+  // deterministic outputMatchesFormat check then decides whether to
+  // downgrade a "passes" verdict.
+
+  const MARKDOWN_GOAL = "return a markdown table that ranks the top cities by population";
+
+  // A JSON-array output_preview — structurally NOT a markdown table.
+  const jsonArrayArtifacts: JudgeStepArtifact[] = [
+    {
+      step_id: "shape",
+      kind: "transform",
+      status: "succeeded",
+      output_preview: [
+        { rank: 1, city: "Berlin" },
+        { rank: 2, city: "Hamburg" },
+      ],
+    },
+  ];
+
+  // A proper markdown table output_preview.
+  const markdownTableArtifacts: JudgeStepArtifact[] = [
+    {
+      step_id: "shape",
+      kind: "transform",
+      status: "succeeded",
+      output_preview: "| rank | city |\n| ---: | --- |\n| 1 | Berlin |\n| 2 | Hamburg |",
+    },
+  ];
+
+  test('judge returns "passes" + markdown-table goal + JSON-array output → downgraded to "partial" with non-empty missing', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "The data looks correct.",
+      missing: [],
+    });
+
+    const outcome = await judgePreview({
+      goal: MARKDOWN_GOAL,
+      definition_summary: "- shape (transform): rank cities",
+      step_artifacts: jsonArrayArtifacts,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    expect(outcome.verdict).toBe("partial");
+    // missing must contain at least the two markdown-table structural gaps.
+    if (outcome.verdict === "partial") {
+      expect(outcome.missing.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('judge returns "passes" + markdown-table goal + proper markdown table output → stays "passes"', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "Output is a well-formed markdown table.",
+      missing: [],
+    });
+
+    const outcome = await judgePreview({
+      goal: MARKDOWN_GOAL,
+      definition_summary: "- shape (transform): rank cities",
+      step_artifacts: markdownTableArtifacts,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    expect(outcome.verdict).toBe("passes");
+  });
+
+  test("markdown in an intermediate STEP but final_output is structured → downgraded (judge checks final_output, NOT step artifacts)", async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "The rendered step looks right.",
+      missing: [],
+    });
+
+    const outcome = await judgePreview({
+      goal: MARKDOWN_GOAL,
+      definition_summary: "- render (transform): build table; - wrap: output_transform",
+      // The render STEP produced a proper markdown table…
+      step_artifacts: markdownTableArtifacts,
+      // …but the workflow's FINAL output (post output_transform) is a JSON
+      // array — exactly the real defect this fix targets.
+      final_output: [
+        { rank: 1, city: "Berlin", max_temp_c: 25 },
+        { rank: 2, city: "Hamburg", max_temp_c: 23 },
+      ],
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    // Must downgrade: the caller receives structured data, not a markdown table.
+    expect(outcome.verdict).toBe("partial");
+    if (outcome.verdict === "partial") {
+      expect(outcome.missing.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('final_output IS a markdown string → stays "passes" even when step artifacts are structured', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "Final output is a markdown table.",
+      missing: [],
+    });
+
+    const outcome = await judgePreview({
+      goal: MARKDOWN_GOAL,
+      definition_summary: "- collect (transform); - render: output_transform",
+      // Steps are structured…
+      step_artifacts: jsonArrayArtifacts,
+      // …but the FINAL output is a proper markdown table string.
+      final_output: "| rank | city |\n| ---: | --- |\n| 1 | Berlin |\n| 2 | Hamburg |",
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    expect(outcome.verdict).toBe("passes");
+  });
+
+  test('judge returns "passes" + plain-data goal naming NO format → stays "passes" regardless of output shape (no false block)', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "All droplet specs are present.",
+      missing: [],
+    });
+
+    const outcome = await judgePreview({
+      // No format keyword — "email me the droplet specs" names no format.
+      goal: "email me the droplet specs for each project",
+      definition_summary: "- shape (transform): collect specs",
+      // JSON-array output — would fail a markdown-table check if the guard fired.
+      step_artifacts: jsonArrayArtifacts,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    // Guard must NOT fire: no format was named, so "passes" is untouched.
+    expect(outcome.verdict).toBe("passes");
+  });
+
+  test('judge returns "partial" → passed through unchanged (guard only acts on "passes")', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "partial",
+      reason: "Some city names are missing.",
+      missing: ["city names for 3 rows are empty"],
+    });
+
+    const outcome = await judgePreview({
+      goal: MARKDOWN_GOAL,
+      definition_summary: "- shape (transform): rank cities",
+      step_artifacts: jsonArrayArtifacts,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    // Already "partial" — format guard does not run a second time.
+    expect(outcome.verdict).toBe("partial");
+    if (outcome.verdict === "partial") {
+      expect(outcome.reason).toContain("city names");
+    }
+  });
+
+  test('judge returns "failed" → passed through unchanged (guard only acts on "passes")', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "failed",
+      reason: "Output is entirely empty.",
+      missing: ["all city data"],
+    });
+
+    const outcome = await judgePreview({
+      goal: MARKDOWN_GOAL,
+      definition_summary: "- shape (transform): rank cities",
+      step_artifacts: jsonArrayArtifacts,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    expect(outcome.verdict).toBe("failed");
   });
 });
 
