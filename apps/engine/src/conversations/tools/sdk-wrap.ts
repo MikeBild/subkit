@@ -53,7 +53,9 @@ export {
  * provided, the tenant's saved workflows are additionally exposed as
  * `wf_<slug>` synthetic tools, top-40 by `last_executed_at` — the same
  * catalog MCP ships via `listWorkflowToolsForTenant`. The LLM can then
- * dispatch a saved workflow in one tool call.
+ * dispatch a saved workflow in one tool call. Those synthetic peers are keyed
+ * by their prefixed name (`wf_<slug>`) in the returned map, so the loop derives
+ * the saved-workflow slug catalog from the keys themselves — no second query.
  */
 export async function wrapTools(
   ctx: ToolContext,

@@ -40,10 +40,9 @@ import {
 import { gateWorkflowRunRbac } from "../../../workflows/rbac.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import type { TurnEvent } from "../../types.ts";
+import { WORKFLOW_TOOL_PREFIX as TOOL_PREFIX } from "../authoring-palette.ts";
 import type { ToolContext } from "../index.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
-
-const TOOL_PREFIX = "wf_";
 
 export interface BuildSyntheticWorkflowToolsParams {
   db: Db;
