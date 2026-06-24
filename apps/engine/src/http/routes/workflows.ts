@@ -9,7 +9,7 @@ import {
   TriggerSchema,
   validateWorkflowDef,
 } from "../../workflows/index.ts";
-import { BadRequestError, NotFoundError } from "../errors.ts";
+import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -215,6 +215,38 @@ const updateRoute = createRoute({
   },
 });
 
+// Metadata-only patch (slug / name / description / lifecycle). Unlike PUT
+// (which rewrites the DAG and rolls a new version), this never rotates a
+// version — it is the governed rename surface. A slug rename done by raw SQL
+// skips the audit log; this route routes through `updateWorkflowMetadata`
+// which writes a `WORKFLOW_UPDATED { kind: "metadata" }` audit row.
+const WorkflowMetadataPatchBody = z
+  .object({
+    slug: z.string().min(1).optional(),
+    name: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+    lifecycle: z.enum(["active", "archived"]).optional(),
+  })
+  .openapi("WorkflowMetadataPatchBody");
+
+const metadataRoute = createRoute({
+  method: "patch",
+  path: "/v1/workflows/{id}/metadata",
+  tags: ["workflows"],
+  summary: "Patch workflow metadata (slug/name/description/lifecycle) without rotating a version",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    body: { content: { "application/json": { schema: WorkflowMetadataPatchBody } } },
+  },
+  responses: {
+    200: { description: "OK", content: { "application/json": { schema: WorkflowSchema } } },
+    400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Slug conflict", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 const deleteRoute = createRoute({
   method: "delete",
   path: "/v1/workflows/{id}",
@@ -385,6 +417,13 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const id = c.req.param("id");
     return requirePermission("workflow:restore", () => ({ type: "workflow", id }))(c, next);
   });
+  app.use("/v1/workflows/:id/metadata", async (c, next) => {
+    const id = c.req.param("id");
+    if (c.req.method === "PATCH") {
+      return requirePermission("workflow:write", () => ({ type: "workflow", id }))(c, next);
+    }
+    return next();
+  });
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
@@ -505,6 +544,40 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new BadRequestError("invalid workflow", { errors: result.errors });
     }
     return c.json(serializeWorkflow(result.workflow), 200);
+  });
+
+  app.openapi(metadataRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const result = await svc.updateWorkflowMetadata(
+      {
+        tenant_id: principal.tenant_id,
+        id,
+        actor_id: principal.id,
+        ...(body.slug !== undefined ? { slug: body.slug } : {}),
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.lifecycle !== undefined ? { lifecycle: body.lifecycle } : {}),
+      },
+      db,
+    );
+    if ("workflow" in result && result.workflow) {
+      return c.json(serializeWorkflow(result.workflow), 200);
+    }
+    // Error variant. Map a slug collision to 409, missing workflow to 404,
+    // everything else (bad slug shape, no-op) to 400.
+    if (result.conflict) {
+      throw new ConflictError("slug already in use by a live workflow", {
+        errors: result.errors,
+        conflict: result.conflict,
+      });
+    }
+    if (result.errors[0] === "workflow not found") {
+      throw new NotFoundError("workflow");
+    }
+    throw new BadRequestError("invalid workflow metadata", { errors: result.errors });
   });
 
   app.openapi(deleteRoute, async (c) => {

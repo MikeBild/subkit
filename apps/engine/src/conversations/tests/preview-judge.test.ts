@@ -34,6 +34,7 @@ import {
 import {
   buildJudgeDefinitionSummary,
   buildJudgeStepArtifacts,
+  JUDGE_BREAKER_MAX_BLOCKS,
   type JudgeStepArtifact,
   judgePreview,
   workflowDefinitionFingerprint,
@@ -66,10 +67,12 @@ interface JudgeEnvelope {
   judge?: { verdict: string; reason: string; missing?: string[] };
   judge_done?: {
     committed_as_is?: boolean;
+    escalate?: boolean;
     attempts?: number;
     missing?: string[];
     next_action?: string;
   };
+  error_code?: string;
   warnings?: Array<{ code: string; message: string }>;
   next_best_actions?: string[];
 }
@@ -259,6 +262,35 @@ describe("preview judge · dry_run_workflow wiring", () => {
     // the cap so a model that ignores the EXIT keeps hitting the hold branch
     // rather than slipping an unsatisfied commit through.
     expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(2);
+    // First hold at the cap is recorded.
+    expect(toolCtx.current().state?.judge_breaker?.holds_at_cap).toBe(1);
+  });
+
+  test("a model that ignores the EXIT and re-runs past the hold cap gets a forced escalation", async () => {
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const toolCtx = makeCtx(wrongContentDraft("judge-escalate", GOAL));
+
+    // Drive blocks 1..MAX (each ok:false), then the first hold at the cap.
+    for (let i = 1; i <= JUDGE_BREAKER_MAX_BLOCKS; i++) {
+      await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    }
+    const firstHold = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect((firstHold.data as JudgeEnvelope).judge_done?.escalate).toBe(false);
+    expect(toolCtx.current().state?.judge_breaker?.holds_at_cap).toBe(1);
+
+    // The model ignores the EXIT and re-runs — at ESCALATE_AFTER holds the gate
+    // forces an operator-choice escalation instead of another silent hold.
+    const escalated = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(escalated.ok).toBe(false);
+    expect((escalated as { error_code?: string }).error_code).toBe("preview_judge_exhausted");
+    const data = escalated.data as JudgeEnvelope;
+    expect(data.judge_done?.escalate).toBe(true);
+    expect(data.judge_done?.committed_as_is).toBe(false);
+    expect(data.judge_done?.next_action).toContain("STOP");
+    expect(data.judge_done?.next_action).toContain("ask the user to choose");
+    // Only the commit-as-is tool action is offered — editing/re-running is gone.
+    expect(data.next_best_actions).toEqual(["save_workflow_draft"]);
+    expect(toolCtx.current().state?.judge_breaker?.holds_at_cap).toBe(2);
   });
 
   test("a commit resets the blocks-since-commit counter", async () => {

@@ -608,6 +608,8 @@ export const dryRunWorkflowTool: ConversationTool = {
      *  cap and degraded to advisory; the model gets an EXIT, not another
      *  silent requires_repair. */
     let judgeDoneSignal: Awaited<ReturnType<typeof runPreviewJudgeGate>>["doneSignal"] = null;
+    /** Forced operator-choice escalation: the model re-ran past the hold cap. */
+    let judgeEscalate = false;
     if (dryRunGreen) {
       const gate = await runPreviewJudgeGate({
         tenant_id: ctx.tenant_id,
@@ -629,6 +631,7 @@ export const dryRunWorkflowTool: ConversationTool = {
       judgeBlocked = gate.judgeBlocked;
       nextJudgeBreaker = gate.nextJudgeBreaker;
       judgeDoneSignal = gate.doneSignal;
+      judgeEscalate = gate.escalate === true;
       if (gate.warning) runWarnings.push(gate.warning);
     }
 
@@ -844,13 +847,17 @@ export const dryRunWorkflowTool: ConversationTool = {
     const previewNextActions =
       cleanPreview || greenPendingSave
         ? ["save_workflow_draft"]
-        : judgeExhausted
-          ? ["save_workflow_draft", "edit_workflow_patch"]
-          : judgeBlocked
-            ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
-            : dryRunRequiresRepair
-              ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
-              : ["inspect_workflow_draft", "edit_workflow_patch"];
+        : judgeEscalate
+          ? // Forced escalation: the only tool action left is commit-as-is; the
+            // model must otherwise ASK the user (a conversational, not tool, move).
+            ["save_workflow_draft"]
+          : judgeExhausted
+            ? ["save_workflow_draft", "edit_workflow_patch"]
+            : judgeBlocked
+              ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
+              : dryRunRequiresRepair
+                ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
+                : ["inspect_workflow_draft", "edit_workflow_patch"];
     const previewNextPrompt = cleanPreview
       ? "Committing the workflow"
       : greenPendingSave
@@ -1041,13 +1048,15 @@ export const dryRunWorkflowTool: ConversationTool = {
         : undefined;
     // Stable top-level error_code for the ok:false envelope. judge block,
     // step failure, or structural repair-needed — each gets a distinct code.
-    const previewErrorCode = judgeBlocked
-      ? "preview_judge_failed"
-      : run.status !== "succeeded"
-        ? failedStepErrorCode
-          ? `draft_step_failed:${failedStepErrorCode}`
-          : "draft_step_failed"
-        : "preview_needs_repair";
+    const previewErrorCode = judgeEscalate
+      ? "preview_judge_exhausted"
+      : judgeBlocked
+        ? "preview_judge_failed"
+        : run.status !== "succeeded"
+          ? failedStepErrorCode
+            ? `draft_step_failed:${failedStepErrorCode}`
+            : "draft_step_failed"
+          : "preview_needs_repair";
     // Hoisted so it serves BOTH the lifecycle payload's `summary` AND the
     // top-level `message` summarizeToolFailure lifts into the tool.failed log.
     const previewSummary =
@@ -1108,6 +1117,9 @@ export const dryRunWorkflowTool: ConversationTool = {
             ? {
                 judge_done: {
                   committed_as_is: false,
+                  // `escalate: true` means the model ignored the EXIT and re-ran
+                  // past the hold cap — it must now force the operator choice.
+                  escalate: judgeEscalate,
                   attempts: judgeDoneSignal.attempts,
                   missing: judgeDoneSignal.missing,
                   next_action: judgeDoneSignal.guidance,
