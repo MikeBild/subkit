@@ -170,3 +170,71 @@ export function findMissingNamedFields(goal: string, rendered: string): string[]
   }
   return missing;
 }
+
+// ---------------------------------------------------------------------------
+// Filter violations — deterministic guard for the preview judge.
+//
+// The LLM judge is unreliable about EXCLUSION: it passed outputs whose rows
+// visibly contain a value the goal explicitly excludes (goal "OFFLINE (not
+// connected) chargers only", output rows showing "connected"). This is the
+// hard, unit-testable guard for the subset that is robustly detectable: a goal
+// that EXPLICITLY names a forbidden value — parenthesized `(not X)`, an
+// `exclude X` clause, or an `only … not Z` contrast. Bare prose negations
+// ("do not include …") are NOT parsed — they're left to the LLM, so a
+// plain-data goal is never falsely downgraded. Domain-neutral by construction:
+// the forbidden token comes from the user's OWN words, not an inferred list.
+// ---------------------------------------------------------------------------
+
+/** Forbidden tokens a goal EXPLICITLY excludes (parenthesized `(not X)`,
+ *  `exclude X`, or `only … not Z`). Lowercased, ≥4 chars, deduped. */
+function forbiddenTokens(goal: string): string[] {
+  const out: string[] = [];
+  // (a) parenthesized negation: "(not connected)".
+  for (const m of goal.matchAll(/\(\s*not\s+([a-z][a-z0-9 -]{2,40}?)\s*\)/gi)) {
+    if (m[1]) out.push(m[1]);
+  }
+  // (b) "exclude X" / "excluding X" up to a clause boundary.
+  for (const m of goal.matchAll(
+    /\bexclud(?:e|ing)\s+([a-z][a-z0-9 -]{2,40}?)(?=[.,;:)]|\s+(?:from|and|but|in|with)\b|$)/gi,
+  )) {
+    if (m[1]) out.push(m[1]);
+  }
+  // (c) explicit contrast: "only X, not Z" / "only X and not Z".
+  for (const m of goal.matchAll(
+    /\bonly\b[^.()]{0,40}?\bnot\s+([a-z][a-z0-9 -]{2,40}?)(?=[.,;:)]|\s+(?:that|which)\b|$)/gi,
+  )) {
+    if (m[1]) out.push(m[1]);
+  }
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const raw of out) {
+    const t = raw.toLowerCase().replace(/\s+/g, " ").trim();
+    if (t.length >= 4 && !seen.has(t)) {
+      seen.add(t);
+      tokens.push(t);
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Returns the goal-forbidden tokens that nonetheless APPEAR (as whole words)
+ * in the rendered output — a visible filter violation. Empty when the goal
+ * names no explicit exclusion, when the output is empty/trivial, or when no
+ * forbidden token is present. Pure + deterministic. The whole-word check
+ * avoids incidental substrings ("connected" never matches "disconnected").
+ */
+export function findFilterViolations(goal: string, rendered: string): string[] {
+  if (typeof rendered !== "string" || rendered.trim().length < 12) return [];
+  const tokens = forbiddenTokens(goal);
+  if (tokens.length === 0) return [];
+  const hay = rendered.toLowerCase();
+  const violations: string[] = [];
+  for (const tok of tokens) {
+    const escaped = tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "i").test(hay)) {
+      violations.push(tok);
+    }
+  }
+  return violations;
+}

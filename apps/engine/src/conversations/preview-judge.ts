@@ -53,6 +53,7 @@ import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
 import {
   detectNamedOutputFormat,
+  findFilterViolations,
   findMissingNamedFields,
   outputMatchesFormat,
 } from "./output-format.ts";
@@ -392,6 +393,26 @@ export async function judgePreview(params: JudgePreviewParams): Promise<PreviewJ
           verdict: "partial",
           reason: `The goal asks for ${missingFields.join(", ")}, but ${missingFields.length === 1 ? "it is" : "they are"} absent from the previewed output.`,
           missing: missingFields,
+        };
+      }
+      // Filter fidelity: the goal EXPLICITLY excludes a value ("(not
+      // connected)", "exclude X", "only … not Z") yet that value appears in the
+      // rendered output — a visible filter violation the LLM judge let pass.
+      // Conservative — only fires on explicit, user-worded exclusions, so a
+      // plain-data goal never downgrades.
+      const violations = findFilterViolations(params.goal, renderedForFields);
+      if (violations.length > 0) {
+        logger.warn({
+          module: "conversations",
+          action: "preview_judge.filter_violation",
+          msg: "goal excludes a value that appears in the previewed output — verdict downgraded passes→partial",
+          tenant_id: params.tenant_id,
+          violations,
+        });
+        return {
+          verdict: "partial",
+          reason: `The goal excludes ${violations.join(", ")}, but ${violations.length === 1 ? "that value appears" : "those values appear"} in the previewed output.`,
+          missing: violations,
         };
       }
     }

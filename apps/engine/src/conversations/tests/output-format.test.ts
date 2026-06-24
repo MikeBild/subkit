@@ -1,11 +1,12 @@
 // Pure unit tests for `output-format.ts`.
 //
-// Both helpers are fully deterministic — no I/O, no LLM, no DB.
+// All helpers are fully deterministic — no I/O, no LLM, no DB.
 // Tests run in `bun run test:unit` without any external dependencies.
 
 import { describe, expect, test } from "bun:test";
 import {
   detectNamedOutputFormat,
+  findFilterViolations,
   findMissingNamedFields,
   outputMatchesFormat,
 } from "../output-format.ts";
@@ -215,5 +216,58 @@ describe("findMissingNamedFields", () => {
 
   test("trivial/empty rendered output → [] (an empty result is not incomplete)", () => {
     expect(findMissingNamedFields("table with columns A, B, C", "")).toEqual([]);
+  });
+});
+
+describe("findFilterViolations", () => {
+  test("parenthesized exclusion present in output → flagged (the golden case)", () => {
+    // goal "OFFLINE (not connected) chargers only" + a row showing "connected".
+    expect(
+      findFilterViolations(
+        "Digest of OFFLINE (not connected) chargers only.",
+        "<table><tr><td>SN-CP-1001</td><td>HEALTHY</td><td>connected</td></tr></table>",
+      ),
+    ).toEqual(["connected"]);
+  });
+
+  test('"exclude X" clause present in output → flagged', () => {
+    expect(
+      findFilterViolations("List repositories, exclude archived.", "name: foo (archived)"),
+    ).toEqual(["archived"]);
+  });
+
+  test('"only X, not Z" contrast present in output → flagged', () => {
+    expect(
+      findFilterViolations("Show only production servers, not staging.", "env=staging host=a1"),
+    ).toEqual(["staging"]);
+  });
+
+  test("excluded value absent from output → [] (filter correctly applied)", () => {
+    expect(
+      findFilterViolations(
+        "Digest of OFFLINE (not connected) chargers only.",
+        "<table><tr><td>SN-CP-1001</td><td>offline</td></tr></table>",
+      ),
+    ).toEqual([]);
+  });
+
+  test("plain-data goal with no explicit exclusion → [] (never falsely downgrades)", () => {
+    expect(
+      findFilterViolations(
+        "Return the hottest day and its temperature for next week.",
+        "Tuesday was connected and hot at 32C",
+      ),
+    ).toEqual([]);
+  });
+
+  test("forbidden token only as a substring → [] (whole-word match)", () => {
+    // "(not connected)" excluded, but the output only has "disconnected".
+    expect(
+      findFilterViolations("Only chargers (not connected).", "status: disconnected since 9am")[0],
+    ).toBeUndefined();
+  });
+
+  test("trivial/empty rendered output → []", () => {
+    expect(findFilterViolations("offline (not connected) only", "")).toEqual([]);
   });
 });
