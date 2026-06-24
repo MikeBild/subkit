@@ -58,6 +58,19 @@ describe("mcp tools/list — draft_write omitted (authoring mode)", () => {
     // conversation_start IS the authoring entry point and must stay listed.
     expect(names.has("conversation_start")).toBe(true);
   });
+
+  test("catalog stays under the size ceiling (no draft_write traps, no tenant_* duplicates)", async () => {
+    // Tool-selection accuracy degrades past ~30-50 tools and large
+    // catalogs bloat every turn's context. Before this change the
+    // authoring-mode catalog carried a full tenant_* duplicate set + 19
+    // listed-but-uncallable draft_write tools, pushing well past 100.
+    // Hold the line so future additions are a deliberate choice, not drift.
+    const client = await suite.connect();
+    const result = await client.listTools();
+    expect(result.tools.length).toBeLessThan(80);
+    // No tenant_* alias should remain in the catalog.
+    expect(result.tools.filter((t) => t.name.startsWith("tenant_")).length).toBe(0);
+  });
 });
 
 describe("mcp tools/call — disabled tools short-circuit", () => {

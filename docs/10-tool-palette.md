@@ -48,10 +48,22 @@ interface ToolDescriptor {
 ```
 
 The `category` drives policy decisions (see *Policy gate* below). The
-`disabled` field is the **honest signal**: a tool can appear in
-`tools/list` while `tools/call` rejects it with a structured envelope.
-We use it for draft-write tools on MCP — operators see the tool exists
-but learn it's not callable headlessly.
+`disabled` field marks a tool that `tools/call` rejects with a structured
+`not_available_on_surface` envelope. Draft-write tools on MCP carry it so
+a forced/guessed call short-circuits with an actionable reason that points
+to `conversation_start`.
+
+**Draft-write tools are HIDDEN from MCP `tools/list`, not badged.** Earlier
+they were listed-with-`disabled` as an "honest signal" that the tool exists
+but isn't headlessly callable. In practice external clients (e.g. claude.ai)
+ignore the `_meta.subkit.disabled` badge, call the tool anyway, get rejected,
+and churn instead of authoring — so the catalog `list()` now omits draft-write
+on MCP entirely, steering the model to `conversation_start` (the only working
+authoring entry point). `resolve()` deliberately still returns the disabled
+descriptor so the call-time `not_available_on_surface` backstop stays intact
+for any client that guesses the bare name. List and resolve intentionally
+disagree here, which is safe because such a call can never execute on this
+surface.
 
 ### Surface
 
@@ -163,15 +175,18 @@ and two rate-limit semantics — merging them hides operational distinctions
 under one schema. We keep all three names; the MCP-side duplicate of
 `test_connector` is the only thing deleted.
 
-### `save_workflow_draft` and `dry_run_workflow` defer MCP exposure
+### `save_workflow_draft` and `dry_run_workflow` are MCP-hidden
 
-Both surface in MCP `tools/list` with
-`_meta.subkit.disabled.reason="requires_conversation_surface"`. The
-former needs an MCP-side confirm protocol that doesn't exist (current
-`ask_user_confirm` elicitation is conversation-shaped); the latter
-needs a `def`/`draft_id` input schema extension (currently it only
-reads `ctx.getDraft()`). Building speculative cross-surface confirm
-tokens for zero callers violates the no-speculation rule.
+Both are draft-write tools: they are OMITTED from MCP `tools/list` and a
+direct `tools/call` short-circuits to `not_available_on_surface` with a
+reason pointing to `conversation_start`. They are driven by the engine's
+internal authoring loop inside a conversation, never by the external
+client. `save_workflow_draft` needs an MCP-side confirm protocol that
+doesn't exist standalone (the `ask_user_confirm` elicitation is
+conversation-shaped); `dry_run_workflow` needs a `def`/`draft_id` input
+extension (it only reads `ctx.getDraft()`). Listing them as callable —
+even badged disabled — only traps clients that ignore the badge into
+calling and churning, so they are hidden outright.
 
 ### Status-discriminated envelope vs. flat `ok` boolean
 
@@ -269,22 +284,20 @@ tests are `test.todo` until their implementation commit lands.
 The cutover in `mcp/capabilities/tools.ts` inserts a single early-return
 that delegates to `mcp/adapter.callToolViaDispatcher()` for any tool the
 unified registry recognizes; everything else falls through to the
-legacy prefix proxies (`tenant.*`, `conversation.*`, `wf.<slug>`). The
-named-tool branches (authenticate, list_recipes, test_connector, etc.)
-have all been deleted — the registry claims those names exclusively.
+legacy prefix proxies (`conversation.*`, `wf.<slug>`). The named-tool
+branches (authenticate, list_recipes, test_connector, etc.) have all
+been deleted — the registry claims those names exclusively.
 
-Backward compatibility is preserved on two surfaces:
-
-- `tenant.<name>` prefix alias — every conversation tool reachable
-  under its bare name through the dispatcher is *also* reachable under
-  `tenant.<name>` via the legacy proxy in `capabilities/tools.ts`. Both
-  paths emit the same audit row; the alias is the contract for
-  pre-cutover MCP clients.
-- `conversation.*` session-management tools (`conversation.start`,
-  `conversation.append`, `conversation.commit`,
-  `conversation.respond_elicitation`) remain on the legacy path because
-  they are MCP-specific session orchestration, not LLM tool palette
-  items.
+The `tenant_*` prefix aliases have been **removed**. Every conversation
+tool already surfaces under its bare name via the unified registry, so the
+aliases were a pure duplicate that doubled the catalog and degraded
+tool-selection accuracy on large clients. Bare names dispatch through the
+unified dispatcher, which applies the same RBAC + policy gate the aliases
+did. Only `conversation.*` session-management tools (`conversation_start`,
+`conversation_append`, `conversation_commit`,
+`conversation_respond_elicitation`, `conversation_get`) remain on the
+legacy path because they are MCP-specific session orchestration, not LLM
+tool palette items.
 
 The chat side keeps its existing `sdk-wrap.ts` inline path; the
 `dispatch-adapter.invokeForSdk` entry exists for a future focused
