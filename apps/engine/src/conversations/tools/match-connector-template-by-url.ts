@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { parseAtlassianCloudResourceUrl } from "../../connectors/atlassian-tinyui.ts";
+import { parseNotionResourceUrl } from "../../connectors/notion-page-id.ts";
 import { baseUrlHost, compareConnectorOverlap } from "../../connectors/overlap.ts";
 import { listConnectors } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
@@ -25,8 +26,8 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
     "Call this as soon as the operator pastes a concrete URL like https://api.stripe.com/v1/charges — before any manual connector setup.",
   example_input: { url: "https://api.stripe.com/v1/charges", limit: 3 },
   important_notes: [
-    "Top-level `resolved_resource` is set when the URL is an Atlassian Cloud resource.",
-    "`resolved_resource` shapes: `{ kind: 'confluence_tinyui', short, page_id }` (page_id is null when the shortlink fails to decode); `{ kind: 'confluence_page', page_id }`; `{ kind: 'jira_issue', key }`.",
+    "Top-level `resolved_resource` is set when the URL is an Atlassian Cloud or Notion resource.",
+    "`resolved_resource` shapes: `{ kind: 'confluence_tinyui', short, page_id }` (page_id is null when the shortlink fails to decode); `{ kind: 'confluence_page', page_id }`; `{ kind: 'jira_issue', key }`; `{ kind: 'notion_page', page_id }` (canonical dashed UUID extracted from the pasted Notion URL — pass it straight into the recipe's `page_id` field, do NOT author a URL-parsing transform).",
     "Use the `resolved_resource` id when building the first request step so the dry-run hits the real resource — do NOT probe the API to discover a value the matcher already gave you.",
     "Each `matches[].existing_connector_candidates[]` entry is a saved connector on this tenant that already serves the URL host.",
     "Reuse-candidate scoring: driver + base_url_host + auth_type, score 1-3 (count of matching dimensions).",
@@ -72,7 +73,12 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
     // the LLM can build the workflow's first request step against the
     // real resource on the FIRST dry-run (session 0498925e cost 3+
     // probe round-trips to discover that /wiki/x/y4ozBQ → page 87263947).
-    const resolved_resource = parseAtlassianCloudResourceUrl(args.url);
+    // Notion appends the page id as a bare 32-hex run to the slug, which an
+    // LLM-authored normalise transform tends to 404 on (conversation
+    // 661e7ad1). Resolve it here so the LLM passes a canonical page_id into
+    // the recipe and the first dry-run hits the real page.
+    const resolved_resource =
+      parseAtlassianCloudResourceUrl(args.url) ?? parseNotionResourceUrl(args.url);
 
     // Adoption E — inline "you already have X" hint. List the tenant's
     // existing connectors on the same URL host AND score the structural
