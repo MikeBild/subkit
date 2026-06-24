@@ -10,6 +10,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  buildIntentSuppressesRunWorkflow,
   detectEnvelopeResolution,
   detectMultiArtifactIntent,
   detectUserIntent,
@@ -143,6 +144,32 @@ describe("detectUserIntent", () => {
   test("returns no_user_text for null input", () => {
     expect(detectUserIntent(null).reason).toBe("no_user_text");
     expect(detectUserIntent(undefined).reason).toBe("no_user_text");
+  });
+});
+
+describe("buildIntentSuppressesRunWorkflow", () => {
+  test("a build-new-workflow message suppresses run_workflow (no lookalike hijack)", () => {
+    // Conversation 661e7ad1: the user asked to AUTHOR a generic Notion page
+    // reader; the loop must remove run_workflow so the model does not run a
+    // lookalike saved workflow (notion-essay-to-markdown) and pause on its
+    // page_id form.
+    const intent = detectUserIntent("create a workflow that reads a Notion page by URL");
+    expect(intent.startNewWorkflow).toBe(true);
+    expect(intent.forceTool).toBeUndefined();
+    expect(buildIntentSuppressesRunWorkflow(intent)).toBe(true);
+  });
+
+  test("an explicit run message does NOT suppress run_workflow", () => {
+    // run-intent is detected before authoring-intent, so the two are
+    // mutually exclusive — running an existing workflow stays available.
+    const intent = detectUserIntent("führe den invoice workflow aus");
+    expect(intent.forceTool).toBe("run_workflow");
+    expect(buildIntentSuppressesRunWorkflow(intent)).toBe(false);
+  });
+
+  test("a neutral message does not suppress run_workflow", () => {
+    const intent = detectUserIntent("what does this workflow do?");
+    expect(buildIntentSuppressesRunWorkflow(intent)).toBe(false);
   });
 });
 

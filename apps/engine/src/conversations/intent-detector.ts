@@ -134,6 +134,22 @@ export function detectUserIntent(latestUserText: string | null | undefined): Det
   return { reason: "no_strong_intent" };
 }
 
+/**
+ * A clear "build a new workflow" intent must NOT be satisfied by RUNNING a
+ * lookalike existing workflow. When this is true the loop removes
+ * `run_workflow` from the turn's tool palette. This is safe because the
+ * authoring loop tests drafts with `dry_run_workflow`, never `run_workflow`
+ * (which only executes an already-SAVED workflow), and because the detector
+ * checks run-intent BEFORE authoring-intent — so `startNewWorkflow` and
+ * `forceTool: "run_workflow"` are mutually exclusive. Without this gate the
+ * model ran `notion-essay-to-markdown` and paused on its `page_id` form
+ * instead of authoring the requested generic Notion reader (conversation
+ * 661e7ad1).
+ */
+export function buildIntentSuppressesRunWorkflow(intent: DetectedIntent): boolean {
+  return intent.startNewWorkflow === true;
+}
+
 /** Envelope-resolver: when a pending confirm is open, parse the user's
  *  reply as an approval or rejection so "approve" / "reject" typed in
  *  chat auto-resolves the dialog instead of opening a fresh LLM turn.
