@@ -2,15 +2,16 @@
 // when a commit's definition is byte-identical to the current version.
 //
 // Extracted from `service.ts` so that file stays under the 1000-LOC
-// audit-invariant ceiling. `updateWorkflow` is the sole caller; both
-// the green-dry-run auto-persist and the `save_workflow_draft`
-// re-issue route through it.
+// audit-invariant ceiling. Two callers: `updateWorkflow` (the version-
+// rotation path, incl. the green-dry-run auto-persist) and
+// `commitWorkflowAtomic`'s idempotent re-commit short-circuit. Both must
+// destructure the returned `{ unchanged, current_def }`.
 
 import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-import type { WorkflowDef } from "./types.ts";
+import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 /** Per-step authoring metadata persisted alongside a workflow version
  *  (scope-shape hints from the last preview). Structurally identical to
@@ -36,12 +37,15 @@ function stableStringify(value: unknown): string {
 }
 
 /**
- * True when `def` is byte-identical to the workflow's current version
- * dag — the caller (`updateWorkflow`) must then skip the version insert
- * and the trigger rebind. Re-versioning identical content churns
- * version history, and `applyTriggerBindings` would unbind the
- * workflow's schedules on every redundant commit (a green dry_run of an
- * unchanged draft auto-persists through this path).
+ * Returns `{ unchanged, current_def }`. `unchanged` is true when `def` is
+ * byte-identical to the workflow's current version dag — the caller
+ * (`updateWorkflow`) must then skip the version insert. `current_def` is the
+ * parsed current version (null only when there is no current version), so the
+ * caller can compare trigger blocks and reconcile bindings ONLY on a real
+ * trigger change. Re-versioning identical content churns version history, and
+ * an unconditional `applyTriggerBindings` would unbind the workflow's
+ * schedules on every redundant commit (a green dry_run of an unchanged draft
+ * auto-persists through this path).
  *
  * `def` and the stored dag are both post-`annotateRuntime`, so the
  * comparison is like-for-like. `scope_index` is per-step authoring
@@ -57,8 +61,8 @@ export async function isUnchangedFromCurrentVersion(p: {
   current_version_id: string | null;
   def: WorkflowDef;
   scope_index: ScopeIndex | undefined;
-}): Promise<boolean> {
-  if (!p.current_version_id) return false;
+}): Promise<{ unchanged: boolean; current_def: WorkflowDef | null }> {
+  if (!p.current_version_id) return { unchanged: false, current_def: null };
   const rows = await p.tx
     .select({
       dag: workflowVersions.dag,
@@ -74,7 +78,14 @@ export async function isUnchangedFromCurrentVersion(p: {
     )
     .limit(1);
   const current = rows[0];
-  if (!current || stableStringify(current.dag) !== stableStringify(p.def)) return false;
+  if (!current) return { unchanged: false, current_def: null };
+  // The stored dag was committed through this same schema, so parsing it back
+  // is the inverse of the insert. The caller compares its `trigger` block to
+  // decide whether a rotation must reconcile schedule/webhook bindings.
+  const current_def = WorkflowDefSchema.parse(current.dag);
+  if (stableStringify(current.dag) !== stableStringify(p.def)) {
+    return { unchanged: false, current_def };
+  }
   if (
     p.scope_index !== undefined &&
     stableStringify(p.scope_index) !== stableStringify(current.scope_index ?? null)
@@ -93,5 +104,5 @@ export async function isUnchangedFromCurrentVersion(p: {
     slug: p.workflow_slug,
     version: current.version,
   });
-  return true;
+  return { unchanged: true, current_def };
 }

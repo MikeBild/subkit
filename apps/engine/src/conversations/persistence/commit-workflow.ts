@@ -625,7 +625,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     // there is something to compare against.
     const annotated = idempotencyAnnotated();
     if (!annotated) return null;
-    const unchanged = await isUnchangedFromCurrentVersion({
+    const { unchanged } = await isUnchangedFromCurrentVersion({
       tx: ctx.db,
       tenant_id: ctx.tenant_id,
       workflow_id: workflowId,
