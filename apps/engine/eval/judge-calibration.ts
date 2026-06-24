@@ -70,60 +70,80 @@ async function main(): Promise<void> {
       .returning();
     if (!tenant) throw new Error("seed tenant failed");
 
-    let agree = 0;
-    let lenientAgree = 0;
-    const rows: Array<{ name: string; label: string; verdict: string; ok: boolean }> = [];
-    console.log(`judge-calibration · ${cases.length} golden cases\n`);
+    // Multi-trial: the judge is stochastic, so a single trial near the
+    // threshold flips the verdict run-to-run. Run N trials per case and gate on
+    // the POOLED mean agreement (more samples → smaller standard error). We
+    // deliberately do NOT gate on per-case unanimity: requiring every trial to
+    // agree is far stricter than the 80% threshold and would itself flake the
+    // gate. The weakest-case rate is surfaced so a single bimodal case a pooled
+    // mean could mask is still visible.
+    const TRIALS = Math.max(1, Number(process.env.TRIALS ?? "3"));
+    const totalTrials = cases.length * TRIALS;
+    let exactHits = 0;
+    let lenientHits = 0;
+    const rows: Array<{ name: string; label: string; verdicts: string[]; lenient: number }> = [];
+    console.log(`judge-calibration · ${cases.length} golden cases × ${TRIALS} trial(s)\n`);
     for (const c of cases) {
-      const outcome = await judgePreview({
-        goal: c.goal,
-        definition_summary: c.definition_summary,
-        // The LLM judge reads step_artifacts (the rendered step outputs). In the
-        // real gate the final step's output_preview carries the content; mirror
-        // that so the judge actually sees the output it is meant to grade
-        // (passing [] would test the judge against an empty preview).
-        step_artifacts: [
-          {
-            step_id: "output",
-            kind: "transform",
-            status: "succeeded",
-            output_preview: c.final_output,
-          },
-        ],
-        final_output: c.final_output,
-        tenant_id: tenant.id,
-        db: testDb.db,
-      });
-      const verdict = outcome.verdict;
-      const exact = verdict === c.label;
-      // Lenient: collapse to a binary "did it satisfy the goal?" (passes vs not).
-      const lenient = (verdict === "passes") === (c.label === "passes");
-      if (exact) agree += 1;
-      if (lenient) lenientAgree += 1;
-      rows.push({ name: c.name, label: c.label, verdict, ok: exact });
+      const verdicts: string[] = [];
+      let caseLenient = 0;
+      for (let t = 0; t < TRIALS; t += 1) {
+        const outcome = await judgePreview({
+          goal: c.goal,
+          definition_summary: c.definition_summary,
+          // The LLM judge reads step_artifacts (the rendered step outputs). In the
+          // real gate the final step's output_preview carries the content; mirror
+          // that so the judge actually sees the output it is meant to grade
+          // (passing [] would test the judge against an empty preview).
+          step_artifacts: [
+            {
+              step_id: "output",
+              kind: "transform",
+              status: "succeeded",
+              output_preview: c.final_output,
+            },
+          ],
+          final_output: c.final_output,
+          tenant_id: tenant.id,
+          db: testDb.db,
+        });
+        verdicts.push(outcome.verdict);
+        if (outcome.verdict === c.label) exactHits += 1;
+        // Lenient: collapse to a binary "did it satisfy the goal?" (passes vs not).
+        if ((outcome.verdict === "passes") === (c.label === "passes")) {
+          lenientHits += 1;
+          caseLenient += 1;
+        }
+      }
+      rows.push({ name: c.name, label: c.label, verdicts, lenient: caseLenient });
+      const mark = caseLenient === TRIALS ? "✓" : caseLenient > 0 ? "~" : "✗";
+      const dist = TRIALS > 1 ? `  lenient=${caseLenient}/${TRIALS}` : "";
       console.log(
-        `  ${exact ? "✓" : "✗"} ${c.name.padEnd(34)} label=${c.label.padEnd(7)} judge=${verdict}`,
+        `  ${mark} ${c.name.padEnd(34)} label=${c.label.padEnd(7)} judge=${verdicts[0]}${dist}`,
       );
     }
 
-    const exactRate = agree / cases.length;
-    const lenientRate = lenientAgree / cases.length;
+    const exactRate = exactHits / totalTrials;
+    const lenientRate = lenientHits / totalTrials;
+    const weakestCase = Math.min(...rows.map((r) => r.lenient / TRIALS));
     console.log(
-      `\nagreement (exact):   ${(exactRate * 100).toFixed(1)}%  (${agree}/${cases.length})`,
+      `\nagreement (exact, pooled):   ${(exactRate * 100).toFixed(1)}%  (${exactHits}/${totalTrials})`,
     );
     console.log(
-      `agreement (lenient): ${(lenientRate * 100).toFixed(1)}%  (${lenientAgree}/${cases.length})`,
+      `agreement (lenient, pooled): ${(lenientRate * 100).toFixed(1)}%  (${lenientHits}/${totalTrials})`,
     );
-    console.log(`threshold: ${(AGREEMENT_THRESHOLD * 100).toFixed(0)}% (lenient)\n`);
+    console.log(`weakest case (lenient):      ${(weakestCase * 100).toFixed(1)}%`);
+    console.log(`threshold: ${(AGREEMENT_THRESHOLD * 100).toFixed(0)}% (lenient, pooled)\n`);
 
     if (lenientRate < AGREEMENT_THRESHOLD) {
       console.error(
-        `JUDGE CALIBRATION FAILED — lenient agreement ${(lenientRate * 100).toFixed(1)}% < ${(
+        `JUDGE CALIBRATION FAILED — pooled lenient agreement ${(lenientRate * 100).toFixed(1)}% < ${(
           AGREEMENT_THRESHOLD * 100
         ).toFixed(0)}%. Disagreements:`,
       );
-      for (const r of rows.filter((r) => !r.ok)) {
-        console.error(`  ${r.name}: labeled ${r.label}, judged ${r.verdict}`);
+      for (const r of rows.filter((r) => r.lenient < TRIALS)) {
+        console.error(
+          `  ${r.name}: labeled ${r.label}, judged ${r.verdicts.join("/")} (lenient ${r.lenient}/${TRIALS})`,
+        );
       }
       process.exit(1);
     }

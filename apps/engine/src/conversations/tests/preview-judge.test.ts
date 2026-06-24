@@ -448,6 +448,68 @@ describe("preview judge · goal stash round-trip", () => {
   });
 });
 
+describe("preview judge · filter-violation downgrade wiring", () => {
+  // The goal EXPLICITLY excludes a value ("(not connected)"); if that value
+  // shows up in the rendered output the LLM "passes" must be downgraded to
+  // "partial". Mock provider returns "passes"; the deterministic
+  // findFilterViolations check decides. No real LLM key needed.
+  const FILTER_GOAL = "Digest of OFFLINE (not connected) chargers only.";
+
+  test('judge "passes" + excluded value present in output → downgraded to "partial"', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "Looks like a charger digest.",
+      missing: [],
+    });
+
+    const outcome = await judgePreview({
+      goal: FILTER_GOAL,
+      definition_summary: "- shape (transform): build digest",
+      step_artifacts: [
+        {
+          step_id: "shape",
+          kind: "transform",
+          status: "succeeded",
+          output_preview:
+            "<table><tr><td>SN-CP-1001</td><td>HEALTHY</td><td>connected</td></tr></table>",
+        },
+      ],
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    expect(outcome.verdict).toBe("partial");
+    if (outcome.verdict === "partial") {
+      expect(outcome.missing).toContain("connected");
+    }
+  });
+
+  test('judge "passes" + excluded value absent (filter applied) → stays "passes"', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "Only offline chargers listed.",
+      missing: [],
+    });
+
+    const outcome = await judgePreview({
+      goal: FILTER_GOAL,
+      definition_summary: "- shape (transform): build digest",
+      step_artifacts: [
+        {
+          step_id: "shape",
+          kind: "transform",
+          status: "succeeded",
+          output_preview: "<table><tr><td>SN-CP-1001</td><td>offline</td></tr></table>",
+        },
+      ],
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    expect(outcome.verdict).toBe("passes");
+  });
+});
+
 describe("preview judge · format-fidelity downgrade wiring", () => {
   // These tests call judgePreview() directly to isolate the format-mismatch
   // guard from the dry_run_workflow tool machinery. The mock provider's
