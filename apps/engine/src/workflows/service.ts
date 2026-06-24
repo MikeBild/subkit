@@ -17,7 +17,7 @@ import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
-import { applyTriggerBindings } from "./trigger-bindings.ts";
+import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
@@ -294,17 +294,16 @@ export async function updateWorkflow(
     if (!wf) return null;
     // Idempotency: an unchanged def must not rotate the version (that
     // churns history and unbinds schedules). See `version-dedup.ts`.
-    if (
-      await isUnchangedFromCurrentVersion({
-        tx,
-        tenant_id: input.tenant_id,
-        workflow_id: wf.id,
-        workflow_slug: wf.slug,
-        current_version_id: wf.current_version_id,
-        def,
-        scope_index: input.scope_index,
-      })
-    ) {
+    const dedup = await isUnchangedFromCurrentVersion({
+      tx,
+      tenant_id: input.tenant_id,
+      workflow_id: wf.id,
+      workflow_slug: wf.slug,
+      current_version_id: wf.current_version_id,
+      def,
+      scope_index: input.scope_index,
+    });
+    if (dedup.unchanged) {
       return wf.id;
     }
     // determine next version
@@ -376,7 +375,20 @@ export async function updateWorkflow(
       step_count: def.steps.length,
       actor_id: input.actor_id,
     });
-    await applyTriggerBindings(tx, input.tenant_id, wf.id, wf.slug, def, input.actor_id);
+    // Reconcile trigger bindings ONLY when the trigger block actually changed.
+    // An unconditional reconcile here unbinds out-of-band schedules (those
+    // bound via create_schedule, carrying a workflow input the inline trigger
+    // cannot express) on any step-only edit — the PUT-unbinds-schedules trap.
+    // `!dedup.current_def` (no prior version) → bind. Removing/changing an
+    // inline trigger DOES change the block → still reconciles (so an
+    // intentional unbind/rebind still happens). Mirrors the byte-equality
+    // invariant the migration rotate path already enforces.
+    const triggerChanged =
+      !dedup.current_def ||
+      JSON.stringify(triggerOf(def)) !== JSON.stringify(triggerOf(dedup.current_def));
+    if (triggerChanged) {
+      await applyTriggerBindings(tx, input.tenant_id, wf.id, wf.slug, def, input.actor_id);
+    }
     return wf.id;
   });
   if (!updated) return { errors: ["workflow not found"] };
