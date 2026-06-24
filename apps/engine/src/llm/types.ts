@@ -254,4 +254,6 @@ export interface LlmCallLogEntry {
   latency_ms: number;
   result: "success" | "quota_exhausted" | "context_too_large" | "error";
   error?: string;
+  execution_id?: string;
+  conversation_id?: string;
 }

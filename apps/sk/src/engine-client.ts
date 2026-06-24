@@ -119,6 +119,15 @@ export function readExtendedTurnUsage(usage: unknown): ExtendedTurnUsage {
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
+// ---------- Telemetry wire types (re-exported from the generated
+// OpenAPI surface) ----------
+// The WS-2 routes added these schemas; aliasing them here gives command
+// surfaces a single import site and keeps the snake_case wire shape the
+// authoritative one.
+export type ExecutionCost = components["schemas"]["ExecutionCost"];
+export type StatsQualityResponse = components["schemas"]["StatsQualityResponse"];
+export type DiagnosticsRuntime = components["schemas"]["DiagnosticsRuntime"];
+
 // ---------- Files wire types ----------
 // Mirror `apps/engine/src/api/files-schemas.ts`. Kept structural (not
 // Zod) here so the CLI's tsc graph doesn't pull in @hono/zod-openapi.
@@ -1152,6 +1161,14 @@ export class EngineClient {
   statsLlm(query: StatsQuery): Promise<StatsLlmResponse> {
     return this.request("GET", "/v1/stats/llm", undefined, query);
   }
+  /**
+   * Authoring-quality rollup — one-shot vs. post-repair success rates
+   * and the top failure reasons over the window. Backed by
+   * `/v1/stats/quality`. Return shape is the generated OpenAPI schema.
+   */
+  statsQuality(query: StatsQuery): Promise<StatsQualityResponse> {
+    return this.request("GET", "/v1/stats/quality", undefined, query);
+  }
 
   // --------------------------- Workflow versions ---------------------------
   /** List committed versions of a workflow (newest first). */
@@ -1539,6 +1556,18 @@ export class EngineClient {
 
   setupValidation(): Promise<SetupValidationResponse> {
     return this.request("GET", "/v1/diagnostics/setup");
+  }
+
+  /**
+   * Live process-runtime snapshot — uptime, memory (rss / heap /
+   * external MB), DB-pool saturation, and event-loop lag. Backed by
+   * `/v1/diagnostics/runtime`. Surfaced by `sk health` so an operator
+   * can see engine pressure (the OOM / event-loop-stall symptoms) from
+   * the CLI without shelling onto the droplet. Return shape is the
+   * generated OpenAPI schema.
+   */
+  diagnosticsRuntime(): Promise<DiagnosticsRuntime> {
+    return this.request("GET", "/v1/diagnostics/runtime");
   }
 
   // --------------------------- Settings -----------------------------------
@@ -2114,6 +2143,18 @@ export class EngineClient {
   }
   executionSteps(id: string): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", `/v1/executions/${encodeURIComponent(id)}/steps`);
+  }
+  /**
+   * Per-execution cost rollup — LLM weighted tokens / cache-read %
+   * / latency (with a per-flow breakdown) plus external-call cost.
+   * Backed by `/v1/executions/{id}/cost`, joined from the
+   * `llm_usage` + `external_call_metering` ledgers (now keyed by
+   * `execution_id`). The return shape is the generated OpenAPI schema
+   * so a wire-shape drift is a typecheck failure here, not a silent
+   * render of `undefined`.
+   */
+  executionCost(id: string): Promise<ExecutionCost> {
+    return this.request("GET", `/v1/executions/${encodeURIComponent(id)}/cost`);
   }
   abortExecution(id: string): Promise<void> {
     return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/abort`);

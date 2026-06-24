@@ -10,6 +10,7 @@ import {
 } from "../engine-client.ts";
 import { pickId } from "../lib/pick.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
+import { computeStepBottlenecks, humanMs } from "../render/format.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type {
   PlanStep,
@@ -80,6 +81,22 @@ function printRunResult(result: RunExecutionResponse): void {
       const msg = w.message ?? "";
       process.stderr.write(`  ${pc.yellow("WARN")} step=${step} code=${code} msg=${msg}\n`);
     }
+  }
+  // Inline performance: surface the slowest step/connector call from the
+  // run's steps payload (each carries `duration_ms`) so an operator sees
+  // the bottleneck right after the run, without reaching for `sk stats`
+  // or `sk executions get`. Reuses the same bottleneck computation the
+  // execution detail uses.
+  const ranked = computeStepBottlenecks(
+    (result.steps ?? []) as unknown as Array<Record<string, unknown>>,
+  );
+  const slowest = ranked[0];
+  if (slowest) {
+    const conn = slowest.connector_slug ? ` ${pc.dim(`(${slowest.connector_slug})`)}` : "";
+    process.stderr.write(
+      `\n${pc.dim("slowest step:")} ${pc.cyan(slowest.step_key)} ` +
+        `${humanMs(slowest.duration_ms)} (${slowest.pct.toFixed(0)}% of run)${conn}\n`,
+    );
   }
   const rs = result.connector_resolutions ?? [];
   if (rs.length === 0) return;

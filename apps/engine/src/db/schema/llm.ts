@@ -123,9 +123,13 @@ export const llmUsage = pgTable(
     // `total_tokens` here is the effective-cost weighting (cache reads at
     // 10 %, cache creation at 125 %); see llm/pricing.ts.
     month_bucket: bigint("month_bucket", { mode: "number" }).notNull(),
+    execution_id: uuid("execution_id"),
+    conversation_id: uuid("conversation_id"),
   },
   (t) => [
     index("llm_usage_tenant_created_idx").on(t.tenant_id, t.created_at),
     index("llm_usage_tenant_month_idx").on(t.tenant_id, t.month_bucket),
+    index("llm_usage_execution_idx").on(t.tenant_id, t.execution_id),
+    index("llm_usage_conversation_idx").on(t.tenant_id, t.conversation_id),
   ],
 );

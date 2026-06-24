@@ -865,6 +865,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           latency_ms: 0,
           result: "quota_exhausted",
           error: "llm_quota_exhausted",
+          conversation_id: p.conversation_id,
         },
         p.db,
       );
@@ -1514,6 +1515,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               cache_creation_tokens: u.cacheCreationTokens,
               latency_ms,
               result: "success",
+              conversation_id: p.conversation_id,
             },
             p.db,
           );
@@ -1769,6 +1771,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           latency_ms: 0,
           result: "error",
           error: msg,
+          conversation_id: p.conversation_id,
         },
         p.db,
       );
@@ -1817,6 +1820,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               latency_ms: 0,
               result: "error",
               error: fbMsg,
+              conversation_id: p.conversation_id,
             },
             p.db,
           );

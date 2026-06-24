@@ -79,6 +79,24 @@ To point the `openai` provider at a self-hosted or third-party **OpenAI-compatib
 
 **Event Streaming.** A tenant-wide Server-Sent Events stream delivers real-time execution events. External monitoring systems, dashboards, and alerting integrations can subscribe to this stream for custom logic. The SSE stream carries the same events that drive the CLI's live-tail mode.
 
+**Product Analytics.** When operators want to forward HTTP-response telemetry to an external product-analytics platform (PostHog, Mixpanel, a custom ingest endpoint), enable `observability.analytics`. It is off by default — no external calls are made until the operator explicitly opts in. The emission reuses the existing `request.telemetry` hook in the metrics middleware; no parallel hook is added.
+
+```yaml
+# sk settings set observability.analytics.enabled true
+# sk settings set observability.analytics.endpoint '"https://analytics.example.com/capture"'
+# sk settings set observability.analytics.api_key '"…"'
+# sk settings set observability.analytics.project '"my-project"'
+```
+
+| Field | Default | Notes |
+|---|---|---|
+| `observability.analytics.enabled` | `false` | Master switch. No-op when false. |
+| `observability.analytics.endpoint` | `""` | Self-hostable ingest URL. Empty = no-op even if enabled. |
+| `observability.analytics.api_key` | `""` | Bearer credential (secret). |
+| `observability.analytics.project` | `""` | Project/workspace identifier forwarded in each event body. |
+
+Each event carries `method`, `path` (route template, not raw URL), `status_code`, `duration_ms`, `request_source`, and `tenant_id`. Errors on the analytics call are caught and logged at debug level — a slow or unavailable endpoint never stalls a response.
+
 ### Telemetry Surface
 
 Every code path that an operator may need to debug emits at least one

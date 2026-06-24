@@ -27,7 +27,14 @@ import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+import { formatTokens } from "../render/format.ts";
 import type { PermissionMode } from "./status-line/render.ts";
+
+// Re-export the shared token formatter so existing footer importers keep
+// working — the single implementation now lives in `render/format.ts`
+// and is used by the budget line below, `executions`, `stats`, and
+// `health`.
+export { formatTokens };
 
 export interface FooterProps {
   /** Signed-in user identifier (email, id, or persona label fallback). */
@@ -81,14 +88,6 @@ export interface FooterProps {
    * hides the row entirely.
    */
   hintLine?: string | null | undefined;
-}
-
-/** Compact 1.2k / 4.8M formatting for the budget line. */
-export function formatTokens(n: number | null | undefined): string {
-  if (n == null) return "–";
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
-  return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0)}M`;
 }
 
 export const MODE_LABELS: Record<PermissionMode, string> = {
@@ -199,6 +198,27 @@ interface BudgetLineProps {
   theme: ReturnType<typeof useTheme>;
 }
 
+// Per-conversation cache-hit rate (WS-3 task 5) is intentionally NOT
+// rendered here. The data is not available at this layer:
+//
+//   - The SSE `completed` frame's `TurnUsage` (packages/cli-core/
+//     turn-event.ts) carries `turn_tokens`, `prompt_tokens_last_call`,
+//     `turn_tokens_total`, `context_cap_tokens`, and a section
+//     `breakdown` — but NO cache-read token count. The engine computes
+//     `cacheReadTokens` internally (apps/engine/src/conversations/
+//     loop.ts) yet does not put it on the emitted usage payload.
+//   - The conversation loop is not a workflow execution, so there is no
+//     `execution_id` on the turn to key the new
+//     `/v1/executions/{id}/cost` endpoint against; that endpoint reports
+//     cache-read % for workflow runs, not chat turns.
+//
+// Surfacing a cache-hit % here would require either (a) the engine
+// adding `cache_read_tokens` to the `completed` frame's usage, or (b) a
+// conversation→execution cost join — both engine-side changes outside
+// this client's scope. Rather than fabricate a number, the footer shows
+// the honest token figures that ARE plumbed (session / today / month /
+// turn / ctx). The workflow-run cache-read % is surfaced where it IS
+// available: `sk executions get <id>`'s cost card.
 const BudgetLine: React.FC<BudgetLineProps> = ({
   sessionTokens,
   tokensToday,
