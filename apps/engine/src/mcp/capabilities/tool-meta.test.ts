@@ -58,4 +58,14 @@ describe("listConversationTools annotations", () => {
     expect(byName.get("conversation_get")?.annotations?.readOnlyHint).toBe(true);
     expect(byName.get("conversation_commit")?.annotations?.readOnlyHint).toBe(true);
   });
+
+  test("conversation_start description names no engine-internal tools (strict clients call phantom tools)", () => {
+    // A strict client (ChatGPT/codex) reads identifiers in a description as
+    // callable tool names. Naming the engine-internal authoring steps made it
+    // try to invoke a non-existent `author_workflow` tool and abort.
+    const desc = byName.get("conversation_start")?.description ?? "";
+    for (const phantom of ["author_workflow", "build_workflow", "dry_run_workflow"]) {
+      expect(desc).not.toContain(phantom);
+    }
+  });
 });
