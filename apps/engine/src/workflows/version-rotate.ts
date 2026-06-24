@@ -11,6 +11,7 @@ import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { validateBareIterationIdentifiers } from "./reference-validator.ts";
 import { emitWorkflowLifecycle } from "./service.ts";
+import { triggerOf } from "./trigger-bindings.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 
@@ -101,7 +102,6 @@ export async function rotateWorkflowVersionInternal(
   const current = currentRows[0];
   if (!current) throw new Error("rotateWorkflowVersionInternal: current version row missing");
   const currentDef = WorkflowDefSchema.parse(current.dag);
-  const triggerOf = (d: WorkflowDef): unknown => d.trigger ?? { kind: "request" };
   if (JSON.stringify(triggerOf(def)) !== JSON.stringify(triggerOf(currentDef))) {
     throw new Error(
       "rotateWorkflowVersionInternal: trigger block differs from the current version — this path never reconciles trigger bindings, use updateWorkflow",
