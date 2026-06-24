@@ -30,6 +30,12 @@ import {
 } from "../observability/metrics.ts";
 
 let ctx: ConversationTestCtx;
+// The seeded workflow is BOUND to the conversation (target_workflow_id) so the
+// run_workflow tool is legitimately exposed by the execution-tool gate — a
+// conversation with a saved-workflow run target is exactly when execution tools
+// are in scope. Without a bound (or named) workflow the gate default-denies
+// run_workflow, which is the build-new-hijack guard, not this path.
+let wfId: string;
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("elicit-routing-principal");
@@ -64,6 +70,7 @@ beforeAll(async () => {
     .update(workflows)
     .set({ current_version_id: ver.id })
     .where(eq(workflows.id, wf.id));
+  wfId = wf.id;
 });
 
 afterAll(async () => {
@@ -90,6 +97,7 @@ async function driveToElicitation(): Promise<{
       tenant_id: ctx.tenant_id,
       actor_id: ctx.user_id,
       connector_id: ctx.connector_id,
+      workflow_id: wfId,
       initial_message: "get ready",
     },
     ctx.testDb.db,
