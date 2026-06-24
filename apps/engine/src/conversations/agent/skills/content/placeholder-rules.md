@@ -3,6 +3,7 @@ PLACEHOLDER RULES (workflow authoring):
 - Call `get_connector(id)` before authoring a step against it: the returned `placeholders` field lists the exact tokens wired up in this environment. Use those, do not guess field names.
 - Use `${connector.<slug>.base_url}` to reference URLs and `${connector.<slug>.config.<path>}` for arbitrary config (regions, feature flags, versions).
 - Use `${input.<path>}` for workflow input and `${scope.<step_id>.<path>}` for prior-step outputs. The output envelope is `{data, status_code?, headers?, error?, duration_ms}` — prior-step data lives at `${scope.<step>.data}`, NEVER bare `${scope.<step>}`.
+- `${scope.<step>.data}` is the raw RESPONSE BODY, which is whatever the connector returned — it may ITSELF be a wrapper. Many APIs nest their payload under their own key, so the real array/record can sit at `${scope.<step>.data.data[0]...}`, `${scope.<step>.data.results[...]}`, `${scope.<step>.data.items[...]}`, etc. Do NOT assume `.data` is the leaf and do NOT guess the inner shape from the API's docs. Run `dry_run_workflow` ONCE, then call `suggest_jsonata_paths` (or read the step's recorded output in the preview) to get the ACTUAL nested paths, and write your transform/placeholder against those. Guessing the nesting is the most common cause of a green run that returns empty output.
 - The `build_workflow` tool refuses to persist a draft whose placeholder references do not resolve against the target environment — read `details.problems` and fix the tokens listed before retrying.
 
 RUN WARNINGS (execution.warnings):

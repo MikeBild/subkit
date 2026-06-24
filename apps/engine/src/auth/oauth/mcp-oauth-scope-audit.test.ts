@@ -724,3 +724,101 @@ describe("audit log entries — token lifecycle (HTTP layer)", () => {
     expect(rows.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+// ─── Consent form structure ──────────────────────────────────────────────────
+// Regression guard for the bug where the scope <ul> (checkboxes + the hidden
+// mcp:read baseline input) was rendered OUTSIDE the <form>, so the browser
+// submitted no `scope` field and every fresh consent was denied as
+// role_downgrade. The other tests in this file hand-build the decision body
+// with `scope=` params, which bypasses the HTML structure and missed this.
+
+/**
+ * Extract the scope values a real browser would submit: every scope input that
+ * lives INSIDE the <form> and is either a hidden input or a checked, non-disabled
+ * checkbox. Inputs rendered outside the form contribute nothing.
+ */
+function browserSubmittedScopes(html: string): string[] {
+  const form = html.match(/<form\b[^>]*>([\s\S]*?)<\/form>/i)?.[1] ?? "";
+  const scopes: string[] = [];
+  for (const tag of form.match(/<input\b[^>]*name="scope"[^>]*>/gi) ?? []) {
+    const value = tag.match(/value="([^"]*)"/)?.[1];
+    if (!value) continue;
+    const isHidden = /type="hidden"/i.test(tag);
+    const isCheckbox = /type="checkbox"/i.test(tag);
+    const checked = /\bchecked\b/i.test(tag);
+    const disabled = /\bdisabled\b/i.test(tag);
+    if (isHidden || (isCheckbox && checked && !disabled)) scopes.push(value);
+  }
+  return scopes;
+}
+
+describe("consent form structure — scope inputs must submit", () => {
+  test("a member approving the rendered form is granted (not denied as role_downgrade)", async () => {
+    const [memberUser] = await db
+      .insert(users)
+      .values({ tenant_id: ctx.tenantId, email: "form-structure@test.local", role: "member" })
+      .returning();
+    if (!memberUser) throw new Error("seed member user failed");
+
+    const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://form.example.com/cb"] }),
+    });
+    const { client_id: clientId } = (await regRes.json()) as { client_id: string };
+
+    const sessionId = await seedSession(db, ctx.tenantId, memberUser.id);
+    const jwt = await mintSessionCookie({
+      session_id: sessionId,
+      user_id: memberUser.id,
+      tenant_id: ctx.tenantId,
+    });
+
+    const authRes = await fetch(
+      `${ctx.baseUrl}/v1/oauth/authorize?${new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: "https://form.example.com/cb",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        // ChatGPT-style request: only mcp:read. The baseline must still submit.
+        scope: "mcp:read",
+      })}`,
+      { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
+    );
+    expect(authRes.status).toBe(200);
+    const html = await authRes.text();
+
+    // Structural invariant: the scope inputs live inside the form, so a browser
+    // submits at least the mcp:read baseline.
+    const submitted = browserSubmittedScopes(html);
+    expect(submitted).toContain("mcp:read");
+
+    const csrfToken = html.match(/name="csrf_token"\s+value="([^"]+)"/)![1] as string;
+
+    // Submit EXACTLY what the rendered form would post — no hand-added scopes.
+    const body = new URLSearchParams();
+    body.set("csrf_token", csrfToken);
+    body.set("client_id", clientId);
+    body.set("redirect_uri", "https://form.example.com/cb");
+    body.set("resource", "");
+    body.set("state", "");
+    body.set("decision", "approve");
+    for (const s of submitted) body.append("scope", s);
+
+    const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: `subkit_session=${jwt}`,
+      },
+      body: body.toString(),
+      redirect: "manual",
+    });
+    expect(decisionRes.status).toBe(302);
+    const location = new URL(decisionRes.headers.get("location") ?? "");
+    // The bug manifested as error=access_denied (empty scope → role_downgrade).
+    expect(location.searchParams.get("error")).toBeNull();
+    expect(location.searchParams.get("code")).not.toBeNull();
+  });
+});

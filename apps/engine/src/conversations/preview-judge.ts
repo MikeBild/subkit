@@ -66,6 +66,13 @@ import { truncateStepPreviewForLlm } from "./tools/truncate.ts";
  *  reset it (P3). */
 export const JUDGE_BREAKER_MAX_BLOCKS = 2;
 
+/** Once the block cap is reached the preview is HELD (not committed) on every
+ *  re-run. If a model ignores the terminal done-signal and keeps re-running
+ *  dry_run_workflow this many more times while at the cap, the gate forces an
+ *  operator-choice escalation instead of another silent hold — an ignored EXIT
+ *  cannot loop forever. Counted per-draft; reset on commit. */
+export const JUDGE_BREAKER_ESCALATE_AFTER = 2;
+
 /** Total char budget for the step-artifacts block in the prompt. Each
  *  step preview is already clipped to ~1.5KB by
  *  `truncateStepPreviewForLlm`; the total keeps a many-step preview

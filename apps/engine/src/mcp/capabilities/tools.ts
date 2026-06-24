@@ -53,7 +53,7 @@ import {
   handleConversationTool,
   listConversationTools,
 } from "./conversations.ts";
-import { buildWorkflowToolMeta } from "./tool-meta.ts";
+import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta.ts";
 
 const TOOL_PREFIX = "wf_";
 const PROGRESS_POLL_MS = 250;
@@ -79,6 +79,7 @@ async function listWorkflowTools({ db, principal }: ListToolsParams): Promise<To
     // over re-deriving" nudge closes that gap.
     description: describeWorkflowTool(entry),
     inputSchema: entry.inputSchema as Tool["inputSchema"],
+    annotations: buildWorkflowToolAnnotations(),
     _meta: buildWorkflowToolMeta(),
   }));
 }

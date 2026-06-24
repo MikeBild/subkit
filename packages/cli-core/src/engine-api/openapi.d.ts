@@ -2850,6 +2850,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch workflow metadata (slug/name/description/lifecycle) without rotating a version */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["WorkflowMetadataPatchBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Workflow"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Slug conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
     "/v1/workflows/{id}/history": {
         parameters: {
             query?: never;
@@ -10932,6 +11001,13 @@ export interface components {
             schema: {
                 [key: string]: unknown;
             } | null;
+        };
+        WorkflowMetadataPatchBody: {
+            slug?: string;
+            name?: string;
+            description?: string | null;
+            /** @enum {string} */
+            lifecycle?: "active" | "archived";
         };
         WorkflowVersionListResponse: {
             items: components["schemas"]["WorkflowVersion"][];

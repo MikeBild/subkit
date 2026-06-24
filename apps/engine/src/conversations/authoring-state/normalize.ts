@@ -412,9 +412,16 @@ function normalizeJudgeBreaker(value: unknown): JudgeBreakerState | null {
         : null;
   const lastVerdict = normalizeJudgeVerdictMemo(value.last_verdict);
   if (blocksSinceCommit === null && lastVerdict === null) return null;
+  // Holds AT the cap (P3 hardening). Survives the normalize round-trip so a
+  // model that ignores the EXIT and re-runs escalates instead of looping.
+  const holdsAtCap =
+    typeof value.holds_at_cap === "number" && value.holds_at_cap > 0
+      ? value.holds_at_cap
+      : undefined;
   return {
     blocks_since_commit: blocksSinceCommit ?? 0,
     last_verdict: lastVerdict,
+    ...(holdsAtCap !== undefined ? { holds_at_cap: holdsAtCap } : {}),
   };
 }
 

@@ -33,6 +33,7 @@ import type { WorkflowDef } from "../workflows/types.ts";
 import {
   buildJudgeDefinitionSummary,
   buildJudgeStepArtifacts,
+  JUDGE_BREAKER_ESCALATE_AFTER,
   JUDGE_BREAKER_MAX_BLOCKS,
   judgePreview,
   type PreviewJudgeOutcome,
@@ -58,6 +59,15 @@ export interface PreviewJudgeGateResult {
     missing: string[];
     guidance: string;
   } | null;
+  /**
+   * Hard escalation (P3 hardening). True once the preview has been HELD at
+   * the block cap `JUDGE_BREAKER_ESCALATE_AFTER` extra times — i.e. the model
+   * kept re-running dry_run_workflow despite the terminal done-signal. The
+   * consumer then emits a forced operator-choice envelope (commit-as-is /
+   * abandon / more guidance) instead of yet another silent `ok:false`, so an
+   * ignored EXIT cannot spin forever.
+   */
+  escalate?: boolean;
 }
 
 /**
@@ -158,33 +168,51 @@ export async function runPreviewJudgeGate(p: {
   // advisory and emits the terminal done-signal.
   if (priorBlocks >= JUDGE_BREAKER_MAX_BLOCKS) {
     const attempts = priorBlocks + 1;
+    // Count holds AT the cap. The cap is hit once; every subsequent re-run
+    // while still failing is a hold the model should not have made (it was
+    // told to stop). After ESCALATE_AFTER such holds, force an operator choice.
+    const priorHolds = p.prior_breaker?.holds_at_cap ?? 0;
+    const holdsAtCap = priorHolds + 1;
+    const escalate = holdsAtCap >= JUDGE_BREAKER_ESCALATE_AFTER;
     logger.warn({
       module: "conversation_tool",
-      action: "judge.breaker_advisory",
-      msg: "preview judge blocked at/over the cap — verdict degraded to advisory, auto-commit proceeds; terminal done-signal surfaced",
+      action: escalate ? "judge.breaker_escalate" : "judge.breaker_advisory",
+      msg: escalate
+        ? "preview judge held at the cap repeatedly — model ignored the EXIT; FORCING an operator-choice escalation"
+        : "preview judge blocked at/over the cap — edit loop exhausted; HOLD for operator decision (no auto-commit), terminal done-signal surfaced",
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
       verdict: judgeOutcome.verdict,
       fingerprint,
       blocks_since_commit: priorBlocks,
+      holds_at_cap: holdsAtCap,
     });
-    recordPreviewJudgeVerdict({ verdict: judgeOutcome.verdict, blocked: false });
-    // Persist the refreshed memo (so the advisory verdict isn't
-    // re-judged) but leave the counter where it is — the next commit
-    // resets it.
+    // The breaker breaks the edit→dry-run→block LOOP, NOT the quality gate:
+    // a still-unsatisfied preview must NEVER auto-commit (that minted empty /
+    // goal-violating workflows inline). Keep `judgeBlocked = true` so the
+    // consumer withholds the commit, AND surface the terminal done-signal so
+    // the model STOPS re-running dry_run_workflow and instead tells the user
+    // what is missing / offers an explicit commit-as-is via save_workflow_draft.
+    judgeBlocked = true;
+    recordPreviewJudgeVerdict({ verdict: judgeOutcome.verdict, blocked: true });
+    // Hold the block counter where it is (do NOT reset — only a real commit
+    // resets it) and advance the at-cap hold counter so an ignored EXIT
+    // escalates rather than looping silently forever.
     nextJudgeBreaker = {
       blocks_since_commit: priorBlocks,
+      holds_at_cap: holdsAtCap,
       last_verdict: toVerdictMemo(fingerprint, judgeOutcome),
     };
+    const missingText =
+      judgeOutcome.missing.length > 0 ? judgeOutcome.missing.join("; ") : judgeOutcome.reason;
     doneSignal = {
       attempts,
       missing: judgeOutcome.missing,
-      guidance:
-        `The preview still does not satisfy the goal after ${attempts} attempt${attempts === 1 ? "" : "s"}. ` +
-        `The judge says the following remains missing: ${
-          judgeOutcome.missing.length > 0 ? judgeOutcome.missing.join("; ") : judgeOutcome.reason
-        }. ` +
-        "If this cannot be satisfied from the available connectors/data, STOP editing — tell the user exactly what is missing and ask how to proceed (or commit as-is if acceptable). The workflow has been committed as-is; do not keep re-running dry_run_workflow.",
+      guidance: escalate
+        ? `STOP. You have re-run dry_run_workflow ${holdsAtCap} times since the preview hit its limit and it STILL does not satisfy the goal (missing: ${missingText}). Do NOT call dry_run_workflow or edit_workflow_patch again. You MUST now ask the user to choose, in plain language: (a) commit the workflow as-is via save_workflow_draft, (b) abandon it, or (c) give you new information to try. Wait for their answer.`
+        : `The preview still does not satisfy the goal after ${attempts} attempt${attempts === 1 ? "" : "s"}. ` +
+          `The judge says the following remains missing: ${missingText}. ` +
+          "The workflow was NOT committed. STOP editing and re-running dry_run_workflow — tell the user exactly what is missing and ask how to proceed; only if they confirm it is acceptable as-is, commit via save_workflow_draft.",
     };
     return {
       judgeOutcome,
@@ -192,6 +220,7 @@ export async function runPreviewJudgeGate(p: {
       nextJudgeBreaker,
       warning: null,
       doneSignal,
+      escalate,
     };
   }
 
