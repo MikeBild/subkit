@@ -15,7 +15,20 @@ import {
 import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
 import { detectSchedulePhrases } from "./schedule-phrase-detector.ts";
-import type { WorkflowDef } from "./types.ts";
+import type { WorkflowDef, WorkflowTrigger } from "./types.ts";
+
+/**
+ * Normalize a def's `trigger` block to its effective value — a missing
+ * trigger means `request` (no public ingress). The single source of the
+ * "request = no trigger" rule, shared by `applyTriggerBindings` (below), the
+ * migration rotate path (`version-rotate.ts`, which asserts trigger
+ * byte-equality), and `updateWorkflow` (which gates schedule reconciliation
+ * on a real trigger change). Compare two defs with
+ * `JSON.stringify(triggerOf(a)) !== JSON.stringify(triggerOf(b))`.
+ */
+export function triggerOf(d: WorkflowDef): WorkflowTrigger {
+  return d.trigger ?? { kind: "request" };
+}
 
 /**
  * Apply the discriminated `trigger` block from a workflow def to its
@@ -47,7 +60,7 @@ export async function applyTriggerBindings(
   def: WorkflowDef,
   actor_id: string | null,
 ): Promise<void> {
-  const trigger = def.trigger ?? { kind: "request" as const };
+  const trigger = triggerOf(def);
   recordWorkflowTriggerKind({ tenant_id, kind: trigger.kind });
   if (trigger.kind === "webhook") {
     await inboundService.bindFromWorkflow(
