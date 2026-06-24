@@ -835,23 +835,34 @@ export const dryRunWorkflowTool: ConversationTool = {
       judgeOutcome?.verdict === "skipped" && judgeOutcome?.reason === "no_goal";
     const cleanPreview = dryRunGreen && !judgeBlocked && !judgeSkippedNoGoal;
     const greenPendingSave = dryRunGreen && !judgeBlocked && judgeSkippedNoGoal;
+    // The judge hit its block cap: the edit loop is exhausted but the preview
+    // still does not satisfy the goal. Do NOT keep nudging edit→dry_run (that
+    // is the loop the breaker exists to stop); instead offer an explicit
+    // commit-as-is OR a final edit, and let the done-signal guidance tell the
+    // model to surface the gap to the user.
+    const judgeExhausted = judgeBlocked && judgeDoneSignal != null;
     const previewNextActions =
       cleanPreview || greenPendingSave
         ? ["save_workflow_draft"]
-        : judgeBlocked
-          ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
-          : dryRunRequiresRepair
-            ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
-            : ["inspect_workflow_draft", "edit_workflow_patch"];
+        : judgeExhausted
+          ? ["save_workflow_draft", "edit_workflow_patch"]
+          : judgeBlocked
+            ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
+            : dryRunRequiresRepair
+              ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
+              : ["inspect_workflow_draft", "edit_workflow_patch"];
     const previewNextPrompt = cleanPreview
       ? "Committing the workflow"
       : greenPendingSave
         ? "Preview is green — call save_workflow_draft to persist it (no goal was set, so it is not auto-committed)"
-        : judgeBlocked
-          ? "Revise the workflow so the preview satisfies the goal (edit_workflow_patch), then re-run dry_run_workflow"
-          : dryRunRequiresRepair
-            ? "Open diagnosis to see why the preview needs repair"
-            : `Re-run preview after fixing step \`${stoppedForDraft}\``;
+        : judgeExhausted
+          ? (judgeDoneSignal?.guidance ??
+            "The preview still does not satisfy the goal and was NOT committed — tell the user what is missing and ask how to proceed, or commit as-is via save_workflow_draft")
+          : judgeBlocked
+            ? "Revise the workflow so the preview satisfies the goal (edit_workflow_patch), then re-run dry_run_workflow"
+            : dryRunRequiresRepair
+              ? "Open diagnosis to see why the preview needs repair"
+              : `Re-run preview after fixing step \`${stoppedForDraft}\``;
     const warningSummary = runWarnings.length > 0 ? (warningsBanner?.summary ?? null) : null;
 
     // Auto-commit on green dry-run. A clean preview means the draft
@@ -1042,9 +1053,11 @@ export const dryRunWorkflowTool: ConversationTool = {
     const previewSummary =
       run.status !== "succeeded"
         ? `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`
-        : judgeBlocked && judgeOutcome && judgeOutcome.verdict !== "skipped"
-          ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but the preview does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} Fix via edit_workflow_patch and re-run dry_run_workflow — or, after the user explicitly confirms, commit anyway via save_workflow_draft.`
-          : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`;
+        : judgeExhausted && judgeOutcome && judgeOutcome.verdict !== "skipped"
+          ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but after ${judgeDoneSignal?.attempts ?? "several"} attempts the preview still does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} It was NOT committed. STOP re-running dry_run_workflow — tell the user what is missing and ask how to proceed, or commit as-is via save_workflow_draft.`
+          : judgeBlocked && judgeOutcome && judgeOutcome.verdict !== "skipped"
+            ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but the preview does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} Fix via edit_workflow_patch and re-run dry_run_workflow — or, after the user explicitly confirms, commit anyway via save_workflow_draft.`
+            : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`;
     // Held-read nudge: when holding a step skipped its dependents and the
     // preview is therefore incomplete, the held step is often a READ
     // misclassified as a write (e.g. a scrape that uses POST). Surface a hint
@@ -1086,6 +1099,21 @@ export const dryRunWorkflowTool: ConversationTool = {
           // Judge verdict on the blocked envelope — the model reads
           // `judge.missing` to target the repair.
           ...(judgeOutcome ? { judge: judgeOutcome } : {}),
+          // Terminal done-signal on the HELD (not committed) envelope: the
+          // judge exhausted its block cap and the preview still fails the goal.
+          // `committed_as_is: false` is the contract that distinguishes this
+          // from the legitimate auto-commit path — the model must stop the
+          // edit loop and ask the user, not keep re-running dry_run_workflow.
+          ...(judgeDoneSignal
+            ? {
+                judge_done: {
+                  committed_as_is: false,
+                  attempts: judgeDoneSignal.attempts,
+                  missing: judgeDoneSignal.missing,
+                  next_action: judgeDoneSignal.guidance,
+                },
+              }
+            : {}),
           ...(warningSummary ? { warning_summary: warningSummary } : {}),
           // Top-level banner so the LLM can't miss warnings on first
           // read. `warnings` (legacy field) stays for back-compat

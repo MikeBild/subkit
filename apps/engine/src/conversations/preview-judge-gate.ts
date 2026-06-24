@@ -161,17 +161,24 @@ export async function runPreviewJudgeGate(p: {
     logger.warn({
       module: "conversation_tool",
       action: "judge.breaker_advisory",
-      msg: "preview judge blocked at/over the cap — verdict degraded to advisory, auto-commit proceeds; terminal done-signal surfaced",
+      msg: "preview judge blocked at/over the cap — edit loop exhausted; HOLD for operator decision (no auto-commit), terminal done-signal surfaced",
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
       verdict: judgeOutcome.verdict,
       fingerprint,
       blocks_since_commit: priorBlocks,
     });
-    recordPreviewJudgeVerdict({ verdict: judgeOutcome.verdict, blocked: false });
-    // Persist the refreshed memo (so the advisory verdict isn't
-    // re-judged) but leave the counter where it is — the next commit
-    // resets it.
+    // The breaker breaks the edit→dry-run→block LOOP, NOT the quality gate:
+    // a still-unsatisfied preview must NEVER auto-commit (that minted empty /
+    // goal-violating workflows inline). Keep `judgeBlocked = true` so the
+    // consumer withholds the commit, AND surface the terminal done-signal so
+    // the model STOPS re-running dry_run_workflow and instead tells the user
+    // what is missing / offers an explicit commit-as-is via save_workflow_draft.
+    judgeBlocked = true;
+    recordPreviewJudgeVerdict({ verdict: judgeOutcome.verdict, blocked: true });
+    // Hold the counter where it is (do NOT reset — only a real commit resets
+    // it) so a model that ignores the EXIT and re-runs keeps hitting this hold
+    // branch rather than silently slipping a commit through.
     nextJudgeBreaker = {
       blocks_since_commit: priorBlocks,
       last_verdict: toVerdictMemo(fingerprint, judgeOutcome),
@@ -184,7 +191,7 @@ export async function runPreviewJudgeGate(p: {
         `The judge says the following remains missing: ${
           judgeOutcome.missing.length > 0 ? judgeOutcome.missing.join("; ") : judgeOutcome.reason
         }. ` +
-        "If this cannot be satisfied from the available connectors/data, STOP editing — tell the user exactly what is missing and ask how to proceed (or commit as-is if acceptable). The workflow has been committed as-is; do not keep re-running dry_run_workflow.",
+        "The workflow was NOT committed. STOP editing and re-running dry_run_workflow — tell the user exactly what is missing and ask how to proceed; only if they confirm it is acceptable as-is, commit via save_workflow_draft.",
     };
     return {
       judgeOutcome,
