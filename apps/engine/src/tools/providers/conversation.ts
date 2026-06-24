@@ -65,9 +65,16 @@ function visibilityFor(
   surface: ToolSurface,
 ): "visible" | "disabled" | "hidden" {
   if (surface === "chat") return "visible";
-  // MCP: hide draft_write from product mode; expose with disabled
-  // badge from authoring/admin so a real client knows the tool exists
-  // but can't call it from a stateless surface.
+  // MCP: draft_write tools are conversation-scoped — only the engine's
+  // internal authoring loop (started via `conversation_start`) may call
+  // them. We keep the descriptor marked `disabled` so `resolve()` still
+  // returns it and a stateless `tools/call` short-circuits to
+  // `not_available_on_surface` (with the actionable "use conversation_start"
+  // reason) BEFORE any audit/elicitation. The catalog itself omits these
+  // tools — see `list()` below — because external clients (e.g. claude.ai)
+  // ignore the `_meta.subkit.disabled` badge, call the tool anyway, and
+  // churn on rejection instead of authoring. Hidden-from-list +
+  // rejected-on-call is the honest, non-trapping surface.
   if (category === "draft_write") return "disabled";
   return "visible";
 }
@@ -161,9 +168,13 @@ function descriptorFor(t: ConversationTool, surface: ToolSurface): ToolDescripto
 }
 
 /** Single chokepoint for "should this tool surface for this filter?".
- *  Used by both `list()` (catalog) and `resolve()` (dispatch). Both must
- *  agree — otherwise a write tool hidden from the catalog could still be
- *  dispatched by a confirmed re-issue (audit-review caught this gap). */
+ *  Used by both `list()` (catalog) and `resolve()` (dispatch). They must
+ *  agree for executable tools — otherwise a write tool hidden from the
+ *  catalog could still be dispatched by a confirmed re-issue (audit-review
+ *  caught this gap). The one deliberate exception is draft_write on MCP:
+ *  `list()` drops it from the catalog while `resolve()` keeps returning
+ *  its disabled descriptor, which is safe because such a call can never
+ *  execute — it always short-circuits to `not_available_on_surface`. */
 function isVisibleForFilter(t: ConversationTool, filter: ToolListFilter): boolean {
   // Skill gate.
   if (t.requires_skill && filter.loadedSkills) {
@@ -171,9 +182,10 @@ function isVisibleForFilter(t: ConversationTool, filter: ToolListFilter): boolea
   }
   if (filter.surface !== "mcp") return true;
 
-  // MCP-mode gating. draft_write is always emitted on MCP (as disabled)
-  // for product/authoring/admin so callers see the "not on this surface"
-  // signal — we filter it through descriptorFor() above, not here.
+  // MCP-mode gating. draft_write stays "visible" to this predicate so
+  // `resolve()` keeps returning its disabled descriptor (the call-time
+  // not_available_on_surface backstop); the catalog drop happens in
+  // `list()` above, not here.
   // Apply mode visibility for non-draft_write tools.
   if (t.category !== "draft_write") {
     if (filter.mcpMode === "product" && !PRODUCT_MODE_ALLOW_LIST.has(t.name)) {
@@ -193,6 +205,15 @@ export const conversationToolProvider: ToolProvider = {
     const out: ToolDescriptor[] = [];
     for (const t of listTools()) {
       if (!isVisibleForFilter(t, filter)) continue;
+      // Catalog omits draft_write on MCP: they are conversation-scoped and
+      // always rejected on a stateless `tools/call`. Listing them (even as
+      // disabled) traps clients that ignore the badge into calling and
+      // churning. `resolve()` deliberately still returns the disabled
+      // descriptor so a guessed/forced call short-circuits to
+      // `not_available_on_surface` with the actionable reason — list and
+      // resolve intentionally disagree here, which is safe because the
+      // tool can never actually execute on this surface.
+      if (filter.surface === "mcp" && t.category === "draft_write") continue;
       const d = descriptorFor(t, filter.surface);
       if (d) out.push(d);
     }
