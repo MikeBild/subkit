@@ -10,7 +10,6 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  buildIntentSuppressesRunWorkflow,
   detectEnvelopeResolution,
   detectMultiArtifactIntent,
   detectUserIntent,
@@ -147,29 +146,53 @@ describe("detectUserIntent", () => {
   });
 });
 
-describe("buildIntentSuppressesRunWorkflow", () => {
-  test("a build-new-workflow message suppresses run_workflow (no lookalike hijack)", () => {
-    // Conversation 661e7ad1: the user asked to AUTHOR a generic Notion page
-    // reader; the loop must remove run_workflow so the model does not run a
-    // lookalike saved workflow (notion-essay-to-markdown) and pause on its
-    // page_id form.
+describe("detectUserIntent — build-new beats ambiguous/negated run", () => {
+  // A co-present "build new workflow" signal must win over an ambiguous "run"
+  // token in the same message, so the loop authors instead of running a
+  // lookalike. The run-intent check runs first, but yields to authoring when an
+  // authoring signal is also present (the negation-blind-hijack class).
+  test("negated 'do NOT run' alongside a build request classifies as authoring", () => {
+    const intent = detectUserIntent(
+      'Build a NEW workflow called "Notion Page Reader". Do NOT run any existing essay workflow.',
+    );
+    expect(intent.startNewWorkflow).toBe(true);
+    expect(intent.forceTool).toBeUndefined();
+    expect(intent.reason).toBe("authoring_intent_over_ambiguous_run");
+  });
+
+  test("'create a new workflow ... do not run the existing notion one' → authoring", () => {
+    const intent = detectUserIntent(
+      "create a new workflow for reading Notion pages, do not run the existing notion-essay-to-markdown workflow",
+    );
+    expect(intent.startNewWorkflow).toBe(true);
+    expect(intent.forceTool).toBeUndefined();
+  });
+
+  test("clean build-new phrasing still classifies as authoring", () => {
     const intent = detectUserIntent("create a workflow that reads a Notion page by URL");
     expect(intent.startNewWorkflow).toBe(true);
     expect(intent.forceTool).toBeUndefined();
-    expect(buildIntentSuppressesRunWorkflow(intent)).toBe(true);
+    expect(intent.reason).toBe("explicit_new_workflow_intent");
   });
 
-  test("an explicit run message does NOT suppress run_workflow", () => {
-    // run-intent is detected before authoring-intent, so the two are
-    // mutually exclusive — running an existing workflow stays available.
-    const intent = detectUserIntent("führe den invoice workflow aus");
-    expect(intent.forceTool).toBe("run_workflow");
-    expect(buildIntentSuppressesRunWorkflow(intent)).toBe(false);
+  test("genuine run phrasings (no authoring signal) still force run_workflow", () => {
+    // Over-correction guard: a plain run command must remain run-intent.
+    expect(detectUserIntent("führe den invoice workflow aus").forceTool).toBe("run_workflow");
+    expect(detectUserIntent("please run this workflow").forceTool).toBe("run_workflow");
+    expect(detectUserIntent("run my-jira-tickets workflow now").forceTool).toBe("run_workflow");
   });
 
-  test("a neutral message does not suppress run_workflow", () => {
-    const intent = detectUserIntent("what does this workflow do?");
-    expect(buildIntentSuppressesRunWorkflow(intent)).toBe(false);
+  test("weak 'retry to create from scratch now' stays no_strong_intent at the classifier", () => {
+    // No regex classifies this; the default-deny execution-tool gate (loop +
+    // authoring-palette), not the detector, is what protects this turn.
+    const intent = detectUserIntent("retry to create from scratch now");
+    expect(intent.forceTool).toBeUndefined();
+    expect(intent.startNewWorkflow).toBeUndefined();
+    expect(intent.reason).toBe("no_strong_intent");
+  });
+
+  test("a neutral question is not run-intent", () => {
+    expect(detectUserIntent("what does this workflow do?").forceTool).toBeUndefined();
   });
 });
 

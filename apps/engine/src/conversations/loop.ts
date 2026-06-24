@@ -74,7 +74,6 @@ import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
 import {
-  buildIntentSuppressesRunWorkflow,
   detectMultiArtifactIntent,
   detectUserIntent,
   inferStateDrivenFollowUpTool,
@@ -111,6 +110,12 @@ import {
 } from "./skill-autoload.ts";
 import { nextSuggestion } from "./streaming.ts";
 import { elideWithinTurnToolOutputs } from "./tool-output-elision.ts";
+import {
+  applyExecutionToolGate,
+  collectSyntheticWorkflowSlugs,
+  resolveExecutionToolGate,
+  resolveNamedWorkflowSlug,
+} from "./tools/authoring-palette.ts";
 import { listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import { classifyFallbackSynthesis, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
@@ -942,20 +947,43 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // tool × two wraps) and forced a duplicate `tools` map.
   const tools = wrappedTools;
 
-  // Build-new-workflow intent must not be hijacked into RUNNING a lookalike
-  // saved workflow. Remove `run_workflow` from this turn's palette so the
-  // model authors (build_workflow / dry_run_workflow) instead of executing
-  // an existing similar workflow and pausing on its input form — the exact
-  // failure in conversation 661e7ad1 (ran notion-essay-to-markdown, asked
-  // for page_id, never built the requested generic Notion reader).
-  if (buildIntentSuppressesRunWorkflow(detectedIntent) && tools.run_workflow) {
-    delete tools.run_workflow;
+  // Default-deny execution-tool gate. `run_workflow` and every synthetic
+  // `wf_<slug>` peer EXECUTE an existing saved workflow; leaving them in an
+  // authoring conversation with no run target lets the model "satisfy" a build
+  // request by running the closest lookalike and stalling on its input form —
+  // the notion-essay-to-markdown / page_id hijack. Exposure is keyed on DURABLE
+  // state only — a saved workflow bound to this turn, or a slug the user named —
+  // never on free-text run/authoring phrasing, so a negated build request
+  // ("...do NOT run...") or a weak continuation ("retry from scratch") can never
+  // re-expose a lookalike execution tool. See `authoring-palette.ts` for the
+  // gate rationale. The binding check runs AFTER the build-new detach above, so
+  // a "create a new workflow" turn that detached its old target is correctly
+  // treated as having no run target.
+  const syntheticWorkflowSlugs = collectSyntheticWorkflowSlugs(Object.keys(tools));
+  const hasBoundSavedWorkflowTarget =
+    workflowIdForTurn !== null ||
+    (draft.summary?.active_target.kind === "workflow" &&
+      draft.summary?.active_target.lifecycle_state === "persisted");
+  const executionGate = resolveExecutionToolGate({
+    hasBoundSavedWorkflow: hasBoundSavedWorkflowTarget,
+    explicitlyNamedWorkflowSlug: resolveNamedWorkflowSlug(
+      ingestedUserMessage,
+      syntheticWorkflowSlugs,
+    ),
+  });
+  const removedExecutionTools = applyExecutionToolGate(
+    tools,
+    executionGate,
+    syntheticWorkflowSlugs,
+  );
+  if (removedExecutionTools > 0) {
     logger.debug({
       module: "conversation",
       action: "loop.intent.suppress_run_workflow",
-      msg: "build-new intent — run_workflow removed from this turn's palette",
+      msg: "no bound or named saved workflow — execution tools removed from this turn's palette",
       conversation_id: p.conversation_id,
-      reason: detectedIntent.reason,
+      reason: executionGate.reason,
+      removed_count: removedExecutionTools,
     });
   }
 

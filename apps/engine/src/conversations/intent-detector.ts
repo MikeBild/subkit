@@ -37,10 +37,17 @@ export interface DetectedIntent {
   reason: string;
 }
 
+// Strong run-intent signals — both verb-anchored: an explicit execution verb
+// adjacent to a workflow/pipeline noun. A previous third pattern
+// (`/\bworkflow\s+.*\b(running|run)\b/i`) bridged "workflow" to "run" across an
+// arbitrary `.*` span, so it matched the NEGATION "workflow … do NOT run"
+// identically to a command — a core driver of the build-new hijack. It is
+// removed: the verb→noun matcher covers every genuine imperative, and the
+// execution-tool gate (default-deny, in authoring-palette.ts) is the structural
+// backstop rather than an ever-wider regex.
 const RUN_WORKFLOW_PATTERNS = [
   /\b(führe|starte|run|execute|dispatch|trigger)\s.+?\b(workflow|tool|pipeline|aus)/i,
   /\bausf[üu]hren\b/i,
-  /\bworkflow\s+.*\b(running|run)\b/i,
 ];
 
 // "neu(en|es|e) workflow" / "another workflow" / "new pipeline" —
@@ -107,17 +114,27 @@ export function detectUserIntent(latestUserText: string | null | undefined): Det
   const text = latestUserText.trim();
   if (!text) return { reason: "empty_user_text" };
 
+  // Compute the authoring signal up front so a co-present build-new request can
+  // never be overridden by an ambiguous run token. The canonical authoring
+  // pattern from `loop/authoring-intent.ts` keeps verbs + tightening (proximity
+  // window, connector-object reject) in one place; the supplemental modifier
+  // pattern still fires for noun-modifier phrasings without an authoring verb.
+  const authoringSignal =
+    matchesWorkflowAuthoringPattern(text) || NEW_WORKFLOW_MODIFIER_PATTERN.test(text);
   for (const pattern of RUN_WORKFLOW_PATTERNS) {
     if (pattern.test(text)) {
+      // A co-present build-new signal means the matched "run" is part of an
+      // authoring request — typically a NEGATED "do NOT run the existing one"
+      // or a descriptive mention, not a command. Authoring wins; run-intent is
+      // not promoted to a forced tool. (When NO signal is present the
+      // execution-tool gate still default-denies a lookalike run.)
+      if (authoringSignal) {
+        return { startNewWorkflow: true, reason: "authoring_intent_over_ambiguous_run" };
+      }
       return { forceTool: "run_workflow", reason: "explicit_run_intent" };
     }
   }
-  // SHOULD-FIX 4 (6.0.3 review): use the canonical authoring pattern
-  // from `loop/authoring-intent.ts` so verbs + tightening (proximity
-  // window, connector-object reject) stay in one place. The supplemental
-  // modifier pattern still fires for noun-modifier phrasings without an
-  // authoring verb.
-  if (matchesWorkflowAuthoringPattern(text) || NEW_WORKFLOW_MODIFIER_PATTERN.test(text)) {
+  if (authoringSignal) {
     return { startNewWorkflow: true, reason: "explicit_new_workflow_intent" };
   }
   for (const pattern of ENUMERATION_PATTERNS) {
@@ -132,22 +149,6 @@ export function detectUserIntent(latestUserText: string | null | undefined): Det
   }
 
   return { reason: "no_strong_intent" };
-}
-
-/**
- * A clear "build a new workflow" intent must NOT be satisfied by RUNNING a
- * lookalike existing workflow. When this is true the loop removes
- * `run_workflow` from the turn's tool palette. This is safe because the
- * authoring loop tests drafts with `dry_run_workflow`, never `run_workflow`
- * (which only executes an already-SAVED workflow), and because the detector
- * checks run-intent BEFORE authoring-intent — so `startNewWorkflow` and
- * `forceTool: "run_workflow"` are mutually exclusive. Without this gate the
- * model ran `notion-essay-to-markdown` and paused on its `page_id` form
- * instead of authoring the requested generic Notion reader (conversation
- * 661e7ad1).
- */
-export function buildIntentSuppressesRunWorkflow(intent: DetectedIntent): boolean {
-  return intent.startNewWorkflow === true;
 }
 
 /** Envelope-resolver: when a pending confirm is open, parse the user's

@@ -26,6 +26,14 @@ export const CONNECTOR_AUTHORING_SKILL = "connector-creation-guidance";
 export const WORKFLOW_AUTHORING_SKILL = "workflow-authoring";
 
 /**
+ * Prefix for the synthetic `wf_<slug>` saved-workflow tools. Single source of
+ * truth, shared with `sdk-wrap/synthetic-workflow-tools.ts` (which builds them)
+ * and the execution-tool gate below (which removes them), so the prefix can
+ * never drift between producer and gate.
+ */
+export const WORKFLOW_TOOL_PREFIX = "wf_";
+
+/**
  * Tools that are always visible regardless of skill-load state.
  * Cover meta-tools (ask_user_*, cannot_help, list_skills, load_skill),
  * passive reads, and the connector-template / docs surfaces the model
@@ -225,4 +233,145 @@ export function filterByAuthoringPalette<
   // status, browsing knowledge sources. Filtering them by skill would create
   // dead-ends for ordinary "what's there?" turns.
   return tools.filter((tool) => allowed.has(tool.name) || tool.category === "tenant_read");
+}
+
+// ── Execution-tool gate ─────────────────────────────────────────────────────
+//
+// `run_workflow` and every synthetic `wf_<slug>` peer EXECUTE an existing
+// saved workflow. In an authoring conversation that has no run target, leaving
+// them in the palette lets the model "satisfy" a build request by running the
+// closest lookalike workflow and stalling on its input form — the
+// notion-essay-to-markdown / page_id hijack. The previous guard keyed this on a
+// brittle, negation-blind, single-message regex (a positive "build new" match),
+// so a negated build request ("...do NOT run...") or a weak continuation
+// ("retry to create from scratch now") slipped past it.
+//
+// The gate below is DEFAULT-DENY and keyed only on DURABLE conversation state,
+// never on free-text run/authoring phrasing: execution tools are exposed iff a
+// saved workflow is bound to the conversation, or the user named a real
+// saved-workflow slug this turn. A negation can satisfy neither, so the whole
+// negation-blindness class is closed structurally rather than by patching
+// regexes.
+
+export interface ExecutionToolGateState {
+  /**
+   * True when the conversation currently has a saved-workflow run target — a
+   * turn `workflow_id`, or an `active_target` that is a PERSISTED workflow.
+   * Sticky `persisted_resources` history must NOT be used here: the gate asks
+   * "is there a run target right now", not "was one ever saved".
+   */
+  hasBoundSavedWorkflow: boolean;
+  /** A saved-workflow slug the user named verbatim this turn, or null. */
+  explicitlyNamedWorkflowSlug: string | null;
+}
+
+export interface ExecutionToolGateDecision {
+  exposeExecution: boolean;
+  reason: "bound_saved_workflow" | "named_workflow_slug" | "authoring_no_target";
+}
+
+/**
+ * Decide whether execution tools are exposed this turn. Pure; no I/O. See the
+ * block comment above for the design rationale.
+ */
+export function resolveExecutionToolGate(state: ExecutionToolGateState): ExecutionToolGateDecision {
+  if (state.hasBoundSavedWorkflow) {
+    return { exposeExecution: true, reason: "bound_saved_workflow" };
+  }
+  if (state.explicitlyNamedWorkflowSlug != null) {
+    return { exposeExecution: true, reason: "named_workflow_slug" };
+  }
+  return { exposeExecution: false, reason: "authoring_no_target" };
+}
+
+/**
+ * True for the literal `run_workflow` tool and for any synthetic `wf_<slug>`
+ * peer whose slug is in the live catalog. Imports the prefix constant rather
+ * than hardcoding `"wf_"`, so it stays correct if the prefix ever changes.
+ */
+export function isExecutionToolName(
+  name: string,
+  syntheticWorkflowSlugs: ReadonlySet<string>,
+): boolean {
+  if (name === "run_workflow") return true;
+  if (!name.startsWith(WORKFLOW_TOOL_PREFIX)) return false;
+  return syntheticWorkflowSlugs.has(name.slice(WORKFLOW_TOOL_PREFIX.length));
+}
+
+/**
+ * A slug is "nameable" — safe to match against incidental prose — only when it
+ * cannot collide with a common word: multi-segment kebab slugs
+ * (`notion-essay-to-markdown`) always qualify; single-token slugs must be long
+ * enough (≥ MIN_SINGLE_TOKEN_SLUG_LENGTH) that a bare verb like `run`/`build`
+ * can never self-match and spuriously expose execution.
+ */
+const MIN_SINGLE_TOKEN_SLUG_LENGTH = 6;
+
+function isNameableSlug(slug: string): boolean {
+  if (slug.length < 4) return false;
+  if (slug.includes("-")) return true;
+  return slug.length >= MIN_SINGLE_TOKEN_SLUG_LENGTH;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Return the first catalog slug that appears in `message` as a whole-word /
+ * kebab token (case-insensitive), else null. Slugs come from the tenant's own
+ * workflow catalog (trusted, kebab), but are still regex-escaped. The
+ * `isNameableSlug` floor prevents a short common-word slug from self-matching
+ * incidental prose.
+ */
+export function resolveNamedWorkflowSlug(
+  message: string | null | undefined,
+  slugCatalog: ReadonlySet<string>,
+): string | null {
+  if (!message) return null;
+  for (const slug of slugCatalog) {
+    if (!isNameableSlug(slug)) continue;
+    // Boundaries reject identifier chars (incl. hyphen) on both sides so a
+    // slug never matches inside a longer token.
+    const re = new RegExp(`(^|[^a-z0-9-])${escapeRegExp(slug.toLowerCase())}([^a-z0-9-]|$)`, "i");
+    if (re.test(message)) return slug;
+  }
+  return null;
+}
+
+/**
+ * Derive the bare saved-workflow slug catalog from a palette's tool names — the
+ * synthetic `wf_<slug>` peers built this turn. Lets the loop reuse the palette
+ * it already has instead of re-querying the workflow catalog.
+ */
+export function collectSyntheticWorkflowSlugs(toolNames: Iterable<string>): Set<string> {
+  const slugs = new Set<string>();
+  for (const name of toolNames) {
+    if (name.startsWith(WORKFLOW_TOOL_PREFIX)) {
+      slugs.add(name.slice(WORKFLOW_TOOL_PREFIX.length));
+    }
+  }
+  return slugs;
+}
+
+/**
+ * Apply the execution-tool gate to a per-turn palette: when execution is NOT
+ * exposed, delete `run_workflow` and every synthetic `wf_<slug>` peer. Mutates
+ * `tools` in place and returns the number of tools removed (for logging). The
+ * loop and its tests both call this so the removal contract has a single home.
+ */
+export function applyExecutionToolGate(
+  tools: Record<string, unknown>,
+  decision: ExecutionToolGateDecision,
+  syntheticWorkflowSlugs: ReadonlySet<string>,
+): number {
+  if (decision.exposeExecution) return 0;
+  let removed = 0;
+  for (const name of Object.keys(tools)) {
+    if (isExecutionToolName(name, syntheticWorkflowSlugs)) {
+      delete tools[name];
+      removed += 1;
+    }
+  }
+  return removed;
 }
