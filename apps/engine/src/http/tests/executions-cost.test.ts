@@ -248,8 +248,8 @@ describe("GET /v1/executions/{id}/cost — happy path", () => {
     const res = await adminFetch(`/v1/executions/${executionId}/cost`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { llm: { cache_read_pct: number; prompt_tokens: number } };
-    // cache_read_pct = round(100 / 300 * 1000) / 10 = round(333.33) / 10 = 333 / 10 = 33.3
-    expect(body.llm.cache_read_pct).toBeCloseTo(33.3, 1);
+    // Hit-rate = cache_read / (prompt + cache_read) = 100 / (300 + 100) = 25.0
+    expect(body.llm.cache_read_pct).toBeCloseTo(25.0, 1);
   });
 
   test("by_flow breakdown lists each distinct flow", async () => {

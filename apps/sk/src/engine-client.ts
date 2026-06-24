@@ -103,17 +103,31 @@ function synthesizeRecoveredOutcome(detail: ConversationDetail): ConversationRun
 export interface ExtendedTurnUsage {
   prompt_tokens_last_call: number | null;
   turn_tokens_total: number | null;
+  cache_read_tokens: number | null;
+  cache_read_pct: number | null;
 }
 
 export function readExtendedTurnUsage(usage: unknown): ExtendedTurnUsage {
   if (typeof usage !== "object" || usage === null) {
-    return { prompt_tokens_last_call: null, turn_tokens_total: null };
+    return {
+      prompt_tokens_last_call: null,
+      turn_tokens_total: null,
+      cache_read_tokens: null,
+      cache_read_pct: null,
+    };
   }
-  const u = usage as { prompt_tokens_last_call?: unknown; turn_tokens_total?: unknown };
+  const u = usage as {
+    prompt_tokens_last_call?: unknown;
+    turn_tokens_total?: unknown;
+    cache_read_tokens?: unknown;
+    cache_read_pct?: unknown;
+  };
   return {
     prompt_tokens_last_call:
       typeof u.prompt_tokens_last_call === "number" ? u.prompt_tokens_last_call : null,
     turn_tokens_total: typeof u.turn_tokens_total === "number" ? u.turn_tokens_total : null,
+    cache_read_tokens: typeof u.cache_read_tokens === "number" ? u.cache_read_tokens : null,
+    cache_read_pct: typeof u.cache_read_pct === "number" ? u.cache_read_pct : null,
   };
 }
 

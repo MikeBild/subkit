@@ -132,10 +132,12 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
       },
     );
 
+    // Cache-hit rate: cached input read vs. total input (fresh prompt +
+    // cached read). Bounded 0–100 — the same definition the REPL footer's
+    // `cache N%` chip uses, so per-run and per-conversation surfaces agree.
+    const cache_input = llm.prompt_tokens + llm.cache_read_tokens;
     const cache_read_pct =
-      llm.prompt_tokens > 0
-        ? Math.round((llm.cache_read_tokens / llm.prompt_tokens) * 1000) / 10
-        : 0;
+      cache_input > 0 ? Math.round((llm.cache_read_tokens / cache_input) * 1000) / 10 : 0;
 
     // --- external-call metering ------------------------------------------
     const extRows = await db

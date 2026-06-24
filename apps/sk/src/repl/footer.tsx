@@ -78,6 +78,12 @@ export interface FooterProps {
    *  of the `ctx N/M` gauge. When null the gauge is hidden because we
    *  cannot tell the operator how close they are to the ceiling. */
   contextCapTokens?: number | null;
+  /** Cached input tokens read this turn (`usage.cache_read_tokens`). */
+  cacheReadTokens?: number | null;
+  /** Per-turn cache-hit rate (`usage.cache_read_pct`, 0–100). Drives the
+   *  `cache N%` chip — the per-conversation analogue of the workflow-run
+   *  cache-read % in `sk executions get`. Null hides the chip. */
+  cacheReadPct?: number | null;
   /** Terminal width hint for collapse logic. */
   columns?: number | undefined;
   /**
@@ -123,6 +129,8 @@ const FooterImpl: React.FC<FooterProps> = ({
   promptTokensLastCall = null,
   turnTokensTotal = null,
   contextCapTokens = null,
+  cacheReadTokens = null,
+  cacheReadPct = null,
   columns = 80,
   hintLine = null,
 }) => {
@@ -180,6 +188,8 @@ const FooterImpl: React.FC<FooterProps> = ({
           promptTokensLastCall={promptTokensLastCall}
           turnTokensTotal={turnTokensTotal}
           contextCapTokens={contextCapTokens}
+          cacheReadTokens={cacheReadTokens}
+          cacheReadPct={cacheReadPct}
           theme={theme}
         />
       ) : null}
@@ -195,30 +205,19 @@ interface BudgetLineProps {
   promptTokensLastCall: number | null;
   turnTokensTotal: number | null;
   contextCapTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheReadPct: number | null;
   theme: ReturnType<typeof useTheme>;
 }
 
-// Per-conversation cache-hit rate (WS-3 task 5) is intentionally NOT
-// rendered here. The data is not available at this layer:
-//
-//   - The SSE `completed` frame's `TurnUsage` (packages/cli-core/
-//     turn-event.ts) carries `turn_tokens`, `prompt_tokens_last_call`,
-//     `turn_tokens_total`, `context_cap_tokens`, and a section
-//     `breakdown` — but NO cache-read token count. The engine computes
-//     `cacheReadTokens` internally (apps/engine/src/conversations/
-//     loop.ts) yet does not put it on the emitted usage payload.
-//   - The conversation loop is not a workflow execution, so there is no
-//     `execution_id` on the turn to key the new
-//     `/v1/executions/{id}/cost` endpoint against; that endpoint reports
-//     cache-read % for workflow runs, not chat turns.
-//
-// Surfacing a cache-hit % here would require either (a) the engine
-// adding `cache_read_tokens` to the `completed` frame's usage, or (b) a
-// conversation→execution cost join — both engine-side changes outside
-// this client's scope. Rather than fabricate a number, the footer shows
-// the honest token figures that ARE plumbed (session / today / month /
-// turn / ctx). The workflow-run cache-read % is surfaced where it IS
-// available: `sk executions get <id>`'s cost card.
+// Per-conversation cache-hit rate. The engine's `completed` frame
+// (`TurnUsage` in packages/cli-core/turn-event.ts) carries
+// `cache_read_tokens` + `cache_read_pct` (= cacheRead / (fresh + cacheRead),
+// the same definition as `sk executions get`'s cost card), accumulated
+// across every LLM call of the turn in apps/engine/src/conversations/
+// loop.ts. We render it as a `cache N%` chip so the operator sees prompt-
+// cache effectiveness without leaving the REPL. Hidden when the engine
+// sent no cache figure (non-LLM tool turn or an older engine).
 const BudgetLine: React.FC<BudgetLineProps> = ({
   sessionTokens,
   tokensToday,
@@ -227,6 +226,8 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
   promptTokensLastCall,
   turnTokensTotal,
   contextCapTokens,
+  cacheReadTokens,
+  cacheReadPct,
   theme,
 }) => {
   const monthDisplay =
@@ -270,6 +271,13 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
   const showCtx = promptTokensLastCall != null && contextCapTokens != null;
   const showTurn = turnTokensTotal != null && turnTokensTotal > 0;
 
+  // Prompt-cache effectiveness for the last turn. A high hit-rate means
+  // most of the prompt was served from cache (cheap) — render it in the
+  // assistant highlight when it's pulling its weight, dim otherwise.
+  const showCache = cacheReadPct != null;
+  const cacheColor =
+    cacheReadPct != null && cacheReadPct >= 50 ? theme.role.assistant : theme.severity.dim;
+
   return (
     <Box>
       <Text color={theme.severity.dim}> ↘ session </Text>
@@ -292,6 +300,15 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
             {formatTokens(promptTokensLastCall)}/{formatTokens(contextCapTokens)}
           </Text>
           {ctxPct != null && ctxPct >= 80 ? <Text color={ctxColor}> ({ctxPct}%)</Text> : null}
+        </>
+      ) : null}
+      {showCache ? (
+        <>
+          <Text color={theme.severity.dim}> · cache </Text>
+          <Text color={cacheColor}>{cacheReadPct}%</Text>
+          {cacheReadTokens != null && cacheReadTokens > 0 ? (
+            <Text color={theme.severity.dim}> ({formatTokens(cacheReadTokens)})</Text>
+          ) : null}
         </>
       ) : null}
     </Box>

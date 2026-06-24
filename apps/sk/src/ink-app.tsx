@@ -4490,6 +4490,8 @@ export const InkApp: React.FC<InkAppProps> = ({
           null
         }
         contextCapTokens={session.usage?.context_cap_tokens ?? null}
+        cacheReadTokens={readExtendedTurnUsage(session.usage).cache_read_tokens}
+        cacheReadPct={readExtendedTurnUsage(session.usage).cache_read_pct}
         columns={columns}
       />
 

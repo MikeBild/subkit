@@ -263,6 +263,13 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   //     cache) across all LLM calls of this turn.
   let promptTokensLastCall: number | null = null;
   let turnTokensTotal = 0;
+  // Per-turn cache accounting for the `completed` envelope's cache-hit
+  // gauge. `turnInputTokens` is the running sum of FRESH (non-cached)
+  // input; `turnCacheReadTokens` is input served from the prompt cache.
+  // Hit-rate = cacheRead / (fresh + cacheRead) — the same definition the
+  // `/v1/executions/{id}/cost` card uses, so the two surfaces agree.
+  let turnInputTokens = 0;
+  let turnCacheReadTokens = 0;
 
   // Rewrite `@attachment:<slug>` chat-text tokens to the canonical
   // `[file:fid_...]` sentinel before persistence so every downstream
@@ -1501,6 +1508,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           // last-call prompt size (vs. the context cap) + running total.
           promptTokensLastCall = stepPromptTokens(u);
           turnTokensTotal += stepTotalTokens(u);
+          turnInputTokens += u.inputTokens;
+          turnCacheReadTokens += u.cacheReadTokens;
           const stepEndedAt = now();
           const latency_ms = Math.max(0, stepEndedAt - lastStepEnd);
           lastStepEnd = stepEndedAt;
@@ -2188,6 +2197,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       // cumulative spend across every LLM call of this turn.
       ...(promptTokensLastCall != null ? { prompt_tokens_last_call: promptTokensLastCall } : {}),
       turn_tokens_total: turnTokensTotal,
+      // Per-turn cache-hit: cached input read vs. total input (fresh +
+      // cached). Emitted only when at least one LLM call ran this turn so
+      // a non-LLM tool turn doesn't render a misleading `cache 0%`.
+      ...(turnInputTokens + turnCacheReadTokens > 0
+        ? {
+            cache_read_tokens: turnCacheReadTokens,
+            cache_read_pct:
+              Math.round((turnCacheReadTokens / (turnInputTokens + turnCacheReadTokens)) * 1000) /
+              10,
+          }
+        : {}),
       remaining_monthly_budget_tokens: remaining,
       context_cap_tokens: contextCap,
       ...(breakdown ? { breakdown } : {}),
