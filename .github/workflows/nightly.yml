@@ -49,7 +49,15 @@ jobs:
     env:
       DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
       MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
-      LLM_PROVIDER: anthropic
+      # The engine config is config-first: a bare `ANTHROPIC_API_KEY` /
+      # `LLM_PROVIDER` env is no longer merged into the LLM provider config
+      # (the loader reads the config file + `SK_OVERRIDE_*` overlays; once the
+      # config is initialised, `llm.providers.anthropic.api_key` resolves to its
+      # empty default rather than falling through to the bare env). CI has no
+      # config file, so the LLM credentials MUST be supplied as path-addressed
+      # `SK_OVERRIDE_*` overrides.
+      SK_OVERRIDE_LLM_PROVIDER: anthropic
+      SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       # Pin the model so model-side regressions are observable.
       # Bumping this is an intentional decision, not a drift surface.
       #
@@ -62,7 +70,9 @@ jobs:
       # vendor spend per run (~$0.30 vs ~$0.05). The whole point of this
       # nightly is to catch real LLM-quality regressions in the engine's
       # tool palette, so the model has to be capable enough to follow it.
-      ANTHROPIC_MODEL: claude-sonnet-4-6
+      SK_OVERRIDE_LLM_MODEL: claude-sonnet-4-6
+      # Retained only for the "Verify ANTHROPIC_API_KEY is set" guard step below
+      # (it reads the bare env to fail fast when the secret is unconfigured).
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       SKIP_DOCKER: "1"
       TZ: UTC
@@ -148,6 +158,15 @@ jobs:
     env:
       DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
       MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
+      # Config-first: supply the judge's anthropic credentials as path-addressed
+      # SK_OVERRIDE_* overlays (CI has no config file, and the runner's
+      # in-process SK_OVERRIDE_* assignments land AFTER the import-hoisted config
+      # load — too late). Set in the OS env they are read at config init. Without
+      # this the judge flow falls through to the `gateway` provider and every
+      # verdict is `skipped` (0 agreement).
+      SK_OVERRIDE_LLM_PROVIDER: anthropic
+      SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # Retained for the runner's own ANTHROPIC_API_KEY guard + the verify step.
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       SKIP_DOCKER: "1"
       TZ: UTC
