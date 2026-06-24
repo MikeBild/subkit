@@ -13,8 +13,14 @@
 //      expires_at (consumed + expired codes are dead after the TTL + grace).
 //
 //   4) mcp_oauth_clients — DCR clients created more than 30 days ago that
-//      never completed an authorization (no row in authorization_codes).
-//      Uses a NOT EXISTS subquery to detect "registered but never used".
+//      left no durable footprint: no refresh tokens, no access tokens, and
+//      no authorization codes. The "was this client ever used" signal must
+//      be a DURABLE record. Authorization codes are NOT durable — sweep 3
+//      above purges them ~1 day past expiry, so for any client older than
+//      30 days the codes are always gone; keying the guard on codes alone
+//      deletes every aged client, including ones in active daily use whose
+//      live refresh tokens still authenticate. The guard therefore checks
+//      all three proof-of-use tables via NOT EXISTS.
 //
 //   5) mcp_oauth_states — in-flight CLIENT-direction authorization rows
 //      (subkit acting as an OAuth client against an external MCP server)
@@ -143,15 +149,33 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
 
   // ── Sweep 4: unused DCR clients ────────────────────────────────────────────
   // tenant-filter:exempt — cross-tenant retention sweep
-  // Only removes clients that registered (via DCR) but never received an
-  // authorization code — i.e. the tool registered but the user never
-  // completed the consent flow within the 30-day window.
+  // Only removes clients with NO durable proof-of-use: no refresh tokens, no
+  // access tokens, and no authorization codes. Authorization codes alone are
+  // not a durable signal — sweep 3 purges them ~1 day past expiry, so an aged
+  // client that was actively used still trips a codes-only NOT EXISTS and would
+  // be wrongly deleted while its live refresh tokens keep authenticating. The
+  // refresh/access NOT EXISTS guards key on the persistent tokens instead;
+  // sweeps 1–2 only remove expired/revoked tokens, so a live client always has
+  // a row here and is protected. A genuinely abandoned DCR registration has no
+  // tokens and no codes and is still GC'd after the 30-day grace, as intended.
   try {
     const deleted = await db
       .delete(mcpOauthClients)
       .where(
         and(
           lt(mcpOauthClients.created_at, sql`now() - ${CLIENT_GRACE}`),
+          notExists(
+            db
+              .select({ id: mcpOauthRefreshTokens.id })
+              .from(mcpOauthRefreshTokens) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
+              .where(sql`${mcpOauthRefreshTokens.client_id} = ${mcpOauthClients.client_id}`),
+          ),
+          notExists(
+            db
+              .select({ id: mcpOauthAccessTokens.id })
+              .from(mcpOauthAccessTokens) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
+              .where(sql`${mcpOauthAccessTokens.client_id} = ${mcpOauthClients.client_id}`),
+          ),
           notExists(
             db
               .select({ id: mcpOauthAuthorizationCodes.id })

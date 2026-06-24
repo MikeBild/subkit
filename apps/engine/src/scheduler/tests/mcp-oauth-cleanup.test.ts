@@ -299,6 +299,85 @@ describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
     expect(remaining).toHaveLength(1);
   });
 
+  test("keeps old client with a live refresh token but no codes (prod regression)", async () => {
+    // Reproduces the prod incident: a DCR client connected >30 days ago whose
+    // short-lived authorization codes were long since purged by sweep 3, but
+    // which still holds live refresh tokens (actively used). A codes-only guard
+    // deleted it, breaking the connector with "unknown client_id". The durable
+    // refresh-token footprint must keep it alive.
+    const clientId = "stale-active-dcr-client-lll222";
+    const [clientRow] = await srv.db
+      .insert(mcpOauthClients)
+      .values({
+        client_id: clientId,
+        redirect_uris: ["https://example.com/cb"],
+        grant_types: ["authorization_code", "refresh_token"],
+        scope: "mcp:read",
+      })
+      .returning();
+    if (!clientRow) throw new Error("seed client failed");
+
+    await srv.db.execute(
+      `UPDATE mcp_oauth_clients SET created_at = '${staleClientAt.toISOString()}' WHERE id = '${clientRow.id}'`,
+    );
+
+    // A live (future-expiry, un-revoked) refresh token — the durable proof of
+    // use. No authorization codes exist for this client (sweep 3 purged them).
+    await srv.db.insert(mcpOauthRefreshTokens).values({
+      tenant_id: srv.tenantId,
+      client_id: clientId,
+      user_id: srv.userId,
+      prefix: "active_rt_prefix1",
+      token_sha256: "active_client_refresh_token_sha256_lll222",
+      scope: "mcp:read",
+      expires_at: freshExpiry,
+    });
+
+    await runMcpOAuthCleanup(new Date(), srv.db); // allow-wall-clock
+
+    const remaining = await srv.db
+      .select()
+      .from(mcpOauthClients)
+      .where(eq(mcpOauthClients.client_id, clientId));
+    expect(remaining).toHaveLength(1);
+  });
+
+  test("keeps old client with a live access token but no codes", async () => {
+    const clientId = "stale-active-at-dcr-client-mmm333";
+    const [clientRow] = await srv.db
+      .insert(mcpOauthClients)
+      .values({
+        client_id: clientId,
+        redirect_uris: ["https://example.com/cb"],
+        grant_types: ["authorization_code", "refresh_token"],
+        scope: "mcp:read",
+      })
+      .returning();
+    if (!clientRow) throw new Error("seed client failed");
+
+    await srv.db.execute(
+      `UPDATE mcp_oauth_clients SET created_at = '${staleClientAt.toISOString()}' WHERE id = '${clientRow.id}'`,
+    );
+
+    await srv.db.insert(mcpOauthAccessTokens).values({
+      tenant_id: srv.tenantId,
+      client_id: clientId,
+      user_id: srv.userId,
+      prefix: "active_at_prefix1",
+      token_sha256: "active_client_access_token_sha256_mmm333",
+      scope: "mcp:read",
+      expires_at: freshExpiry,
+    });
+
+    await runMcpOAuthCleanup(new Date(), srv.db); // allow-wall-clock
+
+    const remaining = await srv.db
+      .select()
+      .from(mcpOauthClients)
+      .where(eq(mcpOauthClients.client_id, clientId));
+    expect(remaining).toHaveLength(1);
+  });
+
   test("keeps recently registered client even with no codes", async () => {
     const clientId = "recent-unused-dcr-client-kkk111";
     const [row] = await srv.db
