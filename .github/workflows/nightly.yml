@@ -121,13 +121,13 @@ jobs:
     name: judge calibration (real LLM)
     runs-on: ubuntu-24.04
     if: ${{ github.repository_owner == 'MikeBild' }}
-    # Advisory. After the verdict-rule + golden-label fixes the judge clears the
-    # 80% target (~83% lenient), but the margin is thin and the judge is
-    # stochastic (single-trial), and two residual misses (wrong-filter,
-    # missing-columns) persist. Keep continue-on-error until a multi-trial run
-    # confirms a comfortable, stable margin — then flip to false so a
-    # judge-calibration REGRESSION blocks the nightly.
-    continue-on-error: true
+    # Blocking. The two historically-flaky misses are now DETERMINISTIC guards
+    # (findFilterViolations for wrong-filter, findMissingNamedFields for missing
+    # columns — both downgrade passes→partial without the LLM), and the runner
+    # now pools agreement over `TRIALS` (default 3) so a single stochastic judge
+    # call near the threshold can no longer flip the gate. A drop below 80%
+    # pooled lenient is therefore a real regression and blocks the nightly.
+    continue-on-error: false
     services:
       postgres:
         image: postgres:18-alpine
