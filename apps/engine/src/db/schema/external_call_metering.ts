@@ -26,6 +26,7 @@ import {
   numeric,
   pgTable,
   text,
+  uuid,
 } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
@@ -62,6 +63,8 @@ export const externalCallMetering = pgTable(
     // (UTC) to compute this value — do not roll your own, otherwise the
     // metering and llm_usage ledgers will not agree on month boundaries.
     month_bucket: bigint("month_bucket", { mode: "number" }).notNull(),
+    execution_id: uuid("execution_id"),
+    conversation_id: uuid("conversation_id"),
   },
   (t) => [
     index("external_call_metering_tenant_created_idx").on(t.tenant_id, t.created_at),
@@ -70,6 +73,7 @@ export const externalCallMetering = pgTable(
       t.provider,
       t.month_bucket,
     ),
+    index("external_call_metering_execution_idx").on(t.tenant_id, t.execution_id),
     check("external_call_metering_result_check", sql`${t.result} IN ('ok','error')`),
     // Pin `provider` to a slug grammar (migration 0016).
     // Operator-facing roll-ups join on this column; an unconstrained

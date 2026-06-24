@@ -136,6 +136,12 @@ export function reportCommandError(err: unknown, opts?: { json?: boolean }): nev
       payload.code = err.code;
       if (err.hint) payload.hint = err.hint;
       if (err.trace_id) payload.trace_id = err.trace_id;
+    } else if (isTransportError(err)) {
+      // A transport failure is the engine being unreachable, not an
+      // engine-reported error. Tag it so machine consumers can branch
+      // on it the same way the text path headlines it.
+      payload.code = "transport_error";
+      payload.error = `cannot reach engine: ${msg}`;
     }
     process.stdout.write(`${JSON.stringify(payload)}\n`);
   } else {
@@ -144,6 +150,12 @@ export function reportCommandError(err: unknown, opts?: { json?: boolean }): nev
       lines.push(`${pc.red("error")}: ${err.code}: ${msg}`);
       if (err.hint) lines.push(pc.dim(`  hint: ${err.hint}`));
       if (err.trace_id) lines.push(pc.dim(`  trace: ${err.trace_id}`));
+    } else if (isTransportError(err)) {
+      // Headless one-shot commands must fail loudly with a recognisable
+      // transport headline, not the raw runtime cause ("Unable to
+      // connect…"). The interactive REPL gets a richer humanised hint via
+      // `humanizeRequestError`; this is the command-path equivalent.
+      lines.push(`${pc.red("error")}: cannot reach engine: ${msg}`);
     } else {
       lines.push(`${pc.red("error")}: ${msg}`);
     }

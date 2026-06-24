@@ -103,6 +103,12 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
     if (cacheRead > 0) entry.cache_read_tokens = cacheRead;
     if (cacheCreate > 0) entry.cache_creation_tokens = cacheCreate;
     if (p.error !== undefined) entry.error = p.error;
+    if (typeof p.metadata.execution_id === "string") {
+      entry.execution_id = p.metadata.execution_id;
+    }
+    if (typeof p.metadata.conversation_id === "string") {
+      entry.conversation_id = p.metadata.conversation_id;
+    }
     await recordUsage(entry, exec);
   } catch (err) {
     // Accounting is best-effort. A write failure must not mask the LLM

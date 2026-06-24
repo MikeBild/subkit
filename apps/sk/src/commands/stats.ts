@@ -20,6 +20,7 @@ import {
   type StatsLlmResponse,
   type StatsQuery,
 } from "../engine-client.ts";
+import { humanMs } from "../render/format.ts";
 
 // --- bucket grammar + caps (kept in lock-step with the engine's --------
 //     apps/engine/src/http/routes/stats/bucket-window.ts) ----------------
@@ -132,14 +133,6 @@ function sparkline(values: number[]): string {
 
 function num(n: number): string {
   return Math.round(n).toLocaleString();
-}
-
-function humanMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return "0ms";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
-  return `${(ms / 3_600_000).toFixed(1)}h`;
 }
 
 /** Right-align a column of cells to a fixed width. */

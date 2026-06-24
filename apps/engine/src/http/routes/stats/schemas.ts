@@ -232,3 +232,34 @@ export const LlmStatsResponse = z
     }),
   })
   .openapi("StatsLlmResponse");
+
+// ---- quality --------------------------------------------------------------
+
+export const StatsQualityQuery = BucketWindowQuery.extend({
+  workflow_id: z.string().uuid().optional(),
+}).openapi("StatsQualityQuery");
+
+const QualityFailureReason = z
+  .object({
+    code: z.string(),
+    count: z.number(),
+  })
+  .openapi("StatsQualityFailureReason");
+
+export const StatsQualityResponse = z
+  .object({
+    ...EnvelopeBase,
+    one_shot: z.object({
+      succeeded: z.number(),
+      failed: z.number(),
+      total: z.number(),
+      success_rate: z.number(),
+    }),
+    post_repair: z.object({
+      successes: z.number(),
+      failures: z.number(),
+      success_rate: z.number(),
+    }),
+    failure_reasons: z.array(QualityFailureReason),
+  })
+  .openapi("StatsQualityResponse");

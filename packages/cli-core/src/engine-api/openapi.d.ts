@@ -543,6 +543,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/stats/quality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Workflow quality: one-shot success, failure reasons, post-repair success */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    workflow_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsQualityResponse"];
+                    };
+                };
+                /** @description Invalid window */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings": {
         parameters: {
             query?: never;
@@ -3187,6 +3238,53 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["ExecutionStepListResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/executions/{id}/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cost + token attribution for an execution */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExecutionCost"];
                     };
                 };
                 /** @description Not found */
@@ -9635,6 +9733,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/diagnostics/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live process runtime snapshot (memory / db pool / event-loop lag) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DiagnosticsRuntime"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/diagnostics/setup": {
         parameters: {
             query?: never;
@@ -10260,6 +10412,30 @@ export interface components {
             cache_read: number;
             cache_creation: number;
             total: number;
+        };
+        StatsQualityResponse: {
+            /** @enum {string} */
+            bucket: "minute" | "hour" | "day" | "month" | "year";
+            tz: string;
+            from: string;
+            to: string;
+            truncated_at?: string;
+            one_shot: {
+                succeeded: number;
+                failed: number;
+                total: number;
+                success_rate: number;
+            };
+            post_repair: {
+                successes: number;
+                failures: number;
+                success_rate: number;
+            };
+            failure_reasons: components["schemas"]["StatsQualityFailureReason"][];
+        };
+        StatsQualityFailureReason: {
+            code: string;
+            count: number;
         };
         SettingsListResponse: {
             items: components["schemas"]["SettingLeafEntry"][];
@@ -11029,6 +11205,33 @@ export interface components {
             request_meta?: unknown;
             started_at: string | null;
             finished_at: string | null;
+        };
+        ExecutionCost: {
+            llm: {
+                calls: number;
+                weighted_tokens: number;
+                prompt_tokens: number;
+                completion_tokens: number;
+                cache_read_tokens: number;
+                cache_read_pct: number;
+                latency_ms: number;
+                by_flow: components["schemas"]["ExecutionCostPerFlow"][];
+            };
+            external: {
+                calls: number;
+                cost_usd: number;
+                units: number;
+                latency_ms: number;
+            };
+        };
+        ExecutionCostPerFlow: {
+            flow: string;
+            calls: number;
+            weighted_tokens: number;
+            prompt_tokens: number;
+            completion_tokens: number;
+            cache_read_tokens: number;
+            latency_ms: number;
         };
         ExecutionSignalResponse: {
             /** Format: uuid */
@@ -13106,6 +13309,21 @@ export interface components {
             vertex_service_account_set: boolean;
             default_primary: string;
             default_fallback: string;
+        };
+        DiagnosticsRuntime: {
+            uptime_s: number;
+            memory: {
+                rss_mb: number;
+                heap_used_mb: number;
+                heap_total_mb: number;
+                external_mb: number;
+            };
+            db_pool: {
+                total: number;
+                idle: number;
+                waiting: number;
+            };
+            event_loop_lag_ms: number;
         };
         DiagnosticsSetupResponse: {
             overall_status: components["schemas"]["DiagnosticsSetupStatus"];
