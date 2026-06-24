@@ -74,6 +74,7 @@ import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
 import {
+  buildIntentSuppressesRunWorkflow,
   detectMultiArtifactIntent,
   detectUserIntent,
   inferStateDrivenFollowUpTool,
@@ -940,6 +941,23 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // two-layer wrap held ~218 closures simultaneously per turn (one per
   // tool × two wraps) and forced a duplicate `tools` map.
   const tools = wrappedTools;
+
+  // Build-new-workflow intent must not be hijacked into RUNNING a lookalike
+  // saved workflow. Remove `run_workflow` from this turn's palette so the
+  // model authors (build_workflow / dry_run_workflow) instead of executing
+  // an existing similar workflow and pausing on its input form — the exact
+  // failure in conversation 661e7ad1 (ran notion-essay-to-markdown, asked
+  // for page_id, never built the requested generic Notion reader).
+  if (buildIntentSuppressesRunWorkflow(detectedIntent) && tools.run_workflow) {
+    delete tools.run_workflow;
+    logger.debug({
+      module: "conversation",
+      action: "loop.intent.suppress_run_workflow",
+      msg: "build-new intent — run_workflow removed from this turn's palette",
+      conversation_id: p.conversation_id,
+      reason: detectedIntent.reason,
+    });
+  }
 
   // Steer toolChoice from explicit user intent. Without this, the model
   // sees "auto" and can decide to just narrate ("the workflow already

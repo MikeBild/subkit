@@ -340,7 +340,11 @@ const defaultSuggestNextModelInvoker: SuggestNextModelInvoker = async (
   try {
     // Per-request env read (see SUGGEST_MODEL_FALLBACK comment).
     const modelId = process.env.SK_SUGGEST_MODEL ?? SUGGEST_MODEL_FALLBACK;
-    resolved = await initializeModel({ defaultModel: modelId });
+    // Pass the tenant so provider + key resolution matches the main turn.
+    // Without it, `initializeModel` reads global config and threw
+    // `invalid x-api-key` on every turn (conversation 661e7ad1) even
+    // though the main turn's model call succeeded.
+    resolved = await initializeModel({ defaultModel: modelId, tenantId: call.tenant_id });
   } catch (err) {
     logger.warn({
       module: "conversations",

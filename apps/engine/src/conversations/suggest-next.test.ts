@@ -87,6 +87,26 @@ describe("suggestNextMessage — model fallback", () => {
     { role: "assistant" as const, text: "Bug fixed. Tests are green." },
   ];
 
+  test("passes the caller's tenant_id into the model invocation", async () => {
+    // Regression: the default invoker forwards call.tenant_id to
+    // initializeModel so the suggestion model resolves the tenant-scoped
+    // provider/key. Omitting it threw `invalid x-api-key` every turn
+    // (conversation 661e7ad1). Assert the seam carries the tenant.
+    const seenTenants: string[] = [];
+    const invoker: SuggestNextModelInvoker = async (call) => {
+      seenTenants.push(call.tenant_id);
+      return { text: "commit this" };
+    };
+    await suggestNextMessage({
+      tenant_id: "tenant-xyz",
+      conversation_id: "c",
+      recent_messages: noOfferHistory,
+      last_assistant_text: "Bug fixed. Tests are green.",
+      model_invoker: invoker,
+    });
+    expect(seenTenants).toEqual(["tenant-xyz"]);
+  });
+
   test("model output passes through when valid", async () => {
     const invoker: SuggestNextModelInvoker = async () => ({
       text: "commit this",

@@ -43,6 +43,14 @@ export interface SuggestNextResult {
 export interface SuggestNextModelInvocation {
   system: string;
   messages: SubkitLlmMessage[];
+  /**
+   * Tenant the suggestion is generated for. The default invoker passes
+   * this to `initializeModel` so the suggestion model resolves the SAME
+   * tenant-scoped provider + API key the main turn used. Omitting it made
+   * the invoker fall back to global config and throw `invalid x-api-key`
+   * on every turn while the turn itself succeeded (conversation 661e7ad1).
+   */
+  tenant_id: string;
 }
 
 export interface SuggestNextModelResult {
@@ -194,6 +202,7 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
     modelResult = await params.model_invoker({
       system: prompt.system,
       messages: prompt.messages,
+      tenant_id: params.tenant_id,
     });
   } catch (err) {
     logSuggestError(params, "model_invoker_threw", err);
