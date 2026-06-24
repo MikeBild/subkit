@@ -331,6 +331,10 @@ describe("authoring slash panes", () => {
         tokens_month: 120,
         monthly_budget_tokens: 1000,
         remaining_monthly_budget_tokens: 901,
+        tokens_today_user: 12,
+        tokens_month_user: 40,
+        user_monthly_budget_tokens: null,
+        user_remaining_monthly_budget_tokens: null,
         version: "1.10.6",
       },
       setupSnapshot: {

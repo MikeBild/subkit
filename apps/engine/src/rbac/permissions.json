@@ -206,6 +206,12 @@
   },
 
   {
+    "name": "stats:read:all",
+    "description": "Read other users' LLM usage and cross-user breakdowns within the tenant",
+    "resource_type": "tenant"
+  },
+
+  {
     "name": "rbac:read",
     "description": "Read RBAC roles, permissions, grants, groups",
     "resource_type": "rbac"

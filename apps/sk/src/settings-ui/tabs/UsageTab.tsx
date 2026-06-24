@@ -22,6 +22,11 @@ interface UsageRow {
   total: number;
 }
 
+interface UserRow {
+  user_id: string;
+  total: number;
+}
+
 /** First-of-month UTC, ISO — matches the engine's monthly budget window. */
 function startOfMonthIso(): string {
   const d = new Date();
@@ -34,6 +39,8 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
   const [totalCompletion, setTotalCompletion] = useState(0);
   const [cacheRead, setCacheRead] = useState(0);
   const [budget, setBudget] = useState<number | null>(null);
+  const [userRows, setUserRows] = useState<UserRow[]>([]);
+  const [canReadAll, setCanReadAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -44,9 +51,10 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
     setError(null);
     (async () => {
       try {
-        const [stats, status] = await Promise.all([
+        const [stats, status, bootstrap] = await Promise.all([
           client.statsLlm({ bucket: "day", from: startOfMonthIso(), group_by: "flow" }),
           client.statusSummary(),
+          client.skBootstrap(),
         ]);
         if (cancelled) return;
         const top: UsageRow[] = stats.groups
@@ -63,6 +71,27 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
         setTotalCompletion(stats.totals.tokens.completion);
         setCacheRead(stats.totals.tokens.cache_read);
         setBudget(status.monthly_budget_tokens);
+
+        // Per-user breakdown is admin-only — gated on stats:read:all, the
+        // same mechanism the admin surfaces use for audit:read.
+        const allowed = (bootstrap.permissions ?? []).includes("stats:read:all");
+        setCanReadAll(allowed);
+        if (allowed) {
+          const byUser = await client.statsLlm({
+            bucket: "day",
+            from: startOfMonthIso(),
+            group_by: "user",
+          });
+          if (cancelled) return;
+          const users: UserRow[] = byUser.groups
+            .map((g) => ({ user_id: g.key.user || "(system)", total: g.totals.tokens.total }))
+            .filter((u) => u.total > 0)
+            .sort((a, b) => b.total - a.total)
+            .slice(0, 5);
+          setUserRows(users);
+        } else {
+          setUserRows([]);
+        }
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -114,6 +143,24 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
           />
         ))}
       </Box>
+      {canReadAll ? (
+        <Box marginTop={1} flexDirection="column">
+          <Text color="gray">Top 5 users by total tokens (this month)</Text>
+          {userRows.length === 0 ? (
+            <Text color="gray">no attributed per-user usage this month</Text>
+          ) : null}
+          {userRows.map((u) => (
+            <UsageBar
+              key={u.user_id}
+              flow={u.user_id.slice(0, 18)}
+              total={u.total}
+              prompt={0}
+              completion={0}
+              max={userRows[0]?.total ?? 1}
+            />
+          ))}
+        </Box>
+      ) : null}
       <Box marginTop={1}>
         <Text color="gray">r refresh · Esc closes</Text>
       </Box>
@@ -160,7 +207,10 @@ const UsageBar: React.FC<{
       <Text color="cyan">{bar}</Text>
       <Text color="gray">
         {" "}
-        {total.toLocaleString()} ({prompt.toLocaleString()} p + {completion.toLocaleString()} c)
+        {total.toLocaleString()}
+        {prompt > 0 || completion > 0
+          ? ` (${prompt.toLocaleString()} p + ${completion.toLocaleString()} c)`
+          : ""}
       </Text>
     </Box>
   );

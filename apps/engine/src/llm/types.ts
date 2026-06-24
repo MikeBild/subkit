@@ -254,4 +254,8 @@ export interface LlmCallLogEntry {
   latency_ms: number;
   result: "success" | "quota_exhausted" | "context_too_large" | "error";
   error?: string;
+  /** The acting end-user, if any. Null for system / system_account flows. */
+  user_id?: string | null;
+  /** Attribution class for this call; defaults to "system" when omitted. */
+  actor_type?: "user" | "system_account" | "system";
 }
