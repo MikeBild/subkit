@@ -252,7 +252,7 @@
     const table = {};
     for (let i = 0; i < B64_ALPHABET.length; i++) table[B64_ALPHABET[i]] = i;
     table["-"] = 62; // url-safe `+`
-    table["_"] = 63; // url-safe `/`
+    table._ = 63; // url-safe `/`
     return table;
   })();
 
@@ -263,7 +263,7 @@
     let bits = 0;
     for (let i = 0; i < str.length; i++) {
       const v = B64_LOOKUP[str[i]];
-      if (v === undefined) throw new Error("base64Decode: invalid character at index " + i);
+      if (v === undefined) throw new Error(`base64Decode: invalid character at index ${i}`);
       acc = (acc << 6) | v;
       bits += 6;
       if (bits >= 8) {
