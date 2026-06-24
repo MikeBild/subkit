@@ -493,6 +493,25 @@
             "type": "integer",
             "nullable": true
           },
+          "tokens_today_user": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "tokens_month_user": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "user_monthly_budget_tokens": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "user_remaining_monthly_budget_tokens": {
+            "type": "integer",
+            "nullable": true
+          },
           "version": {
             "type": "string"
           },
@@ -509,6 +528,10 @@
           "tokens_month",
           "monthly_budget_tokens",
           "remaining_monthly_budget_tokens",
+          "tokens_today_user",
+          "tokens_month_user",
+          "user_monthly_budget_tokens",
+          "user_remaining_monthly_budget_tokens",
           "version",
           "llm_provider"
         ]
@@ -2558,7 +2581,8 @@
                 "rbac:read",
                 "api_key:read",
                 "portal_token:read",
-                "knowledge:read"
+                "knowledge:read",
+                "stats:read:all"
               ]
             },
             "description": "Allowed UX-gating permissions for the principal."
@@ -2594,7 +2618,8 @@
                 "rbac:read",
                 "api_key:read",
                 "portal_token:read",
-                "knowledge:read"
+                "knowledge:read",
+                "stats:read:all"
               ]
             },
             "description": "Stable list of permissions probed; reflects the engine's known UX gating set."
@@ -13712,6 +13737,15 @@
             "required": false,
             "name": "group_by",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "user_id",
+            "in": "query"
           }
         ],
         "responses": {
@@ -13727,6 +13761,16 @@
           },
           "400": {
             "description": "Invalid window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cross-user usage requires stats:read:all",
             "content": {
               "application/json": {
                 "schema": {

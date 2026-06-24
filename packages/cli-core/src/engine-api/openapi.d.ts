@@ -498,6 +498,7 @@ export interface paths {
                     model?: string | string[];
                     flow?: string | string[];
                     group_by?: string | string[];
+                    user_id?: string;
                 };
                 header?: never;
                 path?: never;
@@ -516,6 +517,15 @@ export interface paths {
                 };
                 /** @description Invalid window */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Cross-user usage requires stats:read:all */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -10039,6 +10049,10 @@ export interface components {
             tokens_month: number;
             monthly_budget_tokens: number | null;
             remaining_monthly_budget_tokens: number | null;
+            tokens_today_user: number | null;
+            tokens_month_user: number | null;
+            user_monthly_budget_tokens: number | null;
+            user_remaining_monthly_budget_tokens: number | null;
             version: string;
             llm_provider: components["schemas"]["StatusLlmProvider"];
         };
@@ -10561,9 +10575,9 @@ export interface components {
                 scopes: string[] | null;
             };
             /** @description Allowed UX-gating permissions for the principal. */
-            permissions: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read")[];
+            permissions: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "stats:read:all")[];
             /** @description Stable list of permissions probed; reflects the engine's known UX gating set. */
-            permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read")[];
+            permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "stats:read:all")[];
             tenant: {
                 /** Format: uuid */
                 id: string;
