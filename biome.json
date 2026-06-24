@@ -14,6 +14,7 @@
       "!**/docs",
       "!**/.github",
       "!**/.claude/worktrees",
+      "!**/.claude/workflows",
       "!**/bun.lock",
       "!**/bun.lockb",
       "!packages/cli-core/src/engine-api/openapi.d.ts",
