@@ -22,6 +22,7 @@ import {
   DecisionRequestSchema,
   deriveSessionSecret,
   intersectScopes,
+  MCP_SCOPE_PERMISSIONS,
   parseFormBody,
   permittedMcpScopes,
   renderConsentPage,
@@ -207,10 +208,20 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       sessionPayload.user_id,
       userRow.role_name ?? userRow.role,
     );
-    const grantedScope = intersectScopes(
-      intersectScopes(requestedScope, supportedScopes),
-      roleScopes,
-    );
+    // Offer the operator's FULL permitted ceiling, independent of what the
+    // client requested. The client's requested scope only controls which boxes
+    // are pre-checked; the resource owner may grant any scope their role holds.
+    // Stable presentation order: read, authoring, admin.
+    const scopeOrder = MCP_SCOPE_PERMISSIONS as readonly string[];
+    const offeredScopes = intersectScopes(roleScopes.join(" "), supportedScopes)
+      .split(" ")
+      .filter(Boolean)
+      .sort((a, b) => scopeOrder.indexOf(a) - scopeOrder.indexOf(b));
+
+    // Pre-check what the client asked for (clamped to the offered ceiling), and
+    // always pre-check mcp:read when offered — it is the granted baseline.
+    const requestedSet = new Set(requestedScope.split(" ").filter(Boolean));
+    const preChecked = offeredScopes.filter((s) => requestedSet.has(s) || s === "mcp:read");
 
     // Validate RFC 8707 resource indicator — must target this server if present.
     if (resource) {
@@ -221,20 +232,20 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       }
     }
 
-    // Empty intersection after role-check → access_denied
-    if (!grantedScope) {
+    // Nothing the role permits intersects the supported scopes → access_denied.
+    if (offeredScopes.length === 0) {
       return buildErrorRedirect(redirectUri, "access_denied", state);
     }
 
-    const scopeList = grantedScope.split(" ").filter(Boolean);
-
-    // Mint a signed anti-CSRF token bound to the session
+    // Mint a signed anti-CSRF token bound to the session. Bake the offered
+    // CEILING (not the client request): at decision time the granted scope is
+    // clamped to selected ∩ offered_scopes ∩ fresh-role ∩ supported.
     const csrfSecret = deriveSessionSecret();
     const csrfToken = await signCsrfToken(csrfSecret, {
       session_id: sessionPayload.session_id,
       client_id: clientId,
       redirect_uri: redirectUri,
-      scope: grantedScope,
+      offered_scopes: offeredScopes.join(" "),
       code_challenge: codeChallenge,
       code_challenge_method: codeChallengeMethod,
       resource,
@@ -245,7 +256,8 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       clientName: client.client_name ?? clientId,
       tenantName: tenantRow?.display_name ?? sessionPayload.tenant_id,
       userEmail: userRow.email,
-      scopes: scopeList,
+      offeredScopes,
+      preChecked,
       csrfToken,
       state,
       clientId,
@@ -270,9 +282,13 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
   // ── Consent decision ─────────────────────────────────────────────────────
   // Raw handler — form-encoded body
   app.post("/v1/oauth/authorize/decision", async (c) => {
-    const parsedForm = DecisionRequestSchema.safeParse(
-      Object.fromEntries(await parseFormBody(c.req.raw)),
-    );
+    const form = await parseFormBody(c.req.raw);
+    // The consent form posts one `scope` field per selected checkbox. Read the
+    // authoritative multi-value list from the raw params — Object.fromEntries
+    // would collapse repeated fields to the last value and silently drop the
+    // operator's other selections.
+    const selectedScopes = form.getAll("scope");
+    const parsedForm = DecisionRequestSchema.safeParse(Object.fromEntries(form));
     if (!parsedForm.success) {
       return c.json({ error: "invalid_request" }, 400);
     }
@@ -348,10 +364,11 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     const codeChallenge = (csrfPayload.code_challenge as string | undefined) ?? "";
-    // csrfPayload.scope was computed at consent-render time (role intersection).
-    // Re-fetch the user's current role and re-run the intersection so a
-    // role downgrade between consent render and decision is honored.
-    const csrfScope = (csrfPayload.scope as string | undefined) ?? "";
+    // The CSRF token bakes the offered CEILING (the role-permitted scopes shown
+    // on the consent page), NOT the final grant. The grant is whatever the
+    // operator selected, clamped to that ceiling AND re-clamped to the fresh
+    // role so a downgrade between consent render and decision is honored.
+    const ceiling = (csrfPayload.offered_scopes as string | undefined) ?? "";
     const freshUserRows = await db
       .select({ role: users.role, role_name: rolesTable.name })
       .from(users)
@@ -370,12 +387,15 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       sessionPayload.user_id,
       freshRole,
     );
-    // Re-intersect the baked scope against the current role permissions so a
-    // role downgrade between consent render and decision is honored. NO
-    // fallback to the stale csrfScope — if the downgrade leaves an empty
-    // intersection the user no longer holds any consented scope, so the
-    // grant must be denied rather than minted at the pre-downgrade level.
-    const scope = intersectScopes(csrfScope, freshRoleScopes);
+    // Clamp the operator's selection by BOTH the baked ceiling and the fresh
+    // role permissions. A tampered form that posts a scope the role lacks (or
+    // that was never offered) is intersected away; an empty result denies. The
+    // ceiling itself is already supported∩role from render time, so role is the
+    // hard ceiling and offered_scopes is a stable upper bound.
+    const scope = intersectScopes(
+      intersectScopes(selectedScopes.join(" "), ceiling.split(" ").filter(Boolean)),
+      freshRoleScopes,
+    );
     if (!scope) {
       await auditAwait(
         {
