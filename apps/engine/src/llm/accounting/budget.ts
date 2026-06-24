@@ -230,5 +230,7 @@ export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Prom
     user_id: entry.user_id ?? null,
     actor_type: entry.actor_type ?? "system",
     month_bucket: bucket,
+    execution_id: entry.execution_id ?? null,
+    conversation_id: entry.conversation_id ?? null,
   });
 }

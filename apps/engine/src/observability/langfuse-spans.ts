@@ -187,6 +187,176 @@ export function redactPayload(value: unknown): unknown {
   return value;
 }
 
+// ---- per-tool observation metadata builders --------------------------------
+//
+// Each builder receives the ALREADY-REDACTED args (redactPayload is applied
+// by startToolSpan before the builder runs — builders never see raw args).
+// They return additional metadata fields to merge into the span metadata.
+// When the field is absent or non-string, it is omitted rather than
+// surfaced as null, keeping the span compact.
+//
+// Truncation rules shared across builders:
+//   - Array fields: cap at ARRAY_CAP entries.
+//   - String payloads (query, path, error): truncate at STRING_CAP chars.
+//   - URL fields: hostname-only (no credentials, no path, no query).
+
+const ARRAY_CAP = 12;
+const STRING_CAP = 512;
+
+function capArray<T>(arr: T[]): T[] {
+  return arr.length > ARRAY_CAP ? arr.slice(0, ARRAY_CAP) : arr;
+}
+
+function capString(s: string): string {
+  return s.length > STRING_CAP ? `${s.slice(0, STRING_CAP)}…` : s;
+}
+
+/** Extract hostname-only from a URL string. Returns undefined on parse failure. */
+function hostnameOnly(rawUrl: unknown): string | undefined {
+  if (typeof rawUrl !== "string" || !rawUrl) return undefined;
+  try {
+    return new URL(rawUrl).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+function str(v: unknown): string | undefined {
+  return typeof v === "string" && v ? v : undefined;
+}
+
+function bool(v: unknown): boolean | undefined {
+  return typeof v === "boolean" ? v : undefined;
+}
+
+type RedactedArgs = Record<string, unknown>;
+
+/** Author/build-workflow tool: step/system identifiers and draft-vs-saved target. */
+function buildAuthorMeta(args: RedactedArgs): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const stepId = str(args.step_id) ?? str(args.step);
+  if (stepId) out.step_id = capString(stepId);
+  const systemId = str(args.system_id) ?? str(args.workflow_id);
+  if (systemId) out.system_id = capString(systemId);
+  const target =
+    str(args.target) ??
+    (args.draft === true ? "draft" : args.draft === false ? "saved" : undefined);
+  if (target) out.target = target;
+  const conversationId = str(args.conversation_id);
+  if (conversationId) out.conversation_id = conversationId;
+  return out;
+}
+
+/** Run/execute-workflow tool: target kind and inclusion flags. */
+function buildRunMeta(args: RedactedArgs): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const kind = str(args.kind) ?? str(args.target_kind);
+  if (kind) out.target_kind = kind;
+  const draftFlag = bool(args.draft);
+  if (draftFlag !== undefined) out.draft = draftFlag;
+  const includeConnectors = bool(args.include_connectors);
+  if (includeConnectors !== undefined) out.include_connectors = includeConnectors;
+  const includeSkills = bool(args.include_skills);
+  if (includeSkills !== undefined) out.include_skills = includeSkills;
+  return out;
+}
+
+/** Edit/patch tool: patch paths applied/rejected. */
+function buildPatchMeta(args: RedactedArgs): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const applied = Array.isArray(args.applied_paths)
+    ? capArray(args.applied_paths as unknown[])
+    : undefined;
+  if (applied) out.applied_paths = applied;
+  const rejected = Array.isArray(args.rejected_paths)
+    ? capArray(args.rejected_paths as unknown[])
+    : undefined;
+  if (rejected) out.rejected_paths = rejected;
+  const patchCount = typeof args.patch_count === "number" ? args.patch_count : undefined;
+  if (patchCount !== undefined) out.patch_count = patchCount;
+  return out;
+}
+
+/** Connector-call tool: protocol and hostname only (no credentials, no query string). */
+function buildConnectorMeta(args: RedactedArgs): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const protocol = str(args.protocol) ?? str(args.driver);
+  if (protocol) out.protocol = protocol;
+  const host = hostnameOnly(args.url) ?? hostnameOnly(args.base_url) ?? str(args.host);
+  if (host) out.host = host;
+  const slug = str(args.slug) ?? str(args.connector_slug);
+  if (slug) out.connector_slug = capString(slug);
+  return out;
+}
+
+/** Find/search tool: lookup mode and query keywords (truncated). */
+function buildSearchMeta(args: RedactedArgs): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const mode = str(args.mode) ?? str(args.lookup_mode);
+  if (mode) out.lookup_mode = mode;
+  const query = str(args.query) ?? str(args.keywords) ?? str(args.q);
+  if (query) out.query = capString(query);
+  const limit = typeof args.limit === "number" ? args.limit : undefined;
+  if (limit !== undefined) out.limit = limit;
+  return out;
+}
+
+// Tool-name → builder mapping. Each key is a substring that can appear in
+// tool names; the first match wins. This deliberately avoids branching on
+// brand names or exact tool names so the builders survive renames.
+const TOOL_META_BUILDERS: Array<{
+  match: (name: string) => boolean;
+  build: (args: RedactedArgs) => Record<string, unknown>;
+}> = [
+  {
+    // Author / build / draft tools (e.g. author_workflow, save_workflow_draft)
+    match: (n) => /author|draft|build_workflow|save_workflow/.test(n),
+    build: buildAuthorMeta,
+  },
+  {
+    // Run / execute tools (e.g. run_workflow, dry_run_workflow, execute_step)
+    match: (n) => /\brun\b|execute|dry_run/.test(n),
+    build: buildRunMeta,
+  },
+  {
+    // Edit / patch tools (e.g. apply_patch, propose_step_patch)
+    match: (n) => /patch|edit_step|repair/.test(n),
+    build: buildPatchMeta,
+  },
+  {
+    // Connector-call tools (e.g. probe_connector, call_connector)
+    match: (n) => /connector|probe/.test(n),
+    build: buildConnectorMeta,
+  },
+  {
+    // Find / search tools (e.g. search_knowledge, find_connector, lookup_*)
+    match: (n) => /search|find|lookup/.test(n),
+    build: buildSearchMeta,
+  },
+];
+
+/**
+ * Enrich a span's metadata with tool-specific fields. `redactedArgs` MUST
+ * have already passed through `redactPayload` — this function does NOT
+ * re-run redaction. Returns the merged metadata object.
+ */
+export function enrichSpanMetadata(
+  toolName: string,
+  redactedArgs: unknown,
+  base: Record<string, unknown>,
+): Record<string, unknown> {
+  const args =
+    redactedArgs !== null && typeof redactedArgs === "object" && !Array.isArray(redactedArgs)
+      ? (redactedArgs as RedactedArgs)
+      : {};
+  for (const entry of TOOL_META_BUILDERS) {
+    if (entry.match(toolName)) {
+      return { ...base, ...entry.build(args) };
+    }
+  }
+  return base;
+}
+
 // ---- span API -------------------------------------------------------------
 
 export interface ToolSpanHandle {
@@ -221,15 +391,20 @@ export async function startToolSpan(p: StartToolSpanParams): Promise<ToolSpanHan
       finish: async () => {},
     };
   }
+  // Redact FIRST — builders only receive the sanitised payload.
+  const redactedInput = redactPayload(p.input);
+  const baseMeta = p.metadata ?? {};
+  // Enrich with per-tool metadata using the already-redacted input.
+  const enrichedMeta = enrichSpanMetadata(p.name, redactedInput, baseMeta);
   const trace = client.trace({
     name: p.name,
-    metadata: p.metadata ?? {},
-    ...(p.metadata?.session_id ? { sessionId: String(p.metadata.session_id) } : {}),
+    metadata: enrichedMeta,
+    ...(baseMeta.session_id ? { sessionId: String(baseMeta.session_id) } : {}),
   });
   const span = trace.span({
     name: p.name,
-    input: redactPayload(p.input),
-    metadata: p.metadata ?? {},
+    input: redactedInput,
+    metadata: enrichedMeta,
   });
   let finished = false;
   return {

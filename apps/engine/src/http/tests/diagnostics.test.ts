@@ -267,6 +267,8 @@ describe("/v1/diagnostics/setup", () => {
         "Offload-storage is an opt-in feature gate; surfaced from /v1/diagnostics/storage when that subsystem is enabled.",
       "observability.langfuse.secret_key":
         "Observability secrets surface in /v1/diagnostics/observability (planned). Setup view is bootstrap-config-only.",
+      "observability.analytics.api_key":
+        "Observability secrets surface in /v1/diagnostics/observability (planned). Setup view is bootstrap-config-only.",
       "mcp.api_key":
         "MCP routes have their own diagnostic; /v1/diagnostics/setup is intentionally narrower.",
       "llm.providers.bedrock.session_token":

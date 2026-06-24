@@ -65,6 +65,24 @@ export const LlmStatusSchema = z
   })
   .openapi("DiagnosticsLlmStatus");
 
+export const DiagnosticsRuntimeSchema = z
+  .object({
+    uptime_s: z.number(),
+    memory: z.object({
+      rss_mb: z.number(),
+      heap_used_mb: z.number(),
+      heap_total_mb: z.number(),
+      external_mb: z.number(),
+    }),
+    db_pool: z.object({
+      total: z.number().int(),
+      idle: z.number().int(),
+      waiting: z.number().int(),
+    }),
+    event_loop_lag_ms: z.number(),
+  })
+  .openapi("DiagnosticsRuntime");
+
 export const SetupIssueSchema = z
   .object({
     id: z.string(),

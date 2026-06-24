@@ -14,6 +14,7 @@
 import type { MiddlewareHandler } from "hono";
 import type { AppEnv } from "../http/openapi.ts";
 import { logger } from "../logging/logger.ts";
+import { emitRequestEvent } from "./analytics.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 
 function templatePath(c: { req: { routePath?: string; url: string } }): string {
@@ -91,6 +92,17 @@ export function metricsMiddleware(): MiddlewareHandler<AppEnv> {
             ...baseFields,
             action: "request.telemetry",
             msg: "request served",
+          });
+          // Product analytics: reuse this existing per-response point.
+          // emitRequestEvent is a no-op when analytics is disabled — no
+          // parallel hook, no extra middleware, no conditional branch cost.
+          emitRequestEvent({
+            method,
+            path,
+            status_code: status,
+            duration_ms: duration,
+            request_source,
+            tenant_id,
           });
         } else {
           logger.warn({

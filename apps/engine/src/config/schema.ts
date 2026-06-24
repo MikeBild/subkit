@@ -454,6 +454,35 @@ const StorageSection = z
     },
   );
 
+const AnalyticsSection = z
+  .object({
+    enabled: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Enable product-analytics emission. Off by default — no external calls are made unless this is true and an endpoint is configured.",
+      )
+      .meta(global()),
+    endpoint: optionalUrl
+      .default("")
+      .describe(
+        "Self-hostable analytics ingest endpoint. Empty disables emission even when enabled=true.",
+      )
+      .meta(global()),
+    api_key: z
+      .string()
+      .default("")
+      .describe("API key for the analytics endpoint.")
+      .meta(global({ secret: true })),
+    project: z
+      .string()
+      .default("")
+      .describe("Project or workspace identifier on the analytics platform.")
+      .meta(global()),
+  })
+  .prefault({})
+  .describe("Config-driven product analytics (disabled by default; zero external calls when off)");
+
 const ObservabilitySection = z
   .object({
     langfuse: z
@@ -479,6 +508,7 @@ const ObservabilitySection = z
       })
       .prefault({})
       .describe("OpenTelemetry OTLP exporter"),
+    analytics: AnalyticsSection,
     // Phase 1 (logging) per-field string cap, now config-driven. The
     // logger hot-reloads this via reconfigureObservability() on any
     // observability.* write; it falls back to 2048 when the loader is not
