@@ -72,6 +72,16 @@ jobs:
       - name: Recipe lint
         run: bun run lint:recipes
 
+      - name: Docs reference integrity
+        # Fails if any markdown link/anchor or code `docs/NN-*.md` reference
+        # does not resolve.
+        run: bun run check:docs-refs
+
+      - name: Phantom dependencies
+        # Fails if any imported package is undeclared (resolves only
+        # transitively) — an upstream bump could break it silently.
+        run: bun run check:deps-phantom
+
       - name: OpenAPI client drift
         # Regenerates the typed cli-core client from the live OpenAPI surface
         # and fails if `packages/cli-core/src/engine-api` would change. Catches

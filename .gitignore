@@ -50,3 +50,6 @@ subkit.config.json
 .docker-sk-home/
 .docker-repl-home/
 engine-docker*.log
+
+# Local Claude Code workflow scripts (runtime modules, not standalone-lintable)
+.claude/workflows/

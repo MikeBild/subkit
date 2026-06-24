@@ -8,7 +8,8 @@ zero external dependencies. It is the fastest way to try or self-host subkit.
 > deliberate *easy-onramp* trade-off — great for trials, demos, and small
 > single-node self-hosting. For production at scale, run PostgreSQL separately
 > (point the same image at it via `DATABASE_URL`, see [External database](#external-database))
-> or use the systemd-native path in [`deploy.md`](./deploy.md).
+> and run the engine as a standalone service — see
+> [Deployment & Operations](../08-operations.md#deployment-topology).
 
 ## Quick start
 

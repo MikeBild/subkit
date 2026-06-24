@@ -346,7 +346,7 @@ async function main(): Promise<void> {
   writeFileSync(args.out, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   // Sibling raw-observations dump (`<out>.results.json`) — the unscored tool
   // outputs, for evidence inspection. Same basename so it pairs with the report.
-  const resultsOut = args.out.replace(/\.json$/, "") + ".results.json";
+  const resultsOut = `${args.out.replace(/\.json$/, "")}.results.json`;
   writeFileSync(resultsOut, `${JSON.stringify(observations, null, 2)}\n`, "utf8");
   console.log(`Report: ${args.out}`);
   console.log(`Raw observations: ${resultsOut}`);
