@@ -3,7 +3,7 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { can } from "../../../rbac/evaluator.ts";
+import { can } from "../../../rbac/index.ts";
 import { aggregateLlm, type LlmGroupDim } from "../../../stats/aggregate-llm.ts";
 import { ForbiddenError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
