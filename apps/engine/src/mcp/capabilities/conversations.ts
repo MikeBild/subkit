@@ -39,6 +39,7 @@ import {
   CONVERSATION_TASK_POLL_INTERVAL_MS,
   CONVERSATION_TASK_TTL_MS,
 } from "../tasks/task-store.ts";
+import { buildToolAnnotations } from "./tool-meta.ts";
 
 export const CONVERSATION_TOOL_PREFIX = "conversation_";
 
@@ -83,28 +84,36 @@ export function listConversationTools(): Tool[] {
       name: "conversation_start",
       description: `Use this to CREATE OR EDIT a workflow or connector — it is the only way to author on this surface (the underlying author_workflow/build_workflow/dry_run_workflow tools are driven by the engine inside this conversation, not called directly). Also the entry point for OAuth authorization. Opens a new authoring conversation and runs the first turn in the background — returns immediately with a task to poll via conversation_get. ${MCP_ELICITATION_BLURB}.`,
       inputSchema: jsonSchema(StartArgs),
+      // Authoring entry point: a write, but non-destructive — it opens a
+      // conversation; the real mutations stay confirm-gated inside the turn.
+      // Without this hint a strict client (ChatGPT/codex) blocks the call.
+      annotations: buildToolAnnotations("tenant_write", "conversation_start"),
     },
     {
       name: "conversation_append",
       description: `Continue an authoring conversation — append a user message and run another turn in the background. Returns immediately with a task to poll; use this to answer the engine's questions or steer connector/workflow authoring. ${MCP_ELICITATION_BLURB}.`,
       inputSchema: jsonSchema(AppendArgs),
+      annotations: buildToolAnnotations("tenant_write", "conversation_append"),
     },
     {
       name: "conversation_respond_elicitation",
       description:
         "Resolve a pending ask_user_* elicitation with the user's answer and resume the loop in the background. Returns immediately with a task to poll.",
       inputSchema: jsonSchema(RespondElicitationArgs),
+      annotations: buildToolAnnotations("tenant_write", "conversation_respond_elicitation"),
     },
     {
       name: "conversation_get",
       description:
         "Poll the state of a backgrounded conversation turn. Returns status (working | completed | failed | input_required), the turn events when finished, the pending elicitation form when input is required, and the committed workflow id when committed.",
       inputSchema: jsonSchema(GetArgs),
+      annotations: buildToolAnnotations("tenant_read", "conversation_get"),
     },
     {
       name: "conversation_commit",
       description: "Return the committed workflow id for a committed conversation.",
       inputSchema: jsonSchema(CommitArgs),
+      annotations: buildToolAnnotations("tenant_read", "conversation_commit"),
     },
   ];
 }

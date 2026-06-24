@@ -1,0 +1,61 @@
+// Unit tests for MCP-standard tool annotations (Tool.annotations).
+//
+// These hints are the signal a generic MCP client (ChatGPT/codex) reads to
+// decide whether a tool may be invoked without its own per-call gate. A
+// regression here re-blocks the write-classified authoring tools on strict
+// clients (the conversation_start "Tool-Sicherheitscheck" failure).
+
+import { describe, expect, test } from "bun:test";
+import { listConversationTools } from "./conversations.ts";
+import { buildToolAnnotations, buildWorkflowToolAnnotations } from "./tool-meta.ts";
+
+describe("buildToolAnnotations", () => {
+  test("read tools advertise readOnly + idempotent, not destructive", () => {
+    const a = buildToolAnnotations("tenant_read", "get_workflow");
+    expect(a.readOnlyHint).toBe(true);
+    expect(a.idempotentHint).toBe(true);
+    expect(a.destructiveHint).toBe(false);
+  });
+
+  test("write tools are not read-only and (by default) not destructive", () => {
+    const a = buildToolAnnotations("tenant_write", "save_settings");
+    expect(a.readOnlyHint).toBe(false);
+    expect(a.idempotentHint).toBe(false);
+    expect(a.destructiveHint).toBe(false);
+  });
+
+  test("delete/revoke/archive/remove verbs are flagged destructive", () => {
+    for (const name of ["delete_workflow", "revoke_api_key", "archive_skill", "remove_member"]) {
+      expect(buildToolAnnotations("tenant_write", name).destructiveHint).toBe(true);
+    }
+  });
+});
+
+describe("buildWorkflowToolAnnotations", () => {
+  test("workflow runs are open-world, not read-only, not destructive", () => {
+    const a = buildWorkflowToolAnnotations();
+    expect(a.readOnlyHint).toBe(false);
+    expect(a.destructiveHint).toBe(false);
+    expect(a.openWorldHint).toBe(true);
+  });
+});
+
+describe("listConversationTools annotations", () => {
+  const tools = listConversationTools();
+  const byName = new Map(tools.map((t) => [t.name, t]));
+
+  test("every conversation tool carries annotations", () => {
+    for (const t of tools) expect(t.annotations).toBeDefined();
+  });
+
+  test("conversation_start is a non-destructive write (so strict clients permit it)", () => {
+    const a = byName.get("conversation_start")?.annotations;
+    expect(a?.readOnlyHint).toBe(false);
+    expect(a?.destructiveHint).toBe(false);
+  });
+
+  test("conversation_get / conversation_commit are read-only", () => {
+    expect(byName.get("conversation_get")?.annotations?.readOnlyHint).toBe(true);
+    expect(byName.get("conversation_commit")?.annotations?.readOnlyHint).toBe(true);
+  });
+});

@@ -25,7 +25,7 @@ import { logger as mcpStubLogger } from "../logging/logger.ts";
 import { dispatchTool } from "../tools/dispatcher.ts";
 import { getUnifiedRegistry } from "../tools/index.ts";
 import type { ToolDescriptor, ToolEnvelope, ToolInvocation } from "../tools/types.ts";
-import { buildConversationToolMeta } from "./capabilities/tool-meta.ts";
+import { buildConversationToolMeta, buildToolAnnotations } from "./capabilities/tool-meta.ts";
 
 // Zod schema → MCP JSON schema. Matches the helper in tenant-tools.ts;
 // kept local to the adapter so the dispatcher stays agnostic of MCP.
@@ -56,6 +56,9 @@ function descriptorToMcpTool(d: ToolDescriptor): Tool {
     name: d.name,
     description: d.description,
     inputSchema: zodToMcpSchema(d.inputSchema),
+    // Spec-standard hints so a generic MCP client (ChatGPT/codex) can tell a
+    // read tool from a write and permit the call without its own gate.
+    annotations: buildToolAnnotations(d.category, d.name),
   };
   // Attach _meta.subkit.* hints — keep parity with the legacy tenant.*
   // alias path (capabilities/tenant-tools.ts:77) so the same conversation

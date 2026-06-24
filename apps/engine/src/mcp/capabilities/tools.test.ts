@@ -119,6 +119,33 @@ describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
     }
   });
 
+  test("every tool advertises MCP annotations; reads/writes/runs are classified", async () => {
+    // Regression guard: a strict MCP client (ChatGPT/codex) reads
+    // Tool.annotations to decide whether it may invoke a tool without its own
+    // gate. Missing/incorrect hints re-block the authoring tools.
+    const client = await connect();
+    try {
+      const list = await client.listTools();
+      const byName = new Map(list.tools.map((t) => [t.name, t]));
+
+      // Every tool carries annotations.
+      for (const t of list.tools) expect(t.annotations).toBeDefined();
+
+      // A read tool is read-only.
+      expect(byName.get("list_recipes")?.annotations?.readOnlyHint).toBe(true);
+
+      // The workflow-run tool is not read-only and is open-world.
+      const wf = byName.get(`wf_${toolWfSlug}`);
+      expect(wf?.annotations?.readOnlyHint).toBe(false);
+      expect(wf?.annotations?.openWorldHint).toBe(true);
+      // (conversation_start's non-destructive-write annotation — the hint that
+      // unblocks strict clients — is unit-tested in tool-meta.test.ts; it is
+      // not surfaced to this api-key principal's product-mode catalog.)
+    } finally {
+      await client.close();
+    }
+  });
+
   test("REST GET /v1/mcp/tools returns the static structured-intent palette", async () => {
     // Note: the REST /v1/mcp/tools endpoint returns the static structured-intent
     // conversation tools (propose_step, save_workflow_draft, etc.). The wf_<slug>

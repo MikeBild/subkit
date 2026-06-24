@@ -6,8 +6,12 @@
 // elicitation on the first call. This removes the "two elicitations for
 // one delete" path that a self-authored confirm prompt would otherwise hit.
 
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { resolveToolMode } from "../../conversations/tool-policies.ts";
 import type { ToolCategory } from "../../conversations/tools/index.ts";
+
+/** MCP-standard tool annotations (spec `Tool.annotations`). */
+export type McpToolAnnotations = NonNullable<Tool["annotations"]>;
 
 export interface SubkitToolMeta {
   category: ToolCategory | "workflow_run";
@@ -53,6 +57,49 @@ export function buildConversationToolMeta(
       confirm_required: couldRequireConfirmation(category, toolName),
       destructive: isDestructive(toolName),
     },
+  };
+}
+
+/**
+ * MCP-standard `annotations` for a registry/conversation tool.
+ *
+ * Unlike the vendor `_meta.subkit.*` hints above (which only claude.ai's
+ * own surface reads), these live in the spec-defined `Tool.annotations`
+ * field that generic MCP clients — notably ChatGPT/codex — read to decide
+ * whether a tool may be invoked without an explicit per-call confirmation.
+ * With no annotations a strict client must treat every tool as an opaque
+ * possibly-mutating action and gates the write-classified authoring tools
+ * (e.g. `conversation_start`) on its own surface. Advertising `readOnlyHint`
+ * on the read tools and a precise `destructiveHint` on writes gives the
+ * client the signal it needs to permit the call.
+ */
+export function buildToolAnnotations(
+  category: ToolCategory | "workflow_run",
+  toolName: string,
+): McpToolAnnotations {
+  const readOnly = category === "tenant_read";
+  return {
+    readOnlyHint: readOnly,
+    destructiveHint: isDestructive(toolName),
+    // A pure read never mutates, so it is trivially idempotent. Writes make
+    // no such guarantee.
+    idempotentHint: readOnly,
+  };
+}
+
+/**
+ * MCP-standard `annotations` for a `wf_<slug>` workflow-run tool. A saved
+ * workflow executes its stored steps/connectors — it may write to external
+ * systems (sends, commits) but never destroys subkit-tenant data, and prod
+ * runs stay confirm-gated by the policy gate. So: not read-only, not
+ * destructive, open-world (it reaches external systems).
+ */
+export function buildWorkflowToolAnnotations(): McpToolAnnotations {
+  return {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
   };
 }
 
