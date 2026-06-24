@@ -265,8 +265,8 @@ export function renderConsentPage(opts: {
     <span class="strong">${escapeHtml(opts.tenantName)}</span> workspace.</p>
     <p class="muted">Signed in as ${escapeHtml(opts.userEmail)}</p>
     <p class="muted">It will be able to:</p>
-    <ul class="scopes">${scopeItems}</ul>
     <form method="POST" action="/v1/oauth/authorize/decision">
+      <ul class="scopes">${scopeItems}</ul>
       <input type="hidden" name="csrf_token" value="${escapeHtml(opts.csrfToken)}">
       <input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">
       <input type="hidden" name="redirect_uri" value="${escapeHtml(opts.redirectUri)}">

@@ -436,6 +436,47 @@ describe("refresh token rotation", () => {
     expect(rows.length).toBeGreaterThanOrEqual(1);
   });
 
+  test("a client echoing back the returned scope cannot accumulate duplicates", async () => {
+    const clientId = await registerTestClient({ scope: "mcp:read mcp:authoring" });
+    let pair = await issueTokenPair({ clientId, scope: "mcp:read mcp:authoring" });
+    expect(pair.scope).toBe("mcp:read mcp:authoring");
+
+    // Rotate several times, each time sending back the scope we just received —
+    // exactly what a conformant client does. The scope is a SET and must never
+    // grow or repeat across rotations.
+    for (let i = 0; i < 4; i++) {
+      const next = await provider.exchangeRefreshToken({
+        refreshToken: pair.refresh_token,
+        clientId,
+        scope: pair.scope,
+      });
+      const parts = next.scope.split(" ").filter(Boolean);
+      expect(new Set(parts).size).toBe(parts.length); // no duplicates
+      expect(parts.sort()).toEqual(["mcp:authoring", "mcp:read"]);
+      pair = { ...pair, refresh_token: next.refresh_token, scope: next.scope };
+    }
+  });
+
+  test("a refresh token with a pre-doubled stored scope self-heals on rotation", async () => {
+    const clientId = await registerTestClient({ scope: "mcp:read mcp:authoring" });
+    const pair = await issueTokenPair({ clientId, scope: "mcp:read mcp:authoring" });
+
+    // Simulate a token row poisoned by the old (pre-fix) accumulation bug.
+    const refreshHash = sha256Hex(pair.refresh_token);
+    await db
+      .update(mcpOauthRefreshTokens)
+      .set({ scope: "mcp:read mcp:authoring mcp:read mcp:authoring mcp:read mcp:authoring" })
+      .where(eq(mcpOauthRefreshTokens.token_sha256, refreshHash));
+
+    const refreshed = await provider.exchangeRefreshToken({
+      refreshToken: pair.refresh_token,
+      clientId,
+    });
+    const parts = refreshed.scope.split(" ").filter(Boolean);
+    expect(new Set(parts).size).toBe(parts.length);
+    expect(parts.sort()).toEqual(["mcp:authoring", "mcp:read"]);
+  });
+
   test("replaying a rotated refresh token revokes the chain (invalid_grant)", async () => {
     const clientId = await registerTestClient({ scope: "mcp:read" });
     const firstPair = await issueTokenPair({ clientId, scope: "mcp:read" });
