@@ -64,6 +64,10 @@ function memberAllows(name: string): boolean {
   // rates, LLM spend); members opt in via a custom role grant, not the
   // default catalogue. Mirrors memberPermissionFilter in seed.ts.
   if (name === "stats:read") return false;
+  // stats:read:all additionally exposes OTHER users' LLM spend + cross-user
+  // breakdowns — strictly more privileged than stats:read; members opt in via
+  // a custom role grant. Mirrors memberPermissionFilter in seed.ts.
+  if (name === "stats:read:all") return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;
   // mcp_server:manage registers tenant-wide external MCP servers carrying

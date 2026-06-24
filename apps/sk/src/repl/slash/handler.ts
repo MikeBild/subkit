@@ -854,6 +854,23 @@ export async function handleSlash(
         if (snap.monthly_budget_tokens !== null) {
           lines.push(`budget · monthly     ${snap.monthly_budget_tokens.toLocaleString()} tok`);
         }
+        // The caller's OWN figures, when the engine attributed them (a
+        // user principal; null for system_account / API-key callers).
+        if (snap.tokens_month_user !== null) {
+          lines.push("");
+          lines.push(`you · today          ${(snap.tokens_today_user ?? 0).toLocaleString()}`);
+          lines.push(`you · month          ${snap.tokens_month_user.toLocaleString()}`);
+          if (snap.user_monthly_budget_tokens !== null) {
+            lines.push(
+              `you · budget         ${snap.user_monthly_budget_tokens.toLocaleString()} tok`,
+            );
+            const userRemaining =
+              snap.user_remaining_monthly_budget_tokens == null
+                ? "∞"
+                : snap.user_remaining_monthly_budget_tokens.toLocaleString();
+            lines.push(`you · remaining      ${userRemaining}`);
+          }
+        }
       }
       return panify(ctx, "cost", lines);
     }

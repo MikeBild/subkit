@@ -20,6 +20,8 @@ import { createHash } from "node:crypto";
 import sql0000V6Baseline from "./0000_v6_baseline.sql" with { type: "text" };
 import sql0001CondemnedMaestro from "./0001_condemned_maestro.sql" with { type: "text" };
 import sql0002KindHumanRobot from "./0002_kind_human_robot.sql" with { type: "text" };
+import sql0003MarvelousStranger from "./0003_marvelous_stranger.sql" with { type: "text" };
+import sql0004FlakyZarek from "./0004_flaky_zarek.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -47,6 +49,8 @@ const SQL_BY_TAG: Record<string, string> = {
   "0000_v6_baseline": sql0000V6Baseline,
   "0001_condemned_maestro": sql0001CondemnedMaestro,
   "0002_kind_human_robot": sql0002KindHumanRobot,
+  "0003_marvelous_stranger": sql0003MarvelousStranger,
+  "0004_flaky_zarek": sql0004FlakyZarek,
 };
 
 const journal = journalMeta as unknown as Journal;

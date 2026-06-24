@@ -3,9 +3,15 @@ import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
+import { EngineClient, type ExecutionCost } from "../engine-client.ts";
 import { pickId } from "../lib/pick.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
+import {
+  computeStepBottlenecks,
+  executionDurationMs,
+  formatTokens,
+  humanMs,
+} from "../render/format.ts";
 import { collectFileRefs } from "../utils/file-ref.ts";
 
 /** Candidate rows for the interactive execution picker (TTY only). */
@@ -98,9 +104,25 @@ const listCommand = defineCommand({
       if (args.parent) query.parent_execution_id = String(args.parent);
       const { items, total } = await client.listExecutions(query);
       // Tag each row by origin so authoring/manual trial-runs are not
-      // mistaken for production incidents.
-      const rows = (items as Record<string, unknown>[]).map((r) => ({ ...r, origin: originOf(r) }));
-      emitList(!!args.json, ["id", "workflow_id", "origin", "status", "started_at"], rows);
+      // mistaken for production incidents, and surface a wall-clock
+      // duration (finished_at − started_at). A still-running row has no
+      // finished_at → render "running" so the column never shows a bogus
+      // zero. JSON output keeps the raw timestamps untouched; the derived
+      // `duration` column is text-surface-only.
+      const rows = (items as Record<string, unknown>[]).map((r) => {
+        const ms = executionDurationMs(r.started_at, r.finished_at);
+        const running = r.finished_at == null && r.started_at != null;
+        return {
+          ...r,
+          origin: originOf(r),
+          duration: ms != null ? humanMs(ms) : running ? "running" : "—",
+        };
+      });
+      emitList(
+        !!args.json,
+        ["id", "workflow_id", "origin", "status", "duration", "started_at"],
+        rows,
+      );
       // Executions are an unbounded history — always say how big the
       // filtered set really is and how to page deeper.
       if (!args.json) {
@@ -137,16 +159,33 @@ const getCommand = defineCommand({
       // `$file` ref found anywhere in the execution payload. JSON
       // output stays unchanged so script consumers see no drift.
       if (!args.json) {
-        // A failed execution is useless without the reason — pull the
-        // step errors and print them inline instead of making the
-        // operator run `executions steps … --json | grep`.
+        // Pull the steps once and reuse them for the failure block AND
+        // the bottleneck view — the steps payload carries `duration_ms`.
+        let steps: Record<string, unknown>[] = [];
+        try {
+          const res = await client.executionSteps(id);
+          steps = res.items as Record<string, unknown>[];
+        } catch {
+          /* best-effort: telemetry blocks are decorative */
+        }
+        // Execution-cost card: weighted tokens, cache-read %, LLM
+        // latency, external cost_usd (when non-zero), and a per-flow
+        // breakdown. Best-effort — a 403 (no stats:read) or older engine
+        // without the route simply omits the card.
+        try {
+          const cost = await client.executionCost(id);
+          printExecutionCostCard(cost);
+        } catch {
+          /* best-effort: cost card is decorative */
+        }
+        // Step bottleneck view: each step's duration as a share of the
+        // summed step duration, slowest-first.
+        printStepBottlenecks(steps);
+        // A failed execution is useless without the reason — print the
+        // step errors inline instead of making the operator run
+        // `executions steps … --json | grep`.
         if (execution.status === "failed") {
-          try {
-            const { items } = await client.executionSteps(id);
-            printFailedStepErrors(items as Record<string, unknown>[]);
-          } catch {
-            /* best-effort: error block is decorative */
-          }
+          printFailedStepErrors(steps);
         }
         await maybePrintOutputFiles(client, execution as Record<string, unknown>);
       }
@@ -253,6 +292,58 @@ const stepsCommand = defineCommand({
     }
   },
 });
+
+/** Execution-cost card: weighted tokens, cache-read %, summed LLM
+ *  latency, external cost_usd (only when non-zero so a pure-LLM run
+ *  doesn't render a noisy `$0.00` line), and a per-flow breakdown.
+ *  No-op when there was no recorded LLM or external spend. */
+function printExecutionCostCard(cost: ExecutionCost): void {
+  const { llm, external } = cost;
+  if (llm.calls === 0 && external.calls === 0) return;
+  process.stdout.write(`\n${pc.bold("Cost:")}\n`);
+  if (llm.calls > 0) {
+    process.stdout.write(
+      `  ${pc.cyan("llm")}      ${formatTokens(llm.weighted_tokens)} weighted` +
+        ` · ${llm.cache_read_pct.toFixed(0)}% cache-read` +
+        ` · ${llm.calls} call${llm.calls === 1 ? "" : "s"}` +
+        ` · ${humanMs(llm.latency_ms)}\n`,
+    );
+    // Per-flow breakdown (e.g. authoring vs. execution vs. suggest-next)
+    // sorted by weighted tokens so the dominant cost centre reads first.
+    const flows = [...llm.by_flow].sort((a, b) => b.weighted_tokens - a.weighted_tokens);
+    for (const f of flows) {
+      process.stdout.write(
+        `    ${pc.dim(f.flow.padEnd(16))} ${formatTokens(f.weighted_tokens)} weighted` +
+          ` · ${f.calls} call${f.calls === 1 ? "" : "s"} · ${humanMs(f.latency_ms)}\n`,
+      );
+    }
+  }
+  if (external.calls > 0) {
+    const cost_usd = external.cost_usd > 0 ? ` · $${external.cost_usd.toFixed(4)}` : "";
+    process.stdout.write(
+      `  ${pc.cyan("external")} ${external.calls} call${external.calls === 1 ? "" : "s"}` +
+        ` · ${external.units} unit${external.units === 1 ? "" : "s"}${cost_usd}` +
+        ` · ${humanMs(external.latency_ms)}\n`,
+    );
+  }
+}
+
+/** Step bottleneck view: each step's `duration_ms` as a percentage of
+ *  the summed step duration, slowest-first. No-op when no step carried a
+ *  positive duration (e.g. a queued-only run). */
+function printStepBottlenecks(steps: Record<string, unknown>[]): void {
+  const ranked = computeStepBottlenecks(steps);
+  if (ranked.length === 0) return;
+  process.stdout.write(`\n${pc.bold("Bottlenecks:")} ${pc.dim("(share of total step time)")}\n`);
+  for (const s of ranked) {
+    const conn = s.connector_slug ? ` ${pc.dim(`(${s.connector_slug})`)}` : "";
+    const bar = "█".repeat(Math.max(1, Math.round(s.pct / 5)));
+    process.stdout.write(
+      `  ${pc.cyan(s.step_key.padEnd(20))} ${humanMs(s.duration_ms).padStart(7)}` +
+        ` ${String(s.pct.toFixed(1)).padStart(5)}%  ${pc.dim(bar)}${conn}\n`,
+    );
+  }
+}
 
 /** Print a red error block for each failed step: code, message, and the
  *  connector-authored guidance hint. No-op when nothing failed. */

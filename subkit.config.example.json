@@ -140,6 +140,12 @@
       "endpoint": "",
       "service_name": "subkit"
     },
+    "analytics": {
+      "enabled": false,
+      "endpoint": "",
+      "api_key": "",
+      "project": ""
+    },
     "field_truncation_chars": 2048,
     "predictive": {
       "pool_saturation_pct": 80,

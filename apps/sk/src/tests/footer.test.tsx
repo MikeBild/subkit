@@ -176,6 +176,30 @@ describe("Footer budget line — honest cost telemetry (Fix 7)", () => {
     instance.unmount();
     cleanup();
   });
+
+  test("cache chip renders the per-turn hit-rate and cached-token count", () => {
+    const instance = renderBudgetFooter({
+      turnTokensTotal: 200_000,
+      cacheReadPct: 85.5,
+      cacheReadTokens: 120_000,
+    });
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain("cache 85.5%");
+    expect(frame).toContain("(120k)");
+    instance.unmount();
+    cleanup();
+  });
+
+  test("cache chip hides when the engine sent no cache figure", () => {
+    const instance = renderBudgetFooter({
+      turnTokensTotal: 200_000,
+      cacheReadPct: null,
+    });
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).not.toContain("cache ");
+    instance.unmount();
+    cleanup();
+  });
 });
 
 describe("Footer connection chip layout", () => {

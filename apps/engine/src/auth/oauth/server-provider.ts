@@ -502,15 +502,22 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       });
     }
 
-    // Scope downgrade only — cannot expand beyond original grant
-    const originalScopes = refreshRow.scope.split(" ").filter(Boolean);
+    // Scope downgrade only — cannot expand beyond original grant. A scope is a
+    // SET: dedup both the stored grant and the client-requested narrowing so a
+    // client that echoes back the scope it received cannot accumulate duplicate
+    // entries across rotations (the multiset would otherwise grow unbounded).
+    const originalScopes = [...new Set(refreshRow.scope.split(" ").filter(Boolean))];
     const grantedScopes = requestedScope
-      ? requestedScope
-          .split(" ")
-          .filter(Boolean)
-          .filter((s) => originalScopes.includes(s))
+      ? [
+          ...new Set(
+            requestedScope
+              .split(" ")
+              .filter(Boolean)
+              .filter((s) => originalScopes.includes(s)),
+          ),
+        ]
       : originalScopes;
-    const grantedScope = grantedScopes.join(" ") || refreshRow.scope;
+    const grantedScope = grantedScopes.join(" ") || originalScopes.join(" ");
 
     // Rotate inside a transaction to prevent duplicate-use races.
     // Insert new refresh token first, then atomically claim the old one

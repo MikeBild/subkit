@@ -27,7 +27,14 @@ import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+import { formatTokens } from "../render/format.ts";
 import type { PermissionMode } from "./status-line/render.ts";
+
+// Re-export the shared token formatter so existing footer importers keep
+// working — the single implementation now lives in `render/format.ts`
+// and is used by the budget line below, `executions`, `stats`, and
+// `health`.
+export { formatTokens };
 
 export interface FooterProps {
   /** Signed-in user identifier (email, id, or persona label fallback). */
@@ -71,6 +78,12 @@ export interface FooterProps {
    *  of the `ctx N/M` gauge. When null the gauge is hidden because we
    *  cannot tell the operator how close they are to the ceiling. */
   contextCapTokens?: number | null;
+  /** Cached input tokens read this turn (`usage.cache_read_tokens`). */
+  cacheReadTokens?: number | null;
+  /** Per-turn cache-hit rate (`usage.cache_read_pct`, 0–100). Drives the
+   *  `cache N%` chip — the per-conversation analogue of the workflow-run
+   *  cache-read % in `sk executions get`. Null hides the chip. */
+  cacheReadPct?: number | null;
   /** Terminal width hint for collapse logic. */
   columns?: number | undefined;
   /**
@@ -81,14 +94,6 @@ export interface FooterProps {
    * hides the row entirely.
    */
   hintLine?: string | null | undefined;
-}
-
-/** Compact 1.2k / 4.8M formatting for the budget line. */
-export function formatTokens(n: number | null | undefined): string {
-  if (n == null) return "–";
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
-  return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0)}M`;
 }
 
 export const MODE_LABELS: Record<PermissionMode, string> = {
@@ -124,6 +129,8 @@ const FooterImpl: React.FC<FooterProps> = ({
   promptTokensLastCall = null,
   turnTokensTotal = null,
   contextCapTokens = null,
+  cacheReadTokens = null,
+  cacheReadPct = null,
   columns = 80,
   hintLine = null,
 }) => {
@@ -181,6 +188,8 @@ const FooterImpl: React.FC<FooterProps> = ({
           promptTokensLastCall={promptTokensLastCall}
           turnTokensTotal={turnTokensTotal}
           contextCapTokens={contextCapTokens}
+          cacheReadTokens={cacheReadTokens}
+          cacheReadPct={cacheReadPct}
           theme={theme}
         />
       ) : null}
@@ -196,9 +205,19 @@ interface BudgetLineProps {
   promptTokensLastCall: number | null;
   turnTokensTotal: number | null;
   contextCapTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheReadPct: number | null;
   theme: ReturnType<typeof useTheme>;
 }
 
+// Per-conversation cache-hit rate. The engine's `completed` frame
+// (`TurnUsage` in packages/cli-core/turn-event.ts) carries
+// `cache_read_tokens` + `cache_read_pct` (= cacheRead / (fresh + cacheRead),
+// the same definition as `sk executions get`'s cost card), accumulated
+// across every LLM call of the turn in apps/engine/src/conversations/
+// loop.ts. We render it as a `cache N%` chip so the operator sees prompt-
+// cache effectiveness without leaving the REPL. Hidden when the engine
+// sent no cache figure (non-LLM tool turn or an older engine).
 const BudgetLine: React.FC<BudgetLineProps> = ({
   sessionTokens,
   tokensToday,
@@ -207,6 +226,8 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
   promptTokensLastCall,
   turnTokensTotal,
   contextCapTokens,
+  cacheReadTokens,
+  cacheReadPct,
   theme,
 }) => {
   const monthDisplay =
@@ -250,6 +271,13 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
   const showCtx = promptTokensLastCall != null && contextCapTokens != null;
   const showTurn = turnTokensTotal != null && turnTokensTotal > 0;
 
+  // Prompt-cache effectiveness for the last turn. A high hit-rate means
+  // most of the prompt was served from cache (cheap) — render it in the
+  // assistant highlight when it's pulling its weight, dim otherwise.
+  const showCache = cacheReadPct != null;
+  const cacheColor =
+    cacheReadPct != null && cacheReadPct >= 50 ? theme.role.assistant : theme.severity.dim;
+
   return (
     <Box>
       <Text color={theme.severity.dim}> ↘ session </Text>
@@ -272,6 +300,15 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
             {formatTokens(promptTokensLastCall)}/{formatTokens(contextCapTokens)}
           </Text>
           {ctxPct != null && ctxPct >= 80 ? <Text color={ctxColor}> ({ctxPct}%)</Text> : null}
+        </>
+      ) : null}
+      {showCache ? (
+        <>
+          <Text color={theme.severity.dim}> · cache </Text>
+          <Text color={cacheColor}>{cacheReadPct}%</Text>
+          {cacheReadTokens != null && cacheReadTokens > 0 ? (
+            <Text color={theme.severity.dim}> ({formatTokens(cacheReadTokens)})</Text>
+          ) : null}
         </>
       ) : null}
     </Box>

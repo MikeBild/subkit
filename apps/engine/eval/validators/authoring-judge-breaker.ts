@@ -1,9 +1,11 @@
 // Authoring scenario (Fix E / CI mode): the preview-judge circuit
 // breaker. A judge that keeps failing the SAME definition must not
-// become the next authoring deadlock — after `max_blocks` blocks per
-// definition fingerprint, the verdict degrades to advisory: the
-// auto-commit proceeds, the (still failing) verdict rides the result,
-// and the counter stops incrementing.
+// become the next authoring deadlock — after `max_blocks` blocks the
+// breaker breaks the edit LOOP but NOT the quality gate: the still-failing
+// preview is HELD (never auto-committed — that minted empty / goal-violating
+// workflows), and a terminal done-signal (`judge_done.committed_as_is: false`)
+// is surfaced so the model stops re-running dry_run_workflow and asks the
+// user. The counter holds at the cap (only a real commit resets it).
 
 import { JUDGE_BREAKER_MAX_BLOCKS } from "../../src/conversations/preview-judge.ts";
 import { dryRunWorkflowTool } from "../../src/conversations/tools/dry-run-workflow.ts";
@@ -22,6 +24,7 @@ interface Input {
 interface JudgeEnvelope {
   auto_committed?: boolean;
   judge?: { verdict: string };
+  judge_done?: { committed_as_is?: boolean };
 }
 
 export async function validate(fixture: FixtureRecord): Promise<ValidationResult> {
@@ -60,26 +63,30 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       );
     }
 
-    // Third identical preview: advisory — the breaker is at the cap, so
-    // the verdict degrades to advisory and the auto-commit proceeds with
-    // the (still failing) verdict attached.
-    const advisory = await dryRunWorkflowTool.execute(toolCtx, { input: null });
-    c.check(advisory.ok === true, "post-breaker preview should succeed (advisory verdict)");
-    const data = advisory.data as JudgeEnvelope;
-    c.check(data.auto_committed === true, "post-breaker green preview must auto-commit");
+    // At the cap: the breaker breaks the edit LOOP but HOLDS the quality
+    // gate — the still-failing preview is NOT committed, and a terminal
+    // done-signal is surfaced so the model stops re-running and asks the user.
+    const held = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    c.check(held.ok === false, "post-cap preview must be HELD (not committed), not succeed");
+    const data = held.data as JudgeEnvelope;
+    c.check(data.auto_committed !== true, "post-cap unsatisfied preview must NOT auto-commit");
+    c.check(
+      data.judge_done?.committed_as_is === false,
+      "post-cap held preview must surface judge_done.committed_as_is === false",
+    );
     c.check(
       data.judge?.verdict === input.failed_verdict.verdict,
-      "advisory verdict must still ride the result",
+      "the failing verdict must still ride the result",
     );
-    // The monotonic counter is "blocks since the last commit": the
-    // advisory auto-commit clears the breaker, so a subsequent edit gets
-    // a fresh judging budget instead of an immediately-degraded judge.
+    // No commit happened, so the breaker counter is NOT reset — it holds at
+    // the cap so a model that ignores the EXIT keeps hitting the hold branch
+    // rather than slipping an unsatisfied commit through.
     c.check(
-      (toolCtx.current().state?.judge_breaker ?? null) === null,
-      "advisory auto-commit must reset the per-draft breaker (blocks-since-commit)",
+      toolCtx.current().state?.judge_breaker?.blocks_since_commit === input.max_blocks,
+      `held preview must hold the counter at the cap (${input.max_blocks}), got ${String(toolCtx.current().state?.judge_breaker?.blocks_since_commit)}`,
     );
 
     if (c.failed) return { pass: false, reason: c.failed };
-    return { pass: true, metrics: { blocks_before_advisory: input.max_blocks } };
+    return { pass: true, metrics: { blocks_before_hold: input.max_blocks } };
   });
 }

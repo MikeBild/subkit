@@ -30,7 +30,6 @@ import {
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
-import { listTools as listConversationToolsRegistry } from "../../conversations/tools/index.ts";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
@@ -54,9 +53,7 @@ import {
   handleConversationTool,
   listConversationTools,
 } from "./conversations.ts";
-import { gateTenantToolCall } from "./policy-gate.ts";
-import { handleTenantTool, listTenantTools, TENANT_TOOL_PREFIX } from "./tenant-tools.ts";
-import { buildWorkflowToolMeta } from "./tool-meta.ts";
+import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta.ts";
 
 const TOOL_PREFIX = "wf_";
 const PROGRESS_POLL_MS = 250;
@@ -82,6 +79,7 @@ async function listWorkflowTools({ db, principal }: ListToolsParams): Promise<To
     // over re-deriving" nudge closes that gap.
     description: describeWorkflowTool(entry),
     inputSchema: entry.inputSchema as Tool["inputSchema"],
+    annotations: buildWorkflowToolAnnotations(),
     _meta: buildWorkflowToolMeta(),
   }));
 }
@@ -253,22 +251,20 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     }
   };
 
-  // Write-tools inside the tenant.* family are additionally gated at
-  // call time by `gateTenantToolCall`. The env var below forces a strictly
-  // read-only MCP deployment — overriding mode-based visibility.
+  // The env var below forces a strictly read-only MCP deployment —
+  // overriding mode-based visibility.
   let readOnly = false;
   try {
     readOnly = getConfig().mcp.read_only;
   } catch {
     /* loader not initialised */
   }
-  const allowTenantWrites = !readOnly;
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     // The catalog surface is shaped by the principal's mcp mode:
     //   • product   — saved workflows + authenticate (default)
     //   • authoring — adds conversation.* + tenant reads
-    //   • admin     — adds tenant.* writes
+    //   • admin     — adds tenant writes
     //
     // Sources, in priority order:
     //   - listWorkflowTools         — wf.<slug> per-workflow tools.
@@ -279,9 +275,13 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     //                                 surfaced under its bare name.
     //   - listConversationTools     — MCP-only session-management tools
     //                                 under the conversation.* prefix.
-    //   - listTenantTools           — backward-compat `tenant.*` prefix
-    //                                 aliases for conversation tools;
-    //                                 retained for existing MCP clients.
+    //
+    // The tenant.* prefix aliases are NOT emitted: every conversation
+    // tool already surfaces under its bare name via listToolsViaRegistry,
+    // so the aliases were a pure duplicate that doubled the catalog and
+    // degraded tool selection on large clients. Bare names dispatch via
+    // the unified dispatcher (see tools/call), which applies the same
+    // RBAC + policy gate the aliases did.
     const mode = resolveMcpMode(principal);
     const flags = modeFlags(mode, readOnly);
     const tools: Tool[] = [];
@@ -294,9 +294,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }),
     );
     if (flags.showConversationTools) tools.push(...listConversationTools());
-    if (flags.showTenantReads || flags.showTenantWrites) {
-      tools.push(...listTenantTools({ allowWrites: flags.showTenantWrites }));
-    }
     return { tools };
   });
 
@@ -336,10 +333,9 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       // Every named MCP tool (authenticate, list_recipes,
       // self_healing.scan + the four conversation duplicates) and every
       // bare-name conversation tool routes through the unified dispatcher
-      // in apps/engine/src/tools/. wf.<slug> and the conversation.* /
-      // tenant.* prefix proxies remain on the legacy path below because
-      // they are surface-specific operational concerns, not LLM tool
-      // palette items.
+      // in apps/engine/src/tools/. wf.<slug> and the conversation.* prefix
+      // RPCs remain on the legacy path below because they are
+      // surface-specific operational concerns, not LLM tool palette items.
       const mcpModeForCall = resolveMcpMode(principal);
       const readOnlyForCall = !modeFlags(mcpModeForCall, readOnly).showTenantWrites;
       const probeEntry = getUnifiedRegistry().get(name, {
@@ -426,86 +422,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           isError: result.isError,
           content: result.content.map((c) => ({ type: "text" as const, text: c.text })),
         };
-      }
-
-      if (name.startsWith(TENANT_TOOL_PREFIX)) {
-        // MCP progress-token bridge: when the caller supplies a
-        // progressToken, send start + completion notifications so the
-        // client can show a spinner. Tools that emit finer-grained
-        // progress signal it via `ctx.onLog` (see sdk-wrap); the
-        // handler doesn't have access to that stream today, but the
-        // boundary frames give clients a deterministic start/stop.
-        const notifyProgress = progressToken
-          ? async (progress: number, message: string) => {
-              try {
-                await extra.sendNotification({
-                  method: "notifications/progress",
-                  params: { progressToken, progress, total: 1, message },
-                });
-              } catch {
-                // best-effort — notifier errors never fail the tool call
-              }
-            }
-          : undefined;
-        // Policy gate: confirm_before_execution tools return a pending
-        // envelope on the first call; the client re-issues with
-        // _meta.sk_confirm=true after operator approval.
-        const bareToolName = name.slice(TENANT_TOOL_PREFIX.length);
-        const toolDef = listConversationToolsRegistry().find((t) => t.name === bareToolName);
-        const rawTenantArgs = args as Record<string, unknown>;
-        if (toolDef) {
-          const gate = await gateTenantToolCall({
-            tool: bareToolName,
-            category: toolDef.category,
-            args: rawTenantArgs,
-            meta: request.params._meta as Record<string, unknown> | undefined,
-            principal,
-            db,
-          });
-          if (gate.kind === "pending") {
-            const envelopeText = JSON.stringify(gate.envelope);
-            logger.info({
-              module: "mcp",
-              action: "mcp.tool.pending",
-              msg: "mcp tenant tool call requires confirmation",
-              tool: name,
-              tool_call_id: gate.envelope.tool_call_id,
-              duration_ms: Date.now() - started,
-            });
-            return {
-              isError: false,
-              content: [{ type: "text" as const, text: envelopeText }],
-            };
-          }
-        }
-        // Strip the confirmation marker so the tool's strict zod
-        // schema doesn't reject it as an unknown property.
-        const { __policy_confirmed: _confirmFlag, ...tenantArgs } = rawTenantArgs;
-        if (notifyProgress) await notifyProgress(0, `starting ${name}`);
-        const result = await handleTenantTool({
-          db,
-          principal,
-          name,
-          args: tenantArgs,
-          allowWrites: allowTenantWrites,
-          ...(notifyProgress ? { onProgress: notifyProgress } : {}),
-        });
-        if (result) {
-          if (notifyProgress) await notifyProgress(1, `done ${name}`);
-          logger.info({
-            module: "mcp",
-            action: "mcp.tool.result",
-            msg: "mcp tenant tool call completed",
-            tool: name,
-            duration_ms: Date.now() - started,
-            is_error: result.isError,
-            progress_token: progressToken ?? null,
-          });
-          return {
-            isError: result.isError,
-            content: result.content.map((c) => ({ type: "text" as const, text: c.text })),
-          };
-        }
       }
 
       if (!name.startsWith(TOOL_PREFIX)) {

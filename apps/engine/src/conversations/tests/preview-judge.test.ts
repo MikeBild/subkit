@@ -8,9 +8,10 @@
 //     (returns save_required so the user/model persists deliberately),
 //   - judge infrastructure error → `skipped`/`judge_unavailable` and
 //     commits (the judge never blocks on an infra failure),
-//   - circuit-breaker: two blocks per definition fingerprint, the
-//     third identical preview degrades to advisory (commits); a
-//     definition change resets the counter (blocks again),
+//   - circuit-breaker: after the block cap the edit LOOP is broken but the
+//     preview is HELD (never auto-committed) and a terminal done-signal is
+//     surfaced so the model stops re-running and asks the user; the counter
+//     holds at the cap (only a real commit resets it),
 //   - explicit save (`save_workflow_draft`, incl. force_commit) still
 //     works after a failed verdict — the judge only gates AUTO-commit,
 //   - the goal stash survives the draft normalize round-trip for both
@@ -33,6 +34,7 @@ import {
 import {
   buildJudgeDefinitionSummary,
   buildJudgeStepArtifacts,
+  JUDGE_BREAKER_MAX_BLOCKS,
   type JudgeStepArtifact,
   judgePreview,
   workflowDefinitionFingerprint,
@@ -65,10 +67,12 @@ interface JudgeEnvelope {
   judge?: { verdict: string; reason: string; missing?: string[] };
   judge_done?: {
     committed_as_is?: boolean;
+    escalate?: boolean;
     attempts?: number;
     missing?: string[];
     next_action?: string;
   };
+  error_code?: string;
   warnings?: Array<{ code: string; message: string }>;
   next_best_actions?: string[];
 }
@@ -203,7 +207,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(data.judge).toEqual({ verdict: "skipped", reason: "judge_unavailable" });
   });
 
-  test("blocks-since-commit caps after N regardless of fingerprint churn — edit between each block still degrades to advisory + commits at N+1", async () => {
+  test("blocks-since-commit caps after N regardless of fingerprint churn — edit between each block HOLDS (no auto-commit) at the cap and surfaces a terminal done-signal", async () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-breaker", GOAL));
 
@@ -241,19 +245,52 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(2);
 
     await editToFreshFailing("v3");
-    // At the cap now: this block degrades to advisory and auto-commits,
-    // carrying the terminal done-signal with the missing items.
+    // At the cap now: the breaker breaks the edit LOOP but NOT the quality
+    // gate — the still-failing preview is HELD (not committed) and carries a
+    // terminal done-signal with the missing items so the model stops re-running
+    // dry_run_workflow and asks the user instead.
     const third = await dryRunWorkflowTool.execute(toolCtx, { input: null });
-    expect(third.ok).toBe(true);
+    expect(third.ok).toBe(false);
     const thirdData = third.data as JudgeEnvelope;
-    expect(thirdData.auto_committed).toBe(true);
+    expect(thirdData.auto_committed).not.toBe(true);
     expect(thirdData.judge?.verdict).toBe("failed");
-    expect(thirdData.judge_done?.committed_as_is).toBe(true);
+    expect(thirdData.judge_done?.committed_as_is).toBe(false);
     expect(thirdData.judge_done?.missing).toEqual(FAILED_VERDICT.missing);
-    expect(thirdData.judge_done?.next_action).toContain("STOP editing");
+    expect(thirdData.judge_done?.next_action).toContain("NOT committed");
     expect(thirdData.judge_done?.next_action).toContain("ask how to proceed");
-    // The commit reset the counter (breaker cleared on persist).
-    expect(toolCtx.current().state?.judge_breaker ?? null).toBeNull();
+    // No commit happened, so the breaker counter is NOT reset — it holds at
+    // the cap so a model that ignores the EXIT keeps hitting the hold branch
+    // rather than slipping an unsatisfied commit through.
+    expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(2);
+    // First hold at the cap is recorded.
+    expect(toolCtx.current().state?.judge_breaker?.holds_at_cap).toBe(1);
+  });
+
+  test("a model that ignores the EXIT and re-runs past the hold cap gets a forced escalation", async () => {
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const toolCtx = makeCtx(wrongContentDraft("judge-escalate", GOAL));
+
+    // Drive blocks 1..MAX (each ok:false), then the first hold at the cap.
+    for (let i = 1; i <= JUDGE_BREAKER_MAX_BLOCKS; i++) {
+      await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    }
+    const firstHold = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect((firstHold.data as JudgeEnvelope).judge_done?.escalate).toBe(false);
+    expect(toolCtx.current().state?.judge_breaker?.holds_at_cap).toBe(1);
+
+    // The model ignores the EXIT and re-runs — at ESCALATE_AFTER holds the gate
+    // forces an operator-choice escalation instead of another silent hold.
+    const escalated = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(escalated.ok).toBe(false);
+    expect((escalated as { error_code?: string }).error_code).toBe("preview_judge_exhausted");
+    const data = escalated.data as JudgeEnvelope;
+    expect(data.judge_done?.escalate).toBe(true);
+    expect(data.judge_done?.committed_as_is).toBe(false);
+    expect(data.judge_done?.next_action).toContain("STOP");
+    expect(data.judge_done?.next_action).toContain("ask the user to choose");
+    // Only the commit-as-is tool action is offered — editing/re-running is gone.
+    expect(data.next_best_actions).toEqual(["save_workflow_draft"]);
+    expect(toolCtx.current().state?.judge_breaker?.holds_at_cap).toBe(2);
   });
 
   test("a commit resets the blocks-since-commit counter", async () => {

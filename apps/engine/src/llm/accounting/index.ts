@@ -19,14 +19,17 @@ export {
   type AccountResult,
   account,
 } from "./accountant.ts";
+export { type ActorFields, actorFields } from "./actor.ts";
 export {
   type CheckAndDecrementResult,
   checkAndDecrement,
   checkBudget,
   currentMonthBucket,
   monthlyUsage,
+  monthlyUsageForUser,
   recordUsage,
   resolveMonthlyBudget,
+  resolveUserMonthlyBudget,
 } from "./budget.ts";
 export {
   completionBudgetFor,

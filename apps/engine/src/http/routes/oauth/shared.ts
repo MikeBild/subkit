@@ -166,7 +166,11 @@ export function renderConsentPage(opts: {
   clientName: string;
   tenantName: string;
   userEmail: string;
-  scopes: string[];
+  // The full RBAC-permitted ceiling the operator may grant (read ⊆ authoring ⊆ admin
+  // is NOT assumed — each is offered independently based on the role's permissions).
+  offeredScopes: string[];
+  // Subset of offeredScopes rendered pre-checked (always includes mcp:read).
+  preChecked: string[];
   csrfToken: string;
   state: string;
   clientId: string;
@@ -178,12 +182,23 @@ export function renderConsentPage(opts: {
     "mcp:authoring": "Access conversation authoring tools via MCP",
     "mcp:admin": "Full administrative access via MCP",
   };
-  const scopeItems = opts.scopes
+  const preCheckedSet = new Set(opts.preChecked);
+  const scopeItems = opts.offeredScopes
     .map((s) => {
       const label = scopeLabels[s] ?? s;
-      return `<li><span class="scope-name">${escapeHtml(s)}</span><span class="scope-desc">${escapeHtml(
+      const value = escapeHtml(s);
+      const checked = preCheckedSet.has(s) ? " checked" : "";
+      if (s === "mcp:read") {
+        // mcp:read is the always-granted baseline: render checked + disabled so
+        // the operator cannot opt out of it. A disabled checkbox does not submit,
+        // so pair it with a hidden input that always posts the value.
+        return `<li><label class="scope-row"><input type="checkbox" name="scope" value="${value}" checked disabled><span class="scope-text"><span class="scope-name">${value}</span><span class="scope-desc">${escapeHtml(
+          label,
+        )}</span></span></label><input type="hidden" name="scope" value="${value}"></li>`;
+      }
+      return `<li><label class="scope-row"><input type="checkbox" name="scope" value="${value}"${checked}><span class="scope-text"><span class="scope-name">${value}</span><span class="scope-desc">${escapeHtml(
         label,
-      )}</span></li>`;
+      )}</span></span></label></li>`;
     })
     .join("");
 
@@ -221,10 +236,12 @@ export function renderConsentPage(opts: {
     .strong { font-weight: 600; }
     ul.scopes { list-style: none; margin: 18px 0 4px; padding: 0; }
     ul.scopes li {
-      display: flex; flex-direction: column; gap: 2px;
       padding: 12px 14px; margin-bottom: 8px;
       background: #f7f8fa; border: 1px solid #ebedf0; border-radius: 9px;
     }
+    .scope-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+    .scope-row input[type="checkbox"] { margin-top: 2px; flex: none; }
+    .scope-text { display: flex; flex-direction: column; gap: 2px; }
     .scope-name { font-weight: 600; font-size: .92rem; }
     .scope-desc { color: #6a7280; font-size: .85rem; }
     .actions { display: flex; gap: 10px; margin-top: 22px; }
@@ -248,8 +265,8 @@ export function renderConsentPage(opts: {
     <span class="strong">${escapeHtml(opts.tenantName)}</span> workspace.</p>
     <p class="muted">Signed in as ${escapeHtml(opts.userEmail)}</p>
     <p class="muted">It will be able to:</p>
-    <ul class="scopes">${scopeItems}</ul>
     <form method="POST" action="/v1/oauth/authorize/decision">
+      <ul class="scopes">${scopeItems}</ul>
       <input type="hidden" name="csrf_token" value="${escapeHtml(opts.csrfToken)}">
       <input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">
       <input type="hidden" name="redirect_uri" value="${escapeHtml(opts.redirectUri)}">
@@ -340,4 +357,9 @@ export const DecisionRequestSchema = z.object({
   redirect_uri: z.string().default(""),
   resource: z.string().default(""),
   state: z.string().default(""),
+  // The consent form posts one `scope` field per selected checkbox. The handler
+  // reads the authoritative multi-value list via URLSearchParams.getAll("scope");
+  // this entry exists so building the schema object from a collapsed map (which
+  // keeps only the last value) does not reject the body when scope is present.
+  scope: z.union([z.string(), z.array(z.string())]).optional(),
 });

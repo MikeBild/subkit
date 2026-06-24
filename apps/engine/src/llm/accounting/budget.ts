@@ -6,7 +6,7 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { type Executor, getDb } from "../../db/client.ts";
-import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
+import { llmUsage, tenantLlmSettings, userLlmSettings } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { LlmQuotaExhausted } from "../errors.ts";
 import { weightedTotalTokens } from "../pricing.ts";
@@ -27,6 +27,53 @@ export async function monthlyUsage(tenant_id: string, exec?: Executor): Promise<
     .from(llmUsage)
     .where(and(eq(llmUsage.tenant_id, tenant_id), eq(llmUsage.month_bucket, bucket)));
   return Number(out[0]?.total ?? 0);
+}
+
+/**
+ * Sum of `total_tokens` consumed by one user within a tenant in the
+ * current month. TENANT ISOLATION: tenant_id is the FIRST predicate;
+ * user_id only narrows within it.
+ */
+export async function monthlyUsageForUser(
+  tenant_id: string,
+  user_id: string,
+  exec?: Executor,
+): Promise<number> {
+  const db = exec ?? getDb();
+  const bucket = currentMonthBucket();
+  const out = await db
+    .select({ total: sql<number>`coalesce(sum(${llmUsage.total_tokens}), 0)::int` })
+    .from(llmUsage)
+    .where(
+      and(
+        eq(llmUsage.tenant_id, tenant_id),
+        eq(llmUsage.user_id, user_id),
+        eq(llmUsage.month_bucket, bucket),
+      ),
+    );
+  return Number(out[0]?.total ?? 0);
+}
+
+/**
+ * Resolve the effective monthly budget for a single user from
+ * `user_llm_settings.llm_monthly_token_budget`. A null return means the
+ * user has no explicit per-user cap (only the tenant budget applies).
+ * TENANT ISOLATION: tenant_id is the FIRST predicate.
+ */
+export async function resolveUserMonthlyBudget(
+  tenant_id: string,
+  user_id: string,
+  exec?: Executor,
+): Promise<number | null> {
+  const db = exec ?? getDb();
+  const rows = await db
+    .select({ budget: userLlmSettings.llm_monthly_token_budget })
+    .from(userLlmSettings)
+    .where(and(eq(userLlmSettings.tenant_id, tenant_id), eq(userLlmSettings.user_id, user_id)))
+    .limit(1);
+  const raw = rows[0]?.budget ?? null;
+  if (raw == null) return null;
+  return Number(raw);
 }
 
 /**
@@ -86,30 +133,71 @@ export interface CheckAndDecrementResult {
   projected_tokens: number;
   budget: number | null;
   remaining: number | null;
+  /** Which budget tripped when `ok` is false: the tenant cap or the
+   *  per-user cap. Undefined when `ok` is true. */
+  scope?: "tenant" | "user";
 }
 
 /**
- * Read the tenant's effective monthly budget, sum current-month
- * `llm_usage`, and report whether an additional `estimated_tokens`
- * would still fit. This helper is **read-only** — the actual
- * decrement happens when the provider records the usage row after the
- * call completes, so concurrent callers may both observe "ok" at the
- * same instant. The real guarantee is the audit trail left by
- * `recordUsage`, not a hard per-request reservation.
+ * Read the tenant's effective monthly budget (and, when `user_id` is
+ * supplied, the per-user budget) and report whether an additional
+ * `estimated_tokens` would still fit under BOTH. The tighter ceiling
+ * wins, and `scope` names which one tripped.
+ *
+ * This helper is **read-only** — the actual decrement happens when the
+ * provider records the usage row after the call completes, so concurrent
+ * callers may both observe "ok" at the same instant. This is true for the
+ * tenant path and the per-user path alike. The real guarantee is the audit
+ * trail left by `recordUsage`, not a hard per-request reservation.
  */
 export async function checkAndDecrement(
   tenant_id: string,
   estimated_tokens: number,
   exec?: Executor,
+  user_id?: string | null,
 ): Promise<CheckAndDecrementResult> {
-  const budget = await resolveMonthlyBudget(tenant_id, exec);
-  const used = await monthlyUsage(tenant_id, exec);
-  if (budget == null || budget <= 0) {
-    return { ok: true, used, projected_tokens: estimated_tokens, budget, remaining: null };
+  const tenantBudget = await resolveMonthlyBudget(tenant_id, exec);
+  const tenantUsed = await monthlyUsage(tenant_id, exec);
+  const tenantUnlimited = tenantBudget == null || tenantBudget <= 0;
+  const tenantOk = tenantUnlimited || tenantUsed + estimated_tokens <= tenantBudget;
+
+  // Per-user cap is an ADDITIONAL ceiling, only when the actor is a user.
+  if (user_id) {
+    const userBudget = await resolveUserMonthlyBudget(tenant_id, user_id, exec);
+    if (userBudget != null && userBudget > 0) {
+      const userUsed = await monthlyUsageForUser(tenant_id, user_id, exec);
+      const userOk = userUsed + estimated_tokens <= userBudget;
+      if (!userOk) {
+        return {
+          ok: false,
+          used: userUsed,
+          projected_tokens: estimated_tokens,
+          budget: userBudget,
+          remaining: userBudget - userUsed,
+          scope: "user",
+        };
+      }
+    }
   }
-  const remaining = budget - used;
-  const ok = used + estimated_tokens <= budget;
-  return { ok, used, projected_tokens: estimated_tokens, budget, remaining };
+
+  if (tenantUnlimited) {
+    return {
+      ok: true,
+      used: tenantUsed,
+      projected_tokens: estimated_tokens,
+      budget: tenantBudget,
+      remaining: null,
+    };
+  }
+  const remaining = tenantBudget - tenantUsed;
+  return {
+    ok: tenantOk,
+    used: tenantUsed,
+    projected_tokens: estimated_tokens,
+    budget: tenantBudget,
+    remaining,
+    ...(tenantOk ? {} : { scope: "tenant" as const }),
+  };
 }
 
 /**
@@ -139,6 +227,10 @@ export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Prom
     latency_ms: entry.latency_ms,
     result: entry.result,
     error: entry.error ?? null,
+    user_id: entry.user_id ?? null,
+    actor_type: entry.actor_type ?? "system",
     month_bucket: bucket,
+    execution_id: entry.execution_id ?? null,
+    conversation_id: entry.conversation_id ?? null,
   });
 }

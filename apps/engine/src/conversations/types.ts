@@ -280,6 +280,12 @@ export interface JudgeBreakerState {
   blocks_since_commit: number;
   /** Memoized verdict for fingerprint-keyed re-judge skipping. */
   last_verdict?: JudgeVerdictMemo | null;
+  /** Consecutive HOLDS at the block cap. Once the cap is reached the
+   *  preview is held (not committed) every re-run; this counts those holds
+   *  so a model that ignores the done-signal and keeps re-running gets a
+   *  hard escalation (force the operator choice) instead of looping
+   *  forever. Reset to 0 on commit, same as `blocks_since_commit`. */
+  holds_at_cap?: number;
 }
 
 export interface AuthoringState {

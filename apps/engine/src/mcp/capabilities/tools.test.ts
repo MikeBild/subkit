@@ -99,13 +99,48 @@ describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
     }
   });
 
-  test("static conversation tools are still present alongside wf_ entries", async () => {
+  test("conversation tools are present alongside wf_ entries; draft_write is hidden on MCP", async () => {
     const client = await connect();
     try {
       const list = await client.listTools();
       const names = new Set(list.tools.map((t) => t.name));
-      expect(names.has("propose_step")).toBe(true);
-      expect(names.has("save_workflow_draft")).toBe(true);
+      // Static/product tools coexist with wf_<slug> entries: list_recipes +
+      // test_connector remain visible alongside the dynamic catalog.
+      expect(names.has("list_recipes")).toBe(true);
+      expect(names.has("test_connector")).toBe(true);
+      // draft_write authoring tools are conversation-scoped and HIDDEN from
+      // the MCP catalog in every mode (a direct tools/call short-circuits to
+      // not_available_on_surface — see tools-list-disabled.test.ts). They
+      // used to surface here as disabled-badged descriptors.
+      expect(names.has("propose_step")).toBe(false);
+      expect(names.has("save_workflow_draft")).toBe(false);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("every tool advertises MCP annotations; reads/writes/runs are classified", async () => {
+    // Regression guard: a strict MCP client (ChatGPT/codex) reads
+    // Tool.annotations to decide whether it may invoke a tool without its own
+    // gate. Missing/incorrect hints re-block the authoring tools.
+    const client = await connect();
+    try {
+      const list = await client.listTools();
+      const byName = new Map(list.tools.map((t) => [t.name, t]));
+
+      // Every tool carries annotations.
+      for (const t of list.tools) expect(t.annotations).toBeDefined();
+
+      // A read tool is read-only.
+      expect(byName.get("list_recipes")?.annotations?.readOnlyHint).toBe(true);
+
+      // The workflow-run tool is not read-only and is open-world.
+      const wf = byName.get(`wf_${toolWfSlug}`);
+      expect(wf?.annotations?.readOnlyHint).toBe(false);
+      expect(wf?.annotations?.openWorldHint).toBe(true);
+      // (conversation_start's non-destructive-write annotation — the hint that
+      // unblocks strict clients — is unit-tested in tool-meta.test.ts; it is
+      // not surfaced to this api-key principal's product-mode catalog.)
     } finally {
       await client.close();
     }

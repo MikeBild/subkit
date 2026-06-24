@@ -198,6 +198,9 @@ export const LlmStatsQuery = BucketWindowQuery.extend({
   model: CsvOrArray,
   flow: CsvOrArray,
   group_by: CsvOrArray,
+  // Narrow to one user. Reading another user (or `group_by=user`) requires
+  // the `stats:read:all` permission; own-usage reads need only `stats:read`.
+  user_id: z.string().uuid().optional(),
 }).openapi("StatsLlmQuery");
 
 const LlmBucket = z.object({
@@ -229,3 +232,34 @@ export const LlmStatsResponse = z
     }),
   })
   .openapi("StatsLlmResponse");
+
+// ---- quality --------------------------------------------------------------
+
+export const StatsQualityQuery = BucketWindowQuery.extend({
+  workflow_id: z.string().uuid().optional(),
+}).openapi("StatsQualityQuery");
+
+const QualityFailureReason = z
+  .object({
+    code: z.string(),
+    count: z.number(),
+  })
+  .openapi("StatsQualityFailureReason");
+
+export const StatsQualityResponse = z
+  .object({
+    ...EnvelopeBase,
+    one_shot: z.object({
+      succeeded: z.number(),
+      failed: z.number(),
+      total: z.number(),
+      success_rate: z.number(),
+    }),
+    post_repair: z.object({
+      successes: z.number(),
+      failures: z.number(),
+      success_rate: z.number(),
+    }),
+    failure_reasons: z.array(QualityFailureReason),
+  })
+  .openapi("StatsQualityResponse");

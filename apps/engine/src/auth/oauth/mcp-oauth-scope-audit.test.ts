@@ -149,6 +149,7 @@ describe("consent denial", () => {
         redirect_uri: "https://client.example.com/revoke-cb",
         resource: "",
         state: "",
+        scope: "mcp:read",
         decision: "approve",
       }).toString(),
       redirect: "manual",
@@ -197,9 +198,9 @@ describe("scope intersection — role-based scope restriction", () => {
     // Consent page loads (200)
     expect(authRes.status).toBe(200);
     const html = await authRes.text();
-    // The consent page should NOT show mcp:admin for a member role
-    // (it is intersected away). mcp:admin should be absent from the scope list.
-    expect(html).not.toContain(">mcp:admin<");
+    // The consent page should NOT offer mcp:admin for a member role
+    // (the role lacks it). mcp:admin must be absent from the offered checkboxes.
+    expect(html).not.toContain('value="mcp:admin"');
 
     const csrfMatch = html.match(/name="csrf_token"\s+value="([^"]+)"/);
     expect(csrfMatch).not.toBeNull();
@@ -217,6 +218,7 @@ describe("scope intersection — role-based scope restriction", () => {
         redirect_uri: "https://member.example.com/cb",
         resource: "",
         state: "",
+        scope: "mcp:read",
         decision: "approve",
       }).toString(),
       redirect: "manual",
@@ -301,6 +303,7 @@ describe("scope intersection — role-based scope restriction", () => {
         redirect_uri: "https://downgrade.example.com/cb",
         resource: "",
         state: "",
+        scope: "mcp:read",
         decision: "approve",
       }).toString(),
       redirect: "manual",
@@ -316,9 +319,156 @@ describe("scope intersection — role-based scope restriction", () => {
 // The HTTP layer uses the same db connection that the test DB uses (via
 // createHttpTestServer). Audit writes go to the test DB here.
 
+describe("scope selection — operator may grant above the client request", () => {
+  test("admin requesting only mcp:read is offered all scopes and may grant mcp:admin", async () => {
+    // ctx.userId is an admin. The client requests only mcp:read, but the
+    // consent page offers the operator's FULL role ceiling. The admin ticks
+    // mcp:admin; the issued token must carry it.
+    const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://elevate.example.com/cb"] }),
+    });
+    const { client_id: clientId } = (await regRes.json()) as { client_id: string };
+
+    const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
+    const jwt = await mintSessionCookie({
+      session_id: sessionId,
+      user_id: ctx.userId,
+      tenant_id: ctx.tenantId,
+    });
+
+    const authRes = await fetch(
+      `${ctx.baseUrl}/v1/oauth/authorize?${new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: "https://elevate.example.com/cb",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        // Client asks for read only — operator can still choose more.
+        scope: "mcp:read",
+      })}`,
+      { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
+    );
+    expect(authRes.status).toBe(200);
+    const html = await authRes.text();
+    // All three scopes are offered to an admin even though the client asked
+    // for read only.
+    expect(html).toContain('value="mcp:read"');
+    expect(html).toContain('value="mcp:authoring"');
+    expect(html).toContain('value="mcp:admin"');
+
+    const csrfMatch = html.match(/name="csrf_token"\s+value="([^"]+)"/);
+    const csrfToken = csrfMatch![1] as string;
+
+    // Operator selects read (baseline hidden input) + admin.
+    const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: `subkit_session=${jwt}`,
+      },
+      // Two `scope` values, exactly as the checkbox form would post them.
+      body: `csrf_token=${encodeURIComponent(csrfToken)}&client_id=${clientId}&redirect_uri=${encodeURIComponent("https://elevate.example.com/cb")}&resource=&state=&decision=approve&scope=mcp%3Aread&scope=mcp%3Aadmin`,
+      redirect: "manual",
+    });
+    expect(decisionRes.status).toBe(302);
+    const code = new URL(decisionRes.headers.get("location") ?? "").searchParams.get("code");
+    expect(code).not.toBeNull();
+
+    const tokenRes = await fetch(`${ctx.baseUrl}/v1/oauth/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: code!,
+        code_verifier: CODE_VERIFIER,
+        redirect_uri: "https://elevate.example.com/cb",
+        client_id: clientId,
+      }).toString(),
+    });
+    expect(tokenRes.status).toBe(200);
+    const { scope } = (await tokenRes.json()) as { scope: string };
+    const scopes = scope.split(" ");
+    expect(scopes).toContain("mcp:read");
+    expect(scopes).toContain("mcp:admin");
+  });
+
+  test("member tampering with a non-offered mcp:admin scope is clamped away", async () => {
+    // A member never gets mcp:admin offered. If the form is tampered to POST
+    // scope=mcp:admin, the decision handler clamps it by ceiling ∩ role; the
+    // result drops admin and keeps only what the member holds.
+    const [memberUser] = await db
+      .insert(users)
+      .values({ tenant_id: ctx.tenantId, email: "tamper@test.local", role: "member" })
+      .returning();
+    if (!memberUser) throw new Error("seed member user failed");
+
+    const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://tamper.example.com/cb"] }),
+    });
+    const { client_id: clientId } = (await regRes.json()) as { client_id: string };
+
+    const sessionId = await seedSession(db, ctx.tenantId, memberUser.id);
+    const jwt = await mintSessionCookie({
+      session_id: sessionId,
+      user_id: memberUser.id,
+      tenant_id: ctx.tenantId,
+    });
+
+    const authRes = await fetch(
+      `${ctx.baseUrl}/v1/oauth/authorize?${new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: "https://tamper.example.com/cb",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        scope: "mcp:read",
+      })}`,
+      { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
+    );
+    const html = await authRes.text();
+    const csrfToken = html.match(/name="csrf_token"\s+value="([^"]+)"/)![1] as string;
+
+    // Tamper: inject scope=mcp:admin alongside the legitimate read baseline.
+    const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: `subkit_session=${jwt}`,
+      },
+      body: `csrf_token=${encodeURIComponent(csrfToken)}&client_id=${clientId}&redirect_uri=${encodeURIComponent("https://tamper.example.com/cb")}&resource=&state=&decision=approve&scope=mcp%3Aread&scope=mcp%3Aadmin`,
+      redirect: "manual",
+    });
+    expect(decisionRes.status).toBe(302);
+    const code = new URL(decisionRes.headers.get("location") ?? "").searchParams.get("code");
+    expect(code).not.toBeNull();
+
+    const tokenRes = await fetch(`${ctx.baseUrl}/v1/oauth/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: code!,
+        code_verifier: CODE_VERIFIER,
+        redirect_uri: "https://tamper.example.com/cb",
+        client_id: clientId,
+      }).toString(),
+    });
+    const { scope } = (await tokenRes.json()) as { scope: string };
+    expect(scope.split(" ")).not.toContain("mcp:admin");
+    expect(scope.split(" ")).toContain("mcp:read");
+  });
+});
+
 describe("scope intersection — member role requesting only mcp:admin", () => {
-  test("/authorize 302-redirects with error=access_denied when scope=mcp:admin and role=member", async () => {
-    // Seed a member-role user
+  test("/authorize offers the member's role ceiling (read + authoring) and never mcp:admin", async () => {
+    // The consent page offers the operator's FULL role ceiling, independent of
+    // what the client requested. A member requesting only mcp:admin (which the
+    // role lacks) still sees a consent page — but it offers read + authoring
+    // (the member's actual ceiling) and never the unpermitted mcp:admin.
     const [memberUser] = await db
       .insert(users)
       .values({
@@ -343,7 +493,8 @@ describe("scope intersection — member role requesting only mcp:admin", () => {
       tenant_id: ctx.tenantId,
     });
 
-    // Request ONLY mcp:admin — member role has no mcp:admin → empty intersection
+    // Request ONLY mcp:admin — the role lacks it, so it is never offered, but
+    // the operator still sees their permitted ceiling rather than a denial.
     const res = await fetch(
       `${ctx.baseUrl}/v1/oauth/authorize?${new URLSearchParams({
         client_id: clientId,
@@ -358,9 +509,13 @@ describe("scope intersection — member role requesting only mcp:admin", () => {
         redirect: "manual",
       },
     );
-    expect(res.status).toBe(302);
-    const location = res.headers.get("location") ?? "";
-    expect(location).toContain("error=access_denied");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // mcp:admin is never offered to a member.
+    expect(html).not.toContain('value="mcp:admin"');
+    // The member's role ceiling (read + authoring) IS offered as checkboxes.
+    expect(html).toContain('value="mcp:read"');
+    expect(html).toContain('value="mcp:authoring"');
   });
 });
 
@@ -415,6 +570,7 @@ async function runFullOAuthFlow(opts: {
       redirect_uri: redirectUri,
       resource: "",
       state: "",
+      scope: "mcp:read",
       decision: "approve",
     }).toString(),
     redirect: "manual",
@@ -481,6 +637,7 @@ describe("audit log entries (HTTP layer)", () => {
         redirect_uri: "https://audit.example.com/cb",
         resource: "",
         state: "",
+        scope: "mcp:read",
         decision: "approve",
       }).toString(),
       redirect: "manual",
@@ -565,5 +722,103 @@ describe("audit log entries — token lifecycle (HTTP layer)", () => {
         and(eq(auditLog.action, "mcp_oauth.token_revoked"), eq(auditLog.tenant_id, ctx.tenantId)),
       );
     expect(rows.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ─── Consent form structure ──────────────────────────────────────────────────
+// Regression guard for the bug where the scope <ul> (checkboxes + the hidden
+// mcp:read baseline input) was rendered OUTSIDE the <form>, so the browser
+// submitted no `scope` field and every fresh consent was denied as
+// role_downgrade. The other tests in this file hand-build the decision body
+// with `scope=` params, which bypasses the HTML structure and missed this.
+
+/**
+ * Extract the scope values a real browser would submit: every scope input that
+ * lives INSIDE the <form> and is either a hidden input or a checked, non-disabled
+ * checkbox. Inputs rendered outside the form contribute nothing.
+ */
+function browserSubmittedScopes(html: string): string[] {
+  const form = html.match(/<form\b[^>]*>([\s\S]*?)<\/form>/i)?.[1] ?? "";
+  const scopes: string[] = [];
+  for (const tag of form.match(/<input\b[^>]*name="scope"[^>]*>/gi) ?? []) {
+    const value = tag.match(/value="([^"]*)"/)?.[1];
+    if (!value) continue;
+    const isHidden = /type="hidden"/i.test(tag);
+    const isCheckbox = /type="checkbox"/i.test(tag);
+    const checked = /\bchecked\b/i.test(tag);
+    const disabled = /\bdisabled\b/i.test(tag);
+    if (isHidden || (isCheckbox && checked && !disabled)) scopes.push(value);
+  }
+  return scopes;
+}
+
+describe("consent form structure — scope inputs must submit", () => {
+  test("a member approving the rendered form is granted (not denied as role_downgrade)", async () => {
+    const [memberUser] = await db
+      .insert(users)
+      .values({ tenant_id: ctx.tenantId, email: "form-structure@test.local", role: "member" })
+      .returning();
+    if (!memberUser) throw new Error("seed member user failed");
+
+    const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://form.example.com/cb"] }),
+    });
+    const { client_id: clientId } = (await regRes.json()) as { client_id: string };
+
+    const sessionId = await seedSession(db, ctx.tenantId, memberUser.id);
+    const jwt = await mintSessionCookie({
+      session_id: sessionId,
+      user_id: memberUser.id,
+      tenant_id: ctx.tenantId,
+    });
+
+    const authRes = await fetch(
+      `${ctx.baseUrl}/v1/oauth/authorize?${new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: "https://form.example.com/cb",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        // ChatGPT-style request: only mcp:read. The baseline must still submit.
+        scope: "mcp:read",
+      })}`,
+      { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
+    );
+    expect(authRes.status).toBe(200);
+    const html = await authRes.text();
+
+    // Structural invariant: the scope inputs live inside the form, so a browser
+    // submits at least the mcp:read baseline.
+    const submitted = browserSubmittedScopes(html);
+    expect(submitted).toContain("mcp:read");
+
+    const csrfToken = html.match(/name="csrf_token"\s+value="([^"]+)"/)![1] as string;
+
+    // Submit EXACTLY what the rendered form would post — no hand-added scopes.
+    const body = new URLSearchParams();
+    body.set("csrf_token", csrfToken);
+    body.set("client_id", clientId);
+    body.set("redirect_uri", "https://form.example.com/cb");
+    body.set("resource", "");
+    body.set("state", "");
+    body.set("decision", "approve");
+    for (const s of submitted) body.append("scope", s);
+
+    const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: `subkit_session=${jwt}`,
+      },
+      body: body.toString(),
+      redirect: "manual",
+    });
+    expect(decisionRes.status).toBe(302);
+    const location = new URL(decisionRes.headers.get("location") ?? "");
+    // The bug manifested as error=access_denied (empty scope → role_downgrade).
+    expect(location.searchParams.get("error")).toBeNull();
+    expect(location.searchParams.get("code")).not.toBeNull();
   });
 });

@@ -20,6 +20,7 @@ import {
   type StatsLlmResponse,
   type StatsQuery,
 } from "../engine-client.ts";
+import { humanMs } from "../render/format.ts";
 
 // --- bucket grammar + caps (kept in lock-step with the engine's --------
 //     apps/engine/src/http/routes/stats/bucket-window.ts) ----------------
@@ -134,14 +135,6 @@ function num(n: number): string {
   return Math.round(n).toLocaleString();
 }
 
-function humanMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return "0ms";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
-  return `${(ms / 3_600_000).toFixed(1)}h`;
-}
-
 /** Right-align a column of cells to a fixed width. */
 function padNum(s: string, width: number): string {
   return s.padStart(width);
@@ -176,8 +169,15 @@ function handleError(err: unknown): never {
   }
   const e = err as { status?: number; message?: string };
   if (e && e.status === 403) {
+    // Reading another user's usage or a cross-user breakdown (group-by=user)
+    // needs stats:read:all; the plain operator stats surface needs stats:read.
+    const needsReadAll = (e.message ?? "").includes("stats:read:all");
+    const perm = needsReadAll ? "stats:read:all" : "stats:read";
+    const detail = needsReadAll
+      ? "reading another user's usage or a cross-user breakdown"
+      : "this command";
     process.stderr.write(
-      `${pc.red("forbidden")}: this command needs the ${pc.bold("stats:read")} permission. ` +
+      `${pc.red("forbidden")}: ${detail} needs the ${pc.bold(perm)} permission. ` +
         `Ask an admin to grant it to your role (admins have it by default).\n`,
     );
     process.exit(exitCodeFor(err));
@@ -347,17 +347,33 @@ const llmCommand = defineCommand({
     ...commonArgs,
     model: { type: "string", description: "Filter by model (comma-separated)" },
     flow: { type: "string", description: "Filter by flow (comma-separated)" },
+    "user-id": {
+      type: "string",
+      description: "Scope to one user (another user needs stats:read:all)",
+    },
+    mine: {
+      type: "boolean",
+      description: "Scope to your own usage (resolves your user id automatically)",
+    },
   },
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
+      // `--mine` resolves the caller's own user id from /v1/status so the
+      // user never has to know their uuid. Explicit `--user-id` wins.
+      let userId = args["user-id"] as string | undefined;
+      if (args.mine && !userId) {
+        const status = await client.statusSummary();
+        userId = status.user.id;
+      }
       const q = buildQuery(
         args,
         { bucket: "day", from: "startOfMonth" },
         {
           model: args.model as string | undefined,
           flow: args.flow as string | undefined,
+          user_id: userId,
         },
       );
       const res = await client.statsLlm(q);

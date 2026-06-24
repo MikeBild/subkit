@@ -13,6 +13,15 @@ export interface TurnUsage {
    *  sees pressure on the model's window before they hit it. Optional
    *  for backward compat. */
   context_cap_tokens?: number;
+  /** Input tokens served from the prompt cache this turn. Pairs with
+   *  `cache_read_pct` so the REPL footer can render a `cache 85%` chip —
+   *  the per-conversation analogue of the workflow-run cache-read % in
+   *  `sk executions get`. Optional: omitted on non-LLM tool turns. */
+  cache_read_tokens?: number;
+  /** Cache-hit rate for this turn, 0–100 with one decimal:
+   *  `cache_read / (fresh_input + cache_read)`. Same definition as the
+   *  `/v1/executions/{id}/cost` card so the two surfaces never disagree. */
+  cache_read_pct?: number;
   /** Per-section breakdown of the prompt that drove this turn — what
    *  the engine actually fed the LLM. When present, the spinner /
    *  status line render `skills 4.2k · transcript 6.1k · draft 1.3k`

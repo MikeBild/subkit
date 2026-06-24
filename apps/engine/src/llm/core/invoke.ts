@@ -23,6 +23,7 @@ import { and, eq } from "drizzle-orm";
 import { type ZodType, z } from "zod";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { type Executor, getDb } from "../../db/client.ts";
 import { tenantLlmSettings, tenants } from "../../db/schema/index.ts";
@@ -36,6 +37,7 @@ import {
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import {
   account,
+  actorFields,
   checkAndDecrement,
   checkBudget,
   contextCapFor,
@@ -297,6 +299,12 @@ export interface InvokeParams<T = unknown> {
   /** When set, run as `generateObject` with submit-tool loop. */
   schema?: ZodType<T>;
   telemetry_metadata?: Record<string, string | number | boolean>;
+  /**
+   * Optional acting principal. The converse flow attributes usage to the
+   * end-user via this field; authoring/system flows (generate/extract/
+   * repair/…) leave it unset → the row is recorded as `system`.
+   */
+  principal?: ResolvedPrincipal | null;
   /** Optional explicit route; otherwise resolved from tenant settings. */
   route?: ModelRoute;
   /**
@@ -402,17 +410,20 @@ async function invokeInner<T = unknown>(
     fn: () => assembleContext(assembleParams, db),
   });
 
-  // 2) Budget pre-check.
+  // 2) Budget pre-check. The user cap (when the actor is a user with a
+  // per-user budget) is an additional ceiling on top of the tenant cap.
+  const actor = actorFields(params.principal);
   const estimated = assembled.prompt.token_counts.total + 1024;
   try {
     await checkBudget(params.tenant_id, estimated, route.monthly_budget, db);
-    const verdict = await checkAndDecrement(params.tenant_id, estimated, db);
+    const verdict = await checkAndDecrement(params.tenant_id, estimated, db, actor.user_id);
     if (!verdict.ok) {
       throw new LlmQuotaExhausted("llm_quota_exhausted", {
         used: verdict.used,
         projected_tokens: verdict.projected_tokens,
         budget: verdict.budget,
         remaining: verdict.remaining,
+        scope: verdict.scope ?? "tenant",
       });
     }
   } catch (err) {
@@ -427,6 +438,7 @@ async function invokeInner<T = unknown>(
           latency_ms: 0,
           result: "quota_exhausted",
           error: "llm_quota_exhausted",
+          ...actor,
         },
         db,
       );
@@ -485,6 +497,7 @@ async function dispatchMock<T>(
         latency_ms: Date.now() - start,
         result: "error",
         error: err.message,
+        ...actorFields(params.principal),
       },
       db,
     );
@@ -524,6 +537,7 @@ async function dispatchMock<T>(
       completion_tokens: res.completion_tokens,
       latency_ms: latency,
       result: "success",
+      ...actorFields(params.principal),
     },
     db,
   );
@@ -704,6 +718,7 @@ async function dispatchReal<T>(
         latency_ms: latency,
         result: "error",
         error: mapped.message,
+        ...actorFields(params.principal),
       },
       db,
     );
@@ -722,6 +737,7 @@ async function dispatchReal<T>(
       latency_ms: latency,
       result: "success",
       estimated_prompt_tokens: assembled.prompt.token_counts.total,
+      ...actorFields(params.principal),
     },
     db,
   );

@@ -103,21 +103,44 @@ function synthesizeRecoveredOutcome(detail: ConversationDetail): ConversationRun
 export interface ExtendedTurnUsage {
   prompt_tokens_last_call: number | null;
   turn_tokens_total: number | null;
+  cache_read_tokens: number | null;
+  cache_read_pct: number | null;
 }
 
 export function readExtendedTurnUsage(usage: unknown): ExtendedTurnUsage {
   if (typeof usage !== "object" || usage === null) {
-    return { prompt_tokens_last_call: null, turn_tokens_total: null };
+    return {
+      prompt_tokens_last_call: null,
+      turn_tokens_total: null,
+      cache_read_tokens: null,
+      cache_read_pct: null,
+    };
   }
-  const u = usage as { prompt_tokens_last_call?: unknown; turn_tokens_total?: unknown };
+  const u = usage as {
+    prompt_tokens_last_call?: unknown;
+    turn_tokens_total?: unknown;
+    cache_read_tokens?: unknown;
+    cache_read_pct?: unknown;
+  };
   return {
     prompt_tokens_last_call:
       typeof u.prompt_tokens_last_call === "number" ? u.prompt_tokens_last_call : null,
     turn_tokens_total: typeof u.turn_tokens_total === "number" ? u.turn_tokens_total : null,
+    cache_read_tokens: typeof u.cache_read_tokens === "number" ? u.cache_read_tokens : null,
+    cache_read_pct: typeof u.cache_read_pct === "number" ? u.cache_read_pct : null,
   };
 }
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+// ---------- Telemetry wire types (re-exported from the generated
+// OpenAPI surface) ----------
+// The WS-2 routes added these schemas; aliasing them here gives command
+// surfaces a single import site and keeps the snake_case wire shape the
+// authoritative one.
+export type ExecutionCost = components["schemas"]["ExecutionCost"];
+export type StatsQualityResponse = components["schemas"]["StatsQualityResponse"];
+export type DiagnosticsRuntime = components["schemas"]["DiagnosticsRuntime"];
 
 // ---------- Files wire types ----------
 // Mirror `apps/engine/src/api/files-schemas.ts`. Kept structural (not
@@ -151,6 +174,7 @@ export interface StatsQuery {
   class?: string;
   model?: string;
   flow?: string;
+  user_id?: string;
 }
 
 export interface StatsDurationAgg {
@@ -1152,6 +1176,14 @@ export class EngineClient {
   statsLlm(query: StatsQuery): Promise<StatsLlmResponse> {
     return this.request("GET", "/v1/stats/llm", undefined, query);
   }
+  /**
+   * Authoring-quality rollup — one-shot vs. post-repair success rates
+   * and the top failure reasons over the window. Backed by
+   * `/v1/stats/quality`. Return shape is the generated OpenAPI schema.
+   */
+  statsQuality(query: StatsQuery): Promise<StatsQualityResponse> {
+    return this.request("GET", "/v1/stats/quality", undefined, query);
+  }
 
   // --------------------------- Workflow versions ---------------------------
   /** List committed versions of a workflow (newest first). */
@@ -1539,6 +1571,18 @@ export class EngineClient {
 
   setupValidation(): Promise<SetupValidationResponse> {
     return this.request("GET", "/v1/diagnostics/setup");
+  }
+
+  /**
+   * Live process-runtime snapshot — uptime, memory (rss / heap /
+   * external MB), DB-pool saturation, and event-loop lag. Backed by
+   * `/v1/diagnostics/runtime`. Surfaced by `sk health` so an operator
+   * can see engine pressure (the OOM / event-loop-stall symptoms) from
+   * the CLI without shelling onto the droplet. Return shape is the
+   * generated OpenAPI schema.
+   */
+  diagnosticsRuntime(): Promise<DiagnosticsRuntime> {
+    return this.request("GET", "/v1/diagnostics/runtime");
   }
 
   // --------------------------- Settings -----------------------------------
@@ -2114,6 +2158,18 @@ export class EngineClient {
   }
   executionSteps(id: string): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", `/v1/executions/${encodeURIComponent(id)}/steps`);
+  }
+  /**
+   * Per-execution cost rollup — LLM weighted tokens / cache-read %
+   * / latency (with a per-flow breakdown) plus external-call cost.
+   * Backed by `/v1/executions/{id}/cost`, joined from the
+   * `llm_usage` + `external_call_metering` ledgers (now keyed by
+   * `execution_id`). The return shape is the generated OpenAPI schema
+   * so a wire-shape drift is a typecheck failure here, not a silent
+   * render of `undefined`.
+   */
+  executionCost(id: string): Promise<ExecutionCost> {
+    return this.request("GET", `/v1/executions/${encodeURIComponent(id)}/cost`);
   }
   abortExecution(id: string): Promise<void> {
     return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/abort`);
@@ -2928,5 +2984,10 @@ export interface StatusSummary {
   tokens_month: number;
   monthly_budget_tokens: number | null;
   remaining_monthly_budget_tokens: number | null;
+  /** The caller's own figures (null for system_account principals). */
+  tokens_today_user: number | null;
+  tokens_month_user: number | null;
+  user_monthly_budget_tokens: number | null;
+  user_remaining_monthly_budget_tokens: number | null;
   version: string;
 }

@@ -341,6 +341,16 @@ export async function timePhaseAsync<T>(
   }
 }
 
+// Last observed event-loop lag in ms, refreshed each monitor tick. Read by
+// GET /v1/diagnostics/runtime so the live diagnostic surface reports the same
+// value the gauge carries without re-scraping the metric registry.
+let lastEventLoopLagMs = 0;
+
+/** Most recent event-loop lag sample in ms (0 before the monitor starts). */
+export function getLastEventLoopLagMs(): number {
+  return lastEventLoopLagMs;
+}
+
 export function startEventLoopLagMonitor(opts?: {
   intervalMs?: number;
   thresholdMs?: number;
@@ -352,6 +362,7 @@ export function startEventLoopLagMonitor(opts?: {
     const now = Date.now();
     const lag = Math.max(0, now - last - intervalMs);
     last = now;
+    lastEventLoopLagMs = lag;
     safe(() => getMetrics().set(METRIC_NAMES.EVENT_LOOP_LAG_MS, lag, {}));
     if (lag >= thresholdMs) {
       safe(() =>

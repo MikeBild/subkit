@@ -493,6 +493,25 @@
             "type": "integer",
             "nullable": true
           },
+          "tokens_today_user": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "tokens_month_user": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "user_monthly_budget_tokens": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "user_remaining_monthly_budget_tokens": {
+            "type": "integer",
+            "nullable": true
+          },
           "version": {
             "type": "string"
           },
@@ -509,6 +528,10 @@
           "tokens_month",
           "monthly_budget_tokens",
           "remaining_monthly_budget_tokens",
+          "tokens_today_user",
+          "tokens_month_user",
+          "user_monthly_budget_tokens",
+          "user_remaining_monthly_budget_tokens",
           "version",
           "llm_provider"
         ]
@@ -1311,6 +1334,105 @@
           "cache_read",
           "cache_creation",
           "total"
+        ]
+      },
+      "StatsQualityResponse": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "minute",
+              "hour",
+              "day",
+              "month",
+              "year"
+            ]
+          },
+          "tz": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "truncated_at": {
+            "type": "string"
+          },
+          "one_shot": {
+            "type": "object",
+            "properties": {
+              "succeeded": {
+                "type": "number"
+              },
+              "failed": {
+                "type": "number"
+              },
+              "total": {
+                "type": "number"
+              },
+              "success_rate": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "succeeded",
+              "failed",
+              "total",
+              "success_rate"
+            ]
+          },
+          "post_repair": {
+            "type": "object",
+            "properties": {
+              "successes": {
+                "type": "number"
+              },
+              "failures": {
+                "type": "number"
+              },
+              "success_rate": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "successes",
+              "failures",
+              "success_rate"
+            ]
+          },
+          "failure_reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatsQualityFailureReason"
+            }
+          }
+        },
+        "required": [
+          "bucket",
+          "tz",
+          "from",
+          "to",
+          "one_shot",
+          "post_repair",
+          "failure_reasons"
+        ]
+      },
+      "StatsQualityFailureReason": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "code",
+          "count"
         ]
       },
       "SettingsListResponse": {
@@ -2632,7 +2754,8 @@
                 "rbac:read",
                 "api_key:read",
                 "portal_token:read",
-                "knowledge:read"
+                "knowledge:read",
+                "stats:read:all"
               ]
             },
             "description": "Allowed UX-gating permissions for the principal."
@@ -2668,7 +2791,8 @@
                 "rbac:read",
                 "api_key:read",
                 "portal_token:read",
-                "knowledge:read"
+                "knowledge:read",
+                "stats:read:all"
               ]
             },
             "description": "Stable list of permissions probed; reflects the engine's known UX gating set."
@@ -3300,6 +3424,30 @@
           "source",
           "schema"
         ]
+      },
+      "WorkflowMetadataPatchBody": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          }
+        }
       },
       "WorkflowVersionListResponse": {
         "type": "object",
@@ -4299,6 +4447,115 @@
           "result_preview",
           "started_at",
           "finished_at"
+        ]
+      },
+      "ExecutionCost": {
+        "type": "object",
+        "properties": {
+          "llm": {
+            "type": "object",
+            "properties": {
+              "calls": {
+                "type": "integer"
+              },
+              "weighted_tokens": {
+                "type": "integer"
+              },
+              "prompt_tokens": {
+                "type": "integer"
+              },
+              "completion_tokens": {
+                "type": "integer"
+              },
+              "cache_read_tokens": {
+                "type": "integer"
+              },
+              "cache_read_pct": {
+                "type": "number"
+              },
+              "latency_ms": {
+                "type": "integer"
+              },
+              "by_flow": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExecutionCostPerFlow"
+                }
+              }
+            },
+            "required": [
+              "calls",
+              "weighted_tokens",
+              "prompt_tokens",
+              "completion_tokens",
+              "cache_read_tokens",
+              "cache_read_pct",
+              "latency_ms",
+              "by_flow"
+            ]
+          },
+          "external": {
+            "type": "object",
+            "properties": {
+              "calls": {
+                "type": "integer"
+              },
+              "cost_usd": {
+                "type": "number"
+              },
+              "units": {
+                "type": "integer"
+              },
+              "latency_ms": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "calls",
+              "cost_usd",
+              "units",
+              "latency_ms"
+            ]
+          }
+        },
+        "required": [
+          "llm",
+          "external"
+        ]
+      },
+      "ExecutionCostPerFlow": {
+        "type": "object",
+        "properties": {
+          "flow": {
+            "type": "string"
+          },
+          "calls": {
+            "type": "integer"
+          },
+          "weighted_tokens": {
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "type": "integer"
+          },
+          "cache_read_tokens": {
+            "type": "integer"
+          },
+          "latency_ms": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "flow",
+          "calls",
+          "weighted_tokens",
+          "prompt_tokens",
+          "completion_tokens",
+          "cache_read_tokens",
+          "latency_ms"
         ]
       },
       "ExecutionSignalResponse": {
@@ -12499,6 +12756,65 @@
           "default_fallback"
         ]
       },
+      "DiagnosticsRuntime": {
+        "type": "object",
+        "properties": {
+          "uptime_s": {
+            "type": "number"
+          },
+          "memory": {
+            "type": "object",
+            "properties": {
+              "rss_mb": {
+                "type": "number"
+              },
+              "heap_used_mb": {
+                "type": "number"
+              },
+              "heap_total_mb": {
+                "type": "number"
+              },
+              "external_mb": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "rss_mb",
+              "heap_used_mb",
+              "heap_total_mb",
+              "external_mb"
+            ]
+          },
+          "db_pool": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "idle": {
+                "type": "integer"
+              },
+              "waiting": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "total",
+              "idle",
+              "waiting"
+            ]
+          },
+          "event_loop_lag_ms": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "uptime_s",
+          "memory",
+          "db_pool",
+          "event_loop_lag_ms"
+        ]
+      },
       "DiagnosticsSetupResponse": {
         "type": "object",
         "properties": {
@@ -13786,6 +14102,15 @@
             "required": false,
             "name": "group_by",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "user_id",
+            "in": "query"
           }
         ],
         "responses": {
@@ -13795,6 +14120,102 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StatsLlmResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cross-user usage requires stats:read:all",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stats/quality": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "summary": "Workflow quality: one-shot success, failure reasons, post-repair success",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minute",
+                "hour",
+                "day",
+                "month",
+                "year"
+              ]
+            },
+            "required": true,
+            "name": "bucket",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tz",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "workflow_id",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsQualityResponse"
                 }
               }
             }
@@ -16233,6 +16654,81 @@
         }
       }
     },
+    "/v1/workflows/{id}/metadata": {
+      "patch": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Patch workflow metadata (slug/name/description/lifecycle) without rotating a version",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowMetadataPatchBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Slug conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workflows/{id}/history": {
       "get": {
         "tags": [
@@ -16705,6 +17201,52 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExecutionStepListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/executions/{id}/cost": {
+      "get": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "Cost + token attribution for an execution",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionCost"
                 }
               }
             }
@@ -24109,6 +24651,51 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DiagnosticsLlmStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/diagnostics/runtime": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Live process runtime snapshot (memory / db pool / event-loop lag)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsRuntime"
                 }
               }
             }
