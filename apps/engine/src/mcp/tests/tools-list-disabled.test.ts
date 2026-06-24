@@ -1,11 +1,14 @@
-// Honest-surface contract: draft-write tools surface in MCP tools/list
-// with explicit disabled metadata rather than being silently hidden.
-// MCP tools/call for them returns `not_available_on_surface`, short-
-// circuiting before commitWorkflowAtomic's elicitation gate can be
+// Non-trapping surface contract: draft-write tools are conversation-
+// scoped (only the engine's internal authoring loop, started via
+// conversation_start, may call them). They are OMITTED from MCP
+// tools/list so external clients that ignore a disabled badge cannot
+// see and churn on them. A stateless tools/call for them still short-
+// circuits to `not_available_on_surface` (resolve() keeps the disabled
+// descriptor) before commitWorkflowAtomic's elicitation gate can be
 // bypassed and before any audit row is written.
 //
-// We force authoring MCP mode via SK_MCP_MODE so the principal sees
-// conversation tools (and thus the draft_write disabled descriptors).
+// We force authoring MCP mode via SK_MCP_MODE so the principal would
+// otherwise see conversation tools (and the draft_write descriptors).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
@@ -25,27 +28,35 @@ afterAll(async () => {
   delete process.env.SK_MCP_MODE;
 });
 
-describe("mcp tools/list — disabled descriptors (authoring mode)", () => {
-  test("includes save_workflow_draft with _meta.subkit.disabled.reason", async () => {
+describe("mcp tools/list — draft_write omitted (authoring mode)", () => {
+  test("save_workflow_draft is NOT listed", async () => {
     const client = await suite.connect();
     const result = await client.listTools();
-    const saveDraft = result.tools.find((t) => t.name === "save_workflow_draft");
-    expect(saveDraft).toBeDefined();
-    const meta = (saveDraft as Record<string, unknown>)._meta as
-      | { subkit?: { disabled?: { reason?: string } } }
-      | undefined;
-    expect(meta?.subkit?.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
+    expect(result.tools.find((t) => t.name === "save_workflow_draft")).toBeUndefined();
   });
 
-  test("includes dry_run_workflow with _meta.subkit.disabled.reason", async () => {
+  test("dry_run_workflow is NOT listed", async () => {
     const client = await suite.connect();
     const result = await client.listTools();
-    const dryRun = result.tools.find((t) => t.name === "dry_run_workflow");
-    expect(dryRun).toBeDefined();
-    const meta = (dryRun as Record<string, unknown>)._meta as
-      | { subkit?: { disabled?: { reason?: string } } }
-      | undefined;
-    expect(meta?.subkit?.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
+    expect(result.tools.find((t) => t.name === "dry_run_workflow")).toBeUndefined();
+  });
+
+  test("no draft_write authoring tool leaks into the catalog", async () => {
+    const client = await suite.connect();
+    const result = await client.listTools();
+    const names = new Set(result.tools.map((t) => t.name));
+    for (const trap of [
+      "author_workflow",
+      "build_workflow",
+      "edit_workflow_patch",
+      "update_param",
+      "connect_steps",
+      "propose_step",
+    ]) {
+      expect(names.has(trap)).toBe(false);
+    }
+    // conversation_start IS the authoring entry point and must stay listed.
+    expect(names.has("conversation_start")).toBe(true);
   });
 });
 
