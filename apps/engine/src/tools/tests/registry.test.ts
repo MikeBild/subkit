@@ -44,18 +44,20 @@ describe("tools/registry — providers (active)", () => {
     }
   });
 
-  test("ConversationToolProvider exposes draft_write tools on MCP with disabled descriptor", () => {
-    const descriptors = conversationToolProvider.list({
-      surface: "mcp",
-      mcpMode: "authoring",
-    });
-    const saveDraft = descriptors.find((d) => d.name === "save_workflow_draft");
-    expect(saveDraft).toBeDefined();
-    expect(saveDraft?.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
+  test("ConversationToolProvider omits draft_write from the MCP catalog but resolve() keeps the disabled descriptor", () => {
+    const filter = { surface: "mcp", mcpMode: "authoring" } as const;
+    const descriptors = conversationToolProvider.list(filter);
+    // Catalog drops draft_write so badge-ignoring clients can't call+churn.
+    expect(descriptors.find((d) => d.name === "save_workflow_draft")).toBeUndefined();
+    expect(descriptors.find((d) => d.name === "dry_run_workflow")).toBeUndefined();
 
-    const dryRun = descriptors.find((d) => d.name === "dry_run_workflow");
-    expect(dryRun).toBeDefined();
-    expect(dryRun?.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
+    // resolve() still returns the disabled descriptor — the dispatcher
+    // short-circuits a forced/guessed call to not_available_on_surface
+    // with the actionable "use conversation_start" reason.
+    const saveDraft = conversationToolProvider.resolve("save_workflow_draft", filter);
+    expect(saveDraft?.descriptor.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
+    const dryRun = conversationToolProvider.resolve("dry_run_workflow", filter);
+    expect(dryRun?.descriptor.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
   });
 
   test("ConversationToolProvider hides tenant_write tools on MCP read-only mode", () => {
