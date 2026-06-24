@@ -3,7 +3,13 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { connectors, llmUsage, skills, tenants } from "../../db/schema/index.ts";
-import { monthlyUsage, resolveMonthlyBudget, validateProviderSetup } from "../../llm/index.ts";
+import {
+  monthlyUsage,
+  monthlyUsageForUser,
+  resolveMonthlyBudget,
+  resolveUserMonthlyBudget,
+  validateProviderSetup,
+} from "../../llm/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 
@@ -35,6 +41,17 @@ const StatusSchema = z
     monthly_budget_tokens: z.number().int().nonnegative().nullable(),
     /** Remaining monthly budget tokens (null = unlimited). */
     remaining_monthly_budget_tokens: z.number().int().nullable(),
+    /**
+     * The CALLER's own usage figures (null for system_account principals,
+     * which have no per-user attribution). Powers the `/cost` self-view
+     * without a second round-trip.
+     */
+    tokens_today_user: z.number().int().nonnegative().nullable(),
+    tokens_month_user: z.number().int().nonnegative().nullable(),
+    /** Caller's own monthly budget (null = no per-user cap or not a user). */
+    user_monthly_budget_tokens: z.number().int().nonnegative().nullable(),
+    /** Caller's own remaining monthly budget (null = no per-user cap / not a user). */
+    user_remaining_monthly_budget_tokens: z.number().int().nullable(),
     /** Engine version, for quick diagnosis of skew. */
     version: z.string(),
     /**
@@ -102,6 +119,34 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
 
     const remaining = budget == null ? null : Math.max(budget - monthTokens, 0);
 
+    // Caller's own figures — only when the principal is an end-user.
+    // system_account principals have no per-user attribution → null.
+    let userTokensToday: number | null = null;
+    let userTokensMonth: number | null = null;
+    let userBudget: number | null = null;
+    let userRemaining: number | null = null;
+    if (principal.kind === "user") {
+      const [todayUserRow, monthUser, resolvedUserBudget] = await Promise.all([
+        db
+          .select({ total: sql<number>`coalesce(sum(${llmUsage.total_tokens}), 0)::int` })
+          .from(llmUsage)
+          .where(
+            and(
+              eq(llmUsage.tenant_id, tenantId),
+              eq(llmUsage.user_id, principal.id),
+              sql`${llmUsage.created_at} >= ${startOfDay}`,
+            ),
+          ),
+        monthlyUsageForUser(tenantId, principal.id, db),
+        resolveUserMonthlyBudget(tenantId, principal.id, db),
+      ]);
+      userTokensToday = Number(todayUserRow[0]?.total ?? 0);
+      userTokensMonth = Number(monthUser);
+      userBudget = resolvedUserBudget;
+      userRemaining =
+        resolvedUserBudget == null ? null : Math.max(resolvedUserBudget - userTokensMonth, 0);
+    }
+
     return c.json(
       {
         user: {
@@ -119,6 +164,10 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
         tokens_month: Number(monthTokens),
         monthly_budget_tokens: budget,
         remaining_monthly_budget_tokens: remaining,
+        tokens_today_user: userTokensToday,
+        tokens_month_user: userTokensMonth,
+        user_monthly_budget_tokens: userBudget,
+        user_remaining_monthly_budget_tokens: userRemaining,
         // `OPENAPI_INFO.version` is the single source of truth for
         // engine version in HTTP surfaces — matches `/v1/health`.
         // `process.env.npm_package_version` is not set in the compiled

@@ -31,7 +31,12 @@ import { listExecutions } from "../execution/list.ts";
 import * as identitySvc from "../identity/service.ts";
 import * as knowledgeSvc from "../knowledge/service.ts";
 import type { CreateKnowledgeSourceInput, UpdateKnowledgeSourceInput } from "../knowledge/types.ts";
-import { currentMonthBucket, monthlyUsage } from "../llm/accounting/index.ts";
+import {
+  currentMonthBucket,
+  monthlyUsage,
+  monthlyUsageForUser,
+  resolveUserMonthlyBudget,
+} from "../llm/accounting/index.ts";
 import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import * as rbacRoles from "../rbac/roles.ts";
 import * as selfHealingSvc from "../self-healing/index.ts";
@@ -295,6 +300,17 @@ export class EngineClient {
         .select()
         .from(llmUsageTable)
         .where(eq(llmUsageTable.tenant_id, this.tenant_id))
+        .orderBy(desc(llmUsageTable.created_at))
+        .limit(Math.min(limit, 200)),
+    // Per-user variants — tenant predicate FIRST, then user_id narrowing.
+    monthlyTokenUsageForUser: (userId: string) =>
+      monthlyUsageForUser(this.tenant_id, userId, this.db),
+    userTokenBudget: (userId: string) => resolveUserMonthlyBudget(this.tenant_id, userId, this.db),
+    llmUsageRecentForUser: async (userId: string, limit = 50) =>
+      await this.db
+        .select()
+        .from(llmUsageTable)
+        .where(and(eq(llmUsageTable.tenant_id, this.tenant_id), eq(llmUsageTable.user_id, userId)))
         .orderBy(desc(llmUsageTable.created_at))
         .limit(Math.min(limit, 200)),
   };

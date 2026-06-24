@@ -104,8 +104,11 @@ describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
     try {
       const list = await client.listTools();
       const names = new Set(list.tools.map((t) => t.name));
-      expect(names.has("propose_step")).toBe(true);
-      expect(names.has("save_workflow_draft")).toBe(true);
+      // draft_write tools (propose_step, save_workflow_draft) are omitted from
+      // the MCP tools/list since v7.10.3; assert on static conversation READ
+      // tools, which remain visible alongside the wf_<slug> dynamic entries.
+      expect(names.has("list_recipes")).toBe(true);
+      expect(names.has("test_connector")).toBe(true);
     } finally {
       await client.close();
     }

@@ -53,6 +53,10 @@ function memberPermissionFilter(name: string): boolean {
   // member working on their own connector/workflow does not need.
   // Tenants who want every member to see stats add it to a custom role.
   if (name === "stats:read") return false;
+  // stats:read:all exposes OTHER users' LLM spend + cross-user breakdowns —
+  // strictly admin. Members must never see a colleague's usage (the
+  // load-bearing privacy control); their own usage is the /v1/status surface.
+  if (name === "stats:read:all") return false;
   if (name === "api_key:write") return false;
   if (name === "api_key:rotate") return false;
   if (name === "api_key:revoke") return false;

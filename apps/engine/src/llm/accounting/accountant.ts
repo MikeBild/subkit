@@ -12,6 +12,7 @@
 // `llm/budgets.ts` — it does not replace budget math, it just makes sure
 // the row written reflects the SDK's numbers, not the tiktoken estimate.
 
+import type { AuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
@@ -28,6 +29,10 @@ export interface AccountParams {
   error?: string;
   /** Estimated tokens from the upfront tokenizer (for drift observation). */
   estimated_prompt_tokens?: number;
+  /** Acting end-user, if any (null for system / system_account flows). */
+  user_id?: string | null;
+  /** Attribution class; defaults to "system" when omitted. */
+  actor_type?: AuditActorType;
 }
 
 export interface AccountResult {
@@ -92,6 +97,8 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
       completion_tokens: outputTokens,
       latency_ms: p.latency_ms,
       result: p.result,
+      user_id: p.user_id ?? null,
+      actor_type: p.actor_type ?? "system",
     };
     if (cacheRead > 0) entry.cache_read_tokens = cacheRead;
     if (cacheCreate > 0) entry.cache_creation_tokens = cacheCreate;

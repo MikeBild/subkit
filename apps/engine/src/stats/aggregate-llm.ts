@@ -13,7 +13,7 @@ import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import type { BucketUnit } from "../http/routes/stats/bucket-window.ts";
 
-export type LlmGroupDim = "model" | "flow";
+export type LlmGroupDim = "model" | "flow" | "user";
 
 export interface LlmStatsParams {
   tenantId: string;
@@ -23,6 +23,8 @@ export interface LlmStatsParams {
   tz: string;
   model?: string[] | undefined;
   flow?: string[] | undefined;
+  /** Narrow to a single user's rows. Applied AFTER the tenant predicate. */
+  userId?: string | null | undefined;
   groupBy: LlmGroupDim[];
 }
 
@@ -69,7 +71,9 @@ export interface LlmStatsResult {
 const LATENCY = sql`latency_ms::float8`;
 
 function dimColumn(dim: LlmGroupDim): SQL {
-  return dim === "model" ? sql`model` : sql`flow`;
+  if (dim === "model") return sql`model`;
+  if (dim === "user") return sql`user_id`;
+  return sql`flow`;
 }
 
 function tokenSelect(): SQL {
@@ -124,6 +128,8 @@ function buildWhere(p: LlmStatsParams): SQL {
   ];
   if (p.model && p.model.length > 0) conds.push(sql`model in ${p.model}`);
   if (p.flow && p.flow.length > 0) conds.push(sql`flow in ${p.flow}`);
+  // Narrowing predicate ONLY — always within the tenant scope above.
+  if (p.userId) conds.push(sql`user_id = ${p.userId}`);
   return sql.join(conds, sql` and `);
 }
 

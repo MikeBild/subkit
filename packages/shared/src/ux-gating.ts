@@ -43,6 +43,9 @@ export const UX_GATING_PERMISSIONS = [
   "api_key:read",
   "portal_token:read",
   "knowledge:read",
+  // Cross-user LLM usage visibility — gates the per-user breakdown in the
+  // /usage tab; admin-only (members never see a colleague's spend).
+  "stats:read:all",
 ] as const;
 
 export type UxGatingPermission = (typeof UX_GATING_PERMISSIONS)[number];
