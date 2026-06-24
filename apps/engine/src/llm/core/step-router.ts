@@ -272,7 +272,7 @@ export function supportsExtendedThinking(provider: LlmProviderKind, modelId: str
     return false;
   const bare = bareModelId(modelId);
   // Sonnet 4.5+, Opus 4.6+ support extended thinking. Haiku does not.
-  return /^claude-(sonnet-4-5|sonnet-4-6|opus-4-6|opus-4-7)/.test(bare);
+  return /^claude-(sonnet-4-5|sonnet-4-6|opus-4-6|opus-4-7|opus-4-8)/.test(bare);
 }
 
 // ---------------------------------------------------------------------------

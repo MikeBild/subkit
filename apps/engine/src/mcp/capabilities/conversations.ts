@@ -81,7 +81,7 @@ export function listConversationTools(): Tool[] {
   return [
     {
       name: "conversation_start",
-      description: `Start here for ANY connector setup, OAuth authorization, or workflow authoring. Opens a new authoring conversation and runs the first turn in the background — returns immediately with a task to poll. ${MCP_ELICITATION_BLURB}.`,
+      description: `Use this to CREATE OR EDIT a workflow or connector — it is the only way to author on this surface (the underlying author_workflow/build_workflow/dry_run_workflow tools are driven by the engine inside this conversation, not called directly). Also the entry point for OAuth authorization. Opens a new authoring conversation and runs the first turn in the background — returns immediately with a task to poll via conversation_get. ${MCP_ELICITATION_BLURB}.`,
       inputSchema: jsonSchema(StartArgs),
     },
     {

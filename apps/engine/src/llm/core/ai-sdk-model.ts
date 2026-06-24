@@ -63,6 +63,7 @@ const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
   "claude-haiku-4-5": 200_000,
   "claude-opus-4-6": 200_000,
   "claude-opus-4-7": 200_000,
+  "claude-opus-4-8": 200_000,
   "gpt-4o": 128_000,
   "gpt-4.1": 1_047_000,
   "o1-preview": 200_000,
