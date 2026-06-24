@@ -7,7 +7,8 @@
 // ones), so this runner measures agreement against a human-labeled golden set
 // (`eval/judge-golden.json`) and FAILS if agreement drops below the threshold.
 //
-//   MASTER_KEY=<64hex> ANTHROPIC_API_KEY=sk-ant-... \
+//   MASTER_KEY=<64hex> SK_OVERRIDE_LLM_PROVIDER=anthropic \
+//     SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY=sk-ant-... \
 //     bun run apps/engine/eval/judge-calibration.ts
 //
 // Needs Postgres (a throwaway migrated DB) + a real LLM key — it exercises the
@@ -15,19 +16,11 @@
 // pre-release / nightly (see .github/workflows/nightly-eval.yml). Exit 0 when
 // agreement >= AGREEMENT_THRESHOLD, else 1.
 
-// This runner exercises the REAL preview judge WITHOUT booting the engine, so it
-// must initialise config exactly as the boot does — `await loadConfig()` in
-// main(). Until that runs, config is uninitialised and `readEnv` falls back to
-// bare `process.env`, where only `SK_OVERRIDE_*` (never bare `LLM_PROVIDER`) is
-// set — so `detectConfiguredProvider` reads an empty `LLM_PROVIDER`, resolves to
-// the `gateway` provider, and every verdict comes back `skipped` (0 agreement).
-// Translate a local-dev ANTHROPIC_API_KEY into the path-addressed SK_OVERRIDE_*
-// overlays that loadConfig() merges (CI sets these directly in the OS env).
-process.env.SK_OVERRIDE_LLM_PROVIDER ??= "anthropic";
-if (process.env.ANTHROPIC_API_KEY) {
-  process.env.SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY ??= process.env.ANTHROPIC_API_KEY;
-}
-process.env.SK_OVERRIDE_LLM_MODEL ??= "claude-sonnet-4-6";
+// The LLM provider + key come from the same SK_OVERRIDE_* env the engine reads
+// (see the usage line above). This runner exercises the real judge WITHOUT
+// booting the engine, so main() must `await loadConfig()` itself — until it does,
+// the config is uninitialised and the judge silently resolves to the `gateway`
+// provider (every verdict `skipped`, a bogus 0% agreement).
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -55,18 +48,14 @@ function loadGolden(): GoldenCase[] {
 }
 
 async function main(): Promise<void> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("judge-calibration: ANTHROPIC_API_KEY is required (real judge, not mock).");
-    process.exit(2);
-  }
-  // Initialise config the way the engine boot does. Without this the judge's
-  // `readEnv` sees an uninitialised config and silently resolves to the
-  // `gateway` provider — every verdict `skipped`, a bogus 0% agreement.
+  // Initialise config the way the engine boot does, then require a ready
+  // anthropic provider — a misconfig fails fast here instead of silently
+  // resolving to `gateway` and reporting a bogus 0% agreement.
   await loadConfig();
   const setup = validateProviderSetup();
   if (setup.detected !== "anthropic" || !setup.ok) {
     console.error(
-      `judge-calibration: LLM provider must resolve to a ready anthropic, got ` +
+      `judge-calibration: needs a ready anthropic provider (real judge, not mock), got ` +
         `detected=${setup.detected} ok=${setup.ok} missing=${JSON.stringify(setup.missing)}. ` +
         `Set SK_OVERRIDE_LLM_PROVIDER=anthropic + SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY.`,
     );

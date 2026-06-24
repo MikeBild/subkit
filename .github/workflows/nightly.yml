@@ -49,31 +49,18 @@ jobs:
     env:
       DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
       MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
-      # The engine config is config-first: a bare `ANTHROPIC_API_KEY` /
-      # `LLM_PROVIDER` env is no longer merged into the LLM provider config
-      # (the loader reads the config file + `SK_OVERRIDE_*` overlays; once the
-      # config is initialised, `llm.providers.anthropic.api_key` resolves to its
-      # empty default rather than falling through to the bare env). CI has no
-      # config file, so the LLM credentials MUST be supplied as path-addressed
-      # `SK_OVERRIDE_*` overrides.
+      # The engine reads its LLM config from `SK_OVERRIDE_*` env overlays (a bare
+      # ANTHROPIC_API_KEY / LLM_PROVIDER is NOT merged once the config loader has
+      # initialised). One rule, two values: which provider + its key.
       SK_OVERRIDE_LLM_PROVIDER: anthropic
       SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      # Pin the model so model-side regressions are observable.
-      # Bumping this is an intentional decision, not a drift surface.
-      #
-      # Sonnet 4.6, not Haiku 4.5: the tier-1 prompts require multi-step
-      # tool ordering (`propose_step` → `validate_draft` → `ask_user_confirm`
-      # → `save_*`). Haiku 4.5 reliably short-circuits to `ask_user_confirm`
-      # and commits an empty draft in <1 s, leaving the floor assertion
-      # (`tools` contains the leading tool name) failing 4/4 nightlies.
-      # Sonnet 4.6 follows the prescribed sequence at the cost of ~6× the
-      # vendor spend per run (~$0.30 vs ~$0.05). The whole point of this
-      # nightly is to catch real LLM-quality regressions in the engine's
-      # tool palette, so the model has to be capable enough to follow it.
+      # Pin the model so model-side regressions are observable (Sonnet 4.6, not
+      # Haiku 4.5: the tier-1 prompts need multi-step tool ordering — `propose_step`
+      # → `validate_draft` → `ask_user_confirm` → `save_*`; Haiku 4.5 short-circuits
+      # to `ask_user_confirm` and commits an empty draft, failing the floor
+      # assertion. Sonnet 4.6 follows the sequence at ~6× the spend (~$0.30/run);
+      # catching real LLM-quality regressions is the whole point of this nightly).
       SK_OVERRIDE_LLM_MODEL: claude-sonnet-4-6
-      # Retained only for the "Verify ANTHROPIC_API_KEY is set" guard step below
-      # (it reads the bare env to fail fast when the secret is unconfigured).
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       SKIP_DOCKER: "1"
       TZ: UTC
       LANG: C.UTF-8
@@ -95,9 +82,9 @@ jobs:
       # run in-process on boot. Integration tests provision per-file
       # databases via apps/engine/src/db/tests/setup.ts which calls
       # the embedded runner directly — no standalone CI step needed.
-      - name: Verify ANTHROPIC_API_KEY is set
+      - name: Verify the ANTHROPIC_API_KEY secret is set
         run: |
-          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+          if [ -z "${SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY:-}" ]; then
             echo "ANTHROPIC_API_KEY secret is not configured for this repo."
             echo "Set it under Settings → Secrets and variables → Actions."
             exit 1
@@ -158,16 +145,9 @@ jobs:
     env:
       DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
       MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
-      # Config-first: supply the judge's anthropic credentials as path-addressed
-      # SK_OVERRIDE_* overlays (CI has no config file, and the runner's
-      # in-process SK_OVERRIDE_* assignments land AFTER the import-hoisted config
-      # load — too late). Set in the OS env they are read at config init. Without
-      # this the judge flow falls through to the `gateway` provider and every
-      # verdict is `skipped` (0 agreement).
+      # Same rule as the real-llm job: provider + its key via SK_OVERRIDE_*.
       SK_OVERRIDE_LLM_PROVIDER: anthropic
       SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      # Retained for the runner's own ANTHROPIC_API_KEY guard + the verify step.
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       SKIP_DOCKER: "1"
       TZ: UTC
       LANG: C.UTF-8
