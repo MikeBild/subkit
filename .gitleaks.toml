@@ -81,6 +81,7 @@ targetRules = [
   "slack-bot-token",
   "github-pat",
   "digitalocean-pat",
+  "private-key",
 ]
 paths = [
   '''.*\.test\.tsx?$''',
