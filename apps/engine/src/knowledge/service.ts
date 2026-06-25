@@ -4,7 +4,7 @@
 // no table coupling). Persists to knowledge_sources + knowledge_chunks.
 
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -13,6 +13,8 @@ import { type Db, type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
+import { embeddingsAvailable } from "../embeddings/local-provider.ts";
+import { fuseVectorFirst, vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { log } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
@@ -172,7 +174,9 @@ export async function createKnowledgeSource(
 
     assertInsertRow(row, "knowledge_sources");
 
-    // Insert chunks
+    // Insert chunks. Embeddings are populated out-of-band by
+    // backfillEmbeddings so the inline HTTP create never blocks on model
+    // load + inference; FTS works immediately, vectors follow.
     if (accepted.length > 0) {
       await tx.insert(knowledgeChunks).values(
         accepted.map((c, i) => ({
@@ -572,7 +576,8 @@ export async function ingestKnowledgeSource(
       .delete(knowledgeChunks)
       .where(eq(knowledgeChunks.knowledge_source_id, p.knowledge_source_id));
 
-    // Insert new chunks
+    // Insert new chunks. Embeddings are populated out-of-band by
+    // backfillEmbeddings (see the create path).
     if (accepted.length > 0) {
       await tx.insert(knowledgeChunks).values(
         accepted.map((c, i) => ({
@@ -773,15 +778,95 @@ export async function searchKnowledge(
           : null,
   }));
 
+  // Hybrid recovery: the FTS prefilter is English-stemmer only, so a German
+  // or synonym query can return few/zero lexical hits. Scan a bounded set of
+  // in-scope embedded chunks, rank by cosine, and fuse vector-first so the
+  // right chunk surfaces even with no shared stemmed lexeme. NULL-safe +
+  // bounded; unembedded chunks stay reachable via FTS.
+  const fused = await fuseKnowledgeWithVectors(db, p, hits, scopeFilter, limit);
+
   log.knowledge.searched({
     tenant_id: p.tenant_id,
     query_length: p.query.length,
     scope: p.scope ?? null,
     workflow_id: p.workflow_id ?? null,
-    hit_count: hits.length,
+    hit_count: fused.length,
+    top_match_id: fused[0]?.id ?? null,
+    top_rank: fused[0]?.rank ?? null,
     limit,
   });
 
-  knowledgeSearchCache.set(cacheKey, hits);
-  return hits;
+  knowledgeSearchCache.set(cacheKey, fused);
+  return fused;
+}
+
+/** Bounded full-scope vector recovery for searchKnowledge. Returns `hits`
+ *  unchanged when embeddings are unavailable or nothing clears the floor. */
+const KNOWLEDGE_VECTOR_SCAN_CAP = 2000;
+async function fuseKnowledgeWithVectors(
+  db: Executor,
+  p: SearchKnowledgeParams,
+  hits: KnowledgeSearchHit[],
+  scopeFilter: SQL,
+  limit: number,
+): Promise<KnowledgeSearchHit[]> {
+  if (!(await embeddingsAvailable())) return hits;
+  const out = await db.execute(sql`
+    SELECT
+      kc.id::text AS id,
+      kc.knowledge_source_id::text AS knowledge_source_id,
+      ks.name AS source_name,
+      ks.tags AS source_tags,
+      kc.title,
+      kc.path,
+      COALESCE(ks.last_refreshed_at, ks.updated_at) AS fetched_at,
+      kc.content AS content,
+      kc.embedding AS embedding
+    FROM knowledge_chunks kc
+    JOIN knowledge_sources ks ON ks.id = kc.knowledge_source_id
+    WHERE kc.tenant_id = ${p.tenant_id}
+      AND kc.embedding IS NOT NULL
+      ${scopeFilter}
+    ORDER BY kc.created_at DESC
+    LIMIT ${KNOWLEDGE_VECTOR_SCAN_CAP}
+  `);
+  type ScopeRow = {
+    id: string;
+    knowledge_source_id: string;
+    source_name: string;
+    source_tags: string[] | null;
+    title: string | null;
+    path: string | null;
+    fetched_at: Date | string | null;
+    content: string;
+    embedding: number[] | null;
+  };
+  const scopeRows = (out as unknown as { rows: ScopeRow[] }).rows ?? (out as unknown as ScopeRow[]);
+  const scored = await vectorScoreCandidates(
+    p.query,
+    scopeRows.map((r) => ({ item: r, embedding: r.embedding })),
+  );
+  if (scored.length === 0) return hits;
+  const byId = new Map(hits.map((h) => [h.id, h]));
+  const vector = scored.map((s) => {
+    const existing = byId.get(s.item.id);
+    const hit: KnowledgeSearchHit = existing ?? {
+      id: s.item.id,
+      knowledge_source_id: s.item.knowledge_source_id,
+      source_name: s.item.source_name,
+      source_tags: s.item.source_tags ?? [],
+      title: s.item.title,
+      path: s.item.path,
+      snippet: s.item.content.slice(0, 200),
+      rank: s.cosine,
+      fetched_at:
+        s.item.fetched_at instanceof Date
+          ? s.item.fetched_at.toISOString()
+          : typeof s.item.fetched_at === "string"
+            ? s.item.fetched_at
+            : null,
+    };
+    return { item: hit, cosine: s.cosine };
+  });
+  return fuseVectorFirst({ fts: hits, vector, idOf: (h) => h.id, limit });
 }

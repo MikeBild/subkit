@@ -9,7 +9,7 @@ When rules conflict, the more specific file wins (this one).
 pub/sub, connector drivers, AI flows, self-healing, audit log, RBAC. It's the only
 surface with domain logic. `sk` (`apps/sk/`) is a thin wrapper on top of it.
 
-See the subsystem table in `../../AGENTS.md` for the 44 directories and their
+See the subsystem table in `../../AGENTS.md` for the 45 directories and their
 responsibilities.
 
 ## Non-negotiables
@@ -79,7 +79,7 @@ responsibilities.
 
 ## When adding a new subsystem
 
-Ask first. 44 directories already cover the concerns subkit owns. If you think
+Ask first. 45 directories already cover the concerns subkit owns. If you think
 you need a new one:
 
 1. Confirm it doesn't fit in an existing directory.

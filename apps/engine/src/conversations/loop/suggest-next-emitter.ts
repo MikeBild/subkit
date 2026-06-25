@@ -70,6 +70,44 @@ const SUGGEST_MAX_OUTPUT_TOKENS = 30;
 const SUGGEST_TEMPERATURE = 0.2;
 const SUGGEST_HISTORY_TURNS = 8;
 
+/** Turn a missing-capability slug into a ready-to-send next prompt that
+ *  closes the gap. Mirrors the slug shapes cannot_help documents
+ *  (connector.* / vendor_recipe.* / workflow*). */
+function suggestionForCapability(slug: string): string {
+  const tail = slug
+    .replace(/^[a-z_]+\./, "")
+    .replace(/[._]/g, " ")
+    .trim();
+  if (slug.startsWith("connector.")) return `Set up a connector for ${tail || "this service"}`;
+  if (slug.startsWith("vendor_recipe."))
+    return `Add a verified recipe for ${tail || "this client"}`;
+  if (slug.startsWith("workflow")) return "Build a workflow for that";
+  return `Add support for ${tail || slug}`;
+}
+
+/** Deterministic capability-gap suggestion: when the turn abstained via
+ *  cannot_help, the most useful next prompt is the gap-closing path. Prefer
+ *  the model's own suggest_alternative (already a concrete step); otherwise
+ *  derive one from the missing_capability slug. No model call. */
+function capabilityGapSuggestion(events: ReadonlyArray<TurnEvent>): string | null {
+  for (const ev of events) {
+    if (ev.type !== "tool_result" || ev.tool !== "cannot_help") continue;
+    const data = (
+      ev.output as {
+        data?: { abstained?: unknown; missing_capability?: unknown; suggest_alternative?: unknown };
+      } | null
+    )?.data;
+    if (!data || data.abstained !== true) continue;
+    if (typeof data.suggest_alternative === "string" && data.suggest_alternative.trim()) {
+      return data.suggest_alternative.trim();
+    }
+    if (typeof data.missing_capability === "string" && data.missing_capability.trim()) {
+      return suggestionForCapability(data.missing_capability.trim());
+    }
+  }
+  return null;
+}
+
 /**
  * Build the next_suggestion frame for the buffered events array.
  * Always returns a frame — `suggestion: null` plus a reason tag when
@@ -79,6 +117,14 @@ export async function buildNextSuggestionFrame(
   params: EmitSuggestNextFrameParams,
 ): Promise<TurnEvent> {
   try {
+    // Prove-helpful: if the turn honestly abstained (cannot_help), surface
+    // the gap-closing path as the next prompt — deterministically, ahead of
+    // the model fallback, so an honest "I can't" always comes with a way
+    // forward. Respects client suppression.
+    if (!params.client_suppress) {
+      const gap = capabilityGapSuggestion(params.events);
+      if (gap) return nextSuggestion({ suggestion: gap, reason: "capability-gap", kind: "text" });
+    }
     // Production path: pull the last 8 persisted messages from the
     // conversation store. The just-completed assistant message has
     // already been persisted by the loop before the emitter runs, so

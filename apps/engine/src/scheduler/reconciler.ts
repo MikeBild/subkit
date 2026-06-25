@@ -20,6 +20,7 @@ import {
   workflowsSchedules,
 } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
+import { backfillEmbeddings } from "../embeddings/backfill.ts";
 import { createExecution } from "../execution/state.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
@@ -72,6 +73,14 @@ const MCP_OAUTH_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
  *  hourly keeps growth bounded and the cadence in line with the other
  *  retention sweeps. */
 const CHAT_DEDUP_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
+
+/** Cadence for the embedding backfill sweep — populates chunk + conversation
+ *  topic embeddings out-of-band (ingest stays fast). Five minutes so new
+ *  knowledge/docs/conversations become semantically searchable soon after
+ *  creation without burdening the ingest path. Each tick is bounded
+ *  (maxBatches) so a large backlog drains over several ticks; the sweep is
+ *  idempotent (WHERE embedding IS NULL) so multi-instance overlap is safe. */
+const EMBEDDING_BACKFILL_CADENCE_MS = 5 * 60 * 1000;
 
 export interface ReconcilerOptions {
   boss: PgBoss;
@@ -278,6 +287,10 @@ export class SchedulerReconciler {
   /** Last instant the chat_events_seen retention sweep ran. */
   private lastChatDedupCleanupAt: Date | null = null;
 
+  /** Last instant the embedding backfill sweep ran. In-process throttle to
+   *  EMBEDDING_BACKFILL_CADENCE_MS; the sweep is idempotent so overlap is safe. */
+  private lastEmbeddingBackfillAt: Date | null = null;
+
   constructor(private readonly opts: ReconcilerOptions) {}
 
   async start(): Promise<void> {
@@ -454,6 +467,16 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "chat_dedup_cleanup_failed",
         msg: "scheduler chat-dedup cleanup pass failed",
+        ...errorFields(err),
+      });
+    });
+    await retryTransient(() => this.reconcileEmbeddingBackfill(), {
+      label: "embedding_backfill",
+    }).catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "embedding_backfill_failed",
+        msg: "scheduler embedding backfill pass failed",
         ...errorFields(err),
       });
     });
@@ -933,6 +956,32 @@ export class SchedulerReconciler {
     }
     this.lastChatDedupCleanupAt = now;
     await runChatDedupCleanup(now, this.opts.db);
+  }
+
+  /**
+   * Populate embeddings out-of-band on a fixed cadence — chunk + conversation
+   * topic vectors for hybrid retrieval and topic routing. Bounded per tick
+   * (maxBatches) so a backlog drains gradually rather than blocking one tick;
+   * idempotent (WHERE embedding IS NULL) so a concurrent instance is a no-op,
+   * and a no-op when the local model is unavailable (embedded: 0, fast).
+   */
+  async reconcileEmbeddingBackfill(now: Date = new Date()): Promise<void> {
+    // Defer the first sweep off the boot path. The initial reconcileOnce()
+    // is awaited inside the boot sequence, before the HTTP listener binds;
+    // with the local model active a first backfill embeds the whole backlog
+    // in-process (WASM inference), which blocks /v1/health from ever coming
+    // up and balloons RSS. Seeding lastRun on the first call moves the first
+    // real sweep to one cadence after boot, once the engine is serving.
+    if (this.lastEmbeddingBackfillAt === null) {
+      this.lastEmbeddingBackfillAt = now;
+      return;
+    }
+    const elapsed = now.getTime() - this.lastEmbeddingBackfillAt.getTime();
+    if (elapsed < EMBEDDING_BACKFILL_CADENCE_MS) return;
+    this.lastEmbeddingBackfillAt = now;
+    // Small per-tick cap: the WASM embedder's arena only grows, so a large
+    // sweep sets a high RSS water mark. Drain the backlog gradually instead.
+    await backfillEmbeddings({ maxBatches: 4 }, this.opts.db);
   }
 
   private async fireWorkflowSchedule(

@@ -14,6 +14,7 @@
 // pretends otherwise.
 
 import { z } from "@hono/zod-openapi";
+import { recordGapCandidate } from "../../discovery/service.ts";
 import { recordCannotHelp } from "../../observability/instrumentation.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -61,7 +62,7 @@ export const cannotHelpTool: ConversationTool = {
     suggest_alternative:
       "Check the official Codex MCP docs for the current config shape, or ask an admin to add a verified recipe.",
   },
-  async execute(_ctx, rawArgs): Promise<ToolResult> {
+  async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     // Capability-gap analytics — the operator sees what the assistant
     // could not do, sorted by missing_capability slug, in the
@@ -69,6 +70,21 @@ export const cannotHelpTool: ConversationTool = {
     recordCannotHelp({
       ...(args.missing_capability ? { missing_capability: args.missing_capability } : {}),
     });
+    // Durable capability-gap signal — turns the abstention into a deduped,
+    // demand-ranked backlog the operator can act on, instead of only a
+    // counter tick that discards the request text. Best-effort: the helper
+    // catches its own errors and returns null, so a bookkeeping failure
+    // never breaks the abstention turn.
+    await recordGapCandidate(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        requested: args.reason,
+        missing_capability: args.missing_capability ?? null,
+        ...(ctx.actor_id ? { actor_id: ctx.actor_id } : {}),
+      },
+      ctx.db,
+    );
     return {
       ok: true,
       data: {

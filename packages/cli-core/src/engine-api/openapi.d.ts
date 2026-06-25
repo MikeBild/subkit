@@ -12474,7 +12474,7 @@ export interface components {
             tenant_id: string;
             run_id: string;
             /** @enum {string} */
-            kind: "connector" | "skill" | "knowledge_source";
+            kind: "connector" | "skill" | "knowledge_source" | "capability_gap";
             /** @enum {string} */
             status: "proposed" | "approved" | "rejected" | "superseded";
             title: string;

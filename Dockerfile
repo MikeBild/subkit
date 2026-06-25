@@ -30,6 +30,19 @@ COPY . .
 # self-skips when there's no .git (it's there inside the image build).
 RUN bun install --frozen-lockfile
 
+# ssh2 pulls an OPTIONAL `cpu-features` native addon. It is not built in this
+# image (nor on the dev mac), so its `.node` is absent; left in place, the
+# `bun build --compile` below fails trying to bundle the missing addon. Remove
+# it so the bundle matches the working mac build (ssh2 runs fine without it).
+RUN rm -rf node_modules/cpu-features
+
+# Fetch the embedded-embedding assets (MiniLM model + tokenizer +
+# onnxruntime-web WASM) that the compile step inlines into the binary. Mirrors
+# the `bun scripts/fetch-embedding-assets.ts` prefix in package.json's
+# build:engine recipe; needs node_modules (onnxruntime-web) from the install
+# above and network access to the pinned model id.
+RUN bun scripts/fetch-embedding-assets.ts
+
 # ENGINE_VERSION stamps the binary's reported version (falls back to the
 # package.json value). Mirrors package.json's build:engine / build:sk recipes
 # minus the macOS codesign step. The NODE_ENV define is intentionally a no-op

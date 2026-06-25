@@ -53,3 +53,8 @@ engine-docker*.log
 
 # Local Claude Code workflow scripts (runtime modules, not standalone-lintable)
 .claude/workflows/
+
+# Embedded-embedding assets — MiniLM model/tokenizer + onnxruntime-web WASM
+# fetched by scripts/fetch-embedding-assets.ts and inlined into the compiled
+# engine binary. Too large to commit; reproduced from a pinned model id.
+apps/engine/assets/embeddings/

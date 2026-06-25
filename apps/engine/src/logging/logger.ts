@@ -385,10 +385,28 @@ export const log = {
   },
   knowledge: {
     ingested: (ctx: Ctx) => logger.info({ module: "knowledge", action: "ingested", ...ctx }),
-    searched: (ctx: Ctx) => logger.debug({ module: "knowledge", action: "searched", ...ctx }),
+    // Info (not debug): retrieval quality is the signal the evidence
+    // process measures (FTS hit/miss rate per query). At debug it was
+    // invisible in real traffic, so a retrieval miss could not be
+    // observed. Fields: query_length, hit_count, top_match_id, top_rank.
+    searched: (ctx: Ctx) => logger.info({ module: "knowledge", action: "searched", ...ctx }),
     analyzed: (ctx: Ctx) => logger.info({ module: "knowledge", action: "analyzed", ...ctx }),
     analyze_skipped: (ctx: Ctx) =>
       logger.warn({ module: "knowledge", action: "analyze_skipped", ...ctx }),
+  },
+  // Connector-docs retrieval signal — symmetrical to knowledge.searched.
+  // searchDocs previously emitted nothing on the read path, so a docs
+  // retrieval miss was unobservable. Same fields for cross-channel
+  // comparison in the evidence probe.
+  docs: {
+    searched: (ctx: Ctx) => logger.info({ module: "docs", action: "searched", ...ctx }),
+  },
+  // Template-matching retrieval signal — the third retrieval path
+  // (in-memory token-overlap scoring, no FTS). Logged so the probe set
+  // can compare template-match quality against the two FTS channels.
+  connectorTemplates: {
+    suggested: (ctx: Ctx) =>
+      logger.info({ module: "connector-templates", action: "suggested", ...ctx }),
   },
   selfHealing: {
     drift: {

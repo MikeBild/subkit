@@ -8842,7 +8842,8 @@
             "enum": [
               "connector",
               "skill",
-              "knowledge_source"
+              "knowledge_source",
+              "capability_gap"
             ]
           },
           "status": {
