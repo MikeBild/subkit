@@ -71,7 +71,7 @@ import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.t
 import { resolveAttachmentSlugsInText } from "./attachments.ts";
 import { expandPriorFailuresFromToolCalls } from "./authoring-critic/prior-failures.ts";
 import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "./authoring-state.ts";
-import { harvestCitations } from "./citations.ts";
+import { type Citation, harvestCitations } from "./citations.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
@@ -111,6 +111,7 @@ import {
   loadActivationCatalog,
   reaffirmLoadedForTurn,
 } from "./skill-autoload.ts";
+import { checkSourceFaithful } from "./source-faithful.ts";
 import { nextSuggestion } from "./streaming.ts";
 import { elideWithinTurnToolOutputs } from "./tool-output-elision.ts";
 import {
@@ -1947,6 +1948,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // turn is intentionally NOT done here — it would require
   // restructuring the runOnce / fallback flow and is left as a
   // follow-up.
+  // Harvest the A2 citation envelope once, up front: the source_faithful
+  // anti-drift check (A4) reads it, and the prove-after audit mirror below
+  // re-uses the same array. Empty when the turn cited no source.
+  const citations: Citation[] =
+    !cancelled && signals.lastAssistantText ? harvestCitations(events) : [];
+
   let criticVerdict: CriticVerdict | undefined;
   if (!cancelled && (signals.committed || signals.lastAssistantText)) {
     // Resolve resource_kind from the draft's active_target. The
@@ -2039,11 +2046,67 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         if (criticVerdict.verdict === "fail") {
           stepRouterSignals.priorCriticFail = true;
         }
+
+        // A4 — source_faithful anti-drift. Runs ONLY for a chat terminal
+        // that carries a citation envelope (A2): the deterministic checks
+        // verify every cited id resolves and every verbatim quote is in a
+        // cited excerpt; only free-text paraphrase faithfulness escalates
+        // to the format-aware judge. A failure is folded into the SAME
+        // abstention as a low-confidence commit, so drifted prose forces an
+        // operator confirm instead of standing as the final answer. The
+        // check is a no-op (passing) when there is no envelope — that case
+        // is the prove-before gate's job, not this one.
+        let faithfulVerdict: Awaited<ReturnType<typeof checkSourceFaithful>> | undefined;
+        if (artifact.kind === "chat" && citations.length > 0) {
+          try {
+            faithfulVerdict = await checkSourceFaithful({
+              text: artifact.payload,
+              citations,
+              tenant_id: p.tenant_id,
+              db: p.db,
+              ...(turnAbortCtrl.signal ? { signal: turnAbortCtrl.signal } : {}),
+            });
+            if (faithfulVerdict.verdict === "fail") {
+              stepRouterSignals.priorCriticFail = true;
+            }
+            logger.info({
+              module: "llm",
+              action: "source_faithful.verdict",
+              msg: `source_faithful verdict: ${faithfulVerdict.verdict}`,
+              conversation_id: p.conversation_id,
+              tenant_id: p.tenant_id,
+              verdict: faithfulVerdict.verdict,
+              confidence: faithfulVerdict.confidence,
+              reason: faithfulVerdict.reason,
+              citation_count: citations.length,
+              checks: faithfulVerdict.checks,
+              detail: faithfulVerdict.detail ?? null,
+            });
+          } catch (err) {
+            // A drift check must never crash the loop — log and continue.
+            logger.warn({
+              module: "llm",
+              action: "source_faithful.threw",
+              conversation_id: p.conversation_id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
         const failedChecks = criticVerdict.checks
           ? Object.entries(criticVerdict.checks)
               .filter(([, v]) => v === false)
               .map(([k]) => k)
           : [];
+        // Unified abstention trigger: a low-confidence COMMIT (the existing
+        // Lever-15 path) OR a source_faithful FAILURE on a chat answer. Both
+        // resolve to "surface an ask_user_text the operator must answer
+        // before the conversation continues".
+        const commitAbstains =
+          criticVerdict.verdict === "fail" &&
+          criticVerdict.confidence < 0.6 &&
+          Boolean(signals.committed);
+        const faithfulnessAbstains = faithfulVerdict?.verdict === "fail";
         logger.info({
           module: "llm",
           action: "critic.verdict",
@@ -2056,22 +2119,45 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           reason: criticVerdict.reason,
           failed_checks: failedChecks,
           hint: criticVerdict.hint ?? null,
-          will_escalate_next_turn: criticVerdict.verdict === "fail",
-          will_abstain: criticVerdict.verdict === "fail" && criticVerdict.confidence < 0.6,
+          will_escalate_next_turn: criticVerdict.verdict === "fail" || faithfulnessAbstains,
+          will_abstain: commitAbstains || faithfulnessAbstains,
         });
-        // Lever 15: confidence-based abstention. When the critic's
-        // confidence is below 0.6 AND the turn committed, surface an
-        // `ask_user_text` elicitation that the operator must answer
-        // before the conversation continues. This does NOT roll back
-        // the commit (the save_workflow_draft tool already wrote the row by
-        // the time the critic runs); it forces the operator to
-        // explicitly confirm or revise. Rate-limited to ONE abstention
-        // per turn so a flaky critic cannot spam elicitations.
-        if (
-          criticVerdict.verdict === "fail" &&
-          criticVerdict.confidence < 0.6 &&
-          signals.committed
-        ) {
+        // Lever 15 + A4: confidence-based abstention. A low-confidence
+        // COMMIT, or a source_faithful FAILURE on a chat answer, surfaces an
+        // `ask_user_text` elicitation the operator must answer before the
+        // conversation continues. This does NOT roll back the commit / unsend
+        // the prose (both already happened by the time the checks run); it
+        // forces the operator to explicitly confirm or revise rather than let
+        // a low-confidence commit or DRIFTED answer stand as the final word.
+        // Rate-limited to ONE abstention per turn so a flaky check cannot spam
+        // elicitations — the faithfulness case takes precedence in its prompt
+        // wording because it is the stronger honesty signal.
+        if (commitAbstains || faithfulnessAbstains) {
+          const abstain = faithfulnessAbstains
+            ? {
+                source: "source_faithful.abstention" as const,
+                summary: `source drift: ${faithfulVerdict?.reason}`,
+                question:
+                  "The answer may not be faithful to the sources it cited. " +
+                  `Reason: ${faithfulVerdict?.reason}. ` +
+                  `${faithfulVerdict?.detail ? `Detail: ${faithfulVerdict.detail}. ` : ""}` +
+                  "Confirm the answer is correct, or describe what should change.",
+                confidence: faithfulVerdict?.confidence ?? 0,
+                checks: Object.entries(faithfulVerdict?.checks ?? {})
+                  .filter(([, v]) => v === false)
+                  .map(([k]) => k),
+              }
+            : {
+                source: "critic.abstention" as const,
+                summary: `low-confidence commit: ${criticVerdict.reason}`,
+                question:
+                  "The critic flagged this commit with low confidence. " +
+                  `Reason: ${criticVerdict.reason}. ` +
+                  `${criticVerdict.hint ? `Suggested fix: ${criticVerdict.hint}. ` : ""}` +
+                  "Confirm the commit, or describe what should change.",
+                confidence: criticVerdict.confidence,
+                checks: failedChecks,
+              };
           try {
             const elicitation = await createElicitation(
               {
@@ -2079,19 +2165,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 conversation_id: p.conversation_id,
                 tool_call_id: null,
                 tool_name: "ask_user_text",
-                summary: `low-confidence commit: ${criticVerdict.reason}`,
+                summary: abstain.summary,
                 input: {
-                  question:
-                    "The critic flagged this commit with low confidence. " +
-                    `Reason: ${criticVerdict.reason}. ` +
-                    `${criticVerdict.hint ? `Suggested fix: ${criticVerdict.hint}. ` : ""}` +
-                    "Confirm the commit, or describe what should change.",
+                  question: abstain.question,
                   placeholder: "confirm | describe a fix",
                   metadata: {
-                    source: "critic.abstention",
+                    source: abstain.source,
                     critic_kind: artifact.kind,
-                    confidence: criticVerdict.confidence,
-                    failed_checks: failedChecks,
+                    confidence: abstain.confidence,
+                    failed_checks: abstain.checks,
                   },
                 },
                 actor_id: p.actor_id,
@@ -2102,17 +2184,20 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             events.push({
               type: "activity",
               phase: "idle",
-              label: `critic abstention · ${criticVerdict.reason}`,
+              label: `${abstain.source} · ${abstain.summary}`,
             });
             logger.info({
               module: "llm",
               action: "critic.abstention.elicited",
-              msg: "low-confidence commit produced an ask_user_text follow-up",
+              msg: faithfulnessAbstains
+                ? "source_faithful failure produced an ask_user_text follow-up"
+                : "low-confidence commit produced an ask_user_text follow-up",
               conversation_id: p.conversation_id,
               tenant_id: p.tenant_id,
               elicitation_id: elicitation.id,
-              confidence: criticVerdict.confidence,
-              failed_checks: failedChecks,
+              source: abstain.source,
+              confidence: abstain.confidence,
+              failed_checks: abstain.checks,
             });
           } catch (err) {
             logger.warn({
@@ -2142,7 +2227,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // text. Best-effort: a bookkeeping failure never affects the turn, and we
   // only write when an answer actually cited a source.
   if (!cancelled && signals.lastAssistantText) {
-    const citations = harvestCitations(events);
     if (citations.length > 0) {
       try {
         await auditAwait(
