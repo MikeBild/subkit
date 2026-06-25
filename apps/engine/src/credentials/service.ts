@@ -29,6 +29,7 @@ import type {
   HeaderCredentialValue,
   OAuth2ClientCredentialValue,
   OAuth2CredentialValue,
+  OAuth2PrivateKeyCredentialValue,
   QueryCredentialValue,
   TokenMintCredentialValue,
   TokenMintShape,
@@ -83,7 +84,8 @@ export type CredentialPlaintext =
       expires_at_path?: string;
       header_template?: string;
     }
-  | ({ mode: "oauth2_client" } & OAuth2ClientCredentialValue);
+  | ({ mode: "oauth2_client" } & OAuth2ClientCredentialValue)
+  | ({ mode: "oauth2_private_key" } & OAuth2PrivateKeyCredentialValue);
 
 function serializePlain(value: CredentialPlaintext): string {
   switch (value.mode) {
@@ -125,6 +127,12 @@ function serializePlain(value: CredentialPlaintext): string {
       return JSON.stringify({
         client_id: value.client_id,
         ...(value.client_secret ? { client_secret: value.client_secret } : {}),
+      });
+    case "oauth2_private_key":
+      return JSON.stringify({
+        client_id: value.client_id,
+        private_key: value.private_key,
+        algorithm: value.algorithm,
       });
   }
 }
@@ -196,6 +204,13 @@ function deserializePlain(mode: CredentialMode, raw: string): DecryptedCredentia
         ...(typeof parsed.client_secret === "string"
           ? { client_secret: parsed.client_secret }
           : {}),
+      };
+    case "oauth2_private_key":
+      return {
+        mode: "oauth2_private_key",
+        client_id: String(parsed.client_id ?? ""),
+        private_key: String(parsed.private_key ?? ""),
+        algorithm: String(parsed.algorithm ?? ""),
       };
     default: {
       const exhaustive: never = mode;
@@ -813,6 +828,50 @@ export async function resolveDryRunEnvironment(p: {
     return "dev";
   }
   return resolvedEnvs.includes("dev") ? "dev" : "prod";
+}
+
+/** Load the `oauth2_private_key` credential for an external MCP server
+ *  — the client_id, PEM/JWK private key, and signing algorithm used to
+ *  construct a `PrivateKeyJwtProvider` for machine-to-machine OAuth2.
+ *  Returns null when the server has no private-key credential stored.
+ *  AAD-bound by `aadFor(tenant_id, credential_id)`. Tenant/server-scoped
+ *  via both `tenant_id` and `mcp_server_id` predicates — never read
+ *  across tenants. */
+export async function getOAuth2PrivateKeyCredentialForMcpServer(
+  tenant_id: string,
+  mcp_server_id: string,
+  environment: "dev" | "prod",
+  exec?: Executor,
+): Promise<{ client_id: string; private_key: string; algorithm: string } | null> {
+  if (!UUID_RE.test(mcp_server_id)) return null;
+  const db = exec ?? getDb();
+  const rows = await db
+    .select()
+    .from(credentials)
+    .where(
+      and(
+        eq(credentials.tenant_id, tenant_id),
+        eq(credentials.mcp_server_id, mcp_server_id),
+        eq(credentials.environment, environment),
+        eq(credentials.mode, "oauth2_private_key"),
+      ),
+    )
+    // Deterministic pick — mirrors `getOAuth2ClientCredentialForMcpServer`.
+    .orderBy(desc(credentials.created_at), desc(credentials.id))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  const plain = decryptSecret(
+    {
+      ciphertext: row.ciphertext,
+      iv: row.iv,
+      auth_tag: row.auth_tag,
+    },
+    aadFor(tenant_id, row.id),
+  );
+  const value = deserializePlain("oauth2_private_key", plain);
+  if (value.mode !== "oauth2_private_key") return null;
+  return { client_id: value.client_id, private_key: value.private_key, algorithm: value.algorithm };
 }
 
 export async function deleteCredential(

@@ -61,13 +61,25 @@ export type McpServerRow = typeof mcpServers.$inferSelect;
  * CHECK rejects it.
  */
 export interface McpServerAuthConfig {
-  kind: "none" | "bearer" | "basic" | "oauth2";
-  /** OAuth2 issuer base URL (oauth2 only). */
+  kind:
+    | "none"
+    | "bearer"
+    | "basic"
+    | "oauth2"
+    | "oauth2_client_credentials"
+    | "oauth2_private_key_jwt";
+  /** OAuth2 issuer base URL (oauth2 / M2M kinds, documentation only for
+   *  M2M since the SDK discovers the token endpoint via RFC 9728 off
+   *  `row.url` — not consumed as a provider option). */
   issuer?: string;
-  /** OAuth2 client id (oauth2 only; absent → dynamic registration path). */
+  /** OAuth2 client id (oauth2 + M2M kinds). */
   client_id?: string;
-  /** OAuth2 scope string (oauth2 only). */
+  /** OAuth2 scope string (oauth2 + M2M kinds). */
   scope?: string;
+  /** JWT signing algorithm for `oauth2_private_key_jwt` (e.g. "RS256",
+   *  "ES256"). Stored here (non-secret) alongside the private key in
+   *  the encrypted `credentials` row. */
+  algorithm?: string;
 }
 
 /**
@@ -117,10 +129,20 @@ const namespaceSchema = mcpNamespaceSchema;
 // boundary so a bad writer fails Zod validation, not the DB CHECK.
 const authConfigSchema = z
   .object({
-    kind: z.enum(["none", "bearer", "basic", "oauth2"]),
+    kind: z.enum([
+      "none",
+      "bearer",
+      "basic",
+      "oauth2",
+      "oauth2_client_credentials",
+      "oauth2_private_key_jwt",
+    ]),
     issuer: z.string().url().optional(),
     client_id: z.string().optional(),
     scope: z.string().optional(),
+    // JWT signing algorithm for oauth2_private_key_jwt (non-secret;
+    // the private key itself lives in the encrypted credentials row).
+    algorithm: z.string().optional(),
   })
   .strict();
 
@@ -530,5 +552,6 @@ export function parseAuthConfig(raw: Record<string, unknown> | null): McpServerA
   if (parsed.issuer !== undefined) out.issuer = parsed.issuer;
   if (parsed.client_id !== undefined) out.client_id = parsed.client_id;
   if (parsed.scope !== undefined) out.scope = parsed.scope;
+  if (parsed.algorithm !== undefined) out.algorithm = parsed.algorithm;
   return out;
 }

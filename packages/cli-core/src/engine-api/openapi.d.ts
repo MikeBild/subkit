@@ -10733,7 +10733,7 @@ export interface components {
         };
         McpServerRedactedAuthConfig: {
             /** @enum {string} */
-            kind: "none" | "bearer" | "basic" | "oauth2";
+            kind: "none" | "bearer" | "basic" | "oauth2" | "oauth2_client_credentials" | "oauth2_private_key_jwt";
             has_credential: boolean;
         };
         CreateMcpServerBody: {
@@ -10747,14 +10747,17 @@ export interface components {
             token?: string;
             username?: string;
             refresh_token?: string;
+            client_secret?: string;
+            private_key?: string;
         };
         McpServerAuthConfigInput: {
             /** @enum {string} */
-            kind: "none" | "bearer" | "basic" | "oauth2";
+            kind: "none" | "bearer" | "basic" | "oauth2" | "oauth2_client_credentials" | "oauth2_private_key_jwt";
             /** Format: uri */
             issuer?: string;
             client_id?: string;
             scope?: string;
+            algorithm?: string;
         } | null;
         PatchMcpServerBody: {
             name?: string;
@@ -10767,6 +10770,8 @@ export interface components {
             token?: string;
             username?: string;
             refresh_token?: string;
+            client_secret?: string;
+            private_key?: string;
         };
         InspectMcpServerResponse: {
             tools: components["schemas"]["McpRemoteToolDescriptor"][];

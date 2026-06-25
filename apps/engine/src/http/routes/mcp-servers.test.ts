@@ -530,6 +530,45 @@ describe("PATCH /v1/mcp-servers/{id}", () => {
     });
     expect(res.status).toBe(422);
   });
+
+  test("rejects an oauth2_client_credentials secret rotation missing client_id (422)", async () => {
+    // The PATCH path must apply the same M2M completeness guard as create —
+    // otherwise the rotated credential is written with an empty client_id
+    // that only fails later at handshake.
+    const created = await createServer({
+      namespace: "patchm2mnocid",
+      auth_config: { kind: "oauth2_client_credentials", client_id: "cid-orig" },
+      client_secret: "secret-orig",
+    });
+    const res = await fetch(`${ctx.baseUrl}/v1/mcp-servers/${created.id}`, {
+      method: "PATCH",
+      headers: { ...adminAuth(), "content-type": "application/json" },
+      body: JSON.stringify({
+        auth_config: { kind: "oauth2_client_credentials" },
+        client_secret: "secret-rotated",
+      }),
+    });
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(await res.json())).toContain("requires auth_config.client_id");
+  });
+
+  test("rejects an oauth2_private_key_jwt rotation missing algorithm (422)", async () => {
+    const created = await createServer({
+      namespace: "patchm2mnoalg",
+      auth_config: { kind: "oauth2_private_key_jwt", client_id: "cid", algorithm: "RS256" },
+      private_key: "-----BEGIN PRIVATE KEY-----\norig\n-----END PRIVATE KEY-----",
+    });
+    const res = await fetch(`${ctx.baseUrl}/v1/mcp-servers/${created.id}`, {
+      method: "PATCH",
+      headers: { ...adminAuth(), "content-type": "application/json" },
+      body: JSON.stringify({
+        auth_config: { kind: "oauth2_private_key_jwt", client_id: "cid" },
+        private_key: "-----BEGIN PRIVATE KEY-----\nrot\n-----END PRIVATE KEY-----",
+      }),
+    });
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(await res.json())).toContain("requires auth_config.algorithm");
+  });
 });
 
 // ── POST /v1/mcp-servers/{id}/disable ────────────────────────────────────────

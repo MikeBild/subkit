@@ -263,6 +263,13 @@ export function applyAuthMaterial(
       throw new Error(
         "oauth2_client credentials are not directly applied to HTTP requests — they identify the registered OAuth2 client and are consumed by the token endpoint flow.",
       );
+    case "oauth2_private_key":
+      // M2M private key for external MCP servers. Not applicable to the
+      // connector HTTP driver — consumed only by the MCP client pool's
+      // PrivateKeyJwtProvider, not by outgoing connector requests.
+      throw new Error(
+        "oauth2_private_key credentials are not directly applied to HTTP requests — they are consumed by the MCP client pool's PrivateKeyJwtProvider.",
+      );
   }
   // Exhaustiveness guard: every CredentialMode must be handled above.
   const _exhaustive: never = credential;
@@ -390,6 +397,8 @@ export function deriveAppliedAuthMethod(
       // `refreshIfStale()` plumbing in the HTTP driver.
       return oauth2Refreshed ? "token_mint_refreshed" : "token_mint_static";
     case "oauth2_client":
+      return "none";
+    case "oauth2_private_key":
       return "none";
   }
 }

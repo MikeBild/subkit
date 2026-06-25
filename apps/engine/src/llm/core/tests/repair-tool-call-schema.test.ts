@@ -12,11 +12,11 @@
 // the contract cannot regress without flagging it before any LLM call.
 
 import { describe, expect, it } from "bun:test";
-import { z } from "zod";
+import { type ZodType, z } from "zod";
+import { zodToJsonSchema7 } from "../../../mcp/json-schema.ts";
 import { normalizeSchema } from "../schema-normalizer.ts";
 
-// biome-ignore lint/suspicious/noExplicitAny: zod v4 type surface — toJSONSchema lives on the runtime module.
-const toJson = (s: unknown) => (z as any).toJSONSchema(s, { target: "jsonSchema7" });
+const toJson = (s: unknown) => zodToJsonSchema7(s as ZodType);
 
 describe("repair-tool-call — schema preparation", () => {
   it("seals top-level objects with additionalProperties=false", () => {

@@ -15,12 +15,12 @@
 //   8. Recursive / circular schemas (would blow up serialisation)
 
 import { describe, expect, test } from "bun:test";
-import { z } from "@hono/zod-openapi";
+import type { ZodType } from "zod";
+import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
 import { getTool, listTools } from "../tools/index.ts";
 
 function toJsonSchema(schema: unknown): Record<string, unknown> {
-  // biome-ignore lint/suspicious/noExplicitAny: zod v4 surface
-  return (z as any).toJSONSchema(schema, { target: "jsonSchema7" });
+  return zodToJsonSchema7(schema as ZodType);
 }
 
 const ANTHROPIC_TOOL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
