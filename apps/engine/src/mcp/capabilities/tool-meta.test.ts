@@ -1,9 +1,9 @@
 // Unit tests for MCP-standard tool annotations (Tool.annotations).
 //
-// These hints are the signal a generic MCP client (ChatGPT/codex) reads to
-// decide whether a tool may be invoked without its own per-call gate. A
-// regression here re-blocks the write-classified authoring tools on strict
-// clients (the conversation_start "Tool-Sicherheitscheck" failure).
+// These hints are the signal a generic MCP client reads to decide whether a
+// tool may be invoked without its own per-call gate. A regression here
+// re-blocks the write-classified authoring tools on strict clients (the
+// conversation_start "tool security check" failure).
 
 import { describe, expect, test } from "bun:test";
 import { listConversationTools } from "./conversations.ts";
@@ -30,7 +30,7 @@ describe("buildToolAnnotations", () => {
     }
   });
 
-  test("all four spec hints are set explicitly (ChatGPT validator treats absent as write)", () => {
+  test("all four spec hints are set explicitly (strict clients treat absent as write)", () => {
     const a = buildToolAnnotations("tenant_read", "get_workflow");
     for (const key of ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"]) {
       expect(typeof (a as Record<string, unknown>)[key]).toBe("boolean");
@@ -81,7 +81,7 @@ describe("listConversationTools annotations", () => {
   });
 
   test("conversation_start description names no engine-internal tools (strict clients call phantom tools)", () => {
-    // A strict client (ChatGPT/codex) reads identifiers in a description as
+    // A strict client reads identifiers in a description as
     // callable tool names. Naming the engine-internal authoring steps made it
     // try to invoke a non-existent `author_workflow` tool and abort.
     const desc = byName.get("conversation_start")?.description ?? "";

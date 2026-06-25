@@ -1,12 +1,12 @@
 // MCP confirm-gate resolution over the wire — the regression this fixes.
 //
-// v7.10.4 unified the policy gate so a `confirm_before_execution` tool
-// (here `probe_connector` POST/prod) returns `needs_confirm` on MCP. But
-// the only documented way to satisfy it was re-issuing with
-// `_meta.sk_confirm=true` — a transport field a claude.ai/ChatGPT *model*
-// cannot set (it only fills the published inputSchema). So the gate was
-// unsatisfiable from a model-only client: workflows/connectors couldn't be
-// run and human-in-the-loop confirmations dead-ended.
+// Unifying the policy gate made a `confirm_before_execution` tool (here
+// `probe_connector` POST/prod) return `needs_confirm` on MCP. But the only
+// documented way to satisfy it was re-issuing with `_meta.sk_confirm=true` —
+// a transport field a model-only client cannot set (it only fills the
+// published inputSchema). So the gate was unsatisfiable from a model-only
+// client: workflows/connectors couldn't be run and human-in-the-loop
+// confirmations dead-ended.
 //
 // This test pins the two model-drivable resolution paths:
 //   1. Elicitation-capable client → the server issues an in-band
