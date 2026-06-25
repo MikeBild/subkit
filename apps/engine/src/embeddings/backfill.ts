@@ -44,7 +44,12 @@ function extractMessageText(content: unknown): string {
   return "";
 }
 
-const BATCH = 64;
+// Per-call embedding batch. Kept small on purpose: the in-process WASM
+// embedder allocates transformer activations for the whole batch at once and
+// its linear-memory arena only grows (never shrinks), so a large batch sets a
+// high, permanent RSS water mark. 16 keeps the per-call activation footprint
+// modest while still amortising the model call across rows.
+const BATCH = 16;
 
 export interface BackfillResult {
   scanned: number;

@@ -395,30 +395,32 @@ async function runServer(): Promise<void> {
     });
   }
 
-  // Warm the in-process embedding model before the listener accepts
-  // traffic: the first retrieval/backfill is then warm, and the one-time
-  // load (which briefly corrects process.release for transformers' env
-  // detection, see local-provider.ts) runs with no concurrent request.
-  // Non-fatal — embeddings degrade to FTS when the model can't load (e.g.
-  // a build without the fetched assets), so a failure must never block boot.
-  try {
-    const ready = await warmEmbeddings();
-    logger.info({
-      module: "embeddings",
-      action: "warm.complete",
-      msg: ready
-        ? "embedding model warm — semantic retrieval active"
-        : "embedding model unavailable — retrieval uses FTS",
-      available: ready,
-    });
-  } catch (err) {
-    logger.warn({
-      module: "embeddings",
-      action: "warm.failed",
-      msg: "embedding warm-up failed (non-fatal); retrieval uses FTS",
-      ...errorFields(err),
-    });
-  }
+  // Warm the in-process embedding model in the BACKGROUND — deliberately not
+  // awaited. The model is a ~1.5 GB-RSS WASM load; blocking boot on it delays
+  // (and on a slow load, fails) the /v1/health gate the deploy polls. Kicking
+  // it off detached lets the listener bind immediately, with the model
+  // becoming available a few seconds later; any retrieval before then simply
+  // uses FTS. Non-fatal — a load failure (e.g. a build without the fetched
+  // assets) degrades to FTS and must never affect boot.
+  void warmEmbeddings()
+    .then((ready) =>
+      logger.info({
+        module: "embeddings",
+        action: "warm.complete",
+        msg: ready
+          ? "embedding model warm — semantic retrieval active"
+          : "embedding model unavailable — retrieval uses FTS",
+        available: ready,
+      }),
+    )
+    .catch((err) =>
+      logger.warn({
+        module: "embeddings",
+        action: "warm.failed",
+        msg: "embedding warm-up failed (non-fatal); retrieval uses FTS",
+        ...errorFields(err),
+      }),
+    );
 
   // Pub/sub listener — catch-up first, then LISTEN.
   const listener = await bootPhase("pubsub_listener", () =>

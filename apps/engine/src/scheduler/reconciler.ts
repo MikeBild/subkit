@@ -966,12 +966,22 @@ export class SchedulerReconciler {
    * and a no-op when the local model is unavailable (embedded: 0, fast).
    */
   async reconcileEmbeddingBackfill(now: Date = new Date()): Promise<void> {
-    if (this.lastEmbeddingBackfillAt !== null) {
-      const elapsed = now.getTime() - this.lastEmbeddingBackfillAt.getTime();
-      if (elapsed < EMBEDDING_BACKFILL_CADENCE_MS) return;
+    // Defer the first sweep off the boot path. The initial reconcileOnce()
+    // is awaited inside the boot sequence, before the HTTP listener binds;
+    // with the local model active a first backfill embeds the whole backlog
+    // in-process (WASM inference), which blocks /v1/health from ever coming
+    // up and balloons RSS. Seeding lastRun on the first call moves the first
+    // real sweep to one cadence after boot, once the engine is serving.
+    if (this.lastEmbeddingBackfillAt === null) {
+      this.lastEmbeddingBackfillAt = now;
+      return;
     }
+    const elapsed = now.getTime() - this.lastEmbeddingBackfillAt.getTime();
+    if (elapsed < EMBEDDING_BACKFILL_CADENCE_MS) return;
     this.lastEmbeddingBackfillAt = now;
-    await backfillEmbeddings({ maxBatches: 10 }, this.opts.db);
+    // Small per-tick cap: the WASM embedder's arena only grows, so a large
+    // sweep sets a high RSS water mark. Drain the backlog gradually instead.
+    await backfillEmbeddings({ maxBatches: 4 }, this.opts.db);
   }
 
   private async fireWorkflowSchedule(
