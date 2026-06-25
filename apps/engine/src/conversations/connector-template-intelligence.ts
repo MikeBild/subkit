@@ -32,7 +32,7 @@ function tokenize(value: string): string[] {
     .filter((token) => token.length > 0);
 }
 
-function normalizeForExactMatch(value: string): string {
+export function normalizeForExactMatch(value: string): string {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, " ")

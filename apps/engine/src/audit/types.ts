@@ -248,6 +248,9 @@ export const AuditAction = {
   // operators can trace which skills a conversation pulled into context.
   // Per-turn recency demotions are derived/automatic and are NOT audited.
   CONVERSATION_SKILL_LOADED: "conversation.skill_loaded",
+  // Prove-after: an answer's grounding sources, mirrored from the turn's
+  // grounding-tool results so "this answer ← these sources" is auditable.
+  CONVERSATION_ANSWER_CITED: "conversation.answer_cited",
   // A backgrounded conversation turn (MCP async Tasks, SEP-1686) threw
   // inside the `conversation.run-turn` pg-boss worker. Metadata carries
   // the `mcp_task_id` + the `failure_reason` code so operators can

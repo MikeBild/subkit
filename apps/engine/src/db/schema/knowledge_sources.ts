@@ -18,6 +18,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -122,6 +123,13 @@ export const knowledgeChunks = pgTable(
     tsv: tsvector("tsv").generatedAlwaysAs(
       sql`to_tsvector('english', (COALESCE(title, '') || ' ') || content)`,
     ),
+    // Semantic embedding for hybrid retrieval (FTS prefilter → vector
+    // rerank). Stored as a plain real[] — no pgvector extension, because
+    // the rerank runs over the small FTS-prefiltered candidate set in JS,
+    // not as a corpus-wide ANN scan. Nullable so FTS keeps working before
+    // backfill; embedding_model tags the producing model for invalidation.
+    embedding: real("embedding").array(),
+    embedding_model: text("embedding_model"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [

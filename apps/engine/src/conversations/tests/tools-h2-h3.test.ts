@@ -113,10 +113,11 @@ describe("conversation tools — registration", () => {
     "list_subscriptions",
     "get_subscription",
     "get_engine_status",
-    // Discovery (2 read + 1 write)
+    // Discovery (2 read + 1 write) + capability-gap backlog
     "list_discovery_artifacts",
     "get_discovery_artifact",
     "approve_discovery_artifact",
+    "list_capability_gaps",
     // Hand-written write tools
     "run_workflow",
     "rerun_execution",

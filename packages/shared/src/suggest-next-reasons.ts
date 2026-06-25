@@ -13,6 +13,10 @@
 export const SUGGEST_NEXT_REASONS = [
   "offer-detected",
   "offer-skill",
+  // Deterministic: the turn abstained via cannot_help, so the next-message
+  // suggestion is the gap-closing path (set up the connector / request the
+  // grant / probe), derived without a model call.
+  "capability-gap",
   "model",
   "early-conversation",
   "client-suppress",

@@ -7,7 +7,12 @@ export const DiscoveryRunStatusSchema = z.enum([
   "completed",
   "failed",
 ]);
-export const DiscoveryArtifactKindSchema = z.enum(["connector", "skill", "knowledge_source"]);
+export const DiscoveryArtifactKindSchema = z.enum([
+  "connector",
+  "skill",
+  "knowledge_source",
+  "capability_gap",
+]);
 export const DiscoveryArtifactStatusSchema = z.enum([
   "proposed",
   "approved",

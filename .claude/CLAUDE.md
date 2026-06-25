@@ -2,7 +2,7 @@
 
 **Start with `../AGENTS.md`.** It is the canonical repo-wide contract: product boundaries,
 architecture split, code-quality rules, testing layers, quality gate, and the map of the
-44 engine subsystems.
+45 engine subsystems.
 
 This file is a compatibility shim. It indexes what lives under `.claude/` so you can jump
 to the right helper quickly. It does not override `AGENTS.md`.

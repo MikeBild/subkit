@@ -1,10 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
+import { log } from "../../logging/logger.ts";
 import {
   allowedTemplateAuthTypes,
   inferTemplateRequiredFields,
-  suggestConnectorTemplates,
 } from "../connector-template-intelligence.ts";
+import { suggestConnectorTemplatesHybrid } from "../connector-template-vector.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -23,11 +24,12 @@ export const suggestConnectorTemplatesTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const resolvedTemplates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
-    const templates = suggestConnectorTemplates({
+    const ranked = await suggestConnectorTemplatesHybrid({
       query: args.query,
       limit: args.limit,
       templates: resolvedTemplates.map((entry) => entry.template),
-    }).map(({ template, score }) => {
+    });
+    const templates = ranked.map(({ template, score }) => {
       const resolved = resolvedTemplates.find((entry) => entry.template.slug === template.slug)!;
       return {
         slug: template.slug,
@@ -46,6 +48,17 @@ export const suggestConnectorTemplatesTool: ConversationTool = {
         default_skill: template.default_skill,
         score,
       };
+    });
+    // Retrieval-quality signal for the evidence process — the third
+    // (template-matching) retrieval path. No FTS/stemming here, so this
+    // is the channel the probe set most expects to miss on morphology.
+    log.connectorTemplates.suggested({
+      tenant_id: ctx.tenant_id,
+      query_length: args.query.length,
+      hit_count: templates.length,
+      top_match_id: templates[0]?.slug ?? null,
+      top_rank: templates[0]?.score ?? null,
+      limit: args.limit,
     });
     return {
       ok: true,

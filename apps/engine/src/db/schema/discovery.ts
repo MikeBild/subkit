@@ -31,6 +31,13 @@ export const discoveryArtifactKindEnum = pgEnum("discovery_artifact_kind", [
   "connector",
   "skill",
   "knowledge_source",
+  // A coverage gap: the assistant could not satisfy a request because no
+  // connector / workflow / knowledge source exists for it (recorded from
+  // `cannot_help`). Unlike the other kinds it has no source files — its
+  // `draft` carries the requested intent and the missing capability, and
+  // its `evidence` is empty. It reuses the propose → approve lifecycle so
+  // an operator can turn a recurring gap into a new capability.
+  "capability_gap",
 ]);
 
 export const discoveryArtifactStatusEnum = pgEnum("discovery_artifact_status", [

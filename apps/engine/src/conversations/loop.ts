@@ -11,6 +11,7 @@
 
 import { hasToolCall, stepCountIs, streamText, type ToolSet } from "ai";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
@@ -70,6 +71,7 @@ import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.t
 import { resolveAttachmentSlugsInText } from "./attachments.ts";
 import { expandPriorFailuresFromToolCalls } from "./authoring-critic/prior-failures.ts";
 import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "./authoring-state.ts";
+import { harvestCitations } from "./citations.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
@@ -2010,6 +2012,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       try {
         criticVerdict = await runCritic({
           artifact,
+          // Grounding corpus for `ids_grounded`: the assembled system
+          // prompt, which carries the tenant-summary block (ground-truth
+          // ids), loaded skills, recipes and ingested chunks. Previously
+          // omitted, which left `ids_grounded` dead (snapshot undefined →
+          // always true). A hallucinated UUID appears nowhere in this
+          // corpus, so it is now caught. Known residual: an id the model
+          // legitimately obtained from a tool result *this* turn is not
+          // echoed in `system`; while the chat verdict stays non-blocking
+          // this only logs, so we measure that false-positive rate before
+          // the gate is made blocking.
+          snapshot: prompt.system,
           ...(p.runtime_context
             ? {
                 runtimeContext: {
@@ -2121,6 +2134,40 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         });
       }
     } // close `else` for artifact !== null
+  }
+
+  // Prove-after: mirror this answer's grounding sources into the audit log,
+  // harvested from the turn's grounding-tool results (not the model's prose),
+  // so "this answer ← these sources" is reconstructable without trusting the
+  // text. Best-effort: a bookkeeping failure never affects the turn, and we
+  // only write when an answer actually cited a source.
+  if (!cancelled && signals.lastAssistantText) {
+    const citations = harvestCitations(events);
+    if (citations.length > 0) {
+      try {
+        await auditAwait(
+          {
+            tenant_id: p.tenant_id,
+            actor_type: p.actor_id ? "user" : "system",
+            actor_id: p.actor_id,
+            action: AuditAction.CONVERSATION_ANSWER_CITED,
+            resource_type: "conversation",
+            resource_id: p.conversation_id,
+            result: "success",
+            metadata: { citation_count: citations.length, citations: citations.slice(0, 20) },
+          },
+          p.db,
+        );
+      } catch (err) {
+        logger.warn({
+          module: "llm",
+          action: "citations.audit_failed",
+          msg: "could not mirror citations to audit — turn unaffected",
+          conversation_id: p.conversation_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
 
   // Resolve final status.
