@@ -243,7 +243,14 @@ jobs:
           GITLEAKS_VERSION=8.30.1
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz gitleaks
+          # Scope the scan to history reachable from the PUSHED commit, not the
+          # whole object graph. With fetch-depth:0 the runner clones every
+          # branch; a bare `gitleaks git .` scans all of them, so a
+          # secret-shaped fixture on an unrelated branch fails this ref's scan.
+          # Restricting --log-opts to "$GITHUB_SHA" keeps the scan to this ref's
+          # own history (still the full history of the pushed branch).
           ./gitleaks git . --config .gitleaks.toml --redact --exit-code 2 --no-banner \
+            --log-opts="$GITHUB_SHA" \
             --report-format sarif --report-path results.sarif
       - name: Upload gitleaks report
         if: always()
