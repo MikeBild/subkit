@@ -250,6 +250,14 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
+      # Cache the embedded-embedding model so each engine matrix build
+      # doesn't re-download ~146 MB from the HuggingFace CDN. Keyed on the
+      # fetch script (pins the model id) + os/arch. No-op for the sk binary.
+      - name: Cache embedding assets
+        uses: actions/cache@v4
+        with:
+          path: apps/engine/assets/embeddings
+          key: ${{ runner.os }}-${{ matrix.arch }}-embed-assets-${{ hashFiles('scripts/fetch-embedding-assets.ts') }}
       - run: bun install --frozen-lockfile
 
       - name: Compile binary
@@ -268,6 +276,18 @@ jobs:
           fi
           OUT="${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
           mkdir -p dist
+          # ssh2's OPTIONAL cpu-features native addon is installed on Linux
+          # but never compiled, and bun build --compile cannot bundle the
+          # missing .node (it is simply absent on macOS). Strip it before the
+          # compile — mirrors package.json build:engine + the Dockerfile.
+          rm -rf node_modules/cpu-features
+          # The engine binary inlines the embedding model + tokenizer +
+          # onnxruntime-web WASM (see embedded-assets.ts); fetch them before
+          # the compile, exactly as package.json build:engine does. Skipped
+          # for the sk binary, which embeds nothing.
+          if [ "${{ matrix.binary }}" = "engine" ]; then
+            bun scripts/fetch-embedding-assets.ts
+          fi
           # Identity-define NODE_ENV so the bundler does NOT inline its
           # build-time value ("development" on a bare runner) into the
           # binary — every runtime NODE_ENV gate (devtools wrap, egress
