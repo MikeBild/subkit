@@ -30,14 +30,19 @@ const MODEL_ID = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
 const REVISION = "main";
 const HF_BASE = `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}`;
 
-// filename -> HF path (relative to HF_BASE) + a minimum plausible size so a
-// truncated/HTML-error download is re-fetched rather than embedded.
-const MODEL_FILES: Array<{ name: string; remote: string; minBytes: number }> = [
-  { name: "config.json", remote: "config.json", minBytes: 100 },
-  { name: "tokenizer.json", remote: "tokenizer.json", minBytes: 1_000_000 },
-  { name: "tokenizer_config.json", remote: "tokenizer_config.json", minBytes: 100 },
-  { name: "special_tokens_map.json", remote: "special_tokens_map.json", minBytes: 50 },
-  { name: "model_quantized.onnx", remote: "onnx/model_quantized.onnx", minBytes: 50_000_000 },
+// HF path (relative to HF_BASE) -> local filename + a minimum plausible size
+// so a truncated/HTML-error download is re-fetched rather than embedded. The
+// config/tokenizer files are saved with a `.bin` extension on purpose: their
+// `with { type: "file" }` import in embedded-assets.ts must resolve against an
+// ambient `*.bin` declaration (an opaque path string), NOT TypeScript's
+// `resolveJsonModule`, which would demand the real file at typecheck time —
+// before this script has fetched it in CI.
+const MODEL_FILES: Array<{ remote: string; local: string; minBytes: number }> = [
+  { remote: "config.json", local: "config.bin", minBytes: 100 },
+  { remote: "tokenizer.json", local: "tokenizer.bin", minBytes: 1_000_000 },
+  { remote: "tokenizer_config.json", local: "tokenizer_config.bin", minBytes: 100 },
+  { remote: "special_tokens_map.json", local: "special_tokens_map.bin", minBytes: 50 },
+  { remote: "onnx/model_quantized.onnx", local: "model_quantized.onnx", minBytes: 50_000_000 },
 ];
 
 // onnxruntime-web emscripten glue + wasm (asyncify variant — the non-Safari
@@ -70,14 +75,14 @@ async function main(): Promise<void> {
   await ensureDir(ORT_DIR);
 
   for (const f of MODEL_FILES) {
-    const dest = join(MINILM_DIR, f.name);
+    const dest = join(MINILM_DIR, f.local);
     if (ok(dest, f.minBytes)) {
-      console.log(`  ✓ ${f.name} (cached)`);
+      console.log(`  ✓ ${f.local} (cached)`);
       continue;
     }
-    console.log(`  ↓ ${f.name} …`);
+    console.log(`  ↓ ${f.local} …`);
     await download(`${HF_BASE}/${f.remote}`, dest, f.minBytes);
-    console.log(`  ✓ ${f.name} (${(Bun.file(dest).size / 1e6).toFixed(1)} MB)`);
+    console.log(`  ✓ ${f.local} (${(Bun.file(dest).size / 1e6).toFixed(1)} MB)`);
   }
 
   for (const name of ORT_FILES) {

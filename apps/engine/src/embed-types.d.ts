@@ -34,3 +34,11 @@ declare module "*.mjs" {
   const path: string;
   export default path;
 }
+
+// Config/tokenizer assets are stored `.bin` (not `.json`) precisely so they
+// resolve here as opaque path strings rather than via resolveJsonModule,
+// which would demand the file exist at typecheck time.
+declare module "*.bin" {
+  const path: string;
+  export default path;
+}

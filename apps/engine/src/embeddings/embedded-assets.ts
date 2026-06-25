@@ -10,14 +10,21 @@
 // imported DYNAMICALLY (see local-provider.ts) so `bun run`/`bun test` —
 // which never run the fetch — fail to resolve these imports gracefully and
 // fall back to FTS, while the compiled build embeds them.
+//
+// The config/tokenizer files are stored with a `.bin` extension (not their
+// real `.json`) so these imports resolve against the ambient `*.bin`
+// declaration — an opaque path string — instead of TypeScript's
+// resolveJsonModule, which would require the file to exist at typecheck time
+// (it is fetched only at build time). Their byte content is unchanged; the
+// shim keys them by the HuggingFace basename transformers.js requests.
 
-import configJson from "../../assets/embeddings/minilm/config.json" with { type: "file" };
+import configBin from "../../assets/embeddings/minilm/config.bin" with { type: "file" };
 import modelOnnx from "../../assets/embeddings/minilm/model_quantized.onnx" with { type: "file" };
-import specialTokensJson from "../../assets/embeddings/minilm/special_tokens_map.json" with {
+import specialTokensBin from "../../assets/embeddings/minilm/special_tokens_map.bin" with {
   type: "file",
 };
-import tokenizerJson from "../../assets/embeddings/minilm/tokenizer.json" with { type: "file" };
-import tokenizerConfigJson from "../../assets/embeddings/minilm/tokenizer_config.json" with {
+import tokenizerBin from "../../assets/embeddings/minilm/tokenizer.bin" with { type: "file" };
+import tokenizerConfigBin from "../../assets/embeddings/minilm/tokenizer_config.bin" with {
   type: "file",
 };
 import ortMjs from "../../assets/embeddings/onnxruntime/ort-wasm-simd-threaded.asyncify.mjs" with {
@@ -30,17 +37,12 @@ import ortWasm from "../../assets/embeddings/onnxruntime/ort-wasm-simd-threaded.
 /** Embedded onnxruntime-web glue + wasm paths (bunfs-resolvable). */
 export const ORT_ASSETS = { mjs: ortMjs, wasm: ortWasm } as const;
 
-// The .json imports carry the `type: "file"` attribute, so Bun resolves them
-// to a path STRING at runtime — but TypeScript's resolveJsonModule types them
-// as the parsed object. Coerce the binding type back to the runtime reality.
-const asPath = (file: unknown): string => file as string;
-
 /** Embedded model-file paths keyed by their HuggingFace basename — the key
  *  the env.fetch shim matches the requested URL against. */
 export const MODEL_FILE_BY_BASENAME: Readonly<Record<string, string>> = {
   "model_quantized.onnx": modelOnnx,
-  "config.json": asPath(configJson),
-  "tokenizer.json": asPath(tokenizerJson),
-  "tokenizer_config.json": asPath(tokenizerConfigJson),
-  "special_tokens_map.json": asPath(specialTokensJson),
+  "config.json": configBin,
+  "tokenizer.json": tokenizerBin,
+  "tokenizer_config.json": tokenizerConfigBin,
+  "special_tokens_map.json": specialTokensBin,
 };
