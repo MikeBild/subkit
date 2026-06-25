@@ -58,7 +58,7 @@ function descriptorToMcpTool(d: ToolDescriptor): Tool {
     name: d.name,
     description: d.description,
     inputSchema: zodToMcpSchema(d.inputSchema),
-    // Spec-standard hints so a generic MCP client (ChatGPT/codex) can tell a
+    // Spec-standard hints so a generic strict MCP client can tell a
     // read tool from a write and permit the call without its own gate.
     annotations: buildToolAnnotations(d.category, d.name),
   };
@@ -209,7 +209,7 @@ export type ConfirmResolver = (confirm: ConfirmEnvelope) => Promise<boolean>;
  *  shape.
  *
  *  Human-in-the-loop over MCP: a `confirm_before_execution` tool returns a
- *  `needs_confirm` envelope. A claude.ai/ChatGPT *model* cannot set the
+ *  `needs_confirm` envelope. A model-only client cannot set the
  *  transport-level `_meta.sk_confirm` flag the gate looks for — it only
  *  fills the published inputSchema — so the gate is otherwise
  *  unsatisfiable from a model-only client. When the client advertises
